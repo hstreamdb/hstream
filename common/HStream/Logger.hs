@@ -102,7 +102,7 @@ setLogLevel level withColor = do
         }
   Log.setDefaultLogger =<< Log.newStdLogger config
 
-newtype Level = Level {unLevel :: Log.Level}
+newtype Level = Level {unLevel :: Log.Level} deriving (Eq)
 
 instance Show Level where
   show (Level Log.CRITICAL) = "critical"

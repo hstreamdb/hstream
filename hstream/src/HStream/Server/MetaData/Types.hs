@@ -24,21 +24,20 @@ module HStream.Server.MetaData.Types
   , setQueryStatus
   , groupbyStores
   , getQueryStatus
+  , rootPath
   ) where
 
-import           Data.Aeson                    (FromJSON (..), ToJSON (..))
-import           Data.Int                      (Int64)
-import           GHC.Generics                  (Generic)
--- import           GHC.Stack                                 (HasCallStack)
-
 import           Control.Concurrent
+import           Data.Aeson                    (FromJSON (..), ToJSON (..))
 import qualified Data.HashMap.Strict           as HM
+import           Data.Int                      (Int64)
 import           Data.IORef
 import           Data.Maybe                    (fromJust)
 import           Data.Text                     (Text)
 import           Data.Time.Clock.System        (SystemTime (MkSystemTime))
 import           Data.Word                     (Word32, Word64)
 import           DiffFlow.Types
+import           GHC.Generics                  (Generic)
 import           GHC.IO                        (unsafePerformIO)
 import           Z.IO.Time                     (getSystemTime')
 import           ZooKeeper.Types               (ZHandle)
@@ -48,7 +47,6 @@ import           HStream.MetaStore.Types       (HasPath (..), MetaHandle,
                                                 RHandle)
 import qualified HStream.Server.ConnectorTypes as HCT
 import           HStream.Server.HStreamApi     (Subscription (..))
-import           HStream.Server.MetaData.Value
 import           HStream.Server.Types          (ServerID, SubscriptionWrap (..))
 import qualified HStream.Store                 as S
 import           HStream.Utils                 (TaskStatus (..), cBytesToText)
@@ -91,12 +89,15 @@ data ShardReader = ShardReader
   , readerReadTimeout :: Word32
   } deriving (Show, Generic, FromJSON, ToJSON)
 
+rootPath :: Text
+rootPath = "/hstream"
+
 instance HasPath ShardReader ZHandle where
-  myRootPath = cBytesToText readerPath
+  myRootPath = rootPath <> "/queries"
 instance HasPath SubscriptionWrap ZHandle where
-  myRootPath = cBytesToText subscriptionsPath
+  myRootPath = rootPath <> "/subscriptions"
 instance HasPath PersistentQuery ZHandle where
-  myRootPath = cBytesToText queriesPath
+  myRootPath = rootPath <> "/shardReader"
 
 instance HasPath ShardReader RHandle where
   myRootPath = "readers"

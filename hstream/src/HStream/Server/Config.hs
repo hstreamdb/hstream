@@ -5,10 +5,14 @@
 
 module HStream.Server.Config
   ( ServerOpts (..)
+  , CliOptions (..)
   , TlsConfig (..)
   , AdvertisedListeners
   , advertisedListenersToPB
   , getConfig
+  , MetaStoreAddr(..)
+  , parseJSONToOptions
+  , readProtocol
   ) where
 
 import           Control.Exception              (throwIO)
@@ -17,10 +21,12 @@ import qualified Data.Attoparsec.Text           as AP
 import           Data.Bifunctor                 (second)
 import           Data.ByteString                (ByteString)
 import qualified Data.ByteString.Char8          as BSC
+import qualified Data.HashMap.Strict            as HM
 import           Data.Map.Strict                (Map)
 import qualified Data.Map.Strict                as Map
 import           Data.Maybe                     (fromMaybe)
 import           Data.Text                      (Text)
+import qualified Data.Text                      as T
 import qualified Data.Text                      as Text
 import           Data.Text.Encoding             (encodeUtf8)
 import           Data.Vector                    (Vector)
@@ -37,17 +43,17 @@ import           Options.Applicative            as O (Alternative ((<|>)),
                                                       auto, defaultPrefs,
                                                       execParserPure, flag,
                                                       fullDesc, help, helper,
-                                                      info, long, metavar,
-                                                      option, optional,
+                                                      info, long, maybeReader,
+                                                      metavar, option, optional,
                                                       progDesc, renderFailure,
                                                       short, showDefault,
                                                       strOption, value, (<**>))
 import           System.Directory               (makeAbsolute)
 import           System.Environment             (getArgs, getProgName)
 import           System.Exit                    (exitSuccess)
+import qualified Z.Data.CBytes                  as CB
 import           Z.Data.CBytes                  (CBytes)
 
-import qualified Data.HashMap.Strict            as HM
 import qualified HStream.Admin.Store.API        as AA
 import           HStream.Gossip                 (GossipOpts (..),
                                                  defaultGossipOpts)
@@ -57,18 +63,24 @@ import qualified HStream.Server.HStreamInternal as SAI
 import           HStream.Store                  (Compression (..))
 import qualified HStream.Store.Logger           as Log
 
+
 -------------------------------------------------------------------------------
 
 data TlsConfig = TlsConfig
   { keyPath  :: String
   , certPath :: String
   , caPath   :: Maybe String
-  } deriving (Show)
+  } deriving (Show, Eq)
 
 type AdvertisedListeners = Map Text (Vector SAI.Listener)
 
 advertisedListenersToPB :: AdvertisedListeners -> Map Text (Maybe SAI.ListOfListener)
 advertisedListenersToPB = Map.map $ Just . SAI.ListOfListener
+
+data MetaStoreAddr
+  = ZkAddr CBytes
+  | RqAddr Text
+  deriving (Eq)
 
 data ServerOpts = ServerOpts
   { _serverHost                :: !CBytes
@@ -77,7 +89,7 @@ data ServerOpts = ServerOpts
   , _serverAddress             :: !String
   , _serverAdvertisedListeners :: !AdvertisedListeners
   , _serverID                  :: !Word32
-  , _zkUri                     :: !CBytes
+  , _metaStore                 :: !MetaStoreAddr
   , _ldConfigPath              :: !CBytes
   , _topicRepFactor            :: !Int
   , _ckpRepFactor              :: !Int
@@ -97,7 +109,8 @@ data ServerOpts = ServerOpts
 
   , _gossipOpts                :: !GossipOpts
   , _ioOptions                 :: !IO.IOOptions
-  } deriving (Show)
+  , _connectorMetaStore        :: !MetaStoreAddr
+  } deriving (Show, Eq)
 
 getConfig :: IO ServerOpts
 getConfig = do
@@ -134,7 +147,7 @@ data CliOptions = CliOptions
   , _serverLogLevel_     :: !(Maybe Log.Level)
   , _serverLogWithColor_ :: !Bool
   , _compression_        :: !(Maybe Compression)
-  , _zkUri_              :: !(Maybe CBytes)
+  , _metaStore_          :: !(Maybe MetaStoreAddr)
   , _seedNodes_          :: !(Maybe Text)
 
   , _enableTls_          :: !Bool
@@ -168,7 +181,7 @@ cliOptionsParser = do
   _ldAdminPort_        <- optional ldAdminPort
   _ldAdminHost_        <- optional ldAdminHost
   _ldLogLevel_         <- optional ldLogLevel
-  _zkUri_              <- optional zkUri
+  _metaStore_          <- optional metaStore
   _serverLogLevel_     <- optional logLevel
   _compression_        <- optional compression
   _serverLogWithColor_ <- logWithColor
@@ -191,7 +204,7 @@ parseJSONToOptions CliOptions {..} obj = do
   nodeInternalPort    <- nodeCfgObj .:? "internal-port" .!= 6571
   advertisedListeners <- nodeCfgObj .:? "advertised-listeners"
 
-  zkuri             <- nodeCfgObj .:  "zkuri"
+  nodeMetaStore     <- parseMetaStoreAddr <$> nodeCfgObj .:  "meta-store" :: Y.Parser MetaStoreAddr
   serverCompression <- read <$> nodeCfgObj .:? "compression" .!= "lz4"
   nodeLogLevel      <- nodeCfgObj .:? "log-level" .!= "info"
   nodeLogWithColor  <- nodeCfgObj .:? "log-with-color" .!= True
@@ -208,7 +221,7 @@ parseJSONToOptions CliOptions {..} obj = do
   let _serverAddress      = fromMaybe nodeAddress _serverAddress_
   let _serverAdvertisedListeners = fromMaybe Map.empty advertisedListeners
 
-  let _zkUri              = fromMaybe zkuri _zkUri_
+  let _metaStore          = fromMaybe nodeMetaStore _metaStore_
   let _serverLogLevel     = fromMaybe (read nodeLogLevel) _serverLogLevel_
   let _serverLogWithColor = nodeLogWithColor || _serverLogWithColor_
   let _compression        = fromMaybe serverCompression _compression_
@@ -261,7 +274,13 @@ parseJSONToOptions CliOptions {..} obj = do
         (_, _, Nothing) -> errorWithoutStackTrace "enable-tls=true, but tls-cert-path is empty"
         (_, Just kp, Just cp) -> Just $ TlsConfig kp cp _tlsCaPath
 
+
   -- hstream io config
+  -- FIXME: connector meta store should be part of ioOpts
+  _connectorMetaStore <- parseMetaStoreAddr <$> nodeCfgObj .:?  "connector-meta-store" .!= T.pack (show nodeMetaStore)
+  case _connectorMetaStore of
+    ZkAddr _ -> return ()
+    _ -> error "Currently only support connectors with zookeeper meta store"
   nodeIOCfg <- nodeCfgObj .:? "hstream-io" .!= mempty
   nodeIOTasksPath <- nodeIOCfg .:? "tasks-path" .!= "/tmp/io/tasks"
   nodeIOTasksNetwork <- nodeIOCfg .:? "tasks-network" .!= "host"
@@ -352,13 +371,12 @@ ldLogLevel = option auto
   <> metavar "[critical|error|warning|notify|info|debug|spew]"
   <> help "Store log level"
 
-zkUri :: O.Parser CBytes
-zkUri = strOption
-  $  long "zkuri"
+metaStore :: O.Parser MetaStoreAddr
+metaStore = option (O.maybeReader (Just . parseMetaStoreAddr . T.pack))
+  $  long "meta-store"
   <> metavar "STR"
-  <> help ( "comma separated host:port pairs, each corresponding"
-         <> "to a zk zookeeper server. "
-         <> "e.g. \"127.0.0.1:2181,127.0.0.1:2182,127.0.0.1:2183\"")
+  <> help ( "Meta store address, currently support zookeeper and rqlite"
+         <> "such as \"zk://127.0.0.1:2181,127.0.0.1:2182 , \"rq://127.0.0.1:4001\"")
 
 --TODO: This option will be removed once we can get config from admin server.
 storeConfigPath :: O.Parser CBytes
@@ -416,3 +434,33 @@ parseHostPorts = AP.parseOnly (hostPortParser `AP.sepBy` AP.char ',')
       host <- encodeUtf8 <$> AP.takeTill (`elem` [':', ','])
       port <- optional (AP.char ':' *> AP.decimal)
       return (host, port)
+
+parseMetaStoreAddr :: Text -> MetaStoreAddr
+parseMetaStoreAddr t =
+  case AP.parseOnly metaStoreP t of
+    Right (s, ip)
+      | s == "zk" -> ZkAddr . CB.pack .T.unpack $ ip
+      | s == "rq" -> RqAddr ip
+      | otherwise -> errorWithoutStackTrace $ "Invalid meta store address, unsupported scheme: " <> show s
+    Left eMsg -> errorWithoutStackTrace eMsg
+
+metaStoreP :: AP.Parser (Text, Text)
+metaStoreP = do
+  scheme <- AP.takeTill (== ':')
+  AP.string "://"
+  ip <- AP.takeText
+  return (scheme, ip)
+
+-- TODO: Haskell libraries does not support the case where multiple auths exist
+-- case parseURI str of
+-- Just URI{..} -> case uriAuthority of
+--   Just URIAuth{..}
+--     | uriScheme == "zk:" -> ZkAddr . CB.pack $ uriRegName <> uriPort
+--     | uriScheme == "rq:" -> RqAddr . T.pack $ uriRegName <> uriPort
+--     | otherwise -> errorWithoutStackTrace $ "Invalid meta store address, unsupported scheme: " <> uriScheme
+--   Nothing -> errorWithoutStackTrace $ "Invalid meta store address, no Auth: " <> str
+-- Nothing  -> errorWithoutStackTrace $ "Invalid meta store address, no parse: " <> str
+
+instance Show MetaStoreAddr where
+  show (ZkAddr addr) = "zk://" <> CB.unpack addr
+  show (RqAddr addr) = "rq://" <> T.unpack addr

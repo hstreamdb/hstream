@@ -22,6 +22,8 @@ import           Data.Word                        (Word16)
 import qualified Network.GRPC.HighLevel           as GRPC
 import qualified Network.GRPC.HighLevel.Client    as GRPC
 import qualified Network.GRPC.HighLevel.Generated as GRPC
+import           Network.HTTP.Client              (defaultManagerSettings,
+                                                   newManager)
 import           Text.RawString.QQ                (r)
 import           Z.Data.CBytes                    (CBytes)
 import           ZooKeeper                        (withResource,
@@ -38,7 +40,10 @@ import           HStream.Gossip                   (GossipContext (..),
                                                    initGossipContext,
                                                    startGossip)
 import qualified HStream.Logger                   as Log
+import           HStream.MetaStore.Types          (MetaHandle (..),
+                                                   RHandle (..))
 import           HStream.Server.Config            (AdvertisedListeners,
+                                                   MetaStoreAddr (..),
                                                    ServerOpts (..), TlsConfig,
                                                    advertisedListenersToPB,
                                                    getConfig)
@@ -48,7 +53,8 @@ import           HStream.Server.HStreamApi        (NodeState (..),
 import qualified HStream.Server.HStreamInternal   as I
 import           HStream.Server.Initialization    (initializeServer,
                                                    initializeTlsConfig)
-import           HStream.Server.MetaData          (initializeAncestors)
+import           HStream.Server.MetaData          (initializeAncestors,
+                                                   initializeTables)
 import           HStream.Server.Types             (ServerContext (..),
                                                    ServerState)
 import qualified HStream.Store.Logger             as Log
@@ -70,27 +76,35 @@ app config@ServerOpts{..} = do
   Log.setLogDeviceDbgLevel' _ldLogLevel
 
   -- TODO: remove me
+
   serverState <- newMVar (EnumPB NodeStateStarting)
+  case _metaStore of
+    ZkAddr addr -> do
+      let zkRes = zookeeperResInit addr (Just $ globalWatcherFn serverState) 5000 Nothing 0
+      withResource zkRes $ \zk ->
+        initializeAncestors zk >> action serverState (ZkHandle zk)
+    RqAddr addr -> do
+      m <- newManager defaultManagerSettings
+      let rq = RHandle m addr
+      initializeTables rq
+      action serverState $ RLHandle rq
+  where
+    action serverState h = do
+      let serverNode =
+            I.ServerNode { serverNodeId = _serverID
+                         , serverNodeHost = encodeUtf8 . T.pack $ _serverAddress
+                         , serverNodePort = fromIntegral _serverPort
+                         , serverNodeGossipPort = fromIntegral _serverInternalPort
+                         , serverNodeAdvertisedListeners = advertisedListenersToPB _serverAdvertisedListeners
+                         }
+          serverHostBS = cbytes2bs _serverHost
+      gossipContext <- initGossipContext defaultGossipOpts mempty serverNode _seedNodes
 
-  let zkRes = zookeeperResInit _zkUri (Just $ globalWatcherFn serverState) 5000 Nothing 0
-      serverHostBS = cbytes2bs _serverHost
-  withResource zkRes $ \zk -> do
-    initializeAncestors zk
+      serverContext <- initializeServer config gossipContext h serverState
+      void . forkIO $ updateHashRing gossipContext (loadBalanceHashRing serverContext)
 
-    let serverNode =
-          I.ServerNode { serverNodeId = _serverID
-                       , serverNodeHost = encodeUtf8 . T.pack $ _serverAddress
-                       , serverNodePort = fromIntegral _serverPort
-                       , serverNodeGossipPort = fromIntegral _serverInternalPort
-                       , serverNodeAdvertisedListeners = advertisedListenersToPB _serverAdvertisedListeners
-                       }
-    gossipContext <- initGossipContext defaultGossipOpts mempty serverNode _seedNodes
-
-    serverContext <- initializeServer config gossipContext zk serverState
-    void . forkIO $ updateHashRing gossipContext (loadBalanceHashRing serverContext)
-
-    concurrently_ (startGossip gossipContext)
-      (serve serverHostBS _serverPort _tlsConfig serverContext _serverAdvertisedListeners)
+      concurrently_ (startGossip gossipContext)
+        (serve serverHostBS _serverPort _tlsConfig serverContext _serverAdvertisedListeners)
 
 serve :: ByteString
       -> Word16

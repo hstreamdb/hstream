@@ -23,7 +23,7 @@ import qualified Text.Read                    as Read
 
 type FD = CInt
 
-newtype LDLogLevel = LDLogLevel {unLDLogLevel :: FFI.C_DBG_LEVEL}
+newtype LDLogLevel = LDLogLevel {unLDLogLevel :: FFI.C_DBG_LEVEL} deriving (Eq)
 
 instance Read LDLogLevel where
   readPrec = do

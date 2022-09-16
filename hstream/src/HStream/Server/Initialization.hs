@@ -32,7 +32,8 @@ import qualified HStream.IO.Types                 as IO
 import qualified HStream.IO.Worker                as IO
 import qualified HStream.Logger                   as Log
 import           HStream.MetaStore.Types          (MetaHandle (..))
-import           HStream.Server.Config            (ServerOpts (..),
+import           HStream.Server.Config            (MetaStoreAddr (ZkAddr),
+                                                   ServerOpts (..),
                                                    TlsConfig (..))
 import           HStream.Server.Types
 import           HStream.Stats                    (newServerStatsHolder)
@@ -42,10 +43,10 @@ import           HStream.Utils
 initializeServer
   :: ServerOpts
   -> GossipContext
-  -> ZHandle
+  -> MetaHandle
   -> MVar ServerState
   -> IO ServerContext
-initializeServer opts@ServerOpts{..} gossipContext zk serverState = do
+initializeServer opts@ServerOpts{..} gossipContext hh serverState = do
   ldclient <- S.newLDClient _ldConfigPath
   let attrs = S.def{S.logReplicationFactor = S.defAttr1 _ckpRepFactor}
   _ <- catch (void $ S.initCheckpointStoreLogID ldclient attrs)
@@ -59,10 +60,11 @@ initializeServer opts@ServerOpts{..} gossipContext zk serverState = do
 
   hashRing <- initializeHashRing gossipContext
 
+  let ZkAddr zkuri = _connectorMetaStore
   ioWorker <-
     IO.newWorker
-      (ZkHandle zk)
-      (IO.ZkKvConfig (cBytesToText _zkUri) IO.ioRootPath)
+      hh
+      (IO.ZkKvConfig (cBytesToText zkuri) IO.ioRootPath)
       (IO.HStreamConfig (cBytesToText (CB.pack _serverAddress <> ":" <> CB.pack (show _serverPort))))
       _ioOptions
       (\k -> do
@@ -76,7 +78,7 @@ initializeServer opts@ServerOpts{..} gossipContext zk serverState = do
 
   return
     ServerContext
-      { zkHandle                 = ZkHandle zk
+      { zkHandle                 = hh
       , scLDClient               = ldclient
       , serverID                 = _serverID
       , scAdvertisedListenersKey = Nothing
