@@ -6,7 +6,7 @@
 module HStream.Exception
   ( SomeHStreamException
     -- Root of Server Exception
-  , SomeHServerException
+  , SomeHServerException (..)
 
     -- * Exception Info
   , ExInfo (..)
@@ -41,6 +41,7 @@ module HStream.Exception
   , StreamNotFound (..)
   , SubscriptionNotFound (..)
   , ConnectorNotFound (..)
+  , ShardNotFound (..)
 
     -- * Exception: AlreadyExists
     --
@@ -58,6 +59,8 @@ module HStream.Exception
   , EmptyStream (..)
   , WrongServer (..)
   , FoundActiveConsumers (..)
+  , ShardCanNotSplit (..)
+  , ShardCanNotMerge (..)
 
     -- * Exception: Aborted
     --
@@ -224,6 +227,7 @@ MAKE_PARTICULAR_EX_1(NotFound, NodesNotFound, Text, Text.unpack)
 MAKE_PARTICULAR_EX_1(NotFound, StreamNotFound, Text, Text.unpack)
 MAKE_PARTICULAR_EX_1(NotFound, SubscriptionNotFound, Text, Text.unpack)
 MAKE_PARTICULAR_EX_1(NotFound, ConnectorNotFound, Text, Text.unpack)
+MAKE_PARTICULAR_EX_1(NotFound, ShardNotFound, Text, Text.unpack)
 
 -------------------------------------------------------------------------------
 -- Exception: AlreadyExists
@@ -263,6 +267,8 @@ MAKE_PARTICULAR_EX_1(FailedPrecondition, EmptyShardReader, String, )
 MAKE_PARTICULAR_EX_1(FailedPrecondition, EmptyStream, String, )
 MAKE_PARTICULAR_EX_1(FailedPrecondition, WrongServer, String, )
 MAKE_PARTICULAR_EX_1(FailedPrecondition, FoundActiveConsumers, String, )
+MAKE_PARTICULAR_EX_1(FailedPrecondition, ShardCanNotSplit, String, )
+MAKE_PARTICULAR_EX_1(FailedPrecondition, ShardCanNotMerge, String, )
 
 -------------------------------------------------------------------------------
 -- Exception: Aborted

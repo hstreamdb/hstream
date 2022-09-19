@@ -31,11 +31,6 @@ module HStream.Server.Shard(
   splitHalf,
   mergeTwoShard,
 
-  ShardException,
-  CanNotMerge,
-  CanNotSplit,
-  ShardNotExist,
-
   hashShardKey,
   keyToCBytes,
   cBytesToKey,
@@ -63,9 +58,11 @@ import           Data.Typeable          (cast)
 import           Data.Vector            (Vector)
 import qualified Data.Vector            as V
 import           Data.Word              (Word32, Word64)
+import qualified Z.Data.CBytes          as CB
+
+import qualified HStream.Exception      as HE
 import qualified HStream.Logger         as Log
 import qualified HStream.Store          as S
-import qualified Z.Data.CBytes          as CB
 
 newtype ShardKey = ShardKey Integer
   deriving (Show, Eq, Ord, Integral, Real, Enum, Num, Hashable)
@@ -112,9 +109,9 @@ mkShard shardId streamId startKey endKey epoch = Shard {shardId, streamId, start
 mkShardWithDefaultId :: S.StreamId -> ShardKey -> ShardKey -> Word64 -> Shard
 mkShardWithDefaultId = mkShard defaultShardId
 
-splitShardByKey :: Shard -> ShardKey -> Either ShardException (Shard, Shard)
+splitShardByKey :: Shard -> ShardKey -> Either HE.SomeHServerException (Shard, Shard)
 splitShardByKey shard@Shard{..} key
-  | startKey > key || endKey < key = Left . ShardException $ CanNotSplit
+  | startKey > key || endKey < key = Left . HE.SomeHServerException $ HE.ShardCanNotSplit "ShardCanNotSplit"
   | startKey == key = Right (shard, shard)
     -- split at startKey will return the same shard
   | otherwise =
@@ -124,16 +121,16 @@ splitShardByKey shard@Shard{..} key
           s2 = mkShard shardId streamId key endKey newEpoch
         in Right (s1, s2)
 
-halfSplit :: Shard -> Either ShardException (Shard, Shard)
+halfSplit :: Shard -> Either HE.SomeHServerException (Shard, Shard)
 halfSplit shard@Shard{..}
-  | startKey == endKey = Left . ShardException $ CanNotSplit
+  | startKey == endKey = Left . HE.SomeHServerException $ HE.ShardCanNotSplit "ShardCanNotSplit"
   | otherwise = splitShardByKey shard $ startKey + ((endKey - startKey) `div` 2)
 
-mergeShard :: Shard -> Shard -> Either ShardException (Shard, ShardKey)
+mergeShard :: Shard -> Shard -> Either HE.SomeHServerException (Shard, ShardKey)
 mergeShard shard1@Shard{shardId=shardId1, streamId=streamId1, startKey=startKey1, endKey=endKey1, epoch=epoch1}
            shard2@Shard{shardId=shardId2, streamId=streamId2, startKey=startKey2, endKey=endKey2, epoch=epoch2}
-  | shardId1 == shardId2 = Left . ShardException $ CanNotMerge "can't merge same shard"
-  | endKey1 + 1 /= startKey2 || streamId1 /= streamId2 = Left . ShardException $ CanNotMerge "can't merge non-adjacent shards"
+  | shardId1 == shardId2 = Left . HE.SomeHServerException $ HE.ShardCanNotMerge "can't merge same shard"
+  | endKey1 + 1 /= startKey2 || streamId1 /= streamId2 = Left . HE.SomeHServerException $ HE.ShardCanNotMerge "can't merge non-adjacent shards"
     -- always let shard1 before shard2, so that after merge, the new shard's key range is [start1, end2],
     -- and always remove startkey2 from shardMap
   | startKey1 > startKey2 = mergeShard shard2 shard1
@@ -155,17 +152,18 @@ mkShardMap = M.fromList
 getShard :: ShardMap -> ShardKey -> Maybe Shard
 getShard mp key = snd <$> M.lookupLE key mp
 
-getShard' :: ShardMap -> ShardKey -> Either ShardException Shard
-getShard' info key = let res = getShard info key
-                      in maybeToEither res (ShardException ShardNotExist)
+getShard' :: ShardMap -> ShardKey -> Either HE.SomeHServerException Shard
+getShard' info key =
+  let res = getShard info key
+   in maybeToEither res (HE.SomeHServerException $ HE.ShardNotFound "ShardNotFound")
 
-getSplitedShard :: ShardMap -> ShardKey -> Either ShardException (Shard, Shard)
+getSplitedShard :: ShardMap -> ShardKey -> Either HE.SomeHServerException (Shard, Shard)
 getSplitedShard mp key = getShard' mp key >>= flip splitShardByKey key
 
-getHalfSplitedShard :: ShardMap -> ShardKey -> Either ShardException (Shard, Shard)
+getHalfSplitedShard :: ShardMap -> ShardKey -> Either HE.SomeHServerException (Shard, Shard)
 getHalfSplitedShard mp key = getShard' mp key >>= halfSplit
 
-getMergedShard :: ShardMap -> ShardKey -> ShardMap -> ShardKey -> Either ShardException (Shard, ShardKey)
+getMergedShard :: ShardMap -> ShardKey -> ShardMap -> ShardKey -> Either HE.SomeHServerException (Shard, ShardKey)
 getMergedShard mp1 key1 mp2 key2 = do
   s1 <- getShard' mp1 key1
   s2 <- getShard' mp2 key2
@@ -231,7 +229,7 @@ getShardByKey mp key = do
   shardMp <- atomically $ readShardMap mp hashValue
   return $ getShard shardMp key
 
-type SplitStrategies = ShardMap -> ShardKey -> Either ShardException (Shard, Shard)
+type SplitStrategies = ShardMap -> ShardKey -> Either HE.SomeHServerException (Shard, Shard)
 
 -- | Split Shard with specific ShardKey
 splitByKey :: S.LDClient -> SharedShardMap -> ShardKey -> IO ()
@@ -358,38 +356,3 @@ maybeToEither mb ep = case mb of
 
 insertMultiShardToMap :: ShardMap -> [Shard] -> ShardMap
 insertMultiShardToMap = foldl' (\acc s@Shard{startKey} -> M.insert startKey s acc)
-
----------------------------------------------------------------------------------------------------------------
----- shardException
-
-data ShardException = forall e . Exception e => ShardException e
-
-instance Show ShardException where
-  show (ShardException e) = show e
-
-instance Exception ShardException
-
-shardExceptionToException :: Exception e => e -> SomeException
-shardExceptionToException = toException . ShardException
-
-shardExceptionFromException :: Exception e => SomeException -> Maybe e
-shardExceptionFromException x = do
-  fromException @ShardException x >>= cast
-
-data CanNotSplit = CanNotSplit
-  deriving(Show)
-instance Exception CanNotSplit where
-  toException   = shardExceptionToException
-  fromException = shardExceptionFromException
-
-newtype CanNotMerge = CanNotMerge T.Text
-  deriving(Show)
-instance Exception CanNotMerge where
-  toException   = shardExceptionToException
-  fromException = shardExceptionFromException
-
-data ShardNotExist = ShardNotExist
-  deriving(Show)
-instance Exception ShardNotExist where
-  toException   = shardExceptionToException
-  fromException = shardExceptionFromException
