@@ -11,19 +11,18 @@ module HStream.Server.Exception
   , defaultBiDiStreamExceptionHandle
   ) where
 
-import           Control.Concurrent.Async          (AsyncCancelled (..))
-import           Control.Exception                 (Exception (..),
-                                                    Handler (Handler),
-                                                    IOException, SomeException)
+import           Control.Concurrent.Async      (AsyncCancelled (..))
+import           Control.Exception             (Exception (..),
+                                                Handler (Handler), IOException,
+                                                SomeException)
 import           Network.GRPC.HighLevel.Client
-import           Network.GRPC.HighLevel.Server     (ServerResponse (ServerBiDiResponse, ServerWriterResponse))
+import           Network.GRPC.HighLevel.Server (ServerResponse (ServerBiDiResponse, ServerWriterResponse))
 import           ZooKeeper.Exception
 
-import qualified HStream.Exception                 as HE
-import qualified HStream.Logger                    as Log
-import           HStream.Server.MetaData.Exception (PersistenceException)
-import qualified HStream.Store                     as Store
-import           HStream.Utils                     (mkServerErrResp)
+import qualified HStream.Exception             as HE
+import qualified HStream.Logger                as Log
+import qualified HStream.Store                 as Store
+import           HStream.Utils                 (mkServerErrResp)
 
 --------------------------------------------------------------------------------
 
@@ -43,20 +42,11 @@ defaultBiDiStreamExceptionHandle = HE.mkExceptionHandle $
 
 defaultHandlers :: Handlers (StatusCode, StatusDetails)
 defaultHandlers = HE.defaultHServerExHandlers
-               ++ serverExceptionHandlers
                ++ storeExceptionHandlers
                ++ zooKeeperExceptionHandler
                ++ finalExceptionHandlers
 
 --------------------------------------------------------------------------------
-
-serverExceptionHandlers :: [Handler (StatusCode, StatusDetails)]
-serverExceptionHandlers =
-  -- TODO
-  [ Handler $ \(err :: PersistenceException) -> do
-      Log.warning $ Log.buildString' err
-      return (StatusAborted, HE.mkStatusDetails err)
-  ]
 
 finalExceptionHandlers :: [Handler (StatusCode, StatusDetails)]
 finalExceptionHandlers = [
