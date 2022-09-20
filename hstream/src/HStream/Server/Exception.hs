@@ -5,15 +5,19 @@
 {-# LANGUAGE ScopedTypeVariables       #-}
 
 module HStream.Server.Exception
-  ( defaultHandlers
+  ( -- * for grpc-haskell
+    defaultHandlers
   , defaultExceptionHandle
   , defaultServerStreamExceptionHandle
   , defaultBiDiStreamExceptionHandle
+    -- * for hs-grpc-server
+  , defaultExHandlers
   ) where
 
 import           Control.Concurrent.Async      (AsyncCancelled (..))
 import           Control.Exception             (Handler (Handler), IOException,
                                                 SomeException)
+import qualified HsGrpc.Server.Types           as HsGrpc
 import           Network.GRPC.HighLevel.Client
 import           Network.GRPC.HighLevel.Server (ServerResponse (ServerBiDiResponse, ServerWriterResponse))
 
@@ -23,8 +27,6 @@ import qualified HStream.Store                 as Store
 import           HStream.Utils                 (mkServerErrResp)
 
 --------------------------------------------------------------------------------
-
-type Handlers a = [Handler a]
 
 defaultExceptionHandle :: HE.ExceptionHandle (ServerResponse 'Normal a)
 defaultExceptionHandle = HE.mkExceptionHandle $
@@ -38,13 +40,11 @@ defaultBiDiStreamExceptionHandle :: HE.ExceptionHandle (ServerResponse 'BiDiStre
 defaultBiDiStreamExceptionHandle = HE.mkExceptionHandle $
   HE.setRespType (ServerBiDiResponse mempty) defaultHandlers
 
-defaultHandlers :: Handlers (StatusCode, StatusDetails)
+defaultHandlers :: [Handler (StatusCode, StatusDetails)]
 defaultHandlers = HE.defaultHServerExHandlers
                ++ storeExceptionHandlers
                ++ HE.zkExceptionHandlers
                ++ finalExceptionHandlers
-
---------------------------------------------------------------------------------
 
 finalExceptionHandlers :: [Handler (StatusCode, StatusDetails)]
 finalExceptionHandlers = [
@@ -69,4 +69,37 @@ storeExceptionHandlers = [
   Handler $ \(err :: Store.SomeHStoreException) -> do
     Log.warning $ Log.buildString' err
     return (StatusInternal, HE.mkStatusDetails err)
+  ]
+
+--------------------------------------------------------------------------------
+
+defaultExHandlers :: [Handler a]
+defaultExHandlers =
+  HE.hServerExHandlers ++ hStoreExHandlers ++ HE.zkExHandlers ++ finalExHandlers
+
+finalExHandlers :: [Handler a]
+finalExHandlers =
+  [ Handler $ \(err :: IOException) -> do
+      Log.fatal $ Log.buildString' err
+      HsGrpc.throwGrpcError $ HE.mkGrpcStatus err HsGrpc.StatusInternal
+
+  , Handler $ \(_ :: AsyncCancelled) -> do
+      HsGrpc.throwGrpcError $ HsGrpc.GrpcStatus HsGrpc.StatusOK Nothing Nothing
+
+  , Handler $ \(err :: SomeException) -> do
+      Log.fatal $ Log.buildString' err
+      let x = ("UnKnown exception: " <>) <$> HE.mkStatusMsg err
+      HsGrpc.throwGrpcError $ HsGrpc.GrpcStatus HsGrpc.StatusUnknown x Nothing
+  ]
+
+hStoreExHandlers :: [Handler a]
+hStoreExHandlers =
+  [ Handler $ \(err :: Store.EXISTS) -> do
+      Log.warning $ Log.buildString' err
+      let x = Just "Stream or view with same name already exists in store"
+      HsGrpc.throwGrpcError $ HsGrpc.GrpcStatus HsGrpc.StatusAlreadyExists x Nothing
+
+  , Handler $ \(err :: Store.SomeHStoreException) -> do
+      Log.fatal $ Log.buildString' err
+      HsGrpc.throwGrpcError $ HE.mkGrpcStatus err HsGrpc.StatusInternal
   ]
