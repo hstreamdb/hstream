@@ -233,6 +233,7 @@ test-suite hstream-test
   other-modules:
     HStream.AckSpec
     HStream.AdminCommandSpec
+    HStream.ConfigSpec
     HStream.HandlerSpec
     HStream.RegressionSpec
     HStream.RunQuerySpec
