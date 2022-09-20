@@ -348,17 +348,6 @@ restartQueryHandler _ (ServerNormalRequest _metadata _) = do
 --------------------------------------------------------------------------------
 -- Exception and Exception Handler
 
-data QueryTerminatedOrNotExist = QueryTerminatedOrNotExist
-  deriving (Show)
-instance Exception QueryTerminatedOrNotExist
-
-queryExceptionHandlers :: [HE.Handler (StatusCode, StatusDetails)]
-queryExceptionHandlers =[
-  Handler (\(err :: QueryTerminatedOrNotExist) -> do
-    Log.warning $ Log.buildString' err
-    return (StatusInvalidArgument, "Query is already terminated or does not exist"))
-  ]
-
 sqlExceptionHandlers :: [HE.Handler (StatusCode, StatusDetails)]
 sqlExceptionHandlers =[
   Handler (\(err :: SomeSQLException) -> do
@@ -368,4 +357,4 @@ sqlExceptionHandlers =[
 
 queryExceptionHandle :: HE.ExceptionHandle (ServerResponse 'Normal a)
 queryExceptionHandle = HE.mkExceptionHandle . HE.setRespType mkServerErrResp $
-  sqlExceptionHandlers ++ queryExceptionHandlers ++ defaultHandlers
+  sqlExceptionHandlers ++ defaultHandlers

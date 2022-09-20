@@ -63,7 +63,6 @@ library
     HStream.Server.Initialization
     HStream.Server.InternalHandler
     HStream.Server.MetaData
-    HStream.Server.MetaData.Exception
     HStream.Server.Shard
     HStream.Server.Types
 
