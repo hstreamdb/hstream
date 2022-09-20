@@ -91,7 +91,7 @@ module HStream.Exception
   , mkExceptionHandle
   , mkExceptionHandle'
   , defaultHServerExHandlers
-
+  , zkExceptionHandlers
   , -- * Re-export
   E.Handler
   ) where
@@ -106,6 +106,7 @@ import           GHC.Stack                     (CallStack)
 import           Network.GRPC.HighLevel.Client (StatusCode (..),
                                                 StatusDetails (..))
 import           Network.GRPC.HighLevel.Server (ServerResponse (..))
+import qualified ZooKeeper.Exception           as ZK
 
 import qualified HStream.Logger                as Log
 
@@ -367,3 +368,27 @@ defaultHServerExHandlers =
       Log.fatal $ Log.buildString' err
       return (StatusInternal, mkStatusDetails err)
   ]
+
+zkExceptionHandlers :: [E.Handler (StatusCode, StatusDetails)]
+zkExceptionHandlers =
+  [ E.Handler $ \(e :: ZK.ZCONNECTIONLOSS    )   -> handleZKException e StatusUnavailable
+  , E.Handler $ \(e :: ZK.ZBADARGUMENTS      )   -> handleZKException e StatusInvalidArgument
+  , E.Handler $ \(e :: ZK.ZSSLCONNECTIONERROR)   -> handleZKException e StatusFailedPrecondition
+  , E.Handler $ \(e :: ZK.ZRECONFIGINPROGRESS)   -> handleZKException e StatusUnavailable
+  , E.Handler $ \(e :: ZK.ZINVALIDSTATE      )   -> handleZKException e StatusUnavailable
+  , E.Handler $ \(e :: ZK.ZOPERATIONTIMEOUT  )   -> handleZKException e StatusAborted
+  , E.Handler $ \(e :: ZK.ZDATAINCONSISTENCY )   -> handleZKException e StatusAborted
+  , E.Handler $ \(e :: ZK.ZRUNTIMEINCONSISTENCY) -> handleZKException e StatusAborted
+  , E.Handler $ \(e :: ZK.ZSYSTEMERROR       )   -> handleZKException e StatusInternal
+  , E.Handler $ \(e :: ZK.ZMARSHALLINGERROR  )   -> handleZKException e StatusUnknown
+  , E.Handler $ \(e :: ZK.ZUNIMPLEMENTED     )   -> handleZKException e StatusUnknown
+  , E.Handler $ \(e :: ZK.ZNEWCONFIGNOQUORUM )   -> handleZKException e StatusUnknown
+  , E.Handler $ \(e :: ZK.ZNODEEXISTS        )   -> handleZKException e StatusAlreadyExists
+  , E.Handler $ \(e :: ZK.ZNONODE            )   -> handleZKException e StatusNotFound
+  , E.Handler $ \(e :: ZK.ZooException       )   -> handleZKException e StatusInternal
+  ]
+  where
+    handleZKException :: Exception a => a -> StatusCode -> IO (StatusCode, StatusDetails)
+    handleZKException e status = do
+      Log.fatal $ Log.buildString' e
+      return (status, "Zookeeper exception: " <> mkStatusDetails e)
