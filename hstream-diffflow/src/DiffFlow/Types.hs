@@ -77,6 +77,10 @@ leastUpperBound ts1 ts2 =
   where upperTime = max (timestampTime ts1) (timestampTime ts2)
         upperCoords = L.zipWith max (timestampCoords ts1) (timestampCoords ts2)
 
+leastUpperBoundMany :: (Ord a) => [Timestamp a] -> Timestamp a
+leastUpperBoundMany tss =
+  L.foldl1 (\acc ts -> leastUpperBound acc ts) tss
+
 pushCoord :: (Ord a) => Timestamp a -> Timestamp a
 pushCoord ts =
   Timestamp

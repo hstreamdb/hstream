@@ -40,6 +40,8 @@ newtype Joiner = Joiner { joiner :: Row -> Row -> Row } deriving (Generic, NFDat
 newtype Reducer = Reducer { reducer :: Row -> Row -> Row } deriving (Generic, NFData) -- \acc x -> acc'
 type KeyGenerator = Row -> Row
 
+newtype Composer = Composer { composer :: [Row] -> Row } deriving (Generic, NFData)
+
 {-
 class HasIndex a where
   hasIndex :: Proxy a
@@ -58,6 +60,7 @@ data NodeSpec
   = InputSpec
   | MapSpec           Node Mapper               -- input, mapper
   | FilterSpec        Node Filter               -- input, filter
+  | ComposeSpec       [Node] Composer
   | IndexSpec         Node                      -- input
   | JoinSpec          Node Node KeyGenerator KeyGenerator Joiner -- input1, input2, keygen1, keygen2, joiner
   | OutputSpec        Node                      -- input
@@ -73,6 +76,7 @@ instance Show NodeSpec where
   show InputSpec             = "InputSpec"
   show (MapSpec _ _)         = "MapSpec"
   show (FilterSpec _ _)      = "FilterSpec"
+  show (ComposeSpec _ _)     = "ComposeSpec"
   show (IndexSpec _)         = "IndexSpec"
   show (JoinSpec _ _ _ _ _)  = "JoinSpec"
   show (OutputSpec _)        = "OutputSpec"
@@ -98,6 +102,7 @@ getInputsFromSpec :: NodeSpec -> Vector Node
 getInputsFromSpec InputSpec = V.empty
 getInputsFromSpec (MapSpec node _) = V.singleton node
 getInputsFromSpec (FilterSpec node _) = V.singleton node
+getInputsFromSpec (ComposeSpec nodes _) = V.fromList nodes
 getInputsFromSpec (IndexSpec node) = V.singleton node
 getInputsFromSpec (JoinSpec node1 node2 _ _ _) = V.fromList [node1, node2]
 getInputsFromSpec (OutputSpec node) = V.singleton node
@@ -113,6 +118,7 @@ getInputsFromSpec (ReduceSpec node _ _ _) = V.singleton node
 
 data NodeState a
   = InputState (TVar (Frontier a)) (TVar (DataChangeBatch a))
+  | ComposeState Int (TVar (HashMap Int [DataChangeBatch a]))
   | IndexState (TVar (Index a)) (TVar [DataChange a])
   | JoinState (TVar (Frontier a)) (TVar (Frontier a))
   | OutputState (TVar [DataChangeBatch a])
@@ -122,6 +128,7 @@ data NodeState a
 
 instance Show (NodeState a) where
   show (InputState _ _)    = "InputState"
+  show (ComposeState _ _)  = "ComposeState"
   show (IndexState _ _)    = "IndexState"
   show (JoinState _ _)     = "JoinState"
   show (OutputState _)     = "OutputState"
@@ -140,6 +147,10 @@ specToState InputSpec = do
   frontier <- newTVarIO Set.empty
   unflushedChanges <- newTVarIO $ mkDataChangeBatch []
   return $ InputState frontier unflushedChanges
+specToState spec@(ComposeSpec _ _) = do
+  let inputsCnt = V.length (getInputsFromSpec spec)
+  unpopedBatches <- newTVarIO $ HM.fromList [(i,[]) | i <- [0..(inputsCnt-1)]]
+  return $ ComposeState inputsCnt unpopedBatches
 specToState (IndexSpec _) = do
   index <- newTVarIO $ Index []
   pendingChanges <- newTVarIO []
