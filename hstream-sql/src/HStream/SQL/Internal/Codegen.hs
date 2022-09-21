@@ -38,6 +38,33 @@ import qualified Z.Data.Text           as ZT
 import           Z.IO.Time
 
 import           DiffFlow.Graph        (Joiner (..))
+
+--------------------------------------------------------------------------------
+type FlowObject = HM.HashMap SKey FlowValue
+
+data SKey = Text :> (Maybe Text) -- field :> stream_m
+
+data FlowValue
+  = FlowNull
+  | FlowInt Int
+  | FlowFloat Double
+  | FlowNumeral Scientific
+  | FlowBoolean Bool
+  | FlowByte ByteString
+  | FlowText Text
+  | FlowDate Time.Day
+  | FlowTime Time.TimeOfDay
+  | FlowTimestamp Time.ZonedTime
+  | FlowInterval Time.CalendarDiffTime
+  | FlowJson Object
+  | FlowArray [FlowValue]
+  | FlowMap (Map.Map FlowValue FlowValue)
+
+--------------------------------------------------------------------------------
+constantKeygen :: FlowObject -> FlowObject
+constantKeygen _ =
+  HM.fromList [("key" :> Nothing, FlowText "__constant_key__")]
+
 --------------------------------------------------------------------------------
 getFieldByName :: HasCallStack => Object -> Text -> Value
 getFieldByName o k =
@@ -55,12 +82,18 @@ genRandomSinkStream = stringRandomIO "[a-zA-Z]{20}"
 
 --------------------------------------------------------------------------------
 -- For 2-join
-genJoiner :: StreamName -> StreamName -> Joiner
-genJoiner s1 s2 = Joiner $ \o1 o2 ->
+genJoiner :: Maybe StreamName -> Maybe StreamName -> Joiner
+genJoiner m_s1 m_s2 = Joiner $ \o1 o2 ->
   let l1 = HM.toList o1
       l2 = HM.toList o2
-      l1' = (\(k,v) -> (s1 <> "." <> k, v)) <$> l1
-      l2' = (\(k,v) -> (s2 <> "." <> k, v)) <$> l2
+      prefix1 = case m_s1 of
+                  Nothing -> ""
+                  Just s  -> s
+      prefix2 = case m_s2 of
+                  Nothing -> ""
+                  Just s  -> s
+      l1' = (\(k,v) -> (prefix1 <> "." <> k, v)) <$> l1
+      l2' = (\(k,v) -> (prefix2 <> "." <> k, v)) <$> l2
    in HM.union (HM.fromList l1') (HM.fromList l2')
 
 -- For (>=3)-join
@@ -72,20 +105,6 @@ genJoiner' s = Joiner $ \o1 o2 ->
       l2' = (\(k,v) -> (s <> "." <> k, v)) <$> l2
    in HM.union (HM.fromList l1') (HM.fromList l2')
 
-
-genTableRefName :: RTableRef -> StreamName
-genTableRefName (RTableRefSimple s alias_m) =
-  case alias_m of
-    Nothing    -> s
-    Just alias -> alias
-genTableRefName (RTableRefSubquery sel alias_m) =
-  case alias_m of
-    Nothing    -> T.pack (show sel)
-    Just alias -> alias
-genTableRefName (RTableRefUnion ref1 ref2 alias_m) =
-  case alias_m of
-    Nothing    -> T.pack (show ref1) <> "_UNION_" <> T.pack (show ref2)
-    Just alias -> alias
 
 --------------------------------------------------------------------------------
 compareValue :: HasCallStack => Value -> Value -> Ordering
