@@ -5,19 +5,21 @@
 {-# LANGUAGE ScopedTypeVariables       #-}
 
 module HStream.Server.Exception
-  ( defaultHandlers
+  ( -- * for grpc-haskell
+    defaultHandlers
   , defaultExceptionHandle
   , defaultServerStreamExceptionHandle
   , defaultBiDiStreamExceptionHandle
+    -- * for hs-grpc-server
+  , defaultExHandlers
   ) where
 
 import           Control.Concurrent.Async      (AsyncCancelled (..))
-import           Control.Exception             (Exception (..),
-                                                Handler (Handler), IOException,
+import           Control.Exception             (Handler (Handler), IOException,
                                                 SomeException)
+import qualified HsGrpc.Server.Types           as HsGrpc
 import           Network.GRPC.HighLevel.Client
 import           Network.GRPC.HighLevel.Server (ServerResponse (ServerBiDiResponse, ServerWriterResponse))
-import           ZooKeeper.Exception
 
 import qualified HStream.Exception             as HE
 import qualified HStream.Logger                as Log
@@ -25,8 +27,6 @@ import qualified HStream.Store                 as Store
 import           HStream.Utils                 (mkServerErrResp)
 
 --------------------------------------------------------------------------------
-
-type Handlers a = [Handler a]
 
 defaultExceptionHandle :: HE.ExceptionHandle (ServerResponse 'Normal a)
 defaultExceptionHandle = HE.mkExceptionHandle $
@@ -40,13 +40,11 @@ defaultBiDiStreamExceptionHandle :: HE.ExceptionHandle (ServerResponse 'BiDiStre
 defaultBiDiStreamExceptionHandle = HE.mkExceptionHandle $
   HE.setRespType (ServerBiDiResponse mempty) defaultHandlers
 
-defaultHandlers :: Handlers (StatusCode, StatusDetails)
+defaultHandlers :: [Handler (StatusCode, StatusDetails)]
 defaultHandlers = HE.defaultHServerExHandlers
                ++ storeExceptionHandlers
-               ++ zooKeeperExceptionHandler
+               ++ HE.zkExceptionHandlers
                ++ finalExceptionHandlers
-
---------------------------------------------------------------------------------
 
 finalExceptionHandlers :: [Handler (StatusCode, StatusDetails)]
 finalExceptionHandlers = [
@@ -73,26 +71,35 @@ storeExceptionHandlers = [
     return (StatusInternal, HE.mkStatusDetails err)
   ]
 
-zooKeeperExceptionHandler :: Handlers (StatusCode, StatusDetails)
-zooKeeperExceptionHandler = [
-  Handler $ \(e :: ZCONNECTIONLOSS    ) -> handleZKException e StatusUnavailable,
-  Handler $ \(e :: ZBADARGUMENTS      ) -> handleZKException e StatusInvalidArgument,
-  Handler $ \(e :: ZSSLCONNECTIONERROR) -> handleZKException e StatusFailedPrecondition,
-  Handler $ \(e :: ZRECONFIGINPROGRESS) -> handleZKException e StatusUnavailable,
-  Handler $ \(e :: ZINVALIDSTATE      ) -> handleZKException e StatusUnavailable,
-  Handler $ \(e :: ZOPERATIONTIMEOUT  ) -> handleZKException e StatusAborted,
-  Handler $ \(e :: ZDATAINCONSISTENCY ) -> handleZKException e StatusAborted,
-  Handler $ \(e :: ZRUNTIMEINCONSISTENCY) -> handleZKException e StatusAborted,
-  Handler $ \(e :: ZSYSTEMERROR       ) -> handleZKException e StatusInternal,
-  Handler $ \(e :: ZMARSHALLINGERROR  ) -> handleZKException e StatusUnknown,
-  Handler $ \(e :: ZUNIMPLEMENTED     ) -> handleZKException e StatusUnknown,
-  Handler $ \(e :: ZNEWCONFIGNOQUORUM ) -> handleZKException e StatusUnknown,
-  Handler $ \(e :: ZNODEEXISTS        ) -> handleZKException e StatusAlreadyExists,
-  Handler $ \(e :: ZNONODE            ) -> handleZKException e StatusNotFound,
-  Handler $ \(e :: ZooException       ) -> handleZKException e StatusInternal
+--------------------------------------------------------------------------------
+
+defaultExHandlers :: [Handler a]
+defaultExHandlers =
+  HE.hServerExHandlers ++ hStoreExHandlers ++ HE.zkExHandlers ++ finalExHandlers
+
+finalExHandlers :: [Handler a]
+finalExHandlers =
+  [ Handler $ \(err :: IOException) -> do
+      Log.fatal $ Log.buildString' err
+      HsGrpc.throwGrpcError $ HE.mkGrpcStatus err HsGrpc.StatusInternal
+
+  , Handler $ \(_ :: AsyncCancelled) -> do
+      HsGrpc.throwGrpcError $ HsGrpc.GrpcStatus HsGrpc.StatusOK Nothing Nothing
+
+  , Handler $ \(err :: SomeException) -> do
+      Log.fatal $ Log.buildString' err
+      let x = ("UnKnown exception: " <>) <$> HE.mkStatusMsg err
+      HsGrpc.throwGrpcError $ HsGrpc.GrpcStatus HsGrpc.StatusUnknown x Nothing
   ]
 
-handleZKException :: Exception a => a -> StatusCode -> IO (StatusCode, StatusDetails)
-handleZKException e status = do
-  Log.fatal $ Log.buildString' e
-  return (status, "Zookeeper exception: " <> HE.mkStatusDetails e)
+hStoreExHandlers :: [Handler a]
+hStoreExHandlers =
+  [ Handler $ \(err :: Store.EXISTS) -> do
+      Log.warning $ Log.buildString' err
+      let x = Just "Stream or view with same name already exists in store"
+      HsGrpc.throwGrpcError $ HsGrpc.GrpcStatus HsGrpc.StatusAlreadyExists x Nothing
+
+  , Handler $ \(err :: Store.SomeHStoreException) -> do
+      Log.fatal $ Log.buildString' err
+      HsGrpc.throwGrpcError $ HE.mkGrpcStatus err HsGrpc.StatusInternal
+  ]

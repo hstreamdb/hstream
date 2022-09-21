@@ -84,6 +84,7 @@ module HStream.Exception
   , ZstdCompresstionErr (..)
 
     -- * Handler
+    -- ** for grpc-haskell
   , MkResp
   , ExceptionHandle
   , setRespType
@@ -91,6 +92,12 @@ module HStream.Exception
   , mkExceptionHandle
   , mkExceptionHandle'
   , defaultHServerExHandlers
+  , zkExceptionHandlers
+    -- ** for hs-grpc-server
+  , mkGrpcStatus
+  , mkStatusMsg
+  , hServerExHandlers
+  , zkExHandlers
 
   , -- * Re-export
   E.Handler
@@ -98,14 +105,17 @@ module HStream.Exception
 
 import           Control.Exception             (Exception (..))
 import qualified Control.Exception             as E
+import           Data.ByteString               (ByteString)
 import qualified Data.ByteString.Char8         as BSC
 import           Data.Text                     (Text)
 import qualified Data.Text                     as Text
 import           Data.Typeable                 (cast)
 import           GHC.Stack                     (CallStack)
+import qualified HsGrpc.Server.Types           as HsGrpc
 import           Network.GRPC.HighLevel.Client (StatusCode (..),
                                                 StatusDetails (..))
 import           Network.GRPC.HighLevel.Server (ServerResponse (..))
+import qualified ZooKeeper.Exception           as ZK
 
 import qualified HStream.Logger                as Log
 
@@ -311,7 +321,7 @@ MAKE_SUB_EX(SomeHServerException, Unavailable)
 MAKE_PARTICULAR_EX_0(Unavailable, ServerNotAvailable, "ServerNotAvailable")
 
 -------------------------------------------------------------------------------
--- Handlers
+-- Handlers (grpc-haskell)
 
 type MkResp t a = StatusCode -> StatusDetails -> ServerResponse t a
 type ExceptionHandle a = IO a -> IO a
@@ -367,3 +377,93 @@ defaultHServerExHandlers =
       Log.fatal $ Log.buildString' err
       return (StatusInternal, mkStatusDetails err)
   ]
+
+zkExceptionHandlers :: [E.Handler (StatusCode, StatusDetails)]
+zkExceptionHandlers =
+  [ E.Handler $ \(e :: ZK.ZCONNECTIONLOSS    )   -> handleZKException e StatusUnavailable
+  , E.Handler $ \(e :: ZK.ZBADARGUMENTS      )   -> handleZKException e StatusInvalidArgument
+  , E.Handler $ \(e :: ZK.ZSSLCONNECTIONERROR)   -> handleZKException e StatusFailedPrecondition
+  , E.Handler $ \(e :: ZK.ZRECONFIGINPROGRESS)   -> handleZKException e StatusUnavailable
+  , E.Handler $ \(e :: ZK.ZINVALIDSTATE      )   -> handleZKException e StatusUnavailable
+  , E.Handler $ \(e :: ZK.ZOPERATIONTIMEOUT  )   -> handleZKException e StatusAborted
+  , E.Handler $ \(e :: ZK.ZDATAINCONSISTENCY )   -> handleZKException e StatusAborted
+  , E.Handler $ \(e :: ZK.ZRUNTIMEINCONSISTENCY) -> handleZKException e StatusAborted
+  , E.Handler $ \(e :: ZK.ZSYSTEMERROR       )   -> handleZKException e StatusInternal
+  , E.Handler $ \(e :: ZK.ZMARSHALLINGERROR  )   -> handleZKException e StatusUnknown
+  , E.Handler $ \(e :: ZK.ZUNIMPLEMENTED     )   -> handleZKException e StatusUnknown
+  , E.Handler $ \(e :: ZK.ZNEWCONFIGNOQUORUM )   -> handleZKException e StatusUnknown
+  , E.Handler $ \(e :: ZK.ZNODEEXISTS        )   -> handleZKException e StatusAlreadyExists
+  , E.Handler $ \(e :: ZK.ZNONODE            )   -> handleZKException e StatusNotFound
+  , E.Handler $ \(e :: ZK.ZooException       )   -> handleZKException e StatusInternal
+  ]
+  where
+    handleZKException :: Exception a => a -> StatusCode -> IO (StatusCode, StatusDetails)
+    handleZKException e status = do
+      Log.fatal $ Log.buildString' e
+      return (status, "Zookeeper exception: " <> mkStatusDetails e)
+
+-------------------------------------------------------------------------------
+-- Handlers (hs-grpc-server)
+
+mkGrpcStatus :: Exception a => a -> HsGrpc.StatusCode -> HsGrpc.GrpcStatus
+mkGrpcStatus e code = HsGrpc.GrpcStatus code (mkStatusMsg e) Nothing
+{-# INLINE mkGrpcStatus #-}
+
+mkStatusMsg :: Exception a => a -> Maybe ByteString
+mkStatusMsg = Just . BSC.pack . displayException
+{-# INLINE mkStatusMsg #-}
+
+hServerExHandlers :: [E.Handler a]
+hServerExHandlers =
+  [ E.Handler $ \(err :: InvalidArgument) -> do
+      Log.warning $ Log.buildString' err
+      HsGrpc.throwGrpcError $ mkGrpcStatus err HsGrpc.StatusCancelled
+
+  , E.Handler $ \(err :: NotFound) -> do
+      Log.warning $ Log.buildString' err
+      HsGrpc.throwGrpcError $ mkGrpcStatus err HsGrpc.StatusNotFound
+
+  , E.Handler $ \(err :: AlreadyExists) -> do
+      Log.warning $ Log.buildString' err
+      HsGrpc.throwGrpcError $ mkGrpcStatus err HsGrpc.StatusAlreadyExists
+
+  , E.Handler $ \(err :: FailedPrecondition) -> do
+      Log.fatal $ Log.buildString' err
+      HsGrpc.throwGrpcError $ mkGrpcStatus err HsGrpc.StatusFailedPrecondition
+
+  , E.Handler $ \(err :: Aborted) -> do
+      Log.warning $ Log.buildString' err
+      HsGrpc.throwGrpcError $ mkGrpcStatus err HsGrpc.StatusAborted
+
+  , E.Handler $ \(err :: Unavailable) -> do
+      Log.fatal $ Log.buildString' err
+      HsGrpc.throwGrpcError $ mkGrpcStatus err HsGrpc.StatusUnavailable
+
+  , E.Handler $ \(err :: Internal) -> do
+      Log.fatal $ Log.buildString' err
+      HsGrpc.throwGrpcError $ mkGrpcStatus err HsGrpc.StatusInternal
+  ]
+
+zkExHandlers :: [E.Handler a]
+zkExHandlers =
+  [ E.Handler $ \(e :: ZK.ZCONNECTIONLOSS    )   -> handleZKException e HsGrpc.StatusUnavailable
+  , E.Handler $ \(e :: ZK.ZBADARGUMENTS      )   -> handleZKException e HsGrpc.StatusInvalidArgument
+  , E.Handler $ \(e :: ZK.ZSSLCONNECTIONERROR)   -> handleZKException e HsGrpc.StatusFailedPrecondition
+  , E.Handler $ \(e :: ZK.ZRECONFIGINPROGRESS)   -> handleZKException e HsGrpc.StatusUnavailable
+  , E.Handler $ \(e :: ZK.ZINVALIDSTATE      )   -> handleZKException e HsGrpc.StatusUnavailable
+  , E.Handler $ \(e :: ZK.ZOPERATIONTIMEOUT  )   -> handleZKException e HsGrpc.StatusAborted
+  , E.Handler $ \(e :: ZK.ZDATAINCONSISTENCY )   -> handleZKException e HsGrpc.StatusAborted
+  , E.Handler $ \(e :: ZK.ZRUNTIMEINCONSISTENCY) -> handleZKException e HsGrpc.StatusAborted
+  , E.Handler $ \(e :: ZK.ZSYSTEMERROR       )   -> handleZKException e HsGrpc.StatusInternal
+  , E.Handler $ \(e :: ZK.ZMARSHALLINGERROR  )   -> handleZKException e HsGrpc.StatusUnknown
+  , E.Handler $ \(e :: ZK.ZUNIMPLEMENTED     )   -> handleZKException e HsGrpc.StatusUnknown
+  , E.Handler $ \(e :: ZK.ZNEWCONFIGNOQUORUM )   -> handleZKException e HsGrpc.StatusUnknown
+  , E.Handler $ \(e :: ZK.ZNODEEXISTS        )   -> handleZKException e HsGrpc.StatusAlreadyExists
+  , E.Handler $ \(e :: ZK.ZNONODE            )   -> handleZKException e HsGrpc.StatusNotFound
+  , E.Handler $ \(e :: ZK.ZooException       )   -> handleZKException e HsGrpc.StatusInternal
+  ]
+  where
+    handleZKException :: Exception e => e -> HsGrpc.StatusCode -> IO a
+    handleZKException err code = do
+      Log.fatal $ Log.buildString' err
+      HsGrpc.throwGrpcError $ mkGrpcStatus err code
