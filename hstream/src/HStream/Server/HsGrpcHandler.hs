@@ -2,73 +2,56 @@
 
 module HStream.Server.HsGrpcHandler (handlers) where
 
-import           Control.Exception
 import           HsGrpc.Server
-import           HsGrpc.Server.Types
 
-import qualified HStream.Exception                as HE
-import qualified HStream.Logger                   as Log
-import qualified HStream.Server.Core.Cluster      as C
-import qualified HStream.Server.Core.Stream       as C
-import qualified HStream.Server.Core.Subscription as C
-import           HStream.Server.Exception         (defaultExHandlers)
-import qualified HStream.Server.HStreamApi        as A
-import           HStream.Server.Types             (ServerContext (..))
-import qualified HStream.ThirdParty.Protobuf      as A
-import qualified Proto.HStream.Server.HStreamApi  as P
+import qualified HStream.Server.Handler.Admin        as H
+import qualified HStream.Server.Handler.Cluster      as H
+import qualified HStream.Server.Handler.Stats        as H
+import qualified HStream.Server.Handler.Stream       as H
+import qualified HStream.Server.Handler.Subscription as H
+import qualified HStream.Server.HStreamApi           as A
+import           HStream.Server.Types                (ServerContext (..))
+import qualified Proto.HStream.Server.HStreamApi     as P
+
+-------------------------------------------------------------------------------
 
 handlers :: ServerContext -> [ServiceHandler]
 handlers sc =
   [ unary (GRPC :: GRPC P.HStreamApi "echo") handleEcho
-  , unary (GRPC :: GRPC P.HStreamApi "describeCluster") (handleDescribeCluster sc)
-  , unary (GRPC :: GRPC P.HStreamApi "lookupShard") (handleLookupShard sc)
-  , unary (GRPC :: GRPC P.HStreamApi "listShards") (handleListShard sc)
-  , unary (GRPC :: GRPC P.HStreamApi "createStream") (handleCreateStream sc)
-  , unary (GRPC :: GRPC P.HStreamApi "append") (handleAppend sc)
-  , unary (GRPC :: GRPC P.HStreamApi "createSubscription") (handleCreateSubscription sc)
-  , unary (GRPC :: GRPC P.HStreamApi "lookupSubscription") (handleLookupSubscription sc)
-  , bidiStream (GRPC :: GRPC P.HStreamApi "streamingFetch") (handleStreamingFetch sc)
+    -- Cluster
+  , unary (GRPC :: GRPC P.HStreamApi "describeCluster") (H.handleDescribeCluster sc)
+  , unary (GRPC :: GRPC P.HStreamApi "lookupShard") (H.handleLookupShard sc)
+  , unary (GRPC :: GRPC P.HStreamApi "lookupSubscription") (H.handleLookupSubscription sc)
+  , unary (GRPC :: GRPC P.HStreamApi "lookupShardReader") (H.handleLookupShardReader sc)
+  , unary (GRPC :: GRPC P.HStreamApi "lookupConnector") (H.handleLookupConnector sc)
+    -- Stream
+  , unary (GRPC :: GRPC P.HStreamApi "createStream") (H.handleCreateStream sc)
+  , unary (GRPC :: GRPC P.HStreamApi "deleteStream") (H.handleDeleteStream sc)
+  , unary (GRPC :: GRPC P.HStreamApi "listStreams") (H.handleListStreams sc)
+  , unary (GRPC :: GRPC P.HStreamApi "listShards") (H.handleListShard sc)
+    -- Reader
+  , unary (GRPC :: GRPC P.HStreamApi "createShardReader") (H.handleCreateShardReader sc)
+  , unary (GRPC :: GRPC P.HStreamApi "deleteShardReader") (H.handleDeleteShardReader sc)
+    -- Subscription
+  , unary (GRPC :: GRPC P.HStreamApi "createSubscription") (H.handleCreateSubscription sc)
+  , unary (GRPC :: GRPC P.HStreamApi "deleteSubscription") (H.handleDeleteSubscription sc)
+  , unary (GRPC :: GRPC P.HStreamApi "listSubscriptions") (H.handleListSubscriptions sc)
+  , unary (GRPC :: GRPC P.HStreamApi "checkSubscriptionExist") (H.handleCheckSubscriptionExist sc)
+    -- Append
+  , unary (GRPC :: GRPC P.HStreamApi "append") (H.handleAppend sc)
+    -- Read
+  , unary (GRPC :: GRPC P.HStreamApi "readShard") (H.handleReadShard sc)
+    -- Subscribe
+  , bidiStream (GRPC :: GRPC P.HStreamApi "streamingFetch") (H.handleStreamingFetch sc)
+    -- Stats
+  , unary (GRPC :: GRPC P.HStreamApi "perStreamTimeSeriesStats") (H.handlePerStreamTimeSeriesStats $ scStatsHolder sc)
+  , unary (GRPC :: GRPC P.HStreamApi "perStreamTimeSeriesStatsAll") (H.handlePerStreamTimeSeriesStatsAll $ scStatsHolder sc)
+    -- Admin
+  , unary (GRPC :: GRPC P.HStreamApi "sendAdminCommand") (H.handleAdminCommand sc)
+    -- TODO: Query
+    -- TODO: Connector
+    -- TODO: View
   ]
-
-catchException :: IO a -> IO a
-catchException action = action `catches` defaultExHandlers
 
 handleEcho :: A.EchoRequest -> IO A.EchoResponse
 handleEcho A.EchoRequest{..} = return $ A.EchoResponse echoRequestMsg
-
-handleDescribeCluster :: ServerContext -> A.Empty -> IO A.DescribeClusterResponse
-handleDescribeCluster sc _ = catchException $ C.describeCluster sc
-
-handleLookupShard :: ServerContext -> A.LookupShardRequest -> IO A.LookupShardResponse
-handleLookupShard sc req = catchException $ C.lookupShard sc req
-
-handleListShard :: ServerContext -> A.ListShardsRequest -> IO A.ListShardsResponse
-handleListShard sc req = catchException $
-  A.ListShardsResponse <$> C.listShards sc req
-
-handleCreateStream :: ServerContext -> A.Stream -> IO A.Stream
-handleCreateStream sc stream = catchException $
-  C.createStream sc stream >> pure stream
-
-handleAppend :: ServerContext -> A.AppendRequest -> IO A.AppendResponse
-handleAppend sc req = catchException $ C.append sc req
-{-# INLINE handleAppend #-}
-
-handleCreateSubscription :: ServerContext -> A.Subscription -> IO A.Subscription
-handleCreateSubscription sc sub = catchException $
-  C.createSubscription sc sub >> pure sub
-
-handleLookupSubscription
-  :: ServerContext
-  -> A.LookupSubscriptionRequest -> IO A.LookupSubscriptionResponse
-handleLookupSubscription sc req = catchException $ C.lookupSubscription sc req
-
-handleStreamingFetch
-  :: ServerContext
-  -> BiDiStream A.StreamingFetchRequest A.StreamingFetchResponse
-  -> IO ()
-handleStreamingFetch sc stream =
-  -- TODO
-  let streamSend x = streamWrite stream (Just x) >> pure (Right ())
-      streamRecv = do Right <$> streamRead stream
-   in catchException $ C.streamingFetchCore sc C.SFetchCoreInteractive (streamSend, streamRecv)

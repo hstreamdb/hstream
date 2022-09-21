@@ -196,7 +196,9 @@ stream_time_series_getall_by_name (StatsHolder holder) name intervals =
                 else do Log.fatal "stream_time_series_getall failed!"
                         pure Map.empty
 
--- TODO: make intervals checking by default
+-- Note that the Left should only be verify_intervals failed, since
+-- getPerStreamTimeSeriesStatsAll in server stats handler return InvalidArgument
+-- if the result is Left.
 --
 -- | the same as 'stream_time_series_getall_by_name', but check intervals first.
 stream_time_series_getall
