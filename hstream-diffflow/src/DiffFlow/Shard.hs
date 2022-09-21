@@ -278,7 +278,9 @@ processChangeBatch shard@Shard{..} = do
                   let headChanges = HM.elems $ HM.map (\(DataChangeBatch _ changes) -> L.head changes) hm
                       hm' = HM.map (\dcb -> updateDataChangeBatch dcb (L.tail)) hm
                    in case allSame (dcDiff <$> headChanges) of
-                        False -> composeGo totalIns acc hm'
+                        False -> let hm'' = HM.map (\dcb -> updateDataChangeBatch dcb (\changes -> if dcDiff (L.head changes) < 0 then L.tail changes else changes)) hm
+                                  in composeGo totalIns acc hm''
+                                     --composeGo totalIns acc hm' -- FIXME: Cutting strategy
                         True  ->
                           let resultChange = DataChange
                                 { dcRow = composer (dcRow <$> headChanges)
