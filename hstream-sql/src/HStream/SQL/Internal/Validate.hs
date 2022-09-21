@@ -10,7 +10,7 @@ module HStream.SQL.Internal.Validate
   ( Validate (..)
   ) where
 
-import           Control.Monad              (unless, void, when, Monad (return))
+import           Control.Monad              (Monad (return), unless, void, when)
 import qualified Data.Aeson                 as Aeson
 import qualified Data.ByteString.Lazy       as BSL
 import qualified Data.List                  as L
@@ -20,11 +20,11 @@ import           Data.Text.Encoding         (encodeUtf8)
 import           Data.Time.Calendar         (isLeapYear)
 import           GHC.Stack                  (HasCallStack)
 import           HStream.SQL.Abs
+import           HStream.SQL.Abs            (SelectItem)
 import           HStream.SQL.Exception      (SomeSQLException (..),
                                              buildSQLException)
 import           HStream.SQL.Extra          (extractPNInteger)
 import           HStream.SQL.Validate.Utils
-import HStream.SQL.Abs (SelectItem)
 
 ------------------------------ TypeClass Definition ----------------------------
 class Validate t where

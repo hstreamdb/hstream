@@ -10,7 +10,7 @@ import qualified Data.ByteString       as BS
 import qualified Data.ByteString.Char8 as BSC
 import qualified Data.HashMap.Strict   as HM
 import           Data.Kind             (Type)
-import qualified Data.List as L
+import qualified Data.List             as L
 import qualified Data.Map.Strict       as Map
 import           Data.Text             (Text)
 import qualified Data.Text             as Text
@@ -40,18 +40,18 @@ data RDataType
 
 type instance RefinedType DataType = RDataType
 instance Refine DataType where
-  refine TypeInteger{} = RTypeInteger
-  refine TypeFloat{} = RTypeFloat
-  refine TypeNumeric{} = RTypeNumeric
-  refine TypeBoolean{} = RTypeBoolean
-  refine TypeByte{} = RTypeBytea
-  refine TypeText{} = RTypeText
-  refine TypeDate{} = RTypeDate
-  refine TypeTime{} = RTypeTime
-  refine TypeTimestamp{} = RTypeTimestamp
-  refine TypeInterval{} = RTypeInterval
-  refine TypeJson{} = RTypeJsonb
-  refine (TypeArray _ t) = RTypeArray (refine t)
+  refine TypeInteger{}     = RTypeInteger
+  refine TypeFloat{}       = RTypeFloat
+  refine TypeNumeric{}     = RTypeNumeric
+  refine TypeBoolean{}     = RTypeBoolean
+  refine TypeByte{}        = RTypeBytea
+  refine TypeText{}        = RTypeText
+  refine TypeDate{}        = RTypeDate
+  refine TypeTime{}        = RTypeTime
+  refine TypeTimestamp{}   = RTypeTimestamp
+  refine TypeInterval{}    = RTypeInterval
+  refine TypeJson{}        = RTypeJsonb
+  refine (TypeArray _ t)   = RTypeArray (refine t)
   refine (TypeMap _ kt vt) = RTypeMap (refine kt) (refine vt)
 
 --------------------------------------------------------------------------------
@@ -169,6 +169,23 @@ data Constant = ConstantNull
               | ConstantArray     [Constant]
               | ConstantMap       (Map.Map Constant Constant)
               deriving (Show)
+
+constantToValue :: Constant -> FlowValue
+constantToValue constant = case constant of
+  ConstantNull -> FlowNull
+  ConstantInt n -> FlowInt n
+  ConstantFloat n -> FlowFloat n
+  ConstantNumeric n -> FlowNumeral n
+  ConstantText t -> FlowText t
+  ConstantBoolean b -> FlowBoolean b
+  ConstantDate d -> FlowDate d
+  ConstantTime t -> FlowTime t
+  ConstantTimestamp ts -> FlowTimestamp ts
+  ConstantInterval i -> FlowInterval i
+  ConstantBytea bs -> FlowByte bs
+  ConstantJsonb json -> FlowJson json
+  ConstantArray arr -> FlowArray (constantToValue <$> arr)
+  ConstantMap m -> FlowMap (Map.mapKeys constantToValue (Map.map constantToValue m))
 
 {-
 instance Aeson.ToJSON Constant where
@@ -432,7 +449,7 @@ data WindowType
 data RTableRef = RTableRefSimple StreamName (Maybe StreamName)
                | RTableRefSubquery RSelect  (Maybe StreamName)
                | RTableRefCrossJoin RTableRef RTableRef (Maybe StreamName)
-               | RTableRefNaturalJoin RTableRef RTableRef (Maybe StreamName)
+               | RTableRefNaturalJoin RTableRef RJoinType RTableRef (Maybe StreamName)
                | RTableRefJoinOn RTableRef RJoinType RTableRef RValueExpr (Maybe StreamName)
                | RTableRefJoinUsing RTableRef RJoinType RTableRef [Text] (Maybe StreamName)
                | RTableRefWindowed RTableRef WindowType (Maybe StreamName)
@@ -442,7 +459,7 @@ setRTableRefAlias ref alias = case ref of
   RTableRefSimple s _ -> RTableRefSimple s (Just alias)
   RTableRefSubquery sel _ -> RTableRefSubquery sel (Just alias)
   RTableRefCrossJoin r1 r2 _ -> RTableRefCrossJoin r1 r2 (Just alias)
-  RTableRefNaturalJoin r1 r2 _ -> RTableRefNaturalJoin r1 r2 (Just alias)
+  RTableRefNaturalJoin r1 typ r2 _ -> RTableRefNaturalJoin r1 typ r2 (Just alias)
   RTableRefJoinOn r1 typ r2 e _ -> RTableRefJoinOn r1 typ r2 e (Just alias)
   RTableRefJoinUsing r1 typ r2 cols _ -> RTableRefJoinUsing r1 typ r2 cols (Just alias)
   RTableRefWindowed r win _ -> RTableRefWindowed r win (Just alias)
@@ -469,7 +486,7 @@ instance Refine TableRef where
     let rRef = refine ref
      in setRTableRefAlias rRef alias
   refine (TableRefCrossJoin _ r1 _ r2) = RTableRefCrossJoin (refine r1) (refine r2) Nothing
-  refine (TableRefNaturalJoin _ r1 _ r2) = RTableRefNaturalJoin (refine r1) (refine r2) Nothing
+  refine (TableRefNaturalJoin _ r1 typ r2) = RTableRefNaturalJoin (refine r1) (refine typ) (refine r2) Nothing
   refine (TableRefJoinOn _ r1 typ r2 e) = RTableRefJoinOn (refine r1) (refine typ) (refine r2) (refine e) Nothing
   refine (TableRefJoinUsing _ r1 typ r2 cols) = RTableRefJoinUsing (refine r1) (refine typ) (refine r2) (extractStreamNameFromColName <$> cols) Nothing
     where extractStreamNameFromColName col = case col of

@@ -35,7 +35,7 @@ import           HStream.SQL.Exception        (SomeSQLException (..),
 import           HStream.SQL.Internal.Codegen (binOpOnValue, compareValue,
                                                composeColName, genJoiner,
                                                genJoiner', genRandomSinkStream,
-                                               genTableRefName, getFieldByName,
+                                               getFieldByName,
                                                unaryOpOnValue)
 import           HStream.SQL.Parse            (parseAndRefine)
 import           HStream.Utils                (genUnique, jsonObjectToStruct)
@@ -130,6 +130,154 @@ extractInt errPrefix = \case
 
 ----
 
+--------------------------------------------------------------------------------
+data In = In
+  { inNode :: Node
+  , inStream :: Text
+  , inWindow :: Maybe WindowType
+  }
+
+newtype Out = Out { outNode :: Node }
+
+elabRValueExpr :: RValueExpr
+               -> GraphBuilder
+               -> Subgraph
+               -> Node
+               -> IO (GraphBuilder, [In], Out)
+elabRValueExpr expr startBuilder subgraph startNode = case expr of
+  RExprCast _ e typ -> do
+    (builder1, ins, out) <- elabRValueExpr e startBuilder subgraph startNode
+    let mapper = Mapper undefined -- TODO: elabCast
+    let (builder2, node) =
+          addNode builder1 subgraph (MapSpec (outNode out) mapper)
+    return (builder2, ins, Out node)
+  RExprArray _ es -> do
+    (builder1, ins, outs) <-
+      foldM (\acc e -> do
+                let (accBuilder, accIns, accOuts) = acc
+                (curBuilder, curIns, curOut) <-
+                  elabRValueExpr e accBuilder subgraph startNode
+                return (curBuilder, L.nub (accIns++curIns), curOut:accOuts)
+            ) (startBuilder, [], []) es
+    let composer = Composer $ \os ->
+                     HM.fromList [("arr" :> Nothing, FlowArray (HM.elems os))]
+    let (builder2, node) = addNode builder1 subgraph (ComposeSpec (outNode <$> outs) composer)
+    return (builder2, ins, Out node)
+  RExprMap _ emap -> do
+    (builder1, ins, outTups) <-
+      foldM (\acc (ek,ev) -> do
+                let (accBuilder, accIns, accOuts) = acc
+                (curBuilder, kIns, kOut) <-
+                  elabRValueExpr ek accBuilder subgraph startNode
+                (curBuilder', vIns, vOut) <-
+                  elabRValueExpr ev curBuilder subgraph startNode
+                return (curBuilder',
+                        L.nub (accIns++kIns++vIns),
+                        (kOut,vOut):accOuts)
+            ) (startBuilder, [], []) (Map.assocs emap)
+    let composer = Composer $ \os ->
+                     HM.fromList [("map" :> Nothing, FlowMap (mkMap $ HM.elems os))]
+    let (kOuts,vOuts) = L.unzip outTups
+    let (builder2, node) =
+          addNode builder1 subgraph (ComposeSpec (outNode <$> (kOuts++vOuts)) composer)
+    return (builder2, ins, Out node)
+    where mkMap xs = let (kxs, vxs) = L.splitAt (L.length xs / 2) xs
+                      in Map.fromList (L.zip kxs vxs)
+  RExprAccessMap _ emap ek -> do
+    (builder1, ins1, out1) <-
+      elabRValueExpr emap startBuilder subgraph startNode
+    (builder2, ins2, out2) <-
+      elabRValueExpr ek builder1 subgraph startNode
+    let composer = Composer $ \[omap,okey] ->
+                     let (FlowMap theMap) = L.head (HM.elems omap)
+                         theKey = L.head (HM.elems okey)
+                      in HM.fromList [("accessMap" :> Nothing, theMap Map.! theKey)]
+    let (builder3, node) =
+          addNode builder2 subgraph (ComposeSpec (outNode <$> [out1,out2]) composer)
+    return (builder3, L.nub (ins1++ins2), Out node)
+  RExprAccessArray _ earr rhs -> do
+    (builder1, ins, out) <-
+      elabRValueExpr earr startBuilder subgraph startNode
+    let mapper = Mapper $ \o -> let (FlowArray arr) = L.head (HM.elems o)
+                                 in case rhs of
+                   RArrayAccessRhsIndex n -> HM.fromList [("accessArr" :> Nothing, arr L.!! n)]
+                   RArrayAccessRhsRange start_m end_m ->
+                     let start = fromMaybe 0 start_m
+                         end   = fromMaybe (maxBound :: Int) end_m
+                      in HM.fromList [("accessArr" :> Nothing, L.drop start (L.take end arr))]
+    let (builder2, node) =
+          addNode builder1 subgraph (MapSpec out mapper)
+    return (builder2, ins, Out node)
+  RExprCol _ stream_m field -> do
+    let mapper = Mapper $ \o ->
+          case stream_m of
+            Nothing     -> HM.filterWithKey (\(k:>_) _ -> k == field) o
+            Just stream -> o HM.! (field :> stream)
+    let (builder1, node) =
+          addNode startBuilder subgraph (MapSpec startNode mapper)
+    return (builder1, [], Out node)
+  RExprConst _ constant -> do
+    let mapper = mkConstantMapper constant
+    let (builder1, node) =
+          addNode startBuilder subgraph (MapSpec startNode mapper)
+    return (builder1, [], Out node)
+  RExprAggregate _ agg -> undefined
+
+mkConstantMapper :: Constant -> Mapper
+mkConstantMapper constant =
+  let v = constantToValue constant
+   in case constant of
+        ConstantNull -> Mapper $ \_ -> HM.fromList [("null" :> Nothing, v)]
+        ConstantInt n -> Mapper $ \_ -> HM.fromList [((T.pack (show n)) :> Nothing, v)]
+        ConstantFloat n -> Mapper $ \_ -> HM.fromList [((T.pack (show n)) :> Nothing, v)]
+        ConstantNumeric n -> Mapper $ \_ -> HM.fromList [((T.pack (show n)) :> Nothing, v)]
+        ConstantText t -> Mapper $ \_ -> HM.fromList [(t :> Nothing, v)]
+        ConstantBoolean b -> Mapper $ \_ -> HM.fromList [((T.pack (show b)) :> Nothing, v)]
+        ConstantDate d -> Mapper $ \_ -> HM.fromList [((T.pack (show d)):> Nothing, v)]
+        ConstantTime t -> Mapper $ \_ -> HM.fromList [((T.pack (show t)) :> Nothing, v)]
+        ConstantTimestamp ts -> Mapper $ \_ -> HM.fromList [((T.pack (show ts)) :> Nothing, v)]
+        ConstantInterval i -> Mapper $ \_ -> HM.fromList [((T.pack (show i)) :> Nothing, v)]
+        ConstantBytea bs -> Mapper $ \_ -> HM.fromList [((decodeUtf8 bs) :> Nothing, v)]
+        ConstantJsonb json -> Mapper $ \_ -> HM.fromList [((T.pack (show json)) :> Nothing, v)]
+        ConstantArray arr -> Mapper $ \_ -> HM.fromList [((T.pack (show arr)) :> Nothing, v)]
+        ConstantMap m -> Mapper $ \_ -> HM.fromList [((T.pack (show m)) :> Nothing, v)]
+
+elabRTableRef :: RTableRef -> GraphBuilder -> IO (GraphBuilder, [In], Out)
+elabRTableRef ref startBuilder =
+  case ref of
+    RTableRefSimple s m_alias -> do
+      let (builder, node) = addNode startBuilder subgraph InputSpec
+          inner = In { inNode = node, inStream = fromMaybe s m_alias }
+          outer = Out { outNode = node }
+      return (builder, [inner], outer)
+    RTableRefSubquery select m_alias -> do
+      (builder, ins, out) <- elabRSelect startBuilder subgraph
+      return (builder, ins, out)
+    RTableRefCrossJoin ref1 ref2 m_alias -> do
+      (builder1, ins1, out1) <- elabRTableRef ref1 startBuilder
+      (builder2, ins2, out2) <- elabRTableRef ref2 builder1
+      let keygen1 = constantKeygen
+          keygen2 = constantKeygen
+          joiner = Joiner HM.union
+          (builder, ins, out) = addNode builder2 subgraph
+                                (JoinSpec (outNode out1) (outNode out2) keygen1 keygen2 joiner)
+      return (builder, L.nub (ins1++ins2), out)
+    RTableRefNaturalJoin ref1 typ ref2 m_alias -> do
+      (builder1, ins1, out1) <- elabRTableRef ref1 startBuilder
+      (builder2, ins2, out2) <- elabRTableRef ref2 builder1
+      undefined
+
+elabFrom :: RFrom -> GraphBuilder -> IO (GraphBuilder, [In], Out)
+elabFrom (RFrom refs) baseBuilder = do
+  let baseSubgraph = Subgraph 0
+  undefined
+  where
+    go :: GraphBuilder -> Subgraph -> [RTableRef] -> IO (GraphBuilder, [In], Out)
+    go _ _ [] = throwSQLException CodegenException Nothing "Impossible happened"
+    go startBuilder subgraph [ref]
+
+--------------------------------------------------------------------------------
+{-
 type TaskName = Text
 genSourceGraphBuilder :: HasCallStack => RFrom -> GraphBuilder -> IO (GraphBuilder, [(Node, StreamName)], Node)
 genSourceGraphBuilder (RFrom tableRefs) baseBuilder = do
@@ -182,112 +330,12 @@ genTaskName :: IO Text
 -- When parsing a string, quotes are required.
 -- Currently there is no way to parse an id start with digit but contains letters/
 genTaskName = pack . show <$> genUnique
-
+-}
 ----
-constantToValue :: Constant -> Value
-constantToValue (ConstantInt n)         = Number (scientific (toInteger n) 0)
-constantToValue (ConstantNum n)         = Number (fromFloatDigits n)
-constantToValue (ConstantString s)      = String (pack s)
-constantToValue (ConstantNull)          = Null
-constantToValue (ConstantBool b)        = Bool b
-constantToValue (ConstantDate day)      = String (pack $ showGregorian day) -- FIXME: No suitable type in `Value`
-constantToValue (ConstantTime diff)     = Number (scientific (diffTimeToPicoseconds diff) (-12)) -- FIXME: No suitable type in `Value`
-constantToValue (ConstantInterval diff) = Number (scientific (diffTimeToPicoseconds diff) (-12)) -- FIXME: No suitable type in `Value`
 
--- May raise exceptions
-genRExprValue :: HasCallStack => RValueExpr -> Object -> (Text, Value)
-genRExprValue (RExprCol name stream' field) o = (pack name, getFieldByName o (composeColName stream' field))
-genRExprValue (RExprConst name constant)          _ = (pack name, constantToValue constant)
-genRExprValue (RExprBinOp name op expr1 expr2)    o =
-  let (_,v1) = genRExprValue expr1 o
-      (_,v2) = genRExprValue expr2 o
-   in (pack name, binOpOnValue op v1 v2)
-genRExprValue (RExprUnaryOp name op expr) o =
-  let (_,v) = genRExprValue expr o
-  in (pack name, unaryOpOnValue op v)
-genRExprValue (RExprAggregate name agg) o =
-  case agg of
-    Nullary _              -> (pack name, Null) -- FIXME: should return nothing
-    Unary _ rexpr          -> genRExprValue rexpr o
-    Binary _ rexpr1 rexpr2 -> genRExprValue rexpr1 o -- FIXME: different binary aggs?
-
-genFilterR :: RWhere -> Object -> Bool
-genFilterR RWhereEmpty _ = True
-genFilterR (RWhere cond) recordValue =
-  case cond of
-    RCondOp op expr1 expr2 ->
-      let (_,v1) = genRExprValue expr1 recordValue
-          (_,v2) = genRExprValue expr2 recordValue
-       in case op of
-            RCompOpEQ  -> v1 == v2
-            RCompOpNE  -> v1 /= v2
-            RCompOpLT  -> case compareValue v1 v2 of
-                            LT -> True
-                            _  -> False
-            RCompOpGT  -> case compareValue v1 v2 of
-                            GT -> True
-                            _  -> False
-            RCompOpLEQ -> case compareValue v1 v2 of
-                            GT -> False
-                            _  -> True
-            RCompOpGEQ -> case compareValue v1 v2 of
-                            LT -> False
-                            _  -> True
-    RCondOr cond1 cond2    ->
-      genFilterR (RWhere cond1) recordValue || genFilterR (RWhere cond2) recordValue
-    RCondAnd cond1 cond2   ->
-      genFilterR (RWhere cond1) recordValue && genFilterR (RWhere cond2) recordValue
-    RCondNot cond1         ->
-      not $ genFilterR (RWhere cond1) recordValue
-    RCondBetween expr1 expr expr2 ->
-      let (_,v1)    = genRExprValue expr1 recordValue
-          (_,v)     = genRExprValue expr recordValue
-          (_,v2)    = genRExprValue expr2 recordValue
-          ordering1 = compareValue v1 v
-          ordering2 = compareValue v v2
-       in case ordering1 of
-            GT -> False
-            _  -> case ordering2 of
-                    GT -> False
-                    _  -> True
-
-genFilterNode :: RWhere -> Node -> NodeSpec
-genFilterNode whr prevNode = FilterSpec prevNode filter'
-  where filter' = Filter (genFilterR whr)
-
-----
-genPreMapR :: RSel -> Object -> Object
-genPreMapR RSelAsterisk recordValue = recordValue
-genPreMapR (RSelList exprsWithAlias) recordValue = HM.fromList fields <> recordValue
-  where
-    fields = (\(e,alias) ->
-                 case e of
-                   Left expr -> let (_,v) = genRExprValue expr recordValue
-                                in (pack alias,v)
-                   Right agg -> let (_,v) = genRExprValue (RExprAggregate alias agg) recordValue
-                                in (pack alias,v)
-             ) <$> exprsWithAlias
-
-genPreMapNode :: RSel -> Node -> NodeSpec
-genPreMapNode sel prevNode = MapSpec prevNode mapper
-  where mapper = Mapper (genPreMapR sel)
-
-genPostMapR :: RSel -> Object -> Object
-genPostMapR RSelAsterisk recordValue = recordValue
-genPostMapR (RSelList exprsWithAlias) recordValue = HM.fromList fields
-  where
-    fields = (\(_,alias) ->
-                (pack alias, getFieldByName recordValue (pack alias))
-             ) <$> exprsWithAlias
-
-genPostMapNode :: RSel -> Node -> NodeSpec
-genPostMapNode sel prevNode = MapSpec prevNode mapper
-  where mapper = Mapper (genPostMapR sel)
-
-----
 data AggregateComponents = AggregateComponents
-  { aggregateInit :: Object
-  , aggregateF    :: Object -> Object -> Object
+  { aggregateInit :: FlowObject
+  , aggregateF    :: FlowObject -> FlowObject -> FlowObject
   }
 
 genAggregateComponents :: HasCallStack => RSel -> AggregateComponents
@@ -297,14 +345,13 @@ genAggregateComponents (RSelList dcols) =
   fuseAggregateComponents $ genAggregateComponentsFromDerivedCol <$> dcols
 
 genAggregateComponentsFromDerivedCol :: HasCallStack
-                       => (Either RValueExpr Aggregate, FieldAlias)
-                       -> AggregateComponents
-genAggregateComponentsFromDerivedCol (Right agg, alias) =
-  case agg of
-    Nullary AggCountAll ->
+                                     => Aggregate
+                                     -> AggregateComponents
+genAggregateComponentsFromDerivedCol agg = case agg of
+    Nullary a@AggCountAll ->
       AggregateComponents
-      { aggregateInit = HM.singleton (pack alias) (Number 0)
-      , aggregateF    = \o _ -> HM.update (\(Number n) -> Just (Number $ n+1)) (pack alias) o
+      { aggregateInit = HM.singleton (show a) (Number 0 :> Nothing)
+      , aggregateF    = \o _ -> HM.update (\(Number n :> s_m) -> Just ((Number (n+1)) :> s_m)) (show a) o
       }
     Unary AggCount (RExprCol _ stream' field) ->
       AggregateComponents
