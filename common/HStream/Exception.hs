@@ -43,6 +43,8 @@ module HStream.Exception
   , SubscriptionNotFound (..)
   , ConnectorNotFound (..)
   , ShardNotFound (..)
+  , RQLiteTableNotFound (..)
+  , RQLiteRowNotFound (..)
 
     -- * Exception: AlreadyExists
     --
@@ -50,6 +52,8 @@ module HStream.Exception
   , AlreadyExists
   , StreamExists (..)
   , ShardReaderExists (..)
+  , RQLiteTableAlreadyExists (..)
+  , RQLiteRowAlreadyExists (..)
 
     -- * Exception: FailedPrecondition
     --
@@ -62,6 +66,7 @@ module HStream.Exception
   , FoundActiveConsumers (..)
   , ShardCanNotSplit (..)
   , ShardCanNotMerge (..)
+  , RQLiteRowBadVersion (..)
 
     -- * Exception: Aborted
     --
@@ -83,17 +88,15 @@ module HStream.Exception
   , UnexpectedError (..)
   , WrongOffset (..)
   , ZstdCompresstionErr (..)
-
-    -- * Exception: Meta Store
-  , RQLiteNoAuth (..)
-  , RQLiteTableNotFound (..)
-  , RQLiteTableAlreadyExists (..)
   , RQLiteNetworkErr (..)
   , RQLiteDecodeErr (..)
   , RQLiteUnspecifiedErr (..)
-  , RQLiteRowNotFound (..)
-  , RQLiteRowAlreadyExists (..)
-  , RQLiteRowBadVersion (..)
+
+    -- * Exception: Unauthenticated
+    --
+    -- $unauthenticated
+  , Unauthenticated
+  , RQLiteNoAuth (..)
 
     -- * Handler
   , mkExceptionHandle
@@ -251,6 +254,8 @@ MAKE_PARTICULAR_EX_1(NotFound, StreamNotFound, Text, Text.unpack)
 MAKE_PARTICULAR_EX_1(NotFound, SubscriptionNotFound, Text, Text.unpack)
 MAKE_PARTICULAR_EX_1(NotFound, ConnectorNotFound, Text, Text.unpack)
 MAKE_PARTICULAR_EX_1(NotFound, ShardNotFound, Text, Text.unpack)
+MAKE_PARTICULAR_EX_1(NotFound, RQLiteTableNotFound, String, )
+MAKE_PARTICULAR_EX_1(NotFound, RQLiteRowNotFound, String, )
 
 -------------------------------------------------------------------------------
 -- Exception: AlreadyExists
@@ -262,6 +267,8 @@ MAKE_SUB_EX(SomeHServerException, AlreadyExists)
 
 MAKE_PARTICULAR_EX_1(AlreadyExists, StreamExists, Text, Text.unpack)
 MAKE_PARTICULAR_EX_1(AlreadyExists, ShardReaderExists, Text, Text.unpack)
+MAKE_PARTICULAR_EX_1(AlreadyExists, RQLiteTableAlreadyExists, String, )
+MAKE_PARTICULAR_EX_1(AlreadyExists, RQLiteRowAlreadyExists, String, )
 
 -------------------------------------------------------------------------------
 -- Exception: FailedPrecondition
@@ -292,6 +299,7 @@ MAKE_PARTICULAR_EX_1(FailedPrecondition, WrongServer, String, )
 MAKE_PARTICULAR_EX_1(FailedPrecondition, FoundActiveConsumers, String, )
 MAKE_PARTICULAR_EX_1(FailedPrecondition, ShardCanNotSplit, String, )
 MAKE_PARTICULAR_EX_1(FailedPrecondition, ShardCanNotMerge, String, )
+MAKE_PARTICULAR_EX_1(FailedPrecondition, RQLiteRowBadVersion, String, )
 
 -------------------------------------------------------------------------------
 -- Exception: Aborted
@@ -320,11 +328,15 @@ MAKE_SUB_EX(SomeHServerException, Internal)
 MAKE_PARTICULAR_EX_1(Internal, UnexpectedError, String, )
 MAKE_PARTICULAR_EX_1(Internal, WrongOffset, String, )
 MAKE_PARTICULAR_EX_1(Internal, ZstdCompresstionErr, String, )
+MAKE_PARTICULAR_EX_1(Internal, RQLiteNetworkErr, String, )
+MAKE_PARTICULAR_EX_1(Internal, RQLiteDecodeErr, String, )
+MAKE_PARTICULAR_EX_1(Internal, RQLiteUnspecifiedErr, String, )
 
 -------------------------------------------------------------------------------
 -- Exception: Unavailable
 
 -- $unavailable
+--
 -- The service is currently unavailable. This is most likely a transient
 -- condition, which can be corrected by retrying with a backoff.
 --
@@ -333,28 +345,19 @@ MAKE_SUB_EX(SomeHServerException, Unavailable)
 
 MAKE_PARTICULAR_EX_0(Unavailable, ServerNotAvailable, "ServerNotAvailable")
 
-
 -------------------------------------------------------------------------------
 -- Exception: Unauthenticated
 
 -- $unauthenticated
--- Incorrect Auth metadata ( Credentials failed to get metadata,
--- Incompatible credentials set on channel and call,
--- Invalid host set in :authority metadata, etc.)
+--
+-- The request does not have valid authentication credentials for the operation.
+--
+-- Incorrect Auth metadata (Credentials failed to get metadata, Incompatible
+-- credentials set on channel and call, Invalid host set in :authority metadata,
+-- etc.)
 MAKE_SUB_EX(SomeHServerException, Unauthenticated)
 
---------------------------------------------------------------------------------
--- Exception: RQLite
-
 MAKE_PARTICULAR_EX_1(Unauthenticated, RQLiteNoAuth, String, )
-MAKE_PARTICULAR_EX_1(NotFound, RQLiteTableNotFound, String, )
-MAKE_PARTICULAR_EX_1(NotFound, RQLiteRowNotFound, String, )
-MAKE_PARTICULAR_EX_1(Internal, RQLiteNetworkErr, String, )
-MAKE_PARTICULAR_EX_1(Internal, RQLiteDecodeErr, String, )
-MAKE_PARTICULAR_EX_1(Internal, RQLiteUnspecifiedErr, String, )
-MAKE_PARTICULAR_EX_1(AlreadyExists, RQLiteTableAlreadyExists, String, )
-MAKE_PARTICULAR_EX_1(AlreadyExists, RQLiteRowAlreadyExists, String, )
-MAKE_PARTICULAR_EX_1(FailedPrecondition, RQLiteRowBadVersion, String, )
 
 -------------------------------------------------------------------------------
 -- Handlers
@@ -414,7 +417,7 @@ defaultHServerExHandlers =
       return (StatusInternal, mkStatusDetails err)
 
   , E.Handler $ \(err :: Unauthenticated) -> do
-      Log.fatal $ Log.buildString' err
+      Log.warning $ Log.buildString' err
       return (StatusUnauthenticated, mkStatusDetails err)
   ]
 
