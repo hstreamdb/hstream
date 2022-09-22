@@ -3,11 +3,13 @@ module HStream.Server.MetaData.Utils where
 --------------------------------------------------------------------------------
 -- Path
 
+import           Control.Exception                (handle)
 import           Control.Monad                    (void)
 import qualified Data.Text                        as T
 import           GHC.Stack                        (HasCallStack)
 import           ZooKeeper.Types                  (ZHandle)
 
+import           HStream.Exception                (RQLiteTableAlreadyExists)
 import           HStream.MetaStore.RqliteUtils    (createTable)
 import           HStream.MetaStore.Types          (MetaHandle, MetaMulti (..),
                                                    MetaStore (..), RHandle (..))
@@ -23,7 +25,9 @@ initializeAncestors zk = do
 
 initializeTables :: RHandle -> IO ()
 initializeTables (RHandle m url) = do
-  mapM_ (createTable m url) tables
+  mapM_ (handleExists . createTable m url) tables
+  where
+    handleExists = handle (\(_:: RQLiteTableAlreadyExists) -> pure ())
 
 -- FIXME: Concurrency
 updateSubscription :: MetaHandle -> T.Text -> T.Text ->  IO ()

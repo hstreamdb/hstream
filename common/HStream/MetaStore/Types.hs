@@ -10,16 +10,15 @@
 
 module HStream.MetaStore.Types where
 
-import           Control.Exception                (SomeException, handle)
 import           Control.Monad                    (void)
 import           Data.Aeson                       (FromJSON, ToJSON)
 import qualified Data.Aeson                       as A
 import qualified Data.ByteString                  as BS
 import qualified Data.ByteString.Lazy             as BL
-import           Data.Functor                     ((<&>))
 import           Data.Maybe                       (catMaybes, isJust)
 import qualified Data.Text                        as T
 import           GHC.Stack                        (HasCallStack)
+import           Network.HTTP.Client              (Manager)
 import qualified Z.Foreign                        as ZF
 import qualified ZooKeeper                        as Z
 import qualified ZooKeeper.Types                  as Z
@@ -32,7 +31,6 @@ import           HStream.MetaStore.ZookeeperUtils (createInsertZK,
                                                    decodeZNodeValue,
                                                    deleteZKPath, setZkData)
 import           HStream.Utils                    (cBytesToText, textToCBytes)
-import           Network.HTTP.Client              (Manager)
 
 type Key = T.Text
 type Path = T.Text
@@ -79,7 +77,7 @@ class MetaStore value handle where
   checkOp mid v             _ = CheckOp  (myRootPath @value @handle) mid v
 
 class MetaMulti handle where
-  metaMulti :: [MetaOp] -> handle -> IO Bool
+  metaMulti :: [MetaOp] -> handle -> IO ()
 
 instance MetaStore value ZHandle where
   myPath mid = myRootPath @value @ZHandle <> "/" <> mid
@@ -94,10 +92,9 @@ instance MetaStore value ZHandle where
     catMaybes <$> mapM (flip (getMeta @value) zk . cBytesToText) ids
 
 instance MetaMulti ZHandle where
-  metaMulti ops zk = handle (\(_ :: SomeException) -> return False) $ do
+  metaMulti ops zk = do
     let zOps = map opToZ ops
     void $ Z.zooMulti zk zOps
-    return True
     where
       opToZ op = case op of
         InsertOp p k v    -> Z.zooCreateOpInit (textToCBytes $ p <> "/" <> k) (Just $ ZF.fromByteString v) 0 Z.zooOpenAclUnsafe Z.ZooPersistent
@@ -107,26 +104,28 @@ instance MetaMulti ZHandle where
 
 instance MetaStore value RHandle where
   myPath _ = myRootPath @value @RHandle
-  insertMeta mid x    (RHandle m url) = void $ insertInto m url (myRootPath @value @RHandle) mid x
-  updateMeta mid x mv (RHandle m url) = void $ updateSet  m url (myRootPath @value @RHandle) mid x mv
-  deleteMeta mid   mv (RHandle m url) = void $ deleteFrom m url (myRootPath @value @RHandle) mid mv
+  insertMeta mid x    (RHandle m url) = insertInto m url (myRootPath @value @RHandle) mid x
+  updateMeta mid x mv (RHandle m url) = updateSet  m url (myRootPath @value @RHandle) mid x mv
+  deleteMeta mid   mv (RHandle m url) = deleteFrom m url (myRootPath @value @RHandle) mid mv
   checkMetaExists mid (RHandle m url) = selectFrom @value m url (myRootPath @value @RHandle) (Just mid)
-                                    <&> \case Nothing ->  False ; Just _  ->  True
+                                        >>= \case _:_ -> return True; _ -> return False
   getMeta mid  (RHandle m url)        = selectFrom m url (myRootPath @value @RHandle) (Just mid)
-                                    <&> \case Nothing -> Nothing ; Just (x:_) -> Just x ; Just [] -> Nothing
+                                        >>= \case x:_ -> return (Just x); _ -> return Nothing
   listMeta (RHandle m url)            = selectFrom m url (myRootPath @value @RHandle) Nothing
-                                    <&> \case Nothing -> [] ; Just xs -> xs ;
 
 instance MetaMulti RHandle where
   metaMulti ops (RHandle m url) = do
-    let zOps = map opToR ops
+    let zOps = concatMap opToR ops
+    -- TODO: if failing show which operation failed
     transaction m url zOps
     where
       opToR op = case op of
-        InsertOp p k v    -> InsertROp p k v
-        UpdateOp p k v mv -> UpdateROp p k v mv
-        DeleteOp p k mv   -> DeleteROp p k mv
-        CheckOp  p k v    -> CheckROp p k v
+        InsertOp p k v    -> [InsertROp p k v]
+        UpdateOp p k v mv -> let op' = UpdateROp p k v
+                              in maybe [op'] (\version -> [CheckROp p k version, op']) mv
+        DeleteOp p k mv   -> let op' = DeleteROp p k
+                              in maybe [op'] (\version -> [CheckROp p k version, op']) mv
+        CheckOp  p k v    -> [CheckROp p k v]
 
 #define USE_WHICH_HANDLE(handle, action) \
   case handle of ZkHandle zk -> action zk; RLHandle rq -> action rq

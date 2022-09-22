@@ -84,6 +84,17 @@ module HStream.Exception
   , WrongOffset (..)
   , ZstdCompresstionErr (..)
 
+    -- * Exception: Meta Store
+  , RQLiteNoAuth (..)
+  , RQLiteTableNotFound (..)
+  , RQLiteTableAlreadyExists (..)
+  , RQLiteNetworkErr (..)
+  , RQLiteDecodeErr (..)
+  , RQLiteUnspecifiedErr (..)
+  , RQLiteRowNotFound (..)
+  , RQLiteRowAlreadyExists (..)
+  , RQLiteRowBadVersion (..)
+
     -- * Handler
   , mkExceptionHandle
   , mkExceptionHandle'
@@ -322,6 +333,29 @@ MAKE_SUB_EX(SomeHServerException, Unavailable)
 
 MAKE_PARTICULAR_EX_0(Unavailable, ServerNotAvailable, "ServerNotAvailable")
 
+
+-------------------------------------------------------------------------------
+-- Exception: Unauthenticated
+
+-- $unauthenticated
+-- Incorrect Auth metadata ( Credentials failed to get metadata,
+-- Incompatible credentials set on channel and call,
+-- Invalid host set in :authority metadata, etc.)
+MAKE_SUB_EX(SomeHServerException, Unauthenticated)
+
+--------------------------------------------------------------------------------
+-- Exception: RQLite
+
+MAKE_PARTICULAR_EX_1(Unauthenticated, RQLiteNoAuth, String, )
+MAKE_PARTICULAR_EX_1(NotFound, RQLiteTableNotFound, String, )
+MAKE_PARTICULAR_EX_1(NotFound, RQLiteRowNotFound, String, )
+MAKE_PARTICULAR_EX_1(Internal, RQLiteNetworkErr, String, )
+MAKE_PARTICULAR_EX_1(Internal, RQLiteDecodeErr, String, )
+MAKE_PARTICULAR_EX_1(Internal, RQLiteUnspecifiedErr, String, )
+MAKE_PARTICULAR_EX_1(AlreadyExists, RQLiteTableAlreadyExists, String, )
+MAKE_PARTICULAR_EX_1(AlreadyExists, RQLiteRowAlreadyExists, String, )
+MAKE_PARTICULAR_EX_1(FailedPrecondition, RQLiteRowBadVersion, String, )
+
 -------------------------------------------------------------------------------
 -- Handlers
 
@@ -378,6 +412,10 @@ defaultHServerExHandlers =
   , E.Handler $ \(err :: Internal) -> do
       Log.fatal $ Log.buildString' err
       return (StatusInternal, mkStatusDetails err)
+
+  , E.Handler $ \(err :: Unauthenticated) -> do
+      Log.fatal $ Log.buildString' err
+      return (StatusUnauthenticated, mkStatusDetails err)
   ]
 
 zkExceptionHandlers :: [E.Handler (StatusCode, StatusDetails)]
