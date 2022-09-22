@@ -111,10 +111,10 @@ instance HasPath TaskIdMeta ZHandle where
   myRootPath = ioRootPath <> "/taskNames"
 
 instance HasPath TaskMeta RHandle where
-  myRootPath = "io-tasks"
+  myRootPath = "ioTasks"
 
 instance HasPath TaskIdMeta RHandle where
-  myRootPath = "io-taskNames"
+  myRootPath = "ioTaskNames"
 
 -- TODO: spec the exceptions
 class TaskJson cm where
