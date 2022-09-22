@@ -2,9 +2,14 @@
 {-# LANGUAGE GADTs     #-}
 {-# OPTIONS_GHC -Werror=incomplete-patterns #-}
 
-module HStream.Server.Handler.Admin (adminCommandHandler) where
+module HStream.Server.Handler.Admin
+  ( -- * For grpc-haskell
+    adminCommandHandler
+    -- * For hs-grpc-server
+  , handleAdminCommand
+  ) where
 
-import           Control.Concurrent               (readMVar, tryReadMVar)
+import           Control.Concurrent               (tryReadMVar)
 import           Control.Monad                    (forM, void)
 import           Data.Aeson                       ((.=))
 import qualified Data.Aeson                       as Aeson
@@ -33,7 +38,8 @@ import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Stream       as HC
 import qualified HStream.Server.Core.Subscription as HC
 import qualified HStream.Server.Core.View         as HC
-import           HStream.Server.Exception         (defaultExceptionHandle)
+import           HStream.Server.Exception         (catchDefaultEx,
+                                                   defaultExceptionHandle)
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.Server.Types
 import qualified HStream.Stats                    as Stats
@@ -44,6 +50,23 @@ import           HStream.Utils                    (Interval, formatStatus,
 -------------------------------------------------------------------------------
 -- All command line data types are defined in 'HStream.Admin.Types'
 
+adminCommandHandler
+  :: ServerContext
+  -> ServerRequest 'Normal API.AdminCommandRequest API.AdminCommandResponse
+  -> IO (ServerResponse 'Normal API.AdminCommandResponse)
+adminCommandHandler sc req = defaultExceptionHandle $ do
+  let (ServerNormalRequest _ (API.AdminCommandRequest cmd)) = req
+  result <- runAdminCommand sc cmd
+  returnResp $ API.AdminCommandResponse {adminCommandResponseResult = result}
+
+handleAdminCommand
+  :: ServerContext -> API.AdminCommandRequest -> IO API.AdminCommandResponse
+handleAdminCommand sc (API.AdminCommandRequest cmd) = catchDefaultEx $ do
+  result <- runAdminCommand sc cmd
+  pure $ API.AdminCommandResponse {adminCommandResponseResult = result}
+
+-------------------------------------------------------------------------------
+
 -- we only need the 'Command' in 'Cli'
 parseAdminCommand :: [String] -> IO AT.AdminCommand
 parseAdminCommand args = extractAdminCmd =<< execParser
@@ -53,17 +76,12 @@ parseAdminCommand args = extractAdminCmd =<< execParser
     execParser = handleParseResult $ O.execParserPure O.defaultPrefs cliInfo args
     cliInfo = O.info Admin.cliParser (O.progDesc "The parser to use for admin commands")
 
-adminCommandHandler
-  :: ServerContext
-  -> ServerRequest 'Normal API.AdminCommandRequest API.AdminCommandResponse
-  -> IO (ServerResponse 'Normal API.AdminCommandResponse)
-adminCommandHandler sc@ServerContext{..} req = defaultExceptionHandle $ do
-  let (ServerNormalRequest _ (API.AdminCommandRequest cmd)) = req
+runAdminCommand :: ServerContext -> Text -> IO Text
+runAdminCommand sc@ServerContext{..} cmd = do
   Log.info $ "Receive amdin command: " <> Log.buildText cmd
-
   let args = words (Text.unpack cmd)
   adminCommand <- parseAdminCommand args
-  result <- case adminCommand of
+  case adminCommand of
     AT.AdminStatsCommand c        -> runStats scStatsHolder c
     AT.AdminResetStatsCommand     -> runResetStats scStatsHolder
     AT.AdminStreamCommand c       -> runStream sc c
@@ -72,7 +90,6 @@ adminCommandHandler sc@ServerContext{..} req = defaultExceptionHandle $ do
     AT.AdminStatusCommand         -> runStatus sc
     AT.AdminInitCommand           -> runInit sc
     AT.AdminCheckReadyCommand     -> runCheckReady sc
-  returnResp $ API.AdminCommandResponse {adminCommandResponseResult = result}
 
 handleParseResult :: O.ParserResult a -> IO a
 handleParseResult (O.Success a) = return a

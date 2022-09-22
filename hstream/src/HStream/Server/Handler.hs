@@ -57,6 +57,7 @@ handlers serverContext@ServerContext{..} =
         -- Stats
         hstreamApiPerStreamTimeSeriesStats = H.perStreamTimeSeriesStats scStatsHolder,
         hstreamApiPerStreamTimeSeriesStatsAll = H.perStreamTimeSeriesStatsAll scStatsHolder,
+
         -- Query
         hstreamApiTerminateQueries = terminateQueriesHandler serverContext,
         hstreamApiExecuteQuery = executeQueryHandler serverContext,
@@ -67,14 +68,15 @@ handlers serverContext@ServerContext{..} =
         hstreamApiDeleteQuery = deleteQueryHandler serverContext,
         hstreamApiRestartQuery = restartQueryHandler serverContext,
 
+        -- Connector
         hstreamApiCreateConnector = createConnectorHandler serverContext,
         hstreamApiGetConnector = getConnectorHandler serverContext,
         hstreamApiListConnectors = listConnectorsHandler serverContext,
         hstreamApiDeleteConnector = deleteConnectorHandler serverContext,
         hstreamApiPauseConnector = pauseConnectorHandler serverContext,
         hstreamApiResumeConnector = resumeConnectorHandler serverContext,
-        hstreamApiLookupConnector = lookupConnectorHandler serverContext,
 
+        -- View
         hstreamApiGetView = getViewHandler serverContext,
         hstreamApiListViews = listViewsHandler serverContext,
         hstreamApiDeleteView = deleteViewHandler serverContext,
@@ -86,6 +88,8 @@ handlers serverContext@ServerContext{..} =
         hstreamApiLookupShard        = lookupShardHandler serverContext,
         hstreamApiLookupSubscription = lookupSubscriptionHandler serverContext,
         hstreamApiLookupShardReader  = lookupShardReaderHandler serverContext,
+        hstreamApiLookupConnector    = lookupConnectorHandler serverContext,
+
         -- Admin
         hstreamApiSendAdminCommand = adminCommandHandler serverContext
       }

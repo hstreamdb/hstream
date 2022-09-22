@@ -32,6 +32,7 @@ module HStream.Exception
   , DecodeHStreamRecordErr (..)
   , NoRecordHeader (..)
   , UnknownCompressionType (..)
+  , InvalidStatsInterval (..)
 
     -- * Exception: NotFound
     --
@@ -84,13 +85,13 @@ module HStream.Exception
   , ZstdCompresstionErr (..)
 
     -- * Handler
+  , mkExceptionHandle
+  , mkExceptionHandle'
     -- ** for grpc-haskell
   , MkResp
   , ExceptionHandle
   , setRespType
   , mkStatusDetails
-  , mkExceptionHandle
-  , mkExceptionHandle'
   , defaultHServerExHandlers
   , zkExceptionHandlers
     -- ** for hs-grpc-server
@@ -220,6 +221,7 @@ MAKE_PARTICULAR_EX_1(InvalidArgument, InvalidSubscriptionOffset, String, )
 MAKE_PARTICULAR_EX_1(InvalidArgument, DecodeHStreamRecordErr, String, )
 MAKE_PARTICULAR_EX_0(InvalidArgument, NoRecordHeader, "HStreamRecord doesn't have a header.")
 MAKE_PARTICULAR_EX_0(InvalidArgument, UnknownCompressionType, "UnknownCompressionType")
+MAKE_PARTICULAR_EX_1(InvalidArgument, InvalidStatsInterval, String, )
 
 -------------------------------------------------------------------------------
 -- Exception: NotFound
@@ -321,6 +323,19 @@ MAKE_SUB_EX(SomeHServerException, Unavailable)
 MAKE_PARTICULAR_EX_0(Unavailable, ServerNotAvailable, "ServerNotAvailable")
 
 -------------------------------------------------------------------------------
+-- Handlers
+
+mkExceptionHandle :: [E.Handler a] -> IO a -> IO a
+mkExceptionHandle = flip E.catches
+
+mkExceptionHandle'
+  :: (forall e. Exception e => e -> IO ())
+  -> [E.Handler a] -> IO a -> IO a
+mkExceptionHandle' whileEx handlers f =
+  let handlers' = map (\(E.Handler h) -> E.Handler (\e -> whileEx e >> h e)) handlers
+   in f `E.catches` handlers'
+
+-------------------------------------------------------------------------------
 -- Handlers (grpc-haskell)
 
 type MkResp t a = StatusCode -> StatusDetails -> ServerResponse t a
@@ -333,19 +348,6 @@ setRespType mkResp = map (uncurry mkResp <$>)
 
 mkStatusDetails :: Exception a => a -> StatusDetails
 mkStatusDetails = StatusDetails . BSC.pack . displayException
-
-mkExceptionHandle :: [E.Handler (ServerResponse t a)]
-                  -> IO (ServerResponse t a)
-                  -> IO (ServerResponse t a)
-mkExceptionHandle = flip E.catches
-
-mkExceptionHandle' :: (forall e. Exception e => e -> IO ())
-                   -> [E.Handler (ServerResponse t a)]
-                   -> IO (ServerResponse t a)
-                   -> IO (ServerResponse t a)
-mkExceptionHandle' whileEx handlers f =
-  let handlers' = map (\(E.Handler h) -> E.Handler (\e -> whileEx e >> h e)) handlers
-   in f `E.catches` handlers'
 
 defaultHServerExHandlers :: [E.Handler (StatusCode, StatusDetails)]
 defaultHServerExHandlers =

@@ -12,11 +12,12 @@ module HStream.Server.Exception
   , defaultBiDiStreamExceptionHandle
     -- * for hs-grpc-server
   , defaultExHandlers
+  , catchDefaultEx
   ) where
 
 import           Control.Concurrent.Async      (AsyncCancelled (..))
 import           Control.Exception             (Handler (Handler), IOException,
-                                                SomeException)
+                                                SomeException, catches)
 import qualified HsGrpc.Server.Types           as HsGrpc
 import           Network.GRPC.HighLevel.Client
 import           Network.GRPC.HighLevel.Server (ServerResponse (ServerBiDiResponse, ServerWriterResponse))
@@ -72,6 +73,10 @@ storeExceptionHandlers = [
   ]
 
 --------------------------------------------------------------------------------
+
+catchDefaultEx :: IO a -> IO a
+catchDefaultEx action = action `catches` defaultExHandlers
+{-# INLINEABLE catchDefaultEx #-}
 
 defaultExHandlers :: [Handler a]
 defaultExHandlers =

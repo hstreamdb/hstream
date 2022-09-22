@@ -290,5 +290,5 @@ test-suite hstream-test
     TypeApplications
     UnliftedFFITypes
 
-  build-tool-depends: hspec-discover:hspec-discover ==2.*
+  build-tool-depends: hspec-discover:hspec-discover >=2 && <3
   ghc-options:        -threaded -rtsopts -with-rtsopts=-N
