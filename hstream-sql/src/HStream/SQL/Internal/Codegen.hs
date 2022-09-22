@@ -42,7 +42,11 @@ import           DiffFlow.Graph        (Joiner (..))
 --------------------------------------------------------------------------------
 type FlowObject = HM.HashMap SKey FlowValue
 
-data SKey = Text :> (Maybe Text) -- field :> stream_m
+data SKey = SKey
+  { keyField :: Text
+  , keyStream_m :: Maybe Text
+  , keyExtra_m :: Maybe Text
+  }
 
 data FlowValue
   = FlowNull
@@ -63,7 +67,7 @@ data FlowValue
 --------------------------------------------------------------------------------
 constantKeygen :: FlowObject -> FlowObject
 constantKeygen _ =
-  HM.fromList [("key" :> Nothing, FlowText "__constant_key__")]
+  HM.fromList [(SKey "key" Nothing Nothing, FlowText "__constant_key__")]
 
 --------------------------------------------------------------------------------
 getFieldByName :: HasCallStack => Object -> Text -> Value

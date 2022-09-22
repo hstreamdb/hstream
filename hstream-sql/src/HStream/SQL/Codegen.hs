@@ -143,15 +143,16 @@ elabRValueExpr :: RValueExpr
                -> GraphBuilder
                -> Subgraph
                -> Node
+               -> Maybe Text
                -> IO (GraphBuilder, [In], Out)
-elabRValueExpr expr startBuilder subgraph startNode = case expr of
+elabRValueExpr expr startBuilder subgraph startNode startStream_m = case expr of
   RExprCast _ e typ -> do
     (builder1, ins, out) <- elabRValueExpr e startBuilder subgraph startNode
     let mapper = Mapper undefined -- TODO: elabCast
     let (builder2, node) =
           addNode builder1 subgraph (MapSpec (outNode out) mapper)
     return (builder2, ins, Out node)
-  RExprArray _ es -> do
+  RExprArray name es -> do
     (builder1, ins, outs) <-
       foldM (\acc e -> do
                 let (accBuilder, accIns, accOuts) = acc
@@ -160,10 +161,10 @@ elabRValueExpr expr startBuilder subgraph startNode = case expr of
                 return (curBuilder, L.nub (accIns++curIns), curOut:accOuts)
             ) (startBuilder, [], []) es
     let composer = Composer $ \os ->
-                     HM.fromList [("arr" :> Nothing, FlowArray (HM.elems os))]
+                     HM.fromList [(SKey name startStream_m Nothing, FlowArray (HM.elems os))]
     let (builder2, node) = addNode builder1 subgraph (ComposeSpec (outNode <$> outs) composer)
     return (builder2, ins, Out node)
-  RExprMap _ emap -> do
+  RExprMap name emap -> do
     (builder1, ins, outTups) <-
       foldM (\acc (ek,ev) -> do
                 let (accBuilder, accIns, accOuts) = acc
@@ -176,14 +177,14 @@ elabRValueExpr expr startBuilder subgraph startNode = case expr of
                         (kOut,vOut):accOuts)
             ) (startBuilder, [], []) (Map.assocs emap)
     let composer = Composer $ \os ->
-                     HM.fromList [("map" :> Nothing, FlowMap (mkMap $ HM.elems os))]
+                     HM.fromList [(SKey name startStream_m Nothing, FlowMap (mkMap $ HM.elems os))]
     let (kOuts,vOuts) = L.unzip outTups
     let (builder2, node) =
           addNode builder1 subgraph (ComposeSpec (outNode <$> (kOuts++vOuts)) composer)
     return (builder2, ins, Out node)
     where mkMap xs = let (kxs, vxs) = L.splitAt (L.length xs / 2) xs
                       in Map.fromList (L.zip kxs vxs)
-  RExprAccessMap _ emap ek -> do
+  RExprAccessMap name emap ek -> do
     (builder1, ins1, out1) <-
       elabRValueExpr emap startBuilder subgraph startNode
     (builder2, ins2, out2) <-
@@ -191,90 +192,133 @@ elabRValueExpr expr startBuilder subgraph startNode = case expr of
     let composer = Composer $ \[omap,okey] ->
                      let (FlowMap theMap) = L.head (HM.elems omap)
                          theKey = L.head (HM.elems okey)
-                      in HM.fromList [("accessMap" :> Nothing, theMap Map.! theKey)]
+                      in HM.fromList [(SKey name startStream_m Nothing, theMap Map.! theKey)]
     let (builder3, node) =
           addNode builder2 subgraph (ComposeSpec (outNode <$> [out1,out2]) composer)
     return (builder3, L.nub (ins1++ins2), Out node)
-  RExprAccessArray _ earr rhs -> do
+  RExprAccessArray name earr rhs -> do
     (builder1, ins, out) <-
       elabRValueExpr earr startBuilder subgraph startNode
     let mapper = Mapper $ \o -> let (FlowArray arr) = L.head (HM.elems o)
                                  in case rhs of
-                   RArrayAccessRhsIndex n -> HM.fromList [("accessArr" :> Nothing, arr L.!! n)]
+                   RArrayAccessRhsIndex n -> HM.fromList [(SKey name startStream_m Nothing, arr L.!! n)]
                    RArrayAccessRhsRange start_m end_m ->
                      let start = fromMaybe 0 start_m
                          end   = fromMaybe (maxBound :: Int) end_m
-                      in HM.fromList [("accessArr" :> Nothing, L.drop start (L.take end arr))]
+                      in HM.fromList [(SKey name startStream_m Nothing, L.drop start (L.take end arr))]
     let (builder2, node) =
           addNode builder1 subgraph (MapSpec out mapper)
     return (builder2, ins, Out node)
   RExprCol _ stream_m field -> do
     let mapper = Mapper $ \o ->
           case stream_m of
-            Nothing     -> HM.filterWithKey (\(k:>_) _ -> k == field) o
-            Just stream -> o HM.! (field :> stream)
+            Nothing     -> HM.filterWithKey (\(SKey k _ _) _ -> k == field) o
+            Just stream -> HM.filterWithKey (\(SKey k s _) _ -> k == field && s == stream) o
     let (builder1, node) =
           addNode startBuilder subgraph (MapSpec startNode mapper)
     return (builder1, [], Out node)
   RExprConst _ constant -> do
-    let mapper = mkConstantMapper constant
+    let mapper = mkConstantMapper constant startStream_m
     let (builder1, node) =
           addNode startBuilder subgraph (MapSpec startNode mapper)
     return (builder1, [], Out node)
   RExprAggregate _ agg -> undefined
 
-mkConstantMapper :: Constant -> Mapper
-mkConstantMapper constant =
+mkConstantMapper :: Constant -> Maybe Text -> Mapper
+mkConstantMapper constant startStream_m =
   let v = constantToValue constant
    in case constant of
-        ConstantNull -> Mapper $ \_ -> HM.fromList [("null" :> Nothing, v)]
-        ConstantInt n -> Mapper $ \_ -> HM.fromList [((T.pack (show n)) :> Nothing, v)]
-        ConstantFloat n -> Mapper $ \_ -> HM.fromList [((T.pack (show n)) :> Nothing, v)]
-        ConstantNumeric n -> Mapper $ \_ -> HM.fromList [((T.pack (show n)) :> Nothing, v)]
-        ConstantText t -> Mapper $ \_ -> HM.fromList [(t :> Nothing, v)]
-        ConstantBoolean b -> Mapper $ \_ -> HM.fromList [((T.pack (show b)) :> Nothing, v)]
-        ConstantDate d -> Mapper $ \_ -> HM.fromList [((T.pack (show d)):> Nothing, v)]
-        ConstantTime t -> Mapper $ \_ -> HM.fromList [((T.pack (show t)) :> Nothing, v)]
-        ConstantTimestamp ts -> Mapper $ \_ -> HM.fromList [((T.pack (show ts)) :> Nothing, v)]
-        ConstantInterval i -> Mapper $ \_ -> HM.fromList [((T.pack (show i)) :> Nothing, v)]
-        ConstantBytea bs -> Mapper $ \_ -> HM.fromList [((decodeUtf8 bs) :> Nothing, v)]
-        ConstantJsonb json -> Mapper $ \_ -> HM.fromList [((T.pack (show json)) :> Nothing, v)]
-        ConstantArray arr -> Mapper $ \_ -> HM.fromList [((T.pack (show arr)) :> Nothing, v)]
-        ConstantMap m -> Mapper $ \_ -> HM.fromList [((T.pack (show m)) :> Nothing, v)]
+        ConstantNull -> Mapper $ \_ -> HM.fromList [(SKey "null" startStream_m Nothing, v)]
+        ConstantInt n -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show n)) startStream_m Nothing, v)]
+        ConstantFloat n -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show n)) startStream_m Nothing, v)]
+        ConstantNumeric n -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show n)) startStream_m Nothing, v)]
+        ConstantText t -> Mapper $ \_ -> HM.fromList [(SKey t startStream_m Nothing, v)]
+        ConstantBoolean b -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show b)) startStream_m Nothing, v)]
+        ConstantDate d -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show d)) startStream_m Nothing, v)]
+        ConstantTime t -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show t)) startStream_m Nothing, v)]
+        ConstantTimestamp ts -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show ts)) startStream_m Nothing, v)]
+        ConstantInterval i -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show i)) startStream_m Nothing, v)]
+        ConstantBytea bs -> Mapper $ \_ -> HM.fromList [(SKey (decodeUtf8 bs) startStream_m Nothing, v)]
+        ConstantJsonb json -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show json)) startStream_m Nothing, v)]
+        ConstantArray arr -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show arr)) startStream_m Nothing, v)]
+        ConstantMap m -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show m)) startStream_m Nothing, v)]
 
 elabRTableRef :: RTableRef -> GraphBuilder -> IO (GraphBuilder, [In], Out)
 elabRTableRef ref startBuilder =
   case ref of
-    RTableRefSimple s m_alias -> do
+    RTableRefSimple s alias_m -> do
       let (builder, node) = addNode startBuilder subgraph InputSpec
-          inner = In { inNode = node, inStream = fromMaybe s m_alias }
+          inner = In { inNode = node, inStream = fromMaybe s alias_m, inWindow = Nothing}
           outer = Out { outNode = node }
       return (builder, [inner], outer)
-    RTableRefSubquery select m_alias -> do
+    RTableRefSubquery select alias_m -> do
       (builder, ins, out) <- elabRSelect startBuilder subgraph
       return (builder, ins, out)
-    RTableRefCrossJoin ref1 ref2 m_alias -> do
+    RTableRefCrossJoin ref1 ref2 alias_m -> do
       (builder1, ins1, out1) <- elabRTableRef ref1 startBuilder
       (builder2, ins2, out2) <- elabRTableRef ref2 builder1
+      let (builder3, node1_indexed) = addNode builder2 subgraph (IndexSpec (outNode out1))
+          (builder4, node2_indexed) = addNode builder3 subgraph (IndexSpec (outNode out2))
       let keygen1 = constantKeygen
           keygen2 = constantKeygen
           joiner = Joiner HM.union
           (builder, ins, out) = addNode builder2 subgraph
-                                (JoinSpec (outNode out1) (outNode out2) keygen1 keygen2 joiner)
+                                (JoinSpec node1_indexed node2_indexed keygen1 keygen2 joiner)
       return (builder, L.nub (ins1++ins2), out)
-    RTableRefNaturalJoin ref1 typ ref2 m_alias -> do
+    RTableRefNaturalJoin ref1 typ ref2 alias_m -> do
       (builder1, ins1, out1) <- elabRTableRef ref1 startBuilder
       (builder2, ins2, out2) <- elabRTableRef ref2 builder1
       undefined
+    RTableRefJoinOn ref1 typ ref2 expr alias_m -> do
+      (builder1, ins1, out1) <- elabRTableRef ref1 startBuilder
+      (builder2, ins2, out2) <- elabRValueExpr expr builder1 subgraph (outNode out1)
+      (builder3, ins3, out3) <- elabRTableRef ref2 builder2
+      let composer = Composer $ \[os1, oexpr] -> let os1' = HM.mapKeys (\(SKey f s_m _) -> SKey f s_m (Just "__s1__")) os1
+                                                     oexpr' = HM.mapKeys (\(SKey f s_m _) -> SKey f s_m (Just "__expr__")) oexpr
+                                                  in os1' <> oexpr'
+          (builder4, node1_with_expr) = addNode builder3 subgraph (ComposeSpec (outNode <$> [out1,out2]) composer)
+          (builder5, node1_indexed) = addNode builder4 subgraph (IndexSpec node1_with_expr)
+          (builder6, node2_indexed) = addNode builder5 subgraph (IndexSpec (outNode out3))
+      let keygen1 = \o -> HM.mapKeys (\_ -> SKey "__k1__" Nothing Nothing) $
+                          HM.filterWithKey (\(SKey f s_m extra_m) v -> extra_m == Just "__expr__") o
+          keygen2 = \_ -> HM.fromList [(SKey "__k1__" Nothing Nothing, FlowBoolean True)]
+          joiner = Joiner $ \o1 o2 -> let o1' = HM.mapKeys (\(SKey f s_m extra_m) -> SKey f s_m Nothing) $
+                                                HM.filterWithKey (\(SKey f s_m extra_m) v -> extra_m == Just "__s1__") o1
+                                          o2' = o2
+                                       in o1' <> o2' -- FIXME: join type
+      let (builder7, node) = addNode builder6 subgraph (JoinSpec node1_indexed node2_indexed keygen1 keygen2 joiner)
+      return (builder7, L.nub (ins1++ins2++ins3), Out node)
+    RTableRefJoinUsing ref1 typ ref2 fields alias_m -> do
+      (builder1, ins1, out1) <- elabRTableRef ref1 startBuilder
+      (builder2, ins2, out2) <- elabRTableRef ref2 builder1
+      let (builder3, node1_indexed) = addNode builder2 subgraph (IndexSpec (outNode out1))
+          (builder4, node2_indexed) = addNode builder3 subgraph (IndexSpec (outNode out2))
+      let keygen1 = \o -> HM.mapKeys (\(SKey f _ _) -> SKey f Nothing Nothing) $
+                          HM.filterWithKey (\(SKey f _ _) _ -> L.elem f fields) o
+          keygen2 = keygen1
+          joiner = Joiner $ \o1 o2 -> o1 <> o2 --  FIXME: join type
+      let (builder5, node) = addNode builder4 subgraph (JoinSpec node1_indexed node2_indexed keygen1 keygen2 joiner)
+      return (builder5, L.nub (ins1++ins2), Out node)
+    RTableRefWindowed ref win alias_m -> do
+      (builder1, ins, out) <- elabRTableRef ref startBuilder
+      let ins' = L.map (\thisIn -> thisIn { inWindow = win }) (L.nub ins) -- FIXME: when both `win(s1)` and `s1` exist
+      return (builder1, ins', out)
 
 elabFrom :: RFrom -> GraphBuilder -> IO (GraphBuilder, [In], Out)
+elabFrom (RFrom []) baseBuilder = throwSQLException CodegenException Nothing "Impossible happened (empty FROM clause)"
+elabFrom (RFrom [ref]) baseBuilder = elabRTableRef ref baseBuilder
 elabFrom (RFrom refs) baseBuilder = do
-  let baseSubgraph = Subgraph 0
-  undefined
-  where
-    go :: GraphBuilder -> Subgraph -> [RTableRef] -> IO (GraphBuilder, [In], Out)
-    go _ _ [] = throwSQLException CodegenException Nothing "Impossible happened"
-    go startBuilder subgraph [ref]
+  (builder1, ins1, out1) <- elabRTableRef (L.head refs) baseBuilder
+  foldM (\(oldBuilder, accIns, oldOut) thisRef -> do
+            (thisBuilder, thisIns, thisOut) <- elabRTableRef thisRef oldBuilder
+            let (builder1, oldNode_indexed) = addNode thisBuilder subgraph (IndexSpec (outNode oldOut))
+                (builder2, thisNode_indexed) = addNode builder1 subgraph (IndexSpec (outNode thisOut))
+            let keygen1 = constantKeygen
+                keygen2 = constantKeygen
+                joiner = Joiner $ HM.union
+            let (builder3, node) = addNode builder2 subgraph (JoinSpec oldNode_indexed thisNode_indexed keygen1 keygen2 joiner)
+            return (builder3, L.nub (accIns++thisIns), Out node)
+        ) (builder1, ins1, out1) (L.tail refs)
 
 --------------------------------------------------------------------------------
 {-
