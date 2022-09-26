@@ -253,6 +253,7 @@ def _service_zookeeper_(container_bin="docker", port=None, **kw):
     run_sh(cmd)
     loginfo("done")
 
+
 def _service_rqlite_(container_bin="docker", port=None, **kw):
     if is_service_started(container_bin, "rqlite"):
         return logerr("Already started!")
@@ -477,7 +478,9 @@ def dev_env(
     except Exception:
         logwarn("Get container env failed!")
         container_path = ""
-    user_path = f"/usr/local/bin:{CABAL_HOME}/bin:{HOME}/.local/bin:${container_path}"
+    user_path = (
+        f"/usr/local/bin:{CABAL_HOME}/bin:{HOME}/.local/bin:${container_path}"
+    )
     container_name = (
         container_name or f"{CUSERNAME}_{CUID}_haskell_{gen_randoms(10)}"
     )
@@ -911,6 +914,7 @@ class QuickBuildDevImageCommand:
             help="Your haskell development image",
         )
         p.add_argument("--tag", "-t", required=True, help="target image tag")
+        p.add_argument("--use-hs-grpc", default=False, action="store_true")
         # p.add_argument("--force-rebuild", "-f", action="store_true")  # TODO
         p.add_argument("--no-clean-installdir", action="store_true")
 
@@ -918,6 +922,7 @@ class QuickBuildDevImageCommand:
         self,
         tag,
         builder_image,
+        use_hs_grpc=False,
         **kargs,
     ):
         tmp_name = "tmp_build_dev_image_" + gen_randoms(20)
@@ -925,6 +930,7 @@ class QuickBuildDevImageCommand:
         tmpdir = tempfile.TemporaryDirectory()
         installdir = tmpdir.name
         clean_installdir = not kargs.pop("no_clean_installdir", False)
+
         loginfo(
             f"Temp install dir: {installdir}, autoclean: {clean_installdir}"
         )
@@ -944,10 +950,15 @@ class QuickBuildDevImageCommand:
             ]
 
             # Install
+            cabal_flag = (
+                "--constraint=hstream+hstream_use_hs_grpc"
+                if use_hs_grpc
+                else ""
+            )
             run_sh(
                 f"python3 {__file__} cabal --check --no-interactive "
                 f"--no-services-required --image {builder_image} --no-services-required "
-                f"-- install --installdir={installdir} {hs_targets}"
+                f"-- install {cabal_flag} --installdir={installdir} {hs_targets}"
             )
             # Copy
             run_sh(f"docker run -td --rm --name {tmp_name} {base_image} bash")
