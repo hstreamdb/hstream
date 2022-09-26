@@ -34,13 +34,13 @@ data NodeInput = NodeInput
   , nodeInputIndex :: Int
   } deriving (Eq, Show, Ord, Generic, Hashable, NFData)
 
-newtype Mapper = Mapper { mapper :: Row -> Row } deriving (Generic, NFData)
-newtype Filter = Filter { filterF :: Row -> Bool } deriving (Generic, NFData)
-newtype Joiner = Joiner { joiner :: Row -> Row -> Row } deriving (Generic, NFData)
-newtype Reducer = Reducer { reducer :: Row -> Row -> Row } deriving (Generic, NFData) -- \acc x -> acc'
-type KeyGenerator = Row -> Row
+newtype Mapper row = Mapper { mapper :: row -> row } deriving (Generic, NFData)
+newtype Filter row = Filter { filterF :: row -> Bool } deriving (Generic, NFData)
+newtype Joiner row = Joiner { joiner :: row -> row -> row } deriving (Generic, NFData)
+newtype Reducer row = Reducer { reducer :: row -> row -> row } deriving (Generic, NFData) -- \acc x -> acc'
+type KeyGenerator row = row -> row
 
-newtype Composer = Composer { composer :: [Row] -> Row } deriving (Generic, NFData)
+newtype Composer row = Composer { composer :: [row] -> row } deriving (Generic, NFData)
 
 {-
 class HasIndex a where
@@ -56,23 +56,23 @@ data NodeSpec a where
   ReduceSpec :: (HasIndex a, NeedIndex a) => Node -> Word64 -> Value -> Reducer -> NodeSpec a
 -}
 
-data NodeSpec
+data NodeSpec row
   = InputSpec
-  | MapSpec           Node Mapper               -- input, mapper
-  | FilterSpec        Node Filter               -- input, filter
-  | ComposeSpec       [Node] Composer
+  | MapSpec           Node (Mapper row)               -- input, mapper
+  | FilterSpec        Node (Filter row)               -- input, filter
+  | ComposeSpec       [Node] (Composer row)
   | IndexSpec         Node                      -- input
-  | JoinSpec          Node Node KeyGenerator KeyGenerator Joiner -- input1, input2, keygen1, keygen2, joiner
+  | JoinSpec          Node Node (KeyGenerator row) (KeyGenerator row) (Joiner row) -- input1, input2, keygen1, keygen2, joiner
   | OutputSpec        Node                      -- input
   | TimestampPushSpec Node                      -- input
   | TimestampIncSpec  (Maybe Node)              -- input
   | TimestampPopSpec  Node                      -- input
   | UnionSpec         Node Node                 -- input1, input2
   | DistinctSpec      Node                      -- input
-  | ReduceSpec        Node Row KeyGenerator Reducer -- input, init, kengen, reducer
+  | ReduceSpec        Node row (KeyGenerator row) (Reducer row) -- input, init, kengen, reducer
   deriving (Generic, NFData)
 
-instance Show NodeSpec where
+instance Show (NodeSpec row) where
   show InputSpec             = "InputSpec"
   show (MapSpec _ _)         = "MapSpec"
   show (FilterSpec _ _)      = "FilterSpec"
@@ -87,18 +87,18 @@ instance Show NodeSpec where
   show (DistinctSpec _)      = "DistinctSpec"
   show (ReduceSpec _ _ _ _)  = "ReduceSpec"
 
-outputIndex :: NodeSpec -> Bool
+outputIndex :: NodeSpec row -> Bool
 outputIndex (IndexSpec _)        = True
 outputIndex (DistinctSpec _)     = True
 outputIndex (ReduceSpec _ _ _ _) = True
 outputIndex _                    = False
 
-needIndex :: NodeSpec -> Bool
+needIndex :: NodeSpec row -> Bool
 needIndex (DistinctSpec _)     = True
 needIndex (ReduceSpec _ _ _ _) = True
 needIndex _                    = False
 
-getInputsFromSpec :: NodeSpec -> Vector Node
+getInputsFromSpec :: NodeSpec row -> Vector Node
 getInputsFromSpec InputSpec = V.empty
 getInputsFromSpec (MapSpec node _) = V.singleton node
 getInputsFromSpec (FilterSpec node _) = V.singleton node
@@ -116,17 +116,17 @@ getInputsFromSpec (DistinctSpec node) = V.singleton node
 getInputsFromSpec (ReduceSpec node _ _ _) = V.singleton node
 
 
-data NodeState a
-  = InputState (TVar (Frontier a)) (TVar (DataChangeBatch a))
-  | ComposeState Int (TVar (HashMap Int [DataChangeBatch a]))
-  | IndexState (TVar (Index a)) (TVar [DataChange a])
+data NodeState row a
+  = InputState (TVar (Frontier a)) (TVar (DataChangeBatch row a))
+  | ComposeState Int (TVar (HashMap Int [DataChangeBatch row a]))
+  | IndexState (TVar (Index row a)) (TVar [DataChange row a])
   | JoinState (TVar (Frontier a)) (TVar (Frontier a))
-  | OutputState (TVar [DataChangeBatch a])
-  | DistinctState (TVar (Index a)) (TVar (HashMap Row (Set (Timestamp a))))
-  | ReduceState (TVar (Index a)) (TVar (HashMap Row (Set (Timestamp a))))
+  | OutputState (TVar [DataChangeBatch row a])
+  | DistinctState (TVar (Index row a)) (TVar (HashMap row (Set (Timestamp a))))
+  | ReduceState (TVar (Index row a)) (TVar (HashMap row (Set (Timestamp a))))
   | NoState
 
-instance Show (NodeState a) where
+instance Show (NodeState row a) where
   show (InputState _ _)    = "InputState"
   show (ComposeState _ _)  = "ComposeState"
   show (IndexState _ _)    = "IndexState"
@@ -136,13 +136,14 @@ instance Show (NodeState a) where
   show (ReduceState _ _)   = "ReduceState"
   show NoState             = "NodeState"
 
-getIndexFromState :: NodeState a -> TVar (Index a)
+getIndexFromState :: NodeState row a -> TVar (Index row a)
 getIndexFromState (IndexState    index_m _) = index_m
 getIndexFromState (DistinctState index_m _) = index_m
 getIndexFromState (ReduceState   index_m _) = index_m
 getIndexFromState _ = throw $ BuildGraphError "Trying getting index from a node which does not contains index"
 
-specToState :: (Show a, Ord a, Hashable a) => NodeSpec -> IO (NodeState a)
+specToState :: (Show a, Ord a, Hashable a,
+                Show row, Ord row, Hashable row) => NodeSpec row -> IO (NodeState row a)
 specToState InputSpec = do
   frontier <- newTVarIO Set.empty
   unflushedChanges <- newTVarIO $ mkDataChangeBatch []
@@ -177,32 +178,32 @@ specToState _ = return NoState
 
 newtype Subgraph = Subgraph { subgraphId :: Int } deriving (Eq, Show, Generic, Hashable, NFData)
 
-data Graph = Graph
-  { graphNodeSpecs       :: HashMap Int NodeSpec
+data Graph row = Graph
+  { graphNodeSpecs       :: HashMap Int (NodeSpec row)
   , graphNodeSubgraphs   :: HashMap Int [Subgraph]
   , graphSubgraphParents :: HashMap Int Subgraph
   , graphDownstreamNodes :: HashMap Int [NodeInput]
   } deriving (Generic, NFData)
 
-data GraphBuilder = GraphBuilder
-  { graphBuilderNodeSpecs       :: Vector NodeSpec
+data GraphBuilder row = GraphBuilder
+  { graphBuilderNodeSpecs       :: Vector (NodeSpec row)
   , graphBuilderSubgraphs       :: Vector Subgraph
   , graphBuilderSubgraphParents :: Vector Subgraph
   }
 
-emptyGraphBuilder :: GraphBuilder
+emptyGraphBuilder :: GraphBuilder row
 emptyGraphBuilder = GraphBuilder V.empty V.empty V.empty
 
-addSubgraph :: GraphBuilder -> Subgraph -> (GraphBuilder, Subgraph)
+addSubgraph :: GraphBuilder row -> Subgraph -> (GraphBuilder row, Subgraph)
 addSubgraph builder@GraphBuilder{..} parent =
   ( builder{ graphBuilderSubgraphParents = V.snoc graphBuilderSubgraphParents parent}
   , Subgraph {subgraphId = V.length graphBuilderSubgraphParents + 1}
   )
 
-addSubgraph' :: GraphBuilder -> Subgraph -> GraphBuilder
+addSubgraph' :: GraphBuilder row -> Subgraph -> GraphBuilder row
 addSubgraph' builder parent = fst $ addSubgraph builder parent
 
-addNode :: GraphBuilder -> Subgraph -> NodeSpec -> (GraphBuilder, Node)
+addNode :: GraphBuilder row -> Subgraph -> NodeSpec row -> (GraphBuilder row, Node)
 addNode builder@GraphBuilder{..} subgraph spec =
   ( builder{ graphBuilderNodeSpecs = V.snoc graphBuilderNodeSpecs spec
            , graphBuilderSubgraphs = V.snoc graphBuilderSubgraphs subgraph}
@@ -210,10 +211,10 @@ addNode builder@GraphBuilder{..} subgraph spec =
   )
   where newNode = Node { nodeId = V.length graphBuilderNodeSpecs }
 
-addNode' :: GraphBuilder -> Subgraph -> NodeSpec -> GraphBuilder
+addNode' :: GraphBuilder row -> Subgraph -> NodeSpec row -> GraphBuilder row
 addNode' builder sub spec = fst $ addNode builder sub spec
 
-connectLoop :: GraphBuilder -> Node -> Node -> GraphBuilder
+connectLoop :: GraphBuilder row -> Node -> Node -> GraphBuilder row
 connectLoop builder@GraphBuilder{..} later earlier =
   builder{ graphBuilderNodeSpecs =
            case graphBuilderNodeSpecs V.! earlierId of
@@ -224,7 +225,7 @@ connectLoop builder@GraphBuilder{..} later earlier =
          }
   where earlierId = nodeId earlier
 
-buildGraph :: GraphBuilder -> Graph
+buildGraph :: GraphBuilder row -> Graph row
 buildGraph GraphBuilder{..} =
   if V.length graphBuilderSubgraphs == nodesNum then
     Graph { graphNodeSpecs = nodeSpecs

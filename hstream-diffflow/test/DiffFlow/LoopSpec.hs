@@ -4,7 +4,7 @@ module DiffFlow.LoopSpec where
 
 import           Control.Concurrent
 import           Control.Monad
-import           Data.Aeson          (Value (..))
+import           Data.Aeson          (Object, Value (..))
 import           Data.Hashable       (Hashable)
 import qualified Data.List           as L
 import           Data.MultiSet       (MultiSet)
@@ -19,7 +19,7 @@ import           Test.Hspec
 
 import qualified HStream.Utils.Aeson as A
 
-shardBody :: MVar () -> MVar [DataChangeBatch Word32] -> MVar [DataChangeBatch Word32] -> IO ()
+shardBody :: MVar () -> MVar [DataChangeBatch Object Word32] -> MVar [DataChangeBatch Object Word32] -> IO ()
 shardBody isDone reachOut_m reachSummaryOut_m = do
 
   let subgraph_0 = Subgraph 0
@@ -129,7 +129,7 @@ spec = describe "LoopSpec" $ do
   checkStep1 isDone reach_m reachSummary_m
   checkStep2 isDone reach_m reachSummary_m
 
-checkStep1 :: MVar () -> MVar [DataChangeBatch Word32] -> MVar [DataChangeBatch Word32] -> Spec
+checkStep1 :: MVar () -> MVar [DataChangeBatch Object Word32] -> MVar [DataChangeBatch Object Word32] -> Spec
 checkStep1 isDone reach_m reachSummary_m = describe "check reach out" $ do
   it "reach out step 1 (advance to ts=1)" $ do
     readMVar isDone
@@ -138,7 +138,7 @@ checkStep1 isDone reach_m reachSummary_m = describe "check reach out" $ do
     takeMVar isDone
     ((takeMVar reachSummary_m) >>= (return .  (L.map dcbChanges))) `shouldReturn` dcbs2
 
-checkStep2 :: MVar () -> MVar [DataChangeBatch Word32] -> MVar [DataChangeBatch Word32] -> Spec
+checkStep2 :: MVar () -> MVar [DataChangeBatch Object Word32] -> MVar [DataChangeBatch Object Word32] -> Spec
 checkStep2 isDone reach_m reachSummary_m = describe "check reach summary out" $ do
   it "reach out step 2 (advance to ts=2)" $ do
     readMVar isDone
@@ -149,7 +149,7 @@ checkStep2 isDone reach_m reachSummary_m = describe "check reach summary out" $ 
 
 
 
-dcbs1 :: [[DataChange Word32]]
+dcbs1 :: [[DataChange Object Word32]]
 dcbs1 = [ [DataChange (A.fromList [("v1", "b"), ("v2", "c")]) (Timestamp 0 []) 1]
         , [DataChange (A.fromList [("v1", "c"), ("v2", "a")]) (Timestamp 0 []) 1]
         , [DataChange (A.fromList [("v1", "b"), ("v2", "d")]) (Timestamp 0 []) 1]
@@ -166,7 +166,7 @@ dcbs1 = [ [DataChange (A.fromList [("v1", "b"), ("v2", "c")]) (Timestamp 0 []) 1
         , [DataChange (A.fromList [("v1", "a"), ("v2", "a")]) (Timestamp 0 []) 1]
         ]
 
-dcbs2 :: [[DataChange Word32]]
+dcbs2 :: [[DataChange Object Word32]]
 dcbs2 = [ [DataChange (A.fromList [("v1", "b"), ("reduced", "cd")]) (Timestamp 0 [1]) 1]
         , [DataChange (A.fromList [("v1", "a"), ("reduced", "b" )]) (Timestamp 0 [1]) 1]
         , [DataChange (A.fromList [("v1", "c"), ("reduced", "a" )]) (Timestamp 0 [1]) 1]
@@ -186,7 +186,7 @@ dcbs2 = [ [DataChange (A.fromList [("v1", "b"), ("reduced", "cd")]) (Timestamp 0
         ,  DataChange (A.fromList [("v1", "c"), ("reduced", "abcd")]) (Timestamp 0 [3]) 1]
         ]
 
-dcbs3 :: [[DataChange Word32]]
+dcbs3 :: [[DataChange Object Word32]]
 dcbs3 = [ [DataChange (A.fromList [("v1", "b"), ("v2", "c")]) (Timestamp 1 []) (-1)]
 
         , [DataChange (A.fromList [("v1", "a"), ("v2", "c")]) (Timestamp 1 []) (-1)]
@@ -197,7 +197,7 @@ dcbs3 = [ [DataChange (A.fromList [("v1", "b"), ("v2", "c")]) (Timestamp 1 []) (
         , [DataChange (A.fromList [("v1", "a"), ("v2", "a")]) (Timestamp 1 []) (-1)]
         ]
 
-dcbs4 :: [[DataChange Word32]]
+dcbs4 :: [[DataChange Object Word32]]
 dcbs4 = [ [DataChange (A.fromList [("v1", "b"), ("reduced", "cd")]) (Timestamp 1 [1]) (-1)
         ,  DataChange (A.fromList [("v1", "b"), ("reduced", "d" )]) (Timestamp 1 [1]) 1]
 

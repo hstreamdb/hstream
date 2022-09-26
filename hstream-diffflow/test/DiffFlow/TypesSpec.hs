@@ -63,17 +63,19 @@ updateTimestampsWithFrontierChecker tss (ts,diff) expectedFrontier expectedChang
     actualTsf = updateTimestampsWithFrontier initTsf ts diff
 
 
-mkDataChangeBatchChecker :: (Hashable a, Ord a, Show a)
-                         => [DataChange a] -- input data changes
-                         -> [DataChange a] -- expected data changes
+mkDataChangeBatchChecker :: (Hashable a, Ord a, Show a,
+                             Hashable row, Ord row, Show row)
+                         => [DataChange row a] -- input data changes
+                         -> [DataChange row a] -- expected data changes
                          -> Bool
 mkDataChangeBatchChecker changes expectedChanges =
   dcbChanges dataChangeBatch == expectedChanges
   where dataChangeBatch = mkDataChangeBatch changes
 
-addChangeBatchToIndexChecker :: (Hashable a, Ord a, Show a)
-                             => [DataChangeBatch a]
-                             -> Index a
+addChangeBatchToIndexChecker :: (Hashable a, Ord a, Show a,
+                                 Hashable row, Ord row, Show row)
+                             => [DataChangeBatch row a]
+                             -> Index row a
                              -> Bool
 addChangeBatchToIndexChecker batches expectedIndex = expectedIndex == actualIndex
   where actualIndex =

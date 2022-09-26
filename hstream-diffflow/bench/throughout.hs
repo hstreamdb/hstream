@@ -2,7 +2,7 @@
 
 import           Control.Concurrent
 import           Control.Monad
-import           Data.Aeson            (Value (..))
+import           Data.Aeson            (Object, Value (..))
 import qualified Data.HashMap.Lazy     as HM
 import           Data.IORef
 import           Data.Time
@@ -27,7 +27,7 @@ getCurrentTimestamp :: IO Word64
 getCurrentTimestamp = posixTimeToMilliSeconds <$> getPOSIXTime
 --------------------------------------------------------------------------------
 
-reducingShard :: IO (Shard Word64, Node, Node)
+reducingShard :: IO (Shard Object Word64, Node, Node)
 reducingShard = do
   let subgraph_0 = Subgraph 0
       (builder_1, subgraph_1) = addSubgraph emptyGraphBuilder subgraph_0
