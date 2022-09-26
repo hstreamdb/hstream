@@ -339,11 +339,3 @@ isTypeNum    n = n .&. numMask    /= 0 || n .&. anyMask /= 0
 isTypeOrd    n = n .&. ordMask    /= 0 || n .&. anyMask /= 0
 isTypeBool   n = n .&. boolMask   /= 0 || n .&. anyMask /= 0
 isTypeString n = n .&. stringMask /= 0 || n .&. anyMask /= 0
-
---------------------------------------------------------------------------------
-anyAggInSelList :: SelList -> Bool
-anyAggInSelList (SelListAsterisk _)      = False
-anyAggInSelList (SelListSublist _ dcols) = or $ isAggDCol <$> dcols
-  where isAggDCol (DerivedColSimpl _ (ExprSetFunc _ _)) = True
-        isAggDCol (DerivedColAs _ (ExprSetFunc _ _) _)  = True
-        isAggDCol _                                     = False

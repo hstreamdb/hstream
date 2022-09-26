@@ -2,10 +2,13 @@
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies      #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module HStream.SQL.AST where
 
 import qualified Data.Aeson            as Aeson
+import qualified Data.Aeson.Types      as Aeson
 import qualified Data.ByteString       as BS
 import qualified Data.ByteString.Char8 as BSC
 import qualified Data.HashMap.Strict   as HM
@@ -14,7 +17,7 @@ import qualified Data.List             as L
 import qualified Data.Map.Strict       as Map
 import           Data.Text             (Text)
 import qualified Data.Text             as Text
-import           Data.Text.Encoding    (encodeUtf8)
+import           Data.Text.Encoding    (encodeUtf8, decodeUtf8)
 import qualified Data.Time             as Time
 import           GHC.Stack             (HasCallStack)
 import           HStream.SQL.Abs
@@ -23,6 +26,9 @@ import           HStream.SQL.Exception (SomeSQLException (..),
 import           HStream.SQL.Extra     (extractPNDouble, extractPNInteger,
                                         trimSpacesPrint)
 import           HStream.SQL.Print     (printTree)
+import Data.Scientific
+import Data.Hashable
+import GHC.Generics
 
 --------------------------------------------------------------------------------
 type family RefinedType a :: Type
@@ -31,6 +37,33 @@ class Refine a where
   refine :: HasCallStack => a -> RefinedType a
 
 --------------------------------------------------------------------------------
+type FlowObject = HM.HashMap SKey FlowValue
+
+data SKey = SKey
+  { keyField :: Text
+  , keyStream_m :: Maybe Text
+  , keyExtra_m :: Maybe Text
+  } deriving (Show, Eq, Generic, Hashable)
+
+data FlowValue
+  = FlowNull
+  | FlowInt Int
+  | FlowFloat Double
+  | FlowNumeral Scientific
+  | FlowBoolean Bool
+  | FlowByte BS.ByteString
+  | FlowText Text
+  | FlowDate Time.Day
+  | FlowTime Time.TimeOfDay
+  | FlowTimestamp Time.ZonedTime
+  | FlowInterval Time.CalendarDiffTime
+  | FlowJson Aeson.Object
+  | FlowArray [FlowValue]
+  | FlowMap (Map.Map FlowValue FlowValue)
+  deriving (Eq, Show, Ord)
+
+--------------------------------------------------------------------------------
+
 data RDataType
   = RTypeInteger | RTypeFloat | RTypeNumeric | RTypeBoolean
   | RTypeBytea | RTypeText | RTypeDate | RTypeTime | RTypeTimestamp
@@ -143,6 +176,11 @@ instance Refine Timestamp where
      in Time.ZonedTime localTime timeZone
   refine (TimestampWithZone _ tsStr) = refine tsStr
 
+instance Eq Time.ZonedTime where
+  z1 == z2 = Time.zonedTimeToUTC z1 == Time.zonedTimeToUTC z2
+instance Ord Time.ZonedTime where
+  z1 `compare` z2 = Time.zonedTimeToUTC z1 `compare` Time.zonedTimeToUTC z2
+
 type RInterval = Time.CalendarDiffTime
 type instance RefinedType Interval = RInterval
 instance Refine Interval where
@@ -152,6 +190,13 @@ instance Refine Interval where
   refine (IntervalWithDate _ (DDateTimeStr _ (DDateStr _ y m d) timeStr)) =
     let nomialDiffTime = Time.daysAndTimeOfDayToTime d (refine timeStr)
      in Time.CalendarDiffTime (12 * y +  m) nomialDiffTime
+
+instance Ord Time.CalendarDiffTime where
+  d1 `compare` d2 =
+    case (Time.ctMonths d1) `compare` (Time.ctMonths d2) of
+      GT -> GT
+      LT -> LT
+      EQ -> Time.ctTime d1 `compare` Time.ctTime d2
 
 --------------------------------------------------------------------------------
 data Constant = ConstantNull
@@ -168,14 +213,14 @@ data Constant = ConstantNull
               | ConstantJsonb     Aeson.Object
               | ConstantArray     [Constant]
               | ConstantMap       (Map.Map Constant Constant)
-              deriving (Show)
+              deriving (Show, Eq, Ord)
 
 constantToValue :: Constant -> FlowValue
 constantToValue constant = case constant of
   ConstantNull -> FlowNull
   ConstantInt n -> FlowInt n
   ConstantFloat n -> FlowFloat n
-  ConstantNumeric n -> FlowNumeral n
+  ConstantNumeric n -> FlowNumeral (fromFloatDigits n)
   ConstantText t -> FlowText t
   ConstantBoolean b -> FlowBoolean b
   ConstantDate d -> FlowDate d
@@ -187,14 +232,24 @@ constantToValue constant = case constant of
   ConstantArray arr -> FlowArray (constantToValue <$> arr)
   ConstantMap m -> FlowMap (Map.mapKeys constantToValue (Map.map constantToValue m))
 
-{-
+instance Aeson.ToJSONKey Constant where
+  toJSONKey = Aeson.toJSONKeyText (Text.pack . show)
+
 instance Aeson.ToJSON Constant where
-  toJSON ConstantNull       = Aeson.Null
-  toJSON (ConstantInt v)    = Aeson.toJSON v
-  toJSON (ConstantNum v)    = Aeson.toJSON v
-  toJSON (ConstantString v) = Aeson.toJSON v
-  toJSON (ConstantBool v)   = Aeson.toJSON v
--}
+  toJSON ConstantNull          = Aeson.Null
+  toJSON (ConstantInt       v) = Aeson.toJSON v
+  toJSON (ConstantFloat     v) = Aeson.toJSON v
+  toJSON (ConstantNumeric   v) = Aeson.toJSON v
+  toJSON (ConstantText      v) = Aeson.toJSON v
+  toJSON (ConstantBoolean   v) = Aeson.toJSON v
+  toJSON (ConstantDate      v) = Aeson.toJSON v
+  toJSON (ConstantTime      v) = Aeson.toJSON v
+  toJSON (ConstantTimestamp v) = Aeson.toJSON v
+  toJSON (ConstantInterval  v) = Aeson.toJSON v
+  toJSON (ConstantBytea     v) = Aeson.toJSON (decodeUtf8 v)
+  toJSON (ConstantJsonb     v) = Aeson.toJSON v
+  toJSON (ConstantArray     v) = Aeson.toJSON v
+  toJSON (ConstantMap       v) = Aeson.toJSON v
 
 data BinaryOp = OpAnd | OpOr
               | OpEQ | OpNEQ | OpLT | OpGT | OpLEQ | OpGEQ
@@ -227,7 +282,7 @@ data JsonOp
 data Aggregate = Nullary NullaryAggregate
                | Unary   UnaryAggregate  RValueExpr
                | Binary  BinaryAggregate RValueExpr RValueExpr
-               deriving (Show)
+               deriving (Show, Eq)
 
 data NullaryAggregate = AggCountAll deriving (Eq, Show)
 data UnaryAggregate   = AggCount
@@ -260,8 +315,8 @@ type ExprName = String
 type StreamName = Text
 type FieldName  = Text
 data RValueExpr = RExprCast        ExprName RValueExpr RDataType
-                | RExprArray ExprName [RValueExpr]
-                | RExprMap ExprName (Map.Map RValueExpr RValueExpr)
+                | RExprArray       ExprName [RValueExpr]
+                | RExprMap         ExprName (Map.Map RValueExpr RValueExpr)
                 | RExprAccessMap   ExprName RValueExpr RValueExpr
                 | RExprAccessArray ExprName RValueExpr RArrayAccessRhs
                 | RExprCol         ExprName (Maybe StreamName) FieldName
@@ -271,7 +326,10 @@ data RValueExpr = RExprCast        ExprName RValueExpr RDataType
                 | RExprBinOp       ExprName BinaryOp RValueExpr RValueExpr
                 | RExprUnaryOp     ExprName UnaryOp  RValueExpr
                 | RExprSubquery    ExprName RSelect
-                deriving (Show)
+                deriving (Show, Eq)
+-- FIXME:
+instance Ord RValueExpr where
+  e1 `compare` e2 = show e1 `compare` show e2
 
 type instance RefinedType ValueExpr = RValueExpr
 instance Refine ValueExpr where
@@ -415,7 +473,7 @@ data RSelectItem
   | RSelectItemAggregate Aggregate (Maybe SelectItemAlias)
   | RSelectProjectQualifiedAll StreamName
   | RSelectProjectAll
-  deriving (Show)
+  deriving (Show, Eq)
 
 type instance RefinedType SelectItem = RSelectItem
 instance Refine SelectItem where
@@ -433,7 +491,7 @@ instance Refine SelectItem where
             RExprAggregate _ agg -> RSelectItemAggregate agg (Just t)
             _                    -> RSelectItemProject rexpr (Just t)
 
-newtype RSel = RSel [RSelectItem] deriving (Show)
+newtype RSel = RSel [RSelectItem] deriving (Show, Eq)
 type instance RefinedType Sel = RSel
 instance Refine Sel where
   refine (DSel _ items) = RSel (refine <$> items)
@@ -453,7 +511,7 @@ data RTableRef = RTableRefSimple StreamName (Maybe StreamName)
                | RTableRefJoinOn RTableRef RJoinType RTableRef RValueExpr (Maybe StreamName)
                | RTableRefJoinUsing RTableRef RJoinType RTableRef [Text] (Maybe StreamName)
                | RTableRefWindowed RTableRef WindowType (Maybe StreamName)
-               deriving (Show)
+               deriving (Show, Eq)
 setRTableRefAlias :: RTableRef -> StreamName -> RTableRef
 setRTableRefAlias ref alias = case ref of
   RTableRefSimple s _ -> RTableRefSimple s (Just alias)
@@ -497,7 +555,7 @@ instance Refine TableRef where
   refine (TableRefHopping _ ref len hop) = RTableRefWindowed (refine ref) (Hopping (refine len) (refine hop)) Nothing
   refine (TableRefSliding _ ref interval) = RTableRefWindowed (refine ref) (Sliding (refine interval)) Nothing
 
-newtype RFrom = RFrom [RTableRef] deriving (Show)
+newtype RFrom = RFrom [RTableRef] deriving (Show, Eq)
 type instance RefinedType From = RFrom
 instance Refine From where
   refine (DFrom _ refs) = RFrom (refine <$> refs)
@@ -505,7 +563,7 @@ instance Refine From where
 ---- Whr
 data RWhere = RWhereEmpty
             | RWhere RValueExpr
-            deriving (Show)
+            deriving (Show, Eq)
 type instance RefinedType Where = RWhere
 instance Refine Where where
   refine (DWhereEmpty _) = RWhereEmpty
@@ -526,14 +584,14 @@ instance Refine GroupBy where
 ---- Hav
 data RHaving = RHavingEmpty
              | RHaving RValueExpr
-             deriving (Show)
+             deriving (Show, Eq)
 type instance RefinedType Having = RHaving
 instance Refine Having where
   refine (DHavingEmpty _) = RHavingEmpty
   refine (DHaving _ expr) = RHaving (refine expr)
 
 ---- SELECT
-data RSelect = RSelect RSel RFrom RWhere RGroupBy RHaving deriving (Show)
+data RSelect = RSelect RSel RFrom RWhere RGroupBy RHaving deriving (Show, Eq)
 type instance RefinedType Select = RSelect
 instance Refine Select where
   refine (DSelect _ sel frm whr grp hav) =

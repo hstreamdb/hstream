@@ -3,18 +3,7 @@
 {-# LANGUAGE RankNTypes        #-}
 {-# LANGUAGE StrictData        #-}
 
-module HStream.SQL.Internal.Codegen
-  ( getFieldByName
-  , genRandomSinkStream
-  , compareValue
-  , binOpOnValue
-  , unaryOpOnValue
-  , diffTimeToMs
-  , composeColName
-  , genJoiner
-  , genJoiner'
-  , genTableRefName
-  ) where
+module HStream.SQL.Internal.Codegen where
 
 import           Control.Exception     (throw)
 import           Data.Aeson
@@ -39,35 +28,22 @@ import           Z.IO.Time
 
 import           DiffFlow.Graph        (Joiner (..))
 
---------------------------------------------------------------------------------
-type FlowObject = HM.HashMap SKey FlowValue
-
-data SKey = SKey
-  { keyField :: Text
-  , keyStream_m :: Maybe Text
-  , keyExtra_m :: Maybe Text
-  }
-
-data FlowValue
-  = FlowNull
-  | FlowInt Int
-  | FlowFloat Double
-  | FlowNumeral Scientific
-  | FlowBoolean Bool
-  | FlowByte ByteString
-  | FlowText Text
-  | FlowDate Time.Day
-  | FlowTime Time.TimeOfDay
-  | FlowTimestamp Time.ZonedTime
-  | FlowInterval Time.CalendarDiffTime
-  | FlowJson Object
-  | FlowArray [FlowValue]
-  | FlowMap (Map.Map FlowValue FlowValue)
-
---------------------------------------------------------------------------------
 constantKeygen :: FlowObject -> FlowObject
 constantKeygen _ =
   HM.fromList [(SKey "key" Nothing Nothing, FlowText "__constant_key__")]
+
+makeExtra :: Text -> FlowObject -> FlowObject
+makeExtra extra =
+  HM.mapKeys (\(SKey f s_m _) -> SKey f s_m (Just extra))
+
+getExtra :: Text -> FlowObject -> FlowObject
+getExtra extra =
+  HM.filterWithKey (\(SKey f s_m extra_m) v -> extra_m == Just extra)
+
+getExtraAndReset :: Text -> FlowObject -> FlowObject
+getExtraAndReset extra o =
+  HM.mapKeys (\(SKey f s_m _) -> SKey f s_m Nothing) $
+  HM.filterWithKey (\(SKey f s_m extra_m) v -> extra_m == Just extra) o
 
 --------------------------------------------------------------------------------
 getFieldByName :: HasCallStack => Object -> Text -> Value
@@ -83,32 +59,6 @@ getFieldByName o k =
 --------------------------------------------------------------------------------
 genRandomSinkStream :: IO Text
 genRandomSinkStream = stringRandomIO "[a-zA-Z]{20}"
-
---------------------------------------------------------------------------------
--- For 2-join
-genJoiner :: Maybe StreamName -> Maybe StreamName -> Joiner
-genJoiner m_s1 m_s2 = Joiner $ \o1 o2 ->
-  let l1 = HM.toList o1
-      l2 = HM.toList o2
-      prefix1 = case m_s1 of
-                  Nothing -> ""
-                  Just s  -> s
-      prefix2 = case m_s2 of
-                  Nothing -> ""
-                  Just s  -> s
-      l1' = (\(k,v) -> (prefix1 <> "." <> k, v)) <$> l1
-      l2' = (\(k,v) -> (prefix2 <> "." <> k, v)) <$> l2
-   in HM.union (HM.fromList l1') (HM.fromList l2')
-
--- For (>=3)-join
-genJoiner' :: StreamName -> Joiner
-genJoiner' s = Joiner $ \o1 o2 ->
-  let l1 = HM.toList o1
-      l2 = HM.toList o2
-      l1' = l1
-      l2' = (\(k,v) -> (s <> "." <> k, v)) <$> l2
-   in HM.union (HM.fromList l1') (HM.fromList l2')
-
 
 --------------------------------------------------------------------------------
 compareValue :: HasCallStack => Value -> Value -> Ordering

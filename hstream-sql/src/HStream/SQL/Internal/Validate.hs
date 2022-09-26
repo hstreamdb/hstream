@@ -552,7 +552,7 @@ instance Validate Sel where
   validate sel@(DSel _ l) = validate l >> return sel
 
 instance Validate [SelectItem] where
-  validate items = mapM_ validate items >> return l
+  validate items = mapM_ validate items >> return items
 
 instance Validate SelectItem where
   validate item@(SelectItemUnnamedExpr _ expr) = validate expr >> return item
