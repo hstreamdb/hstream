@@ -52,7 +52,8 @@ import           HStream.Server.HStreamApi     (ServerNode (..),
 import           HStream.Server.Types          (ServerID, SubscriptionWrap (..))
 import qualified HStream.Store                 as S
 import qualified HStream.ThirdParty.Protobuf   as Proto
-import           HStream.Utils                 (TaskStatus (..))
+import           HStream.Utils                 (TaskStatus (..), cBytesToText)
+import qualified HStream.SQL.AST as AST
 
 --------------------------------------------------------------------------------
 
@@ -167,7 +168,7 @@ createInsertPersistentQuery qid queryText queryType queryHServer h = do
   insertQuery qid queryText timestamp queryType queryHServer h
   return (qid, timestamp)
 
-groupbyStores :: IORef (HM.HashMap Text (MVar (DataChangeBatch HCT.Timestamp)))
+groupbyStores :: IORef (HM.HashMap Text (MVar (DataChangeBatch AST.FlowObject HCT.Timestamp)))
 groupbyStores = unsafePerformIO $ newIORef HM.empty
 {-# NOINLINE groupbyStores #-}
 

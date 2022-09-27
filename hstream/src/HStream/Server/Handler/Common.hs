@@ -34,9 +34,10 @@ import qualified HStream.Server.HStore            as HStore
 import           HStream.Server.HStreamApi
 import qualified HStream.Server.MetaData          as P
 import           HStream.Server.Types
-import           HStream.SQL.AST                  (RWindow (..))
+import           HStream.SQL.AST
 import           HStream.SQL.Codegen
-import           HStream.Utils                    (TaskStatus (..))
+import           HStream.Utils                    (TaskStatus (..),
+                                                    newRandomText)
 
 import qualified DiffFlow.Graph                   as DiffFlow
 import qualified DiffFlow.Shard                   as DiffFlow
@@ -44,19 +45,24 @@ import qualified DiffFlow.Types                   as DiffFlow
 import qualified DiffFlow.Weird                   as DiffFlow
 import qualified HStream.Exception                as HE
 
+import Debug.Trace
+
 runTaskWrapper :: ServerContext
                -> Text
-               -> [(DiffFlow.Node, Text)]
-               -> (DiffFlow.Node, Text)
-               -> Maybe RWindow
-               -> DiffFlow.GraphBuilder
-               -> Maybe (MVar (DiffFlow.DataChangeBatch HCT.Timestamp))
+--               -> [(DiffFlow.Node, Text)]
+--               -> (DiffFlow.Node, Text)
+--               -> Maybe RWindow
+               -> Text
+               -> [In]
+               -> Out
+               -> DiffFlow.GraphBuilder FlowObject
+               -> Maybe (MVar (DiffFlow.DataChangeBatch FlowObject HCT.Timestamp))
                -> IO ()
-runTaskWrapper ctx taskName inNodesWithStreams outNodeWithStream window graphBuilder accumulation = do
+runTaskWrapper ctx taskName sinkStream ins out graphBuilder accumulation = do
   let consumerName = taskName
 
-  sourceConnectors <- forM inNodesWithStreams
-    (\(_,_) -> do
+  sourceConnectors <- forM ins
+    (\_ -> do
       -- create a new sourceConnector
       return $ HStore.hstoreSourceConnectorWithoutCkp ctx consumerName
     )
@@ -67,7 +73,7 @@ runTaskWrapper ctx taskName inNodesWithStreams outNodeWithStream window graphBui
   -- build graph then shard
   let graph = DiffFlow.buildGraph graphBuilder
   shard <- DiffFlow.buildShard graph
-
+{-
   let temporalFilter = case window of
         Just (RTumblingWindow interval) ->
           let interval_ms = (Time.diffTimeToPicoseconds interval) `div` (1000 * 1000 * 1000)
@@ -80,39 +86,39 @@ runTaskWrapper ctx taskName inNodesWithStreams outNodeWithStream window graphBui
           let interval_ms = (Time.diffTimeToPicoseconds interval) `div` (1000 * 1000 * 1000)
            in Sliding (fromIntegral interval_ms)
         Nothing -> NoFilter
-
+-}
   -- RUN TASK
-  runTask inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector temporalFilter accumulation shard
+  runTask sinkStream ins out sourceConnectors sinkConnector accumulation shard
 
 --------------------------------------------------------------------------------
-runTask :: [(DiffFlow.Node, Text)]
-        -> (DiffFlow.Node, Text)
+runTask :: Text
+        -> [In]
+        -> Out
         -> [SourceConnectorWithoutCkp]
         -> SinkConnector
-        -> TemporalFilter
-        -> Maybe (MVar (DiffFlow.DataChangeBatch HCT.Timestamp))
-        -> DiffFlow.Shard HCT.Timestamp
+        -> Maybe (MVar (DiffFlow.DataChangeBatch FlowObject HCT.Timestamp))
+        -> DiffFlow.Shard FlowObject HCT.Timestamp
         -> IO ()
-runTask inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector temporalFilter accumulation shard = do
+runTask sinkStream ins out sourceConnectors sinkConnector accumulation shard = do
 
   -- the task itself
   tid1 <- forkIO $ DiffFlow.run shard
 
   -- subscribe to all source streams
-  forM_ (sourceConnectors `zip` inNodesWithStreams)
-    (\(SourceConnectorWithoutCkp{..}, (_, sourceStreamName)) ->
-        subscribeToStreamWithoutCkp sourceStreamName SpecialOffsetLATEST
+  forM_ (sourceConnectors `zip` ins)
+    (\(SourceConnectorWithoutCkp{..}, In{..}) ->
+        subscribeToStreamWithoutCkp inStream SpecialOffsetLATEST
     )
 
   -- main loop: push input to INPUT nodes
-  tids2 <- forM (sourceConnectors `zip` inNodesWithStreams)
-    (\(SourceConnectorWithoutCkp{..}, (inNode, sourceStreamName)) -> do
-        forkIO $ withReadRecordsWithoutCkp sourceStreamName $ \sourceRecords -> do
+  tids2 <- forM (sourceConnectors `zip` ins)
+    (\(SourceConnectorWithoutCkp{..}, In{..}) -> do
+        forkIO $ withReadRecordsWithoutCkp inStream $ \sourceRecords -> do
           forM_ sourceRecords $ \SourceRecord{..} -> do
             ts <- HCT.getCurrentTimestamp
             let dataChange
                   = DiffFlow.DataChange
-                  { dcRow = fromJust . Aeson.decode $ srcValue
+                  { dcRow = trace ("srcValue = " <> show srcValue) (fromJust . Aeson.decode $ srcValue)
                   , dcTimestamp = DiffFlow.Timestamp ts [] -- Timestamp srcTimestamp []
                   , dcDiff = 1
                   }
@@ -120,6 +126,7 @@ runTask inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector temp
             DiffFlow.pushInput shard inNode dataChange -- original update
             -- insert new negated updates to limit the valid range of this update
             let insert_ms = DiffFlow.timestampTime (DiffFlow.dcTimestamp dataChange)
+{-
             case temporalFilter of
               NoFilter -> return ()
               Tumbling interval_ms -> do
@@ -148,12 +155,13 @@ runTask inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector temp
                                         }
                 DiffFlow.pushInput shard inNode negatedDataChange -- negated update
               _ -> return ()
+-}
             DiffFlow.flushInput shard inNode
     )
 
   -- second loop: advance input after an interval
   tid3 <- forkIO . forever $ do
-    forM_ inNodesWithStreams $ \(inNode, _) -> do
+    forM_ ins $ \In{..} -> do
       ts <- HCT.getCurrentTimestamp
       -- Log.debug . Log.buildString $ "### Advance time to " <> show ts
       DiffFlow.advanceInput shard inNode (DiffFlow.Timestamp ts [])
@@ -165,8 +173,7 @@ runTask inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector temp
                          Just m  -> return m
 
   forever (do
-    let (outNode, outStream) = outNodeWithStream
-    DiffFlow.popOutput shard outNode $ \dcb@DiffFlow.DataChangeBatch{..} -> do
+    DiffFlow.popOutput shard (outNode out) $ \dcb@DiffFlow.DataChangeBatch{..} -> do
       Log.debug . Log.buildString $ "~~~ POPOUT: " <> show dcb
       forM_ dcbChanges $ \change -> do
         Log.debug . Log.buildString $ "<<< this change: " <> show change
@@ -174,7 +181,7 @@ runTask inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector temp
           (\dcb -> return $ DiffFlow.updateDataChangeBatch' dcb (\xs -> xs ++ [change]))
         when (DiffFlow.dcDiff change > 0) $ do
           let sinkRecord = SinkRecord
-                { snkStream = outStream
+                { snkStream = sinkStream
                 , snkKey = Nothing
                 , snkValue = Aeson.encode (DiffFlow.dcRow change)
                 , snkTimestamp = DiffFlow.timestampTime (DiffFlow.dcTimestamp change)
@@ -204,29 +211,32 @@ handlePushQueryCanceled ServerCall{..} handle = do
 handleCreateAsSelect :: ServerContext
                      -> HStreamPlan
                      -> Text
+                     -> Text
                      -> P.QueryType
                      -> IO (Text, Int64)
-handleCreateAsSelect ctx@ServerContext{..} plan commandQueryStmtText queryType = do
+handleCreateAsSelect ctx@ServerContext{..} plan sinkStream commandQueryStmtText queryType = do
+  taskName <- newRandomText 10
   (qid, timestamp) <- P.createInsertPersistentQuery
-    tName commandQueryStmtText queryType serverID metaHandle
-  P.setQueryStatus qid Running metaHandle
-  tid <- forkIO $ catches (action qid) (cleanup qid)
+    taskName commandQueryStmtText queryType serverID metaHandle
+  P.setQueryStatus qid Running zkHandle
+  tid <- forkIO $ catches (action qid taskName) (cleanup qid)
   modifyMVar_ runningQueries (return . HM.insert qid tid)
   return (qid, timestamp)
   where
-    (tName,inNodesWithStreams,outNodeWithStream,win,builder,accumulation) = case plan of
-        SelectPlan tName inNodesWithStreams outNodeWithStream win builder ->
-          (tName,inNodesWithStreams,outNodeWithStream,win,builder, Nothing)
+    (ins, out, builder, accumulation) = case plan of
+        SelectPlan ins out builder -> (ins, out, builder, Nothing)
+{-
         CreateBySelectPlan tName inNodesWithStreams outNodeWithStream win builder _ ->
           (tName,inNodesWithStreams,outNodeWithStream,win,builder, Nothing)
         CreateViewPlan tName _ inNodesWithStreams outNodeWithStream win builder accumulation ->
           (tName,inNodesWithStreams,outNodeWithStream,win,builder, Just accumulation)
         _ -> throw $ HE.WrongExecutionPlan "Only support select sql in the method called"
-    action qid = do
+-}
+    action qid taskName = do
       Log.debug . Log.buildString
         $ "CREATE AS SELECT: query " <> show qid
        <> " has stared working on " <> show commandQueryStmtText
-      runTaskWrapper ctx tName inNodesWithStreams outNodeWithStream win builder accumulation
+      runTaskWrapper ctx taskName sinkStream ins out builder accumulation
     cleanup qid =
       [ Handler (\(e :: AsyncException) -> do
                     Log.debug . Log.buildString

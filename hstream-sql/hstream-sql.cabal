@@ -87,6 +87,7 @@ library
     , Z-Data
     , Z-IO
     , hashable
+    , time-compat
 
   -- Note: build on osx may require this
   -- alex == 3.2.7 will fail to build language-c, see: https://github.com/simonmar/alex/issues/197

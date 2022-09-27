@@ -30,6 +30,13 @@ import Data.Scientific
 import Data.Hashable
 import GHC.Generics
 
+import Data.Time.Compat ()
+import           Z.Data.CBytes           (CBytes)
+import HStream.Utils ()
+
+import qualified HStream.ThirdParty.Protobuf as PB
+import           Proto3.Suite              (Enumerated (Enumerated))
+
 --------------------------------------------------------------------------------
 type family RefinedType a :: Type
 
@@ -43,7 +50,12 @@ data SKey = SKey
   { keyField :: Text
   , keyStream_m :: Maybe Text
   , keyExtra_m :: Maybe Text
-  } deriving (Show, Eq, Generic, Hashable)
+  } deriving (Show, Eq, Ord, Generic, Hashable)
+
+instance Aeson.FromJSONKey SKey
+instance Aeson.FromJSON SKey
+instance Aeson.ToJSONKey SKey
+instance Aeson.ToJSON SKey
 
 data FlowValue
   = FlowNull
@@ -51,7 +63,7 @@ data FlowValue
   | FlowFloat Double
   | FlowNumeral Scientific
   | FlowBoolean Bool
-  | FlowByte BS.ByteString
+  | FlowByte CBytes
   | FlowText Text
   | FlowDate Time.Day
   | FlowTime Time.TimeOfDay
@@ -60,8 +72,18 @@ data FlowValue
   | FlowJson Aeson.Object
   | FlowArray [FlowValue]
   | FlowMap (Map.Map FlowValue FlowValue)
-  deriving (Eq, Show, Ord)
+  deriving (Eq, Show, Ord, Generic, Hashable)
 
+instance Aeson.FromJSONKey FlowValue
+instance Aeson.FromJSON FlowValue
+instance Aeson.ToJSONKey FlowValue
+instance Aeson.ToJSON FlowValue
+
+{-
+flowValueToPBValue :: FlowValue -> PB.Value
+flowValueToPBValue FlowNull = V $ PB.ValueKindNullValue   (Enumerated $ Right PB.NullValueNULL_VALUE)
+flowValueToPBValue
+-}
 --------------------------------------------------------------------------------
 
 data RDataType
@@ -180,6 +202,8 @@ instance Eq Time.ZonedTime where
   z1 == z2 = Time.zonedTimeToUTC z1 == Time.zonedTimeToUTC z2
 instance Ord Time.ZonedTime where
   z1 `compare` z2 = Time.zonedTimeToUTC z1 `compare` Time.zonedTimeToUTC z2
+instance Hashable Time.ZonedTime where
+  hashWithSalt salt z = hashWithSalt salt (Time.zonedTimeToUTC z)
 
 type RInterval = Time.CalendarDiffTime
 type instance RefinedType Interval = RInterval
@@ -197,6 +221,8 @@ instance Ord Time.CalendarDiffTime where
       GT -> GT
       LT -> LT
       EQ -> Time.ctTime d1 `compare` Time.ctTime d2
+instance Hashable Time.CalendarDiffTime where
+  hashWithSalt salt d = hashWithSalt salt (show d)
 
 --------------------------------------------------------------------------------
 data Constant = ConstantNull
@@ -209,7 +235,7 @@ data Constant = ConstantNull
               | ConstantTime      RTime
               | ConstantTimestamp RTimestamp
               | ConstantInterval  RInterval
-              | ConstantBytea     BS.ByteString
+              | ConstantBytea     CBytes
               | ConstantJsonb     Aeson.Object
               | ConstantArray     [Constant]
               | ConstantMap       (Map.Map Constant Constant)
@@ -246,7 +272,7 @@ instance Aeson.ToJSON Constant where
   toJSON (ConstantTime      v) = Aeson.toJSON v
   toJSON (ConstantTimestamp v) = Aeson.toJSON v
   toJSON (ConstantInterval  v) = Aeson.toJSON v
-  toJSON (ConstantBytea     v) = Aeson.toJSON (decodeUtf8 v)
+  toJSON (ConstantBytea     v) = Aeson.toJSON v
   toJSON (ConstantJsonb     v) = Aeson.toJSON v
   toJSON (ConstantArray     v) = Aeson.toJSON v
   toJSON (ConstantMap       v) = Aeson.toJSON v

@@ -36,7 +36,8 @@ import           HStream.SQL.Exception        (SomeSQLException (..),
                                                throwSQLException)
 import           HStream.SQL.Internal.Codegen
 import           HStream.SQL.Parse            (parseAndRefine)
-import           HStream.Utils                (genUnique, jsonObjectToStruct)
+import           HStream.Utils                (genUnique, jsonObjectToStruct,
+                                               cBytesToText)
 
 import           DiffFlow.Graph
 import           DiffFlow.Types
@@ -73,18 +74,24 @@ data HStreamPlan
   | ExplainPlan         Text
   | PausePlan           PauseObject
   | ResumePlan          ResumeObject
+  | SelectPlan [In] Out (GraphBuilder Row)
+  | CreateBySelectPlan  [In] Out (GraphBuilder Row) Int -- FIXME
+  | CreateViewPlan      [In] Out (GraphBuilder Row) (MVar (DataChangeBatch Row Int64)) -- FIXME
+
 
 --------------------------------------------------------------------------------
-{-
+
 streamCodegen :: HasCallStack => Text -> IO HStreamPlan
 streamCodegen input = parseAndRefine input >>= hstreamCodegen
 
 hstreamCodegen :: HasCallStack => RSQL -> IO HStreamPlan
 hstreamCodegen = \case
   RQSelect select -> do
-    tName <- genTaskName
-    (builder, inNodesWithStreams, outNodeWithStream, window) <- genGraphBuilderWithOutput Nothing select
-    return $ SelectPlan tName inNodesWithStreams outNodeWithStream window builder
+    let subgraph = Subgraph 0
+    let (startBuilder, _) = addSubgraph emptyGraphBuilder subgraph
+    (endBuilder, ins, out) <- elabRSelect select startBuilder subgraph
+    return $ SelectPlan ins out endBuilder
+{-
   RQCreate (RCreateAs stream select rOptions) -> do
     tName <- genTaskName
     (builder, inNodesWithStreams, outNodeWithStream, window) <- genGraphBuilderWithOutput (Just stream) select
@@ -97,10 +104,14 @@ hstreamCodegen = \case
           RSelAsterisk    -> ["*"] -- FIXME: schema on 'SELECT *'
           RSelList fields -> map snd fields
     return $ CreateViewPlan tName schema inNodesWithStreams outNodeWithStream window builder accumulation
+-}
   RQCreate (RCreate stream rOptions) -> return $ CreatePlan stream (rRepFactor rOptions)
   RQCreate (RCreateConnector cType cName cTarget ifNotExist (RConnectorOptions cOptions)) ->
     return $ CreateConnectorPlan cType cName cTarget ifNotExist cOptions
-  RQInsert (RInsert stream tuples)   -> return $ InsertPlan stream JsonFormat (BL.toStrict . PB.toLazyByteString . jsonObjectToStruct . HM.fromList $ second constantToValue <$> tuples)
+  RQInsert (RInsert stream tuples)   -> do
+    let flowObj = HM.fromList $ second constantToValue <$> tuples
+    let jsonObj = HM.map Aeson.toJSON flowObj
+    return $ InsertPlan stream JsonFormat (BL.toStrict . PB.toLazyByteString . jsonObjectToStruct $ jsonObj)
   RQInsert (RInsertBinary stream bs) -> return $ InsertPlan stream RawFormat  bs
   RQInsert (RInsertJSON stream bs)   -> return $ InsertPlan stream JsonFormat (BL.toStrict . PB.toLazyByteString . jsonObjectToStruct . fromJust $ Aeson.decode (BL.fromStrict bs))
   RQShow (RShow RShowStreams)        -> return $ ShowPlan SStreams
@@ -115,29 +126,32 @@ hstreamCodegen = \case
   RQDrop (RDropIf RDropView x)       -> return $ DropPlan True (DView x)
   RQTerminate (RTerminateQuery qid)  -> return $ TerminatePlan (OneQuery $ T.pack qid)
   RQTerminate RTerminateAll          -> return $ TerminatePlan AllQueries
-  RQSelectView rSelectView           -> return $ SelectViewPlan rSelectView
+  --RQSelectView rSelectView           -> return $ SelectViewPlan rSelectView
   RQExplain rexplain                 -> return $ ExplainPlan rexplain
   RQPause (RPauseConnector name)     -> return $ PausePlan (PauseObjectConnector name)
   RQResume (RResumeConnector name)   -> return $ ResumePlan (ResumeObjectConnector name)
--}
+
 --------------------------------------------------------------------------------
+elab :: Text -> IO HStreamPlan
+elab sql = do
+  ast <- parseAndRefine sql
+  case ast of
+    RQSelect sel -> do
+      let subgraph = Subgraph 0
+      let (startBuilder, _) = addSubgraph emptyGraphBuilder subgraph
+      (endBuilder, ins, out) <- elabRSelect sel startBuilder subgraph
+      return $ SelectPlan ins out endBuilder
+    _ -> undefined
 
-extractInt :: String -> Maybe Constant -> Int
-extractInt errPrefix = \case
-  Just (ConstantInt s) -> s;
-  _ -> throwSQLException CodegenException Nothing $ errPrefix <> "type should be integer."
-
-----
 
 --------------------------------------------------------------------------------
 data In = In
   { inNode :: Node
   , inStream :: Text
   , inWindow :: Maybe WindowType
-  }
+  } deriving (Eq, Show)
 
-newtype Out = Out { outNode :: Node }
-
+newtype Out = Out { outNode :: Node } deriving (Eq, Show)
 
 elabRSelect :: RSelect
             -> GraphBuilder Row
@@ -148,7 +162,8 @@ elabRSelect (RSelect sel frm whr grp hav) startBuilder subgraph = do
   (builder_2, ins2, Out node_where) <- elabRWhere whr grp builder_1 subgraph node_from Nothing
   (builder_3, ins3, Out node_select) <- elabRSel sel grp builder_2 subgraph node_where Nothing
   (builder_4, ins4, Out node_hav) <- elabRHaving hav grp builder_3 subgraph node_select Nothing
-  return (builder_4, L.nub (ins1++ins2++ins3++ins4), Out node_hav)
+  let (builder_5, node_out) = addNode builder_4 subgraph (OutputSpec node_hav)
+  return (builder_5, L.nub (ins1++ins2++ins3++ins4), Out node_out)
 
 elabRValueExpr :: RValueExpr
                -> RGroupBy
@@ -173,7 +188,8 @@ elabRValueExpr expr grp startBuilder subgraph startNode startStream_m = case exp
                 return (curBuilder, L.nub (accIns++curIns), curOut:accOuts)
             ) (startBuilder, [], []) es
     let composer = Composer $ \os ->
-                     HM.fromList [(SKey (T.pack name) startStream_m Nothing, FlowArray (HM.elems <$> os))]
+                     let vs = L.map (snd . L.head . HM.toList) os
+                      in HM.fromList [(SKey (T.pack name) startStream_m Nothing, FlowArray vs)]
     let (builder2, node) = addNode builder1 subgraph (ComposeSpec (outNode <$> outs) composer)
     return (builder2, ins, Out node)
   RExprMap name emap -> do
@@ -189,14 +205,15 @@ elabRValueExpr expr grp startBuilder subgraph startNode startStream_m = case exp
                         (kOut,vOut):accOuts)
             ) (startBuilder, [], []) (Map.assocs emap)
     let composer = Composer $ \os ->
-                     HM.fromList [(SKey (T.pack name) startStream_m Nothing, FlowMap (mkMap (HM.elems <$> os)))]
+                     let vs = L.map (snd . L.head . HM.toList ) os
+                      in HM.fromList [(SKey (T.pack name) startStream_m Nothing, FlowMap (mkMap vs))]
     let (kOuts,vOuts) = L.unzip outTups
     let (builder2, node) =
           addNode builder1 subgraph (ComposeSpec (outNode <$> (kOuts++vOuts)) composer)
     return (builder2, ins, Out node)
     where
       mkMap :: [FlowValue] -> Map.Map FlowValue FlowValue
-      mkMap xs = let (kxs, vxs) = L.splitAt (L.length xs / 2) xs
+      mkMap xs = let (kxs, vxs) = L.splitAt (L.length xs `div` 2) xs
                   in Map.fromList (L.zip kxs vxs)
   RExprAccessMap name emap ek -> do
     (builder1, ins1, out1) <-
@@ -252,7 +269,7 @@ mkConstantMapper constant startStream_m =
         ConstantTime t -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show t)) startStream_m Nothing, v)]
         ConstantTimestamp ts -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show ts)) startStream_m Nothing, v)]
         ConstantInterval i -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show i)) startStream_m Nothing, v)]
-        ConstantBytea bs -> Mapper $ \_ -> HM.fromList [(SKey (decodeUtf8 bs) startStream_m Nothing, v)]
+        ConstantBytea bs -> Mapper $ \_ -> HM.fromList [(SKey (cBytesToText bs) startStream_m Nothing, v)]
         ConstantJsonb json -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show json)) startStream_m Nothing, v)]
         ConstantArray arr -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show arr)) startStream_m Nothing, v)]
         ConstantMap m -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show m)) startStream_m Nothing, v)]
