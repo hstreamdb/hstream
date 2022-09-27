@@ -219,36 +219,40 @@ streamingFetchCore ctx SFetchCoreInteractive = \(streamSend, streamRecv) -> do
         Right Nothing -> throwIO $ HE.StreamReadClose "Consumer is closed"
 
 initSub :: ServerContext -> SubscriptionId -> IO (SubscribeContextWrapper, Maybe ThreadId)
-initSub serverCtx@ServerContext {..} subId = do
-  (needInit, SubscribeContextNewWrapper {..}) <- atomically $ do
-    subMap <- readTVar scSubscribeContexts
-    case HM.lookup subId subMap of
-      Nothing -> do
-        wrapper <- SubscribeContextNewWrapper <$> newTVar SubscribeStateNew <*> newEmptyTMVar
-        let newSubMap = HM.insert subId wrapper subMap
-        writeTVar scSubscribeContexts newSubMap
-        return (True, wrapper)
-      Just wrapper@SubscribeContextNewWrapper {..} -> do
-        readTVar scnwState >>= \case
-          SubscribeStateNew     -> retry
-          SubscribeStateRunning -> return (False, wrapper)
-          _                     -> throwSTM $ HE.SubscriptionInvalidError "Invalid Subscription"
-  if needInit
-    then do
-      subCtx <- doSubInit serverCtx subId
-      wrapper@SubscribeContextWrapper{..} <- atomically $ do
-        putTMVar scnwContext subCtx
-        writeTVar scnwState SubscribeStateRunning
-        return SubscribeContextWrapper {scwState = scnwState, scwContext = subCtx}
-      tid <- myThreadId
-      let errHandler = \case
-            Left e  -> throwTo tid e
-            Right _ -> pure ()
-      tid <- forkFinally (sendRecords serverCtx scwState scwContext) errHandler
-      return (wrapper, Just tid)
-    else do
-      mctx <- atomically $ readTMVar scnwContext
-      return (SubscribeContextWrapper {scwState = scnwState, scwContext = mctx}, Nothing)
+initSub serverCtx@ServerContext {..} subId = M.getMeta subId zkHandle >>= \case
+  Nothing -> do
+    Log.fatal $ "subscription " <> Log.buildText subId <> " not exist."
+    throwIO $ HE.SubscriptionNotFound $ "Subscription " <> subId <> " not found"
+  Just SubscriptionWrap{} -> do
+    (needInit, SubscribeContextNewWrapper {..}) <- atomically $ do
+      subMap <- readTVar scSubscribeContexts
+      case HM.lookup subId subMap of
+        Nothing -> do
+          wrapper <- SubscribeContextNewWrapper <$> newTVar SubscribeStateNew <*> newEmptyTMVar
+          let newSubMap = HM.insert subId wrapper subMap
+          writeTVar scSubscribeContexts newSubMap
+          return (True, wrapper)
+        Just wrapper@SubscribeContextNewWrapper {..} -> do
+          readTVar scnwState >>= \case
+            SubscribeStateNew     -> retry
+            SubscribeStateRunning -> return (False, wrapper)
+            _                     -> throwSTM $ HE.SubscriptionInvalidError "Invalid Subscription"
+    if needInit
+      then do
+        subCtx <- doSubInit serverCtx subId
+        wrapper@SubscribeContextWrapper{..} <- atomically $ do
+          putTMVar scnwContext subCtx
+          writeTVar scnwState SubscribeStateRunning
+          return SubscribeContextWrapper {scwState = scnwState, scwContext = subCtx}
+        tid <- myThreadId
+        let errHandler = \case
+              Left e  -> throwTo tid e
+              Right _ -> pure ()
+        tid <- forkFinally (sendRecords serverCtx scwState scwContext) errHandler
+        return (wrapper, Just tid)
+      else do
+        mctx <- atomically $ readTMVar scnwContext
+        return (SubscribeContextWrapper {scwState = scnwState, scwContext = mctx}, Nothing)
 
 -- For each subscriptionId, create ldCkpReader and ldReader, then
 -- add all shards of target stream to SubscribeContext
