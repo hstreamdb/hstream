@@ -211,6 +211,60 @@ jobs:
           path: ~/data/reports.tar
           retention-days: 7
 
+  integration-tests-rqlite:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    name: integration-tests-rqlite
+    strategy:
+      fail-fast: false
+
+    steps:
+      - name: retrieve saved docker image
+        uses: actions/download-artifact@v3
+        with:
+          name: image-testing
+          path: ~/data
+
+      - name: docker load
+        run: docker load -i ~/data/new_hstream_image.tar
+
+      - name: fetch integration tests source code
+        uses: actions/checkout@v2
+        with:
+          repository: "hstreamdb/integration-tests"
+          submodules: "recursive"
+          path: integration-tests
+
+      - uses: actions/setup-java@v2
+        with:
+          distribution: "adopt"
+          java-version: 11
+          cache: "gradle"
+
+      - uses: gradle/wrapper-validation-action@v1
+
+      - name: run integration tests
+        run: |
+          cd integration-tests
+          export HSTREAM_IMAGE_NAME=$NEW_HSTREAM_IMAGE
+          export HSTREAM_META_STORE=RQLITE
+          ./gradlew test --info --fail-fast -Dtag='basicTest'
+
+      - name: tar tests reports
+        if: ${{ success() }} || ${{ failure() }}
+        run: |
+          mv integration-tests/.logs integration-tests/logs
+          mv integration-tests/app/build/reports integration-tests/reports
+          tar -cvf ~/data/reports.tar integration-tests/logs integration-tests/reports
+
+      - name: upload tests-reports
+        uses: actions/upload-artifact@v2
+        if: ${{ success() }} || ${{ failure() }}
+        with:
+          name: integration-tests-rqlite-reports
+          path: ~/data/reports.tar
+          retention-days: 7
+
   distributed-tests:
     needs: build-and-test
     runs-on: ubuntu-latest

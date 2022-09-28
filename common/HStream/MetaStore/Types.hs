@@ -121,10 +121,10 @@ instance MetaMulti RHandle where
     where
       opToR op = case op of
         InsertOp p k v    -> [InsertROp p k v]
-        UpdateOp p k v mv -> let op' = UpdateROp p k v
-                              in maybe [op'] (\version -> [CheckROp p k version, op']) mv
-        DeleteOp p k mv   -> let op' = DeleteROp p k
-                              in maybe [op'] (\version -> [CheckROp p k version, op']) mv
+        UpdateOp p k v mv -> let ops' = [ExistROp p k, UpdateROp p k v]
+                              in maybe ops' (\version -> CheckROp p k version: ops') mv
+        DeleteOp p k mv   -> let ops' = [ExistROp p k, DeleteROp p k]
+                              in maybe ops' (\version -> CheckROp p k version: ops') mv
         CheckOp  p k v    -> [CheckROp p k v]
 
 #define USE_WHICH_HANDLE(handle, action) \

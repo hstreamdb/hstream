@@ -112,6 +112,9 @@ spec = do
       it "Delete from with id" $ \table -> do
         meta@Meta{..} <- generate arbitrary
 
+        putStrLn "Delete non-existing id"
+        deleteFrom m url table metaId Nothing `shouldThrow` anyException
+
         insertInto m url table metaId meta
         selectFrom m url table (Just metaId) `shouldReturn` [meta]
 
@@ -123,10 +126,11 @@ spec = do
         deleteFrom m url table metaId Nothing
         selectFrom m url table (Just metaId) `shouldReturn` ([] :: [MetaExample])
 
+        putStrLn "Delete with version"
+
         insertInto m url table metaId meta
         selectFrom m url table (Just metaId) `shouldReturn` [meta]
 
-        putStrLn "Delete with version"
         deleteFrom m url table metaId (Just 1)
         selectFrom m url table (Just metaId) `shouldReturn` ([] :: [MetaExample])
 
