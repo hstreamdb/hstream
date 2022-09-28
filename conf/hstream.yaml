@@ -26,14 +26,15 @@ hserver:
   #    - address: "127.0.0.1"
   #      port: 6580
 
-  # The server nodes in the same cluster shares a zookeeper server, this is
-  # essential for a server to start.
+  # The server nodes in the same cluster shares a meta store unit
+  # , this is essential for a server to start.
   #
-  # Comma separated host:port pairs, each corresponding to a zk zookeeper server.
-  # e.g. 127.0.0.1:2181,127.0.0.1:2182,127.0.0.1:2183
-  # the value must be given and can be overwritten by cli option `--zkuri`
+  # Use Comma separated host:port pairs, with the storage protocol
+  # e.g. use a zookeeper cluster as meta storage, zk://127.0.0.1:2181,127.0.0.1:2182,127.0.0.1:2183
+  # e.g. use a Rqlite cluster as meta storage, rq://127.0.0.1:4001
+  # the value must be given and can be overwritten by cli option `--metastore-uri`
 
-  meta-store: zk://127.0.0.1:2181
+  metastore-uri: zk://127.0.0.1:2181
 
   connector-meta-store: zk://127.0.0.1:2181
 

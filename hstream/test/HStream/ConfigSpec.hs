@@ -100,7 +100,7 @@ instance ToJSON ServerOpts where
         , "address" .= _serverAddress
         , "internal-port"   .= _serverInternalPort
         , "seed-nodes"      .= showSeedNodes _seedNodes
-        , "meta-store"      .= show _metaStore          --TODO
+        , "metastore-uri"   .= show _metaStore          --TODO
         , "compression"     .= showCompression _compression --TODO
         , "log-level"       .= show _serverLogLevel  --TODO
         , "log-with-color"  .= _serverLogWithColor
