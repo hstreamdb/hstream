@@ -9,6 +9,7 @@ import qualified Data.Text                 as T
 import           GHC.Stack                 (HasCallStack)
 
 import           HStream.IO.Types
+import qualified HStream.IO.Types          as Types
 import           HStream.MetaStore.Types   (MetaHandle, MetaStore (..))
 import qualified HStream.Server.HStreamApi as API
 
@@ -19,7 +20,8 @@ createIOTaskMeta h taskName taskId taskInfo = do
   insertMeta taskName (TaskIdMeta taskId) h
 
 listIOTaskMeta :: MetaHandle -> IO [API.Connector]
-listIOTaskMeta h = map convertTaskMeta <$> listMeta @TaskMeta h
+listIOTaskMeta h = do
+  map convertTaskMeta . filter (\TaskMeta{..} -> taskStateMeta /= DELETED) <$> listMeta @TaskMeta h
 
 getIOTaskMeta :: MetaHandle -> T.Text -> IO (Maybe TaskMeta)
 getIOTaskMeta h tid = getMeta tid h
@@ -36,3 +38,17 @@ deleteIOTaskMeta h name = do
       -- FIXME: use multiops
       deleteMeta @TaskIdMeta name Nothing h
       updateStatusInMeta h tid DELETED
+
+mapKvKey :: T.Text -> T.Text -> T.Text
+mapKvKey taskId key = taskId <> "_" <> key
+
+getTaskKv :: MetaHandle -> T.Text -> T.Text -> IO (Maybe T.Text)
+getTaskKv h taskId key = fmap Types.value <$> getMeta mappedKey h
+  where mappedKey = mapKvKey taskId key
+
+setTaskKv :: MetaHandle -> T.Text -> T.Text -> T.Text -> IO ()
+setTaskKv h taskId key val = do
+  getTaskKv h taskId key >>= \case
+    Nothing -> insertMeta mappedKey (TaskKvMeta val) h
+    Just _  -> updateMeta mappedKey (TaskKvMeta val) Nothing h
+  where mappedKey = mapKvKey taskId key
