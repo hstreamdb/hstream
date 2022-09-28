@@ -1,6 +1,7 @@
 module HStream.MetaStoreSpec where
 import           Control.Monad                    (void)
 import qualified Data.List                        as L
+import qualified Data.Map.Strict                  as Map
 import           Data.Maybe
 import qualified Data.Text                        as T
 import           Network.HTTP.Client              (defaultManagerSettings,
@@ -61,6 +62,7 @@ smokeTest h = do
       updateMeta metaId newMeta Nothing h
       getMeta @MetaExample metaId h `shouldReturn` Just newMeta
       listMeta @MetaExample h `shouldReturn` [newMeta]
+      getAllMeta @MetaExample h `shouldReturn` Map.singleton metaId newMeta
       deleteMeta @MetaExample metaId Nothing h
       getMeta @MetaExample metaId h `shouldReturn` Nothing
       checkMetaExists @MetaExample metaId h `shouldReturn` False
@@ -88,6 +90,7 @@ smokeTest h = do
       checkMetaExists @MetaExample metaId1 h `shouldReturn` True
       checkMetaExists @MetaExample metaId2 h `shouldReturn` True
       L.sort <$> listMeta @MetaExample h `shouldReturn` L.sort [meta1, meta2]
+      getAllMeta @MetaExample h `shouldReturn` Map.fromList [(metaId1, meta1), (metaId2, meta2)]
       metaMulti opUpdateFail h `shouldThrow` anyException
       getMeta @MetaExample metaId1 h `shouldReturn` Just meta1
       getMeta @MetaExample metaId2 h `shouldReturn` Just meta2
@@ -95,11 +98,13 @@ smokeTest h = do
       getMeta @MetaExample metaId1 h `shouldReturn` Just newMeta1
       getMeta @MetaExample metaId2 h `shouldReturn` Just newMeta2
       L.sort <$> listMeta @MetaExample h `shouldReturn` L.sort [newMeta1, newMeta2]
+      getAllMeta @MetaExample h `shouldReturn` Map.fromList [(metaId1, newMeta1), (metaId2, newMeta2)]
       metaMulti opDelete h
       checkMetaExists @MetaExample metaId1 h `shouldReturn` False
       checkMetaExists @MetaExample metaId2 h `shouldReturn` False
       getMeta @MetaExample metaId1 h `shouldReturn` Nothing
       getMeta @MetaExample metaId2 h `shouldReturn` Nothing
       listMeta @MetaExample h `shouldReturn` []
+      getAllMeta @MetaExample h `shouldReturn` mempty
 
     -- TODO: add test for Exceptions
