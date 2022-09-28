@@ -14,18 +14,18 @@ spec = describe "Create" $ do
 
   it "create stream without option, alias or SELECT clause" $ do
     parseAndRefine "CREATE STREAM foo;"
-      `shouldReturn` RQCreate (RCreate "foo" (RStreamOptions { rRepFactor = 3 }))
+      `shouldReturn` RQCreate (RCreate "foo" (RStreamOptions { rRepFactor = 1 }))
 
   it "bnfc example 0" $ do
     parseAndRefine "SELECT * FROM temperatureSource EMIT CHANGES;"
       `shouldReturn` RQSelect (RSelect RSelAsterisk (RFrom [RTableRefSimple "temperatureSource" Nothing]) RWhereEmpty RGroupByEmpty RHavingEmpty)
     parseAndRefine "CREATE STREAM abnormal_weather AS SELECT * FROM weather WHERE temperature > 30 AND humidity > 80 EMIT CHANGES;"
-      `shouldReturn` RQCreate (RCreateAs "abnormal_weather" (RSelect RSelAsterisk (RFrom [RTableRefSimple "weather" Nothing]) (RWhere (RCondAnd (RCondOp RCompOpGT (RExprCol "temperature" Nothing "temperature") (RExprConst "30" (ConstantInt 30))) (RCondOp RCompOpGT (RExprCol "humidity" Nothing "humidity") (RExprConst "80" (ConstantInt 80))))) RGroupByEmpty RHavingEmpty) (RStreamOptions {rRepFactor = 3}))
+      `shouldReturn` RQCreate (RCreateAs "abnormal_weather" (RSelect RSelAsterisk (RFrom [RTableRefSimple "weather" Nothing]) (RWhere (RCondAnd (RCondOp RCompOpGT (RExprCol "temperature" Nothing "temperature") (RExprConst "30" (ConstantInt 30))) (RCondOp RCompOpGT (RExprCol "humidity" Nothing "humidity") (RExprConst "80" (ConstantInt 80))))) RGroupByEmpty RHavingEmpty) (RStreamOptions {rRepFactor = 1}))
 
   it "bnfc example 1" $ do
     parseAndRefine
       "CREATE STREAM demoStream ;" `shouldReturn`
-        RQCreate (RCreate "demoStream" (RStreamOptions {rRepFactor = 3}))
+        RQCreate (RCreate "demoStream" (RStreamOptions {rRepFactor = 1}))
 
   -- #TODO: enable it when 'FORMAT' is available
   -- it "bnfc example 2" $ do parseAndRefine
