@@ -35,12 +35,13 @@ data ROp
   | InsertROp TableName Id EncodedValue
   | UpdateROp TableName Id EncodedValue
   | DeleteROp TableName Id
+  | ExistROp  TableName Id
 
 createTable :: H.Manager -> Url -> TableName -> IO ()
 createTable manager uri tableName = do
   let table = T.encodeUtf8 tableName
   let stmt = wrapStmt $ "\"CREATE TABLE " <> table
-          <> " (id TEXT NOT NULL PRIMARY KEY, value TEXT, version INTEGER)\""
+          <> " (id TEXT NOT NULL PRIMARY KEY, value TEXT NOT NULL, version INTEGER)\""
   debug stmt
   httpExecute manager uri stmt False mempty
 
@@ -57,17 +58,31 @@ insertInto manager uri t i value = do
   debug stmt
   httpExecute manager uri stmt True (i <> "@" <> t)
 
+updateSetIfExists :: ToJSON a => H.Manager -> Url -> TableName -> Id -> a -> Maybe Version -> IO ()
+updateSetIfExists manager uri t i value ver = do
+  let stmt = wrapStmt $ wrapStmts $ mkUpdateStmt t i (BL.toStrict $ A.encode value) ver
+  debug stmt
+  httpExecute manager uri stmt True (i <> "@" <> t)
+
 updateSet :: ToJSON a => H.Manager -> Url -> TableName -> Id -> a -> Maybe Version -> IO ()
-updateSet manager uri t i value v = do
-  let stmt = wrapStmt $ wrapStmts $ mkUpdateStmt t i (BL.toStrict $ A.encode value) v
+updateSet manager uri t i v ver = transaction manager uri $
+  ExistROp t i : case ver of
+    Nothing   -> [op]
+    Just ver' -> [CheckROp t i ver', op]
+  where
+    op = UpdateROp t i (BL.toStrict $ A.encode v)
+
+deleteFromIfExists :: H.Manager -> Url -> TableName -> Id -> Maybe Version -> IO ()
+deleteFromIfExists manager uri t i v = do
+  let stmt = wrapStmt $ wrapStmts $  mkDeleteStmt t i v
   debug stmt
   httpExecute manager uri stmt True (i <> "@" <> t)
 
 deleteFrom :: H.Manager -> Url -> TableName -> Id -> Maybe Version -> IO ()
-deleteFrom manager uri t i v = do
-  let stmt = wrapStmt $ wrapStmts $  mkDeleteStmt t i v
-  debug stmt
-  httpExecute manager uri stmt True (i <> "@" <> t)
+deleteFrom manager uri t i ver = transaction manager uri $
+  ExistROp t i : case ver of
+    Nothing   -> [DeleteROp t i]
+    Just ver' -> [CheckROp t i ver', DeleteROp t i]
 
 selectFrom :: FromJSON a => H.Manager -> Url -> TableName -> Maybe Id -> IO [a]
 selectFrom manager uri table i = catchHttpException $ do
@@ -104,17 +119,18 @@ transaction manager uri ops = do
   let results = getResults bsl
   debug results
   forM_ results $ \case
-    Err e  -> throwRqHttpErrMsg e
+    Err e  -> throwRqHttpErrMsg e ""
     Ok _ _ -> pure ()
 
 --------------------------------------------------------------------------------
 -- Utils
 
 rOp2Stmt :: ROp -> Statement
-rOp2Stmt (CheckROp  t i v) = wrapStmts $ mkCheckStmt t i v
+rOp2Stmt (CheckROp  t i v) = wrapStmts $ mkCheckVerStmt t i v
 rOp2Stmt (InsertROp t i v) = wrapStmts $ mkInsertStmt t i v
 rOp2Stmt (UpdateROp t i v) = wrapStmts $ mkUpdateStmt t i v Nothing
 rOp2Stmt (DeleteROp t i)   = wrapStmts $ mkDeleteStmt t i Nothing
+rOp2Stmt (ExistROp t i)    = wrapStmts $ mkCheckExistStmt t i
 
 mkInsertStmt :: TableName -> Id -> EncodedValue -> [Statement]
 mkInsertStmt t i p = [ "\"INSERT INTO " <> T.encodeUtf8 t <> "(id, value, version) VALUES (?, ?, 1)\""
@@ -136,10 +152,18 @@ mkSelectStmtWithKey :: TableName -> Maybe Id -> [Statement]
 mkSelectStmtWithKey t (Just i) = ["\"SELECT value FROM " <> T.encodeUtf8 t <> " WHERE id = ? \"", quotes i]
 mkSelectStmtWithKey t Nothing  = ["\"SELECT value FROM " <> T.encodeUtf8 t <> "\""]
 
-mkCheckStmt :: TableName -> Id -> Version -> [Statement]
-mkCheckStmt t i v = [ "\"INSERT INTO " <> T.encodeUtf8 t <> "(id, version) "
-                 <> "SELECT id, version FROM "<> T.encodeUtf8 t
-                 <> " WHERE (NOT version = ?) AND id = ?;\"" , quotes v, quotes i]
+mkCheckVerStmt :: TableName -> Id -> Version -> [Statement]
+mkCheckVerStmt t i v = [ "\"INSERT INTO " <> T.encodeUtf8 t
+                     <> " SELECT id, NULL, version FROM " <> T.encodeUtf8 t
+                     <> " WHERE (NOT version = ?) AND id = ?; \""
+                     , quotes v, quotes i]
+
+mkCheckExistStmt :: TableName -> Id -> [Statement]
+mkCheckExistStmt t i = [ "\"INSERT INTO " <> T.encodeUtf8 t
+                     <> " SELECT id, NULL, version FROM " <> T.encodeUtf8 t
+                     <> " WHERE NOT EXISTS"
+                     <> "(SELECT id FROM " <> T.encodeUtf8 t <> " WHERE id = ?) LIMIT 1;\""
+                     ,  quotes i]
 
 wrapStmts :: [ByteString] -> ByteString
 wrapStmts bss = "[" <> BS.intercalate (BSC.singleton ',') bss <> "]"
@@ -201,14 +225,14 @@ getRqResult bsl requireResults msg = case getResults bsl of
     Ok 0 _ -> when requireResults . throwIO . RQLiteRowNotFound $ T.unpack msg
     Ok 1 _ -> pure ()
     Ok _ _ -> throwIO $ RQLiteUnspecifiedErr "more rows are affected"
-    Err e  -> throwRqHttpErrMsg e
+    Err e  -> throwRqHttpErrMsg e msg
   _ -> throwIO $ RQLiteUnspecifiedErr "No result in response from rqlite server"
 
 getRqSelectValues :: BL.ByteString -> IO [TL.Text]
 getRqSelectValues bsl = case getResults bsl of
   x:_ -> case x of
     Ok _ vs -> pure $ concat vs
-    Err e   -> throwRqHttpErrMsg e
+    Err e   -> throwRqHttpErrMsg e ""
   _ -> throwIO $ RQLiteUnspecifiedErr "No result in response from rqlite server"
 
 catchHttpException :: IO a -> IO a
@@ -221,22 +245,20 @@ catchHttpException io = returnRes =<< try io
     H.HttpExceptionRequest _ content -> throwIO $ RQLiteNetworkErr (show content)
     H.InvalidUrlException url reason -> throwIO $ RQLiteNetworkErr $ "Invalid uri: " <> url <> " " <> reason
 
-throwRqHttpErrMsg :: T.Text -> IO a
-throwRqHttpErrMsg txt = do
+throwRqHttpErrMsg :: T.Text -> T.Text -> IO a
+throwRqHttpErrMsg txt msg = do
   case AT.parseOnly parser1 txt of
-    Right e -> throwIO e
-    Left _  -> case AT.parseOnly parser2 txt of
-      Right e -> throwIO e
-      Left _  -> case AT.parseOnly parser3 txt of
-        Right e -> throwIO e
-        Left _  -> throwIO $ RQLiteUnspecifiedErr $ T.unpack txt
+    Right e -> throwIO e; Left _  -> case AT.parseOnly parser2 txt of
+      Right e -> throwIO e; Left _  -> case AT.parseOnly parser3 txt of
+        Right e -> throwIO e; Left _  -> case AT.parseOnly parser4 txt of
+          Right e -> throwIO e; Left _  -> throwIO $ RQLiteUnspecifiedErr $ T.unpack txt
   where
     parser1 = RQLiteTableNotFound . T.unpack <$> AT.string tableNotFound <* AT.takeText
     parser2 = RQLiteRowAlreadyExists . T.unpack <$> AT.string rowExists <* AT.takeText
     parser3 = RQLiteTableAlreadyExists . T.unpack <$  AT.string "table "
-                                                    <*> AT.takeTill (== ' ')
-                                                    <*  AT.string " already exists"
-
+                                                  <*> AT.takeTill (== ' ')
+                                                  <*  AT.string " already exists"
+    parser4 = RQLiteRowNotFound . T.unpack <$ AT.string rowNotFound <*> pure msg
 --------------------------------------------------------------------------------
 
 debug :: Show a => a -> IO ()
@@ -247,3 +269,6 @@ tableNotFound = "not such table:"
 
 rowExists :: T.Text
 rowExists = "UNIQUE constraint failed:"
+
+rowNotFound :: T.Text
+rowNotFound = "NOT NULL constraint failed:"
