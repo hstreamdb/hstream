@@ -214,7 +214,7 @@ jobs:
   integration-tests-rqlite:
     needs: build-and-test
     runs-on: ubuntu-latest
-    name: integration-tests
+    name: integration-tests-rqlite
     strategy:
       fail-fast: false
 
