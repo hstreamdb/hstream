@@ -26,8 +26,8 @@ import           HStream.MetaStore.Types   (MetaHandle (..))
 import qualified HStream.Server.HStreamApi as API
 import qualified HStream.SQL.Codegen       as CG
 
-newWorker :: MetaHandle -> ConnectorMetaConfig -> HStreamConfig -> IOOptions -> (T.Text -> IO Bool) -> IO Worker
-newWorker mHandle connectorMetaCfg hsConfig options checkNode = do
+newWorker :: MetaHandle -> HStreamConfig -> IOOptions -> (T.Text -> IO Bool) -> IO Worker
+newWorker mHandle hsConfig options checkNode = do
   Log.info $ "new Worker with hsConfig:" <> Log.buildString (show hsConfig)
   ioTasksM <- C.newMVar HM.empty
   monitorTid <- newIORef undefined
@@ -68,7 +68,6 @@ createIOTaskFromSql worker@Worker{..} sql = do
       connectorConfig =
         J.object
           [ "hstream" J..= toTaskJson hsConfig taskId
-          , "kv" J..= toTaskJson connectorMetaCfg taskId
           , "connector" J..= cfg
           ]
       taskInfo = TaskInfo
