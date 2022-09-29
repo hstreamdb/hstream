@@ -35,8 +35,9 @@ import           Proto3.Suite.Class               (def)
 import           HStream.Client.Utils
 import           HStream.Server.HStreamApi
 import qualified HStream.Server.HStreamApi        as API
+import           HStream.SQL.AST                  (StreamName)
 import           HStream.SQL.Codegen              (DropObject (..),
-                                                   InsertType (..), StreamName,
+                                                   InsertType (..),
                                                    TerminationSelection (..))
 import           HStream.ThirdParty.Protobuf      (Empty (..))
 import           HStream.Utils

@@ -15,6 +15,7 @@ import qualified Data.HashMap.Strict   as HM
 import           Data.Kind             (Type)
 import qualified Data.List             as L
 import qualified Data.Map.Strict       as Map
+import qualified Data.Vector as V
 import           Data.Text             (Text)
 import qualified Data.Text             as Text
 import           Data.Text.Encoding    (encodeUtf8, decodeUtf8)
@@ -26,24 +27,21 @@ import           HStream.SQL.Exception (SomeSQLException (..),
 import           HStream.SQL.Extra     (extractPNDouble, extractPNInteger,
                                         trimSpacesPrint)
 import           HStream.SQL.Print     (printTree)
-import Data.Scientific
+import qualified Data.Scientific as Scientific
 import Data.Hashable
 import GHC.Generics
-
 import Data.Time.Compat ()
 import           Z.Data.CBytes           (CBytes)
-import HStream.Utils ()
+import HStream.Utils (cBytesToText)
+import qualified HStream.Utils.Aeson as HsAeson
 
-import qualified HStream.ThirdParty.Protobuf as PB
-import           Proto3.Suite              (Enumerated (Enumerated))
-
---------------------------------------------------------------------------------
+----------------------------- Refinement Main class ----------------------------
 type family RefinedType a :: Type
 
 class Refine a where
   refine :: HasCallStack => a -> RefinedType a
 
---------------------------------------------------------------------------------
+--------------------------- Processing runtime types ---------------------------
 type FlowObject = HM.HashMap SKey FlowValue
 
 data SKey = SKey
@@ -52,16 +50,11 @@ data SKey = SKey
   , keyExtra_m :: Maybe Text
   } deriving (Show, Eq, Ord, Generic, Hashable)
 
-instance Aeson.FromJSONKey SKey
-instance Aeson.FromJSON SKey
-instance Aeson.ToJSONKey SKey
-instance Aeson.ToJSON SKey
-
 data FlowValue
   = FlowNull
   | FlowInt Int
   | FlowFloat Double
-  | FlowNumeral Scientific
+  | FlowNumeral Scientific.Scientific
   | FlowBoolean Bool
   | FlowByte CBytes
   | FlowText Text
@@ -74,17 +67,49 @@ data FlowValue
   | FlowMap (Map.Map FlowValue FlowValue)
   deriving (Eq, Show, Ord, Generic, Hashable)
 
-instance Aeson.FromJSONKey FlowValue
-instance Aeson.FromJSON FlowValue
-instance Aeson.ToJSONKey FlowValue
-instance Aeson.ToJSON FlowValue
+flowValueToJsonValue :: FlowValue -> Aeson.Value
+flowValueToJsonValue flowValue = case flowValue of
+  FlowNull -> Aeson.Null
+  FlowInt n -> Aeson.Number (fromIntegral n)
+  FlowFloat n -> Aeson.Number (Scientific.fromFloatDigits n)
+  FlowNumeral n -> Aeson.Number n
+  FlowBoolean b -> Aeson.Bool b
+  FlowByte bs -> Aeson.String (cBytesToText bs)
+  FlowText t -> Aeson.String t
+  FlowDate d -> Aeson.String (Text.pack . show $ d)
+  FlowTime t -> Aeson.String (Text.pack . show $ t)
+  FlowTimestamp ts -> Aeson.String (Text.pack . show $ ts)
+  FlowInterval i -> Aeson.String (Text.pack . show $ i)
+  FlowJson object -> Aeson.Object object
+  FlowArray vs -> Aeson.Array (V.fromList $ flowValueToJsonValue <$> vs)
+  FlowMap m ->
+    let l = L.map (\(k,v) -> (Text.pack (show k), flowValueToJsonValue v)) (Map.toList m)
+     in Aeson.Object (HsAeson.fromList l)
 
-{-
-flowValueToPBValue :: FlowValue -> PB.Value
-flowValueToPBValue FlowNull = V $ PB.ValueKindNullValue   (Enumerated $ Right PB.NullValueNULL_VALUE)
-flowValueToPBValue
--}
---------------------------------------------------------------------------------
+jsonValueToFlowValue :: Aeson.Value -> FlowValue
+jsonValueToFlowValue v = case v of
+  Aeson.Null -> FlowNull
+  Aeson.Number n -> FlowNumeral n
+  Aeson.String t -> FlowText t
+  Aeson.Bool b -> FlowBoolean b
+  Aeson.Array v -> FlowArray (jsonValueToFlowValue <$> (V.toList v))
+  Aeson.Object o ->
+    let list = HsAeson.toList o
+        list' = L.map (\(k,v) -> (FlowText k, jsonValueToFlowValue v)) list
+     in FlowMap (Map.fromList list')
+
+flowObjectToJsonObject :: FlowObject -> Aeson.Object
+flowObjectToJsonObject hm =
+  let list = L.map (\(SKey k _ _, v) ->
+                      (k, flowValueToJsonValue v)
+                   ) (HM.toList hm)
+   in HsAeson.fromList list
+
+jsonObjectToFlowObject :: Aeson.Object -> FlowObject
+jsonObjectToFlowObject object =
+  HM.mapKeys (\k -> SKey k Nothing Nothing) (HM.map jsonValueToFlowValue object)
+
+----------------------------- Refinement details -------------------------------
 
 data RDataType
   = RTypeInteger | RTypeFloat | RTypeNumeric | RTypeBoolean
@@ -241,12 +266,12 @@ data Constant = ConstantNull
               | ConstantMap       (Map.Map Constant Constant)
               deriving (Show, Eq, Ord)
 
-constantToValue :: Constant -> FlowValue
-constantToValue constant = case constant of
+constantToFlowValue :: Constant -> FlowValue
+constantToFlowValue constant = case constant of
   ConstantNull -> FlowNull
   ConstantInt n -> FlowInt n
   ConstantFloat n -> FlowFloat n
-  ConstantNumeric n -> FlowNumeral (fromFloatDigits n)
+  ConstantNumeric n -> FlowNumeral (Scientific.fromFloatDigits n)
   ConstantText t -> FlowText t
   ConstantBoolean b -> FlowBoolean b
   ConstantDate d -> FlowDate d
@@ -255,8 +280,8 @@ constantToValue constant = case constant of
   ConstantInterval i -> FlowInterval i
   ConstantBytea bs -> FlowByte bs
   ConstantJsonb json -> FlowJson json
-  ConstantArray arr -> FlowArray (constantToValue <$> arr)
-  ConstantMap m -> FlowMap (Map.mapKeys constantToValue (Map.map constantToValue m))
+  ConstantArray arr -> FlowArray (constantToFlowValue <$> arr)
+  ConstantMap m -> FlowMap (Map.mapKeys constantToFlowValue (Map.map constantToFlowValue m))
 
 instance Aeson.ToJSONKey Constant where
   toJSONKey = Aeson.toJSONKeyText (Text.pack . show)
@@ -576,7 +601,7 @@ instance Refine TableRef where
     where extractStreamNameFromColName col = case col of
             ColNameSimple _ (Ident t) -> t
             ColNameRaw _ raw -> refine raw
-            ColNameStream pos _ _ -> throwSQLException RefineException pos "Impossible happened"
+            ColNameStream pos _ _ -> throwImpossible
   refine (TableRefTumbling _ ref interval) = RTableRefWindowed (refine ref) (Tumbling (refine interval)) Nothing
   refine (TableRefHopping _ ref len hop) = RTableRefWindowed (refine ref) (Hopping (refine len) (refine hop)) Nothing
   refine (TableRefSliding _ ref interval) = RTableRefWindowed (refine ref) (Sliding (refine interval)) Nothing
@@ -631,8 +656,7 @@ instance Refine Explain where
   refine (ExplainCreate _ create@(CreateAs{}))   = Text.pack (printTree create) <> ";"
   refine (ExplainCreate _ create@(CreateAsOp{})) = Text.pack (printTree create) <> ";"
   refine (ExplainCreate _ create@(CreateView{})) = Text.pack (printTree create) <> ";"
-  refine (ExplainCreate pos _)                   =
-    throwSQLException RefineException pos "Impossible happened"
+  refine (ExplainCreate pos _)                   = throwImpossible
 
 ---- CREATE
 data RStreamOptions = RStreamOptions

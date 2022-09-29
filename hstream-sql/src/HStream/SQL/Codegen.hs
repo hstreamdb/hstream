@@ -11,7 +11,7 @@
 module HStream.SQL.Codegen where
 
 import           Data.Aeson                   (Object,
-                                               Value (Bool, Null, Number, String))
+                                               Value (..))
 import qualified Data.Aeson                   as Aeson
 import           Data.Bifunctor
 import           Data.Function
@@ -31,23 +31,24 @@ import           RIO
 import qualified RIO.ByteString.Lazy          as BL
 import qualified Z.Data.CBytes                as CB
 
-import           HStream.SQL.AST              hiding (StreamName)
+import           HStream.SQL.AST
 import           HStream.SQL.Exception        (SomeSQLException (..),
                                                throwSQLException)
 import           HStream.SQL.Internal.Codegen
 import           HStream.SQL.Parse            (parseAndRefine)
 import           HStream.Utils                (genUnique, jsonObjectToStruct,
                                                cBytesToText)
+import qualified HStream.Utils.Aeson as HsAeson
 
 import           DiffFlow.Graph
 import           DiffFlow.Types
+
 --------------------------------------------------------------------------------
 type Row = FlowObject
 
 type SerMat  = Object
 type SerPipe = BL.ByteString
 
-type StreamName = T.Text
 type ViewName = T.Text
 type ConnectorName  = T.Text
 type CheckIfExist  = Bool
@@ -77,7 +78,6 @@ data HStreamPlan
   | SelectPlan [In] Out (GraphBuilder Row)
   | CreateBySelectPlan  [In] Out (GraphBuilder Row) Int -- FIXME
   | CreateViewPlan      [In] Out (GraphBuilder Row) (MVar (DataChangeBatch Row Int64)) -- FIXME
-
 
 --------------------------------------------------------------------------------
 
@@ -109,8 +109,8 @@ hstreamCodegen = \case
   RQCreate (RCreateConnector cType cName cTarget ifNotExist (RConnectorOptions cOptions)) ->
     return $ CreateConnectorPlan cType cName cTarget ifNotExist cOptions
   RQInsert (RInsert stream tuples)   -> do
-    let flowObj = HM.fromList $ second constantToValue <$> tuples
-    let jsonObj = HM.map Aeson.toJSON flowObj
+    let jsonObj = HsAeson.fromList $
+          second (flowValueToJsonValue . constantToFlowValue) <$> tuples
     return $ InsertPlan stream JsonFormat (BL.toStrict . PB.toLazyByteString . jsonObjectToStruct $ jsonObj)
   RQInsert (RInsertBinary stream bs) -> return $ InsertPlan stream RawFormat  bs
   RQInsert (RInsertJSON stream bs)   -> return $ InsertPlan stream JsonFormat (BL.toStrict . PB.toLazyByteString . jsonObjectToStruct . fromJust $ Aeson.decode (BL.fromStrict bs))
@@ -257,7 +257,7 @@ elabRValueExpr expr grp startBuilder subgraph startNode startStream_m = case exp
 
 mkConstantMapper :: Constant -> Maybe Text -> Mapper Row
 mkConstantMapper constant startStream_m =
-  let v = constantToValue constant
+  let v = constantToFlowValue constant
    in case constant of
         ConstantNull -> Mapper $ \_ -> HM.fromList [(SKey "null" startStream_m Nothing, v)]
         ConstantInt n -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show n)) startStream_m Nothing, v)]
