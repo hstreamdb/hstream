@@ -74,6 +74,12 @@ updateSet manager uri t i v ver = transaction manager uri $
   where
     op = UpdateROp t i (BL.toStrict $ A.encode v)
 
+upsert :: ToJSON a => H.Manager -> Url -> TableName -> Id -> a -> IO ()
+upsert manager uri t i value = do
+  let stmt = wrapStmt $ wrapStmts $ mkUpsertStmt t i (BL.toStrict $ A.encode value)
+  debug stmt
+  httpExecute manager uri stmt True (i <> "@" <> t)
+
 deleteFromIfExists :: H.Manager -> Url -> TableName -> Id -> Maybe Version -> IO ()
 deleteFromIfExists manager uri t i v = do
   let stmt = wrapStmt $ wrapStmts $  mkDeleteStmt t i v
@@ -137,15 +143,20 @@ rOp2Stmt (ExistROp t i)    = wrapStmts $ mkCheckExistStmt t i
 
 mkInsertStmt :: TableName -> Id -> EncodedValue -> [Statement]
 mkInsertStmt t i p = [ "\"INSERT INTO " <> T.encodeUtf8 t <> "(id, value, version) VALUES (?, ?, 1)\""
-                      , quotes i , quotes p]
+                     , quotes i , quotes p]
+
+mkUpsertStmt :: TableName -> Id -> EncodedValue -> [Statement]
+mkUpsertStmt t i p = [ "\"INSERT INTO " <> T.encodeUtf8 t <> "(id, value, version) VALUES (?, ?, 1) "
+                    <> "ON CONFLICT (id) DO UPDATE SET version = version + 1, value = excluded.value \""
+                     , quotes i , quotes p]
 
 mkUpdateStmt :: TableName -> Id -> EncodedValue -> Maybe Version -> [Statement]
 mkUpdateStmt t i p (Just v) = [ "\"UPDATE " <> T.encodeUtf8 t <> " SET value = ? , version = version + 1 "
-                                                 <> "WHERE id = ? AND version = ? \""
-                             , quotes p , quotes i, quotes v]
+                                            <> "WHERE id = ? AND version = ? \""
+                              , quotes p , quotes i, quotes v]
 mkUpdateStmt t i p Nothing  =  [ "\"UPDATE " <> T.encodeUtf8 t <> " SET value = ? , version = version + 1 "
-                                                 <> "WHERE id = ? \""
-                              , quotes p , quotes i]
+                                             <> "WHERE id = ? \""
+                               , quotes p , quotes i]
 
 mkDeleteStmt :: TableName -> Id -> Maybe Version -> [Statement]
 mkDeleteStmt t i (Just v) = [ "\"DELETE FROM " <> T.encodeUtf8 t <> " WHERE id = ? AND version = ? \"", quotes i, quotes v]
@@ -157,16 +168,16 @@ mkSelectStmtWithKey t Nothing  = ["\"SELECT id, value FROM " <> T.encodeUtf8 t <
 
 mkCheckVerStmt :: TableName -> Id -> Version -> [Statement]
 mkCheckVerStmt t i v = [ "\"INSERT INTO " <> T.encodeUtf8 t
-                     <> " SELECT id, NULL, version FROM " <> T.encodeUtf8 t
-                     <> " WHERE (NOT version = ?) AND id = ?; \""
-                     , quotes v, quotes i]
+                      <> " SELECT id, NULL, version FROM " <> T.encodeUtf8 t
+                      <> " WHERE (NOT version = ?) AND id = ?; \""
+                       , quotes v, quotes i]
 
 mkCheckExistStmt :: TableName -> Id -> [Statement]
 mkCheckExistStmt t i = [ "\"INSERT INTO " <> T.encodeUtf8 t
-                     <> " SELECT id, NULL, version FROM " <> T.encodeUtf8 t
-                     <> " WHERE NOT EXISTS"
-                     <> "(SELECT id FROM " <> T.encodeUtf8 t <> " WHERE id = ?) LIMIT 1;\""
-                     ,  quotes i]
+                      <> " SELECT id, NULL, version FROM " <> T.encodeUtf8 t
+                      <> " WHERE NOT EXISTS"
+                      <> "(SELECT id FROM " <> T.encodeUtf8 t <> " WHERE id = ?) LIMIT 1;\""
+                       , quotes i]
 
 wrapStmts :: [ByteString] -> ByteString
 wrapStmts bss = "[" <> BS.intercalate (BSC.singleton ',') bss <> "]"

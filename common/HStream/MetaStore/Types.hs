@@ -29,10 +29,12 @@ import           ZooKeeper.Types                  (ZHandle)
 
 import           HStream.MetaStore.RqliteUtils    (ROp (..), deleteFrom,
                                                    insertInto, selectFrom,
-                                                   transaction, updateSet)
+                                                   transaction, updateSet,
+                                                   upsert)
 import           HStream.MetaStore.ZookeeperUtils (createInsertZK,
                                                    decodeZNodeValue,
-                                                   deleteZKPath, setZkData)
+                                                   deleteZKPath, setZkData,
+                                                   upsertZkData)
 import           HStream.Utils                    (cBytesToText, textToCBytes)
 
 type Key = T.Text
@@ -62,6 +64,7 @@ class MetaStore value handle where
   myPath     :: HasPath value handle => T.Text -> T.Text
   insertMeta :: (HasPath value handle, HasCallStack) => Key -> value -> handle -> IO ()
   updateMeta :: (HasPath value handle, HasCallStack) => Key -> value -> Maybe Version -> handle -> IO ()
+  upsertMeta  :: (HasPath value handle, HasCallStack) => Key -> value -> handle -> IO ()
   deleteMeta :: (HasPath value handle, HasCallStack) => Key -> Maybe Version -> handle  -> IO ()
   listMeta   :: (HasPath value handle, HasCallStack) => handle -> IO [value]
   getMeta    :: (HasPath value handle, HasCallStack) => Key -> handle -> IO (Maybe value)
@@ -88,6 +91,7 @@ instance MetaStore value ZHandle where
   myPath mid = myRootPath @value @ZHandle <> "/" <> mid
   insertMeta mid x zk    = createInsertZK zk (myPath @value @ZHandle mid) x
   updateMeta mid x mv zk = setZkData      zk (myPath @value @ZHandle mid) x mv
+  upsertMeta mid x zk    = upsertZkData   zk (myPath @value @ZHandle mid) x
   deleteMeta mid   mv zk = deleteZKPath   zk (myPath @value @ZHandle mid) mv
   checkMetaExists mid zk = isJust <$> Z.zooExists zk (textToCBytes (myPath @value @ZHandle mid))
   getMeta mid zk = decodeZNodeValue zk (myPath @value @ZHandle mid)
@@ -116,6 +120,7 @@ instance MetaStore value RHandle where
   myPath _ = myRootPath @value @RHandle
   insertMeta mid x    (RHandle m url) = insertInto m url (myRootPath @value @RHandle) mid x
   updateMeta mid x mv (RHandle m url) = updateSet  m url (myRootPath @value @RHandle) mid x mv
+  upsertMeta mid x    (RHandle m url) = upsert     m url (myRootPath @value @RHandle) mid x
   deleteMeta mid   mv (RHandle m url) = deleteFrom m url (myRootPath @value @RHandle) mid mv
   checkMetaExists mid (RHandle m url) = selectFrom @value m url (myRootPath @value @RHandle) (Just mid)
                                         <&> not . Map.null
@@ -148,6 +153,7 @@ instance (HasPath value ZHandle, HasPath value RHandle) => MetaStore value MetaH
   listMeta            h = USE_WHICH_HANDLE(h, listMeta @value)
   insertMeta mid x    h = USE_WHICH_HANDLE(h, insertMeta mid x)
   updateMeta mid x mv h = USE_WHICH_HANDLE(h, updateMeta mid x mv)
+  upsertMeta mid x    h = USE_WHICH_HANDLE(h, upsertMeta mid x)
   deleteMeta mid   mv h = USE_WHICH_HANDLE(h, deleteMeta @value mid mv)
   checkMetaExists mid h = USE_WHICH_HANDLE(h, checkMetaExists @value mid)
   getMeta mid         h = USE_WHICH_HANDLE(h, getMeta @value mid)
