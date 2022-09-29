@@ -1,4 +1,5 @@
-{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE ViewPatterns  #-}
 
 module HStream.MetaStore.RqliteUtils where
 
@@ -12,6 +13,7 @@ import           Data.ByteString         (ByteString)
 import qualified Data.ByteString         as BS
 import qualified Data.ByteString.Char8   as BSC
 import qualified Data.ByteString.Lazy    as BL
+import qualified Data.Map.Strict         as Map
 import           Data.Maybe              (fromMaybe)
 import qualified Data.Text               as T
 import qualified Data.Text.Encoding      as T
@@ -84,7 +86,7 @@ deleteFrom manager uri t i ver = transaction manager uri $
     Nothing   -> [DeleteROp t i]
     Just ver' -> [CheckROp t i ver', DeleteROp t i]
 
-selectFrom :: FromJSON a => H.Manager -> Url -> TableName -> Maybe Id -> IO [a]
+selectFrom :: FromJSON a => H.Manager -> Url -> TableName -> Maybe Id -> IO (Map.Map Id a)
 selectFrom manager uri table i = catchHttpException $ do
   let stmt = wrapStmt $ wrapStmts $ mkSelectStmtWithKey table i
   debug stmt
@@ -97,11 +99,12 @@ selectFrom manager uri table i = catchHttpException $ do
       }
   (H.responseBody -> bsl) <- H.httpLbs req manager
   debug bsl
-  encodedValues <- getRqSelectValues bsl
-  debug encodedValues
-  case mapM (A.decode . TL.encodeUtf8) encodedValues of
-    Nothing -> throwIO . RQLiteDecodeErr . T.unpack . TL.toStrict . TL.concat $ encodedValues
+  ivs <- getRqSelectIdValue bsl
+  debug ivs
+  idValues <- case mapM (\(x, y) -> (TL.toStrict x,) <$> (A.decode . TL.encodeUtf8) y) ivs of
+    Nothing -> throwIO . RQLiteDecodeErr . T.unpack . TL.toStrict . TL.concat . map snd $ ivs
     Just xs -> pure xs
+  pure $ Map.fromList idValues
 
 transaction :: H.Manager -> Url -> [ROp] -> IO ()
 transaction manager uri ops = do
@@ -149,8 +152,8 @@ mkDeleteStmt t i (Just v) = [ "\"DELETE FROM " <> T.encodeUtf8 t <> " WHERE id =
 mkDeleteStmt t i Nothing  = [ "\"DELETE FROM " <> T.encodeUtf8 t <> " WHERE id = ? \"", quotes i]
 
 mkSelectStmtWithKey :: TableName -> Maybe Id -> [Statement]
-mkSelectStmtWithKey t (Just i) = ["\"SELECT value FROM " <> T.encodeUtf8 t <> " WHERE id = ? \"", quotes i]
-mkSelectStmtWithKey t Nothing  = ["\"SELECT value FROM " <> T.encodeUtf8 t <> "\""]
+mkSelectStmtWithKey t (Just i) = ["\"SELECT id, value FROM " <> T.encodeUtf8 t <> " WHERE id = ? \"", quotes i]
+mkSelectStmtWithKey t Nothing  = ["\"SELECT id, value FROM " <> T.encodeUtf8 t <> "\""]
 
 mkCheckVerStmt :: TableName -> Id -> Version -> [Statement]
 mkCheckVerStmt t i v = [ "\"INSERT INTO " <> T.encodeUtf8 t
@@ -228,11 +231,11 @@ getRqResult bsl requireResults msg = case getResults bsl of
     Err e  -> throwRqHttpErrMsg e msg
   _ -> throwIO $ RQLiteUnspecifiedErr "No result in response from rqlite server"
 
-getRqSelectValues :: BL.ByteString -> IO [TL.Text]
-getRqSelectValues bsl = case getResults bsl of
+getRqSelectIdValue :: BL.ByteString -> IO [(TL.Text, TL.Text)]
+getRqSelectIdValue bsl = case getResults bsl of
   x:_ -> case x of
-    Ok _ vs -> pure $ concat vs
-    Err e   -> throwRqHttpErrMsg e ""
+    Ok _ ivs -> pure $ map (\(i:v:_) -> (i, v)) ivs
+    Err e    -> throwRqHttpErrMsg e ""
   _ -> throwIO $ RQLiteUnspecifiedErr "No result in response from rqlite server"
 
 catchHttpException :: IO a -> IO a
