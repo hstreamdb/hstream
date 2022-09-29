@@ -14,8 +14,7 @@ import           Data.Yaml                      (ToJSON (..), Value (..),
 import           Test.Hspec                     (Spec, describe, it, shouldBe)
 import           Test.Hspec.QuickCheck          (prop)
 import           Test.QuickCheck                (Arbitrary, Gen, choose,
-                                                 elements, listOf, listOf1,
-                                                 (==>))
+                                                 elements, listOf, listOf1)
 import           Test.QuickCheck.Arbitrary      (Arbitrary (arbitrary))
 import           Test.QuickCheck.Gen            (oneof, resize)
 import qualified Z.Data.CBytes                  as CB
@@ -44,7 +43,7 @@ spec = describe "HStream.ConfigSpec" $ do
       -- putStrLn $ T.unpack $ decodeUtf8 $ BSL.toStrict $ encodePretty obj
       parseEither (parseJSONToOptions emptyCliOptions) obj `shouldBe` Right defaultConfig
 
-    prop "prop test" $ \x@ServerOpts{..} -> (case _connectorMetaStore of ZkAddr _ -> True;_ -> False) ==> do
+    prop "prop test" $ \x -> do
       -- putStrLn $ T.unpack $ decodeUtf8 $ BSL.toStrict $ encodePretty x
       let yaml = encode $ toJSON x
       -- putStrLn $ T.unpack $ decodeUtf8 yaml
@@ -80,7 +79,6 @@ defaultConfig = ServerOpts
 
   , _gossipOpts                = defaultGossipOpts
   , _ioOptions                 = defaultIOOptions
-  , _connectorMetaStore        = ZkAddr "127.0.0.1:2181"
   }
 
 defaultIOOptions :: IOOptions
@@ -107,7 +105,6 @@ instance ToJSON ServerOpts where
         , "max-record-size" .= _maxRecordSize
         , "gossip"          .= _gossipOpts
         , "hstream-io"      .= _ioOptions      --TODO
-        , "connector-meta-store" .= show _connectorMetaStore --TODO
         ]
       ++ ["advertised-listeners" .= _serverAdvertisedListeners       --TODO
          | not $ null _serverAdvertisedListeners]
@@ -186,6 +183,7 @@ emptyCliOptions = CliOptions {
 
   , _ioTasksPath_        = Nothing
   , _ioTasksNetwork_     = Nothing
+  , _ioConnectorImages_  = []
   }
 
 
@@ -219,7 +217,6 @@ instance Arbitrary ServerOpts where
     _ldLogLevel                <- read <$> ldLogLevelGen
     _gossipOpts                <- arbitrary
     _ioOptions                 <- arbitrary
-    _connectorMetaStore        <- arbitrary
     pure ServerOpts{..}
 
 instance Arbitrary Listener where
