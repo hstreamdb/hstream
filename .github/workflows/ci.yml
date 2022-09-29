@@ -317,3 +317,63 @@ jobs:
           name: distributed-tests-reports
           path: ~/data/reports.tar
           retention-days: 7
+
+  hstream-io-tests:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    name: hstream-io-tests
+    strategy:
+      fail-fast: false
+
+    steps:
+      - name: retrieve saved docker image
+        uses: actions/download-artifact@v3
+        with:
+          name: image-testing
+          path: ~/data
+
+      - name: docker load
+        run: docker load -i ~/data/new_hstream_image.tar
+
+      - name: fetch hstream io tests source code
+        uses: actions/checkout@v2
+        with:
+          repository: "hstreamdb/hstream-connectors"
+          submodules: "recursive"
+          path: hstream-connectors
+
+      - uses: actions/setup-java@v2
+        with:
+          distribution: "adopt"
+          java-version: 11
+          cache: "gradle"
+
+      - uses: gradle/wrapper-validation-action@v1
+
+      - name: publish local java-toolkit
+        working-directory: ./hstream-connectors/java-toolkit
+        run: ./gradlew publishToMavenLocal -PdisableSigning --info
+
+      - name: build images
+        run: |
+          cd hstream-connectors/source-debezium
+          ./gradlew buildImages
+          cd ../sink-jdbc
+          ./gradlew buildImages
+          cd ../sink-mongodb
+          ./gradlew buildImages
+
+      - name: run hstream io tests
+        run: |
+          cd hstream-connectors/integration_tests
+          export HSTREAM_IMAGE_NAME=$NEW_HSTREAM_IMAGE
+          ./gradlew test --info --fail-fast
+
+      - uses: actions/upload-artifact@v2
+        if: ${{ success() }} || ${{ failure() }}
+        with:
+          name: hstream-io-logs
+          path: |
+            hstream-connectors/integration_tests/.logs
+            /tmp/io/tasks
+            hstream-connectors/integration_tests/app/build/reports

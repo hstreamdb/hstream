@@ -61,12 +61,14 @@ data IOOptions = IOOptions
   , optSinkImages   :: HM.HashMap T.Text T.Text
   } deriving (Show, Eq)
 
+type TaskProcess = TP.Process IO.Handle IO.Handle ()
+
 data IOTask = IOTask
   { taskId     :: T.Text
   , taskInfo   :: TaskInfo
   , taskPath   :: FilePath
   , taskHandle :: MetaHandle
-  , process'   :: IORef (Maybe (TP.Process IO.Handle () ()))
+  , process'   :: IORef (Maybe TaskProcess)
   , statusM    :: C.MVar IOTaskStatus
   }
 
@@ -101,6 +103,11 @@ newtype TaskIdMeta = TaskIdMeta {taskIdMeta :: T.Text}
   deriving (Show)
 $(JT.deriveJSON JT.defaultOptions ''TaskIdMeta)
 
+newtype TaskKvMeta = TaskKvMeta
+  { value :: T.Text
+  } deriving (Show)
+$(JT.deriveJSON JT.defaultOptions ''TaskKvMeta)
+
 ioRootPath :: T.Text
 ioRootPath = "/hstream/io"
 
@@ -110,13 +117,18 @@ instance HasPath TaskMeta ZHandle where
 instance HasPath TaskIdMeta ZHandle where
   myRootPath = ioRootPath <> "/taskNames"
 
+instance HasPath TaskKvMeta ZHandle where
+  myRootPath = ioRootPath <> "/taskKvs"
+
 instance HasPath TaskMeta RHandle where
   myRootPath = "ioTasks"
 
 instance HasPath TaskIdMeta RHandle where
   myRootPath = "ioTaskNames"
 
--- TODO: spec the exceptions
+instance HasPath TaskKvMeta RHandle where
+  myRootPath = "ioTaskKvs"
+
 class TaskJson cm where
   toTaskJson :: cm -> T.Text -> J.Value
 

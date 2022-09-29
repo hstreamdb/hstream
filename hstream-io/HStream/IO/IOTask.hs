@@ -7,16 +7,18 @@ module HStream.IO.IOTask where
 import qualified Control.Concurrent         as C
 import           Control.Exception          (throwIO)
 import qualified Control.Exception          as E
-import           Control.Monad              (msum, unless, void, when)
+import           Control.Monad              (forever, msum, unless, void, when)
 import qualified Data.Aeson                 as J
+import qualified Data.ByteString            as BS
 import qualified Data.ByteString.Lazy       as BSL
 import qualified Data.ByteString.Lazy.Char8 as BSLC
 import           Data.IORef                 (newIORef, readIORef, writeIORef)
 import qualified Data.Text                  as T
-import           GHC.IO.Handle              (hFlush)
 import           RIO.Directory              (createDirectoryIfMissing)
 import qualified System.Process.Typed       as TP
 
+import qualified Control.Concurrent.STM     as STM
+import qualified GHC.IO.Handle              as IO
 import qualified HStream.IO.Messages        as MSG
 import qualified HStream.IO.Meta            as M
 import           HStream.IO.Types
@@ -42,10 +44,14 @@ getDockerName :: T.Text -> T.Text
 getDockerName = ("IOTASK_" <>)
 
 runIOTask :: IOTask -> IO ()
-runIOTask IOTask{..} = do
+runIOTask ioTask@IOTask{..} = do
   Log.info $ "taskCmd: " <> Log.buildString taskCmd
   tp <- TP.startProcess taskProcessConfig
   writeIORef process' (Just tp)
+  _ <- C.forkIO $
+    E.catch
+      (handleStdout ioTask (TP.getStdout tp) (TP.getStdin tp))
+      (\(e :: E.SomeException) -> Log.info $ "handleStdout exited:" <> Log.buildString (show e))
   return ()
   where
     TaskInfo {..} = taskInfo
@@ -57,13 +63,48 @@ runIOTask IOTask{..} = do
         " -v " , taskPath, ":/data",
         " " , T.unpack tcImage,
         " run",
-        " --config /data/config.json",
-        " >> ", taskPath, "/log", " 2>&1"
+        " --config /data/config.json"
       ]
     taskProcessConfig = TP.setStdin TP.createPipe
-      . TP.setStdout TP.closed
-      . TP.setStderr TP.closed
+      . TP.setStdout TP.createPipe
+      . TP.setStderr TP.inherit
       $ TP.shell taskCmd
+
+handleStdout :: IOTask -> IO.Handle -> IO.Handle -> IO ()
+handleStdout ioTask@IOTask{..} hStdout hStdin = forever $ do
+  line <- BS.hGetLine hStdout
+  let logPath = taskPath ++ "/stdout.log"
+  BS.appendFile logPath (line <> "\n")
+  case J.eitherDecode (BSL.fromStrict line) of
+    Left _ -> pure () -- Log.info $ "decode err:" <> Log.buildString err
+    Right msg -> do
+      Log.info $ "connectorMsg:" <> Log.buildString (show msg)
+      respM <- handleConnectorMessage ioTask msg
+      Log.info $ "ConnectorRes:" <> Log.buildString (show respM)
+      case respM of
+        Nothing -> pure ()
+        Just resp -> do
+          BSLC.hPutStrLn hStdin (J.encode resp)
+          IO.hFlush hStdin
+
+handleConnectorMessage :: IOTask -> MSG.ConnectorMessage -> IO (Maybe MSG.ConnectorCallResponse)
+handleConnectorMessage ioTask MSG.ConnectorMessage{..} = do
+  case cmType of
+    MSG.CONNECTOR_SEND -> do
+      Log.warning "unsupported connector send"
+      pure Nothing
+    MSG.CONNECTOR_CALL -> do
+      result <- handleKvMessage ioTask cmMessage
+      return $ Just (MSG.ConnectorCallResponse cmId result)
+
+handleKvMessage :: IOTask -> MSG.KvMessage -> IO J.Value
+handleKvMessage IOTask{..} kvMsg@MSG.KvMessage {..} = do
+  case (kmAction, kmValue) of
+    ("get", _) -> J.toJSON <$> M.getTaskKv taskHandle taskId kmKey
+    ("set", Just val) -> J.Null <$ M.setTaskKv taskHandle taskId kmKey val
+    _ -> do
+      Log.warning $ "invalid kv msg:" <> Log.buildString (show kvMsg)
+      pure J.Null
 
 -- runIOTaskWithRetry :: IOTask -> IO ()
 -- runIOTaskWithRetry task@IOTask{..} =
@@ -100,8 +141,13 @@ stopIOTask task@IOTask{..} ifIsRunning force = do
         Just tp <- readIORef process'
         let stdin = TP.getStdin tp
         BSLC.hPutStrLn stdin (J.encode MSG.InputCommandStop <> "\n")
-        hFlush stdin
-        _ <- TP.waitExitCode tp
+        IO.hFlush stdin
+        void $ TP.waitExitCode tp
+        -- FIXME: timeout
+        -- timeout <- delayTMVar
+        -- STM.atomically $ STM.orElse (void $ TP.waitExitCodeSTM tp) (STM.takeTMVar timeout)
+        -- kill task process
+        -- void $ TP.runProcess killProcessConfig
         TP.stopProcess tp
         writeIORef process' Nothing
       return STOPPED
@@ -111,6 +157,13 @@ stopIOTask task@IOTask{..} ifIsRunning force = do
   where
     killDockerCmd = "docker kill " ++ T.unpack (getDockerName taskId)
     killProcessConfig = TP.shell killDockerCmd
+    delayTMVar = do
+      tmvar <- STM.newEmptyTMVarIO
+      _ <- C.forkIO $ do
+        C.threadDelay 15000000
+        Log.info "exit process timeout, force to stop it"
+        STM.atomically $ STM.putTMVar tmvar ()
+      return tmvar
 
 updateStatus :: IOTask -> (IOTaskStatus -> IO IOTaskStatus) -> IO ()
 updateStatus IOTask{..} action = do
