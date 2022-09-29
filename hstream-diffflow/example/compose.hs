@@ -12,7 +12,7 @@ import           DiffFlow.Shard
 import           DiffFlow.Types
 import qualified HStream.Utils.Aeson as A
 
-import Debug.Trace
+import           Debug.Trace
 
 constantKeygen = \_ -> A.fromList [("key", String "__constant_key__")]
 

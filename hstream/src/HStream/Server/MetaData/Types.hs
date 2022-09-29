@@ -50,10 +50,10 @@ import qualified HStream.Server.ConnectorTypes as HCT
 import           HStream.Server.HStreamApi     (ServerNode (..),
                                                 Subscription (..))
 import           HStream.Server.Types          (ServerID, SubscriptionWrap (..))
+import qualified HStream.SQL.AST               as AST
 import qualified HStream.Store                 as S
 import qualified HStream.ThirdParty.Protobuf   as Proto
 import           HStream.Utils                 (TaskStatus (..), cBytesToText)
-import qualified HStream.SQL.AST as AST
 
 --------------------------------------------------------------------------------
 

@@ -1,9 +1,9 @@
+{-# LANGUAGE DeriveAnyClass    #-}
+{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies      #-}
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric #-}
 
 module HStream.SQL.AST where
 
@@ -11,15 +11,19 @@ import qualified Data.Aeson            as Aeson
 import qualified Data.Aeson.Types      as Aeson
 import qualified Data.ByteString       as BS
 import qualified Data.ByteString.Char8 as BSC
+import           Data.Hashable
 import qualified Data.HashMap.Strict   as HM
 import           Data.Kind             (Type)
 import qualified Data.List             as L
 import qualified Data.Map.Strict       as Map
-import qualified Data.Vector as V
+import qualified Data.Scientific       as Scientific
 import           Data.Text             (Text)
 import qualified Data.Text             as Text
-import           Data.Text.Encoding    (encodeUtf8, decodeUtf8)
+import           Data.Text.Encoding    (decodeUtf8, encodeUtf8)
 import qualified Data.Time             as Time
+import           Data.Time.Compat      ()
+import qualified Data.Vector           as V
+import           GHC.Generics
 import           GHC.Stack             (HasCallStack)
 import           HStream.SQL.Abs
 import           HStream.SQL.Exception (SomeSQLException (..),
@@ -27,13 +31,9 @@ import           HStream.SQL.Exception (SomeSQLException (..),
 import           HStream.SQL.Extra     (extractPNDouble, extractPNInteger,
                                         trimSpacesPrint)
 import           HStream.SQL.Print     (printTree)
-import qualified Data.Scientific as Scientific
-import Data.Hashable
-import GHC.Generics
-import Data.Time.Compat ()
-import           Z.Data.CBytes           (CBytes)
-import HStream.Utils (cBytesToText)
-import qualified HStream.Utils.Aeson as HsAeson
+import           HStream.Utils         (cBytesToText)
+import qualified HStream.Utils.Aeson   as HsAeson
+import           Z.Data.CBytes         (CBytes)
 
 ----------------------------- Refinement Main class ----------------------------
 type family RefinedType a :: Type
@@ -45,9 +45,9 @@ class Refine a where
 type FlowObject = HM.HashMap SKey FlowValue
 
 data SKey = SKey
-  { keyField :: Text
+  { keyField    :: Text
   , keyStream_m :: Maybe Text
-  , keyExtra_m :: Maybe Text
+  , keyExtra_m  :: Maybe Text
   } deriving (Show, Eq, Ord, Generic, Hashable)
 
 data FlowValue
@@ -600,8 +600,8 @@ instance Refine TableRef where
   refine (TableRefJoinUsing _ r1 typ r2 cols) = RTableRefJoinUsing (refine r1) (refine typ) (refine r2) (extractStreamNameFromColName <$> cols) Nothing
     where extractStreamNameFromColName col = case col of
             ColNameSimple _ (Ident t) -> t
-            ColNameRaw _ raw -> refine raw
-            ColNameStream pos _ _ -> throwImpossible
+            ColNameRaw _ raw          -> refine raw
+            ColNameStream pos _ _     -> throwImpossible
   refine (TableRefTumbling _ ref interval) = RTableRefWindowed (refine ref) (Tumbling (refine interval)) Nothing
   refine (TableRefHopping _ ref len hop) = RTableRefWindowed (refine ref) (Hopping (refine len) (refine hop)) Nothing
   refine (TableRefSliding _ ref interval) = RTableRefWindowed (refine ref) (Sliding (refine interval)) Nothing

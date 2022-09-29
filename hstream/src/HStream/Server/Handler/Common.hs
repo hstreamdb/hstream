@@ -37,15 +37,13 @@ import           HStream.Server.Types
 import           HStream.SQL.AST
 import           HStream.SQL.Codegen
 import           HStream.Utils                    (TaskStatus (..),
-                                                    newRandomText)
+                                                   newRandomText)
 
 import qualified DiffFlow.Graph                   as DiffFlow
 import qualified DiffFlow.Shard                   as DiffFlow
 import qualified DiffFlow.Types                   as DiffFlow
 import qualified DiffFlow.Weird                   as DiffFlow
 import qualified HStream.Exception                as HE
-
-import Debug.Trace
 
 runTaskWrapper :: ServerContext
                -> Text

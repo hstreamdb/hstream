@@ -10,20 +10,18 @@
 
 module HStream.SQL.Codegen where
 
-import           Data.Aeson                   (Object,
-                                               Value (..))
+import           Data.Aeson                   (Object, Value (..))
 import qualified Data.Aeson                   as Aeson
 import           Data.Bifunctor
 import           Data.Function
-import qualified Data.Map.Strict       as Map
 import           Data.Functor
 import qualified Data.HashMap.Strict          as HM
 import qualified Data.List                    as L
+import qualified Data.Map.Strict              as Map
 import           Data.Maybe
 import           Data.Scientific              (fromFloatDigits, scientific)
-import           Data.Text                    (pack)
 import qualified Data.Text                    as T
-import           Data.Text.Encoding (decodeUtf8)
+import           Data.Text.Encoding           (decodeUtf8)
 import           Data.Time                    (diffTimeToPicoseconds,
                                                showGregorian)
 import qualified Proto3.Suite                 as PB
@@ -36,9 +34,9 @@ import           HStream.SQL.Exception        (SomeSQLException (..),
                                                throwSQLException)
 import           HStream.SQL.Internal.Codegen
 import           HStream.SQL.Parse            (parseAndRefine)
-import           HStream.Utils                (genUnique, jsonObjectToStruct,
-                                               cBytesToText)
-import qualified HStream.Utils.Aeson as HsAeson
+import           HStream.Utils                (cBytesToText, genUnique,
+                                               jsonObjectToStruct)
+import qualified HStream.Utils.Aeson          as HsAeson
 
 import           DiffFlow.Graph
 import           DiffFlow.Types
@@ -146,7 +144,7 @@ elab sql = do
 
 --------------------------------------------------------------------------------
 data In = In
-  { inNode :: Node
+  { inNode   :: Node
   , inStream :: Text
   , inWindow :: Maybe WindowType
   } deriving (Eq, Show)
@@ -512,7 +510,7 @@ elabRWhere whr grp startBuilder subgraph startNode startStream_m = case whr of
           let oexpr = getExtra "__expr__" o
            in case HM.toList oexpr of
                 [(_, FlowBoolean True)] -> True
-                _ -> False
+                _                       -> False
     let mapper = Mapper $ \o -> getExtraAndReset "__from__" o
     let (builder_3, filtered) = addNode builder_2 subgraph (FilterSpec composed filter)
     let (builder_4, mapped) = addNode builder_3 subgraph (MapSpec filtered mapper)
