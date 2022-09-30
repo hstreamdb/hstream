@@ -28,7 +28,7 @@ import qualified HStream.Logger                as Log
 gossip :: [G.Message] -> GRPC.Client -> IO ()
 gossip msg client = do
   HStreamGossip{..} <- hstreamGossipClient client
-  hstreamGossipGossip (mkClientNormalRequest . Gossip $ V.fromList msg) >>= \case
+  hstreamGossipSendGossip (mkClientNormalRequest . Gossip $ V.fromList msg) >>= \case
     ClientNormalResponse {} -> return ()
     ClientErrorResponse  {} -> Log.debug "Failed to send gossip"
 

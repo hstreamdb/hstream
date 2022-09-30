@@ -7,93 +7,116 @@
 
 module HStream.Gossip.Handlers where
 
-import           Control.Concurrent               (tryReadMVar)
-import           Control.Concurrent.STM           (atomically, newEmptyTMVarIO,
-                                                   readTMVar, readTVar,
-                                                   readTVarIO, stateTVar,
-                                                   writeTChan, writeTQueue)
-import qualified Data.IntMap.Strict               as IM
-import           Data.List                        ((\\))
-import qualified Data.Map.Strict                  as Map
-import qualified Data.Vector                      as V
-import           Network.GRPC.HighLevel.Generated (GRPCMethodType (..),
-                                                   ServerRequest (..),
-                                                   ServerResponse,
-                                                   StatusCode (..))
-import qualified Network.GRPC.HighLevel.Generated as GRPC
-import           System.Timeout                   (timeout)
+import           Control.Concurrent                 (tryReadMVar)
+import           Control.Concurrent.STM             (atomically,
+                                                     newEmptyTMVarIO, readTMVar,
+                                                     readTVar, readTVarIO,
+                                                     stateTVar, writeTChan,
+                                                     writeTQueue)
+import           Control.Exception                  (catches, throwIO)
+import qualified Data.Map.Strict                    as Map
+import qualified Data.Vector                        as V
+import           HsGrpc.Server
+import           Network.GRPC.HighLevel.Generated   (GRPCMethodType (..),
+                                                     ServerRequest (..),
+                                                     ServerResponse)
+import           System.Timeout                     (timeout)
 
-import           HStream.Gossip.Core              (addToServerList,
-                                                   broadCastUserEvent)
-import           HStream.Gossip.HStreamGossip     (Ack (..), CliJoinReq (..),
-                                                   Cluster (..), Empty (..),
-                                                   Gossip (..),
-                                                   HStreamGossip (..),
-                                                   JoinReq (..), JoinResp (..),
-                                                   Ping (..), PingReq (..),
-                                                   PingReqResp (PingReqResp),
-                                                   SeenEvents (SeenEvents),
-                                                   UserEvent (..),
-                                                   hstreamGossipClient)
-import           HStream.Gossip.Types             (GossipContext (..),
-                                                   GossipOpts (..),
-                                                   RequestAction (..),
-                                                   ServerState (OK),
-                                                   ServerStatus (..))
-import qualified HStream.Gossip.Types             as T
-import           HStream.Gossip.Utils             (broadcast, clusterInitedErr,
-                                                   clusterReadyErr,
-                                                   getMessagesToSend,
-                                                   mkClientNormalRequest,
-                                                   mkGRPCClientConf',
-                                                   returnErrResp, returnResp)
-import qualified HStream.Server.HStreamInternal   as I
+import           HStream.Gossip.HStreamGossip       (Ack (..), Empty (..),
+                                                     Gossip (..),
+                                                     HStreamGossip (..),
+                                                     JoinReq (..),
+                                                     JoinResp (..), Ping (..),
+                                                     PingReq (..),
+                                                     PingReqResp (PingReqResp))
+import           HStream.Gossip.Types               (GossipContext (..),
+                                                     GossipOpts (..),
+                                                     RequestAction (..),
+                                                     ServerStatus (..))
+import qualified HStream.Gossip.Types               as T
+import           HStream.Gossip.Utils               (ClusterInitedErr (..),
+                                                     ClusterReadyErr (..),
+                                                     DuplicateNodeId (..),
+                                                     EmptyJoinRequest (..),
+                                                     EmptyPingRequest (..),
+                                                     broadcast, exHandlers,
+                                                     exceptionHandlers,
+                                                     getMessagesToSend,
+                                                     returnResp)
+import qualified HStream.Server.HStreamInternal     as I
+import qualified Proto.HStream.Gossip.HStreamGossip as P
 
 handlers :: GossipContext
   -> HStreamGossip ServerRequest ServerResponse
 handlers gc = HStreamGossip {
-    hstreamGossipBootstrapPing = bootstrapPingHandler gc
-  , hstreamGossipPing          = pingHandler gc
-  , hstreamGossipPingReq       = pingReqHandler gc
-  , hstreamGossipJoin          = joinHandler gc
-  , hstreamGossipGossip        = gossipHandler gc
+    hstreamGossipSendBootstrapPing = catchExceptions . sendBootstrapPingHandler gc
+  , hstreamGossipSendPing          = catchExceptions . sendPingHandler gc
+  , hstreamGossipSendPingReq       = catchExceptions . sendPingReqHandler gc
+  , hstreamGossipSendJoin          = catchExceptions . sendJoinHandler gc
+  , hstreamGossipSendGossip        = catchExceptions . sendGossipHandler gc
 
-  , hstreamGossipCliJoin          = cliJoinHandler gc
-  , hstreamGossipCliCluster       = cliClusterHandler gc
-  , hstreamGossipCliUserEvent     = cliUserEventHandler gc
-  , hstreamGossipCliGetSeenEvents = undefined
+  , hstreamGossipCliJoin           = undefined
+  , hstreamGossipCliCluster        = undefined
+  , hstreamGossipCliUserEvent      = undefined
+  , hstreamGossipCliGetSeenEvents  = undefined
   }
+  where
+    catchExceptions action = action `catches` exceptionHandlers
 
-bootstrapPingHandler :: GossipContext
+handlersNew :: GossipContext -> [ServiceHandler]
+handlersNew gc = [
+    unary (GRPC :: GRPC P.HStreamGossip "sendBootstrapPing") (const $ catchExceptions . sendBootstrapPingCore gc)
+  , unary (GRPC :: GRPC P.HStreamGossip "sendPing"         ) (const $ catchExceptions . sendPingCore gc)
+  , unary (GRPC :: GRPC P.HStreamGossip "sendPingReq"      ) (const $ catchExceptions . sendPingReqCore gc)
+  , unary (GRPC :: GRPC P.HStreamGossip "sendJoin"         ) (const $ catchExceptions . sendJoinCore gc)
+  , unary (GRPC :: GRPC P.HStreamGossip "sendGossip"       ) (const $ catchExceptions . sendGossipCore gc)
+  ]
+  where
+    catchExceptions action = action `catches` exHandlers
+
+sendBootstrapPingHandler :: GossipContext
   -> ServerRequest 'Normal Empty I.ServerNode
   -> IO (ServerResponse 'Normal I.ServerNode)
-bootstrapPingHandler GossipContext{..} _req =
+sendBootstrapPingHandler gc (ServerNormalRequest _metadata node) =
+  sendBootstrapPingCore gc node >>= returnResp
+
+sendBootstrapPingCore :: GossipContext
+  -> Empty -> IO I.ServerNode
+sendBootstrapPingCore GossipContext{..} _ =
   tryReadMVar clusterReady >>= \case
     Nothing -> tryReadMVar clusterInited >>= \case
-      Nothing -> returnResp serverSelf
-      Just _  -> returnErrResp StatusFailedPrecondition clusterInitedErr
-    Just _ -> returnErrResp StatusFailedPrecondition clusterReadyErr
+      Nothing -> return serverSelf
+      Just _  -> throwIO ClusterInitedErr
+    Just _ -> throwIO ClusterReadyErr
 
-pingHandler :: GossipContext
+sendPingHandler :: GossipContext
   -> ServerRequest 'Normal Ping Ack
   -> IO (ServerResponse 'Normal Ack)
-pingHandler GossipContext{..} (ServerNormalRequest _metadata Ping {..}) = do
+sendPingHandler gc (ServerNormalRequest _metadata ping) =
+  sendPingCore gc ping >>= returnResp
+
+sendPingCore :: GossipContext -> Ping -> IO Ack
+sendPingCore GossipContext{..} Ping {..} = do
   msgs <- atomically $ do
     broadcast (V.toList pingMsg) statePool eventPool
     memberMap <- snd <$> readTVar serverList
     stateTVar broadcastPool $ getMessagesToSend (fromIntegral (Map.size memberMap))
-  returnResp (Ack $ V.fromList msgs)
+  return (Ack $ V.fromList msgs)
 
-pingReqHandler :: GossipContext
+sendPingReqHandler :: GossipContext
   -> ServerRequest 'Normal PingReq PingReqResp
   -> IO (ServerResponse 'Normal PingReqResp)
-pingReqHandler GossipContext{..} (ServerNormalRequest _metadata PingReq {..}) = do
+sendPingReqHandler gc (ServerNormalRequest _metadata pingReq) = do
+  sendPingReqCore gc pingReq >>= returnResp
+
+sendPingReqCore :: GossipContext -> PingReq -> IO PingReqResp
+sendPingReqCore GossipContext{..} PingReq {..} = do
   msgs <- atomically $ do
     broadcast (V.toList pingReqMsg) statePool eventPool
     memberMap <- snd <$> readTVar serverList
     stateTVar broadcastPool $ getMessagesToSend (fromIntegral (Map.size memberMap))
   case pingReqTarget of
-    Nothing -> returnErrResp StatusInternal "Received empty pingReq request"
+    Nothing -> throwIO EmptyPingRequest
     Just x  -> do
       isAcked <- newEmptyTMVarIO
       atomically $ do
@@ -104,51 +127,63 @@ pingReqHandler GossipContext{..} (ServerNormalRequest _metadata PingReq {..}) = 
             broadcast msg statePool eventPool
             memberMap <- snd <$> readTVar serverList
             stateTVar broadcastPool $ getMessagesToSend (fromIntegral (Map.size memberMap))
-          returnResp (PingReqResp True (V.fromList newMsgs))
-        Nothing  -> returnResp (PingReqResp False (V.fromList msgs))
+          return (PingReqResp True (V.fromList newMsgs))
+        Nothing  -> return (PingReqResp False (V.fromList msgs))
 
-joinHandler :: GossipContext
+sendJoinHandler :: GossipContext
   -> ServerRequest 'Normal JoinReq JoinResp
   -> IO (ServerResponse 'Normal JoinResp)
-joinHandler GossipContext{..} (ServerNormalRequest _metadata JoinReq {..}) = do
+sendJoinHandler gc (ServerNormalRequest _metadata joinReq) = do
+  sendJoinCore gc joinReq >>= returnResp
+
+sendJoinCore :: GossipContext
+  -> JoinReq
+  -> IO JoinResp
+sendJoinCore GossipContext{..} JoinReq {..} = do
   case joinReqNew of
-    Nothing -> error "no node info in join request"
+    Nothing -> throwIO EmptyJoinRequest
     Just node@I.ServerNode{..} -> do
       sMap' <- snd <$> readTVarIO serverList
       case Map.lookup serverNodeId sMap' of
         Nothing | serverNodeId /= I.serverNodeId serverSelf -> do
           atomically $ writeTQueue statePool $ T.GJoin node
-          returnResp . JoinResp . V.fromList $ serverSelf : (serverInfo <$> Map.elems sMap')
-        _  -> returnErrResp StatusAlreadyExists "Node with the same id already exists"
+          return . JoinResp . V.fromList $ serverSelf : (serverInfo <$> Map.elems sMap')
+        _  -> throwIO DuplicateNodeId
 
-gossipHandler :: GossipContext -> ServerRequest 'Normal Gossip Empty -> IO (ServerResponse 'Normal Empty)
-gossipHandler GossipContext{..} (ServerNormalRequest _metadata Gossip {..}) = do
+sendGossipHandler :: GossipContext -> ServerRequest 'Normal Gossip Empty -> IO (ServerResponse 'Normal Empty)
+sendGossipHandler gc (ServerNormalRequest _metadata gossip) = do
+  sendGossipCore gc gossip >>= returnResp
+
+sendGossipCore :: GossipContext -> Gossip -> IO Empty
+sendGossipCore GossipContext{..} Gossip {..} = do
   atomically $ broadcast (V.toList gossipMsg) statePool eventPool
-  returnResp Empty
+  return Empty
 
-cliJoinHandler :: GossipContext -> ServerRequest 'Normal CliJoinReq JoinResp -> IO (ServerResponse 'Normal JoinResp)
-cliJoinHandler gc@GossipContext{..} (ServerNormalRequest _metadata CliJoinReq {..}) = do
-   GRPC.withGRPCClient (mkGRPCClientConf' cliJoinReqHost (fromIntegral cliJoinReqPort)) $ \client -> do
-    HStreamGossip{..} <- hstreamGossipClient client
-    hstreamGossipJoin (mkClientNormalRequest JoinReq { joinReqNew = Just serverSelf}) >>= \case
-      GRPC.ClientNormalResponse resp@(JoinResp members) _ _ _ _ -> do
-        membersOld <- (map serverInfo . Map.elems) . snd <$> readTVarIO serverList
-        mapM_ (\x -> addToServerList gc x (T.GJoin x) OK) $ V.toList members \\ membersOld
-        returnResp resp
-      GRPC.ClientErrorResponse _             -> error "failed to join"
+-- cliJoinHandler :: GossipContext -> ServerRequest 'Normal CliJoinReq JoinResp -> IO (ServerResponse 'Normal JoinResp)
+-- cliJoinHandler gc (ServerNormalRequest _metadata cliJoinReq) = cliJoinCore gc cliJoinReq >>= returnResp
 
-cliClusterHandler :: GossipContext -> ServerRequest 'Normal Empty Cluster -> IO (ServerResponse 'Normal Cluster)
-cliClusterHandler GossipContext{..} _serverReq = do
-  members <- V.fromList . (:) serverSelf . map serverInfo . Map.elems . snd <$> readTVarIO serverList
-  returnResp Cluster {clusterMembers = members}
+-- cliJoinCore gc@GossipContext{..} CliJoinReq {..} = do
+--   GRPC.withGRPCClient (mkGRPCClientConf' cliJoinReqHost (fromIntegral cliJoinReqPort)) $ \client -> do
+--    HStreamGossip{..} <- hstreamGossipClient client
+--    hstreamGossipSendJoin (mkClientNormalRequest JoinReq { joinReqNew = Just serverSelf}) >>= \case
+--      GRPC.ClientNormalResponse resp@(JoinResp members) _ _ _ _ -> do
+--        membersOld <- (map serverInfo . Map.elems) . snd <$> readTVarIO serverList
+--        mapM_ (\x -> addToServerList gc x (T.GJoin x) OK) $ V.toList members \\ membersOld
+--        return resp
+--      GRPC.ClientErrorResponse _             -> throwIO FailedToJoin
 
-cliUserEventHandler :: GossipContext -> ServerRequest 'Normal UserEvent Empty -> IO (ServerResponse 'Normal Empty)
-cliUserEventHandler gc (ServerNormalRequest _metadata UserEvent {..}) = do
-  broadCastUserEvent gc userEventName userEventPayload
-  returnResp Empty
+-- cliClusterHandler :: GossipContext -> ServerRequest 'Normal Empty Cluster -> IO (ServerResponse 'Normal Cluster)
+-- cliClusterHandler GossipContext{..} _serverReq = do
+--   members <- V.fromList . (:) serverSelf . map serverInfo . Map.elems . snd <$> readTVarIO serverList
+--   returnResp Cluster {clusterMembers = members}
 
-cliGetSeenEventsHandler :: GossipContext -> ServerRequest 'Normal Empty SeenEvents -> IO (ServerResponse 'Normal SeenEvents)
-cliGetSeenEventsHandler GossipContext{..} _ = do
-  sEvents <- IM.elems <$> readTVarIO seenEvents
-  let resp = SeenEvents . V.fromList $ uncurry UserEvent <$> concat sEvents
-  returnResp resp
+-- cliUserEventHandler :: GossipContext -> ServerRequest 'Normal UserEvent Empty -> IO (ServerResponse 'Normal Empty)
+-- cliUserEventHandler gc (ServerNormalRequest _metadata UserEvent {..}) = do
+--   broadCastUserEvent gc userEventName userEventPayload
+--   returnResp Empty
+
+-- cliGetSeenEventsHandler :: GossipContext -> ServerRequest 'Normal Empty SeenEvents -> IO (ServerResponse 'Normal SeenEvents)
+-- cliGetSeenEventsHandler GossipContext{..} _ = do
+--   sEvents <- IM.elems <$> readTVarIO seenEvents
+--   let resp = SeenEvents . V.fromList $ uncurry UserEvent <$> concat sEvents
+--   returnResp resp

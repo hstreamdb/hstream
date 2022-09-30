@@ -17,7 +17,7 @@ category:           Database
 homepage:           https://github.com/hstreamdb/hstream
 bug-reports:        https://github.com/hstreamdb/hstream/issues
 build-type:         Custom
-extra-source-files: protos/HStream/Server/HStreamApi.proto
+extra-source-files: protos/**/*.proto
 
 custom-setup
   setup-depends:
@@ -50,10 +50,18 @@ library
   exposed-modules:
     Proto.HStream.Server.HStreamApi
     Proto.HStream.Server.HStreamApi_Fields
+    Proto.HStream.Server.HStreamInternal
+    Proto.HStream.Server.HStreamInternal_Fields
+    Proto.HStream.Gossip.HStreamGossip
+    Proto.HStream.Gossip.HStreamGossip_Fields
 
   autogen-modules:
     Proto.HStream.Server.HStreamApi
     Proto.HStream.Server.HStreamApi_Fields
+    Proto.HStream.Server.HStreamInternal
+    Proto.HStream.Server.HStreamInternal_Fields
+    Proto.HStream.Gossip.HStreamGossip
+    Proto.HStream.Gossip.HStreamGossip_Fields
 
   build-depends:
     , base                       >=4.13    && <5

@@ -53,7 +53,7 @@ import qualified HStream.Server.HStreamInternal as I
 bootstrapPing :: (ByteString, Int) -> GRPC.Client -> IO (Maybe I.ServerNode)
 bootstrapPing (joinHost, joinPort) client = do
   HStreamGossip{..} <- hstreamGossipClient client
-  hstreamGossipBootstrapPing (mkClientNormalRequest Empty) >>= \case
+  hstreamGossipSendBootstrapPing (mkClientNormalRequest Empty) >>= \case
     ClientNormalResponse serverNode _ _ _ _ -> do
       Log.debug $ "The server "
                 <> Log.buildString' serverNode
@@ -78,7 +78,7 @@ bootstrapPing (joinHost, joinPort) client = do
 ping :: Messages -> GRPC.Client -> IO (Maybe Ack)
 ping msg client = do
   HStreamGossip{..} <- hstreamGossipClient client
-  hstreamGossipPing (mkClientNormalRequest $ Ping $ V.fromList msg) >>= \case
+  hstreamGossipSendPing (mkClientNormalRequest $ Ping $ V.fromList msg) >>= \case
     ClientNormalResponse ack _ _ _ _ -> do
       return (Just ack)
     ClientErrorResponse _            -> Log.info "failed to ping" >> return Nothing
@@ -86,7 +86,7 @@ ping msg client = do
 pingReq :: I.ServerNode -> Messages -> GRPC.Client -> IO (Either (Maybe Messages) Messages)
 pingReq sNode msg client = do
   HStreamGossip{..} <- hstreamGossipClient client
-  hstreamGossipPingReq (mkClientNormalRequest $ PingReq (Just sNode) $ V.fromList msg) >>= \case
+  hstreamGossipSendPingReq (mkClientNormalRequest $ PingReq (Just sNode) $ V.fromList msg) >>= \case
     ClientNormalResponse PingReqResp{..} _ _ _ _ ->
       if pingReqRespAcked
         then return . Right $ V.toList pingReqRespMsg
@@ -96,7 +96,7 @@ pingReq sNode msg client = do
 pingReqPing :: Messages -> TMVar Messages -> GRPC.Client -> IO ()
 pingReqPing msg isAcked client = do
   HStreamGossip{..} <- hstreamGossipClient client
-  hstreamGossipPing (mkClientNormalRequest $ Ping $ V.fromList msg) >>= \case
+  hstreamGossipSendPing (mkClientNormalRequest $ Ping $ V.fromList msg) >>= \case
     ClientNormalResponse (Ack msg') _ _ _ _ -> do
       Log.debug . Log.buildString $ "Received ack with " <> show msg'
       atomically $ putTMVar isAcked $ V.toList msg'
