@@ -28,7 +28,7 @@ services:
         --server-id 100 \
         --seed-nodes "hserver0:6571,hserver1:6573" \
         --address $$(hostname -I | awk '{print $$1}') \
-        --meta-store zk://zookeeper:2181 \
+        --metastore-uri zk://zookeeper:2181 \
         --store-config /data/store/logdevice.conf \
         --store-admin-host hstore --store-admin-port 6440 \
         --io-tasks-path /tmp/io/tasks \
@@ -61,7 +61,7 @@ services:
         --server-id 101 \
         --seed-nodes "hserver0:6571,hserver1:6573" \
         --address $$(hostname -I | awk '{print $$1}') \
-        --meta-store zk://zookeeper:2181 \
+        --metastore-uri zk://zookeeper:2181 \
         --store-config /data/store/logdevice.conf \
         --store-admin-host hstore --store-admin-port 6440 \
         --io-tasks-path /tmp/io/tasks \

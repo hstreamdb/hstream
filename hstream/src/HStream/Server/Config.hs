@@ -204,7 +204,7 @@ parseJSONToOptions CliOptions {..} obj = do
   nodeInternalPort    <- nodeCfgObj .:? "internal-port" .!= 6571
   advertisedListeners <- nodeCfgObj .:? "advertised-listeners"
 
-  nodeMetaStore     <- parseMetaStoreAddr <$> nodeCfgObj .:  "meta-store" :: Y.Parser MetaStoreAddr
+  nodeMetaStore     <- parseMetaStoreAddr <$> nodeCfgObj .:  "metastore-uri" :: Y.Parser MetaStoreAddr
   serverCompression <- read <$> nodeCfgObj .:? "compression" .!= "lz4"
   nodeLogLevel      <- nodeCfgObj .:? "log-level" .!= "info"
   nodeLogWithColor  <- nodeCfgObj .:? "log-with-color" .!= True
@@ -373,7 +373,7 @@ ldLogLevel = option auto
 
 metaStore :: O.Parser MetaStoreAddr
 metaStore = option (O.maybeReader (Just . parseMetaStoreAddr . T.pack))
-  $  long "meta-store"
+  $  long "metastore-uri"
   <> metavar "STR"
   <> help ( "Meta store address, currently support zookeeper and rqlite"
          <> "such as \"zk://127.0.0.1:2181,127.0.0.1:2182 , \"rq://127.0.0.1:4001\"")
