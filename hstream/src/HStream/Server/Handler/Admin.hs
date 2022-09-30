@@ -22,6 +22,7 @@ import qualified Data.Text.Lazy                   as TL
 import qualified Data.Text.Lazy.Encoding          as TL
 import qualified Data.Vector                      as V
 import qualified GHC.IO.Exception                 as E
+import qualified HsGrpc.Server                    as G
 import           Network.GRPC.HighLevel.Generated
 import qualified Options.Applicative              as O
 import qualified Options.Applicative.Help         as O
@@ -60,8 +61,8 @@ adminCommandHandler sc req = defaultExceptionHandle $ do
   returnResp $ API.AdminCommandResponse {adminCommandResponseResult = result}
 
 handleAdminCommand
-  :: ServerContext -> API.AdminCommandRequest -> IO API.AdminCommandResponse
-handleAdminCommand sc (API.AdminCommandRequest cmd) = catchDefaultEx $ do
+  :: ServerContext -> G.UnaryHandler API.AdminCommandRequest API.AdminCommandResponse
+handleAdminCommand sc _ (API.AdminCommandRequest cmd) = catchDefaultEx $ do
   result <- runAdminCommand sc cmd
   pure $ API.AdminCommandResponse {adminCommandResponseResult = result}
 

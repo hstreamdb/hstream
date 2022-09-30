@@ -53,5 +53,5 @@ handlers sc =
     -- TODO: View
   ]
 
-handleEcho :: A.EchoRequest -> IO A.EchoResponse
-handleEcho A.EchoRequest{..} = return $ A.EchoResponse echoRequestMsg
+handleEcho :: UnaryHandler A.EchoRequest A.EchoResponse
+handleEcho _grpcCtx A.EchoRequest{..} = return $ A.EchoResponse echoRequestMsg
