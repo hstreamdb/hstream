@@ -84,13 +84,12 @@ data HStreamConfig = HStreamConfig
   } deriving (Show)
 
 data Worker = Worker
-  { connectorMetaCfg :: ConnectorMetaConfig
-  , hsConfig         :: HStreamConfig
-  , options          :: IOOptions
-  , checkNode        :: T.Text -> IO Bool
-  , ioTasksM         :: C.MVar (HM.HashMap T.Text IOTask)
-  , monitorTid       :: IORef C.ThreadId
-  , workerHandle     :: MetaHandle
+  { hsConfig     :: HStreamConfig
+  , options      :: IOOptions
+  , checkNode    :: T.Text -> IO Bool
+  , ioTasksM     :: C.MVar (HM.HashMap T.Text IOTask)
+  , monitorTid   :: IORef C.ThreadId
+  , workerHandle :: MetaHandle
   }
 
 data TaskMeta = TaskMeta {

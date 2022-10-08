@@ -52,7 +52,8 @@ import           HStream.Server.HStreamApi        (NodeState (..),
                                                    hstreamApiServer)
 import qualified HStream.Server.HStreamInternal   as I
 import           HStream.Server.Initialization    (initializeServer,
-                                                   initializeTlsConfig)
+                                                   initializeTlsConfig,
+                                                   readTlsPemFile)
 import           HStream.Server.MetaData          (initializeAncestors,
                                                    initializeTables)
 import           HStream.Server.Types             (ServerContext (..),
@@ -75,8 +76,7 @@ app config@ServerOpts{..} = do
   Log.setLogLevel _serverLogLevel _serverLogWithColor
   Log.setLogDeviceDbgLevel' _ldLogLevel
 
-  -- TODO: remove me
-
+  -- FIXME: do we need this serverState?
   serverState <- newMVar (EnumPB NodeStateStarting)
   case _metaStore of
     ZkAddr addr -> do
@@ -126,13 +126,30 @@ serve host port tlsConfig sc@ServerContext{..} listeners = do
   let serverOnStarted = do
         Log.info $ "Server is started on port " <> Log.buildInt port <> ", waiting for cluster to get ready"
         void $ forkIO $ void (readMVar (clusterReady gossipContext)) >> Log.i "Cluster is ready!"
+
+#ifdef HStreamUseHsGrpc
+  sslOpts <- mapM readTlsPemFile tlsConfig
+#else
+  let sslOpts = fmap initializeTlsConfig tlsConfig
+#endif
+
   let grpcOpts =
+#ifdef HStreamUseHsGrpc
+        HsGrpc.ServerOptions
+          { HsGrpc.serverHost = BS.toShort host
+          , HsGrpc.serverPort = fromIntegral port
+          , HsGrpc.serverParallelism = 0
+          , HsGrpc.serverSslOptions = sslOpts
+          , HsGrpc.serverOnStarted = Just serverOnStarted
+          }
+#else
         GRPC.defaultServiceOptions
         { GRPC.serverHost = GRPC.Host host
         , GRPC.serverPort = GRPC.Port $ fromIntegral port
         , GRPC.serverOnStarted = Just serverOnStarted
-        , GRPC.sslConfig = fmap initializeTlsConfig tlsConfig
+        , GRPC.sslConfig = sslOpts
         }
+#endif
 
   forM_ (Map.toList listeners) $ \(key, vs) ->
     forM_ vs $ \I.Listener{..} -> do
@@ -144,11 +161,20 @@ serve host port tlsConfig sc@ServerContext{..} listeners = do
         -- TODO: support HStreamUseHsGrpc
         let listenerOnStarted = Log.info $ "Extra listener is started on port "
                                         <> Log.buildInt listenerPort
+        let sc' = sc{scAdvertisedListenersKey = Just key}
+#ifdef HStreamUseHsGrpc
+        let grpcOpts' = grpcOpts { HsGrpc.serverPort = fromIntegral listenerPort
+                                 , HsGrpc.serverOnStarted = Just listenerOnStarted
+                                 }
+        HsGrpc.runServer grpcOpts' (HsGrpc.handlers sc')
+#else
         let grpcOpts' = grpcOpts { GRPC.serverPort = GRPC.Port $ fromIntegral listenerPort
                                  , GRPC.serverOnStarted = Just listenerOnStarted
                                  }
-        api <- handlers sc{scAdvertisedListenersKey = Just key}
+        api <- handlers sc'
         hstreamApiServer api grpcOpts'
+#endif
+
 #ifdef HStreamUseHsGrpc
   Log.warning "Starting server with a still in development lib hs-grpc-server!"
   let serverOptions = HsGrpc.ServerOptions { HsGrpc.serverHost = BS.toShort host
@@ -156,7 +182,7 @@ serve host port tlsConfig sc@ServerContext{..} listeners = do
                                            , HsGrpc.serverParallelism = 0
                                            , HsGrpc.serverOnStarted = Just serverOnStarted
                                            }
-  HsGrpc.runServer serverOptions (HsGrpc.handlers sc)
+  HsGrpc.runServer grpcOpts (HsGrpc.handlers sc)
 #else
   api <- handlers sc
   hstreamApiServer api grpcOpts

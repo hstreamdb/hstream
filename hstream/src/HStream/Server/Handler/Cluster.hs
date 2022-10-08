@@ -18,6 +18,7 @@ module HStream.Server.Handler.Cluster
   , handleLookupConnector
   ) where
 
+import qualified HsGrpc.Server                    as G
 import           Network.GRPC.HighLevel.Generated
 
 import qualified HStream.Server.Core.Cluster      as C
@@ -66,23 +67,23 @@ lookupShardReaderHandler sc (ServerNormalRequest _meta req) =
 
 -------------------------------------------------------------------------------
 
-handleDescribeCluster :: ServerContext -> Empty -> IO DescribeClusterResponse
-handleDescribeCluster sc _ = catchDefaultEx $ C.describeCluster sc
+handleDescribeCluster :: ServerContext -> G.UnaryHandler Empty DescribeClusterResponse
+handleDescribeCluster sc _ _ = catchDefaultEx $ C.describeCluster sc
 
-handleLookupShard :: ServerContext -> LookupShardRequest -> IO LookupShardResponse
-handleLookupShard sc req = catchDefaultEx $ C.lookupShard sc req
+handleLookupShard :: ServerContext -> G.UnaryHandler LookupShardRequest LookupShardResponse
+handleLookupShard sc _ req = catchDefaultEx $ C.lookupShard sc req
 
 handleLookupSubscription
   :: ServerContext
-  -> LookupSubscriptionRequest -> IO LookupSubscriptionResponse
-handleLookupSubscription sc req = catchDefaultEx $ C.lookupSubscription sc req
+  -> G.UnaryHandler LookupSubscriptionRequest LookupSubscriptionResponse
+handleLookupSubscription sc _ req = catchDefaultEx $ C.lookupSubscription sc req
 
 handleLookupShardReader
   :: ServerContext
-  -> LookupShardReaderRequest -> IO LookupShardReaderResponse
-handleLookupShardReader sc req = catchDefaultEx $
+  -> G.UnaryHandler LookupShardReaderRequest LookupShardReaderResponse
+handleLookupShardReader sc _ req = catchDefaultEx $
   C.lookupShardReader sc req
 
 handleLookupConnector
-  :: ServerContext -> LookupConnectorRequest -> IO LookupConnectorResponse
-handleLookupConnector sc req = catchDefaultEx $ C.lookupConnector sc req
+  :: ServerContext -> G.UnaryHandler LookupConnectorRequest LookupConnectorResponse
+handleLookupConnector sc _ req = catchDefaultEx $ C.lookupConnector sc req
