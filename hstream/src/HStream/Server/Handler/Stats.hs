@@ -11,6 +11,7 @@ module HStream.Server.Handler.Stats
   , handlePerStreamTimeSeriesStats
   ) where
 
+import qualified HsGrpc.Server                    as G
 import           Network.GRPC.HighLevel.Generated
 
 import           Control.Exception                (throwIO)
@@ -36,9 +37,8 @@ perStreamTimeSeriesStatsAll holder (ServerNormalRequest _metadata req) = default
 
 handlePerStreamTimeSeriesStatsAll
   :: StatsHolder
-  -> PerStreamTimeSeriesStatsAllRequest
-  -> IO PerStreamTimeSeriesStatsAllResponse
-handlePerStreamTimeSeriesStatsAll holder req = catchDefaultEx $
+  -> G.UnaryHandler PerStreamTimeSeriesStatsAllRequest PerStreamTimeSeriesStatsAllResponse
+handlePerStreamTimeSeriesStatsAll holder _ req = catchDefaultEx $
   PerStreamTimeSeriesStatsAllResponse <$> getPerStreamTimeSeriesStatsAll holder req
 
 perStreamTimeSeriesStats
@@ -51,9 +51,10 @@ perStreamTimeSeriesStats holder (ServerNormalRequest _ req) = defaultExceptionHa
 
 handlePerStreamTimeSeriesStats
   :: StatsHolder
-  -> PerStreamTimeSeriesStatsRequest
-  -> IO PerStreamTimeSeriesStatsResponse
-handlePerStreamTimeSeriesStats = undefined
+  -> G.UnaryHandler PerStreamTimeSeriesStatsRequest PerStreamTimeSeriesStatsResponse
+handlePerStreamTimeSeriesStats holder _ req = catchDefaultEx $ do
+  r <- getPerStreamTimeSeriesStats holder req
+  pure $ PerStreamTimeSeriesStatsResponse r
 
 -------------------------------------------------------------------------------
 

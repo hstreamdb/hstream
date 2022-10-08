@@ -24,11 +24,11 @@ module HStream.Server.Handler.Stream
   , handleCreateShardReader
   , handleDeleteShardReader
   , handleReadShard
-  )
-where
+  ) where
 
 import           Control.Exception
-import qualified HsGrpc.Server.Types              as HsGrpc
+import qualified HsGrpc.Server                    as G
+import qualified HsGrpc.Server.Types              as G
 import           Network.GRPC.HighLevel.Generated
 
 import qualified HStream.Exception                as HE
@@ -53,8 +53,8 @@ createStreamHandler sc (ServerNormalRequest _metadata stream) = defaultException
   C.createStream sc stream
   returnResp stream
 
-handleCreateStream :: ServerContext -> Stream -> IO Stream
-handleCreateStream sc stream = catchDefaultEx $
+handleCreateStream :: ServerContext -> G.UnaryHandler Stream Stream
+handleCreateStream sc _ stream = catchDefaultEx $
   C.createStream sc stream >> pure stream
 
 -- DeleteStream have two mod: force delete or normal delete
@@ -74,8 +74,8 @@ deleteStreamHandler sc (ServerNormalRequest _metadata request) = defaultExceptio
   C.deleteStream sc request
   returnResp Empty
 
-handleDeleteStream :: ServerContext -> DeleteStreamRequest -> IO Empty
-handleDeleteStream sc req = catchDefaultEx $
+handleDeleteStream :: ServerContext -> G.UnaryHandler DeleteStreamRequest Empty
+handleDeleteStream sc _ req = catchDefaultEx $
   C.deleteStream sc req >> pure Empty
 
 listStreamsHandler
@@ -86,8 +86,8 @@ listStreamsHandler sc (ServerNormalRequest _metadata request) = defaultException
   Log.debug "Receive List Stream Request"
   C.listStreams sc request >>= returnResp . ListStreamsResponse
 
-handleListStreams :: ServerContext -> ListStreamsRequest -> IO ListStreamsResponse
-handleListStreams sc req = catchDefaultEx $
+handleListStreams :: ServerContext -> G.UnaryHandler ListStreamsRequest ListStreamsResponse
+handleListStreams sc _ req = catchDefaultEx $
   ListStreamsResponse <$> C.listStreams sc req
 
 appendHandler
@@ -103,8 +103,8 @@ appendHandler sc@ServerContext{..} (ServerNormalRequest _metadata request@Append
       Stats.stream_time_series_add_append_failed_requests scStatsHolder cStreamName 1
     cStreamName = textToCBytes appendRequestStreamName
 
-handleAppend :: ServerContext -> AppendRequest -> IO AppendResponse
-handleAppend sc@ServerContext{..} req = appendExHandle inc_failed $ C.append sc req
+handleAppend :: ServerContext -> G.UnaryHandler AppendRequest AppendResponse
+handleAppend sc@ServerContext{..} _ req = appendExHandle inc_failed $ C.append sc req
   where
     inc_failed = do
       Stats.stream_stat_add_append_failed scStatsHolder cStreamName 1
@@ -122,8 +122,8 @@ listShardsHandler sc (ServerNormalRequest _metadata request) = listShardsExcepti
   Log.debug "Receive List Shards Request"
   C.listShards sc request >>= returnResp . ListShardsResponse
 
-handleListShard :: ServerContext -> ListShardsRequest -> IO ListShardsResponse
-handleListShard sc req = listShardsExHandle $
+handleListShard :: ServerContext -> G.UnaryHandler ListShardsRequest ListShardsResponse
+handleListShard sc _ req = listShardsExHandle $
   ListShardsResponse <$> C.listShards sc req
 
 createShardReaderHandler
@@ -136,9 +136,8 @@ createShardReaderHandler sc (ServerNormalRequest _metadata request) = defaultExc
 
 handleCreateShardReader
   :: ServerContext
-  -> CreateShardReaderRequest
-  -> IO CreateShardReaderResponse
-handleCreateShardReader sc req = catchDefaultEx $ C.createShardReader sc req
+  -> G.UnaryHandler CreateShardReaderRequest CreateShardReaderResponse
+handleCreateShardReader sc _ req = catchDefaultEx $ C.createShardReader sc req
 
 deleteShardReaderHandler
   :: ServerContext
@@ -150,9 +149,8 @@ deleteShardReaderHandler sc (ServerNormalRequest _metadata request) = defaultExc
 
 handleDeleteShardReader
   :: ServerContext
-  -> DeleteShardReaderRequest
-  -> IO Empty
-handleDeleteShardReader sc req = catchDefaultEx $
+  -> G.UnaryHandler DeleteShardReaderRequest Empty
+handleDeleteShardReader sc _ req = catchDefaultEx $
   C.deleteShardReader sc req >> pure Empty
 
 readShardHandler
@@ -165,9 +163,8 @@ readShardHandler sc (ServerNormalRequest _metadata request) = defaultExceptionHa
 
 handleReadShard
   :: ServerContext
-  -> ReadShardRequest
-  -> IO ReadShardResponse
-handleReadShard sc req = catchDefaultEx $ do
+  -> G.UnaryHandler ReadShardRequest ReadShardResponse
+handleReadShard sc _ req = catchDefaultEx $ do
   ReadShardResponse <$> C.readShard sc req
 
 --------------------------------------------------------------------------------
@@ -195,11 +192,11 @@ appendExHandle f = HE.mkExceptionHandle' whileEx handlers
     whileEx err = Log.warning (Log.buildString' err) >> f
     handlers =
       [ Handler $ \(err :: Store.NOTFOUND) -> do
-          HsGrpc.throwGrpcError $ HE.mkGrpcStatus err HsGrpc.StatusUnavailable
+          G.throwGrpcError $ HE.mkGrpcStatus err G.StatusUnavailable
       , Handler $ \(err :: Store.NOTINSERVERCONFIG) ->
-          HsGrpc.throwGrpcError $ HE.mkGrpcStatus err HsGrpc.StatusUnavailable
+          G.throwGrpcError $ HE.mkGrpcStatus err G.StatusUnavailable
       , Handler $ \(err :: Store.NOSEQUENCER) -> do
-          HsGrpc.throwGrpcError $ HE.mkGrpcStatus err HsGrpc.StatusUnavailable
+          G.throwGrpcError $ HE.mkGrpcStatus err G.StatusUnavailable
       ] ++ defaultExHandlers
 
 listShardsExceptionHandle :: HE.ExceptionHandle (ServerResponse 'Normal a)
@@ -213,5 +210,5 @@ listShardsExHandle = HE.mkExceptionHandle handlers
   where
     handlers =
       [ Handler $ \(err :: Store.NOTFOUND) -> do
-          HsGrpc.throwGrpcError $ HE.mkGrpcStatus err HsGrpc.StatusUnavailable
+          G.throwGrpcError $ HE.mkGrpcStatus err G.StatusUnavailable
       ] ++ defaultExHandlers
