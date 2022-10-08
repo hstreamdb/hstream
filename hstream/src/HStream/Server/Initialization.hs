@@ -62,11 +62,9 @@ initializeServer opts@ServerOpts{..} gossipContext hh serverState = do
 
   hashRing <- initializeHashRing gossipContext
 
-  let ZkAddr zkuri = _connectorMetaStore
   ioWorker <-
     IO.newWorker
       hh
-      (IO.ZkKvConfig (cBytesToText zkuri) IO.ioRootPath)
       (IO.HStreamConfig (cBytesToText (CB.pack _serverAddress <> ":" <> CB.pack (show _serverPort))))
       _ioOptions
       (\k -> do
