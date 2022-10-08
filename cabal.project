@@ -26,6 +26,9 @@ package thrift-lib
   flags: +use_sys_thrift_compiler
   tests: false
 
+package hstream
+  flags: +hstream_use_hs_grpc
+
 package hs-grpc-server
   flags: +UseProtoSuite
   tests: false

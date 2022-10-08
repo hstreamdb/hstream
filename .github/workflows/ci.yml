@@ -194,7 +194,7 @@ jobs:
         run: |
           cd integration-tests
           export HSTREAM_IMAGE_NAME=$NEW_HSTREAM_IMAGE
-          ./gradlew test --info --fail-fast -Dtag='basicTest'
+          ./gradlew test --info # --fail-fast -Dtag='basicTest'
 
       - name: collect tests reports
         if: ${{ success() }} || ${{ failure() }}
