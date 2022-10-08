@@ -5,14 +5,17 @@
 module HStream.Server.Initialization
   ( initializeServer
   , initializeTlsConfig
+  , readTlsPemFile
   ) where
 
 import           Control.Concurrent               (MVar, newMVar)
 import           Control.Concurrent.STM           (TVar, newTVarIO, readTVarIO)
 import           Control.Exception                (catch)
 import           Control.Monad                    (void)
+import qualified Data.ByteString                  as BS
 import qualified Data.HashMap.Strict              as HM
 import           Data.List                        (find, sort)
+import qualified HsGrpc.Server.Types              as G
 import           Network.GRPC.HighLevel           (AuthProcessorResult (..),
                                                    AuthProperty (..),
                                                    ProcessMeta,
@@ -22,7 +25,6 @@ import           Network.GRPC.HighLevel           (AuthProcessorResult (..),
                                                    getAuthProperties)
 import           Text.Printf                      (printf)
 import qualified Z.Data.CBytes                    as CB
-import           ZooKeeper.Types
 
 import qualified HStream.Admin.Store.API          as AA
 import           HStream.Common.ConsistentHashing (HashRing, constructServerMap,
@@ -60,11 +62,9 @@ initializeServer opts@ServerOpts{..} gossipContext hh serverState = do
 
   hashRing <- initializeHashRing gossipContext
 
-  let ZkAddr zkuri = _connectorMetaStore
   ioWorker <-
     IO.newWorker
       hh
-      (IO.ZkKvConfig (cBytesToText zkuri) IO.ioRootPath)
       (IO.HStreamConfig (cBytesToText (CB.pack _serverAddress <> ":" <> CB.pack (show _serverPort))))
       _ioOptions
       (\k -> do
@@ -119,3 +119,16 @@ authProcess authCtx _ = do
   let cn = find ((== "x509_common_name") . authPropName) prop
   Log.info . Log.buildString . printf "user:[%s] is logging in" $ show cn
   return $ AuthProcessorResult mempty mempty StatusOk ""
+
+readTlsPemFile :: TlsConfig -> IO G.SslServerCredentialsOptions
+readTlsPemFile TlsConfig{..} = do
+  key <- BS.readFile keyPath
+  cert <- BS.readFile certPath
+  ca <- mapM BS.readFile caPath
+  let authType = maybe G.GrpcSslDontRequestClientCertificate
+                       (const G.GrpcSslRequestAndRequireClientCertificateAndVerify)
+                       caPath
+  pure $ G.SslServerCredentialsOptions{ pemKeyCertPairs = [(key, cert)]
+                                      , pemRootCerts = ca
+                                      , clientAuthType = authType
+                                      }

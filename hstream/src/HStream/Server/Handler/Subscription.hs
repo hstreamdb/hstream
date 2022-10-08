@@ -25,8 +25,7 @@ where
 import           Control.Concurrent.STM
 import           Control.Exception                (throwIO)
 import           Control.Monad
-import           HsGrpc.Server                    (BiDiStream, streamRead,
-                                                   streamWrite)
+import qualified HsGrpc.Server                    as G
 import           Network.GRPC.HighLevel.Generated
 
 import           HStream.Common.ConsistentHashing (getAllocatedNodeId)
@@ -51,8 +50,8 @@ createSubscriptionHandler ctx (ServerNormalRequest _metadata sub) = defaultExcep
   Core.createSubscription ctx sub
   returnResp sub
 
-handleCreateSubscription :: ServerContext -> Subscription -> IO Subscription
-handleCreateSubscription sc sub = catchDefaultEx $
+handleCreateSubscription :: ServerContext -> G.UnaryHandler Subscription Subscription
+handleCreateSubscription sc _ sub = catchDefaultEx $
   Core.createSubscription sc sub >> pure sub
 
 -------------------------------------------------------------------------------
@@ -73,8 +72,8 @@ deleteSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata r
   Log.info " ----------- successfully deleted subscription  -----------"
   returnResp Empty
 
-handleDeleteSubscription :: ServerContext -> DeleteSubscriptionRequest -> IO Empty
-handleDeleteSubscription ctx@ServerContext{..} req = catchDefaultEx $ do
+handleDeleteSubscription :: ServerContext -> G.UnaryHandler DeleteSubscriptionRequest Empty
+handleDeleteSubscription ctx@ServerContext{..} _ req = catchDefaultEx $ do
   let subId = deleteSubscriptionRequestSubscriptionId req
   hr <- readTVarIO loadBalanceHashRing
   unless (getAllocatedNodeId hr subId == serverID) $
@@ -96,9 +95,8 @@ checkSubscriptionExistHandler ServerContext {..} (ServerNormalRequest _metadata 
 
 handleCheckSubscriptionExist
   :: ServerContext
-  -> CheckSubscriptionExistRequest
-  -> IO CheckSubscriptionExistResponse
-handleCheckSubscriptionExist ServerContext{..} req = catchDefaultEx $ do
+  -> G.UnaryHandler CheckSubscriptionExistRequest CheckSubscriptionExistResponse
+handleCheckSubscriptionExist ServerContext{..} _ req = catchDefaultEx $ do
   let sid = checkSubscriptionExistRequestSubscriptionId req
   res <- M.checkMetaExists @SubscriptionWrap sid zkHandle
   pure $ CheckSubscriptionExistResponse res
@@ -117,9 +115,8 @@ listSubscriptionsHandler sc (ServerNormalRequest _metadata ListSubscriptionsRequ
 
 handleListSubscriptions
   :: ServerContext
-  -> ListSubscriptionsRequest
-  -> IO ListSubscriptionsResponse
-handleListSubscriptions sc ListSubscriptionsRequest = catchDefaultEx $ do
+  -> G.UnaryHandler ListSubscriptionsRequest ListSubscriptionsResponse
+handleListSubscriptions sc _ ListSubscriptionsRequest = catchDefaultEx $ do
   ListSubscriptionsResponse <$> Core.listSubscriptions sc
 
 -------------------------------------------------------------------------------
@@ -137,9 +134,8 @@ streamingFetchHandler ctx (ServerBiDiRequest _ streamRecv streamSend) =
 -- TODO: imporvements for read or write error
 handleStreamingFetch
   :: ServerContext
-  -> BiDiStream StreamingFetchRequest StreamingFetchResponse
-  -> IO ()
-handleStreamingFetch sc stream =
-  let streamSend x = streamWrite stream (Just x) >> pure (Right ())
-      streamRecv = do Right <$> streamRead stream
+  -> G.BiDiStreamHandler StreamingFetchRequest StreamingFetchResponse ()
+handleStreamingFetch sc _ stream =
+  let streamSend x = G.streamWrite stream (Just x) >> pure (Right ())
+      streamRecv = do Right <$> G.streamRead stream
    in catchDefaultEx $ Core.streamingFetchCore sc Core.SFetchCoreInteractive (streamSend, streamRecv)

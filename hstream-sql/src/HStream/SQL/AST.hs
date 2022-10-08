@@ -416,7 +416,7 @@ data RCreate = RCreate   Text RStreamOptions
 type instance RefinedType [StreamOption] = RStreamOptions
 instance Refine [StreamOption] where
   refine [OptionRepFactor _ rep] = RStreamOptions (fromInteger $ refine rep)
-  refine [] = RStreamOptions 3
+  refine [] = RStreamOptions 1
   refine _ = throwSQLException RefineException Nothing "Impossible happened"
 
 type instance RefinedType [ConnectorOption] = RConnectorOptions

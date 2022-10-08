@@ -36,7 +36,7 @@ import           Data.Yaml                      as Y (Object,
                                                       Parser, decodeFileThrow,
                                                       parseEither, (.!=), (.:),
                                                       (.:?))
-import           Options.Applicative            as O (Alternative ((<|>)),
+import           Options.Applicative            as O (Alternative (many, (<|>)),
                                                       CompletionResult (execCompletion),
                                                       Parser,
                                                       ParserResult (CompletionInvoked, Failure, Success),
@@ -54,6 +54,7 @@ import           System.Exit                    (exitSuccess)
 import qualified Z.Data.CBytes                  as CB
 import           Z.Data.CBytes                  (CBytes)
 
+import           Data.Foldable                  (foldrM)
 import qualified HStream.Admin.Store.API        as AA
 import           HStream.Gossip                 (GossipOpts (..),
                                                  defaultGossipOpts)
@@ -109,7 +110,6 @@ data ServerOpts = ServerOpts
 
   , _gossipOpts                :: !GossipOpts
   , _ioOptions                 :: !IO.IOOptions
-  , _connectorMetaStore        :: !MetaStoreAddr
   } deriving (Show, Eq)
 
 getConfig :: IO ServerOpts
@@ -162,6 +162,7 @@ data CliOptions = CliOptions
 
   , _ioTasksPath_        :: !(Maybe Text)
   , _ioTasksNetwork_     :: !(Maybe Text)
+  , _ioConnectorImages_  :: ![Text]
   }
   deriving Show
 
@@ -192,6 +193,7 @@ cliOptionsParser = do
   _tlsCaPath_          <- optional tlsCaPath
   _ioTasksPath_        <- optional ioTasksPath
   _ioTasksNetwork_     <- optional ioTasksNetwork
+  _ioConnectorImages_  <- ioConnectorImage
   return CliOptions {..}
 
 parseJSONToOptions :: CliOptions -> Y.Object -> Y.Parser ServerOpts
@@ -204,7 +206,7 @@ parseJSONToOptions CliOptions {..} obj = do
   nodeInternalPort    <- nodeCfgObj .:? "internal-port" .!= 6571
   advertisedListeners <- nodeCfgObj .:? "advertised-listeners"
 
-  nodeMetaStore     <- parseMetaStoreAddr <$> nodeCfgObj .:  "meta-store" :: Y.Parser MetaStoreAddr
+  nodeMetaStore     <- parseMetaStoreAddr <$> nodeCfgObj .:  "metastore-uri" :: Y.Parser MetaStoreAddr
   serverCompression <- read <$> nodeCfgObj .:? "compression" .!= "lz4"
   nodeLogLevel      <- nodeCfgObj .:? "log-level" .!= "info"
   nodeLogWithColor  <- nodeCfgObj .:? "log-with-color" .!= True
@@ -276,20 +278,27 @@ parseJSONToOptions CliOptions {..} obj = do
 
 
   -- hstream io config
-  -- FIXME: connector meta store should be part of ioOpts
-  _connectorMetaStore <- parseMetaStoreAddr <$> nodeCfgObj .:?  "connector-meta-store" .!= T.pack (show nodeMetaStore)
-  case _connectorMetaStore of
-    ZkAddr _ -> return ()
-    _ -> error "Currently only support connectors with zookeeper meta store"
   nodeIOCfg <- nodeCfgObj .:? "hstream-io" .!= mempty
   nodeIOTasksPath <- nodeIOCfg .:? "tasks-path" .!= "/tmp/io/tasks"
   nodeIOTasksNetwork <- nodeIOCfg .:? "tasks-network" .!= "host"
-  optSourceImages <- nodeIOCfg .:? "source-images" .!= HM.empty
-  optSinkImages <- nodeIOCfg .:? "sink-images" .!= HM.empty
+  nodeSourceImages <- nodeIOCfg .:? "source-images" .!= HM.empty
+  nodeSinkImages <- nodeIOCfg .:? "sink-images" .!= HM.empty
+  (optSourceImages, optSinkImages) <- foldrM
+        (\img (ss, sk) -> do
+          -- "source mysql IMAGE" -> ("source" "mysq" "IMAGE")
+          let parseImage = toThreeTuple . T.words
+              toThreeTuple [a, b, c] = pure (a, b, c)
+              toThreeTuple _         = fail "incorrect image"
+          (typ, ct, di) <- parseImage img
+          case T.toLower typ of
+            "source" -> return (HM.insert ct di ss, sk)
+            "sink"   -> return (ss, HM.insert ct di sk)
+            _        -> fail "incorrect connector type"
+        )
+        (nodeSourceImages, nodeSinkImages) _ioConnectorImages_
   let optTasksPath = fromMaybe nodeIOTasksPath _ioTasksPath_
       optTasksNetwork = fromMaybe nodeIOTasksNetwork _ioTasksNetwork_
       _ioOptions = IO.IOOptions {..}
-
   return ServerOpts {..}
 
 -------------------------------------------------------------------------------
@@ -373,7 +382,7 @@ ldLogLevel = option auto
 
 metaStore :: O.Parser MetaStoreAddr
 metaStore = option (O.maybeReader (Just . parseMetaStoreAddr . T.pack))
-  $  long "meta-store"
+  $  long "metastore-uri"
   <> metavar "STR"
   <> help ( "Meta store address, currently support zookeeper and rqlite"
          <> "such as \"zk://127.0.0.1:2181,127.0.0.1:2182 , \"rq://127.0.0.1:4001\"")
@@ -419,6 +428,12 @@ ioTasksNetwork = strOption
   $  long "io-tasks-network"
   <> metavar "STR"
   <> help "io tasks network"
+
+ioConnectorImage :: O.Parser [Text]
+ioConnectorImage = many . strOption $
+  long "io-connector-image"
+  <> metavar "<source | sink> <target connector> <docker image>"
+  <> help "update connector image, e.g. \"source mysql hsteramdb/source-mysql:latest\""
 
 readProtocol :: Text.Text -> AA.ProtocolId
 readProtocol x = case (Text.strip . Text.toUpper) x of
