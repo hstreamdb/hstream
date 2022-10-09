@@ -460,6 +460,10 @@ hServerExHandlers :: [E.Handler a]
 hServerExHandlers =
   [ E.Handler $ \(err :: InvalidArgument) -> do
       Log.warning $ Log.buildString' err
+      HsGrpc.throwGrpcError $ mkGrpcStatus err HsGrpc.StatusInvalidArgument
+
+  , E.Handler $ \(err :: Cancelled) -> do
+      Log.fatal $ Log.buildString' err
       HsGrpc.throwGrpcError $ mkGrpcStatus err HsGrpc.StatusCancelled
 
   , E.Handler $ \(err :: NotFound) -> do

@@ -25,7 +25,9 @@ where
 import           Control.Concurrent.STM
 import           Control.Exception                (throwIO)
 import           Control.Monad
+import           Data.Bifunctor                   (first)
 import qualified HsGrpc.Server                    as G
+import           Network.GRPC.HighLevel           (GRPCIOError (..))
 import           Network.GRPC.HighLevel.Generated
 
 import           HStream.Common.ConsistentHashing (getAllocatedNodeId)
@@ -136,6 +138,6 @@ handleStreamingFetch
   :: ServerContext
   -> G.BiDiStreamHandler StreamingFetchRequest StreamingFetchResponse ()
 handleStreamingFetch sc _ stream =
-  let streamSend x = G.streamWrite stream (Just x) >> pure (Right ())
+  let streamSend x = first (const GRPCIOShutdown) <$> G.streamWrite stream (Just x)
       streamRecv = do Right <$> G.streamRead stream
    in catchDefaultEx $ Core.streamingFetchCore sc Core.SFetchCoreInteractive (streamSend, streamRecv)
