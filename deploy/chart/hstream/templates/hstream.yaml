@@ -67,7 +67,7 @@ spec:
             --address $(POD_IP) \
             --seed-nodes {{ include "hstream.seedNodes" . }} \
             --server-id $((100 + $ordinal)) \
-            --zkuri {{ include "hstream.zookeeper.uri" . }} \
+            --metastore-uri zk://{{ include "hstream.zookeeper.uri" . }} \
             --store-config /etc/logdevice/config.json \
             --store-admin-host {{ include "hstream.fullname" . }}-logdevice-admin-server
         ports:
