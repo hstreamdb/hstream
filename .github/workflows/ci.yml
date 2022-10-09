@@ -377,3 +377,99 @@ jobs:
             hstream-connectors/integration_tests/.logs
             /tmp/io/tasks
             hstream-connectors/integration_tests/app/build/reports
+
+  deploy-k8s:
+    # disabled due to a lack of hardware resources of the github action
+    if: false
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    name: deploy to minikube
+    strategy:
+      fail-fast: true
+
+    steps:
+      - name: Start minikube
+        uses: medyagh/setup-minikube@master
+
+      - name: Try the cluster !
+        run: kubectl get pods -A
+
+      - name: Retrieve saved docker image
+        uses: actions/download-artifact@v3
+        with:
+          name: image-testing
+          path: ~/data
+
+      - name: Load image
+        run: |
+          export SHELL=/bin/bash
+          eval $(minikube -p minikube docker-env)
+          docker load -i ~/data/new_hstream_image.tar
+          docker tag $NEW_HSTREAM_IMAGE hstreamdb/hstream
+          echo -n "verifying images:"
+          docker images
+
+      - uses: actions/checkout@v2
+      - name: Deploy to minikube by helm
+        run: |
+          cd deploy/chart/hstream
+          helm repo add bitnami https://charts.bitnami.com/bitnami
+          helm repo update
+          helm dependency build .
+          helm install my-hstream .
+
+      - name: Waiting for cluster ready
+        run: |
+          timeout=600    # seconds
+          until ( \
+              kubectl exec -it my-hstream-0 -- hadmin server status |grep "100.*Running" && \
+              kubectl exec -it my-hstream-0 -- hadmin server status |grep "101.*Running" && \
+              kubectl exec -it my-hstream-0 -- hadmin server status |grep "102.*Running"
+              ) >/dev/null 2>&1;
+          do
+            >&2 echo "Waiting for cluster ready ..."
+            kubectl get pods
+            sleep 10
+            timeout=$((timeout - 10))
+            if [ $timeout -le 0 ]; then
+              echo "Timeout!" && \
+              kubectl logs --tail 100 my-hstream-0 ; \
+              kubectl logs --tail 100 my-hstream-1 ; \
+              kubectl logs --tail 100 my-hstream-2 ; \
+              kubectl exec -it my-hstream-0 -- hadmin server status ; \
+              exit 1;
+            fi
+          done
+
+          sleep 2
+          kubectl exec -it my-hstream-0 -- hadmin store --host my-hstream-logdevice-admin-server status
+          kubectl exec -it my-hstream-0 -- hadmin server status
+
+      - name: Fetch bench source code
+        uses: actions/checkout@v2
+        with:
+          repository: "hstreamdb/bench"
+          submodules: "recursive"
+          path: a_bench
+
+      - name: Run simple appends
+        run: |
+          eval $(minikube -p minikube docker-env)
+          cd a_bench
+          echo -e "FROM openjdk:11\nCOPY . /srv\nWORKDIR /srv" | docker build -t tmp_bench -f - .
+          ADDR=$(kubectl get pods my-hstream-0 --template '{{.status.podIP}}')
+          docker run -t --rm tmp_bench \
+            ./gradlew writeBench --args="\
+               --bench-time=30 \
+               --warmup=1 \
+               --service-url=$ADDR:6570 \
+               --thread-count=1 \
+               --stream-count=2 \
+               --shard-count=1 \
+               --stream-backlog-duration=60 \
+               --stream-replication-factor=1 \
+               --record-size=1024 \
+               --batch-bytes-limit=2048 \
+               --batch-age-limit=500 \
+               --rate-limit=100 \
+               --total-bytes-limit=8192"
