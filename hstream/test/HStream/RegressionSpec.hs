@@ -1,4 +1,5 @@
 {-# LANGUAGE GADTs               #-}
+{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -7,7 +8,6 @@ module HStream.RegressionSpec (spec) where
 
 import           Control.Concurrent
 import qualified Data.Aeson                    as Aeson
-import qualified Data.ByteString.Char8         as BS
 import qualified Data.List                     as L
 import qualified Data.Text                     as T
 import           Test.Hspec
@@ -94,5 +94,7 @@ spec = aroundAll provideHstreamApi $
   it "HS-1787" $ \api -> do
     let doesNotExistSourceStream = "s7_does_not_exist" :: T.Text
     ClientErrorResponse errResp <- runQuerySimple api $ "CREATE VIEW v7 AS SELECT SUM(x) FROM " <> doesNotExistSourceStream <> " GROUP BY i EMIT CHANGES;"
-    errResp `shouldBe` ClientIOError (GRPCIOBadStatusCode StatusInvalidArgument (StatusDetails . BS.pack $ "Source " <> show doesNotExistSourceStream <> " doesn't exist"))
+    errResp `shouldSatisfy` \case
+      ClientIOError (GRPCIOBadStatusCode StatusInvalidArgument _) -> True
+      _                                                           -> False
     runDropSql api "DROP VIEW v7 IF EXISTS;"

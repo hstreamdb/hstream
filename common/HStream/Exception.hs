@@ -33,6 +33,7 @@ module HStream.Exception
   , NoRecordHeader (..)
   , UnknownCompressionType (..)
   , InvalidStatsInterval (..)
+  , InvalidSqlStatement (..)
 
     -- * Exception: NotFound
     --
@@ -42,6 +43,7 @@ module HStream.Exception
   , StreamNotFound (..)
   , SubscriptionNotFound (..)
   , ConnectorNotFound (..)
+  , ViewNotFound (..)
   , ShardNotFound (..)
   , RQLiteTableNotFound (..)
   , RQLiteRowNotFound (..)
@@ -76,6 +78,7 @@ module HStream.Exception
   , SubscriptionOnDifferentNode (..)
   , SubscriptionInvalidError (..)
   , ConsumerInvalidError (..)
+  , TerminateQueriesError (..)
 
     -- * Exception: Unavailable
   , Unavailable
@@ -91,12 +94,19 @@ module HStream.Exception
   , RQLiteNetworkErr (..)
   , RQLiteDecodeErr (..)
   , RQLiteUnspecifiedErr (..)
+  , DiscardedMethod (..)
 
     -- * Exception: Unauthenticated
     --
     -- $unauthenticated
   , Unauthenticated
   , RQLiteNoAuth (..)
+
+    -- * Exception: Unimplemented
+    --
+    -- $unimplemented
+  , Unimplemented
+  , ExecPlanUnimplemented (..)
 
     -- * Handler
   , mkExceptionHandle
@@ -236,6 +246,7 @@ MAKE_PARTICULAR_EX_1(InvalidArgument, DecodeHStreamRecordErr, String, )
 MAKE_PARTICULAR_EX_0(InvalidArgument, NoRecordHeader, "HStreamRecord doesn't have a header.")
 MAKE_PARTICULAR_EX_0(InvalidArgument, UnknownCompressionType, "UnknownCompressionType")
 MAKE_PARTICULAR_EX_1(InvalidArgument, InvalidStatsInterval, String, )
+MAKE_PARTICULAR_EX_1(InvalidArgument, InvalidSqlStatement, String, )
 
 -------------------------------------------------------------------------------
 -- Exception: NotFound
@@ -253,6 +264,7 @@ MAKE_PARTICULAR_EX_1(NotFound, NodesNotFound, Text, Text.unpack)
 MAKE_PARTICULAR_EX_1(NotFound, StreamNotFound, Text, Text.unpack)
 MAKE_PARTICULAR_EX_1(NotFound, SubscriptionNotFound, Text, Text.unpack)
 MAKE_PARTICULAR_EX_1(NotFound, ConnectorNotFound, Text, Text.unpack)
+MAKE_PARTICULAR_EX_1(NotFound, ViewNotFound, Text, Text.unpack)
 MAKE_PARTICULAR_EX_1(NotFound, ShardNotFound, Text, Text.unpack)
 MAKE_PARTICULAR_EX_1(NotFound, RQLiteTableNotFound, String, )
 MAKE_PARTICULAR_EX_1(NotFound, RQLiteRowNotFound, String, )
@@ -315,6 +327,7 @@ MAKE_PARTICULAR_EX_1(Aborted, SubscriptionIsDeleting, String, )
 MAKE_PARTICULAR_EX_1(Aborted, SubscriptionOnDifferentNode, String, )
 MAKE_PARTICULAR_EX_1(Aborted, SubscriptionInvalidError, String, )
 MAKE_PARTICULAR_EX_1(Aborted, ConsumerInvalidError, String, )
+MAKE_PARTICULAR_EX_1(Aborted, TerminateQueriesError, String, )
 
 -------------------------------------------------------------------------------
 -- Exception: Internal
@@ -331,6 +344,7 @@ MAKE_PARTICULAR_EX_1(Internal, ZstdCompresstionErr, String, )
 MAKE_PARTICULAR_EX_1(Internal, RQLiteNetworkErr, String, )
 MAKE_PARTICULAR_EX_1(Internal, RQLiteDecodeErr, String, )
 MAKE_PARTICULAR_EX_1(Internal, RQLiteUnspecifiedErr, String, )
+MAKE_PARTICULAR_EX_1(Internal, DiscardedMethod, String, )
 
 -------------------------------------------------------------------------------
 -- Exception: Unavailable
@@ -358,6 +372,16 @@ MAKE_PARTICULAR_EX_0(Unavailable, ServerNotAvailable, "ServerNotAvailable")
 MAKE_SUB_EX(SomeHServerException, Unauthenticated)
 
 MAKE_PARTICULAR_EX_1(Unauthenticated, RQLiteNoAuth, String, )
+
+-------------------------------------------------------------------------------
+-- Exception: Unimplemented
+
+-- $unimplemented
+--
+-- The operation is not implemented or is not supported/enabled in this service.
+MAKE_SUB_EX(SomeHServerException, Unimplemented)
+
+MAKE_PARTICULAR_EX_1(Unimplemented, ExecPlanUnimplemented, String, )
 
 -------------------------------------------------------------------------------
 -- Handlers
@@ -419,6 +443,10 @@ defaultHServerExHandlers =
   , E.Handler $ \(err :: Unauthenticated) -> do
       Log.warning $ Log.buildString' err
       return (StatusUnauthenticated, mkStatusDetails err)
+
+  , E.Handler $ \(err :: Unimplemented) -> do
+      Log.warning $ Log.buildString' err
+      return (StatusUnimplemented, mkStatusDetails err)
   ]
 
 zkExceptionHandlers :: [E.Handler (StatusCode, StatusDetails)]
@@ -489,6 +517,10 @@ hServerExHandlers =
   , E.Handler $ \(err :: Internal) -> do
       Log.fatal $ Log.buildString' err
       HsGrpc.throwGrpcError $ mkGrpcStatus err HsGrpc.StatusInternal
+
+  , E.Handler $ \(err :: Unimplemented) -> do
+      Log.warning $ Log.buildString' err
+      HsGrpc.throwGrpcError $ mkGrpcStatus err HsGrpc.StatusUnimplemented
   ]
 
 zkExHandlers :: [E.Handler a]

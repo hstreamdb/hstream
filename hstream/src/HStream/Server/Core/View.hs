@@ -1,13 +1,21 @@
-module HStream.Server.Core.View where
+module HStream.Server.Core.View
+  ( deleteView
+  , getView
+  , listViews
+  , listViewNames
+  ) where
 
-import           Control.Exception           (throw)
+import           Control.Exception           (throw, throwIO)
 import qualified Data.HashMap.Strict         as HM
 import           Data.IORef                  (atomicModifyIORef')
+import           Data.List                   (find)
 import qualified Data.Text                   as T
 import qualified Data.Vector                 as V
 import           GHC.Stack                   (HasCallStack)
 
-import           HStream.Exception           (UnexpectedError (..))
+import           HStream.Exception           (UnexpectedError (..),
+                                              ViewNotFound (..))
+import qualified HStream.Logger              as Log
 import qualified HStream.MetaStore.Types     as M
 import           HStream.Server.Core.Common  (deleteStoreStream)
 import qualified HStream.Server.HStreamApi   as API
@@ -20,6 +28,18 @@ deleteView :: ServerContext -> T.Text -> Bool -> IO Empty
 deleteView sc name checkIfExist = do
   atomicModifyIORef' P.groupbyStores (\hm -> (HM.delete name hm, ()))
   deleteStoreStream sc (transToStreamName name) checkIfExist
+
+getView :: ServerContext -> T.Text -> IO API.View
+getView ServerContext{..} viewId = do
+  query <- do
+    viewQueries <- filter P.isViewQuery <$> M.listMeta zkHandle
+    return $
+      find (\P.PersistentQuery {..} -> queryId == viewId) viewQueries
+  case query of
+    Just q -> pure $ hstreamQueryToView q
+    _      -> do
+      Log.warning $ "Cannot Find View with ID: " <> Log.buildString (T.unpack viewId)
+      throwIO $ ViewNotFound "View does not exist"
 
 hstreamQueryToView :: P.PersistentQuery -> API.View
 hstreamQueryToView (P.PersistentQuery _ sqlStatement createdTime (P.ViewQuery _ viewName schema) status _ _) =
