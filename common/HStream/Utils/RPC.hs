@@ -101,9 +101,7 @@ returnBiDiStreamingResp code = return . ServerBiDiResponse mempty code
 returnCommandQueryResp :: Monad m
                        => V.Vector Struct
                        -> m (ServerResponse 'Normal CommandQueryResponse)
-returnCommandQueryResp v = do
-  let resp = CommandQueryResponse v
-  return (ServerNormalResponse (Just resp) mempty StatusOk "")
+returnCommandQueryResp v = returnResp $ CommandQueryResponse v
 {-# INLINE returnCommandQueryResp #-}
 
 returnCommandQueryEmptyResp :: Monad m => m (ServerResponse 'Normal CommandQueryResponse)

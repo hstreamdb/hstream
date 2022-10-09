@@ -6,9 +6,11 @@ import           HsGrpc.Server
 
 import qualified HStream.Server.Handler.Admin        as H
 import qualified HStream.Server.Handler.Cluster      as H
+import qualified HStream.Server.Handler.Connector    as H
 import qualified HStream.Server.Handler.Stats        as H
 import qualified HStream.Server.Handler.Stream       as H
 import qualified HStream.Server.Handler.Subscription as H
+import qualified HStream.Server.Handler.View         as H
 import qualified HStream.Server.HStreamApi           as A
 import           HStream.Server.Types                (ServerContext (..))
 import qualified Proto.HStream.Server.HStreamApi     as P
@@ -48,9 +50,20 @@ handlers sc =
   , unary (GRPC :: GRPC P.HStreamApi "perStreamTimeSeriesStatsAll") (H.handlePerStreamTimeSeriesStatsAll $ scStatsHolder sc)
     -- Admin
   , unary (GRPC :: GRPC P.HStreamApi "sendAdminCommand") (H.handleAdminCommand sc)
+    -- Connector
+  , unary (GRPC :: GRPC P.HStreamApi "createConnector") (H.handleCreateConnector sc)
+  , unary (GRPC :: GRPC P.HStreamApi "listConnectors") (H.handleListConnectors sc)
+  , unary (GRPC :: GRPC P.HStreamApi "getConnector") (H.handleGetConnector sc)
+  , unary (GRPC :: GRPC P.HStreamApi "deleteConnector") (H.handleDeleteConnector sc)
+  , unary (GRPC :: GRPC P.HStreamApi "resumeConnector") (H.handleResumeConnector sc)
+  , unary (GRPC :: GRPC P.HStreamApi "pauseConnector") (H.handlePauseConnector sc)
+    -- View
+  , unary (GRPC :: GRPC P.HStreamApi "getView") (H.handleGetView sc)
+  , unary (GRPC :: GRPC P.HStreamApi "listViews") (H.handleListView sc)
+  , unary (GRPC :: GRPC P.HStreamApi "deleteView") (H.handleDeleteView sc)
+
     -- TODO: Query
-    -- TODO: Connector
-    -- TODO: View
+    -- TODO: StoreAdmin
   ]
 
 handleEcho :: UnaryHandler A.EchoRequest A.EchoResponse
