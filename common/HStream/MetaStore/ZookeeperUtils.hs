@@ -37,6 +37,14 @@ encodeValueToBS = BL.toStrict . Aeson.encode
 setZkData :: (ToJSON a) => ZHandle -> T.Text -> a -> Maybe Int -> IO ()
 setZkData zk path contents mv = void $ zooSet zk (textToCBytes path) (Just $ encodeValueToBytes contents) (fromIntegral <$> mv)
 
+upsertZkData :: (Show a, ToJSON a) => ZHandle -> T.Text -> a -> IO ()
+upsertZkData zk path contents = do
+  Log.debug . Log.buildString $ "upsert path " <> show path <> " with value " <> show contents
+  catch (createInsertZK zk path contents) $
+    \(_ :: ZNODEEXISTS) -> do
+      Log.debug . Log.buildString $ "path exists, set the value instead"
+      setZkData zk path contents Nothing
+
 deleteZKPath :: ZHandle -> T.Text -> Maybe Int -> IO ()
 deleteZKPath zk path mv = do
   Log.debug . Log.buildString $ "delete path " <> show path

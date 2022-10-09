@@ -8,204 +8,68 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# OPTIONS_GHC -Werror=incomplete-patterns #-}
 
-module HStream.Server.Handler.Query where
+module HStream.Server.Handler.Query
+  ( -- * For grpc-haskell
+    executeQueryHandler
+  , executePushQueryHandler
+  , terminateQueriesHandler
+  , getQueryHandler
+  , listQueriesHandler
+  , deleteQueryHandler
+  , restartQueryHandler
+    -- * For hs-grpc-server
+  ) where
 
 import           Control.Concurrent
 import           Control.Concurrent.Async         (async, cancel, wait)
-import           Control.Exception                (Exception, Handler (..),
-                                                   handle)
+import           Control.Exception                (Handler (..), handle)
 import           Control.Monad
 import qualified Data.Aeson                       as Aeson
 import qualified Data.ByteString.Char8            as BS
 import qualified Data.HashMap.Strict              as HM
-import           Data.IORef                       (atomicModifyIORef',
-                                                   readIORef)
-import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (fromJust, isJust)
 import           Data.String                      (IsString (fromString))
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
-import qualified Proto3.Suite.JSONPB              as PB
 import qualified Z.Data.CBytes                    as CB
 import           ZooKeeper.Exception
 
 import qualified HStream.Exception                as HE
-import qualified HStream.IO.Worker                as IO
 import qualified HStream.Logger                   as Log
 import           HStream.MetaStore.Types
 import           HStream.Server.ConnectorTypes    hiding (StreamName, Timestamp)
 import qualified HStream.Server.Core.Query        as Core
-import qualified HStream.Server.Core.Stream       as Core
-import qualified HStream.Server.Core.View         as Core
 import           HStream.Server.Exception         (defaultHandlers,
                                                    defaultServerStreamExceptionHandle)
 import           HStream.Server.Handler.Common
 import qualified HStream.Server.HStore            as HStore
-import           HStream.Server.HStreamApi
 import qualified HStream.Server.HStreamApi        as API
 import qualified HStream.Server.MetaData          as P
 import qualified HStream.Server.Shard             as Shard
 import           HStream.Server.Types
-import           HStream.SQL.AST
 import           HStream.SQL.Codegen              hiding (StreamName)
-import qualified HStream.SQL.Codegen              as HSC
 import           HStream.SQL.Exception            (SomeSQLException,
                                                    formatSomeSQLException)
-import qualified HStream.SQL.Internal.Codegen     as HSC
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils
 
-import           DiffFlow.Types                   (DataChange (..),
-                                                   DataChangeBatch (..))
-
 -- Other sqls, called in 'sqlAction'
 executeQueryHandler :: ServerContext
-                    -> ServerRequest 'Normal CommandQuery CommandQueryResponse
-                    -> IO (ServerResponse 'Normal CommandQueryResponse)
-executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata CommandQuery {..}) = queryExceptionHandle $ do
-  Log.debug $ "Receive Query Request: " <> Log.buildText commandQueryStmtText
-  plan <- streamCodegen commandQueryStmtText
-  case plan of
-    SelectPlan {} -> returnErrResp StatusInvalidArgument
-      "Inconsistent method called: select from streams SQL statements should be sent to rpc `ExecutePushQuery`"
-    CreateBySelectPlan _ inNodesWithStreams outNodeWithStream _ _ _ -> do
-      let sources = snd <$> inNodesWithStreams
-          sink    = snd outNodeWithStream
-          query   = P.StreamQuery sources sink
-      create (transToStreamName sink)
-      (qid,_) <- handleCreateAsSelect sc plan commandQueryStmtText query
-      returnCommandQueryResp (mkVectorStruct qid "stream_query_id")
-    CreateViewPlan _ schema inNodesWithStreams outNodeWithStream _ _ accumulation -> do
-      let sources = snd <$> inNodesWithStreams
-          sink    = snd outNodeWithStream
-          query   = P.ViewQuery sources sink schema
-      -- make sure source streams exist
-      nonExistedSource <- filterM (fmap not . S.doesStreamExist scLDClient . transToStreamName) sources :: IO [T.Text]
-      case nonExistedSource of
-        [] -> do
-          create (transToStreamName sink)
-          (qid,_) <- handleCreateAsSelect sc plan commandQueryStmtText query
-          atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert sink accumulation hm, ()))
-          returnCommandQueryResp (mkVectorStruct qid "view_query_id")
-        _ : _ -> do
-          returnErrResp StatusInvalidArgument . StatusDetails . BS.pack $
-            "Source " <> show (T.concat $ L.intersperse ", " nonExistedSource) <> " doesn't exist"
-    CreatePlan stream fac -> do
-      let s = API.Stream
-            { streamStreamName = stream
-            , streamReplicationFactor = fromIntegral fac
-            , streamBacklogDuration = 0
-            , streamShardCount = 1
-            }
-      Core.createStream sc s
-      returnCommandQueryResp (mkVectorStruct s "created_stream")
-    CreateConnectorPlan {} -> do
-      IO.createIOTaskFromSql scIOWorker commandQueryStmtText
-      returnCommandQueryEmptyResp
-    InsertPlan _ _ _ -> discard "Append"
-    DropPlan checkIfExist dropObject ->
-      case dropObject of
-        DStream stream -> do
-          let request = DeleteStreamRequest
-                      { deleteStreamRequestStreamName = stream
-                      , deleteStreamRequestIgnoreNonExist = not checkIfExist
-                      , deleteStreamRequestForce = False
-                      }
-          Core.deleteStream sc request
-          returnCommandQueryEmptyResp
-        DView view -> do
-          void $ Core.deleteView sc view checkIfExist
-          returnCommandQueryEmptyResp
-        DConnector conn -> do
-          IO.deleteIOTask scIOWorker conn
-          returnCommandQueryEmptyResp
-    ShowPlan showObject ->
-      case showObject of
-        SStreams -> do
-          streams <- Core.listStreams sc ListStreamsRequest
-          returnCommandQueryResp (mkVectorStruct streams "streams")
-        SQueries -> do
-          queries <- Core.listQueries sc
-          returnCommandQueryResp (mkVectorStruct (V.fromList queries) "queries")
-        SConnectors -> do
-          connectors <- IO.listIOTasks scIOWorker
-          returnCommandQueryResp (mkVectorStruct (V.fromList connectors) "connectors")
-        SViews -> do
-          views <- Core.listViews sc
-          returnCommandQueryResp (mkVectorStruct (V.fromList views) "views")
-    TerminatePlan sel -> do
-      let request = case sel of
-            AllQueries       -> TerminateQueriesRequest
-                                { terminateQueriesRequestQueryId = V.empty
-                                , terminateQueriesRequestAll = True
-                                }
-            OneQuery qid     -> TerminateQueriesRequest
-                                { terminateQueriesRequestQueryId = V.singleton qid
-                                , terminateQueriesRequestAll = False
-                                }
-            ManyQueries qids -> TerminateQueriesRequest
-                                { terminateQueriesRequestQueryId = V.fromList qids
-                                , terminateQueriesRequestAll = False
-                                }
-      Core.terminateQueries sc request >>= \case
-        Left terminatedQids -> returnErrResp StatusAborted ("Only the following queries are terminated " <> fromString (show terminatedQids))
-        Right TerminateQueriesResponse{..} -> do
-          let value  = PB.toAesonValue terminateQueriesResponseQueryId
-              object = HM.fromList [("terminated", value)]
-              result = V.singleton (jsonObjectToStruct object)
-          returnCommandQueryResp result
-    SelectViewPlan RSelectView {..} -> do
-      hm <- readIORef P.groupbyStores
-      case HM.lookup rSelectViewFrom hm of
-        Nothing -> returnErrResp StatusNotFound "VIEW not found"
-        Just accumulation -> do
-          DataChangeBatch{..} <- readMVar accumulation
-          case dcbChanges of
-            [] -> sendResp mempty
-            _  -> do
-              sendResp $ V.map (dcRow . mapView rSelectViewSelect)
-                (V.fromList $ filterView rSelectViewWhere dcbChanges)
-    ExplainPlan _ -> returnErrResp StatusInternal "Unimplemented"
-    PausePlan (PauseObjectConnector name) -> do
-      IO.stopIOTask scIOWorker name False False >> returnCommandQueryEmptyResp
-    ResumePlan (ResumeObjectConnector name) -> do
-      IO.startIOTask scIOWorker name >> returnCommandQueryEmptyResp
-  where
-    create sName = do
-      Log.debug . Log.buildString $ "CREATE: new stream " <> show sName
-      createStreamWithShard scLDClient sName "query" scDefaultStreamRepFactor
-    discard rpcName = returnErrResp StatusInternal $
-      "Discarded method called: should call rpc `"
-        <> rpcName <> "` instead"
-    sendResp results = returnCommandQueryResp $
-      V.map (structToStruct "SELECTVIEW" . jsonObjectToStruct) results
-    mkVectorStruct a label =
-      let object = HM.fromList [(label, PB.toAesonValue a)]
-       in V.singleton (jsonObjectToStruct object)
-
-mapView :: SelectViewSelect -> DataChange a -> DataChange a
-mapView SVSelectAll change = change
-mapView (SVSelectFields fieldsWithAlias) change@DataChange{..} =
-  let newRow = HM.fromList $
-               L.map (\(field,alias) ->
-                         (T.pack alias, HSC.getFieldByName dcRow field)
-                     ) fieldsWithAlias
-  in change {dcRow = newRow}
-
-filterView :: RWhere -> [DataChange a] -> [DataChange a]
-filterView rwhere =
-  L.filter (\DataChange{..} -> HSC.genFilterR rwhere dcRow)
+                    -> ServerRequest 'Normal API.CommandQuery API.CommandQueryResponse
+                    -> IO (ServerResponse 'Normal API.CommandQueryResponse)
+executeQueryHandler sc (ServerNormalRequest _metadata req) =
+  queryExceptionHandle $ returnResp =<< Core.executeQuery sc req
 
 executePushQueryHandler ::
   ServerContext ->
-  ServerRequest 'ServerStreaming CommandPushQuery Struct ->
+  ServerRequest 'ServerStreaming API.CommandPushQuery Struct ->
   IO (ServerResponse 'ServerStreaming Struct)
 executePushQueryHandler
   ctx@ServerContext {..}
-  (ServerWriterRequest meta CommandPushQuery {..} streamSend) = defaultServerStreamExceptionHandle $ do
+  (ServerWriterRequest meta API.CommandPushQuery{..} streamSend) = defaultServerStreamExceptionHandle $ do
     Log.debug $ "Receive Push Query Request: " <> Log.buildText commandPushQueryQueryText
     plan <- streamCodegen commandPushQueryQueryText
     case plan of
@@ -228,7 +92,7 @@ executePushQueryHandler
             -- sub from sink stream and push to client
             consumerName <- newRandomText 20
             let sc = HStore.hstoreSourceConnectorWithoutCkp ctx consumerName
-            subscribeToStreamWithoutCkp sc sink SpecialOffsetLATEST
+            subscribeToStreamWithoutCkp sc sink API.SpecialOffsetLATEST
 
             sending <- async (sendToClient zkHandle qid sink sc streamSend)
 
@@ -290,17 +154,17 @@ sendToClient zkHandle qid streamName SourceConnectorWithoutCkp {..} streamSend =
 
 listQueriesHandler
   :: ServerContext
-  -> ServerRequest 'Normal ListQueriesRequest ListQueriesResponse
-  -> IO (ServerResponse 'Normal ListQueriesResponse)
+  -> ServerRequest 'Normal API.ListQueriesRequest API.ListQueriesResponse
+  -> IO (ServerResponse 'Normal API.ListQueriesResponse)
 listQueriesHandler ctx (ServerNormalRequest _metadata _) = do
   Log.debug "Receive List Query Request"
-  Core.listQueries ctx >>= returnResp . (ListQueriesResponse . V.fromList)
+  Core.listQueries ctx >>= returnResp . (API.ListQueriesResponse . V.fromList)
 
 getQueryHandler
   :: ServerContext
-  -> ServerRequest 'Normal GetQueryRequest Query
-  -> IO (ServerResponse 'Normal Query)
-getQueryHandler ctx (ServerNormalRequest _metadata req@GetQueryRequest{..}) = do
+  -> ServerRequest 'Normal API.GetQueryRequest API.Query
+  -> IO (ServerResponse 'Normal API.Query)
+getQueryHandler ctx (ServerNormalRequest _metadata req@API.GetQueryRequest{..}) = do
   Log.debug $ "Receive Get Query Request. "
     <> "Query ID: " <> Log.buildText getQueryRequestId
   Core.getQuery ctx req >>= \case
@@ -309,9 +173,9 @@ getQueryHandler ctx (ServerNormalRequest _metadata req@GetQueryRequest{..}) = do
 
 terminateQueriesHandler
   :: ServerContext
-  -> ServerRequest 'Normal TerminateQueriesRequest TerminateQueriesResponse
-  -> IO (ServerResponse 'Normal TerminateQueriesResponse)
-terminateQueriesHandler ctx (ServerNormalRequest _metadata req@TerminateQueriesRequest{..}) = queryExceptionHandle $ do
+  -> ServerRequest 'Normal API.TerminateQueriesRequest API.TerminateQueriesResponse
+  -> IO (ServerResponse 'Normal API.TerminateQueriesResponse)
+terminateQueriesHandler ctx (ServerNormalRequest _metadata req@API.TerminateQueriesRequest{..}) = queryExceptionHandle $ do
   Log.debug $ "Receive Terminate Query Request. "
     <> "Query ID: " <> Log.buildString (show terminateQueriesRequestQueryId)
   Core.terminateQueries ctx req >>= \case
@@ -321,9 +185,9 @@ terminateQueriesHandler ctx (ServerNormalRequest _metadata req@TerminateQueriesR
 
 deleteQueryHandler
   :: ServerContext
-  -> ServerRequest 'Normal DeleteQueryRequest Empty
+  -> ServerRequest 'Normal API.DeleteQueryRequest Empty
   -> IO (ServerResponse 'Normal Empty)
-deleteQueryHandler ctx (ServerNormalRequest _metadata req@DeleteQueryRequest{..}) =
+deleteQueryHandler ctx (ServerNormalRequest _metadata req@API.DeleteQueryRequest{..}) =
   queryExceptionHandle $ do
     Log.debug $ "Receive Delete Query Request. "
       <> "Query ID: " <> Log.buildText deleteQueryRequestId
@@ -333,7 +197,7 @@ deleteQueryHandler ctx (ServerNormalRequest _metadata req@DeleteQueryRequest{..}
 -- FIXME: Incorrect implementation!
 restartQueryHandler
   :: ServerContext
-  -> ServerRequest 'Normal RestartQueryRequest Empty
+  -> ServerRequest 'Normal API.RestartQueryRequest Empty
   -> IO (ServerResponse 'Normal Empty)
 restartQueryHandler _ (ServerNormalRequest _metadata _) = do
   Log.fatal "Restart Query Not Supported"

@@ -29,7 +29,7 @@ import           HStream.Utils                    (textToCBytes)
 
 spec :: Spec
 spec = do
-  runIO $ Log.setLogLevel (Log.Level Log.INFO) True
+  runIO $ Log.setLogLevel (Log.Level Log.DEBUG) True
   m <- runIO $ newManager defaultManagerSettings
   portRq <- runIO $ fromMaybe "4001" <$> lookupEnv "RQLITE_LOCAL_PORT"
   portZk <- runIO $ fromMaybe "2181" <$> lookupEnv "ZOOKEEPER_LOCAL_PORT"
@@ -54,18 +54,25 @@ smokeTest h = do
       return "RQLite Handle"
   describe ("Run with " <> hName) $ do
     it "Basic Meta Test " $ do
-      meta@Meta{..} <- generate metaGen
+      meta@Meta{metaId = id_1} <- generate metaGen
+      meta2@Meta{metaId = id_2} <- generate metaGen
       newMeta <- generate metaGen
-      insertMeta metaId meta h
-      checkMetaExists @MetaExample metaId h `shouldReturn` True
-      getMeta @MetaExample metaId h `shouldReturn` Just meta
-      updateMeta metaId newMeta Nothing h
-      getMeta @MetaExample metaId h `shouldReturn` Just newMeta
-      listMeta @MetaExample h `shouldReturn` [newMeta]
-      getAllMeta @MetaExample h `shouldReturn` Map.singleton metaId newMeta
-      deleteMeta @MetaExample metaId Nothing h
-      getMeta @MetaExample metaId h `shouldReturn` Nothing
-      checkMetaExists @MetaExample metaId h `shouldReturn` False
+      insertMeta id_1 meta h
+      upsertMeta id_2 meta2 h
+      checkMetaExists @MetaExample id_1 h `shouldReturn` True
+      checkMetaExists @MetaExample id_2 h `shouldReturn` True
+      getMeta @MetaExample id_1 h `shouldReturn` Just meta
+      getMeta @MetaExample id_2 h `shouldReturn` Just meta2
+      updateMeta id_1 newMeta Nothing h
+      upsertMeta id_2 newMeta h
+      getMeta @MetaExample id_1 h `shouldReturn` Just newMeta
+      getMeta @MetaExample id_2 h `shouldReturn` Just newMeta
+      listMeta @MetaExample h `shouldReturn` [newMeta, newMeta]
+      getAllMeta @MetaExample h `shouldReturn` Map.fromList [(id_1, newMeta), (id_2, newMeta)]
+      deleteMeta @MetaExample id_1 Nothing h
+      deleteMeta @MetaExample id_2 Nothing h
+      getMeta @MetaExample id_1 h `shouldReturn` Nothing
+      checkMetaExists @MetaExample id_1 h `shouldReturn` False
       listMeta @MetaExample h `shouldReturn` []
 
     it "Meta MultiOps Test" $ do

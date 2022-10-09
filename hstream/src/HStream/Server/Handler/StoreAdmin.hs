@@ -6,7 +6,10 @@
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module HStream.Server.Handler.StoreAdmin where
+module HStream.Server.Handler.StoreAdmin
+  ( listStoreNodesHandler
+  , getStoreNodeHandler
+  ) where
 
 import           Control.Monad                    (forM)
 import           Data.Aeson                       (Value (..))

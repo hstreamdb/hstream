@@ -19,8 +19,7 @@ import           Control.Concurrent               (modifyMVar_, newEmptyMVar,
                                                    putMVar, readMVar, takeMVar,
                                                    withMVar)
 import           Control.Concurrent.STM           (readTVarIO)
-import           Control.Exception                (Exception (displayException),
-                                                   bracket, catch, throw,
+import           Control.Exception                (bracket, catch, throw,
                                                    throwIO)
 import           Control.Monad                    (forM, unless, when)
 import qualified Data.ByteString                  as BS

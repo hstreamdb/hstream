@@ -15,7 +15,7 @@ import qualified HStream.Logger                as Log
 import           HStream.MetaStore.RqliteUtils (Id, ROp (..), createTable,
                                                 deleteFrom, deleteTable,
                                                 insertInto, selectFrom,
-                                                transaction, updateSet)
+                                                transaction, updateSet, upsert)
 import           HStream.TestUtils             (AB (..), MetaExample (..), name)
 
 spec :: Spec
@@ -32,12 +32,17 @@ spec = do
     let v2 = AB { a = "EXAMPLE-VALUE-2", b =2}
     createTable m url table
     let id_1 = "my-id-1"
+    let id_2 = "my-id-2"
     insertInto  m url table id_1 v
-    selectFrom  m url table (Just id_1)     `shouldReturn` Map.singleton id_1 v
+    upsert      m url table id_2 v
+    selectFrom  m url table Nothing     `shouldReturn` Map.fromList [(id_1, v), (id_2, v)]
     updateSet   m url table id_1 v2 Nothing
-    selectFrom  m url table (Just id_1)     `shouldReturn` Map.singleton id_1 v2
+    upsert      m url table id_2 v2
+    selectFrom  m url table Nothing     `shouldReturn` Map.fromList [(id_1, v2), (id_2, v2)]
     deleteFrom  m url table id_1 Nothing
+    deleteFrom  m url table id_2 Nothing
     selectFrom  m url table (Just id_1)     `shouldReturn` (mempty :: Map.Map Id AB)
+    selectFrom  m url table Nothing     `shouldReturn` (mempty :: Map.Map Id AB)
     deleteTable m url table
 
   it "MultiOp Smoke Test" $ do
