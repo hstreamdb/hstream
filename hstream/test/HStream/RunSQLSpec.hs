@@ -18,7 +18,7 @@ import           HStream.Store.Logger (pattern C_DBG_ERROR,
 import           HStream.Utils        hiding (newRandomText)
 
 spec :: Spec
-spec = describe "HStream.RunSQLSpec" $ do
+spec = xdescribe "HStream.RunSQLSpec" $ do
   runIO setupSigsegvHandler
   runIO $ setLogDeviceDbgLevel C_DBG_ERROR
 

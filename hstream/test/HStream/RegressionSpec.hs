@@ -22,7 +22,7 @@ import           Network.GRPC.LowLevel
 
 spec :: Spec
 spec = aroundAll provideHstreamApi $
-  describe "HStream.RegressionSpec" $ do
+  xdescribe "HStream.RegressionSpec" $ do
   runIO setupSigsegvHandler
   runIO $ setLogDeviceDbgLevel C_DBG_ERROR
 

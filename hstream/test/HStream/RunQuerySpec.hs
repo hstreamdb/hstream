@@ -87,7 +87,7 @@ restartQuery qid = withGRPCClient clientConfig $ \client -> do
 
 spec :: Spec
 spec = aroundAll provideHstreamApi $
-  describe "HStream.RunQuerySpec" $ do
+  xdescribe "HStream.RunQuerySpec" $ do
   runIO setupSigsegvHandler
   runIO $ setLogDeviceDbgLevel C_DBG_ERROR
 

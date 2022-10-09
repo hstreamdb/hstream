@@ -41,7 +41,7 @@ getNode nodeId = withGRPCClient clientConfig $ \client -> do
       return Nothing
 
 spec :: Spec
-spec = describe "HStream.RunConnectorSpec" $ do
+spec = xdescribe "HStream.RunConnectorSpec" $ do
   runIO setupSigsegvHandler
   runIO $ setLogDeviceDbgLevel C_DBG_ERROR
 
