@@ -42,13 +42,13 @@ getView ServerContext{..} viewId = do
       throwIO $ ViewNotFound "View does not exist"
 
 hstreamQueryToView :: P.PersistentQuery -> API.View
-hstreamQueryToView (P.PersistentQuery _ sqlStatement createdTime (P.ViewQuery _ viewName schema) status _ _) =
+hstreamQueryToView (P.PersistentQuery _ sqlStatement createdTime (P.ViewQuery _ viewName) status _ _) =
   API.View {
       viewViewId = viewName
     , viewStatus = getPBStatus status
     , viewCreatedTime = createdTime
     , viewSql = sqlStatement
-    , viewSchema = V.fromList $ T.pack <$> schema
+    , viewSchema = V.empty
     }
 hstreamQueryToView _ = throw $ UnexpectedError "unexpected match in hstreamQueryToView."
 

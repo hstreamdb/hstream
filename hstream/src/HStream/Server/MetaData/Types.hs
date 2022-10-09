@@ -9,8 +9,7 @@
 {-# LANGUAGE TypeFamilies          #-}
 
 module HStream.Server.MetaData.Types
-  ( ViewSchema
-  , RelatedStreams
+  ( RelatedStreams
   , PersistentQuery (..)
   , PersistentConnector (..)
   , QueryType (..)
@@ -57,7 +56,6 @@ import           HStream.Utils                 (TaskStatus (..), cBytesToText)
 
 --------------------------------------------------------------------------------
 
-type ViewSchema     = [String]
 type RelatedStreams = [Text]
 
 data PersistentQuery = PersistentQuery
@@ -81,7 +79,7 @@ data PersistentConnector = PersistentConnector
 
 data QueryType
   = StreamQuery RelatedStreams Text            -- ^ related streams and the stream it creates
-  | ViewQuery   RelatedStreams Text ViewSchema -- ^ related streams and the view it creates
+  | ViewQuery   RelatedStreams Text            -- ^ related streams and the view it creates
   deriving (Show, Eq, Generic, FromJSON, ToJSON)
 
 data ShardReader = ShardReader
@@ -154,13 +152,13 @@ getRelatedStreams :: PersistentQuery -> RelatedStreams
 getRelatedStreams PersistentQuery{..} =
   case queryType of
     (StreamQuery ss _) -> ss
-    (ViewQuery ss _ _) -> ss
+    (ViewQuery ss _ )  -> ss
 
 getQuerySink :: PersistentQuery -> Text
 getQuerySink PersistentQuery{..} =
   case queryType of
     (StreamQuery _ s) -> s
-    (ViewQuery _ s _) -> s
+    (ViewQuery _ s )  -> s
 
 createInsertPersistentQuery :: Text -> Text -> QueryType -> ServerID -> MetaHandle -> IO (Text, Int64)
 createInsertPersistentQuery qid queryText queryType queryHServer h = do

@@ -70,26 +70,34 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
     SelectPlan {} ->
       let x = "Inconsistent method called: select from streams SQL statements should be sent to rpc `ExecutePushQuery`"
        in throwIO $ HE.InvalidSqlStatement x
-    CreateBySelectPlan _ inNodesWithStreams outNodeWithStream _ _ _ -> do
-      let sources = snd <$> inNodesWithStreams
-          sink    = snd outNodeWithStream
-          query   = P.StreamQuery sources sink
-      create (transToStreamName sink)
-      (qid,_) <- handleCreateAsSelect sc plan commandQueryStmtText query
-      pure $ API.CommandQueryResponse (mkVectorStruct qid "stream_query_id")
-    CreateViewPlan _ schema inNodesWithStreams outNodeWithStream _ _ accumulation -> do
-      let sources = snd <$> inNodesWithStreams
-          sink    = snd outNodeWithStream
-          query   = P.ViewQuery sources sink schema
+    CreateBySelectPlan stream ins out builder factor -> do
+      let sources = inStream <$> ins
+          sink    = stream
+      exists <- mapM (S.doesStreamExist scLDClient . transToStreamName) sources
+      case and exists of
+        False -> do
+          Log.warning $ "At least one of the streams do not exist: "
+              <> Log.buildString (show sources)
+          throwIO $ HE.StreamNotFound $ "At least one of the streams do not exist: " <> T.pack (show sources)
+        True  -> do
+          createStreamWithShard scLDClient (transToStreamName sink) "query" factor
+          let query = P.StreamQuery sources sink
+          (qid,_) <- handleCreateAsSelect sc plan sink commandQueryStmtText query
+          pure $ API.CommandQueryResponse (mkVectorStruct qid "stream_query_id")
+    CreateViewPlan view ins out builder accumulation -> do
+      let sources = inStream <$> ins
+          sink    = view
+      -- FIXME: use the same checking method as `SELECT` and `CREATE AS SELECT`
       -- make sure source streams exist
       nonExistedSource <- filterM (fmap not . S.doesStreamExist scLDClient . transToStreamName) sources :: IO [T.Text]
       case nonExistedSource of
         [] -> do
-          create (transToStreamName sink)
-          (qid,_) <- handleCreateAsSelect sc plan commandQueryStmtText query
+          createStreamWithShard scLDClient (transToStreamName sink) "query" scDefaultStreamRepFactor
+          let query = P.ViewQuery sources sink
+          (qid,_) <- handleCreateAsSelect sc plan sink commandQueryStmtText query
           atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert sink accumulation hm, ()))
           pure $ API.CommandQueryResponse (mkVectorStruct qid "view_query_id")
-        _ : _ -> do
+        _  -> do
           let x = "Source " <> show (T.concat $ L.intersperse ", " nonExistedSource) <> " doesn't exist"
           throwIO $ HE.InvalidSqlStatement x
     CreatePlan stream fac -> do
@@ -173,13 +181,8 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
       IO.startIOTask scIOWorker name
       pure (CommandQueryResponse V.empty)
   where
-    create sName = do
-      Log.debug . Log.buildString $ "CREATE: new stream " <> show sName
-      createStreamWithShard scLDClient sName "query" scDefaultStreamRepFactor
     discard rpcName = throwIO $ HE.DiscardedMethod $
       "Discarded method called: should call rpc `" <> rpcName <> "` instead"
-    sendResp results = pure $ API.CommandQueryResponse $
-      V.map (structToStruct "SELECTVIEW" . jsonObjectToStruct) results
     mkVectorStruct a label =
       let object = HM.fromList [(label, PB.toAesonValue a)]
        in V.singleton (jsonObjectToStruct object)
@@ -333,19 +336,6 @@ hstreamQueryToQuery (P.PersistentQuery queryId sqlStatement createdTime _ status
   }
 
 -------------------------------------------------------------------------------
-
-mapView :: SelectViewSelect -> DataChange a -> DataChange a
-mapView SVSelectAll change = change
-mapView (SVSelectFields fieldsWithAlias) change@DataChange{..} =
-  let newRow = HM.fromList $
-               L.map (\(field,alias) ->
-                         (T.pack alias, HSC.getFieldByName dcRow field)
-                     ) fieldsWithAlias
-  in change {dcRow = newRow}
-
-filterView :: RWhere -> [DataChange a] -> [DataChange a]
-filterView rwhere =
-  L.filter (\DataChange{..} -> HSC.genFilterR rwhere dcRow)
 
 createStreamWithShard :: S.LDClient -> S.StreamId -> CB.CBytes -> Int -> IO ()
 createStreamWithShard client streamId shardName factor = do

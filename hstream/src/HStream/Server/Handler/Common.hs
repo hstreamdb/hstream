@@ -47,9 +47,6 @@ import qualified HStream.Exception                as HE
 
 runTaskWrapper :: ServerContext
                -> Text
---               -> [(DiffFlow.Node, Text)]
---               -> (DiffFlow.Node, Text)
---               -> Maybe RWindow
                -> Text
                -> [In]
                -> Out
@@ -223,13 +220,9 @@ handleCreateAsSelect ctx@ServerContext{..} plan sinkStream commandQueryStmtText 
   where
     (ins, out, builder, accumulation) = case plan of
         SelectPlan ins out builder -> (ins, out, builder, Nothing)
-{-
-        CreateBySelectPlan tName inNodesWithStreams outNodeWithStream win builder _ ->
-          (tName,inNodesWithStreams,outNodeWithStream,win,builder, Nothing)
-        CreateViewPlan tName _ inNodesWithStreams outNodeWithStream win builder accumulation ->
-          (tName,inNodesWithStreams,outNodeWithStream,win,builder, Just accumulation)
+        CreateBySelectPlan stream ins out builder factor -> (ins, out, builder, Nothing)
+        CreateViewPlan view ins out builder accumulation -> (ins, out, builder, Just accumulation)
         _ -> throw $ HE.WrongExecutionPlan "Only support select sql in the method called"
--}
     action qid taskName = do
       Log.debug . Log.buildString
         $ "CREATE AS SELECT: query " <> show qid

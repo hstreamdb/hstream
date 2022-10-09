@@ -60,12 +60,7 @@ data InsertType = JsonFormat | RawFormat
 data PauseObject = PauseObjectConnector Text
 data ResumeObject = ResumeObjectConnector Text
 data HStreamPlan
-  ={-
-    SelectPlan          Text [(Node,StreamName)] (Node,StreamName) (Maybe RWindow) (GraphBuilder Row)
-  | CreateBySelectPlan  Text [(Node,StreamName)] (Node,StreamName) (Maybe RWindow) (GraphBuilder Row) Int
-  | CreateViewPlan      Text ViewSchema [(Node,StreamName)] (Node,StreamName) (Maybe RWindow) (GraphBuilder Row) (MVar (DataChangeBatch Int64))
--}
-    CreatePlan          StreamName Int
+  = CreatePlan          StreamName Int
   | CreateConnectorPlan ConnectorType ConnectorName Text Bool (HM.HashMap Text Value)
   | InsertPlan          StreamName InsertType ByteString
   | DropPlan            CheckIfExist DropObject
@@ -75,8 +70,8 @@ data HStreamPlan
   | PausePlan           PauseObject
   | ResumePlan          ResumeObject
   | SelectPlan [In] Out (GraphBuilder Row)
-  | CreateBySelectPlan  [In] Out (GraphBuilder Row) Int -- FIXME
-  | CreateViewPlan      [In] Out (GraphBuilder Row) (MVar (DataChangeBatch Row Int64)) -- FIXME
+  | CreateBySelectPlan  StreamName [In] Out (GraphBuilder Row) Int -- FIXME
+  | CreateViewPlan      ViewName [In] Out (GraphBuilder Row) (MVar (DataChangeBatch Row Int64)) -- FIXME
 
 --------------------------------------------------------------------------------
 
@@ -90,20 +85,17 @@ hstreamCodegen = \case
     let (startBuilder, _) = addSubgraph emptyGraphBuilder subgraph
     (endBuilder, ins, out) <- elabRSelect select startBuilder subgraph
     return $ SelectPlan ins out endBuilder
-{-
   RQCreate (RCreateAs stream select rOptions) -> do
-    tName <- genTaskName
-    (builder, inNodesWithStreams, outNodeWithStream, window) <- genGraphBuilderWithOutput (Just stream) select
-    return $ CreateBySelectPlan tName inNodesWithStreams outNodeWithStream window builder (rRepFactor rOptions)
-  RQCreate (RCreateView view select@(RSelect sel _ _ _ _)) -> do
-    tName <- genTaskName
-    (builder, inNodesWithStreams, outNodeWithStream, window) <- genGraphBuilderWithOutput (Just view) select
+    let subgraph = Subgraph 0
+    let (startBuilder, _) = addSubgraph emptyGraphBuilder subgraph
+    (endBuilder, ins, out) <- elabRSelect select startBuilder subgraph
+    return $ CreateBySelectPlan stream ins out endBuilder (rRepFactor rOptions)
+  RQCreate (RCreateView view select) -> do
+    let subgraph = Subgraph 0
+    let (startBuilder, _) = addSubgraph emptyGraphBuilder subgraph
+    (endBuilder, ins, out) <- elabRSelect select startBuilder subgraph
     accumulation <- newMVar emptyDataChangeBatch
-    let schema = case sel of
-          RSelAsterisk    -> ["*"] -- FIXME: schema on 'SELECT *'
-          RSelList fields -> map snd fields
-    return $ CreateViewPlan tName schema inNodesWithStreams outNodeWithStream window builder accumulation
--}
+    return $ CreateViewPlan view ins out endBuilder accumulation
   RQCreate (RCreate stream rOptions) -> return $ CreatePlan stream (rRepFactor rOptions)
   RQCreate (RCreateConnector cType cName cTarget ifNotExist (RConnectorOptions cOptions)) ->
     return $ CreateConnectorPlan cType cName cTarget ifNotExist cOptions
