@@ -43,7 +43,7 @@ spec:
                 --address $(POD_IP) \
                 --seed-nodes "hstream-server-0.hstream-server:6571,hstream-server-1.hstream-server:6571,hstream-server-2.hstream-server:6571" \
                 --server-id $((100 + $ordinal)) \
-                --zkuri zookeeper-0.zookeeper-headless:2181,zookeeper-1.zookeeper-headless:2181,zookeeper-2.zookeeper-headless:2181 \
+                --metastore-uri zk://zookeeper-0.zookeeper-headless:2181,zookeeper-1.zookeeper-headless:2181,zookeeper-2.zookeeper-headless:2181 \
                 --store-config /etc/logdevice/config.json \
                 --store-admin-host logdevice-admin-server-service \
           ports:

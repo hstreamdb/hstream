@@ -660,7 +660,7 @@ class StartHServerCommand:
                 f"--port {port} --internal-port {find_free_port()}",
                 f"--config-path {DEFAULT_HSTREAM_CONF}",
                 f"--server-id {i}",
-                f"--zkuri 127.0.0.1:{envs.get(ZOOKEEPER_PORT_ENV)}",
+                f"--metastore-uri zk://127.0.0.1:{envs.get(ZOOKEEPER_PORT_ENV)}",
                 "--store-config /data/store/logdevice.conf",
             ]
             dev_env(
