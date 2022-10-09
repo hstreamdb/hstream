@@ -45,16 +45,20 @@ getExtraAndReset extra o =
   HM.mapKeys (\(SKey f s_m _) -> SKey f s_m Nothing) $
   HM.filterWithKey (\(SKey f s_m extra_m) v -> extra_m == Just extra) o
 
---------------------------------------------------------------------------------
-getFieldByName :: HasCallStack => Object -> Text -> Value
-getFieldByName o k =
-  case HM.lookup k o of
-    Nothing -> throw
+getField :: HasCallStack => FlowObject -> Text -> (SKey, FlowValue)
+getField o k =
+  case HM.toList (HM.filterWithKey (\(SKey f _ _) _ -> f == k) o) of
+    [] -> throw
       SomeRuntimeException
-      { runtimeExceptionMessage = "Key " <> show k <> " is not found in object " <> show o <> "  " <> show callStack
+      { runtimeExceptionMessage = "Key " <> show k <> " is not found in object " <> show o <> ": " <> show callStack
       , runtimeExceptionCallStack = callStack
       }
-    Just v  -> v
+    [(skey,v)] -> (skey,v)
+    xs -> throw
+      SomeRuntimeException
+      { runtimeExceptionMessage = "!!! Same field name with different <stream> and/or <extra>: " <> show xs <> ": " <> show callStack
+      , runtimeExceptionCallStack = callStack
+      }
 
 --------------------------------------------------------------------------------
 genRandomSinkStream :: IO Text
@@ -67,8 +71,12 @@ compareValue (String x1) (String x2) = x1 `compare` x2
 compareValue _ _                     =
   throwSQLException CodegenException Nothing "Value does not support comparison"
 
-binOpOnValue :: HasCallStack => BinaryOp -> Value -> Value -> Value
-binOpOnValue OpAdd (Number n) (Number m) = Number (n+m)
+binOpOnValue :: HasCallStack => BinaryOp -> FlowValue -> FlowValue -> FlowValue
+binOpOnValue OpAdd (FlowInt n) (FlowInt m) = FlowInt (n+m)
+binOpOnValue OpAdd (FlowFloat n) (FlowFloat m) = FlowFloat (n+m)
+binOpOnValue OpAdd (FlowNumeral n) (FlowNumeral m) = FlowNumeral (n+m)
+binOpOnValue OpAdd (FlowNumeral n) (FlowInt m) = FlowNumeral (n + (fromIntegral m))
+{-
 binOpOnValue OpSub (Number n) (Number m) = Number (n-m)
 binOpOnValue OpMul (Number n) (Number m) = Number (n*m)
 binOpOnValue OpAnd (Bool b1)  (Bool b2)  = Bool (b1 && b2)
@@ -127,10 +135,15 @@ binOpOnValue OpDropEnd (Number n) (String xs) = String $
     Just x -> x
     _ -> throwSQLException CodegenException Nothing
       ("Operation OpDropEnd on size " ++ show n ++ " is not supported")) xs
+-}
 binOpOnValue op v1 v2 =
   throwSQLException CodegenException Nothing ("Operation " <> show op <> " on " <> show v1 <> " and " <> show v2 <> " is not supported")
 
-unaryOpOnValue :: HasCallStack => UnaryOp -> Value -> Value
+unaryOpOnValue :: HasCallStack => UnaryOp -> FlowValue -> FlowValue
+unaryOpOnValue OpSin (FlowInt n) = FlowNumeral (fromFloatDigits $ sin (fromIntegral n))
+unaryOpOnValue OpSin (FlowFloat n) = FlowNumeral (fromFloatDigits $ sin n)
+unaryOpOnValue OpSin (FlowNumeral n) = FlowNumeral (funcOnScientific sin n)
+{-
 unaryOpOnValue OpSin     (Number n)  = Number (funcOnScientific sin n)
 unaryOpOnValue OpSinh    (Number n) = Number (funcOnScientific sinh n)
 unaryOpOnValue OpAsin    (Number n)
@@ -206,11 +219,52 @@ unaryOpOnValue OpArrMin  Null       = Null
 unaryOpOnValue OpArrMin  (Array xs) = V.minimum xs
 unaryOpOnValue OpSort    Null       = Null
 unaryOpOnValue OpSort    (Array xs) = Array (V.fromList $ L.sort $ V.toList xs)
+-}
 unaryOpOnValue op v =
   throwSQLException CodegenException Nothing ("Operation " <> show op <> " on " <> show v <> " is not supported")
 
 funcOnScientific :: RealFloat a => (a -> a) -> Scientific -> Scientific
 funcOnScientific f = fromFloatDigits . f . toRealFloat
+
+--------------------------------------------------------------------------------
+jsonOpOnObject :: JsonOp -> FlowObject -> FlowObject -> Text -> Maybe Text -> FlowObject
+jsonOpOnObject op o1 o2 field startStream_m = case op of
+  JOpArrow -> let v2 = L.head (HM.elems o2)
+               in case v2 of
+                    FlowText t ->
+                      let (_,v) = getField o1 t
+                       in HM.fromList [(SKey field startStream_m Nothing, v)]
+                    _ -> throwSQLException CodegenException Nothing (show v2 <> " is not supported on the right of operator ->")
+  JOpLongArrow -> let v2 = L.head (HM.elems o2)
+                   in case v2 of
+                        FlowText t ->
+                          let (_,v) = getField o1 t
+                           in HM.fromList [(SKey field startStream_m Nothing, FlowText (T.pack $ show v))] -- FIXME: show FlowValue
+                        _ -> throwSQLException CodegenException Nothing (show v2 <> " is not supported on the right of operator ->>")
+  JOpHashArrow -> let v2 = L.head (HM.elems o2)
+                   in case v2 of
+                        FlowArray arr ->
+                          let v = go (FlowSubObject o1) arr
+                           in HM.fromList [(SKey field startStream_m Nothing, v)]
+                        _ -> throwSQLException CodegenException Nothing (show v2 <> " is not supported on the right of operator #>")
+  JOpHashLongArrow -> let v2 = L.head (HM.elems o2)
+                       in case v2 of
+                            FlowArray arr ->
+                              let v = go (FlowSubObject o1) arr
+                               in HM.fromList [(SKey field startStream_m Nothing, FlowText (T.pack $ show v))]
+                            _ -> throwSQLException CodegenException Nothing (show v2 <> " is not supported on the right of operator #>>")
+  where
+    go :: FlowValue -> [FlowValue] -> FlowValue
+    go value [] = value
+    go value (v:vs) =
+      case v of
+        FlowText t -> let (FlowSubObject object) = value
+                          (_,value') = getField object t
+                       in go value' vs
+        FlowInt n -> let (FlowArray arr) = value
+                         value' = arr L.!! n
+                      in go value' vs
+        _ -> throwSQLException CodegenException Nothing (show v <> " is not supported on the right of operator #> and #>>")
 
 --------------------------------------------------------------------------------
 diffTimeToMs :: DiffTime -> Int64

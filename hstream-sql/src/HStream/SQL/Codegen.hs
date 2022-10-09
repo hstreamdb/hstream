@@ -19,7 +19,8 @@ import qualified Data.HashMap.Strict          as HM
 import qualified Data.List                    as L
 import qualified Data.Map.Strict              as Map
 import           Data.Maybe
-import           Data.Scientific              (fromFloatDigits, scientific)
+import           Data.Scientific              (fromFloatDigits, scientific,
+                                               toRealFloat)
 import qualified Data.Text                    as T
 import           Data.Text.Encoding           (decodeUtf8)
 import           Data.Time                    (diffTimeToPicoseconds,
@@ -171,9 +172,9 @@ elabRValueExpr :: RValueExpr
                -> Maybe Text
                -> IO (GraphBuilder Row, [In], Out)
 elabRValueExpr expr grp startBuilder subgraph startNode startStream_m = case expr of
-  RExprCast _ e typ -> do
+  RExprCast name e typ -> do
     (builder1, ins, out) <- elabRValueExpr e grp startBuilder subgraph startNode startStream_m
-    let mapper = Mapper undefined -- TODO: elabCast
+    let mapper = mkCastMapper typ (T.pack name) startStream_m
     let (builder2, node) =
           addNode builder1 subgraph (MapSpec (outNode out) mapper)
     return (builder2, ins, Out node)
@@ -252,6 +253,42 @@ elabRValueExpr expr grp startBuilder subgraph startNode startStream_m = case exp
           addNode startBuilder subgraph (MapSpec startNode mapper)
     return (builder1, [], Out node)
   RExprAggregate _ agg -> elabAggregate agg grp startBuilder subgraph startNode startStream_m
+  RExprUnaryOp name op expr -> do
+    (builder1, ins, out) <- elabRValueExpr expr grp startBuilder subgraph startNode startStream_m
+    let mapper = mkUnaryOpMapper op (T.pack name) startStream_m
+    let (builder2, node) = addNode builder1 subgraph (MapSpec (outNode out) mapper)
+    return (builder2, ins, Out node)
+  RExprBinOp name op e1 e2 -> do
+    (builder1, ins1, out1) <- elabRValueExpr e1 grp startBuilder subgraph startNode startStream_m
+    (builder2, ins2, out2) <- elabRValueExpr e2 grp builder1 subgraph startNode startStream_m
+    let composer = Composer $ \[o1,o2] ->
+                     makeExtra "__op1__" o1 `HM.union` makeExtra "__op2__" o2
+    let mapper = mkBinaryOpMapper op (T.pack name) startStream_m
+    let (builder3, composed) = addNode builder2 subgraph (ComposeSpec (outNode <$> [out1,out2]) composer)
+    let (builder4, node) = addNode builder3 subgraph (MapSpec composed mapper)
+    return (builder4, L.nub (ins1++ins2), Out node)
+  RExprAccessJson name jop e1 e2 -> do
+    (builder1, ins1, out1) <-
+      elabRValueExpr e1 grp startBuilder subgraph startNode startStream_m
+    (builder2, ins2, out2) <-
+      elabRValueExpr e2 grp builder1 subgraph startNode startStream_m
+    let composer = Composer $ \[o1,o2] ->
+                     jsonOpOnObject jop o1 o2 (T.pack name) startStream_m
+    let (builder3, node) =
+          addNode builder2 subgraph (ComposeSpec (outNode <$> [out1,out2]) composer)
+    return (builder3, L.nub (ins1++ins2), Out node)
+
+mkCastMapper :: RDataType -> Text -> Maybe Text -> Mapper Row
+mkCastMapper typ field startStream_m =
+  Mapper $ \o -> let [(_,v)] = HM.toList o
+                     v' = case typ of
+                       RTypeInteger -> case v of
+                         FlowInt n -> FlowInt n
+                         FlowFloat n -> FlowInt (floor n)
+                         FlowNumeral n -> FlowInt (floor $ toRealFloat n)
+                         _ -> throwSQLException CodegenException Nothing ("Can not convert value " <> show v <> " to type " <> show typ)
+                       _            ->  throwSQLException CodegenException Nothing ("Can not convert to type " <> show typ)
+                  in HM.fromList [(SKey field startStream_m Nothing, v')]
 
 mkConstantMapper :: Constant -> Maybe Text -> Mapper Row
 mkConstantMapper constant startStream_m =
@@ -271,6 +308,17 @@ mkConstantMapper constant startStream_m =
         ConstantJsonb json -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show json)) startStream_m Nothing, v)]
         ConstantArray arr -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show arr)) startStream_m Nothing, v)]
         ConstantMap m -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show m)) startStream_m Nothing, v)]
+
+mkUnaryOpMapper :: UnaryOp -> Text -> Maybe Text -> Mapper Row
+mkUnaryOpMapper op field startStream_m =
+  Mapper $ \o -> let [(_,v)] = HM.toList o
+                  in HM.fromList [(SKey field startStream_m Nothing, unaryOpOnValue op v)]
+
+mkBinaryOpMapper :: BinaryOp -> Text -> Maybe Text -> Mapper Row
+mkBinaryOpMapper op field startStream_m =
+  Mapper $ \o -> let [(_,v1)] = HM.toList $ getExtra "__op1__" o
+                     [(_,v2)] = HM.toList $ getExtra "__op2__" o
+                  in HM.fromList [(SKey field startStream_m Nothing, binOpOnValue op v1 v2)]
 
 elabRTableRef :: RTableRef -> RGroupBy -> GraphBuilder Row -> Subgraph -> IO (GraphBuilder Row, [In], Out)
 elabRTableRef ref grp startBuilder subgraph =

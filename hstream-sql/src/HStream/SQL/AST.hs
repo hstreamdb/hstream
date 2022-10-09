@@ -65,6 +65,7 @@ data FlowValue
   | FlowJson Aeson.Object
   | FlowArray [FlowValue]
   | FlowMap (Map.Map FlowValue FlowValue)
+  | FlowSubObject FlowObject
   deriving (Eq, Show, Ord, Generic, Hashable)
 
 flowValueToJsonValue :: FlowValue -> Aeson.Value
@@ -85,6 +86,7 @@ flowValueToJsonValue flowValue = case flowValue of
   FlowMap m ->
     let l = L.map (\(k,v) -> (Text.pack (show k), flowValueToJsonValue v)) (Map.toList m)
      in Aeson.Object (HsAeson.fromList l)
+  FlowSubObject object -> Aeson.Object (flowObjectToJsonObject object)
 
 jsonValueToFlowValue :: Aeson.Value -> FlowValue
 jsonValueToFlowValue v = case v of
@@ -95,8 +97,8 @@ jsonValueToFlowValue v = case v of
   Aeson.Array v -> FlowArray (jsonValueToFlowValue <$> (V.toList v))
   Aeson.Object o ->
     let list = HsAeson.toList o
-        list' = L.map (\(k,v) -> (FlowText k, jsonValueToFlowValue v)) list
-     in FlowMap (Map.fromList list')
+        list' = L.map (\(k,v) -> (SKey k Nothing Nothing, jsonValueToFlowValue v)) list
+     in FlowSubObject (HM.fromList list')
 
 flowObjectToJsonObject :: FlowObject -> Aeson.Object
 flowObjectToJsonObject hm =
@@ -324,10 +326,10 @@ data UnaryOp  = OpSin      | OpSinh    | OpAsin   | OpAsinh  | OpCos   | OpCosh
               deriving (Eq, Show)
 
 data JsonOp
-  = JOpArrow
-  | JOpLongArrow
-  | JOpHashArrow
-  | JOpHashLongArrow
+  = JOpArrow -- json -> text = value
+  | JOpLongArrow -- json ->> text = text
+  | JOpHashArrow -- json #> array[text/int] = value
+  | JOpHashLongArrow -- json #>> array[text/int] = text
   deriving (Eq, Show)
 
 data Aggregate = Nullary NullaryAggregate
