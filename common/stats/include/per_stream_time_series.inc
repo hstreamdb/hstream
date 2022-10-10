@@ -31,7 +31,7 @@ TIME_SERIES_DEFINE(append_in_bytes,
                    2)
 
 TIME_SERIES_DEFINE(append_in_records,
-                   std::set<std::string>({"append_in_record"}),
+                   std::set<std::string>({"append_in_records"}),
                    std::vector<std::chrono::milliseconds>({
                        std::chrono::seconds(4),
                        std::chrono::seconds(60),
