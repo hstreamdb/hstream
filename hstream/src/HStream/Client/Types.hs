@@ -5,6 +5,7 @@ import           Data.ByteString               (ByteString)
 import           Network.GRPC.HighLevel.Client (ClientSSLConfig)
 import qualified Options.Applicative           as O
 
+import           HStream.Admin.Server.Types    (StreamCommand, streamCmdParser)
 import           HStream.Server.Types          (ServerID)
 import           HStream.Utils                 (SocketAddr)
 
@@ -17,6 +18,7 @@ data Command
   = HStreamSql HStreamSqlOpts
   | HStreamNodes HStreamNodes
   | HStreamInit HStreamInitOpts
+  | HStreamStream StreamCommand
 
 commandParser :: O.Parser HStreamCommand
 commandParser = HStreamCommand
@@ -24,7 +26,8 @@ commandParser = HStreamCommand
   <*> O.hsubparser
     (  O.command "sql"   (O.info (HStreamSql <$> hstreamSqlOptsParser) (O.progDesc "Start HStream SQL Shell"))
     <> O.command "nodes" (O.info (HStreamNodes <$> hstreamNodesParser) (O.progDesc "Manage HStream Server Cluster"))
-    <> O.command "init"  (O.info (HStreamInit <$> hstreamInitOptsParser )            (O.progDesc "Init HStream Server Cluster"))
+    <> O.command "init"  (O.info (HStreamInit <$> hstreamInitOptsParser ) (O.progDesc "Init HStream Server Cluster"))
+    <> O.command "stream"  (O.info (HStreamStream <$> streamCmdParser ) (O.progDesc "Manage Streams in HStreamDB"))
     )
 
 data HStreamSqlContext = HStreamSqlContext

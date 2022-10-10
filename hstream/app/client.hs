@@ -1,3 +1,4 @@
+{-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
@@ -13,7 +14,8 @@ import           Control.Concurrent               (forkFinally, myThreadId,
                                                    newMVar, readMVar,
                                                    threadDelay, throwTo)
 import           Control.Exception                (finally, handle, try)
-import           Control.Monad                    (forever, void, when, (>=>))
+import           Control.Monad                    (forM_, forever, void, when,
+                                                   (>=>))
 import           Control.Monad.IO.Class           (liftIO)
 import           Data.Aeson                       as Aeson
 import           Data.Char                        (toUpper)
@@ -30,6 +32,7 @@ import           Network.GRPC.HighLevel.Generated (ClientError (ClientIOError),
                                                    ClientRequest (..),
                                                    ClientResult (..),
                                                    GRPCIOError (GRPCIOBadStatusCode),
+                                                   GRPCMethodType (..),
                                                    StatusDetails (unStatusDetails),
                                                    withGRPCClient)
 import           Network.GRPC.LowLevel.Call       (clientCallCancel)
@@ -43,10 +46,13 @@ import           System.Posix                     (Handler (Catch),
 import           Text.RawString.QQ                (r)
 
 import qualified HStream.Admin.Server.Command     as Admin
+import           HStream.Admin.Server.Types       (StreamCommand (..))
 import           HStream.Client.Action            (createStream,
                                                    createStreamBySelect,
                                                    dropAction, insertIntoStream,
-                                                   listShards, terminateQueries)
+                                                   listShards, listStreams,
+                                                   runActionWithAddr,
+                                                   terminateQueries)
 import           HStream.Client.Execute           (execute, executeShowPlan,
                                                    execute_)
 import           HStream.Client.Gadget            (describeCluster,
@@ -74,7 +80,8 @@ import           HStream.Server.HStreamApi        (CommandPushQuery (..),
                                                    ServerNode (serverNodeId),
                                                    hstreamApiClient)
 import qualified HStream.Server.HStreamApi        as API
-import           HStream.SQL                      (HStreamPlan (..),
+import           HStream.SQL                      (DropObject (..),
+                                                   HStreamPlan (..),
                                                    RCreate (..), RSQL (..),
                                                    RStreamOptions (..),
                                                    hstreamCodegen,
@@ -84,7 +91,7 @@ import           HStream.SQL.Exception            (SomeSQLException,
                                                    formatSomeSQLException,
                                                    isEOF)
 import           HStream.ThirdParty.Protobuf      (Empty (Empty))
-import           HStream.Utils                    (HStreamClientApi,
+import           HStream.Utils                    (Format, HStreamClientApi,
                                                    SocketAddr (..),
                                                    fillWithJsonString',
                                                    formatCommandQueryResponse,
@@ -138,9 +145,10 @@ runCommand :: HStreamCommand -> IO ()
 runCommand HStreamCommand {..} = do
   refinedCliConnOpts <- refineCliConnOpts cliConnOpts
   case cliCommand of
-    HStreamSql   opts -> hstreamSQL   refinedCliConnOpts opts
-    HStreamNodes opts -> hstreamNodes refinedCliConnOpts opts
-    HStreamInit  opts -> hstreamInit  refinedCliConnOpts opts
+    HStreamSql   opts   -> hstreamSQL   refinedCliConnOpts opts
+    HStreamNodes opts   -> hstreamNodes refinedCliConnOpts opts
+    HStreamInit  opts   -> hstreamInit  refinedCliConnOpts opts
+    HStreamStream  opts -> hstreamStream refinedCliConnOpts opts
 
 hstreamSQL :: RefinedCliConnOpts -> HStreamSqlOpts -> IO ()
 hstreamSQL RefinedCliConnOpts{..} HStreamSqlOpts{_updateInterval = updateInterval, .. } = do
@@ -208,6 +216,24 @@ hstreamInit RefinedCliConnOpts{..} HStreamInitOpts{..} = do
             _                           -> loop api
         _ -> loop api
 
+
+hstreamStream :: RefinedCliConnOpts -> StreamCommand -> IO ()
+hstreamStream RefinedCliConnOpts{..}  = \case
+  StreamCmdList ->
+    runActionWithAddr addr sslConfig listStreams >>= printResult
+  StreamCmdCreate stream ->
+    runActionWithAddr addr sslConfig (\HStreamApi{..} -> hstreamApiCreateStream (mkClientNormalRequest' stream)) >>= printResult
+  StreamCmdDelete sName ignoreNonExist ->
+    runActionWithAddr addr sslConfig (dropAction ignoreNonExist (DStream sName)) >>= printResult
+  where
+    printResult :: Format response => ClientResult 'Normal response -> IO ()
+    printResult = \case
+      ClientNormalResponse x _ _ _ _  -> putStrLn $ formatResult x
+      ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode _ details)) ->
+        T.putStrLn $ "Error: " <> T.decodeUtf8 (unStatusDetails details)
+      ClientErrorResponse err -> do
+        putStrLn $ "Error: " <> show err
+
 getNodes :: RefinedCliConnOpts -> IO DescribeClusterResponse
 getNodes RefinedCliConnOpts{..} =
   withGRPCClient clientConfig $ \client -> do
@@ -245,16 +271,16 @@ interactiveSQLApp ctx@HStreamSqlContext{..} historyFile = do
       RL.getInputLine "> " >>= \case
         Nothing -> pure ()
         Just str
-          | take 1 (words str)             == []     -> loop
-          | take 1 (words str)             == [":q"] -> pure ()
-          | (take 1 $ words str) !! 0 !! 0 == ':'    -> liftIO (commandExec ctx str) >> loop
+          | null . take 1 . words $ str                  -> loop
+          | take 1 (words str)                 == [":q"] -> pure ()
+          | (head . head . take 1 . words) str == ':'    -> liftIO (commandExec ctx str) >> loop
           | otherwise -> do
-              str <- readToSQL $ T.pack str
-              case str of
+              str' <- readToSQL $ T.pack str
+              case str' of
                 Nothing  -> loop
-                Just str -> do
+                Just str'' -> do
                   RL.getHistory >>= RL.putHistory . RL.addHistoryUnlessConsecutiveDupe str
-                  liftIO (commandExec ctx str)
+                  liftIO (commandExec ctx str'')
                   loop
 
 commandExec :: HStreamSqlContext -> String -> IO ()
@@ -272,7 +298,7 @@ commandExec ctx@HStreamSqlContext{..} xs = case words xs of
 
   ":h": _     -> putStrLn helpInfo
   [":help"]   -> putStr groupedHelpInfo
-  ":help":x:_ -> case M.lookup (map toUpper x) helpInfos of Just infos -> putStrLn infos; Nothing -> pure ()
+  ":help":x:_ -> forM_ (M.lookup (map toUpper x) helpInfos) putStrLn
 
   (_:_)       -> liftIO $ handle (\(e :: SomeSQLException) -> putStrLn . formatSomeSQLException $ e) $ do
     rSQL <- parseAndRefine $ T.pack xs

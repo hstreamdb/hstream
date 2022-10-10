@@ -195,7 +195,7 @@ instance Read API.SpecialOffset where
   readPrec = do
     i <- Read.lexP
     case i of
-        Read.Ident "earlist" -> return API.SpecialOffsetEARLIEST
+        Read.Ident "earliest" -> return API.SpecialOffsetEARLIEST
         Read.Ident "latest"  -> return API.SpecialOffsetLATEST
         x -> errorWithoutStackTrace $ "cannot parse value: " <> show x
 
