@@ -20,6 +20,12 @@ module HStream.Exception
   , StreamReadClose (..)
   , StreamWriteError (..)
 
+    -- * Exception: Unknown
+    --
+    -- $unknown
+  , Unknown
+  , UnknownPushQueryStatus (..)
+
     -- * Exception: InvalidArgument
     --
     -- $invalidArgument
@@ -56,6 +62,7 @@ module HStream.Exception
   , ShardReaderExists (..)
   , RQLiteTableAlreadyExists (..)
   , RQLiteRowAlreadyExists (..)
+  , PushQueryCreated (..)
 
     -- * Exception: FailedPrecondition
     --
@@ -79,6 +86,7 @@ module HStream.Exception
   , SubscriptionInvalidError (..)
   , ConsumerInvalidError (..)
   , TerminateQueriesError (..)
+  , PushQueryTerminated (..)
 
     -- * Exception: Unavailable
   , Unavailable
@@ -95,6 +103,7 @@ module HStream.Exception
   , RQLiteDecodeErr (..)
   , RQLiteUnspecifiedErr (..)
   , DiscardedMethod (..)
+  , PushQuerySendError (..)
 
     -- * Exception: Unauthenticated
     --
@@ -228,6 +237,19 @@ MAKE_PARTICULAR_EX_1(Cancelled, StreamReadClose, String, )
 MAKE_PARTICULAR_EX_1(Cancelled, StreamWriteError, String, )
 
 -------------------------------------------------------------------------------
+-- Exception: Unknown
+
+-- $unknown
+--
+-- Unknown error. For example, this error may be returned when a Status value
+-- received from another address space belongs to an error space that is not
+-- known in this address space. Also errors raised by APIs that do not return
+-- enough error information may be converted to this error.
+MAKE_SUB_EX(SomeHServerException, Unknown)
+
+MAKE_PARTICULAR_EX_1(Unknown, UnknownPushQueryStatus, String, )
+
+-------------------------------------------------------------------------------
 -- Exception: InvalidArgument
 
 -- $invalidArgument
@@ -281,6 +303,7 @@ MAKE_PARTICULAR_EX_1(AlreadyExists, StreamExists, Text, Text.unpack)
 MAKE_PARTICULAR_EX_1(AlreadyExists, ShardReaderExists, Text, Text.unpack)
 MAKE_PARTICULAR_EX_1(AlreadyExists, RQLiteTableAlreadyExists, String, )
 MAKE_PARTICULAR_EX_1(AlreadyExists, RQLiteRowAlreadyExists, String, )
+MAKE_PARTICULAR_EX_1(AlreadyExists, PushQueryCreated, String, )
 
 -------------------------------------------------------------------------------
 -- Exception: FailedPrecondition
@@ -328,6 +351,7 @@ MAKE_PARTICULAR_EX_1(Aborted, SubscriptionOnDifferentNode, String, )
 MAKE_PARTICULAR_EX_1(Aborted, SubscriptionInvalidError, String, )
 MAKE_PARTICULAR_EX_1(Aborted, ConsumerInvalidError, String, )
 MAKE_PARTICULAR_EX_1(Aborted, TerminateQueriesError, String, )
+MAKE_PARTICULAR_EX_1(Aborted, PushQueryTerminated, String, )
 
 -------------------------------------------------------------------------------
 -- Exception: Internal
@@ -345,6 +369,7 @@ MAKE_PARTICULAR_EX_1(Internal, RQLiteNetworkErr, String, )
 MAKE_PARTICULAR_EX_1(Internal, RQLiteDecodeErr, String, )
 MAKE_PARTICULAR_EX_1(Internal, RQLiteUnspecifiedErr, String, )
 MAKE_PARTICULAR_EX_1(Internal, DiscardedMethod, String, )
+MAKE_PARTICULAR_EX_1(Internal, PushQuerySendError, String, )
 
 -------------------------------------------------------------------------------
 -- Exception: Unavailable
@@ -415,6 +440,14 @@ defaultHServerExHandlers =
   [ E.Handler $ \(err :: InvalidArgument) -> do
       Log.warning $ Log.buildString' err
       return (StatusInvalidArgument, mkStatusDetails err)
+
+  , E.Handler $ \(err :: Cancelled) -> do
+      Log.fatal $ Log.buildString' err
+      return (StatusCancelled, mkStatusDetails err)
+
+  , E.Handler $ \(err :: Unknown) -> do
+      Log.fatal $ Log.buildString' err
+      return (StatusUnknown, mkStatusDetails err)
 
   , E.Handler $ \(err :: NotFound) -> do
       Log.warning $ Log.buildString' err
@@ -493,6 +526,10 @@ hServerExHandlers =
   , E.Handler $ \(err :: Cancelled) -> do
       Log.fatal $ Log.buildString' err
       HsGrpc.throwGrpcError $ mkGrpcStatus err HsGrpc.StatusCancelled
+
+  , E.Handler $ \(err :: Unknown) -> do
+      Log.fatal $ Log.buildString' err
+      HsGrpc.throwGrpcError $ mkGrpcStatus err HsGrpc.StatusUnknown
 
   , E.Handler $ \(err :: NotFound) -> do
       Log.warning $ Log.buildString' err

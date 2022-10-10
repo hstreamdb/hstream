@@ -3,6 +3,7 @@
 
 module HStream.Server.Core.Query
   ( executeQuery
+  , executePushQuery
   , terminateQueries
 
   , listQueries
@@ -28,7 +29,9 @@ import           Data.Maybe                       (fromJust, isJust)
 import           Data.String                      (IsString (fromString))
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
+import           Network.GRPC.HighLevel           (StreamSend)
 import           Network.GRPC.HighLevel.Generated
+import           Network.GRPC.HighLevel.Server    (ServerCallMetadata)
 import qualified Proto3.Suite.JSONPB              as PB
 import qualified Z.Data.CBytes                    as CB
 import           ZooKeeper.Exception
@@ -189,6 +192,77 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
     mkVectorStruct a label =
       let object = HM.fromList [(label, PB.toAesonValue a)]
        in V.singleton (jsonObjectToStruct object)
+
+executePushQuery
+  :: ServerContext
+  -> API.CommandPushQuery
+  -> ServerCallMetadata
+  -> StreamSend Struct
+  -> IO ()
+executePushQuery ctx@ServerContext{..} API.CommandPushQuery{..} meta streamSend = do
+    Log.debug $ "Receive Push Query Request: " <> Log.buildText commandPushQueryQueryText
+    plan <- streamCodegen commandPushQueryQueryText
+    case plan of
+      SelectPlan _ inNodesWithStreams outNodeWithStream _ _ -> do
+        let sources = snd <$> inNodesWithStreams
+            sink    = snd outNodeWithStream
+        exists <- mapM (S.doesStreamExist scLDClient . transToStreamName) sources
+        case and exists of
+          False -> do
+            Log.warning $ "At least one of the streams do not exist: "
+              <> Log.buildString (show sources)
+            throwIO $ HE.StreamNotFound $ "At least one of the streams do not exist: " <> T.pack (show sources)
+          True  -> do
+            createStreamWithShard scLDClient (transToStreamName sink) "query" scDefaultStreamRepFactor
+            let query = P.StreamQuery sources sink
+            -- run task
+            (qid,_) <- handleCreateAsSelect ctx plan commandPushQueryQueryText query
+            tid <- readMVar runningQueries >>= \hm -> return $ (HM.!) hm qid
+
+            -- sub from sink stream and push to client
+            consumerName <- newRandomText 20
+            let sc = HStore.hstoreSourceConnectorWithoutCkp ctx consumerName
+            subscribeToStreamWithoutCkp sc sink API.SpecialOffsetLATEST
+
+            sending <- async (sendToClient zkHandle qid sink sc streamSend)
+
+            void . forkIO $ handlePushQueryCanceled meta $ do
+              killThread tid
+              cancel sending
+              P.setQueryStatus qid Terminated zkHandle
+              unSubscribeToStreamWithoutCkp sc sink
+
+            wait sending
+      _ -> do
+        Log.warning "Push Query: Inconsistent Method Called"
+        throwIO $ HE.InvalidSqlStatement "inconsistent method called"
+
+sendToClient
+  :: MetaHandle
+  -> T.Text
+  -> T.Text
+  -> SourceConnectorWithoutCkp
+  -> (Struct -> IO (Either GRPCIOError ()))
+  -> IO ()
+sendToClient zkHandle qid streamName SourceConnectorWithoutCkp{..} streamSend = do
+  P.getQueryStatus qid zkHandle >>= \case
+    Terminated -> throwIO $ HE.PushQueryTerminated ""
+    Created -> throwIO $ HE.PushQueryCreated ""
+    Running -> do
+      withReadRecordsWithoutCkp streamName $ \sourceRecords -> do
+        let (objects' :: [Maybe Aeson.Object]) = Aeson.decode' . srcValue <$> sourceRecords
+            structs = jsonObjectToStruct . fromJust <$> filter isJust objects'
+        void $ streamSendMany structs
+    _ -> throwIO $ HE.UnknownPushQueryStatus ""
+  where
+    streamSendMany = \case
+      []        -> pure ()
+      (x : xs') ->
+        streamSend (structToStruct "SELECT" x) >>= \case
+          Left err -> do
+            Log.warning $ "Send Stream Error: " <> Log.buildString (show err)
+            throwIO $ HE.PushQuerySendError (show err)
+          Right _ -> streamSendMany xs'
 
 listQueries :: ServerContext -> IO [Query]
 listQueries ServerContext{..} = do
