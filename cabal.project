@@ -10,7 +10,7 @@ packages:
   hstream-gossip
   hstream-diffflow
 
-  external/hs-grpc/server/hs-grpc-server.cabal
+  external/hs-grpc/hs-grpc-server/hs-grpc-server.cabal
   external/gRPC-haskell
   external/gRPC-haskell/core
   external/proto3-wire/proto3-wire.cabal

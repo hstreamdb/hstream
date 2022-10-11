@@ -192,11 +192,6 @@ serve host port tlsConfig sc@ServerContext{..} listeners = do
 
 #ifdef HStreamUseHsGrpc
   Log.warning "Starting server with a still in development lib hs-grpc-server!"
-  let serverOptions = HsGrpc.ServerOptions { HsGrpc.serverHost = BS.toShort host
-                                           , HsGrpc.serverPort = fromIntegral port
-                                           , HsGrpc.serverParallelism = 0
-                                           , HsGrpc.serverOnStarted = Just serverOnStarted
-                                           }
   HsGrpc.runServer grpcOpts (HsGrpc.handlers sc)
 #else
   api <- handlers sc
