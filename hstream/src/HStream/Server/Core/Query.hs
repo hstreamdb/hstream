@@ -215,12 +215,12 @@ executePushQuery ctx@ServerContext{..} API.CommandPushQuery{..} meta streamSend 
             let sc = HStore.hstoreSourceConnectorWithoutCkp ctx consumerName
             subscribeToStreamWithoutCkp sc sink API.SpecialOffsetLATEST
 
-            sending <- async (sendToClient zkHandle qid sink sc streamSend)
+            sending <- async (sendToClient metaHandle qid sink sc streamSend)
 
             void . forkIO $ handlePushQueryCanceled meta $ do
               killThread tid
               cancel sending
-              P.setQueryStatus qid Terminated zkHandle
+              P.setQueryStatus qid Terminated metaHandle
               unSubscribeToStreamWithoutCkp sc sink
 
             wait sending
@@ -235,8 +235,8 @@ sendToClient
   -> SourceConnectorWithoutCkp
   -> (Struct -> IO (Either GRPCIOError ()))
   -> IO ()
-sendToClient zkHandle qid streamName SourceConnectorWithoutCkp{..} streamSend = do
-  P.getQueryStatus qid zkHandle >>= \case
+sendToClient metaHandle qid streamName SourceConnectorWithoutCkp{..} streamSend = do
+  P.getQueryStatus qid metaHandle >>= \case
     Terminated -> throwIO $ HE.PushQueryTerminated ""
     Created -> throwIO $ HE.PushQueryCreated ""
     Running -> do
@@ -276,13 +276,13 @@ createQuery
     createStreamWithShard scLDClient (transToStreamName sink) "query" scDefaultStreamRepFactor
     -- run task
     (qid, _) <- handleCreateAsSelect sc plan createQueryRequestSql query
-    getMeta @P.PersistentQuery qid zkHandle >>= \case
+    getMeta @P.PersistentQuery qid metaHandle >>= \case
       Just pQuery -> return $ hstreamQueryToQuery pQuery
       Nothing     -> throwIO $ HE.UnexpectedError "Failed to create query for some unknown reason"
 
 listQueries :: ServerContext -> IO [Query]
 listQueries ServerContext{..} = do
-  queries <- M.listMeta zkHandle
+  queries <- M.listMeta metaHandle
   return $ map hstreamQueryToQuery queries
 
 getQuery :: ServerContext -> GetQueryRequest -> IO Query
@@ -292,7 +292,7 @@ getQuery ctx req = do
 
 getQuery' :: ServerContext -> GetQueryRequest -> IO (Maybe Query)
 getQuery' ServerContext{..} GetQueryRequest{..} = do
-  queries <- M.listMeta zkHandle
+  queries <- M.listMeta metaHandle
   return $ hstreamQueryToQuery <$>
     L.find (\P.PersistentQuery{..} -> queryId == getQueryRequestId) queries
 
@@ -319,7 +319,7 @@ terminateQueries' ctx@ServerContext{..} TerminateQueriesRequest{..} = do
 
 deleteQuery :: ServerContext -> DeleteQueryRequest -> IO ()
 deleteQuery ServerContext{..} DeleteQueryRequest{..} =
-  M.deleteMeta @P.PersistentQuery deleteQueryRequestId Nothing zkHandle
+  M.deleteMeta @P.PersistentQuery deleteQueryRequestId Nothing metaHandle
 
 -------------------------------------------------------------------------------
 

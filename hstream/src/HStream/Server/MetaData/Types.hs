@@ -15,6 +15,7 @@ module HStream.Server.MetaData.Types
   , PersistentConnector (..)
   , QueryType (..)
   , ShardReader (..)
+  , TaskAllocation (..)
   , createInsertPersistentQuery
   , getQuerySink
   , getRelatedStreams
@@ -46,11 +47,12 @@ import           HStream.MetaStore.Types       (HasPath (..), MetaHandle,
                                                 MetaStore (..), MetaType,
                                                 RHandle)
 import qualified HStream.Server.ConnectorTypes as HCT
-import           HStream.Server.HStreamApi     (Subscription (..))
+import           HStream.Server.HStreamApi     (ServerNode (..),
+                                                Subscription (..))
 import           HStream.Server.Types          (ServerID, SubscriptionWrap (..))
 import qualified HStream.Store                 as S
 import qualified HStream.ThirdParty.Protobuf   as Proto
-import           HStream.Utils                 (TaskStatus (..), cBytesToText)
+import           HStream.Utils                 (TaskStatus (..))
 
 --------------------------------------------------------------------------------
 
@@ -88,6 +90,9 @@ data ShardReader = ShardReader
   , readerReaderId    :: Text
   , readerReadTimeout :: Word32
   } deriving (Show, Generic, FromJSON, ToJSON)
+
+data TaskAllocation = TaskAllocation Word32 ServerNode
+  deriving (Show, Generic, FromJSON, ToJSON)
 
 rootPath :: Text
 rootPath = "/hstream"
@@ -165,3 +170,11 @@ createInsertPersistentQuery qid queryText queryType queryHServer h = do
 groupbyStores :: IORef (HM.HashMap Text (MVar (DataChangeBatch HCT.Timestamp)))
 groupbyStores = unsafePerformIO $ newIORef HM.empty
 {-# NOINLINE groupbyStores #-}
+
+--------------------------------------------------------------------------------
+
+instance HasPath TaskAllocation ZHandle where
+  myRootPath = rootPath <> "/taskAllocations"
+
+instance HasPath TaskAllocation RHandle where
+  myRootPath = "taskAllocations"

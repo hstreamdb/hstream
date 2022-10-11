@@ -92,7 +92,7 @@ checkSubscriptionExistHandler
 checkSubscriptionExistHandler ServerContext {..} (ServerNormalRequest _metadata req@CheckSubscriptionExistRequest {..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive checkSubscriptionExistHandler request: " <> Log.buildString (show req)
   let sid = checkSubscriptionExistRequestSubscriptionId
-  res <- M.checkMetaExists @SubscriptionWrap sid zkHandle
+  res <- M.checkMetaExists @SubscriptionWrap sid metaHandle
   returnResp . CheckSubscriptionExistResponse $ res
 
 handleCheckSubscriptionExist
@@ -100,7 +100,7 @@ handleCheckSubscriptionExist
   -> G.UnaryHandler CheckSubscriptionExistRequest CheckSubscriptionExistResponse
 handleCheckSubscriptionExist ServerContext{..} _ req = catchDefaultEx $ do
   let sid = checkSubscriptionExistRequestSubscriptionId req
-  res <- M.checkMetaExists @SubscriptionWrap sid zkHandle
+  res <- M.checkMetaExists @SubscriptionWrap sid metaHandle
   pure $ CheckSubscriptionExistResponse res
 
 -------------------------------------------------------------------------------

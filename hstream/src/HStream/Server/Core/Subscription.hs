@@ -46,7 +46,7 @@ import           HStream.Utils              (decompressBatchedRecord,
 
 listSubscriptions :: ServerContext -> IO (V.Vector Subscription)
 listSubscriptions ServerContext{..} = do
-  subs <- M.listMeta zkHandle
+  subs <- M.listMeta metaHandle
   mapM update $ V.fromList (map originSub subs)
  where
    update sub@Subscription{..} = do
@@ -72,7 +72,7 @@ createSubscription ServerContext {..} sub@Subscription{..} = do
         { originSub  = sub
         , subOffsets = startOffsets
         }
-  M.insertMeta subscriptionSubscriptionId subWrap zkHandle
+  M.insertMeta subscriptionSubscriptionId subWrap metaHandle
  where
    gatherTailLSN acc shard = do
      lsn <- (+1) <$> S.getTailLSN scLDClient shard
@@ -80,7 +80,7 @@ createSubscription ServerContext {..} sub@Subscription{..} = do
 
 deleteSubscription :: ServerContext -> DeleteSubscriptionRequest -> IO ()
 deleteSubscription ServerContext{..} DeleteSubscriptionRequest { deleteSubscriptionRequestSubscriptionId = subId, deleteSubscriptionRequestForce = force} = do
-  subscription <- M.getMeta @SubscriptionWrap subId zkHandle
+  subscription <- M.getMeta @SubscriptionWrap subId metaHandle
   when (isNothing subscription) $ throwIO (HE.SubscriptionNotFound $ "Subscription " <> subId <> " not found")
 
   (status, msub) <- atomically $ do
@@ -119,7 +119,7 @@ deleteSubscription ServerContext{..} DeleteSubscriptionRequest { deleteSubscript
   where
     -- FIXME: Concurrency Issue
     doRemove :: IO ()
-    doRemove = M.deleteMeta @SubscriptionWrap subId Nothing zkHandle
+    doRemove = M.deleteMeta @SubscriptionWrap subId Nothing metaHandle
 
     getSubState :: STM (Maybe (SubscribeContext, TVar SubscribeState))
     getSubState = do
@@ -218,7 +218,7 @@ streamingFetchCore ctx SFetchCoreInteractive = \(streamSend, streamRecv) -> do
         Right Nothing -> throwIO $ HE.StreamReadClose "Consumer is closed"
 
 initSub :: ServerContext -> SubscriptionId -> IO (SubscribeContextWrapper, Maybe ThreadId)
-initSub serverCtx@ServerContext {..} subId = M.getMeta subId zkHandle >>= \case
+initSub serverCtx@ServerContext {..} subId = M.getMeta subId metaHandle >>= \case
   Nothing -> do
     Log.fatal $ "subscription " <> Log.buildText subId <> " not exist."
     throwIO $ HE.SubscriptionNotFound $ "Subscription " <> subId <> " not found"
@@ -257,7 +257,7 @@ initSub serverCtx@ServerContext {..} subId = M.getMeta subId zkHandle >>= \case
 -- add all shards of target stream to SubscribeContext
 doSubInit :: ServerContext -> SubscriptionId -> IO SubscribeContext
 doSubInit ServerContext{..} subId = do
-  M.getMeta subId zkHandle >>= \case
+  M.getMeta subId metaHandle >>= \case
     Nothing -> do
       Log.fatal $ "unexpected error: subscription " <> Log.buildText subId <> " not exist."
       throwIO $ HE.SubscriptionNotFound $ "Subscription " <> subId <> " not found"

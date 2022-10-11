@@ -102,6 +102,7 @@ module HStream.Exception
   , ShardCanNotSplit (..)
   , ShardCanNotMerge (..)
   , RQLiteRowBadVersion (..)
+  , ResourceAllocationException (..)
 
     -- * Exception: SomeAborted
     --
@@ -498,6 +499,7 @@ MAKE_SUB_EX(SomeHServerException, SomeUnavailable)
 
 MAKE_PARTICULAR_EX_1(SomeUnavailable, Unavailable, (ExInfo String), exDescription)
 MAKE_PARTICULAR_EX_0(SomeUnavailable, ServerNotAvailable, "ServerNotAvailable")
+MAKE_PARTICULAR_EX_1(SomeUnavailable, ResourceAllocationException, String, )
 
 -------------------------------------------------------------------------------
 -- Exception: SomeDataLoss

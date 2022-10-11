@@ -161,7 +161,7 @@ decodeRecordBatch dataRecord = do
 
 terminateQueryAndRemove :: ServerContext -> T.Text -> IO ()
 terminateQueryAndRemove sc@ServerContext{..} objectId = do
-  queries <- M.listMeta zkHandle
+  queries <- M.listMeta metaHandle
   let queryExists = L.find (\query -> P.getQuerySink query == objectId) queries
   case queryExists of
     Just query -> do
@@ -170,7 +170,7 @@ terminateQueryAndRemove sc@ServerContext{..} objectId = do
         <> " with query id " <> show (P.queryId query)
         <> " writes to the stream being dropped " <> show objectId
       void $ handleQueryTerminate sc (OneQuery $ P.queryId query)
-      M.deleteMeta @P.PersistentQuery (P.queryId query) Nothing zkHandle
+      M.deleteMeta @P.PersistentQuery (P.queryId query) Nothing metaHandle
       Log.debug . Log.buildString
          $ "TERMINATE: query " <> show (P.queryType query)
         <> " has been removed"
@@ -180,7 +180,7 @@ terminateQueryAndRemove sc@ServerContext{..} objectId = do
 
 terminateRelatedQueries :: ServerContext -> T.Text -> IO ()
 terminateRelatedQueries sc@ServerContext{..} name = do
-  queries <- M.listMeta zkHandle
+  queries <- M.listMeta metaHandle
   let getRelatedQueries = [P.queryId query | query <- queries, name `elem` P.getRelatedStreams query]
   Log.debug . Log.buildString
      $ "TERMINATE: the queries related to the terminating stream " <> show name
@@ -191,7 +191,7 @@ handleQueryTerminate :: ServerContext -> TerminationSelection -> IO [T.Text]
 handleQueryTerminate ServerContext{..} (OneQuery qid) = do
   hmapQ <- readMVar runningQueries
   case HM.lookup qid hmapQ of Just tid -> killThread tid; _ -> pure ()
-  P.setQueryStatus qid Terminated zkHandle
+  P.setQueryStatus qid Terminated metaHandle
   void $ swapMVar runningQueries (HM.delete qid hmapQ)
   Log.debug . Log.buildString $ "TERMINATE: terminated query: " <> show qid
   return [qid]
@@ -209,7 +209,7 @@ handleQueryTerminate ServerContext{..} (ManyQueries qids) = do
         case HM.lookup x hm of
           Just tid -> do
             killThread tid
-            P.setQueryStatus x Terminated zkHandle
+            P.setQueryStatus x Terminated metaHandle
             void $ swapMVar runningQueries (HM.delete x hm)
           _        ->
             Log.debug $ "query id " <> Log.buildString' x <> " not found"
