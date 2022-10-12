@@ -53,6 +53,7 @@ library
   import:             shared-properties
   exposed-modules:
     HStream.Common.ConsistentHashing
+    HStream.Common.GrpcHaskell
     HStream.Common.Query
     HStream.Common.Types
     HStream.Exception
