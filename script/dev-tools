@@ -905,7 +905,7 @@ class QuickBuildDevImageCommand:
             self.COMMAND,
             help=(
                 "Quick build a new hstream server image based on current "
-                "project source. (NOTE: http server is not included.)"
+                "project source."
             ),
         )
         p.add_argument(
@@ -915,6 +915,7 @@ class QuickBuildDevImageCommand:
         )
         p.add_argument("--tag", "-t", required=True, help="target image tag")
         p.add_argument("--use-hs-grpc", default=False, action="store_true")
+        p.add_argument("--fast", default=False, action="store_true")
         # p.add_argument("--force-rebuild", "-f", action="store_true")  # TODO
         p.add_argument("--no-clean-installdir", action="store_true")
 
@@ -923,19 +924,55 @@ class QuickBuildDevImageCommand:
         tag,
         builder_image,
         use_hs_grpc=False,
+        fast=False,
         **kargs,
     ):
+        cabal_flag = (
+            "--constraint=hstream+hstream_use_hs_grpc" if use_hs_grpc else ""
+        )
+        hs_targets = "hstream hstream-admin"
         tmp_name = "tmp_build_dev_image_" + gen_randoms(20)
         base_image = IMAGES["DB_IMAGE"]
+
+        if fast:
+            run_sh(
+                f"python3 {__file__} cabal --check --no-interactive "
+                f"--no-services-required --image {builder_image} --no-services-required "
+                f"-- build {cabal_flag} {hs_targets}"
+            )
+            out = (
+                run_sh(
+                    f"python3 {__file__} cabal --check --no-interactive "
+                    f"--no-services-required --image {builder_image} --no-services-required "
+                    f"-- exec which hstream-server hstream hadmin",
+                    stdout=subprocess.PIPE,
+                )
+                .stdout.decode()
+                .strip()
+            )
+            print(out)
+            results = [
+                x
+                for x in out.split()
+                if "dist-newstyle" in x and os.access(x, os.X_OK)
+            ]
+            loginfo(f"Found executables: {' '.join(results)}")
+            # Copy
+            run_sh(f"docker run -td --rm --name {tmp_name} {base_image} bash")
+            copy_execs = " && ".join(f"docker cp -L {x} {tmp_name}:/usr/local/bin/" for x in results)
+            copy_config = f"docker cp -L {DEFAULT_HSTREAM_CONF} {tmp_name}:/etc/hstream/config.yaml"
+            run_sh(copy_execs + " && " + copy_config)
+            run_sh(f"docker commit {tmp_name} {tag}")
+            return
+
+        # fast else
         tmpdir = tempfile.TemporaryDirectory()
         installdir = tmpdir.name
         clean_installdir = not kargs.pop("no_clean_installdir", False)
-
         loginfo(
             f"Temp install dir: {installdir}, autoclean: {clean_installdir}"
         )
         try:
-            hs_targets = "hstream hstream-admin"
             files = [
                 (
                     f"{installdir}/hstream-server",
@@ -950,11 +987,6 @@ class QuickBuildDevImageCommand:
             ]
 
             # Install
-            cabal_flag = (
-                "--constraint=hstream+hstream_use_hs_grpc"
-                if use_hs_grpc
-                else ""
-            )
             run_sh(
                 f"python3 {__file__} cabal --check --no-interactive "
                 f"--no-services-required --image {builder_image} --no-services-required "
