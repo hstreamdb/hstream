@@ -9,13 +9,14 @@ module HStream.Gossip.Utils where
 import           Control.Concurrent.STM           (STM, TQueue, TVar, readTVar,
                                                    stateTVar, writeTQueue,
                                                    writeTVar)
-import           Control.Exception                (Exception)
+import           Control.Exception                (Handler (..))
 import           Control.Monad                    (unless)
 import           Data.ByteString                  (ByteString)
 import           Data.Foldable                    (foldl')
 import qualified Data.Map                         as Map
 import           Data.Text                        (Text)
 import           Data.Word                        (Word32)
+import qualified HsGrpc.Server.Types              as HsGrpc
 import           Network.GRPC.HighLevel.Generated (ClientConfig (..),
                                                    ClientRequest (..),
                                                    GRPCMethodType (..),
@@ -26,6 +27,10 @@ import           Network.GRPC.HighLevel.Generated (ClientConfig (..),
 import qualified Text.Layout.Table                as Table
 import           Text.Layout.Table                (def)
 
+
+import           Control.Exception.Base
+import           Data.String                      (IsString (fromString))
+import qualified HStream.Exception                as HE
 import           HStream.Gossip.Types             (BroadcastPool,
                                                    EventMessage (..),
                                                    Message (..), Messages,
@@ -35,6 +40,7 @@ import           HStream.Gossip.Types             (BroadcastPool,
                                                    StateMessage (..),
                                                    TempCompare (TC), getMsgNode)
 import qualified HStream.Gossip.Types             as T
+import qualified HStream.Logger                   as Log
 import qualified HStream.Server.HStreamInternal   as I
 
 returnResp :: Monad m => a -> m (ServerResponse 'Normal a)
@@ -185,3 +191,79 @@ instance Exception ClusterReadyErr
 data FailedToStart = FailedToStart
   deriving (Show, Eq)
 instance Exception FailedToStart
+
+data EmptyPingRequest = EmptyPingRequest
+  deriving (Show, Eq)
+instance Exception EmptyPingRequest
+
+data EmptyJoinRequest = EmptyJoinRequest
+  deriving (Show, Eq)
+instance Exception EmptyJoinRequest
+
+data DuplicateNodeId = DuplicateNodeId
+  deriving (Show, Eq)
+instance Exception DuplicateNodeId
+
+exHandlers :: [Handler a]
+exHandlers =
+  [ Handler $ \(err :: ClusterInitedErr) -> do
+      Log.fatal $ Log.buildString' err
+      HsGrpc.throwGrpcError $ HsGrpc.GrpcStatus HsGrpc.StatusFailedPrecondition (Just $ unStatusDetails clusterInitedErr) Nothing
+
+  , Handler $ \(err :: ClusterReadyErr) -> do
+      Log.fatal $ Log.buildString' err
+      HsGrpc.throwGrpcError $ HsGrpc.GrpcStatus HsGrpc.StatusFailedPrecondition (Just $ unStatusDetails clusterReadyErr) Nothing
+
+  , Handler $ \(err :: FailedToStart) -> do
+      Log.fatal $ Log.buildString' err
+      HsGrpc.throwGrpcError $ HE.mkGrpcStatus err HsGrpc.StatusFailedPrecondition
+
+  , Handler $ \(err :: EmptyPingRequest) -> do
+      Log.fatal $ Log.buildString' err
+      HsGrpc.throwGrpcError $ HE.mkGrpcStatus err HsGrpc.StatusInvalidArgument
+
+  , Handler $ \(err :: EmptyJoinRequest) -> do
+      Log.fatal $ Log.buildString' err
+      HsGrpc.throwGrpcError $ HE.mkGrpcStatus err HsGrpc.StatusInvalidArgument
+
+  , Handler $ \(err :: IOException) -> do
+      Log.fatal $ Log.buildString' err
+      HsGrpc.throwGrpcError $ HE.mkGrpcStatus err HsGrpc.StatusInternal
+
+  , Handler $ \(err :: SomeException) -> do
+      Log.fatal $ Log.buildString' err
+      let x = ("UnKnown exception: " <>) <$> HE.mkStatusMsg err
+      HsGrpc.throwGrpcError $ HsGrpc.GrpcStatus HsGrpc.StatusUnknown x Nothing
+  ]
+
+exceptionHandlers :: [Handler (ServerResponse 'Normal a)]
+exceptionHandlers =
+  [ Handler $ \(err :: ClusterInitedErr) -> do
+      Log.fatal $ Log.buildString' err
+      returnErrResp StatusFailedPrecondition clusterInitedErr
+
+  , Handler $ \(err :: ClusterReadyErr) -> do
+      Log.fatal $ Log.buildString' err
+      returnErrResp StatusFailedPrecondition clusterReadyErr
+
+  , Handler $ \(err :: FailedToStart) -> do
+      Log.fatal $ Log.buildString' err
+      returnErrResp StatusFailedPrecondition "Cluster failed to start"
+
+  , Handler $ \(err :: EmptyPingRequest) -> do
+      Log.fatal $ Log.buildString' err
+      returnErrResp StatusInvalidArgument "Empty ping request"
+
+  , Handler $ \(err :: EmptyJoinRequest) -> do
+      Log.fatal $ Log.buildString' err
+      returnErrResp StatusInvalidArgument "Empty join request"
+
+  , Handler $ \(err :: IOException) -> do
+      Log.fatal $ Log.buildString' err
+      returnErrResp StatusInternal (fromString $ displayException err)
+
+  , Handler $ \(err :: SomeException) -> do
+      Log.fatal $ Log.buildString' err
+      let x = "UnKnown exception: " <> displayException err
+      returnErrResp StatusUnknown (fromString x)
+  ]

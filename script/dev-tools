@@ -928,7 +928,7 @@ class QuickBuildDevImageCommand:
         **kargs,
     ):
         cabal_flag = (
-            "--constraint=hstream+hstream_use_hs_grpc" if use_hs_grpc else ""
+            "--constraint=hstream+hstream_use_hs_grpc --constraint=hstream-gossip+hstream_use_hs_grpc" if use_hs_grpc else ""
         )
         hs_targets = "hstream hstream-admin"
         tmp_name = "tmp_build_dev_image_" + gen_randoms(20)

@@ -3,14 +3,30 @@ name:               hstream-gossip
 version:            0.1.0.0
 synopsis:           SWIM based hstream server cluster probe and gossip library
 license:            BSD-3-Clause
+copyright:          Copyright (c) 2020 EMQ Technologies Co., Ltd.
 author:             Time Hoo
 maintainer:         husj@emqx.io
 extra-source-files: CHANGELOG.md
+
+flag ReleaseBuild
+  default:     False
+  description:
+    Enables all optimisations, leads to slower build time and better performance
+
+flag hstream_use_hs_grpc
+  default:     False
+  description: Use hs-grpc-server instead
 
 common shared-properties
   ghc-options:
     -Wall -Wcompat -Widentities -Wincomplete-record-updates
     -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+
+  if flag(releasebuild)
+    ghc-options:
+      -feager-blackholing -flate-dmd-anal -flate-specialise
+      -fspec-constr-keen -fstatic-argument-transformation
+      -funbox-strict-fields -O2
 
 library
   import:           shared-properties
@@ -20,11 +36,13 @@ library
     HStream.Gossip.Core
     HStream.Gossip.Gossip
     HStream.Gossip.Handlers
-    HStream.Gossip.HStreamGossip
     HStream.Gossip.Probe
     HStream.Gossip.Start
     HStream.Gossip.Types
     HStream.Gossip.Utils
+
+  if flag(hstream_use_hs_grpc)
+    cpp-options: -DHStreamUseHsGrpc
 
   -- LANGUAGE extensions used by modules in this package.
   -- other-extensions:
@@ -37,13 +55,15 @@ library
     , containers
     , deepseq
     , grpc-haskell
+    , hs-grpc-server
+    , hstream-api-protolens
     , hstream-common
     , optparse-applicative
     , proto3-suite
     , proto3-wire
     , random
     , random-shuffle
-    , slave-thread          ^>=1.1
+    , slave-thread           ^>=1.1
     , stm
     , table-layout
     , text
@@ -52,4 +72,4 @@ library
     , Z-Data
     , Z-IO
 
-  hs-source-dirs:   src gen-hs
+  hs-source-dirs:   src

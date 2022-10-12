@@ -1,8 +1,10 @@
+{-# LANGUAGE CPP                 #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+
 
 module HStream.Gossip.Start where
 
@@ -20,6 +22,7 @@ import           Control.Exception                (handle, throwIO, try)
 import           Control.Monad                    (void, when)
 import           Data.ByteString                  (ByteString)
 import qualified Data.ByteString.Lazy             as BL
+import qualified Data.ByteString.Short            as BSS
 import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as Map
 import qualified Data.Vector                      as V
@@ -32,7 +35,7 @@ import           HStream.Gossip.Core              (broadCastUserEvent,
                                                    initGossip, runEventHandler,
                                                    runStateHandler)
 import           HStream.Gossip.Gossip            (scheduleGossip)
-import           HStream.Gossip.Handlers          (handlers)
+import           HStream.Gossip.Handlers          (handlers, handlersNew)
 import qualified HStream.Gossip.HStreamGossip     as API
 import           HStream.Gossip.Probe             (bootstrapPing, scheduleProbe)
 import           HStream.Gossip.Types             (EventHandlers, EventPayload,
@@ -50,6 +53,9 @@ import           HStream.Gossip.Utils             (ClusterInitedErr (..),
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.HStreamInternal   as I
 import qualified HStream.Utils                    as U
+#ifdef HStreamUseHsGrpc
+import qualified HsGrpc.Server                    as HsGrpc
+#endif
 
 initGossipContext :: GossipOpts -> EventHandlers -> I.ServerNode -> [(ByteString, Int)] -> IO GossipContext
 initGossipContext gossipOpts _eventHandlers serverSelf seeds = do
@@ -139,15 +145,35 @@ handleINITEDEvent initedM l ready payload = readMVar initedM >>= \case
 
 startListeners ::  ByteString -> GossipContext -> IO (Async ())
 startListeners grpcHost gc@GossipContext {..} = do
-  let grpcOpts = GRPC.defaultServiceOptions {
-      GRPC.serverHost = GRPC.Host grpcHost
-    , GRPC.serverPort = GRPC.Port $ fromIntegral $ I.serverNodeGossipPort serverSelf
-    , GRPC.serverOnStarted = Just $ do
+  let port = I.serverNodeGossipPort serverSelf
+  let serverOnStarted = do
         void . forkIO $ amIASeed serverSelf seeds >>= putMVar seedsInfo
-        Log.debug . Log.buildString $ "Server node " <> show serverSelf <> " started"
-    }
-  let api = handlers gc
-  aynscs@(a1:_) <- mapM async ( API.hstreamGossipServer api grpcOpts
+        Log.debug . Log.buildString $ "Internal gossiping server " <> show serverSelf <> " started"
+  let grpcOpts =
+#ifdef HStreamUseHsGrpc
+        HsGrpc.ServerOptions
+          { HsGrpc.serverHost = BSS.toShort grpcHost
+          , HsGrpc.serverPort = fromIntegral port
+          , HsGrpc.serverParallelism = 0
+          , HsGrpc.serverSslOptions = Nothing
+          , HsGrpc.serverOnStarted = Just serverOnStarted
+          }
+#else
+        GRPC.defaultServiceOptions
+          { GRPC.serverHost = GRPC.Host grpcHost
+          , GRPC.serverPort = GRPC.Port $ fromIntegral port
+          , GRPC.serverOnStarted = Just serverOnStarted
+          }
+#endif
+
+  aynscs@(a1:_) <- mapM async (
+#ifdef HStreamUseHsGrpc
+    (do
+      Log.warning "Starting gossip server with a still in development lib hs-grpc-server!"
+      HsGrpc.runServer grpcOpts (handlersNew gc))
+#else
+    API.hstreamGossipServer (handlers gc) grpcOpts
+#endif
                               : map ($ gc) [ runStateHandler
                                            , runEventHandler
                                            , scheduleGossip
@@ -196,7 +222,7 @@ joinCluster' _ [] = return []
 joinCluster' sNode ((joinHost, joinPort):rest) = do
   members <- GRPC.withGRPCClient (mkGRPCClientConf' joinHost joinPort) $ \client -> do
     API.HStreamGossip{..} <- API.hstreamGossipClient client
-    hstreamGossipJoin (mkClientNormalRequest def { API.joinReqNew = Just sNode}) >>= \case
+    hstreamGossipSendJoin (mkClientNormalRequest def { API.joinReqNew = Just sNode}) >>= \case
       GRPC.ClientNormalResponse (API.JoinResp xs) _ _ _ _ -> do
         Log.info . Log.buildString $ "Successfully joined cluster with " <> show xs
         return $ L.delete sNode (V.toList xs)

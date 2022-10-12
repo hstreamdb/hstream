@@ -57,6 +57,7 @@ library
     HStream.Common.Types
     HStream.Exception
     HStream.Foreign
+    HStream.Gossip.HStreamGossip
     HStream.Logger
     HStream.MetaStore.RqliteUtils
     HStream.MetaStore.Types

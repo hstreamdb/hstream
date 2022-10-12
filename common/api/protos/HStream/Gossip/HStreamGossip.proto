@@ -5,11 +5,11 @@ package hstream.gossip;
 import "HStream/Server/HStreamInternal.proto";
 
 service HStreamGossip {
-  rpc BootstrapPing(Empty) returns (hstream.server.internal.ServerNode);
-  rpc Ping(Ping) returns (Ack);
-  rpc PingReq(PingReq) returns (PingReqResp);
-  rpc Join(JoinReq) returns (JoinResp);
-  rpc Gossip(Gossip) returns (Empty);
+  rpc SendBootstrapPing(Empty) returns (hstream.server.internal.ServerNode);
+  rpc SendPing(Ping) returns (Ack);
+  rpc SendPingReq(PingReq) returns (PingReqResp);
+  rpc SendJoin(JoinReq) returns (JoinResp);
+  rpc SendGossip(Gossip) returns (Empty);
 
   // For CLI use only
   rpc CliJoin(CliJoinReq) returns (JoinResp);
