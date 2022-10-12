@@ -928,7 +928,9 @@ class QuickBuildDevImageCommand:
         **kargs,
     ):
         cabal_flag = (
-            "--constraint=hstream+hstream_use_hs_grpc --constraint=hstream-gossip+hstream_use_hs_grpc" if use_hs_grpc else ""
+            "--constraint=hstream+hstream_use_hs_grpc --constraint=hstream-gossip+hstream_use_hs_grpc"
+            if use_hs_grpc
+            else ""
         )
         hs_targets = "hstream hstream-admin"
         tmp_name = "tmp_build_dev_image_" + gen_randoms(20)
@@ -959,7 +961,9 @@ class QuickBuildDevImageCommand:
             loginfo(f"Found executables: {' '.join(results)}")
             # Copy
             run_sh(f"docker run -td --rm --name {tmp_name} {base_image} bash")
-            copy_execs = " && ".join(f"docker cp -L {x} {tmp_name}:/usr/local/bin/" for x in results)
+            copy_execs = " && ".join(
+                f"docker cp -L {x} {tmp_name}:/usr/local/bin/" for x in results
+            )
             copy_config = f"docker cp -L {DEFAULT_HSTREAM_CONF} {tmp_name}:/etc/hstream/config.yaml"
             run_sh(copy_execs + " && " + copy_config)
             run_sh(f"docker commit {tmp_name} {tag}")
