@@ -9,7 +9,7 @@
 
 import           Control.Concurrent               (MVar, forkIO, newMVar,
                                                    readMVar, swapMVar)
-import           Control.Concurrent.Async         (concurrently_)
+import qualified Control.Concurrent.Async         as Async
 import           Control.Concurrent.STM           (TVar, atomically, retry,
                                                    writeTVar)
 import           Control.Monad                    (forM_, void, when)
@@ -38,7 +38,7 @@ import           HStream.Gossip                   (GossipContext (..),
                                                    defaultGossipOpts,
                                                    getMemberListSTM,
                                                    initGossipContext,
-                                                   startGossip)
+                                                   startGossip, waitGossipBoot)
 import qualified HStream.Logger                   as Log
 import           HStream.MetaStore.Types          (MetaHandle (..),
                                                    RHandle (..))
@@ -103,8 +103,13 @@ app config@ServerOpts{..} = do
       serverContext <- initializeServer config gossipContext h serverState
       void . forkIO $ updateHashRing gossipContext (loadBalanceHashRing serverContext)
 
-      concurrently_ (startGossip gossipContext)
-        (serve serverHostBS _serverPort _tlsConfig serverContext _serverAdvertisedListeners)
+      Async.withAsync
+        (serve serverHostBS _serverPort _tlsConfig serverContext
+               _serverAdvertisedListeners) $ \a -> do
+        a1 <- startGossip gossipContext
+        Async.link2Only (const True) a a1
+        waitGossipBoot gossipContext
+        Async.wait a
 
 serve :: ByteString
       -> Word16

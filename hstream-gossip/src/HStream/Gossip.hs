@@ -11,6 +11,7 @@ module HStream.Gossip
   , initGossipContext
   , bootstrap
   , startGossip
+  , waitGossipBoot
   , initCluster
 
   , broadcastEvent
@@ -36,7 +37,7 @@ import           Data.Word                      (Word32)
 
 import           HStream.Common.Types           (fromInternalServerNode)
 import           HStream.Gossip.Start           (bootstrap, initGossipContext,
-                                                 startGossip)
+                                                 startGossip, waitGossipBoot)
 import           HStream.Gossip.Types           (EventHandler, EventMessage,
                                                  EventName, GossipContext (..),
                                                  GossipOpts (..),

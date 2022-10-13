@@ -78,9 +78,47 @@ initGossipContext gossipOpts _eventHandlers serverSelf seeds = do
   let eventHandlers = Map.insert eventNameINITED (handleINITEDEvent numInited (length seeds) clusterReady) _eventHandlers
   return GossipContext {..}
 
-startGossip :: GossipContext -> IO ()
-startGossip gc@GossipContext {..} = do
-  void $ startListeners (I.serverNodeHost serverSelf) gc
+startGossip :: GossipContext -> IO (Async ())
+startGossip gc@GossipContext{..} = do
+  let grpcHost = I.serverNodeHost serverSelf
+      port = I.serverNodeGossipPort serverSelf
+  let serverOnStarted = do
+        void . forkIO $ amIASeed serverSelf seeds >>= putMVar seedsInfo
+        Log.debug . Log.buildString $ "Internal gossiping server " <> show serverSelf <> " started"
+  let grpcOpts =
+#ifdef HStreamUseHsGrpc
+        HsGrpc.ServerOptions
+          { HsGrpc.serverHost = BSS.toShort grpcHost
+          , HsGrpc.serverPort = fromIntegral port
+          , HsGrpc.serverParallelism = 0
+          , HsGrpc.serverSslOptions = Nothing
+          , HsGrpc.serverOnStarted = Just serverOnStarted
+          }
+#else
+        GRPC.defaultServiceOptions
+          { GRPC.serverHost = GRPC.Host grpcHost
+          , GRPC.serverPort = GRPC.Port $ fromIntegral port
+          , GRPC.serverOnStarted = Just serverOnStarted
+          }
+#endif
+
+  asyncs@(a1:_) <- mapM async (
+#ifdef HStreamUseHsGrpc
+    (do
+      Log.warning "Starting gossip server with a still in development lib hs-grpc-server!"
+      HsGrpc.runServer grpcOpts (handlersNew gc))
+#else
+    API.hstreamGossipServer (handlers gc) grpcOpts
+#endif
+                              : map ($ gc) [ runStateHandler
+                                           , runEventHandler
+                                           , scheduleGossip
+                                           , scheduleProbe ])
+  mapM_ (link2Only (const True) a1) asyncs
+  return a1
+
+waitGossipBoot :: GossipContext -> IO ()
+waitGossipBoot gc@GossipContext{..} = do
   (isSeed, seeds', wasIDead) <- readMVar seedsInfo
   if isSeed && not wasIDead
     then newTVarIO 0 >>= putMVar numInited . Just
@@ -142,44 +180,6 @@ handleINITEDEvent initedM l ready payload = readMVar initedM >>= \case
       x <- atomically $ stateTVar inited (\x -> (x + 1, x + 1))
       if x == l then putMVar ready () >> Log.info "All servers have been initialized"
         else when (x > l) $ Log.warning "More seeds has been initiated, something went wrong"
-
-startListeners ::  ByteString -> GossipContext -> IO (Async ())
-startListeners grpcHost gc@GossipContext {..} = do
-  let port = I.serverNodeGossipPort serverSelf
-  let serverOnStarted = do
-        void . forkIO $ amIASeed serverSelf seeds >>= putMVar seedsInfo
-        Log.debug . Log.buildString $ "Internal gossiping server " <> show serverSelf <> " started"
-  let grpcOpts =
-#ifdef HStreamUseHsGrpc
-        HsGrpc.ServerOptions
-          { HsGrpc.serverHost = BSS.toShort grpcHost
-          , HsGrpc.serverPort = fromIntegral port
-          , HsGrpc.serverParallelism = 0
-          , HsGrpc.serverSslOptions = Nothing
-          , HsGrpc.serverOnStarted = Just serverOnStarted
-          }
-#else
-        GRPC.defaultServiceOptions
-          { GRPC.serverHost = GRPC.Host grpcHost
-          , GRPC.serverPort = GRPC.Port $ fromIntegral port
-          , GRPC.serverOnStarted = Just serverOnStarted
-          }
-#endif
-
-  aynscs@(a1:_) <- mapM async (
-#ifdef HStreamUseHsGrpc
-    (do
-      Log.warning "Starting gossip server with a still in development lib hs-grpc-server!"
-      HsGrpc.runServer grpcOpts (handlersNew gc))
-#else
-    API.hstreamGossipServer (handlers gc) grpcOpts
-#endif
-                              : map ($ gc) [ runStateHandler
-                                           , runEventHandler
-                                           , scheduleGossip
-                                           , scheduleProbe ])
-  mapM_ (link2Only (const True) a1) aynscs
-  return a1
 
 waitForServersToStart :: [(ByteString, Int)] -> IO [I.ServerNode]
 waitForServersToStart = mapConcurrently wait
