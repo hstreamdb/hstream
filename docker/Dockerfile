@@ -10,6 +10,7 @@ RUN cabal update && \
     cabal install --flags "${BUILD_TYPE}" hstream hstream-admin hstream-store && \
     cabal install --flags "${BUILD_TYPE}" \
       --constraint="hstream +hstream_use_hs_grpc" \
+      --constraint="hstream-gossip +hstream_use_hs_grpc" \
       --program-suffix="-sid" hstream && \
     rm -rf /hstream
 
