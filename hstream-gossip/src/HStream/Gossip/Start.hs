@@ -135,7 +135,7 @@ waitGossipBoot gc@GossipContext{..} = do
 bootstrap :: [(ByteString, Int)] -> GossipContext -> IO ()
 bootstrap [] GossipContext{..} = do
   Log.info "Only one node in the cluster, no bootstrapping needed"
-  putMVar clusterInited Gossip
+  putMVar clusterInited Self
   putMVar clusterReady ()
   Log.info "All servers have been initialized"
 bootstrap initialServers gc@GossipContext{..} = handle

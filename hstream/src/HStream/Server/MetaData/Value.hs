@@ -9,6 +9,7 @@ import           HStream.MetaStore.Types       (HasPath (myRootPath),
                                                 RHandle (..))
 import           HStream.Server.MetaData.Types
 import           HStream.Server.Types          (SubscriptionWrap (..))
+import qualified HStream.ThirdParty.Protobuf   as Proto
 import           HStream.Utils                 (textToCBytes)
 
 paths :: [CBytes]
@@ -20,6 +21,7 @@ paths = [ textToCBytes rootPath
         , textToCBytes $ myRootPath @ShardReader      @ZHandle
         , textToCBytes $ myRootPath @PersistentQuery  @ZHandle
         , textToCBytes $ myRootPath @SubscriptionWrap @ZHandle
+        , textToCBytes $ myRootPath @Proto.Timestamp  @ZHandle
         ]
 
 tables :: [Text]
@@ -29,4 +31,8 @@ tables = [
   , myRootPath @PersistentQuery  @RHandle
   , myRootPath @ShardReader      @RHandle
   , myRootPath @SubscriptionWrap @RHandle
+  , myRootPath @Proto.Timestamp  @RHandle
   ]
+
+clusterStartTimeId :: Text
+clusterStartTimeId = "Cluster_Uptime"

@@ -49,6 +49,7 @@ import qualified HStream.Server.ConnectorTypes as HCT
 import           HStream.Server.HStreamApi     (Subscription (..))
 import           HStream.Server.Types          (ServerID, SubscriptionWrap (..))
 import qualified HStream.Store                 as S
+import qualified HStream.ThirdParty.Protobuf   as Proto
 import           HStream.Utils                 (TaskStatus (..), cBytesToText)
 
 --------------------------------------------------------------------------------
@@ -98,6 +99,8 @@ instance HasPath SubscriptionWrap ZHandle where
   myRootPath = rootPath <> "/subscriptions"
 instance HasPath PersistentQuery ZHandle where
   myRootPath = rootPath <> "/shardReader"
+instance HasPath Proto.Timestamp ZHandle where
+  myRootPath = rootPath <> "/timestamp"
 
 instance HasPath ShardReader RHandle where
   myRootPath = "readers"
@@ -105,6 +108,8 @@ instance HasPath SubscriptionWrap RHandle where
   myRootPath = "subscriptions"
 instance HasPath PersistentQuery RHandle where
   myRootPath = "queries"
+instance HasPath Proto.Timestamp RHandle where
+  myRootPath = "timestamp"
 
 insertQuery :: MetaType PersistentQuery handle
   => Text -> Text -> Int64 -> QueryType -> ServerID -> handle -> IO ()
@@ -125,7 +130,6 @@ getSubscriptionWithStream :: MetaType SubscriptionWrap handle => handle -> Text 
 getSubscriptionWithStream zk sName = do
   subs <- listMeta @SubscriptionWrap zk
   return $ filter ((== sName) . subscriptionStreamName . originSub) subs
-
 
 --------------------------------------------------------------------------------
 
