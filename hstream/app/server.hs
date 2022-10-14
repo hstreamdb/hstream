@@ -1,11 +1,13 @@
 {-# LANGUAGE CPP                 #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
+{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE QuasiQuotes         #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications    #-}
 
 import           Control.Concurrent               (MVar, forkIO, newMVar,
                                                    readMVar, swapMVar)
@@ -39,9 +41,10 @@ import           HStream.Gossip                   (GossipContext (..),
                                                    getMemberListSTM,
                                                    initGossipContext,
                                                    startGossip, waitGossipBoot)
+import           HStream.Gossip.Types             (InitType (Gossip))
 import qualified HStream.Logger                   as Log
 import           HStream.MetaStore.Types          (MetaHandle (..),
-                                                   RHandle (..))
+                                                   MetaStore (..), RHandle (..))
 import           HStream.Server.Config            (AdvertisedListeners,
                                                    MetaStoreAddr (..),
                                                    ServerOpts (..), TlsConfig,
@@ -54,12 +57,15 @@ import qualified HStream.Server.HStreamInternal   as I
 import           HStream.Server.Initialization    (initializeServer,
                                                    initializeTlsConfig,
                                                    readTlsPemFile)
-import           HStream.Server.MetaData          (initializeAncestors,
+import           HStream.Server.MetaData          (clusterStartTimeId,
+                                                   initializeAncestors,
                                                    initializeTables)
 import           HStream.Server.Types             (ServerContext (..),
                                                    ServerState)
 import qualified HStream.Store.Logger             as Log
-import           HStream.Utils                    (cbytes2bs, pattern EnumPB,
+import qualified HStream.ThirdParty.Protobuf      as Proto
+import           HStream.Utils                    (cbytes2bs, getProtoTimestamp,
+                                                   pattern EnumPB,
                                                    setupSigsegvHandler)
 
 #ifdef HStreamUseHsGrpc
@@ -130,7 +136,11 @@ serve host port tlsConfig sc@ServerContext{..} listeners = do
 
   let serverOnStarted = do
         Log.info $ "Server is started on port " <> Log.buildInt port <> ", waiting for cluster to get ready"
-        void $ forkIO $ void (readMVar (clusterReady gossipContext)) >> Log.i "Cluster is ready!"
+        void $ forkIO $ do
+          void (readMVar (clusterReady gossipContext)) >> Log.i "Cluster is ready!"
+          readMVar (clusterInited gossipContext) >>= \case
+            Gossip -> return ()
+            _ -> getProtoTimestamp >>= \x -> upsertMeta @Proto.Timestamp clusterStartTimeId x zkHandle
 
 #ifdef HStreamUseHsGrpc
   sslOpts <- mapM readTlsPemFile tlsConfig

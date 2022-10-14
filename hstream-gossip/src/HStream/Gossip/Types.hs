@@ -39,7 +39,7 @@ data ServerStatus = ServerStatus
   , latestMessage :: TVar G.StateMessage
   }
 
-data InitType = User | Gossip
+data InitType = User | Gossip | Self
 type ServerList    = (Epoch, Map ServerId ServerStatus)
 type Workers       = Map ServerId ThreadId
 type BroadcastPool = [(G.Message, Word32)]

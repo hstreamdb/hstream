@@ -23,10 +23,14 @@ import           HStream.Gossip                   (GossipContext (..),
                                                    getFailedNodes)
 import           HStream.Gossip.Types             (ServerStatus (..))
 import qualified HStream.Logger                   as Log
+import           HStream.MetaStore.Types          (MetaStore (..))
 import           HStream.Server.HStreamApi
+import           HStream.Server.MetaData.Value    (clusterStartTimeId)
 import           HStream.Server.Types             (ServerContext (..))
 import qualified HStream.Server.Types             as Types
-import           HStream.Utils                    (pattern EnumPB)
+import qualified HStream.ThirdParty.Protobuf      as Proto
+import           HStream.Utils                    (getProtoTimestamp,
+                                                   pattern EnumPB)
 
 describeCluster :: ServerContext -> IO DescribeClusterResponse
 describeCluster ServerContext{gossipContext = gc@GossipContext{..}, ..} = do
@@ -39,13 +43,15 @@ describeCluster ServerContext{gossipContext = gc@GossipContext{..}, ..} = do
   let self'   = helper (case isReady of Just _  -> NodeStateRunning; Nothing -> NodeStateStarting) <$> self
   let alives' = helper NodeStateRunning <$> alives
   let deads'  = helper NodeStateDead    <$> deads
-
+  _currentTime@(Proto.Timestamp cSec _) <- getProtoTimestamp
+  startTime <- getMeta @Proto.Timestamp clusterStartTimeId zkHandle
   return $ DescribeClusterResponse
     { describeClusterResponseProtocolVersion   = protocolVer
     , describeClusterResponseServerVersion     = serverVer
       -- TODO : If Cluster is not ready this should return empty
     , describeClusterResponseServerNodes       = self <> alives
     , describeClusterResponseServerNodesStatus = self' <> alives' <> deads'
+    , describeClusterResponseClusterUpTime     = fromIntegral $ cSec - maybe cSec Proto.timestampSeconds startTime
     }
   where
     getListeners = fromInternalServerNodeWithKey scAdvertisedListenersKey
