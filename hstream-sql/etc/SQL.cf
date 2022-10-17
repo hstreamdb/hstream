@@ -145,19 +145,19 @@ DHaving.      Having ::= "HAVING" ValueExpr ;
 --------------------------------------------------------------------------------
 
 ---- Data Types
-TypeInteger.  DataType ::= "integer" ;
-TypeFloat.    DataType ::= "float" ;
-TypeNumeric.  DataType ::= "numeric" ;
-TypeBoolean.  DataType ::= "boolean" ;
-TypeByte.     DataType ::= "bytea" ;
-TypeText.     DataType ::= "string" ;
-TypeDate.     DataType ::= "date" ;
-TypeTime.     DataType ::= "time" ;
-TypeTimestamp. DataType ::= "timestamp" ;
-TypeInterval. DataType ::= "interval" ;
-TypeJson.     DataType ::= "jsonb" ;
+TypeInteger.  DataType ::= "INTEGER" ;
+TypeFloat.    DataType ::= "FLOAT" ;
+TypeNumeric.  DataType ::= "NUMERIC" ;
+TypeBoolean.  DataType ::= "BOOLEAN" ;
+TypeByte.     DataType ::= "BYTEA" ;
+TypeText.     DataType ::= "STRING" ;
+TypeDate.     DataType ::= "DATE" ;
+TypeTime.     DataType ::= "TIME" ;
+TypeTimestamp. DataType ::= "TIMESTAMP" ;
+TypeInterval. DataType ::= "INTERVAL" ;
+TypeJson.     DataType ::= "JSONB" ;
 TypeArray.    DataType ::= DataType "[]" ;
-TypeMap.      DataType ::= "map" "[" DataType "=>" DataType "]" ;
+TypeMap.      DataType ::= "MAP" "[" DataType "=>" DataType "]" ;
 
 --------------------------------------------------------------------------------
 
@@ -188,8 +188,8 @@ ArrayAccessRhsFrom. ArrayAccessRhs ::= "[" Integer ":" "]" ;
 ArrayAccessRhsTo. ArrayAccessRhs ::= "[" ":" Integer "]" ;
 ArrayAccessRhsFromTo. ArrayAccessRhs ::= "[" Integer ":" Integer "]" ;
 
-ExprAccessMap. ValueExpr6 ::= ValueExpr6 "=>" ValueExpr7 ; -- FIXME
-ExprAccessArray. ValueExpr6 ::= ValueExpr6 ArrayAccessRhs ;
+ExprAccessMap. ValueExpr ::= ValueExpr "=>" ValueExpr ; -- FIXME
+ExprAccessArray. ValueExpr ::= ValueExpr ArrayAccessRhs ; -- FIXME
 
 -- Null Expr.
 ExprNull. ValueExpr7 ::= "NULL" ;
