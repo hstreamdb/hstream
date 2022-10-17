@@ -39,7 +39,10 @@ message PingReqResp {
 message Gossip { repeated Message msg = 1; }
 
 message JoinReq { hstream.server.internal.ServerNode new = 1; }
-message JoinResp { repeated hstream.server.internal.ServerNode members = 1; }
+message JoinResp {
+  uint32 epoch = 1;
+  repeated hstream.server.internal.ServerNode members = 2;
+}
 
 message CliJoinReq {
   bytes host = 1;

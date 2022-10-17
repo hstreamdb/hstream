@@ -15,6 +15,7 @@ import           Control.Concurrent               (MVar, forkIO, modifyMVar,
 import           Control.Concurrent.Async         (Async, async, link2Only,
                                                    mapConcurrently)
 import           Control.Concurrent.STM           (TVar, atomically,
+                                                   modifyTVar',
                                                    newBroadcastTChanIO,
                                                    newTQueueIO, newTVarIO,
                                                    stateTVar)
@@ -38,7 +39,8 @@ import           HStream.Gossip.Gossip            (scheduleGossip)
 import           HStream.Gossip.Handlers          (handlers, handlersNew)
 import qualified HStream.Gossip.HStreamGossip     as API
 import           HStream.Gossip.Probe             (bootstrapPing, scheduleProbe)
-import           HStream.Gossip.Types             (EventHandlers, EventPayload,
+import           HStream.Gossip.Types             (Epoch, EventHandlers,
+                                                   EventPayload,
                                                    GossipContext (..),
                                                    GossipOpts (..),
                                                    InitType (..))
@@ -124,11 +126,13 @@ waitGossipBoot gc@GossipContext{..} = do
     then newTVarIO 0 >>= putMVar numInited . Just
       >> threadDelay 1000000
       >> bootstrap seeds' gc
-    else putMVar numInited Nothing
-      >> joinCluster serverSelf seeds'
-     >>= initGossip gc
-      >> putMVar clusterInited Gossip
-      >> putMVar clusterReady ()
+    else do
+      putMVar numInited Nothing
+      (epoch, nodes) <- joinCluster serverSelf seeds'
+      atomically $ modifyTVar' serverList $ \(_, list) -> (epoch, list)
+      initGossip gc nodes
+      putMVar clusterInited Gossip
+      putMVar clusterReady ()
 
 --------------------------------------------------------------------------------
 
@@ -193,17 +197,17 @@ waitForServersToStart = mapConcurrently wait
           loop join client
         Just node -> return node
 
-joinCluster :: I.ServerNode -> [(ByteString, Int)] -> IO [I.ServerNode]
+joinCluster :: I.ServerNode -> [(ByteString, Int)] -> IO (Epoch, [I.ServerNode])
 joinCluster node joins = do
   retryCount <- newMVar 0
   loop retryCount
   where
     loop retryCount = do
-      members <- joinCluster' node joins
+      (epoch, members) <- joinCluster' node joins
       case members of
         [] -> retry retryCount
-        _  -> return members
-    retry :: MVar Int -> IO [I.ServerNode]
+        _  -> return (epoch + 1, members)
+    retry :: MVar Int -> IO (Epoch, [I.ServerNode])
     retry retryCount = do
       count <- modifyMVar retryCount (\x -> return (x + 1, x + 1))
       -- TODO: Allow configuration to specify the retry count
@@ -217,19 +221,19 @@ joinCluster node joins = do
           threadDelay $ min ((2 ^ count) * 1000 * 1000) maxRetryTimeInterval
           loop retryCount
 
-joinCluster' :: I.ServerNode -> [(ByteString, Int)] -> IO [I.ServerNode]
-joinCluster' _ [] = return []
+joinCluster' :: I.ServerNode -> [(ByteString, Int)] -> IO (Epoch, [I.ServerNode])
+joinCluster' _ [] = return (0, [])
 joinCluster' sNode ((joinHost, joinPort):rest) = do
-  members <- GRPC.withGRPCClient (mkGRPCClientConf' joinHost joinPort) $ \client -> do
+  (epoch, members) <- GRPC.withGRPCClient (mkGRPCClientConf' joinHost joinPort) $ \client -> do
     API.HStreamGossip{..} <- API.hstreamGossipClient client
     hstreamGossipSendJoin (mkClientNormalRequest def { API.joinReqNew = Just sNode}) >>= \case
-      GRPC.ClientNormalResponse (API.JoinResp xs) _ _ _ _ -> do
-        Log.info . Log.buildString $ "Successfully joined cluster with " <> show xs
-        return $ L.delete sNode (V.toList xs)
+      GRPC.ClientNormalResponse API.JoinResp{..} _ _ _ _ -> do
+        Log.info . Log.buildString $ "Successfully joined cluster with " <> show joinRespMembers
+        return (joinRespEpoch, L.delete sNode (V.toList joinRespMembers))
       GRPC.ClientErrorResponse (GRPC.ClientIOError (GRPC.GRPCIOBadStatusCode GRPC.StatusAlreadyExists _))  -> do
         Log.fatal "Failed to join the cluster, node with the same id already exists"
         throwIO FailedToStart
       GRPC.ClientErrorResponse _ -> do
         Log.info . Log.buildString $ "failed to join " <> U.bs2str joinHost <> ":" <> show joinPort
-        return []
-  if null members then joinCluster' sNode rest else return members
+        return (0, [])
+  if null members then joinCluster' sNode rest else return (epoch, members)
