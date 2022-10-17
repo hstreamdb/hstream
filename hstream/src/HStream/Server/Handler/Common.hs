@@ -113,7 +113,7 @@ runTask sinkStream ins out sourceConnectors sinkConnector accumulation shard = d
             ts <- HCT.getCurrentTimestamp
             let dataChange
                   = DiffFlow.DataChange
-                  { dcRow = jsonObjectToFlowObject . fromJust . Aeson.decode $ srcValue
+                  { dcRow = (jsonObjectToFlowObject srcStream) . fromJust . Aeson.decode $ srcValue
                   , dcTimestamp = DiffFlow.Timestamp ts [] -- Timestamp srcTimestamp []
                   , dcDiff = 1
                   }

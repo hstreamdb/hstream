@@ -30,7 +30,7 @@ import           DiffFlow.Graph        (Joiner (..))
 
 constantKeygen :: FlowObject -> FlowObject
 constantKeygen _ =
-  HM.fromList [(SKey "key" Nothing Nothing, FlowText "__constant_key__")]
+  HM.fromList [(SKey "key" Nothing (Just "__reduce_key__"), FlowText "__constant_key__")]
 
 makeExtra :: Text -> FlowObject -> FlowObject
 makeExtra extra =
@@ -38,27 +38,34 @@ makeExtra extra =
 
 getExtra :: Text -> FlowObject -> FlowObject
 getExtra extra =
-  HM.filterWithKey (\(SKey f s_m extra_m) v -> extra_m == Just extra)
+  HM.filterWithKey (\(SKey _ _ extra_m) v -> extra_m == Just extra)
+
+discardExtra :: Text -> FlowObject -> FlowObject
+discardExtra extra =
+  HM.filterWithKey (\(SKey _ _ extra_m) v -> extra_m /= Just extra)
 
 getExtraAndReset :: Text -> FlowObject -> FlowObject
 getExtraAndReset extra o =
   HM.mapKeys (\(SKey f s_m _) -> SKey f s_m Nothing) $
   HM.filterWithKey (\(SKey f s_m extra_m) v -> extra_m == Just extra) o
 
-getField :: HasCallStack => FlowObject -> Text -> (SKey, FlowValue)
-getField o k =
-  case HM.toList (HM.filterWithKey (\(SKey f _ _) _ -> f == k) o) of
-    [] -> throw
-      SomeRuntimeException
-      { runtimeExceptionMessage = "Key " <> show k <> " is not found in object " <> show o <> ": " <> show callStack
-      , runtimeExceptionCallStack = callStack
-      }
-    [(skey,v)] -> (skey,v)
-    xs -> throw
-      SomeRuntimeException
-      { runtimeExceptionMessage = "!!! Same field name with different <stream> and/or <extra>: " <> show xs <> ": " <> show callStack
-      , runtimeExceptionCallStack = callStack
-      }
+getField :: Text -> Maybe Text -> FlowObject -> (SKey, FlowValue)
+getField k stream_m o =
+  let filterCond = case stream_m of
+        Nothing -> \(SKey f _ _) _ -> f == k
+        Just s  -> \(SKey f s_m _) _ -> f == k && s_m == stream_m
+   in case HM.toList (HM.filterWithKey filterCond o) of
+        []         -> (SKey k stream_m Nothing, FlowNull)
+        [(skey,v)] -> (skey, v)
+        xs         -> throw
+          SomeRuntimeException
+          { runtimeExceptionMessage = "!!! Ambiguous field name with different <stream> and/or <extra>: " <> show xs <> ": " <> show callStack
+          , runtimeExceptionCallStack = callStack
+          }
+
+makeSKeyStream :: Text -> FlowObject -> FlowObject
+makeSKeyStream stream =
+  HM.mapKeys (\(SKey f _ extra_m) -> SKey f (Just stream) extra_m)
 
 --------------------------------------------------------------------------------
 genRandomSinkStream :: IO Text
@@ -227,31 +234,31 @@ funcOnScientific :: RealFloat a => (a -> a) -> Scientific -> Scientific
 funcOnScientific f = fromFloatDigits . f . toRealFloat
 
 --------------------------------------------------------------------------------
-jsonOpOnObject :: JsonOp -> FlowObject -> FlowObject -> Text -> Maybe Text -> FlowObject
-jsonOpOnObject op o1 o2 field startStream_m = case op of
+jsonOpOnObject :: JsonOp -> FlowObject -> FlowObject -> Text -> FlowObject
+jsonOpOnObject op o1 o2 field = case op of
   JOpArrow -> let v2 = L.head (HM.elems o2)
                in case v2 of
                     FlowText t ->
-                      let (_,v) = getField o1 t
-                       in HM.fromList [(SKey field startStream_m Nothing, v)]
+                      let (_,v) = getField t Nothing o1
+                       in HM.fromList [(SKey field Nothing Nothing, v)]
                     _ -> throwSQLException CodegenException Nothing (show v2 <> " is not supported on the right of operator ->")
   JOpLongArrow -> let v2 = L.head (HM.elems o2)
                    in case v2 of
                         FlowText t ->
-                          let (_,v) = getField o1 t
-                           in HM.fromList [(SKey field startStream_m Nothing, FlowText (T.pack $ show v))] -- FIXME: show FlowValue
+                          let (_,v) = getField t Nothing o1
+                           in HM.fromList [(SKey field Nothing Nothing, FlowText (T.pack $ show v))] -- FIXME: show FlowValue
                         _ -> throwSQLException CodegenException Nothing (show v2 <> " is not supported on the right of operator ->>")
   JOpHashArrow -> let v2 = L.head (HM.elems o2)
                    in case v2 of
                         FlowArray arr ->
                           let v = go (FlowSubObject o1) arr
-                           in HM.fromList [(SKey field startStream_m Nothing, v)]
+                           in HM.fromList [(SKey field Nothing Nothing, v)]
                         _ -> throwSQLException CodegenException Nothing (show v2 <> " is not supported on the right of operator #>")
   JOpHashLongArrow -> let v2 = L.head (HM.elems o2)
                        in case v2 of
                             FlowArray arr ->
                               let v = go (FlowSubObject o1) arr
-                               in HM.fromList [(SKey field startStream_m Nothing, FlowText (T.pack $ show v))]
+                               in HM.fromList [(SKey field Nothing Nothing, FlowText (T.pack $ show v))]
                             _ -> throwSQLException CodegenException Nothing (show v2 <> " is not supported on the right of operator #>>")
   where
     go :: FlowValue -> [FlowValue] -> FlowValue
@@ -259,7 +266,7 @@ jsonOpOnObject op o1 o2 field startStream_m = case op of
     go value (v:vs) =
       case v of
         FlowText t -> let (FlowSubObject object) = value
-                          (_,value') = getField object t
+                          (_,value') = getField t Nothing object
                        in go value' vs
         FlowInt n -> let (FlowArray arr) = value
                          value' = arr L.!! n

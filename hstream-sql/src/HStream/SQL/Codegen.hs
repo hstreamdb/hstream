@@ -83,17 +83,17 @@ hstreamCodegen = \case
   RQSelect select -> do
     let subgraph = Subgraph 0
     let (startBuilder, _) = addSubgraph emptyGraphBuilder subgraph
-    (endBuilder, ins, out) <- elabRSelect select startBuilder subgraph
+    (endBuilder, ins, out) <- elabRSelectWithOut select startBuilder subgraph
     return $ SelectPlan ins out endBuilder
   RQCreate (RCreateAs stream select rOptions) -> do
     let subgraph = Subgraph 0
     let (startBuilder, _) = addSubgraph emptyGraphBuilder subgraph
-    (endBuilder, ins, out) <- elabRSelect select startBuilder subgraph
+    (endBuilder, ins, out) <- elabRSelectWithOut select startBuilder subgraph
     return $ CreateBySelectPlan stream ins out endBuilder (rRepFactor rOptions)
   RQCreate (RCreateView view select) -> do
     let subgraph = Subgraph 0
     let (startBuilder, _) = addSubgraph emptyGraphBuilder subgraph
-    (endBuilder, ins, out) <- elabRSelect select startBuilder subgraph
+    (endBuilder, ins, out) <- elabRSelectWithOut select startBuilder subgraph
     accumulation <- newMVar emptyDataChangeBatch
     return $ CreateViewPlan view ins out endBuilder accumulation
   RQCreate (RCreate stream rOptions) -> return $ CreatePlan stream (rRepFactor rOptions)
@@ -130,7 +130,7 @@ elab sql = do
     RQSelect sel -> do
       let subgraph = Subgraph 0
       let (startBuilder, _) = addSubgraph emptyGraphBuilder subgraph
-      (endBuilder, ins, out) <- elabRSelect sel startBuilder subgraph
+      (endBuilder, ins, out) <- elabRSelectWithOut sel startBuilder subgraph
       return $ SelectPlan ins out endBuilder
     _ -> undefined
 
@@ -150,23 +150,30 @@ elabRSelect :: RSelect
             -> IO (GraphBuilder Row, [In], Out)
 elabRSelect (RSelect sel frm whr grp hav) startBuilder subgraph = do
   (builder_1, ins1, Out node_from) <- elabFrom frm grp startBuilder subgraph
-  (builder_2, ins2, Out node_where) <- elabRWhere whr grp builder_1 subgraph node_from Nothing
-  (builder_3, ins3, Out node_select) <- elabRSel sel grp builder_2 subgraph node_where Nothing
-  (builder_4, ins4, Out node_hav) <- elabRHaving hav grp builder_3 subgraph node_select Nothing
-  let (builder_5, node_out) = addNode builder_4 subgraph (OutputSpec node_hav)
-  return (builder_5, L.nub (ins1++ins2++ins3++ins4), Out node_out)
+  (builder_2, ins2, Out node_where) <- elabRWhere whr grp builder_1 subgraph node_from
+  (builder_3, ins3, Out node_select) <- elabRSel sel grp builder_2 subgraph node_where
+  (builder_4, ins4, Out node_hav) <- elabRHaving hav grp builder_3 subgraph node_select
+  return (builder_4, L.nub (ins1++ins2++ins3++ins4), Out node_hav)
+
+elabRSelectWithOut :: RSelect
+                   -> GraphBuilder Row
+                   -> Subgraph
+                   -> IO (GraphBuilder Row, [In], Out)
+elabRSelectWithOut select startBuilder subgraph = do
+  (builder, ins, out) <- elabRSelect select startBuilder subgraph
+  let (builder', node') = addNode builder subgraph (OutputSpec (outNode out))
+  return (builder', ins, Out node')
 
 elabRValueExpr :: RValueExpr
                -> RGroupBy
                -> GraphBuilder Row
                -> Subgraph
                -> Node
-               -> Maybe Text
                -> IO (GraphBuilder Row, [In], Out)
-elabRValueExpr expr grp startBuilder subgraph startNode startStream_m = case expr of
+elabRValueExpr expr grp startBuilder subgraph startNode = case expr of
   RExprCast name e typ -> do
-    (builder1, ins, out) <- elabRValueExpr e grp startBuilder subgraph startNode startStream_m
-    let mapper = mkCastMapper typ (T.pack name) startStream_m
+    (builder1, ins, out) <- elabRValueExpr e grp startBuilder subgraph startNode
+    let mapper = mkCastMapper typ (T.pack name)
     let (builder2, node) =
           addNode builder1 subgraph (MapSpec (outNode out) mapper)
     return (builder2, ins, Out node)
@@ -175,12 +182,12 @@ elabRValueExpr expr grp startBuilder subgraph startNode startStream_m = case exp
       foldM (\acc e -> do
                 let (accBuilder, accIns, accOuts) = acc
                 (curBuilder, curIns, curOut) <-
-                  elabRValueExpr e grp accBuilder subgraph startNode startStream_m
+                  elabRValueExpr e grp accBuilder subgraph startNode
                 return (curBuilder, L.nub (accIns++curIns), curOut:accOuts)
-            ) (startBuilder, [], []) es
+            ) (startBuilder, [], []) (L.reverse es)
     let composer = Composer $ \os ->
                      let vs = L.map (snd . L.head . HM.toList) os
-                      in HM.fromList [(SKey (T.pack name) startStream_m Nothing, FlowArray vs)]
+                      in HM.fromList [(SKey (T.pack name) Nothing Nothing, FlowArray vs)]
     let (builder2, node) = addNode builder1 subgraph (ComposeSpec (outNode <$> outs) composer)
     return (builder2, ins, Out node)
   RExprMap name emap -> do
@@ -188,16 +195,16 @@ elabRValueExpr expr grp startBuilder subgraph startNode startStream_m = case exp
       foldM (\acc (ek,ev) -> do
                 let (accBuilder, accIns, accOuts) = acc
                 (curBuilder, kIns, kOut) <-
-                  elabRValueExpr ek grp accBuilder subgraph startNode startStream_m
+                  elabRValueExpr ek grp accBuilder subgraph startNode
                 (curBuilder', vIns, vOut) <-
-                  elabRValueExpr ev grp curBuilder subgraph startNode startStream_m
+                  elabRValueExpr ev grp curBuilder subgraph startNode
                 return (curBuilder',
                         L.nub (accIns++kIns++vIns),
                         (kOut,vOut):accOuts)
-            ) (startBuilder, [], []) (Map.assocs emap)
+            ) (startBuilder, [], []) (L.reverse $ Map.assocs emap)
     let composer = Composer $ \os ->
                      let vs = L.map (snd . L.head . HM.toList ) os
-                      in HM.fromList [(SKey (T.pack name) startStream_m Nothing, FlowMap (mkMap vs))]
+                      in HM.fromList [(SKey (T.pack name) Nothing Nothing, FlowMap (mkMap vs))]
     let (kOuts,vOuts) = L.unzip outTups
     let (builder2, node) =
           addNode builder1 subgraph (ComposeSpec (outNode <$> (kOuts++vOuts)) composer)
@@ -208,70 +215,74 @@ elabRValueExpr expr grp startBuilder subgraph startNode startStream_m = case exp
                   in Map.fromList (L.zip kxs vxs)
   RExprAccessMap name emap ek -> do
     (builder1, ins1, out1) <-
-      elabRValueExpr emap grp startBuilder subgraph startNode startStream_m
+      elabRValueExpr emap grp startBuilder subgraph startNode
     (builder2, ins2, out2) <-
-      elabRValueExpr ek grp builder1 subgraph startNode startStream_m
+      elabRValueExpr ek grp builder1 subgraph startNode
     let composer = Composer $ \[omap,okey] ->
                      let (FlowMap theMap) = L.head (HM.elems omap)
                          theKey = L.head (HM.elems okey)
-                      in HM.fromList [(SKey (T.pack name) startStream_m Nothing, theMap Map.! theKey)]
+                      in HM.fromList [(SKey (T.pack name) Nothing Nothing, theMap Map.! theKey)]
     let (builder3, node) =
           addNode builder2 subgraph (ComposeSpec (outNode <$> [out1,out2]) composer)
     return (builder3, L.nub (ins1++ins2), Out node)
   RExprAccessArray name earr rhs -> do
     (builder1, ins, Out out) <-
-      elabRValueExpr earr grp startBuilder subgraph startNode startStream_m
+      elabRValueExpr earr grp startBuilder subgraph startNode
     let mapper = Mapper $ \o -> let (FlowArray arr) = L.head (HM.elems o)
                                  in case rhs of
-                   RArrayAccessRhsIndex n -> HM.fromList [(SKey (T.pack name) startStream_m Nothing, arr L.!! n)]
+                   RArrayAccessRhsIndex n -> HM.fromList [(SKey (T.pack name) Nothing Nothing, arr L.!! n)]
                    RArrayAccessRhsRange start_m end_m ->
                      let start = fromMaybe 0 start_m
                          end   = fromMaybe (maxBound :: Int) end_m
-                      in HM.fromList [(SKey (T.pack name) startStream_m Nothing, FlowArray (L.drop start (L.take end arr)))]
+                      in HM.fromList [(SKey (T.pack name) Nothing Nothing, FlowArray (L.drop start (L.take end arr)))]
     let (builder2, node) =
           addNode builder1 subgraph (MapSpec out mapper)
     return (builder2, ins, Out node)
-  RExprCol _ stream_m field -> do
-    let mapper = Mapper $ \o ->
-          case stream_m of
-            Nothing     -> HM.filterWithKey (\(SKey k _ _) _ -> k == field) o
-            Just stream -> HM.filterWithKey (\(SKey k s _) _ -> k == field && s == stream_m) o
+  RExprCol name stream_m field -> do
+    let mapper = Mapper $
+          \o -> let (skey,v) = getField field stream_m o
+                    skey' = case stream_m of
+                              Nothing -> skey
+                              Just _  -> skey { keyField = T.pack name
+                                              , keyStream_m = stream_m
+                                              } -- Note: Consider `SELECT s1.a, s2.a FROM s1 JOIN s2`
+                 in HM.fromList [(skey', v)]
     let (builder1, node) =
           addNode startBuilder subgraph (MapSpec startNode mapper)
     return (builder1, [], Out node)
   RExprConst _ constant -> do
-    let mapper = mkConstantMapper constant startStream_m
+    let mapper = mkConstantMapper constant
     let (builder1, node) =
           addNode startBuilder subgraph (MapSpec startNode mapper)
     return (builder1, [], Out node)
-  RExprAggregate _ agg -> elabAggregate agg grp startBuilder subgraph startNode startStream_m
+  RExprAggregate name agg -> elabAggregate agg grp startBuilder subgraph startNode (T.pack name)
   RExprUnaryOp name op expr -> do
-    (builder1, ins, out) <- elabRValueExpr expr grp startBuilder subgraph startNode startStream_m
-    let mapper = mkUnaryOpMapper op (T.pack name) startStream_m
+    (builder1, ins, out) <- elabRValueExpr expr grp startBuilder subgraph startNode
+    let mapper = mkUnaryOpMapper op (T.pack name)
     let (builder2, node) = addNode builder1 subgraph (MapSpec (outNode out) mapper)
     return (builder2, ins, Out node)
   RExprBinOp name op e1 e2 -> do
-    (builder1, ins1, out1) <- elabRValueExpr e1 grp startBuilder subgraph startNode startStream_m
-    (builder2, ins2, out2) <- elabRValueExpr e2 grp builder1 subgraph startNode startStream_m
+    (builder1, ins1, out1) <- elabRValueExpr e1 grp startBuilder subgraph startNode
+    (builder2, ins2, out2) <- elabRValueExpr e2 grp builder1 subgraph startNode
     let composer = Composer $ \[o1,o2] ->
                      makeExtra "__op1__" o1 `HM.union` makeExtra "__op2__" o2
-    let mapper = mkBinaryOpMapper op (T.pack name) startStream_m
+    let mapper = mkBinaryOpMapper op (T.pack name)
     let (builder3, composed) = addNode builder2 subgraph (ComposeSpec (outNode <$> [out1,out2]) composer)
     let (builder4, node) = addNode builder3 subgraph (MapSpec composed mapper)
     return (builder4, L.nub (ins1++ins2), Out node)
   RExprAccessJson name jop e1 e2 -> do
     (builder1, ins1, out1) <-
-      elabRValueExpr e1 grp startBuilder subgraph startNode startStream_m
+      elabRValueExpr e1 grp startBuilder subgraph startNode
     (builder2, ins2, out2) <-
-      elabRValueExpr e2 grp builder1 subgraph startNode startStream_m
+      elabRValueExpr e2 grp builder1 subgraph startNode
     let composer = Composer $ \[o1,o2] ->
-                     jsonOpOnObject jop o1 o2 (T.pack name) startStream_m
+                     jsonOpOnObject jop o1 o2 (T.pack name)
     let (builder3, node) =
           addNode builder2 subgraph (ComposeSpec (outNode <$> [out1,out2]) composer)
     return (builder3, L.nub (ins1++ins2), Out node)
 
-mkCastMapper :: RDataType -> Text -> Maybe Text -> Mapper Row
-mkCastMapper typ field startStream_m =
+mkCastMapper :: RDataType -> Text -> Mapper Row
+mkCastMapper typ field =
   Mapper $ \o -> let [(_,v)] = HM.toList o
                      v' = case typ of
                        RTypeInteger -> case v of
@@ -280,49 +291,62 @@ mkCastMapper typ field startStream_m =
                          FlowNumeral n -> FlowInt (floor $ toRealFloat n)
                          _ -> throwSQLException CodegenException Nothing ("Can not convert value " <> show v <> " to type " <> show typ)
                        _            ->  throwSQLException CodegenException Nothing ("Can not convert to type " <> show typ)
-                  in HM.fromList [(SKey field startStream_m Nothing, v')]
+                  in HM.fromList [(SKey field Nothing Nothing, v')]
 
-mkConstantMapper :: Constant -> Maybe Text -> Mapper Row
-mkConstantMapper constant startStream_m =
+mkConstantMapper :: Constant -> Mapper Row
+mkConstantMapper constant =
   let v = constantToFlowValue constant
    in case constant of
-        ConstantNull -> Mapper $ \_ -> HM.fromList [(SKey "null" startStream_m Nothing, v)]
-        ConstantInt n -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show n)) startStream_m Nothing, v)]
-        ConstantFloat n -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show n)) startStream_m Nothing, v)]
-        ConstantNumeric n -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show n)) startStream_m Nothing, v)]
-        ConstantText t -> Mapper $ \_ -> HM.fromList [(SKey t startStream_m Nothing, v)]
-        ConstantBoolean b -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show b)) startStream_m Nothing, v)]
-        ConstantDate d -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show d)) startStream_m Nothing, v)]
-        ConstantTime t -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show t)) startStream_m Nothing, v)]
-        ConstantTimestamp ts -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show ts)) startStream_m Nothing, v)]
-        ConstantInterval i -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show i)) startStream_m Nothing, v)]
-        ConstantBytea bs -> Mapper $ \_ -> HM.fromList [(SKey (cBytesToText bs) startStream_m Nothing, v)]
-        ConstantJsonb json -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show json)) startStream_m Nothing, v)]
-        ConstantArray arr -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show arr)) startStream_m Nothing, v)]
-        ConstantMap m -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show m)) startStream_m Nothing, v)]
+        ConstantNull -> Mapper $ \_ -> HM.fromList [(SKey "null" Nothing Nothing, v)]
+        ConstantInt n -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show n)) Nothing Nothing, v)]
+        ConstantFloat n -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show n)) Nothing Nothing, v)]
+        ConstantNumeric n -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show n)) Nothing Nothing, v)]
+        ConstantText t -> Mapper $ \_ -> HM.fromList [(SKey t Nothing Nothing, v)]
+        ConstantBoolean b -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show b)) Nothing Nothing, v)]
+        ConstantDate d -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show d)) Nothing Nothing, v)]
+        ConstantTime t -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show t)) Nothing Nothing, v)]
+        ConstantTimestamp ts -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show ts)) Nothing Nothing, v)]
+        ConstantInterval i -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show i)) Nothing Nothing, v)]
+        ConstantBytea bs -> Mapper $ \_ -> HM.fromList [(SKey (cBytesToText bs) Nothing Nothing, v)]
+        ConstantJsonb json -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show json)) Nothing Nothing, v)]
+        ConstantArray arr -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show arr)) Nothing Nothing, v)]
+        ConstantMap m -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show m)) Nothing Nothing, v)]
 
-mkUnaryOpMapper :: UnaryOp -> Text -> Maybe Text -> Mapper Row
-mkUnaryOpMapper op field startStream_m =
+mkUnaryOpMapper :: UnaryOp -> Text -> Mapper Row
+mkUnaryOpMapper op field =
   Mapper $ \o -> let [(_,v)] = HM.toList o
-                  in HM.fromList [(SKey field startStream_m Nothing, unaryOpOnValue op v)]
+                  in HM.fromList [(SKey field Nothing Nothing, unaryOpOnValue op v)]
 
-mkBinaryOpMapper :: BinaryOp -> Text -> Maybe Text -> Mapper Row
-mkBinaryOpMapper op field startStream_m =
+mkBinaryOpMapper :: BinaryOp -> Text -> Mapper Row
+mkBinaryOpMapper op field =
   Mapper $ \o -> let [(_,v1)] = HM.toList $ getExtra "__op1__" o
                      [(_,v2)] = HM.toList $ getExtra "__op2__" o
-                  in HM.fromList [(SKey field startStream_m Nothing, binOpOnValue op v1 v2)]
+                  in HM.fromList [(SKey field Nothing Nothing, binOpOnValue op v1 v2)]
 
 elabRTableRef :: RTableRef -> RGroupBy -> GraphBuilder Row -> Subgraph -> IO (GraphBuilder Row, [In], Out)
 elabRTableRef ref grp startBuilder subgraph =
   case ref of
     RTableRefSimple s alias_m -> do
       let (builder, node) = addNode startBuilder subgraph InputSpec
-          inner = In { inNode = node, inStream = fromMaybe s alias_m, inWindow = Nothing}
-          outer = Out { outNode = node }
-      return (builder, [inner], outer)
+          inner = In { inNode = node, inStream = s, inWindow = Nothing }
+      case alias_m of
+        Nothing -> do
+          let out = Out { outNode = node }
+          return (builder, [inner], out)
+        Just s  -> do
+          let mapper = Mapper $ \o -> makeSKeyStream s o
+              (builder', node') = addNode builder subgraph (MapSpec node mapper)
+          let out = Out { outNode = node' }
+          return (builder', [inner], out)
     RTableRefSubquery select alias_m -> do
       (builder, ins, out) <- elabRSelect select startBuilder subgraph
-      return (builder, ins, out)
+      case alias_m of
+        Nothing -> return (builder, ins, out)
+        Just s  -> do
+          let mapper = Mapper $ \o -> makeSKeyStream s o
+              (builder', node') = addNode builder subgraph (MapSpec (outNode out) mapper)
+          let out = Out { outNode = node' }
+          return (builder', ins, out)
     RTableRefCrossJoin ref1 ref2 alias_m -> do
       (builder1, ins1, out1) <- elabRTableRef ref1 grp startBuilder subgraph
       (builder2, ins2, out2) <- elabRTableRef ref2 grp builder1 subgraph
@@ -333,14 +357,20 @@ elabRTableRef ref grp startBuilder subgraph =
           joiner = Joiner HM.union
       let (builder, node) = addNode builder2 subgraph
                             (JoinSpec node1_indexed node2_indexed keygen1 keygen2 joiner)
-      return (builder, L.nub (ins1++ins2), Out node)
+      case alias_m of
+        Nothing -> return (builder, L.nub (ins1++ins2), Out node)
+        Just s  -> do
+          let mapper = Mapper $ \o -> makeSKeyStream s o
+              (builder', node') = addNode builder subgraph (MapSpec node mapper)
+          let out = Out { outNode = node' }
+          return (builder', L.nub (ins1++ins2), out)
     RTableRefNaturalJoin ref1 typ ref2 alias_m -> do
       (builder1, ins1, out1) <- elabRTableRef ref1 grp startBuilder subgraph
       (builder2, ins2, out2) <- elabRTableRef ref2 grp builder1 subgraph
       undefined
     RTableRefJoinOn ref1 typ ref2 expr alias_m -> do
       (builder1, ins1, out1) <- elabRTableRef ref1 grp startBuilder subgraph
-      (builder2, ins2, out2) <- elabRValueExpr expr grp builder1 subgraph (outNode out1) alias_m
+      (builder2, ins2, out2) <- elabRValueExpr expr grp builder1 subgraph (outNode out1)
       (builder3, ins3, out3) <- elabRTableRef ref2 grp builder2 subgraph
       let composer = Composer $ \[os1, oexpr] ->
                  makeExtra "__s1__" os1 `HM.union` makeExtra "__expr__" oexpr
@@ -354,7 +384,13 @@ elabRTableRef ref grp startBuilder subgraph =
                                           o2' = o2
                                        in o1' <> o2' -- FIXME: join type
       let (builder7, node) = addNode builder6 subgraph (JoinSpec node1_indexed node2_indexed keygen1 keygen2 joiner)
-      return (builder7, L.nub (ins1++ins2++ins3), Out node)
+      case alias_m of
+        Nothing -> return (builder7, L.nub (ins1++ins2++ins3), Out node)
+        Just s  -> do
+          let mapper = Mapper $ \o -> makeSKeyStream s o
+              (builder', node') = addNode builder7 subgraph (MapSpec node mapper)
+          let out = Out { outNode = node' }
+          return (builder',  L.nub (ins1++ins2++ins3), out)
     RTableRefJoinUsing ref1 typ ref2 fields alias_m -> do
       (builder1, ins1, out1) <- elabRTableRef ref1 grp startBuilder subgraph
       (builder2, ins2, out2) <- elabRTableRef ref2 grp builder1 subgraph
@@ -365,11 +401,23 @@ elabRTableRef ref grp startBuilder subgraph =
           keygen2 = keygen1
           joiner = Joiner $ \o1 o2 -> o1 <> o2 --  FIXME: join type
       let (builder5, node) = addNode builder4 subgraph (JoinSpec node1_indexed node2_indexed keygen1 keygen2 joiner)
-      return (builder5, L.nub (ins1++ins2), Out node)
+      case alias_m of
+        Nothing -> return (builder5, L.nub (ins1++ins2), Out node)
+        Just s  -> do
+          let mapper = Mapper $ \o -> makeSKeyStream s o
+              (builder', node') = addNode builder5 subgraph (MapSpec node mapper)
+          let out = Out { outNode = node' }
+          return (builder', L.nub (ins1++ins2), out)
     RTableRefWindowed ref win alias_m -> do
       (builder1, ins, out) <- elabRTableRef ref grp startBuilder subgraph
       let ins' = L.map (\thisIn -> thisIn { inWindow = Just win }) (L.nub ins) -- FIXME: when both `win(s1)` and `s1` exist
-      return (builder1, ins', out)
+      case alias_m of
+        Nothing -> return (builder1, ins', out)
+        Just s  -> do
+          let mapper = Mapper $ \o -> makeSKeyStream s o
+              (builder', node') = addNode builder1 subgraph (MapSpec (outNode out) mapper)
+          let out = Out { outNode = node' }
+          return (builder', ins', out)
 
 elabFrom :: RFrom -> RGroupBy -> GraphBuilder Row -> Subgraph -> IO (GraphBuilder Row, [In], Out)
 elabFrom (RFrom []) grp baseBuilder subgraph = throwSQLException CodegenException Nothing "Impossible happened (empty FROM clause)"
@@ -398,69 +446,71 @@ elabAggregate :: Aggregate
               -> GraphBuilder Row
               -> Subgraph
               -> Node
-              -> Maybe Text
+              -> Text
               -> IO (GraphBuilder Row, [In], Out)
-elabAggregate agg grp startBuilder subgraph startNode startStream_m =
+elabAggregate agg grp startBuilder subgraph startNode exprName =
   case agg of
     Nullary _ -> do
       let (builder_1, indexed) = addNode startBuilder subgraph (IndexSpec startNode)
-      let AggregateComponents{..} = genAggregateComponents agg startStream_m
+      let AggregateComponents{..} = genAggregateComponents agg exprName
       let reducer = Reducer aggregateF
           keygen = elabGroupBy grp
-      let (builder_2, node) = addNode builder_1 subgraph (ReduceSpec indexed aggregateInit keygen reducer)
-      return (builder_2, [], Out node)
+      let (builder_2, reduced) = addNode builder_1 subgraph (ReduceSpec indexed aggregateInit keygen reducer)
+      let mapper = Mapper $ \o -> discardExtra "__reduce_key__" o
+          (builder_3, node) = addNode builder_2 subgraph (MapSpec reduced mapper)
+      return (builder_3, [], Out node)
     Unary _ expr -> do
       (builder_1, ins, Out node_expr) <-
-        elabRValueExpr expr grp startBuilder subgraph startNode startStream_m
+        elabRValueExpr expr grp startBuilder subgraph startNode
       let composer = Composer $ \[oexpr,ofrom] ->
             makeExtra "__expr__" oexpr `HM.union` makeExtra "__from__" ofrom
       let (builder_2, composed) =
             addNode builder_1 subgraph (ComposeSpec [node_expr,startNode] composer)
-      let AggregateComponents{..} = genAggregateComponents agg startStream_m
+      let AggregateComponents{..} = genAggregateComponents agg exprName
       let (builder_3, indexed) =
             addNode builder_2 subgraph (IndexSpec composed)
       let reducer = Reducer aggregateF
           keygen = elabGroupBy grp
-      let (builder_4, node) = addNode builder_3 subgraph (ReduceSpec indexed aggregateInit keygen reducer)
-      return (builder_4, ins, Out node)
+      let (builder_4, reduced) = addNode builder_3 subgraph (ReduceSpec indexed aggregateInit keygen reducer)
+      let mapper = Mapper $ \o -> discardExtra "__reduce_key__" o
+          (builder_5, node) = addNode builder_4 subgraph (MapSpec reduced mapper)
+      return (builder_5, ins, Out node)
     Binary _ expr1 expr2 -> do
       (builder_1, ins1, Out node_expr1) <-
-        elabRValueExpr expr1 grp startBuilder subgraph startNode startStream_m
+        elabRValueExpr expr1 grp startBuilder subgraph startNode
       (builder_2, ins2, Out node_expr2) <-
-        elabRValueExpr expr2 grp builder_1 subgraph startNode startStream_m
+        elabRValueExpr expr2 grp builder_1 subgraph startNode
       let composer = Composer $ \[oexpr1,oexpr2,ofrom] ->
             makeExtra "__expr1__" oexpr1 `HM.union`
             makeExtra "__expr2__" oexpr2 `HM.union`
             makeExtra "__from__"  ofrom
       let (builder_3, composed) =
             addNode builder_2 subgraph (ComposeSpec [node_expr1,node_expr2,startNode] composer)
-      let AggregateComponents{..} = genAggregateComponents agg startStream_m
+      let AggregateComponents{..} = genAggregateComponents agg exprName
       let (builder_4, indexed) =
             addNode builder_3 subgraph (IndexSpec composed)
       let reducer = Reducer aggregateF
           keygen = elabGroupBy grp
-      let (builder_5, node) = addNode builder_4 subgraph (ReduceSpec indexed aggregateInit keygen reducer)
-      return (builder_5, L.nub (ins1++ins2), Out node)
+      let (builder_5, reduced) = addNode builder_4 subgraph (ReduceSpec indexed aggregateInit keygen reducer)
+      let mapper = Mapper $ \o -> discardExtra "__reduce_key__" o
+          (builder_6, node) = addNode builder_5 subgraph (MapSpec reduced mapper)
+      return (builder_6, L.nub (ins1++ins2), Out node)
 
 elabGroupBy :: RGroupBy -> FlowObject -> FlowObject
 elabGroupBy RGroupByEmpty o = constantKeygen o
-elabGroupBy (RGroupBy xs) o = HM.unions $
-  L.map (\(s_m, f) ->
-           HM.filterWithKey (\(SKey f' s_m' _) v ->
-                               case s_m of
-                                 Nothing -> f == f'
-                                 Just s' -> f == f' && s_m' == s_m
-                            ) o
+elabGroupBy (RGroupBy xs) o = (makeExtra "__reduce_key__") . HM.unions $
+  L.map (\(s_m, f) -> let (skey,v) = getField f s_m o
+                       in HM.fromList [(skey,v)]
         ) xs
 
 genAggregateComponents :: Aggregate
-                       -> Maybe Text
+                       -> Text
                        -> AggregateComponents
-genAggregateComponents agg startStream_m =
+genAggregateComponents agg exprName =
   case agg of
        Nullary AggCountAll ->
          AggregateComponents
-         { aggregateInit = HM.singleton (SKey (T.pack (show agg)) startStream_m (Just "__reduced__")) (FlowInt 0)
+         { aggregateInit = HM.singleton (SKey exprName Nothing (Just "__reduced__")) (FlowInt 0)
          , aggregateF    = \acc row ->
              let [(k, FlowInt acc_x)] = HM.toList $ getExtra "__reduced__" acc
               in HM.fromList [(k, FlowInt (acc_x + 1))]
@@ -468,7 +518,7 @@ genAggregateComponents agg startStream_m =
 
        Unary AggCount expr ->
          AggregateComponents
-         { aggregateInit = HM.singleton (SKey (T.pack (show agg)) startStream_m (Just "__reduced__")) (FlowInt 0)
+         { aggregateInit = HM.singleton (SKey exprName Nothing (Just "__reduced__")) (FlowInt 0)
          , aggregateF = \acc row ->
              let [(k, FlowInt acc_x)] = HM.toList $ getExtra "__reduced__" acc
               in if HM.null (getExtra "__expr__" row) then
@@ -478,7 +528,7 @@ genAggregateComponents agg startStream_m =
 
        Unary AggSum expr ->
          AggregateComponents
-         { aggregateInit = HM.singleton (SKey (T.pack (show agg)) startStream_m (Just "__reduced__")) (FlowNumeral 0)
+         { aggregateInit = HM.singleton (SKey exprName Nothing (Just "__reduced__")) (FlowNumeral 0)
          , aggregateF = \acc row ->
              let [(k, FlowNumeral acc_x)] = HM.toList $ getExtra "__reduced__" acc
                  [(_, FlowNumeral row_x)] = HM.toList $ getExtra "__expr__" row
@@ -487,7 +537,7 @@ genAggregateComponents agg startStream_m =
 
        Unary AggMax expr ->
          AggregateComponents
-         { aggregateInit = HM.singleton (SKey (T.pack (show agg)) startStream_m (Just "__reduced__")) (FlowNumeral 0)
+         { aggregateInit = HM.singleton (SKey exprName Nothing (Just "__reduced__")) (FlowNumeral 0)
          , aggregateF = \acc row ->
              let [(k, FlowNumeral acc_x)] = HM.toList $ getExtra "__reduced__" acc
                  [(_, FlowNumeral row_x)] = HM.toList $ getExtra "__expr__" row
@@ -496,7 +546,7 @@ genAggregateComponents agg startStream_m =
 
        Unary AggMin expr ->
          AggregateComponents
-         { aggregateInit = HM.singleton (SKey (T.pack (show agg)) startStream_m (Just "__reduced__")) (FlowNumeral 0)
+         { aggregateInit = HM.singleton (SKey exprName Nothing (Just "__reduced__")) (FlowNumeral 0)
          , aggregateF = \acc row ->
              let [(k, FlowNumeral acc_x)] = HM.toList $ getExtra "__reduced__" acc
                  [(_, FlowNumeral row_x)] = HM.toList $ getExtra "__expr__" row
@@ -504,7 +554,7 @@ genAggregateComponents agg startStream_m =
          }
        Binary AggTopK expr1 expr2 ->
          AggregateComponents
-         { aggregateInit = HM.singleton (SKey (T.pack (show agg)) startStream_m (Just "__reduced__")) FlowNull
+         { aggregateInit = HM.singleton (SKey exprName Nothing (Just "__reduced__")) FlowNull
          , aggregateF = \acc row ->
              let [(k,v)] = HM.toList $ getExtra "__reduced__" acc
                  [(_,v1)] = HM.toList $ getExtra "__expr1__" row
@@ -517,7 +567,7 @@ genAggregateComponents agg startStream_m =
          }
        Binary AggTopKDistinct expr1 expr2 ->
          AggregateComponents
-         { aggregateInit = HM.singleton (SKey (T.pack (show agg)) startStream_m (Just "__reduced__")) FlowNull
+         { aggregateInit = HM.singleton (SKey exprName Nothing (Just "__reduced__")) FlowNull
          , aggregateF = \acc row ->
              let [(k,v)] = HM.toList $ getExtra "__reduced__" acc
                  [(_,v1)] = HM.toList $ getExtra "__expr1__" row
@@ -536,13 +586,12 @@ elabRWhere :: RWhere
            -> GraphBuilder Row
            -> Subgraph
            -> Node
-           -> Maybe Text
            -> IO (GraphBuilder Row, [In], Out)
-elabRWhere whr grp startBuilder subgraph startNode startStream_m = case whr of
+elabRWhere whr grp startBuilder subgraph startNode = case whr of
   RWhereEmpty -> return (startBuilder, [], Out startNode)
   RWhere expr -> do
     (builder_1, ins, Out node_expr) <-
-      elabRValueExpr expr grp startBuilder subgraph startNode startStream_m
+      elabRValueExpr expr grp startBuilder subgraph startNode
     let composer = Composer $ \[oexpr,ofrom] ->
           makeExtra "__expr__" oexpr `HM.union` makeExtra "__from__" ofrom
     let (builder_2, composed) = addNode builder_1 subgraph (ComposeSpec [node_expr,startNode] composer)
@@ -561,24 +610,21 @@ elabRHaving :: RHaving
             -> GraphBuilder Row
             -> Subgraph
             -> Node
-            -> Maybe Text
             -> IO (GraphBuilder Row, [In], Out)
-elabRHaving hav grp startBuilder subgraph startNode startStream_m = case hav of
+elabRHaving hav grp startBuilder subgraph startNode = case hav of
   RHavingEmpty -> return (startBuilder, [], Out startNode)
-  RHaving expr -> elabRWhere (RWhere expr) grp startBuilder subgraph startNode startStream_m
-
+  RHaving expr -> elabRWhere (RWhere expr) grp startBuilder subgraph startNode
 
 elabRSelectItem :: RSelectItem
                 -> RGroupBy
                 -> GraphBuilder Row
                 -> Subgraph
                 -> Node
-                -> Maybe Text
                 -> IO (GraphBuilder Row, [In], Out)
-elabRSelectItem item grp startBuilder subgraph startNode startStream_m =
+elabRSelectItem item grp startBuilder subgraph startNode =
   case item of
     RSelectItemProject expr alias_m -> do
-      (builder_1, ins, Out node_expr) <- elabRValueExpr expr grp startBuilder subgraph startNode startStream_m
+      (builder_1, ins, Out node_expr) <- elabRValueExpr expr grp startBuilder subgraph startNode
       case alias_m of
         Nothing -> return (builder_1, ins, Out node_expr)
         Just alias -> do
@@ -587,7 +633,7 @@ elabRSelectItem item grp startBuilder subgraph startNode startStream_m =
           let (builder_2, node) = addNode builder_1 subgraph (MapSpec node_expr mapper)
           return (builder_2, ins, Out node)
     RSelectItemAggregate agg alias_m -> do
-      (builder_1, ins, Out node_agg) <- elabAggregate agg grp startBuilder subgraph startNode startStream_m
+      (builder_1, ins, Out node_agg) <- elabAggregate agg grp startBuilder subgraph startNode (T.pack . show $ agg)
       case alias_m of
         Nothing -> return (builder_1, ins, Out node_agg)
         Just alias -> do
@@ -607,14 +653,13 @@ elabRSel :: RSel
          -> GraphBuilder Row
          -> Subgraph
          -> Node
-         -> Maybe Text
          -> IO (GraphBuilder Row, [In], Out)
-elabRSel (RSel items) grp startBuilder subgraph startNode startStream_m = do
+elabRSel (RSel items) grp startBuilder subgraph startNode = do
   (builder_1, ins, outs) <-
     foldM (\acc item -> do
               let (oldBuilder, oldIns, oldOuts) = acc
               (newBuilder, ins, out) <-
-                elabRSelectItem item grp oldBuilder subgraph startNode startStream_m
+                elabRSelectItem item grp oldBuilder subgraph startNode
               return (newBuilder, L.nub (ins++oldIns), out:oldOuts)
           ) (startBuilder, [], []) items
   let composer = Composer $ \os -> L.foldl1 HM.union os

@@ -107,9 +107,28 @@ flowObjectToJsonObject hm =
                    ) (HM.toList hm)
    in HsAeson.fromList list
 
-jsonObjectToFlowObject :: Aeson.Object -> FlowObject
-jsonObjectToFlowObject object =
-  HM.mapKeys (\k -> SKey k Nothing Nothing) (HM.map jsonValueToFlowValue object)
+jsonObjectToFlowObject :: Text -> Aeson.Object -> FlowObject
+jsonObjectToFlowObject streamName object =
+  HM.mapKeys (\k -> SKey k (Just streamName) Nothing) (HM.map jsonValueToFlowValue object)
+
+--------------------------------------------------------------------------------
+class HasName a where
+  getName :: a -> String
+
+instance HasName RValueExpr where
+  getName expr = case expr of
+    RExprCast        name _ _   -> name
+    RExprArray       name _     -> name
+    RExprMap         name _     -> name
+    RExprAccessMap   name _ _   -> name
+    RExprAccessArray name _ _   -> name
+    RExprCol         name _ _   -> name
+    RExprConst       name _     -> name
+    RExprAggregate   name _     -> name
+    RExprAccessJson  name _ _ _ -> name
+    RExprBinOp       name _ _ _ -> name
+    RExprUnaryOp     name _ _   -> name
+    RExprSubquery    name _     -> name
 
 ----------------------------- Refinement details -------------------------------
 
@@ -335,17 +354,36 @@ data JsonOp
 data Aggregate = Nullary NullaryAggregate
                | Unary   UnaryAggregate  RValueExpr
                | Binary  BinaryAggregate RValueExpr RValueExpr
-               deriving (Show, Eq)
+               deriving (Eq)
+instance Show Aggregate where
+  show agg = case agg of
+    Nullary nullary     -> show nullary
+    Unary unary expr    -> show unary  <> "(" <> getName expr <> ")"
+    Binary binary e1 e2 -> show binary <> "(" <> getName e1 <> ", " <> getName e2 <> ")"
 
-data NullaryAggregate = AggCountAll deriving (Eq, Show)
+data NullaryAggregate = AggCountAll deriving (Eq)
+instance Show NullaryAggregate where
+  show AggCountAll = "COUNT(*)"
+
 data UnaryAggregate   = AggCount
                       | AggAvg
                       | AggSum
                       | AggMax
                       | AggMin
-                      deriving (Eq, Show)
-data BinaryAggregate = AggTopK | AggTopKDistinct
-                     deriving (Eq, Show)
+                      deriving (Eq)
+instance Show UnaryAggregate where
+  show agg = case agg of
+    AggCount -> "COUNT"
+    AggAvg   -> "AVG"
+    AggSum   -> "SUM"
+    AggMax   -> "MAX"
+    AggMin   -> "MIN"
+
+data BinaryAggregate = AggTopK | AggTopKDistinct deriving (Eq)
+instance Show BinaryAggregate where
+  show agg = case agg of
+    AggTopK -> "TOPK"
+    AggTopKDistinct -> "TOPK_DISTINCT"
 
 data RArrayAccessRhs
   = RArrayAccessRhsIndex Int
@@ -514,8 +552,8 @@ instance Refine ColName where
   refine col = case col of
     ColNameSimple _ (Ident t) -> RExprCol (trimSpacesPrint col) Nothing t
     ColNameRaw _ raw -> RExprCol (trimSpacesPrint col) Nothing (refine raw)
-    ColNameStream _ (Ident s) col ->
-      let (RExprCol _ _ c) = refine col
+    ColNameStream _ (Ident s) col' ->
+      let (RExprCol _ _ c) = refine col'
        in RExprCol (trimSpacesPrint col) (Just s) c
 
 --------------------------------------------------------------------------------
