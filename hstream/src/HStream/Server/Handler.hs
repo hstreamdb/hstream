@@ -64,6 +64,7 @@ handlers serverContext@ServerContext{..} =
         hstreamApiExecutePushQuery = executePushQueryHandler serverContext,
         -- FIXME:
         hstreamApiGetQuery = getQueryHandler serverContext,
+        hstreamApiCreateQuery = createQueryHandler serverContext,
         hstreamApiListQueries = listQueriesHandler serverContext,
         hstreamApiDeleteQuery = deleteQueryHandler serverContext,
         hstreamApiRestartQuery = restartQueryHandler serverContext,
