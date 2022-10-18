@@ -382,7 +382,7 @@ instance Show UnaryAggregate where
 data BinaryAggregate = AggTopK | AggTopKDistinct deriving (Eq)
 instance Show BinaryAggregate where
   show agg = case agg of
-    AggTopK -> "TOPK"
+    AggTopK         -> "TOPK"
     AggTopKDistinct -> "TOPK_DISTINCT"
 
 data RArrayAccessRhs

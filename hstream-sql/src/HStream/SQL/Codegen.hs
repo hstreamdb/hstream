@@ -323,6 +323,8 @@ mkBinaryOpMapper op field =
                      [(_,v2)] = HM.toList $ getExtra "__op2__" o
                   in HM.fromList [(SKey field Nothing Nothing, binOpOnValue op v1 v2)]
 
+-- For alias test:
+-- SELECT res.r1 AS mm, res.r2 AS nn FROM (SELECT s01.a AS r1, SUM(s02.c) AS r2 FROM s01 JOIN s02 ON TRUE GROUP BY s02.a) AS res;
 elabRTableRef :: RTableRef -> RGroupBy -> GraphBuilder Row -> Subgraph -> IO (GraphBuilder Row, [In], Out)
 elabRTableRef ref grp startBuilder subgraph =
   case ref of

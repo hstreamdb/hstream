@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
@@ -73,33 +74,46 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
     CreateBySelectPlan stream ins out builder factor -> do
       let sources = inStream <$> ins
           sink    = stream
-      exists <- mapM (S.doesStreamExist scLDClient . transToStreamName) sources
-      case and exists of
+      roles_m <- mapM (findIdentifierRole sc) sources
+      case all isJust roles_m of
         False -> do
-          Log.warning $ "At least one of the streams do not exist: "
+          Log.warning $ "At least one of the streams/views do not exist: "
               <> Log.buildString (show sources)
-          throwIO $ HE.StreamNotFound $ "At least one of the streams do not exist: " <> T.pack (show sources)
+          throwIO $ HE.StreamNotFound $ "At least one of the streams/views do not exist: " <> T.pack (show sources)
         True  -> do
           createStreamWithShard scLDClient (transToStreamName sink) "query" factor
-          let query = P.StreamQuery sources sink
-          (qid,_) <- handleCreateAsSelect sc plan sink commandQueryStmtText query
+          let queryType = P.StreamQuery sources sink
+          (qid,_) <- handleCreateAsSelect
+                     sc
+                     sink
+                     (ins `zip` (L.map fromJust roles_m))
+                     (out, RoleStream)
+                     builder
+                     commandQueryStmtText
+                     queryType
           pure $ API.CommandQueryResponse (mkVectorStruct qid "stream_query_id")
     CreateViewPlan view ins out builder accumulation -> do
       let sources = inStream <$> ins
           sink    = view
-      -- FIXME: use the same checking method as `SELECT` and `CREATE AS SELECT`
-      -- make sure source streams exist
-      nonExistedSource <- filterM (fmap not . S.doesStreamExist scLDClient . transToStreamName) sources :: IO [T.Text]
-      case nonExistedSource of
-        [] -> do
-          createStreamWithShard scLDClient (transToStreamName sink) "query" scDefaultStreamRepFactor
-          let query = P.ViewQuery sources sink
-          (qid,_) <- handleCreateAsSelect sc plan sink commandQueryStmtText query
+      roles_m <- mapM (findIdentifierRole sc) sources
+      case all isJust roles_m of
+        True -> do
+          --createStreamWithShard scLDClient (transToStreamName sink) "query" scDefaultStreamRepFactor
+          let queryType = P.ViewQuery sources sink
+          (qid,_) <- handleCreateAsSelect
+                     sc
+                     sink
+                     (ins `zip` (L.map fromJust roles_m))
+                     (out, RoleView)
+                     builder
+                     commandQueryStmtText
+                     queryType
           atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert sink accumulation hm, ()))
           pure $ API.CommandQueryResponse (mkVectorStruct qid "view_query_id")
-        _  -> do
-          let x = "Source " <> show (T.concat $ L.intersperse ", " nonExistedSource) <> " doesn't exist"
-          throwIO $ HE.InvalidSqlStatement x
+        False  -> do
+          Log.warning $ "At least one of the streams/views do not exist: "
+            <> Log.buildString (show sources)
+          throwIO $ HE.StreamNotFound $ "At least one of the streams/views do not exist: " <> T.pack (show sources)
     CreatePlan stream fac -> do
       let s = API.Stream
             { streamStreamName = stream
