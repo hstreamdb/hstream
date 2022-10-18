@@ -79,7 +79,7 @@ parseAdminCommand args = extractAdminCmd =<< execParser
 
 runAdminCommand :: ServerContext -> Text -> IO Text
 runAdminCommand sc@ServerContext{..} cmd = do
-  Log.info $ "Receive amdin command: " <> Log.buildText cmd
+  Log.debug $ "Receive amdin command: " <> Log.buildText cmd
   let args = words (Text.unpack cmd)
   adminCommand <- parseAdminCommand args
   case adminCommand of
