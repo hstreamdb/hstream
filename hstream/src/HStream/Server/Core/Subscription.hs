@@ -36,7 +36,6 @@ import           HStream.Server.Core.Common (decodeRecordBatch,
                                              getCommitRecordId, getSuccessor,
                                              insertAckedRecordId)
 import           HStream.Server.HStreamApi
-import qualified HStream.Server.MetaData    as P
 import           HStream.Server.Types
 import qualified HStream.Stats              as Stats
 import qualified HStream.Store              as S
@@ -405,7 +404,7 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
           addRead subLdCkpReader subAssignment subStartOffset
           atomically checkUnackedRecords
           recordBatches <- readRecordBatches
-          let receivedRecordsVecs = fmap decodeRecordBatch recordBatches
+          receivedRecordsVecs <- forM recordBatches decodeRecordBatch
           isFirstSend <- readIORef isFirstSendRef
           if isFirstSend
           then do
@@ -640,8 +639,8 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
           -- TODO: handle error here
           Log.fatal . Log.buildString $ "read error"
         else do
-          let (_, _, _, ReceivedRecord{..}) = decodeRecordBatch $ head dataRecord
-              batchRecords@BatchedRecord{..} = fromJust receivedRecordRecord
+          (_, _, _, ReceivedRecord{..}) <- decodeRecordBatch $ head dataRecord
+          let batchRecords@BatchedRecord{..} = fromJust receivedRecordRecord
               uncompressedRecords = decompressBatchedRecord batchRecords
               (ids, records) =
                 V.foldl'
