@@ -292,7 +292,7 @@ readShard ServerContext{..} API.ReadShardRequest{..} = do
        Just readerMvar -> putMVar readerMvar reader
    readRecords reader = do
      records <- S.readerRead reader (fromIntegral readShardRequestMaxRecords)
-     let receivedRecordsVecs = decodeRecordBatch <$> records
+     receivedRecordsVecs <- forM records decodeRecordBatch
      let res = V.fromList $ map (\(_, _, _, record) -> record) receivedRecordsVecs
      Log.debug $ "reader " <> Log.buildText readShardRequestReaderId
               <> " read " <> Log.buildInt (V.length res) <> " batchRecords"

@@ -139,16 +139,22 @@ isValidRecordId ShardRecordId{..} batchNumMap =
                 | otherwise -> True
     Nothing -> False
 
-decodeRecordBatch :: HS.DataRecord BS.ByteString -> (HS.C_LogID, Word64, V.Vector ShardRecordId, ReceivedRecord)
-decodeRecordBatch dataRecord = (logId, batchId, shardRecordIds, receivedRecords)
-  where
-    payload = HS.recordPayload dataRecord
-    logId = HS.recordLogID dataRecord
-    batchId = HS.recordLSN dataRecord
-    batch@BatchedRecord{..} = decodeByteStringBatch payload
-    shardRecordIds = V.map (ShardRecordId batchId) (V.fromList [0..batchedRecordBatchSize - 1])
-    recordIds = V.map (RecordId logId batchId) (V.fromList [0..batchedRecordBatchSize - 1])
-    receivedRecords = ReceivedRecord recordIds (Just batch)
+-- NOTE: if batchSize is 0 or larger than maxBound of Int, then ShardRecordIds
+-- will be an empty Vector
+decodeRecordBatch
+  :: HS.DataRecord BS.ByteString
+  -> IO (HS.C_LogID, Word64, V.Vector ShardRecordId, ReceivedRecord)
+decodeRecordBatch dataRecord = do
+  let payload = HS.recordPayload dataRecord
+      logId = HS.recordLogID dataRecord
+      batchId = HS.recordLSN dataRecord
+  let batch = decodeByteStringBatch payload
+      batchSize = batchedRecordBatchSize batch :: Word32
+  Log.debug $ "Decoding BatchedRecord size: " <> Log.buildInt batchSize
+  let shardRecordIds = V.generate (fromIntegral batchSize) (ShardRecordId batchId . fromIntegral)
+      recordIds = V.generate (fromIntegral batchSize) (RecordId logId batchId . fromIntegral)
+      receivedRecords = ReceivedRecord recordIds (Just batch)
+  pure (logId, batchId, shardRecordIds, receivedRecords)
 
 --------------------------------------------------------------------------------
 -- Query
