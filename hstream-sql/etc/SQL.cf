@@ -22,6 +22,7 @@ comment "/*" "*/" ;
 entrypoints SQL ;
 
 QSelect.      SQL ::= Select      ";" ;
+QPushSelect.  SQL ::= Select "EMIT" "CHANGES" ";" ;
 QCreate.      SQL ::= Create      ";" ;
 QInsert.      SQL ::= Insert      ";" ;
 QShow.        SQL ::= ShowQ       ";" ;
