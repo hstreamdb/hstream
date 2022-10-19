@@ -3,21 +3,22 @@
 module DiffFlow.LoopSpec where
 
 import           Control.Concurrent
+import           Control.Concurrent.MVar
 import           Control.Monad
-import           Data.Aeson          (Object, Value (..))
-import           Data.Hashable       (Hashable)
-import qualified Data.List           as L
-import           Data.MultiSet       (MultiSet)
-import qualified Data.MultiSet       as MultiSet
-import           Data.Set            (Set)
-import qualified Data.Set            as Set
+import           Data.Aeson              (Object, Value (..))
+import           Data.Hashable           (Hashable)
+import qualified Data.List               as L
+import           Data.MultiSet           (MultiSet)
+import qualified Data.MultiSet           as MultiSet
+import           Data.Set                (Set)
+import qualified Data.Set                as Set
 import           Data.Word
 import           DiffFlow.Graph
 import           DiffFlow.Shard
 import           DiffFlow.Types
 import           Test.Hspec
 
-import qualified HStream.Utils.Aeson as A
+import qualified HStream.Utils.Aeson     as A
 
 shardBody :: MVar () -> MVar [DataChangeBatch Object Word32] -> MVar [DataChangeBatch Object Word32] -> IO ()
 shardBody isDone reachOut_m reachSummaryOut_m = do
@@ -78,7 +79,8 @@ shardBody isDone reachOut_m reachSummaryOut_m = do
   let graph = buildGraph builder_16
   shard <- buildShard graph
 
-  forkIO $ run shard
+  stop_m <- newEmptyMVar
+  forkIO $ run shard stop_m
 
   forkIO . forever $ popOutput shard reach_out         (\dcb -> modifyMVar_ reachOut_m        (\xs -> return $ xs ++ [dcb]))
   forkIO . forever $ popOutput shard reach_summary_out (\dcb -> modifyMVar_ reachSummaryOut_m (\xs -> return $ xs ++ [dcb]))

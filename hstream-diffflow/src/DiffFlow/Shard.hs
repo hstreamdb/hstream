@@ -668,10 +668,18 @@ popOutput Shard{..} node action = do
     Just dcb -> action dcb
 
 run :: (Hashable a, Ord a, Show a,
-        Hashable row, Ord row, Show row, Semigroup row) => Shard row a -> IO ()
-run shard = forever $ do
+        Hashable row, Ord row, Show row, Semigroup row) => Shard row a -> MVar () -> IO ()
+run shard stop = do
   work <- hasWork shard
   debug . stringUTF8 $ "Loop: still has work?" <> show work
-  if work then do
-    doWork shard else do
-    threadDelay 2000000
+  case work of
+    True  -> do
+      doWork shard
+      run shard stop
+    False -> do
+      stop_m <- tryTakeMVar stop
+      case stop_m of
+        Nothing -> do
+          threadDelay 2000000
+          run shard stop
+        Just _  -> return ()

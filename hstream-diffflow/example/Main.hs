@@ -3,15 +3,16 @@
 module Main where
 
 import           Control.Concurrent
+import           Control.Concurrent.MVar
 import           Control.Monad
-import           Data.Aeson          (Value (..))
-import           Data.Maybe          (fromJust)
+import           Data.Aeson              (Value (..))
+import           Data.Maybe              (fromJust)
 import           Data.Word
 
 import           DiffFlow.Graph
 import           DiffFlow.Shard
 import           DiffFlow.Types
-import qualified HStream.Utils.Aeson as A
+import qualified HStream.Utils.Aeson     as A
 
 main :: IO ()
 main = do
@@ -36,7 +37,8 @@ main = do
   let graph = buildGraph builder_7
 
   shard <- buildShard graph
-  forkIO $ run shard
+  stop_m <- newEmptyMVar
+  forkIO $ run shard stop_m
   forkIO . forever $ popOutput shard node_4 (\dcb -> print $ "---> Output DataChangeBatch: " <> show dcb)
 
   pushInput shard node_2
