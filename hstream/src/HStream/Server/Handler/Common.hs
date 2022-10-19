@@ -7,9 +7,10 @@
 module HStream.Server.Handler.Common where
 
 import           Control.Concurrent
+import           Control.Concurrent.Async
 import           Control.Exception                (Handler (Handler),
                                                    SomeException (..), catches,
-                                                   onException, throw)
+                                                   onException, throw, throwIO)
 import           Control.Exception.Base           (AsyncException (..))
 import           Control.Monad
 import qualified Data.Aeson                       as Aeson
@@ -24,6 +25,7 @@ import           Network.GRPC.LowLevel.Op         (Op (OpRecvCloseOnServer),
                                                    OpRecvResult (OpRecvCloseOnServerResult),
                                                    runOps)
 
+import qualified HStream.Exception                as HE
 import qualified HStream.Logger                   as Log
 import           HStream.Server.ConnectorTypes    (SinkConnector (..),
                                                    SinkRecord (..),
@@ -61,6 +63,45 @@ findIdentifierRole ServerContext{..} name = do
         Just _  -> return (Just RoleView)
 
 --------------------------------------------------------------------------------
+applyTempFilter :: DiffFlow.Shard Row Int64 -> In -> DiffFlow.DataChange Row Int64 -> IO ()
+applyTempFilter shard In{..} dataChange = do
+  let insert_ms = DiffFlow.timestampTime (DiffFlow.dcTimestamp dataChange)
+  case inWindow of
+    Nothing -> return ()
+    Just (Tumbling interval) -> do
+      let interval_ms = calendarDiffTimeToMs interval
+      let _start_ms = interval_ms * (insert_ms `div` interval_ms)
+          end_ms    = interval_ms * (1 + insert_ms `div` interval_ms)
+      let negatedDataChange = dataChange
+                              { DiffFlow.dcTimestamp = DiffFlow.Timestamp end_ms []
+                              , DiffFlow.dcDiff = -1
+                              }
+      DiffFlow.pushInput shard inNode negatedDataChange -- negated update
+    Just (Hopping interval hop) -> do
+      let interval_ms = calendarDiffTimeToMs interval
+          hop_ms      = calendarDiffTimeToMs hop
+      -- FIXME: determine the accurate semantic of HOPPING window
+      let _start_ms = hop_ms * (insert_ms `div` hop_ms)
+          end_ms = interval_ms + hop_ms * (insert_ms `div` hop_ms)
+      let negatedDataChange = dataChange
+                              { DiffFlow.dcTimestamp = DiffFlow.Timestamp end_ms []
+                              , DiffFlow.dcDiff = -1
+                              }
+      DiffFlow.pushInput shard inNode negatedDataChange -- negated update
+    Just (Sliding interval) -> do
+      let interval_ms = calendarDiffTimeToMs interval
+      let _start_ms = insert_ms
+          end_ms    = insert_ms + interval_ms
+      let negatedDataChange = dataChange
+                              { DiffFlow.dcTimestamp = DiffFlow.Timestamp end_ms []
+                              , DiffFlow.dcDiff = -1
+                              }
+      DiffFlow.pushInput shard inNode negatedDataChange -- negated update
+    _ -> return ()
+
+
+
+--------------------------------------------------------------------------------
 runTask :: ServerContext
         -> Text
         -> Text
@@ -73,74 +114,50 @@ runTask ctx@ServerContext{..} taskName sink insWithRole outWithRole graphBuilder
   let consumerName = taskName
   let graph = DiffFlow.buildGraph graphBuilder
   shard <- DiffFlow.buildShard graph
+  stop_m <- newEmptyMVar
 
   ------------------
   -- the task itself
-  tid1 <- forkIO $ DiffFlow.run shard
+  tid1 <- forkIO $ DiffFlow.run shard stop_m
 
   ------------------
   -- In
-  tids2_m <- forM insWithRole
-    (\(In{..}, role) -> do
-        case role of
-          RoleStream -> do
-            let SourceConnectorWithoutCkp{..} = HStore.hstoreSourceConnectorWithoutCkp ctx consumerName
-            subscribeToStreamWithoutCkp inStream SpecialOffsetLATEST
-            tid <- forkIO $ withReadRecordsWithoutCkp inStream $ \sourceRecords -> do
-              forM_ sourceRecords $ \SourceRecord{..} -> do
-                ts <- HCT.getCurrentTimestamp
-                let dataChange
-                      = DiffFlow.DataChange
-                      { dcRow = (jsonObjectToFlowObject srcStream) . fromJust . Aeson.decode $ srcValue
-                      , dcTimestamp = DiffFlow.Timestamp ts [] -- Timestamp srcTimestamp []
-                      , dcDiff = 1
-                      }
-                Log.debug . Log.buildString $ "Get input: " <> show dataChange
-                DiffFlow.pushInput shard inNode dataChange -- original update
-                -- insert new negated updates to limit the valid range of this update
-                let insert_ms = DiffFlow.timestampTime (DiffFlow.dcTimestamp dataChange)
-{-
-                case inWindow of
-                  Nothing -> return ()
-                  Just (Tumbling interval_ms) -> do
-                    let _start_ms = interval_ms * (insert_ms `div` interval_ms)
-                        end_ms    = interval_ms * (1 + insert_ms `div` interval_ms)
-                    let negatedDataChange = dataChange
-                                            { DiffFlow.dcTimestamp = DiffFlow.Timestamp end_ms []
-                                            , DiffFlow.dcDiff = -1
-                                            }
-                    DiffFlow.pushInput shard inNode negatedDataChange -- negated update
-                  Just (Hopping interval_ms hop_ms) -> do
-                    -- FIXME: determine the accurate semantic of HOPPING window
-                    let _start_ms = hop_ms * (insert_ms `div` hop_ms)
-                        end_ms = interval_ms + hop_ms * (insert_ms `div` hop_ms)
-                    let negatedDataChange = dataChange
-                                            { DiffFlow.dcTimestamp = DiffFlow.Timestamp end_ms []
-                                            , DiffFlow.dcDiff = -1
-                                            }
-                    DiffFlow.pushInput shard inNode negatedDataChange -- negated update
-                  Just (Sliding interval_ms) -> do
-                    let _start_ms = insert_ms
-                        end_ms    = insert_ms + interval_ms
-                    let negatedDataChange = dataChange
-                                            { DiffFlow.dcTimestamp = DiffFlow.Timestamp end_ms []
-                                            , DiffFlow.dcDiff = -1
-                                            }
-                    DiffFlow.pushInput shard inNode negatedDataChange -- negated update
-                  _ -> return ()
--}
-                DiffFlow.flushInput shard inNode
-            return (Just tid)
-          RoleView -> do
-            viewStore_m <- readIORef P.groupbyStores >>= \hm -> return (hm HM.! inStream)
-            dcb <- readMVar viewStore_m
-            forM (DiffFlow.dcbChanges dcb) $ \change -> do
-              ts <- HCT.getCurrentTimestamp
-              let thisChange = change { DiffFlow.dcTimestamp = DiffFlow.Timestamp ts [] }
-              Log.debug . Log.buildString $ "Get input(from view): " <> show thisChange
-              DiffFlow.pushInput shard inNode thisChange
-            return Nothing
-    )
+  srcConnectors_m <- forM insWithRole $ \(In{..}, role) -> do
+    case role of
+      RoleStream -> do
+        let connector@SourceConnectorWithoutCkp{..} = HStore.hstoreSourceConnectorWithoutCkp ctx consumerName
+        subscribeToStreamWithoutCkp inStream SpecialOffsetLATEST
+        return (Just connector)
+      RoleView -> return Nothing
+
+  tids2_m <- forM (insWithRole `zip` srcConnectors_m) $ \((in_@In{..}, role), srcConnector_m) -> do
+    case role of
+      RoleStream -> do
+        let (Just SourceConnectorWithoutCkp{..}) = srcConnector_m
+        tid <- forkIO $ withReadRecordsWithoutCkp inStream $ \sourceRecords -> do
+          forM_ sourceRecords $ \SourceRecord{..} -> do
+            ts <- HCT.getCurrentTimestamp
+            let dataChange
+                  = DiffFlow.DataChange
+                    { dcRow = (jsonObjectToFlowObject srcStream) . fromJust . Aeson.decode $ srcValue
+                    , dcTimestamp = DiffFlow.Timestamp ts [] -- Timestamp srcTimestamp []
+                    , dcDiff = 1
+                    }
+            Log.debug . Log.buildString $ "Get input: " <> show dataChange
+            DiffFlow.pushInput shard inNode dataChange -- original update
+            -- insert new negated updates to limit the valid range of this update
+            applyTempFilter shard in_ dataChange
+            DiffFlow.flushInput shard inNode
+        return (Just tid)
+      RoleView -> do
+        viewStore_m <- readIORef P.groupbyStores >>= \hm -> return (hm HM.! inStream)
+        dcb <- readMVar viewStore_m
+        forM (DiffFlow.dcbChanges dcb) $ \change -> do
+          ts <- HCT.getCurrentTimestamp
+          let thisChange = change { DiffFlow.dcTimestamp = DiffFlow.Timestamp ts [] }
+          Log.debug . Log.buildString $ "Get input(from view): " <> show thisChange
+          DiffFlow.pushInput shard inNode thisChange
+        return Nothing
 
   ------------------
   -- second loop: advance input after an interval
@@ -177,6 +194,55 @@ runTask ctx@ServerContext{..} taskName sink insWithRole outWithRole graphBuilder
     let childrenThreads = tid1 : (catMaybes tids2_m) ++ [tid3]
     mapM_ killThread childrenThreads
                           )
+
+runImmTask :: ServerContext
+           -> [(In, IdentifierRole)]
+           -> Out
+           -> MVar (DiffFlow.DataChangeBatch Row Int64)
+           -> DiffFlow.GraphBuilder FlowObject
+           -> IO ()
+runImmTask ctx@ServerContext{..} insWithRole out out_m graphBuilder = do
+  let graph = DiffFlow.buildGraph graphBuilder
+  shard <- DiffFlow.buildShard graph
+  stop_m <- newEmptyMVar
+
+  -- run DiffFlow shard
+  task_async <- async $ DiffFlow.run shard stop_m
+
+  -- In
+  forM_ insWithRole $ \(in_@In{..}, role) -> do
+    case role of
+      RoleView -> do
+        viewStore_m <- readIORef P.groupbyStores >>= \hm -> return (hm HM.! inStream)
+        dcb <- readMVar viewStore_m
+        forM (DiffFlow.dcbChanges dcb) $ \change -> do
+          ts <- HCT.getCurrentTimestamp
+          let thisChange = change { DiffFlow.dcTimestamp = DiffFlow.Timestamp ts [] }
+          Log.debug . Log.buildString $ "Get input(from view): " <> show thisChange
+          DiffFlow.pushInput shard inNode thisChange
+          -- insert new negated updates to limit the valid range of this update
+          applyTempFilter shard in_ thisChange
+          DiffFlow.flushInput shard inNode
+      RoleStream ->
+        throwIO $ HE.InvalidSqlStatement "Can not perform non-pushing SELECT from streams. "
+
+  -- advance input
+  forM_ insWithRole $ \(In{..}, _) -> do
+    ts <- HCT.getCurrentTimestamp
+    -- Log.debug . Log.buildString $ "### Advance time to " <> show ts
+    DiffFlow.advanceInput shard inNode (DiffFlow.Timestamp ts [])
+
+  -- push output from OUTPUT node
+  replicateM_ 5 $ do
+    DiffFlow.popOutput shard (outNode out) $ \dcb@DiffFlow.DataChangeBatch{..} -> do
+      Log.debug . Log.buildString $ "~~~ POPOUT: " <> show dcb
+      modifyMVar_ out_m
+        (\old -> return $ DiffFlow.updateDataChangeBatch' old (\xs -> xs ++ dcbChanges))
+      threadDelay 100000
+
+  -- stop DiffFlow.run
+  putMVar stop_m ()
+  wait task_async
 
 --------------------------------------------------------------------------------
 

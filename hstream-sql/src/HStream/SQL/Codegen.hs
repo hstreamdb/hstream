@@ -69,7 +69,8 @@ data HStreamPlan
   | ExplainPlan         Text
   | PausePlan           PauseObject
   | ResumePlan          ResumeObject
-  | SelectPlan [In] Out (GraphBuilder Row)
+  | SelectPlan          [In] Out (GraphBuilder Row)
+  | PushSelectPlan      [In] Out (GraphBuilder Row)
   | CreateBySelectPlan  StreamName [In] Out (GraphBuilder Row) Int -- FIXME
   | CreateViewPlan      ViewName [In] Out (GraphBuilder Row) (MVar (DataChangeBatch Row Int64)) -- FIXME
 
@@ -85,6 +86,11 @@ hstreamCodegen = \case
     let (startBuilder, _) = addSubgraph emptyGraphBuilder subgraph
     (endBuilder, ins, out) <- elabRSelectWithOut select startBuilder subgraph
     return $ SelectPlan ins out endBuilder
+  RQPushSelect select -> do
+    let subgraph = Subgraph 0
+    let (startBuilder, _) = addSubgraph emptyGraphBuilder subgraph
+    (endBuilder, ins, out) <- elabRSelectWithOut select startBuilder subgraph
+    return $ PushSelectPlan ins out endBuilder
   RQCreate (RCreateAs stream select rOptions) -> do
     let subgraph = Subgraph 0
     let (startBuilder, _) = addSubgraph emptyGraphBuilder subgraph
@@ -121,19 +127,6 @@ hstreamCodegen = \case
   RQExplain rexplain                 -> return $ ExplainPlan rexplain
   RQPause (RPauseConnector name)     -> return $ PausePlan (PauseObjectConnector name)
   RQResume (RResumeConnector name)   -> return $ ResumePlan (ResumeObjectConnector name)
-
---------------------------------------------------------------------------------
-elab :: Text -> IO HStreamPlan
-elab sql = do
-  ast <- parseAndRefine sql
-  case ast of
-    RQSelect sel -> do
-      let subgraph = Subgraph 0
-      let (startBuilder, _) = addSubgraph emptyGraphBuilder subgraph
-      (endBuilder, ins, out) <- elabRSelectWithOut sel startBuilder subgraph
-      return $ SelectPlan ins out endBuilder
-    _ -> undefined
-
 
 --------------------------------------------------------------------------------
 data In = In

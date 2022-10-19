@@ -314,7 +314,7 @@ commandExec ctx@HStreamSqlContext{..} xs = case words xs of
   (_:_)       -> liftIO $ handle (\(e :: SomeSQLException) -> putStrLn . formatSomeSQLException $ e) $ do
     rSQL <- parseAndRefine $ T.pack xs
     case rSQL of
-      RQSelect{} -> runActionWithGrpc ctx (\api -> sqlStreamAction api (T.pack xs))
+      RQPushSelect{} -> runActionWithGrpc ctx (\api -> sqlStreamAction api (T.pack xs))
       RQCreate (RCreateAs stream _ rOptions) ->
         execute_ ctx $ createStreamBySelect stream (rRepFactor rOptions) xs
       rSql' -> hstreamCodegen rSql' >>= \case

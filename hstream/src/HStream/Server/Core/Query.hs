@@ -35,7 +35,8 @@ import qualified Proto3.Suite.JSONPB              as PB
 import qualified Z.Data.CBytes                    as CB
 
 import           DiffFlow.Types                   (DataChange (..),
-                                                   DataChangeBatch (..))
+                                                   DataChangeBatch (..),
+                                                   emptyDataChangeBatch)
 import qualified HStream.Exception                as HE
 import qualified HStream.IO.Worker                as IO
 import qualified HStream.Logger                   as Log
@@ -68,9 +69,24 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
   Log.debug $ "Receive Query Request: " <> Log.buildText commandQueryStmtText
   plan <- streamCodegen commandQueryStmtText
   case plan of
-    SelectPlan {} ->
+    PushSelectPlan {} ->
       let x = "Inconsistent method called: select from streams SQL statements should be sent to rpc `ExecutePushQuery`"
        in throwIO $ HE.InvalidSqlStatement x
+    SelectPlan ins out builder -> do
+      let sources = inStream <$> ins
+      roles_m <- mapM (findIdentifierRole sc) sources
+      case all (== (Just RoleView)) roles_m of
+        False -> do
+          Log.warning $ "Can not perform non-pushing SELECT on streams."
+          throwIO $ HE.InvalidSqlStatement "Can not perform non-pushing SELECT on streams."
+        True  -> do
+          out_m <- newMVar emptyDataChangeBatch
+          runImmTask sc (ins `zip` (L.map fromJust roles_m)) out out_m builder
+          dcb@DataChangeBatch{..} <- readMVar out_m
+          case dcbChanges of
+            [] -> sendResp mempty
+            _  -> do
+              sendResp $ V.map (flowObjectToJsonObject . dcRow) (V.fromList dcbChanges)
     CreateBySelectPlan stream ins out builder factor -> do
       let sources = inStream <$> ins
           sink    = stream
@@ -197,6 +213,8 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
   where
     discard rpcName = throwIO $ HE.DiscardedMethod $
       "Discarded method called: should call rpc `" <> rpcName <> "` instead"
+    sendResp results = pure $ API.CommandQueryResponse $
+      V.map (structToStruct "SELECTVIEW" . jsonObjectToStruct) results
     mkVectorStruct a label =
       let object = HM.fromList [(label, PB.toAesonValue a)]
        in V.singleton (jsonObjectToStruct object)
@@ -211,20 +229,28 @@ executePushQuery ctx@ServerContext{..} API.CommandPushQuery{..} meta streamSend 
     Log.debug $ "Receive Push Query Request: " <> Log.buildText commandPushQueryQueryText
     plan <- streamCodegen commandPushQueryQueryText
     case plan of
-      SelectPlan _ inNodesWithStreams outNodeWithStream _ _ -> do
-        let sources = snd <$> inNodesWithStreams
-            sink    = snd outNodeWithStream
-        exists <- mapM (S.doesStreamExist scLDClient . transToStreamName) sources
-        case and exists of
+      SelectPlan ins out builder -> do
+        let sources = inStream <$> ins
+        sink <- newRandomText 20
+
+        roles_m <- mapM (findIdentifierRole ctx) sources
+        case all isJust roles_m of
           False -> do
             Log.warning $ "At least one of the streams do not exist: "
               <> Log.buildString (show sources)
             throwIO $ HE.StreamNotFound $ "At least one of the streams do not exist: " <> T.pack (show sources)
           True  -> do
             createStreamWithShard scLDClient (transToStreamName sink) "query" scDefaultStreamRepFactor
-            let query = P.StreamQuery sources sink
+            let queryType = P.StreamQuery sources sink
             -- run task
-            (qid,_) <- handleCreateAsSelect ctx plan commandPushQueryQueryText query
+            (qid,_) <- handleCreateAsSelect
+                       ctx
+                       sink
+                       (ins `zip` (L.map fromJust roles_m))
+                       (out, RoleStream)
+                       builder
+                       commandPushQueryQueryText
+                       queryType
             tid <- readMVar runningQueries >>= \hm -> return $ (HM.!) hm qid
 
             -- sub from sink stream and push to client

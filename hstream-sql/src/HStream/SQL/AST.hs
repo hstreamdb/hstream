@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TypeFamilies      #-}
 
 module HStream.SQL.AST where
@@ -13,6 +14,7 @@ import qualified Data.ByteString       as BS
 import qualified Data.ByteString.Char8 as BSC
 import           Data.Hashable
 import qualified Data.HashMap.Strict   as HM
+import           Data.Int              (Int64)
 import           Data.Kind             (Type)
 import qualified Data.List             as L
 import qualified Data.Map.Strict       as Map
@@ -269,6 +271,14 @@ instance Ord Time.CalendarDiffTime where
       EQ -> Time.ctTime d1 `compare` Time.ctTime d2
 instance Hashable Time.CalendarDiffTime where
   hashWithSalt salt d = hashWithSalt salt (show d)
+
+
+-- helper
+calendarDiffTimeToMs :: Time.CalendarDiffTime -> Int64
+calendarDiffTimeToMs Time.CalendarDiffTime{..} =
+  let t1 = ctMonths * 30 * 86400 * 1000
+      t2 = floor . (1e3 *) . Time.nominalDiffTimeToSeconds $ ctTime
+   in fromIntegral (t1 + t2)
 
 --------------------------------------------------------------------------------
 data Constant = ConstantNull
@@ -829,6 +839,7 @@ instance Refine Resume where
 
 ---- SQL
 data RSQL = RQSelect      RSelect
+          | RQPushSelect  RSelect
           | RQCreate      RCreate
           | RQInsert      RInsert
           | RQShow        RShow
@@ -841,6 +852,7 @@ data RSQL = RQSelect      RSelect
 type instance RefinedType SQL = RSQL
 instance Refine SQL where
   refine (QSelect     _ select)  =  RQSelect      (refine   select)
+  refine (QPushSelect _ select)  =  RQPushSelect  (refine   select)
   refine (QCreate     _ create)  =  RQCreate      (refine   create)
   refine (QInsert     _ insert)  =  RQInsert      (refine   insert)
   refine (QShow       _ show_)   =  RQShow        (refine    show_)
