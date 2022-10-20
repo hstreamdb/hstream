@@ -7,6 +7,7 @@ import           HsGrpc.Server
 import qualified HStream.Server.Handler.Admin        as H
 import qualified HStream.Server.Handler.Cluster      as H
 import qualified HStream.Server.Handler.Connector    as H
+import qualified HStream.Server.Handler.Query        as H
 import qualified HStream.Server.Handler.Stats        as H
 import qualified HStream.Server.Handler.StoreAdmin   as H
 import qualified HStream.Server.Handler.Stream       as H
@@ -62,8 +63,15 @@ handlers sc =
   , unary (GRPC :: GRPC P.HStreamApi "getView") (H.handleGetView sc)
   , unary (GRPC :: GRPC P.HStreamApi "listViews") (H.handleListView sc)
   , unary (GRPC :: GRPC P.HStreamApi "deleteView") (H.handleDeleteView sc)
-    -- TODO: Query
-
+    -- Query
+    -- TODO: ExecutePushQuery
+  , unary (GRPC :: GRPC P.HStreamApi "terminateQueries") (H.handleTerminateQueries sc)
+  , unary (GRPC :: GRPC P.HStreamApi "executeQuery") (H.handleExecuteQuery sc)
+  , unary (GRPC :: GRPC P.HStreamApi "getQuery") (H.handleGetQuery sc)
+  , unary (GRPC :: GRPC P.HStreamApi "createQuery") (H.handleCreateQuery sc)
+  , unary (GRPC :: GRPC P.HStreamApi "listQueries") (H.handleListQueries sc)
+  , unary (GRPC :: GRPC P.HStreamApi "deleteQuery") (H.handleDeleteQuery sc)
+  , unary (GRPC :: GRPC P.HStreamApi "restartQuery") (H.handleRestartQuery sc)
     -- XXX: StoreAdmin
   , unary (GRPC :: GRPC P.HStreamApi "getNode") (H.handleGetStoreNode sc)
   , unary (GRPC :: GRPC P.HStreamApi "listNodes") (H.handleListStoreNodes sc)

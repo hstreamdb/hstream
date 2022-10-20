@@ -20,11 +20,18 @@ module HStream.Server.Handler.Query
   , createQueryHandler
     -- * For hs-grpc-server
   , handleExecuteQuery
+  -- TODO: handleExecutePushQuery
+  , handleCreateQuery
+  , handleListQueries
+  , handleGetQuery
+  , handleTerminateQueries
+  , handleDeleteQuery
+  , handleRestartQuery
   ) where
+
 
 import           Control.Exception                (Handler (..), catches)
 import qualified Data.ByteString.Char8            as BS
-import           Data.String                      (IsString (fromString))
 import qualified Data.Vector                      as V
 import qualified HsGrpc.Server                    as G
 import qualified HsGrpc.Server.Types              as G
@@ -33,8 +40,7 @@ import           Network.GRPC.HighLevel.Generated
 import qualified HStream.Exception                as HE
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Query        as Core
-import           HStream.Server.Exception         (catchDefaultEx,
-                                                   defaultExHandlers,
+import           HStream.Server.Exception         (defaultExHandlers,
                                                    defaultHandlers,
                                                    defaultServerStreamExceptionHandle)
 import qualified HStream.Server.HStreamApi        as API
@@ -65,32 +71,53 @@ executePushQueryHandler ctx (ServerWriterRequest meta req streamSend) =
     Core.executePushQuery ctx req meta streamSend
     returnServerStreamingResp StatusOk ""
 
+-- TODO
+-- handleExecutePushQuery
+
 createQueryHandler
   :: ServerContext
   -> ServerRequest 'Normal API.CreateQueryRequest API.Query
   -> IO (ServerResponse 'Normal API.Query)
-createQueryHandler ctx (ServerNormalRequest _metadata req@API.CreateQueryRequest{..}) = do
+createQueryHandler ctx (ServerNormalRequest _metadata req@API.CreateQueryRequest{..}) =
+  queryExceptionHandle $ do
+    Log.debug $ "Receive Create Query Request with statement: " <> Log.buildText createQueryRequestSql
+    Core.createQuery ctx req >>= returnResp
+
+handleCreateQuery
+  :: ServerContext -> G.UnaryHandler API.CreateQueryRequest API.Query
+handleCreateQuery ctx _ req@API.CreateQueryRequest{..} = catchQueryEx $ do
   Log.debug $ "Receive Create Query Request with statement: " <> Log.buildText createQueryRequestSql
-  Core.createQuery ctx req >>= returnResp
+  Core.createQuery ctx req
 
 listQueriesHandler
   :: ServerContext
   -> ServerRequest 'Normal API.ListQueriesRequest API.ListQueriesResponse
   -> IO (ServerResponse 'Normal API.ListQueriesResponse)
-listQueriesHandler ctx (ServerNormalRequest _metadata _) = do
+listQueriesHandler ctx (ServerNormalRequest _metadata _) = queryExceptionHandle $ do
   Log.debug "Receive List Query Request"
   Core.listQueries ctx >>= returnResp . (API.ListQueriesResponse . V.fromList)
+
+handleListQueries
+  :: ServerContext -> G.UnaryHandler API.ListQueriesRequest API.ListQueriesResponse
+handleListQueries ctx _ _ = catchQueryEx $ do
+  Log.debug "Receive List Query Request"
+  API.ListQueriesResponse . V.fromList <$> Core.listQueries ctx
 
 getQueryHandler
   :: ServerContext
   -> ServerRequest 'Normal API.GetQueryRequest API.Query
   -> IO (ServerResponse 'Normal API.Query)
-getQueryHandler ctx (ServerNormalRequest _metadata req@API.GetQueryRequest{..}) = do
+getQueryHandler ctx (ServerNormalRequest _metadata req@API.GetQueryRequest{..}) =
+  queryExceptionHandle $ do
+    Log.debug $ "Receive Get Query Request. "
+             <> "Query ID: " <> Log.buildText getQueryRequestId
+    returnResp =<< Core.getQuery ctx req
+
+handleGetQuery :: ServerContext -> G.UnaryHandler API.GetQueryRequest API.Query
+handleGetQuery ctx _ req@API.GetQueryRequest{..} = catchQueryEx $ do
   Log.debug $ "Receive Get Query Request. "
-    <> "Query ID: " <> Log.buildText getQueryRequestId
-  Core.getQuery ctx req >>= \case
-    Just q -> returnResp q
-    _      -> returnErrResp StatusNotFound "Query does not exist"
+           <> "Query ID: " <> Log.buildText getQueryRequestId
+  Core.getQuery ctx req
 
 terminateQueriesHandler
   :: ServerContext
@@ -99,10 +126,14 @@ terminateQueriesHandler
 terminateQueriesHandler ctx (ServerNormalRequest _metadata req@API.TerminateQueriesRequest{..}) = queryExceptionHandle $ do
   Log.debug $ "Receive Terminate Query Request. "
     <> "Query ID: " <> Log.buildString (show terminateQueriesRequestQueryId)
-  Core.terminateQueries ctx req >>= \case
-    Left terminatedQids -> do
-      returnErrResp StatusAborted ("Only the following queries are terminated " <> fromString (show terminatedQids))
-    Right resp -> returnResp resp
+  returnResp =<< Core.terminateQueries ctx req
+
+handleTerminateQueries
+  :: ServerContext -> G.UnaryHandler API.TerminateQueriesRequest API.TerminateQueriesResponse
+handleTerminateQueries ctx _ req@API.TerminateQueriesRequest{..} = catchQueryEx $ do
+  Log.debug $ "Receive Terminate Query Request. "
+    <> "Query ID: " <> Log.buildString (show terminateQueriesRequestQueryId)
+  Core.terminateQueries ctx req
 
 deleteQueryHandler
   :: ServerContext
@@ -114,6 +145,13 @@ deleteQueryHandler ctx (ServerNormalRequest _metadata req@API.DeleteQueryRequest
       <> "Query ID: " <> Log.buildText deleteQueryRequestId
     Core.deleteQuery ctx req
     returnResp Empty
+
+handleDeleteQuery :: ServerContext -> G.UnaryHandler API.DeleteQueryRequest Empty
+handleDeleteQuery ctx _ req@API.DeleteQueryRequest{..} = catchQueryEx $ do
+  Log.debug $ "Receive Delete Query Request. "
+           <> "Query ID: " <> Log.buildText deleteQueryRequestId
+  Core.deleteQuery ctx req
+  pure Empty
 
 -- FIXME: Incorrect implementation!
 restartQueryHandler
@@ -129,6 +167,10 @@ restartQueryHandler _ (ServerNormalRequest _metadata _) = do
     --     P.withMaybeZHandle zkHandle $ P.setQueryStatus (P.queryId query) P.Running
     --     returnResp Empty
       -- Nothing    -> returnErrResp StatusInternal "Query does not exist"
+
+handleRestartQuery
+  :: ServerContext -> G.UnaryHandler API.RestartQueryRequest Empty
+handleRestartQuery _ _ _ = undefined
 
 --------------------------------------------------------------------------------
 -- Exception and Exception Handler
