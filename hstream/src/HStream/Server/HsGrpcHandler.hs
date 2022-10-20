@@ -8,6 +8,7 @@ import qualified HStream.Server.Handler.Admin        as H
 import qualified HStream.Server.Handler.Cluster      as H
 import qualified HStream.Server.Handler.Connector    as H
 import qualified HStream.Server.Handler.Stats        as H
+import qualified HStream.Server.Handler.StoreAdmin   as H
 import qualified HStream.Server.Handler.Stream       as H
 import qualified HStream.Server.Handler.Subscription as H
 import qualified HStream.Server.Handler.View         as H
@@ -61,9 +62,11 @@ handlers sc =
   , unary (GRPC :: GRPC P.HStreamApi "getView") (H.handleGetView sc)
   , unary (GRPC :: GRPC P.HStreamApi "listViews") (H.handleListView sc)
   , unary (GRPC :: GRPC P.HStreamApi "deleteView") (H.handleDeleteView sc)
-
     -- TODO: Query
-    -- TODO: StoreAdmin
+
+    -- XXX: StoreAdmin
+  , unary (GRPC :: GRPC P.HStreamApi "getNode") (H.handleGetStoreNode sc)
+  , unary (GRPC :: GRPC P.HStreamApi "listNodes") (H.handleListStoreNodes sc)
   ]
 
 handleEcho :: UnaryHandler A.EchoRequest A.EchoResponse
