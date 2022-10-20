@@ -17,7 +17,7 @@ jobs:
     outputs:
       ghc: ${{ steps.parser.outputs.ghc }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           submodules: "recursive"
 
@@ -26,7 +26,7 @@ jobs:
           pkgcabal="hstream/hstream.cabal"
           GHCS=$(cat ${pkgcabal} | grep tested-with | python3 -c 'import sys, re, json; print(re.findall(r"(\d+\.\d+\.\d+)", sys.stdin.read()))')
           echo "Set ghc versions: $GHCS..."
-          echo "::set-output name=ghc::$GHCS"
+          echo "ghc=$GHCS" >> $GITHUB_OUTPUT
 
       - name: run stylish-haskell
         run: |
@@ -56,7 +56,7 @@ jobs:
       matrix:
         ghc: ${{ fromJson(needs.pre-build.outputs.ghc) }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           submodules: "recursive"
 
@@ -176,7 +176,7 @@ jobs:
         run: docker load -i ~/data/new_hstream_image.tar
 
       - name: fetch integration tests source code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           repository: "hstreamdb/integration-tests"
           submodules: "recursive"
@@ -196,19 +196,19 @@ jobs:
           export HSTREAM_IMAGE_NAME=$NEW_HSTREAM_IMAGE
           ./gradlew test --info --fail-fast -Dtag='basicTest'
 
-      - name: tar tests reports
+      - name: collect tests reports
         if: ${{ success() }} || ${{ failure() }}
         run: |
-          mv integration-tests/.logs integration-tests/logs
-          mv integration-tests/app/build/reports integration-tests/reports
-          tar -cvf ~/data/reports.tar integration-tests/logs integration-tests/reports
+          rm -rf ci_artifact && mkdir ci_artifact
+          mv integration-tests/.logs ci_artifact/logs
+          mv integration-tests/app/build/reports ci_artifact/reports
 
       - name: upload tests-reports
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         if: ${{ success() }} || ${{ failure() }}
         with:
           name: integration-tests-reports
-          path: ~/data/reports.tar
+          path: ci_artifact
           retention-days: 7
 
   integration-tests-rqlite:
@@ -229,7 +229,7 @@ jobs:
         run: docker load -i ~/data/new_hstream_image.tar
 
       - name: fetch integration tests source code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           repository: "hstreamdb/integration-tests"
           submodules: "recursive"
@@ -250,19 +250,19 @@ jobs:
           export HSTREAM_META_STORE=RQLITE
           ./gradlew test --info --fail-fast -Dtag='basicTest'
 
-      - name: tar tests reports
+      - name: collect tests reports
         if: ${{ success() }} || ${{ failure() }}
         run: |
-          mv integration-tests/.logs integration-tests/logs
-          mv integration-tests/app/build/reports integration-tests/reports
-          tar -cvf ~/data/reports.tar integration-tests/logs integration-tests/reports
+          rm -rf ci_artifact && mkdir ci_artifact
+          mv integration-tests/.logs ci_artifact/logs
+          mv integration-tests/app/build/reports ci_artifact/reports
 
       - name: upload tests-reports
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         if: ${{ success() }} || ${{ failure() }}
         with:
           name: integration-tests-rqlite-reports
-          path: ~/data/reports.tar
+          path: ci_artifact
           retention-days: 7
 
   distributed-tests:
@@ -283,18 +283,19 @@ jobs:
         run: docker load -i ~/data/new_hstream_image.tar
 
       - name: fetch distributed tests source code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           repository: "hstreamdb/distributed-tests"
           submodules: "recursive"
           path: distributed-tests
 
-      - uses: actions/setup-java@v2
+      - uses: actions/setup-java@v3
         with:
           distribution: "adopt"
           java-version: 11
           cache: "gradle"
 
+      # https://github.com/gradle/wrapper-validation-action/issues/66
       - uses: gradle/wrapper-validation-action@v1
 
       - name: run distributed tests
@@ -303,19 +304,19 @@ jobs:
           export HSTREAM_IMAGE_NAME=$NEW_HSTREAM_IMAGE
           ./gradlew test --info --fail-fast
 
-      - name: tar tests reports
+      - name: collect tests reports
         if: ${{ success() }} || ${{ failure() }}
         run: |
-          mv distributed-tests/.logs distributed-tests/logs
-          mv distributed-tests/app/build/reports distributed-tests/reports
-          tar -cvf ~/data/reports.tar distributed-tests/logs distributed-tests/reports
+          rm -rf ci_artifact && mkdir ci_artifact
+          mv distributed-tests/.logs ci_artifact/logs
+          mv distributed-tests/app/build/reports ci_artifact/reports
 
       - name: upload tests-reports
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         if: ${{ success() }} || ${{ failure() }}
         with:
           name: distributed-tests-reports
-          path: ~/data/reports.tar
+          path: ci_artifact
           retention-days: 7
 
   hstream-io-tests:
@@ -336,13 +337,13 @@ jobs:
         run: docker load -i ~/data/new_hstream_image.tar
 
       - name: fetch hstream io tests source code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           repository: "hstreamdb/hstream-connectors"
           submodules: "recursive"
           path: hstream-connectors
 
-      - uses: actions/setup-java@v2
+      - uses: actions/setup-java@v3
         with:
           distribution: "adopt"
           java-version: 11
@@ -369,14 +370,22 @@ jobs:
           export HSTREAM_IMAGE_NAME=$NEW_HSTREAM_IMAGE
           ./gradlew test --info --fail-fast
 
-      - uses: actions/upload-artifact@v2
+      - name: collect tests reports
+        if: ${{ success() }} || ${{ failure() }}
+        run: |
+          rm -rf ci_artifact && mkdir ci_artifact
+          mv hstream-connectors/integration_tests/.logs ci_artifact/logs
+          mv hstream-connectors/integration_tests/app/build/reports ci_artifact/reports
+          export U=$(id -u); export G=$(id -g); sudo chown -R $U:$G /tmp/io
+          mv /tmp/io/tasks ci_artifact/tasks
+
+      - name: upload tests-reports
+        uses: actions/upload-artifact@v3
         if: ${{ success() }} || ${{ failure() }}
         with:
           name: hstream-io-logs
-          path: |
-            hstream-connectors/integration_tests/.logs
-            /tmp/io/tasks
-            hstream-connectors/integration_tests/app/build/reports
+          path: ci_artifact
+          retention-days: 7
 
   deploy-k8s:
     # disabled due to a lack of hardware resources of the github action
@@ -409,7 +418,7 @@ jobs:
           echo -n "verifying images:"
           docker images
 
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Deploy to minikube by helm
         run: |
           cd deploy/chart/hstream
@@ -446,7 +455,7 @@ jobs:
           kubectl exec -it my-hstream-0 -- hadmin server status
 
       - name: Fetch bench source code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           repository: "hstreamdb/bench"
           submodules: "recursive"
