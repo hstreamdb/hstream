@@ -77,8 +77,7 @@ data PersistentConnector = PersistentConnector
   } deriving (Generic, Show, FromJSON, ToJSON)
 
 data QueryType
-  = PlainQuery  RelatedStreams
-  | StreamQuery RelatedStreams Text            -- ^ related streams and the stream it creates
+  = StreamQuery RelatedStreams Text            -- ^ related streams and the stream it creates
   | ViewQuery   RelatedStreams Text ViewSchema -- ^ related streams and the view it creates
   deriving (Show, Eq, Generic, FromJSON, ToJSON)
 
@@ -148,14 +147,12 @@ isStreamQuery PersistentQuery{..} =
 getRelatedStreams :: PersistentQuery -> RelatedStreams
 getRelatedStreams PersistentQuery{..} =
   case queryType of
-    (PlainQuery ss)    -> ss
     (StreamQuery ss _) -> ss
     (ViewQuery ss _ _) -> ss
 
 getQuerySink :: PersistentQuery -> Text
 getQuerySink PersistentQuery{..} =
   case queryType of
-    PlainQuery{}      -> ""
     (StreamQuery _ s) -> s
     (ViewQuery _ s _) -> s
 
