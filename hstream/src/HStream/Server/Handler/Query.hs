@@ -17,6 +17,7 @@ module HStream.Server.Handler.Query
   , listQueriesHandler
   , deleteQueryHandler
   , restartQueryHandler
+  , createQueryHandler
     -- * For hs-grpc-server
   , handleExecuteQuery
   ) where
@@ -63,6 +64,14 @@ executePushQueryHandler ctx (ServerWriterRequest meta req streamSend) =
   defaultServerStreamExceptionHandle $ do
     Core.executePushQuery ctx req meta streamSend
     returnServerStreamingResp StatusOk ""
+
+createQueryHandler
+  :: ServerContext
+  -> ServerRequest 'Normal API.CreateQueryRequest API.Query
+  -> IO (ServerResponse 'Normal API.Query)
+createQueryHandler ctx (ServerNormalRequest _metadata req@API.CreateQueryRequest{..}) = do
+  Log.debug $ "Receive Create Query Request with statement: " <> Log.buildText createQueryRequestSql
+  Core.createQuery ctx req >>= returnResp
 
 listQueriesHandler
   :: ServerContext

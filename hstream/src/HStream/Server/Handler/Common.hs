@@ -9,7 +9,7 @@ module HStream.Server.Handler.Common where
 import           Control.Concurrent
 import           Control.Exception                (Handler (Handler),
                                                    SomeException (..), catches,
-                                                   onException)
+                                                   onException, throw)
 import           Control.Exception.Base           (AsyncException (..))
 import           Control.Monad
 import qualified Data.Aeson                       as Aeson
@@ -42,6 +42,7 @@ import qualified DiffFlow.Graph                   as DiffFlow
 import qualified DiffFlow.Shard                   as DiffFlow
 import qualified DiffFlow.Types                   as DiffFlow
 import qualified DiffFlow.Weird                   as DiffFlow
+import qualified HStream.Exception                as HE
 
 runTaskWrapper :: ServerContext
                -> Text
@@ -224,7 +225,7 @@ handleCreateAsSelect ctx@ServerContext{..} plan commandQueryStmtText queryType =
           (tName,inNodesWithStreams,outNodeWithStream,win,builder, Nothing)
         CreateViewPlan tName _ inNodesWithStreams outNodeWithStream win builder accumulation ->
           (tName,inNodesWithStreams,outNodeWithStream,win,builder, Just accumulation)
-        _ -> undefined
+        _ -> throw $ HE.WrongExecutionPlan "Only support select sql in the method called"
     action qid = do
       Log.debug . Log.buildString
         $ "CREATE AS SELECT: query " <> show qid

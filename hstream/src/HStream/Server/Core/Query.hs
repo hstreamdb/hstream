@@ -6,6 +6,7 @@ module HStream.Server.Core.Query
   , executePushQuery
   , terminateQueries
 
+  , createQuery
   , listQueries
   , getQuery
   , deleteQuery
@@ -15,7 +16,7 @@ module HStream.Server.Core.Query
 
 import           Control.Concurrent
 import           Control.Concurrent.Async         (async, cancel, wait)
-import           Control.Exception                (Handler (..), handle,
+import           Control.Exception                (Handler (..), handle, throw,
                                                    throwIO)
 import           Control.Monad
 import qualified Data.Aeson                       as Aeson
@@ -263,6 +264,31 @@ sendToClient zkHandle qid streamName SourceConnectorWithoutCkp{..} streamSend = 
             Log.warning $ "Send Stream Error: " <> Log.buildString (show err)
             throwIO $ HE.PushQuerySendError (show err)
           Right _ -> streamSendMany xs'
+
+createQuery ::
+  ServerContext -> CreateQueryRequest -> IO Query
+createQuery
+  sc@ServerContext {..} CreateQueryRequest {..} = do
+    plan <- streamCodegen createQueryRequestSql
+    let (inNodesWithStreams, outNodeWithStream) = case plan of
+          CreateBySelectPlan _ ins out _ _ _ -> (ins, out)
+          SelectPlan         _ ins out _ _   -> (ins, out)
+          _ -> throw $ HE.WrongExecutionPlan "Create query only support select / create stream as select statements"
+    let sources = snd <$> inNodesWithStreams
+    exists <- mapM (S.doesStreamExist scLDClient . transToStreamName) sources
+    unless (and exists) $ do
+      Log.warning $ "At least one of the streams do not exist: "
+                 <> Log.buildString (show sources)
+      throwIO $ HE.StreamNotFound $ "At least one of the streams do not exist: "
+                                <> T.pack (show sources)
+    let sink    = snd outNodeWithStream
+        query   = P.StreamQuery sources sink
+    createStreamWithShard scLDClient (transToStreamName sink) "query" scDefaultStreamRepFactor
+    -- run task
+    (qid, _) <- handleCreateAsSelect sc plan createQueryRequestSql query
+    getMeta @P.PersistentQuery qid zkHandle >>= \case
+      Just pQuery -> return $ hstreamQueryToQuery pQuery
+      Nothing     -> throwIO $ HE.UnexpectedError "Failed to create query for some unknown reason"
 
 listQueries :: ServerContext -> IO [Query]
 listQueries ServerContext{..} = do
