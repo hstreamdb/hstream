@@ -16,26 +16,22 @@ module HStream.Server.Core.Query
 
 import           Control.Concurrent
 import           Control.Concurrent.Async         (async, cancel, wait)
-import           Control.Exception                (Handler (..), handle, throw,
-                                                   throwIO)
+import           Control.Exception                (throw, throwIO)
 import           Control.Monad
 import qualified Data.Aeson                       as Aeson
-import qualified Data.ByteString.Char8            as BS
 import qualified Data.HashMap.Strict              as HM
 import           Data.IORef                       (atomicModifyIORef',
                                                    readIORef)
 import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (fromJust, isJust)
-import           Data.String                      (IsString (fromString))
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel           (StreamSend)
-import           Network.GRPC.HighLevel.Generated
+import           Network.GRPC.HighLevel.Generated (GRPCIOError)
 import           Network.GRPC.HighLevel.Server    (ServerCallMetadata)
 import qualified Proto3.Suite.JSONPB              as PB
 import qualified Z.Data.CBytes                    as CB
-import           ZooKeeper.Exception
 
 import           DiffFlow.Types                   (DataChange (..),
                                                    DataChangeBatch (..))
@@ -48,8 +44,6 @@ import           HStream.Server.ConnectorTypes    hiding (StreamName, Timestamp)
 import           HStream.Server.Core.Common
 import qualified HStream.Server.Core.Stream       as Core
 import qualified HStream.Server.Core.View         as Core
-import           HStream.Server.Exception         (defaultHandlers,
-                                                   defaultServerStreamExceptionHandle)
 import           HStream.Server.Handler.Common
 import qualified HStream.Server.HStore            as HStore
 import           HStream.Server.HStreamApi
@@ -61,8 +55,6 @@ import           HStream.Server.Types
 import           HStream.SQL.AST
 import           HStream.SQL.Codegen              hiding (StreamName)
 import qualified HStream.SQL.Codegen              as HSC
-import           HStream.SQL.Exception            (SomeSQLException,
-                                                   formatSomeSQLException)
 import qualified HStream.SQL.Internal.Codegen     as HSC
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      as PB
@@ -110,7 +102,7 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
       Core.createStream sc s
       pure $ API.CommandQueryResponse (mkVectorStruct s "created_stream")
     CreateConnectorPlan {} -> do
-      IO.createIOTaskFromSql scIOWorker commandQueryStmtText
+      void $ IO.createIOTaskFromSql scIOWorker commandQueryStmtText
       pure $ CommandQueryResponse V.empty
     InsertPlan _ _ _ -> discard "Append"
     DropPlan checkIfExist dropObject ->
@@ -157,13 +149,11 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
                                 { terminateQueriesRequestQueryId = V.fromList qids
                                 , terminateQueriesRequestAll = False
                                 }
-      terminateQueries sc request >>= \case
-        Left terminatedQids -> throwIO $ HE.TerminateQueriesError ("Only the following queries are terminated " <> show terminatedQids)
-        Right TerminateQueriesResponse{..} -> do
-          let value  = PB.toAesonValue terminateQueriesResponseQueryId
-              object = HM.fromList [("terminated", value)]
-              result = V.singleton (jsonObjectToStruct object)
-          pure $ API.CommandQueryResponse result
+      TerminateQueriesResponse{..} <- terminateQueries sc request
+      let value  = PB.toAesonValue terminateQueriesResponseQueryId
+          object = HM.fromList [("terminated", value)]
+          result = V.singleton (jsonObjectToStruct object)
+      pure $ API.CommandQueryResponse result
     SelectViewPlan RSelectView {..} -> do
       hm <- readIORef P.groupbyStores
       case HM.lookup rSelectViewFrom hm of
@@ -295,16 +285,30 @@ listQueries ServerContext{..} = do
   queries <- M.listMeta zkHandle
   return $ map hstreamQueryToQuery queries
 
-getQuery :: ServerContext -> GetQueryRequest -> IO (Maybe Query)
-getQuery ServerContext{..} GetQueryRequest{..} = do
+getQuery :: ServerContext -> GetQueryRequest -> IO Query
+getQuery ctx req = do
+  m_query <- getQuery' ctx req
+  maybe (throwIO $ HE.QueryNotFound "Query does not exist") pure m_query
+
+getQuery' :: ServerContext -> GetQueryRequest -> IO (Maybe Query)
+getQuery' ServerContext{..} GetQueryRequest{..} = do
   queries <- M.listMeta zkHandle
   return $ hstreamQueryToQuery <$>
     L.find (\P.PersistentQuery{..} -> queryId == getQueryRequestId) queries
 
-terminateQueries :: ServerContext
-                 -> TerminateQueriesRequest
-                 -> IO (Either [T.Text] TerminateQueriesResponse)
-terminateQueries ctx@ServerContext{..} TerminateQueriesRequest{..} = do
+terminateQueries
+  :: ServerContext -> TerminateQueriesRequest -> IO TerminateQueriesResponse
+terminateQueries ctx req = terminateQueries' ctx req >>= \case
+  Left terminatedQids ->
+    let x = "Only the following queries are terminated " <> show terminatedQids
+     in throwIO $ HE.TerminateQueriesError x
+  Right r -> pure r
+
+terminateQueries'
+  :: ServerContext
+  -> TerminateQueriesRequest
+  -> IO (Either [T.Text] TerminateQueriesResponse)
+terminateQueries' ctx@ServerContext{..} TerminateQueriesRequest{..} = do
   qids <- if terminateQueriesRequestAll
           then HM.keys <$> readMVar runningQueries
           else return . V.toList $ terminateQueriesRequestQueryId

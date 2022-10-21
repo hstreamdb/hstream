@@ -197,10 +197,6 @@ handlePushQueryCanceled ServerCall{..} handle = do
       -> when b handle
     _ -> putStrLn "impossible happened"
 
-responseWithErrorMsgIfNothing :: Maybe a -> StatusCode -> StatusDetails -> IO (ServerResponse 'Normal a)
-responseWithErrorMsgIfNothing (Just resp) _ _ = return $ ServerNormalResponse (Just resp) mempty StatusOk ""
-responseWithErrorMsgIfNothing Nothing errCode msg = return $ ServerNormalResponse Nothing mempty errCode msg
-
 --------------------------------------------------------------------------------
 -- GRPC Handler Helper
 

@@ -51,6 +51,7 @@ module HStream.Exception
   , ConnectorNotFound (..)
   , ViewNotFound (..)
   , ShardNotFound (..)
+  , QueryNotFound (..)
   , RQLiteTableNotFound (..)
   , RQLiteRowNotFound (..)
 
@@ -289,6 +290,7 @@ MAKE_PARTICULAR_EX_1(NotFound, SubscriptionNotFound, Text, Text.unpack)
 MAKE_PARTICULAR_EX_1(NotFound, ConnectorNotFound, Text, Text.unpack)
 MAKE_PARTICULAR_EX_1(NotFound, ViewNotFound, Text, Text.unpack)
 MAKE_PARTICULAR_EX_1(NotFound, ShardNotFound, Text, Text.unpack)
+MAKE_PARTICULAR_EX_1(NotFound, QueryNotFound, String, )
 MAKE_PARTICULAR_EX_1(NotFound, RQLiteTableNotFound, String, )
 MAKE_PARTICULAR_EX_1(NotFound, RQLiteRowNotFound, String, )
 
