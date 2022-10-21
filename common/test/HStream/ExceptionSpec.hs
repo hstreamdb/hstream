@@ -19,7 +19,7 @@ spec = describe "ExceptionSpec" $ do
 noRecordHeaderEx :: Selector HE.NoRecordHeader
 noRecordHeaderEx = const True
 
-anyInvalidArgument :: Selector HE.InvalidArgument
+anyInvalidArgument :: Selector HE.SomeInvalidArgument
 anyInvalidArgument = const True
 
 anyHServerException :: Selector HE.SomeHServerException
