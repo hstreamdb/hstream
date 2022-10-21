@@ -10,34 +10,31 @@
 
 module HStream.SQL.Codegen where
 
-import           Data.Aeson                   (Object, Value (..))
-import qualified Data.Aeson                   as Aeson
+import           Data.Aeson                  (Object, Value (..))
+import qualified Data.Aeson                  as Aeson
 import           Data.Bifunctor
 import           Data.Function
 import           Data.Functor
-import qualified Data.HashMap.Strict          as HM
-import qualified Data.List                    as L
-import qualified Data.Map.Strict              as Map
+import qualified Data.HashMap.Strict         as HM
+import qualified Data.List                   as L
+import qualified Data.Map.Strict             as Map
 import           Data.Maybe
-import           Data.Scientific              (fromFloatDigits, scientific,
-                                               toRealFloat)
-import qualified Data.Text                    as T
-import           Data.Text.Encoding           (decodeUtf8)
-import           Data.Time                    (diffTimeToPicoseconds,
-                                               showGregorian)
-import qualified Proto3.Suite                 as PB
+import           Data.Scientific             (toRealFloat)
+import qualified Data.Text                   as T
+import qualified Proto3.Suite                as PB
 import           RIO
-import qualified RIO.ByteString.Lazy          as BL
-import qualified Z.Data.CBytes                as CB
+import qualified RIO.ByteString.Lazy         as BL
 
 import           HStream.SQL.AST
-import           HStream.SQL.Exception        (SomeSQLException (..),
-                                               throwSQLException)
-import           HStream.SQL.Internal.Codegen
-import           HStream.SQL.Parse            (parseAndRefine)
-import           HStream.Utils                (cBytesToText, genUnique,
-                                               jsonObjectToStruct)
-import qualified HStream.Utils.Aeson          as HsAeson
+import           HStream.SQL.Codegen.BinOp
+import           HStream.SQL.Codegen.JsonOp
+import           HStream.SQL.Codegen.SKey
+import           HStream.SQL.Codegen.UnaryOp
+import           HStream.SQL.Exception       (SomeSQLException (..),
+                                              throwSQLException)
+import           HStream.SQL.Parse           (parseAndRefine)
+import           HStream.Utils               (cBytesToText, jsonObjectToStruct)
+import qualified HStream.Utils.Aeson         as HsAeson
 
 import           DiffFlow.Graph
 import           DiffFlow.Types
@@ -575,7 +572,6 @@ genAggregateComponents agg exprName =
          }
        _ -> throwSQLException CodegenException Nothing ("Unsupported aggregate function: " <> show agg)
 
-
 elabRWhere :: RWhere
            -> RGroupBy
            -> GraphBuilder Row
@@ -661,105 +657,7 @@ elabRSel (RSel items) grp startBuilder subgraph startNode = do
   let (builder_2, node) = addNode builder_1 subgraph (ComposeSpec (outNode <$> outs) composer)
   return (builder_2, ins, Out node)
 
-
-
-
-
-
-
-
-
-
-
-{-
-
-fuseAggregateComponents :: [AggregateComponents] -> AggregateComponents
-fuseAggregateComponents components =
-  AggregateComponents
-  { aggregateInit = HM.unions (aggregateInit <$> components)
-  , aggregateF = \old recordValue -> L.foldr (\f acc -> f acc recordValue) old (aggregateF <$> components)
-  }
-
-----
-genFilterRFromHaving :: RHaving -> Object -> Bool
-genFilterRFromHaving RHavingEmpty   = const True
-genFilterRFromHaving (RHaving cond) = genFilterR (RWhere cond)
-
-genFilterNodeFromHaving :: RHaving -> Node -> NodeSpec
-genFilterNodeFromHaving hav prevNode = FilterSpec prevNode filter'
-  where filter' = Filter (genFilterRFromHaving hav)
-
-----
-genGraphBuilder :: HasCallStack
-                => Maybe StreamName
-                -> RSelect
-                -> IO (GraphBuilder, [(Node, StreamName)], (Node, StreamName), (Maybe RWindow))
-genGraphBuilder sinkStream' select@(RSelect sel frm whr grp hav) = do
-  let baseSubgraph = Subgraph 0
-  let (startBuilder,_) = addSubgraph emptyGraphBuilder baseSubgraph
-
-  (baseBuilder, inNodesWithStreams, thenNode) <- genSourceGraphBuilder frm startBuilder
-
-  let preMapNode = genPreMapNode sel thenNode
-      (builder_1, nodePreMap) = addNode baseBuilder baseSubgraph preMapNode
-
-  let filterNode = genFilterNode whr nodePreMap
-      (builder_2, nodeFilter) = addNode builder_1 baseSubgraph filterNode
-
-  (nextBuilder, nextNode) <- case grp of
-        RGroupByEmpty -> return (builder_2, nodeFilter)
-        _ -> do
-          let agg = genAggregateComponents sel
-          groupbyKeygen <- genGroupByKeygen grp
-          let (builder', nodeIndex) = addNode builder_2 baseSubgraph (IndexSpec nodeFilter)
-          return $ addNode builder' baseSubgraph (ReduceSpec nodeIndex (aggregateInit agg) groupbyKeygen (Reducer $ aggregateF agg))
-
-  let postMapNode = genPostMapNode sel nextNode
-      (builder_3, nodePostMap) = addNode nextBuilder baseSubgraph postMapNode
-
-  let window = case grp of
-        RGroupByEmpty    -> Nothing
-        RGroupBy _ _ win -> win
-
-  let havingNode = genFilterNodeFromHaving hav nodePostMap
-      (builder_4, nodeHav) = addNode builder_3 baseSubgraph havingNode
-
-  sink <- maybe genRandomSinkStream return sinkStream'
-  return (builder_4, inNodesWithStreams, (nodeHav,sink), window)
-
-genGraphBuilderWithOutput :: HasCallStack
-                          => Maybe StreamName
-                          -> RSelect
-                          -> IO (GraphBuilder, [(Node, StreamName)], (Node, StreamName), (Maybe RWindow))
-genGraphBuilderWithOutput sinkStream' select = do
-  let baseSubgraph = Subgraph 0
-  (builder_1, inNodesWithStreams, (lastNode,sink), window) <-
-    genGraphBuilder sinkStream' select
-  let (builder_2, nodeOutput) = addNode builder_1 baseSubgraph (OutputSpec lastNode)
-  return (builder_2, inNodesWithStreams, (nodeOutput,sink), window)
-
 --------------------------------------------------------------------------------
-
-mapAlias :: SelectViewSelect -> HM.HashMap T.Text Value -> HM.HashMap T.Text Value
-mapAlias SVSelectAll         res = res
-mapAlias (SVSelectFields []) _   = HM.empty
-mapAlias (SVSelectFields xs) res = HM.fromList
-  let ret = xs <&> \(proj1, proj2) ->
-        let key = T.pack proj2 & unQuote
-            val = HM.lookup (unQuote proj1) res
-        in  (key, val)
-  in  RIO.filter (isJust . snd) ret <&> second fromJust
-  where
-    unQuote name
-      | T.length name <  2   = name
-      | T.head   name /= '`' = name
-      | T.last   name /= '`' = name
-      | otherwise =
-          (snd . fromJust) (T.uncons name ) & \name' ->
-          (fst . fromJust) (T.unsnoc name')
-
---------------------------------------------------------------------------------
--}
 pattern ConnectorWritePlan :: T.Text -> HStreamPlan
 pattern ConnectorWritePlan name <- (getLookupConnectorName -> Just name)
 

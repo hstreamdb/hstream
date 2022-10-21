@@ -50,8 +50,12 @@ library
     HStream.SQL.AST
     HStream.SQL.Codegen
     HStream.SQL.Exception
-    HStream.SQL.Internal.Codegen
     HStream.SQL.Internal.Validate
+    HStream.SQL.Codegen.UnaryOp
+    HStream.SQL.Codegen.BinOp
+    HStream.SQL.Codegen.JsonOp
+    HStream.SQL.Codegen.SKey
+    HStream.SQL.Codegen.Utils
     HStream.SQL.Parse
 
   other-modules:

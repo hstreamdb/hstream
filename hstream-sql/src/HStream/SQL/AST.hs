@@ -68,7 +68,25 @@ data FlowValue
   | FlowArray [FlowValue]
   | FlowMap (Map.Map FlowValue FlowValue)
   | FlowSubObject FlowObject
-  deriving (Eq, Show, Ord, Generic, Hashable)
+  deriving (Eq, Ord, Generic, Hashable)
+
+instance Show FlowValue where
+  show value = case value of
+    FlowNull         -> "NULL"
+    FlowInt n        -> show n
+    FlowFloat n      -> show n
+    FlowNumeral n    -> show n
+    FlowBoolean b    -> show b
+    FlowByte bs      -> show bs
+    FlowText t       -> Text.unpack t
+    FlowDate day     -> show day
+    FlowTime time    -> show time
+    FlowTimestamp ts -> show ts
+    FlowInterval i   -> show i
+    FlowJson obj     -> show obj
+    FlowArray arr    -> show arr
+    FlowMap m        -> show m
+    FlowSubObject o  -> show o
 
 flowValueToJsonValue :: FlowValue -> Aeson.Value
 flowValueToJsonValue flowValue = case flowValue of
