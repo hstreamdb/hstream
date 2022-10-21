@@ -57,7 +57,6 @@ import           HStream.Server.Types
 import           HStream.SQL.AST
 import           HStream.SQL.Codegen              hiding (StreamName)
 import qualified HStream.SQL.Codegen              as HSC
-import qualified HStream.SQL.Internal.Codegen     as HSC
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils
@@ -114,7 +113,6 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
       roles_m <- mapM (findIdentifierRole sc) sources
       case all isJust roles_m of
         True -> do
-          --createStreamWithShard scLDClient (transToStreamName sink) "query" scDefaultStreamRepFactor
           let queryType = P.ViewQuery sources sink
           (qid,_) <- handleCreateAsSelect
                      sc
@@ -192,17 +190,6 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
           object = HM.fromList [("terminated", value)]
           result = V.singleton (jsonObjectToStruct object)
       pure $ API.CommandQueryResponse result
-    SelectViewPlan RSelectView {..} -> do
-      hm <- readIORef P.groupbyStores
-      case HM.lookup rSelectViewFrom hm of
-        Nothing -> throwIO $ HE.ViewNotFound "VIEW not found"
-        Just accumulation -> do
-          DataChangeBatch{..} <- readMVar accumulation
-          case dcbChanges of
-            [] -> sendResp mempty
-            _  -> do
-              sendResp $ V.map (dcRow . mapView rSelectViewSelect)
-                (V.fromList $ filterView rSelectViewWhere dcbChanges)
     ExplainPlan _ -> throwIO $ HE.ExecPlanUnimplemented "ExplainPlan Unimplemented"
     PausePlan (PauseObjectConnector name) -> do
       IO.stopIOTask scIOWorker name False False
@@ -229,7 +216,7 @@ executePushQuery ctx@ServerContext{..} API.CommandPushQuery{..} meta streamSend 
     Log.debug $ "Receive Push Query Request: " <> Log.buildText commandPushQueryQueryText
     plan <- streamCodegen commandPushQueryQueryText
     case plan of
-      SelectPlan ins out builder -> do
+      PushSelectPlan ins out builder -> do
         let sources = inStream <$> ins
         sink <- newRandomText 20
 
@@ -303,25 +290,17 @@ createQuery ::
 createQuery
   sc@ServerContext {..} CreateQueryRequest {..} = do
     plan <- streamCodegen createQueryRequestSql
-    let (inNodesWithStreams, outNodeWithStream) = case plan of
-          CreateBySelectPlan _ ins out _ _ _ -> (ins, out)
-          SelectPlan         _ ins out _ _   -> (ins, out)
-          _ -> throw $ HE.WrongExecutionPlan "Create query only support select / create stream as select statements"
-    let sources = snd <$> inNodesWithStreams
-    exists <- mapM (S.doesStreamExist scLDClient . transToStreamName) sources
-    unless (and exists) $ do
-      Log.warning $ "At least one of the streams do not exist: "
-                 <> Log.buildString (show sources)
-      throwIO $ HE.StreamNotFound $ "At least one of the streams do not exist: "
-                                <> T.pack (show sources)
-    let sink    = snd outNodeWithStream
-        query   = P.StreamQuery sources sink
-    createStreamWithShard scLDClient (transToStreamName sink) "query" scDefaultStreamRepFactor
-    -- run task
-    (qid, _) <- handleCreateAsSelect sc plan createQueryRequestSql query
-    getMeta @P.PersistentQuery qid metaHandle >>= \case
-      Just pQuery -> return $ hstreamQueryToQuery pQuery
-      Nothing     -> throwIO $ HE.UnexpectedError "Failed to create query for some unknown reason"
+    case plan of
+      CreateBySelectPlan{} -> do
+        CommandQueryResponse{..} <-
+          executeQuery sc CommandQuery{commandQueryStmtText = createQueryRequestSql}
+        let (PB.Struct kvmap) = V.head commandQueryResponseResultSet
+            [(_,qid_m)] = Map.toList kvmap
+            (Just (PB.Value (Just (PB.ValueKindStringValue qid)))) = qid_m
+        getMeta @P.PersistentQuery qid metaHandle >>= \case
+          Just pQuery -> return $ hstreamQueryToQuery pQuery
+          Nothing     -> throwIO $ HE.UnexpectedError "Failed to create query for some unknown reason"
+      _ -> throw $ HE.WrongExecutionPlan "Create query only support select / create stream as select statements"
 
 listQueries :: ServerContext -> IO [Query]
 listQueries ServerContext{..} = do
