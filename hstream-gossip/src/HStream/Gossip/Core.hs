@@ -47,6 +47,7 @@ import qualified HStream.Gossip.Types           as T
 import           HStream.Gossip.Utils           (broadcast, broadcastMessage,
                                                  cleanStateMessages,
                                                  eventNameINIT, eventNameINITED,
+                                                 getMemberListWithEpochSTM,
                                                  getMsgInc, incrementTVar,
                                                  mkGRPCClientConf,
                                                  updateLamportTime,
@@ -58,8 +59,8 @@ import           HStream.Utils                  (throwIOError)
 --------------------------------------------------------------------------------
 -- Add a new member to the server list
 
-addToServerList :: GossipContext -> I.ServerNode -> StateMessage -> ServerState -> IO ()
-addToServerList gc@GossipContext{..} node@I.ServerNode{..} msg state = unless (node == serverSelf) $ do
+addToServerList :: GossipContext -> I.ServerNode -> StateMessage -> ServerState -> Bool -> IO ()
+addToServerList gc@GossipContext{..} node@I.ServerNode{..} msg state isJoin = unless (node == serverSelf) $ do
   initMsg <- newTVarIO msg
   initState <- newTVarIO state
   let status = ServerStatus {
@@ -74,9 +75,13 @@ addToServerList gc@GossipContext{..} node@I.ServerNode{..} msg state = unless (n
     client <- GRPC.initGrpcClient $ mkGRPCClientConf node
     writeIORef grpcClientRef (Just client)
     joinWorkers client gc status
-  atomically $ do
-    modifyTVar' serverList $ bimap succ (Map.insert serverNodeId status)
+  (old, new) <- atomically $ do
+    old <- getMemberListWithEpochSTM gc
+    modifyTVar' serverList $ bimap (if isJoin then id else succ) (Map.insert serverNodeId status)
     modifyTVar' workers (Map.insert serverNodeId workersThread)
+    new <- getMemberListWithEpochSTM gc
+    return (old, new)
+  Log.info $ "Update server list from " <> Log.buildString' old <> " to " <> Log.buildString' new
 
 joinWorkers :: GRPC.Client -> GossipContext -> ServerStatus -> IO ()
 joinWorkers client gc@GossipContext{..} ss@ServerStatus{serverInfo = sNode@I.ServerNode{..}, ..} = do
@@ -133,7 +138,7 @@ handleStateMessage gc@GossipContext{..} msg@(T.GJoin node@I.ServerNode{..}) = un
   sMap <- snd <$> readTVarIO serverList
   case Map.lookup serverNodeId sMap of
     Nothing -> do
-      addToServerList gc node msg OK
+      addToServerList gc node msg OK False
       atomically $ do
         modifyTVar' deadServers $ Map.delete serverNodeId
         modifyTVar broadcastPool (broadcastMessage $ T.GState msg)
@@ -181,7 +186,7 @@ handleStateMessage gc@GossipContext{..} msg@(T.GAlive _inc node@I.ServerNode{..}
       Just ss -> atomically $ do
         updated <- updateStatus ss msg OK
         when updated $ modifyTVar broadcastPool (broadcastMessage $ T.GState msg)
-      Nothing -> addToServerList gc node msg OK
+      Nothing -> addToServerList gc node msg OK False
 handleStateMessage _ _ = throwIOError "illegal state message"
 
 runEventHandler :: GossipContext -> IO ()
@@ -246,4 +251,4 @@ broadCastUserEvent gc@GossipContext {..} userEventName userEventPayload= do
   handleEventMessage gc eventMessage
 
 initGossip :: GossipContext -> [I.ServerNode] -> IO ()
-initGossip gc = mapM_ (\x -> addToServerList gc x (T.GJoin x) OK)
+initGossip gc = mapM_ (\x -> addToServerList gc x (T.GJoin x) OK True)

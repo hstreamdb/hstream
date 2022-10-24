@@ -1,19 +1,23 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module HStream.Gossip.Utils where
 
-import           Control.Concurrent.STM           (STM, TQueue, TVar, readTVar,
-                                                   stateTVar, writeTQueue,
-                                                   writeTVar)
+import           Control.Concurrent.STM           (STM, TQueue, TVar,
+                                                   atomically, readTVar,
+                                                   readTVarIO, stateTVar,
+                                                   writeTQueue, writeTVar)
 import           Control.Exception                (Handler (..))
+import           Control.Exception.Base
 import           Control.Monad                    (unless)
 import           Data.ByteString                  (ByteString)
 import           Data.Foldable                    (foldl')
 import qualified Data.Map                         as Map
+import           Data.String                      (IsString (fromString))
 import           Data.Text                        (Text)
 import           Data.Word                        (Word32)
 import qualified HsGrpc.Server.Types              as HsGrpc
@@ -27,13 +31,16 @@ import           Network.GRPC.HighLevel.Generated (ClientConfig (..),
 import qualified Text.Layout.Table                as Table
 import           Text.Layout.Table                (def)
 
-
-import           Control.Exception.Base
-import           Data.String                      (IsString (fromString))
+import           Control.Concurrent
+import           Data.Functor
+import qualified Data.HashMap.Strict              as HM
+import           HStream.Common.Types             (fromInternalServerNode)
 import qualified HStream.Exception                as HE
-import           HStream.Gossip.Types             (BroadcastPool,
-                                                   EventMessage (..),
-                                                   Message (..), Messages,
+import           HStream.Gossip.Types             (BroadcastPool, EventHandler,
+                                                   EventMessage (..), EventName,
+                                                   GossipContext (..),
+                                                   InitType (..), Message (..),
+                                                   Messages, SeenEvents,
                                                    ServerState,
                                                    ServerStatus (..),
                                                    StateDelta,
@@ -41,7 +48,11 @@ import           HStream.Gossip.Types             (BroadcastPool,
                                                    TempCompare (TC), getMsgNode)
 import qualified HStream.Gossip.Types             as T
 import qualified HStream.Logger                   as Log
+import           HStream.Server.HStreamApi        (NodeState (..),
+                                                   ServerNode (..),
+                                                   ServerNodeStatus (..))
 import qualified HStream.Server.HStreamInternal   as I
+import           HStream.Utils                    (pattern EnumPB)
 
 returnResp :: Monad m => a -> m (ServerResponse 'Normal a)
 returnResp resp = return (ServerNormalResponse (Just resp) mempty StatusOk "")
@@ -207,11 +218,11 @@ instance Exception DuplicateNodeId
 exHandlers :: [Handler a]
 exHandlers =
   [ Handler $ \(err :: ClusterInitedErr) -> do
-      Log.fatal $ Log.buildString' err
+      Log.debug $ Log.buildString' err
       HsGrpc.throwGrpcError $ HsGrpc.GrpcStatus HsGrpc.StatusFailedPrecondition (Just $ unStatusDetails clusterInitedErr) Nothing
 
   , Handler $ \(err :: ClusterReadyErr) -> do
-      Log.fatal $ Log.buildString' err
+      Log.debug $ Log.buildString' err
       HsGrpc.throwGrpcError $ HsGrpc.GrpcStatus HsGrpc.StatusFailedPrecondition (Just $ unStatusDetails clusterReadyErr) Nothing
 
   , Handler $ \(err :: FailedToStart) -> do
@@ -239,11 +250,11 @@ exHandlers =
 exceptionHandlers :: [Handler (ServerResponse 'Normal a)]
 exceptionHandlers =
   [ Handler $ \(err :: ClusterInitedErr) -> do
-      Log.fatal $ Log.buildString' err
+      Log.debug $ Log.buildString' err
       returnErrResp StatusFailedPrecondition clusterInitedErr
 
   , Handler $ \(err :: ClusterReadyErr) -> do
-      Log.fatal $ Log.buildString' err
+      Log.debug $ Log.buildString' err
       returnErrResp StatusFailedPrecondition clusterReadyErr
 
   , Handler $ \(err :: FailedToStart) -> do
@@ -267,3 +278,62 @@ exceptionHandlers =
       let x = "UnKnown exception: " <> displayException err
       returnErrResp StatusUnknown (fromString x)
   ]
+
+--------------------------------------------------------------------------------
+
+initCluster :: GossipContext -> IO ()
+initCluster GossipContext{..} = tryPutMVar clusterInited User >>= \case
+  True  -> return ()
+  False -> Log.warning "The server has already received an init signal"
+
+broadcastEvent :: GossipContext -> EventMessage -> IO ()
+broadcastEvent GossipContext {..} = atomically . writeTQueue eventPool
+
+createEventHandlers :: [(EventName, EventHandler)] -> Map.Map EventName EventHandler
+createEventHandlers = Map.fromList
+
+getSeenEvents :: GossipContext -> IO SeenEvents
+getSeenEvents GossipContext {..} = readTVarIO seenEvents
+
+getMemberList :: GossipContext -> IO [I.ServerNode]
+getMemberList GossipContext {..} =
+  readTVarIO serverList <&> ((:) serverSelf . map serverInfo . Map.elems . snd)
+
+getMemberListSTM :: GossipContext -> STM [I.ServerNode]
+getMemberListSTM GossipContext {..} =
+  readTVar serverList <&> ((:) serverSelf . map serverInfo . Map.elems . snd)
+
+getMemberListWithEpochSTM :: GossipContext -> STM (Word32, [I.ServerNode])
+getMemberListWithEpochSTM GossipContext {..} =
+  readTVar serverList >>= \(epoch, sList) -> return (epoch, ((:) serverSelf . map serverInfo . Map.elems) sList)
+
+getEpoch :: GossipContext -> IO Word32
+getEpoch GossipContext {..} =
+  readTVarIO serverList <&> fst
+
+getEpochSTM :: GossipContext -> STM Word32
+getEpochSTM GossipContext {..} =
+  readTVar serverList <&> fst
+
+getFailedNodes :: GossipContext -> IO [I.ServerNode]
+getFailedNodes GossipContext {..} = readTVarIO deadServers <&> Map.elems
+
+getFailedNodesSTM :: GossipContext -> STM [I.ServerNode]
+getFailedNodesSTM GossipContext {..} = readTVar deadServers <&> Map.elems
+
+getClusterStatus :: GossipContext -> IO (HM.HashMap Word32 ServerNodeStatus)
+getClusterStatus gc@GossipContext {..} = do
+  alives <- readTVarIO serverList <&> (map serverInfo . Map.elems . snd)
+  deads <- getFailedNodes gc
+  isReady <- tryReadMVar clusterReady
+  let self = helper (case isReady of Just _  -> NodeStateRunning; Nothing -> NodeStateStarting)
+           . fromInternalServerNode
+           $ serverSelf
+  return $ HM.fromList $
+       self
+     : map (helper NodeStateRunning . fromInternalServerNode) alives
+    ++ map (helper NodeStateDead . fromInternalServerNode) deads
+  where
+    helper state node@ServerNode{..} =
+      (serverNodeId, ServerNodeStatus { serverNodeStatusNode  = Just node
+                                      , serverNodeStatusState = EnumPB state})

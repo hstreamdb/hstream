@@ -1,7 +1,6 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE LambdaCase          #-}
-{-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -143,11 +142,15 @@ sendJoinCore GossipContext{..} JoinReq {..} = do
   case joinReqNew of
     Nothing -> throwIO EmptyJoinRequest
     Just node@I.ServerNode{..} -> do
-      sMap' <- snd <$> readTVarIO serverList
+      (epoch, sMap') <- readTVarIO serverList
       case Map.lookup serverNodeId sMap' of
         Nothing | serverNodeId /= I.serverNodeId serverSelf -> do
           atomically $ writeTQueue statePool $ T.GJoin node
-          return . JoinResp . V.fromList $ serverSelf : (serverInfo <$> Map.elems sMap')
+          return JoinResp
+            { joinRespEpoch   = epoch
+            , joinRespMembers = V.fromList $ serverSelf : (serverInfo <$> Map.elems sMap')
+            }
+
         _  -> throwIO DuplicateNodeId
 
 sendGossipHandler :: GossipContext -> ServerRequest 'Normal Gossip Empty -> IO (ServerResponse 'Normal Empty)
