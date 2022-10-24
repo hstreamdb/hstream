@@ -3,8 +3,10 @@
 
 module HStream.Server.Core.Query
   ( executeQuery
+  , executePushQuery
   , terminateQueries
 
+  , createQuery
   , listQueries
   , getQuery
   , deleteQuery
@@ -14,24 +16,22 @@ module HStream.Server.Core.Query
 
 import           Control.Concurrent
 import           Control.Concurrent.Async         (async, cancel, wait)
-import           Control.Exception                (Handler (..), handle,
-                                                   throwIO)
+import           Control.Exception                (throw, throwIO)
 import           Control.Monad
 import qualified Data.Aeson                       as Aeson
-import qualified Data.ByteString.Char8            as BS
 import qualified Data.HashMap.Strict              as HM
 import           Data.IORef                       (atomicModifyIORef',
                                                    readIORef)
 import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (fromJust, isJust)
-import           Data.String                      (IsString (fromString))
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
-import           Network.GRPC.HighLevel.Generated
+import           Network.GRPC.HighLevel           (StreamSend)
+import           Network.GRPC.HighLevel.Generated (GRPCIOError)
+import           Network.GRPC.HighLevel.Server    (ServerCallMetadata)
 import qualified Proto3.Suite.JSONPB              as PB
 import qualified Z.Data.CBytes                    as CB
-import           ZooKeeper.Exception
 
 import           DiffFlow.Types                   (DataChange (..),
                                                    DataChangeBatch (..))
@@ -44,8 +44,6 @@ import           HStream.Server.ConnectorTypes    hiding (StreamName, Timestamp)
 import           HStream.Server.Core.Common
 import qualified HStream.Server.Core.Stream       as Core
 import qualified HStream.Server.Core.View         as Core
-import           HStream.Server.Exception         (defaultHandlers,
-                                                   defaultServerStreamExceptionHandle)
 import           HStream.Server.Handler.Common
 import qualified HStream.Server.HStore            as HStore
 import           HStream.Server.HStreamApi
@@ -57,8 +55,6 @@ import           HStream.Server.Types
 import           HStream.SQL.AST
 import           HStream.SQL.Codegen              hiding (StreamName)
 import qualified HStream.SQL.Codegen              as HSC
-import           HStream.SQL.Exception            (SomeSQLException,
-                                                   formatSomeSQLException)
 import qualified HStream.SQL.Internal.Codegen     as HSC
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      as PB
@@ -106,7 +102,7 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
       Core.createStream sc s
       pure $ API.CommandQueryResponse (mkVectorStruct s "created_stream")
     CreateConnectorPlan {} -> do
-      IO.createIOTaskFromSql scIOWorker commandQueryStmtText
+      void $ IO.createIOTaskFromSql scIOWorker commandQueryStmtText
       pure $ CommandQueryResponse V.empty
     InsertPlan _ _ _ -> discard "Append"
     DropPlan checkIfExist dropObject ->
@@ -153,13 +149,11 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
                                 { terminateQueriesRequestQueryId = V.fromList qids
                                 , terminateQueriesRequestAll = False
                                 }
-      terminateQueries sc request >>= \case
-        Left terminatedQids -> throwIO $ HE.TerminateQueriesError ("Only the following queries are terminated " <> show terminatedQids)
-        Right TerminateQueriesResponse{..} -> do
-          let value  = PB.toAesonValue terminateQueriesResponseQueryId
-              object = HM.fromList [("terminated", value)]
-              result = V.singleton (jsonObjectToStruct object)
-          pure $ API.CommandQueryResponse result
+      TerminateQueriesResponse{..} <- terminateQueries sc request
+      let value  = PB.toAesonValue terminateQueriesResponseQueryId
+          object = HM.fromList [("terminated", value)]
+          result = V.singleton (jsonObjectToStruct object)
+      pure $ API.CommandQueryResponse result
     SelectViewPlan RSelectView {..} -> do
       hm <- readIORef P.groupbyStores
       case HM.lookup rSelectViewFrom hm of
@@ -190,21 +184,131 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
       let object = HM.fromList [(label, PB.toAesonValue a)]
        in V.singleton (jsonObjectToStruct object)
 
+executePushQuery
+  :: ServerContext
+  -> API.CommandPushQuery
+  -> ServerCallMetadata
+  -> StreamSend Struct
+  -> IO ()
+executePushQuery ctx@ServerContext{..} API.CommandPushQuery{..} meta streamSend = do
+    Log.debug $ "Receive Push Query Request: " <> Log.buildText commandPushQueryQueryText
+    plan <- streamCodegen commandPushQueryQueryText
+    case plan of
+      SelectPlan _ inNodesWithStreams outNodeWithStream _ _ -> do
+        let sources = snd <$> inNodesWithStreams
+            sink    = snd outNodeWithStream
+        exists <- mapM (S.doesStreamExist scLDClient . transToStreamName) sources
+        case and exists of
+          False -> do
+            Log.warning $ "At least one of the streams do not exist: "
+              <> Log.buildString (show sources)
+            throwIO $ HE.StreamNotFound $ "At least one of the streams do not exist: " <> T.pack (show sources)
+          True  -> do
+            createStreamWithShard scLDClient (transToStreamName sink) "query" scDefaultStreamRepFactor
+            let query = P.StreamQuery sources sink
+            -- run task
+            (qid,_) <- handleCreateAsSelect ctx plan commandPushQueryQueryText query
+            tid <- readMVar runningQueries >>= \hm -> return $ (HM.!) hm qid
+
+            -- sub from sink stream and push to client
+            consumerName <- newRandomText 20
+            let sc = HStore.hstoreSourceConnectorWithoutCkp ctx consumerName
+            subscribeToStreamWithoutCkp sc sink API.SpecialOffsetLATEST
+
+            sending <- async (sendToClient zkHandle qid sink sc streamSend)
+
+            void . forkIO $ handlePushQueryCanceled meta $ do
+              killThread tid
+              cancel sending
+              P.setQueryStatus qid Terminated zkHandle
+              unSubscribeToStreamWithoutCkp sc sink
+
+            wait sending
+      _ -> do
+        Log.warning "Push Query: Inconsistent Method Called"
+        throwIO $ HE.InvalidSqlStatement "inconsistent method called"
+
+sendToClient
+  :: MetaHandle
+  -> T.Text
+  -> T.Text
+  -> SourceConnectorWithoutCkp
+  -> (Struct -> IO (Either GRPCIOError ()))
+  -> IO ()
+sendToClient zkHandle qid streamName SourceConnectorWithoutCkp{..} streamSend = do
+  P.getQueryStatus qid zkHandle >>= \case
+    Terminated -> throwIO $ HE.PushQueryTerminated ""
+    Created -> throwIO $ HE.PushQueryCreated ""
+    Running -> do
+      withReadRecordsWithoutCkp streamName $ \sourceRecords -> do
+        let (objects' :: [Maybe Aeson.Object]) = Aeson.decode' . srcValue <$> sourceRecords
+            structs = jsonObjectToStruct . fromJust <$> filter isJust objects'
+        void $ streamSendMany structs
+    _ -> throwIO $ HE.UnknownPushQueryStatus ""
+  where
+    streamSendMany = \case
+      []        -> pure ()
+      (x : xs') ->
+        streamSend (structToStruct "SELECT" x) >>= \case
+          Left err -> do
+            Log.warning $ "Send Stream Error: " <> Log.buildString (show err)
+            throwIO $ HE.PushQuerySendError (show err)
+          Right _ -> streamSendMany xs'
+
+createQuery ::
+  ServerContext -> CreateQueryRequest -> IO Query
+createQuery
+  sc@ServerContext {..} CreateQueryRequest {..} = do
+    plan <- streamCodegen createQueryRequestSql
+    let (inNodesWithStreams, outNodeWithStream) = case plan of
+          CreateBySelectPlan _ ins out _ _ _ -> (ins, out)
+          SelectPlan         _ ins out _ _   -> (ins, out)
+          _ -> throw $ HE.WrongExecutionPlan "Create query only support select / create stream as select statements"
+    let sources = snd <$> inNodesWithStreams
+    exists <- mapM (S.doesStreamExist scLDClient . transToStreamName) sources
+    unless (and exists) $ do
+      Log.warning $ "At least one of the streams do not exist: "
+                 <> Log.buildString (show sources)
+      throwIO $ HE.StreamNotFound $ "At least one of the streams do not exist: "
+                                <> T.pack (show sources)
+    let sink    = snd outNodeWithStream
+        query   = P.StreamQuery sources sink
+    createStreamWithShard scLDClient (transToStreamName sink) "query" scDefaultStreamRepFactor
+    -- run task
+    (qid, _) <- handleCreateAsSelect sc plan createQueryRequestSql query
+    getMeta @P.PersistentQuery qid zkHandle >>= \case
+      Just pQuery -> return $ hstreamQueryToQuery pQuery
+      Nothing     -> throwIO $ HE.UnexpectedError "Failed to create query for some unknown reason"
+
 listQueries :: ServerContext -> IO [Query]
 listQueries ServerContext{..} = do
   queries <- M.listMeta zkHandle
   return $ map hstreamQueryToQuery queries
 
-getQuery :: ServerContext -> GetQueryRequest -> IO (Maybe Query)
-getQuery ServerContext{..} GetQueryRequest{..} = do
+getQuery :: ServerContext -> GetQueryRequest -> IO Query
+getQuery ctx req = do
+  m_query <- getQuery' ctx req
+  maybe (throwIO $ HE.QueryNotFound "Query does not exist") pure m_query
+
+getQuery' :: ServerContext -> GetQueryRequest -> IO (Maybe Query)
+getQuery' ServerContext{..} GetQueryRequest{..} = do
   queries <- M.listMeta zkHandle
   return $ hstreamQueryToQuery <$>
     L.find (\P.PersistentQuery{..} -> queryId == getQueryRequestId) queries
 
-terminateQueries :: ServerContext
-                 -> TerminateQueriesRequest
-                 -> IO (Either [T.Text] TerminateQueriesResponse)
-terminateQueries ctx@ServerContext{..} TerminateQueriesRequest{..} = do
+terminateQueries
+  :: ServerContext -> TerminateQueriesRequest -> IO TerminateQueriesResponse
+terminateQueries ctx req = terminateQueries' ctx req >>= \case
+  Left terminatedQids ->
+    let x = "Only the following queries are terminated " <> show terminatedQids
+     in throwIO $ HE.TerminateQueriesError x
+  Right r -> pure r
+
+terminateQueries'
+  :: ServerContext
+  -> TerminateQueriesRequest
+  -> IO (Either [T.Text] TerminateQueriesResponse)
+terminateQueries' ctx@ServerContext{..} TerminateQueriesRequest{..} = do
   qids <- if terminateQueriesRequestAll
           then HM.keys <$> readMVar runningQueries
           else return . V.toList $ terminateQueriesRequestQueryId

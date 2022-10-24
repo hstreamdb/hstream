@@ -23,7 +23,8 @@ import qualified Data.Char                        as Char
 import qualified Data.HashMap.Strict              as HM
 import qualified Data.List                        as L
 import qualified Data.Map                         as M
-import           Data.Maybe                       (isNothing, maybeToList)
+import           Data.Maybe                       (isNothing, mapMaybe,
+                                                   maybeToList)
 import qualified Data.Text                        as T
 import qualified Data.Text.Encoding               as T
 import qualified Data.Text.IO                     as T
@@ -43,6 +44,7 @@ import           System.Exit                      (exitFailure)
 import           System.Posix                     (Handler (Catch),
                                                    installHandler,
                                                    keyboardSignal)
+import           System.Timeout                   (timeout)
 import           Text.RawString.QQ                (r)
 
 import qualified HStream.Admin.Server.Command     as Admin
@@ -97,12 +99,12 @@ import           HStream.Utils                    (Format, HStreamClientApi,
                                                    formatCommandQueryResponse,
                                                    formatResult, genUnique,
                                                    mkGRPCClientConfWithSSL,
+                                                   pattern EnumPB,
                                                    serverNodeToSocketAddr,
                                                    setupSigsegvHandler)
 import           Network.GRPC.HighLevel.Client    (ClientConfig,
                                                    ClientSSLConfig (..),
                                                    ClientSSLKeyCertPair (..))
-import           System.Timeout                   (timeout)
 
 main :: IO ()
 main = runCommand =<<
@@ -178,19 +180,29 @@ hstreamSQL RefinedCliConnOpts{..} HStreamSqlOpts{_updateInterval = updateInterva
 hstreamNodes :: RefinedCliConnOpts -> HStreamNodes -> IO ()
 hstreamNodes connOpts HStreamNodesList =
   getNodes connOpts >>= putStrLn . formatResult . L.sort . V.toList . API.describeClusterResponseServerNodes
-hstreamNodes connOpts (HStreamNodesStatus Nothing) =
-  getNodes connOpts >>= putStrLn . formatResult . V.toList . API.describeClusterResponseServerNodesStatus
-hstreamNodes connOpts (HStreamNodesStatus (Just sid)) =
-  getNodes connOpts
-  >>= putStrLn
-    . formatResult
-    . maybeToList . L.find (compareServerId sid)
-    . V.toList . API.describeClusterResponseServerNodesStatus
+hstreamNodes connOpts (HStreamNodesStatus mid) = do
+  nodes <- getNodes connOpts
+  let target = case mid of
+        Nothing  -> V.toList . API.describeClusterResponseServerNodesStatus $ nodes
+        Just sid -> maybeToList . L.find (compareServerId sid) . V.toList . API.describeClusterResponseServerNodesStatus $ nodes
+  when (null target) $ errorWithoutStackTrace "Node(s) not found in the cluster"
+  putStrLn . formatResult $ target
   where
     compareServerId x API.ServerNodeStatus{..} =
       case serverNodeStatusNode of
         Just API.ServerNode{..} -> serverNodeId == x
         Nothing                 -> False
+hstreamNodes connOpts (HStreamNodesCheck nMaybe) = do
+  nodes <- describeClusterResponseServerNodesStatus <$> getNodes connOpts
+  let n' = length nodes
+  case nMaybe of
+    Just n -> when (n' < fromIntegral n) $ errorWithoutStackTrace "No enough nodes in the cluster"
+    Nothing -> return ()
+  let nodesNotRunning = V.filter ((/= EnumPB API.NodeStateRunning) . API.serverNodeStatusState) nodes
+  if null nodesNotRunning
+    then putStrLn "All nodes in the cluster are running."
+    else errorWithoutStackTrace $ "Some Nodes are not running: "
+                                <> show (mapMaybe ((API.serverNodeId <$>) . API.serverNodeStatusNode) (V.toList nodesNotRunning))
 
 -- TODO: Init should have it's own rpc call
 hstreamInit :: RefinedCliConnOpts -> HStreamInitOpts -> IO ()
@@ -215,7 +227,6 @@ hstreamInit RefinedCliConnOpts{..} HStreamInitOpts{..} = do
             Just (Aeson.String "plain") -> pure $ fillWithJsonString' "content" obj
             _                           -> loop api
         _ -> loop api
-
 
 hstreamStream :: RefinedCliConnOpts -> StreamCommand -> IO ()
 hstreamStream RefinedCliConnOpts{..}  = \case

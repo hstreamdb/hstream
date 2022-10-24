@@ -12,18 +12,27 @@ module HStream.Exception
   , ExInfo (..)
   , displayExInfo
 
-    -- * Exception: Cancelled
+    -- * Exception: SomeCancelled
     --
     -- $cancelled
-  , Cancelled
+  , SomeCancelled
+  , Cancelled (..)
   , StreamReadError (..)
   , StreamReadClose (..)
   , StreamWriteError (..)
 
-    -- * Exception: InvalidArgument
+    -- * Exception: SomeUnknown
+    --
+    -- $unknown
+  , SomeUnknown
+  , Unknown (..)
+  , UnknownPushQueryStatus (..)
+
+    -- * Exception: SomeInvalidArgument
     --
     -- $invalidArgument
-  , InvalidArgument
+  , SomeInvalidArgument
+  , InvalidArgument (..)
   , InvalidReplicaFactor (..)
   , InvalidShardCount (..)
   , InvalidRecord (..)
@@ -35,59 +44,95 @@ module HStream.Exception
   , InvalidStatsInterval (..)
   , InvalidSqlStatement (..)
 
-    -- * Exception: NotFound
+    -- * Exception: SomeDeadlineExceeded
+    --
+    -- $deadlineExceeded
+  , SomeDeadlineExceeded
+  , DeadlineExceeded (..)
+
+    -- * Exception: SomeNotFound
     --
     -- $notFound
-  , NotFound
+  , SomeNotFound
+  , NotFound (..)
   , NodesNotFound (..)
   , StreamNotFound (..)
   , SubscriptionNotFound (..)
   , ConnectorNotFound (..)
   , ViewNotFound (..)
   , ShardNotFound (..)
+  , QueryNotFound (..)
   , RQLiteTableNotFound (..)
   , RQLiteRowNotFound (..)
 
-    -- * Exception: AlreadyExists
+    -- * Exception: SomeAlreadyExists
     --
     -- $alreadyExists
-  , AlreadyExists
+  , SomeAlreadyExists
+  , AlreadyExists (..)
   , StreamExists (..)
   , ShardReaderExists (..)
   , RQLiteTableAlreadyExists (..)
   , RQLiteRowAlreadyExists (..)
+  , PushQueryCreated (..)
 
-    -- * Exception: FailedPrecondition
+    -- * Exception: SomePermissionDenied
+    --
+    -- $permissionDenied
+  , SomePermissionDenied
+  , PermissionDenied (..)
+
+    -- * Exception: SomeResourceExhausted
+    --
+    -- $resourceExhausted
+  , SomeResourceExhausted
+  , ResourceExhausted (..)
+
+    -- * Exception: SomeFailedPrecondition
     --
     -- $failedPrecondition
-  , FailedPrecondition
+  , SomeFailedPrecondition
+  , FailedPrecondition (..)
   , FoundSubscription (..)
   , EmptyShardReader (..)
   , EmptyStream (..)
   , WrongServer (..)
+  , WrongExecutionPlan (..)
   , FoundActiveConsumers (..)
   , ShardCanNotSplit (..)
   , ShardCanNotMerge (..)
   , RQLiteRowBadVersion (..)
 
-    -- * Exception: Aborted
+    -- * Exception: SomeAborted
     --
     -- $aborted
-  , Aborted
+  , SomeAborted
+  , Aborted (..)
   , SubscriptionIsDeleting (..)
   , SubscriptionOnDifferentNode (..)
   , SubscriptionInvalidError (..)
   , ConsumerInvalidError (..)
   , TerminateQueriesError (..)
+  , PushQueryTerminated (..)
 
-    -- * Exception: Unavailable
-  , Unavailable
-  , ServerNotAvailable (..)
+    -- * Exception: SomeOutOfRange
+    --
+    -- $outOfRange
+  , SomeOutOfRange
+  , OutOfRange (..)
 
-    -- * Exception: Internal
+    -- * Exception: SomeUnimplemented
+    --
+    -- $unimplemented
+  , SomeUnimplemented
+  , Unimplemented (..)
+  , ExecPlanUnimplemented (..)
+
+    -- * Exception: SomeInternal
     --
     -- $internal
-  , Internal
+  , SomeInternal
+  , Internal (..)
   , UnexpectedError (..)
   , WrongOffset (..)
   , ZstdCompresstionErr (..)
@@ -95,18 +140,23 @@ module HStream.Exception
   , RQLiteDecodeErr (..)
   , RQLiteUnspecifiedErr (..)
   , DiscardedMethod (..)
+  , PushQuerySendError (..)
 
-    -- * Exception: Unauthenticated
+    -- * Exception: SomeUnavailable
+  , SomeUnavailable
+  , Unavailable (..)
+  , ServerNotAvailable (..)
+
+    -- * Exception: SomeDataLoss
+  , SomeDataLoss
+  , DataLoss (..)
+
+    -- * Exception: SomeUnauthenticated
     --
     -- $unauthenticated
-  , Unauthenticated
+  , SomeUnauthenticated
+  , Unauthenticated (..)
   , RQLiteNoAuth (..)
-
-    -- * Exception: Unimplemented
-    --
-    -- $unimplemented
-  , Unimplemented
-  , ExecPlanUnimplemented (..)
 
     -- * Handler
   , mkExceptionHandle
@@ -135,7 +185,7 @@ import qualified Data.ByteString.Char8         as BSC
 import           Data.Text                     (Text)
 import qualified Data.Text                     as Text
 import           Data.Typeable                 (cast)
-import           GHC.Stack                     (CallStack)
+import           GHC.Stack                     (CallStack, prettyCallStack)
 import qualified HsGrpc.Server.Types           as HsGrpc
 import           Network.GRPC.HighLevel.Client (StatusCode (..),
                                                 StatusDetails (..))
@@ -205,7 +255,11 @@ instance Exception Name where                                                  \
 data ExInfo a = ExInfo
   { exDescription :: a            -- ^ description for this error.
   , exCallStack   :: CallStack    -- ^ lightweight partial call-stack
-  } deriving (Show)
+  }
+
+instance Show a => Show (ExInfo a) where
+  show (ExInfo desc stack) = "{description: " <> show desc
+                          <> ", callstack: " <> prettyCallStack stack <> "}"
 
 displayExInfo :: (a -> String) -> ExInfo a -> String
 displayExInfo toString = toString . exDescription
@@ -216,40 +270,69 @@ displayExInfo toString = toString . exDescription
 MAKE_SUB_EX(SomeHStreamException, SomeHServerException)
 
 -------------------------------------------------------------------------------
--- Exception: Cancelled
+-- Exception: SomeCancelled
 
 -- $cancelled
 --
 -- The operation was cancelled, typically by the caller.
-MAKE_SUB_EX(SomeHServerException, Cancelled)
+MAKE_SUB_EX(SomeHServerException, SomeCancelled)
 
-MAKE_PARTICULAR_EX_1(Cancelled, StreamReadError, String, )
-MAKE_PARTICULAR_EX_1(Cancelled, StreamReadClose, String, )
-MAKE_PARTICULAR_EX_1(Cancelled, StreamWriteError, String, )
+MAKE_PARTICULAR_EX_1(SomeCancelled, Cancelled, (ExInfo String), exDescription)
+MAKE_PARTICULAR_EX_1(SomeCancelled, StreamReadError, String, )
+MAKE_PARTICULAR_EX_1(SomeCancelled, StreamReadClose, String, )
+MAKE_PARTICULAR_EX_1(SomeCancelled, StreamWriteError, String, )
 
 -------------------------------------------------------------------------------
--- Exception: InvalidArgument
+-- Exception: SomeUnknown
+
+-- $unknown
+--
+-- Unknown error. For example, this error may be returned when a Status value
+-- received from another address space belongs to an error space that is not
+-- known in this address space. Also errors raised by APIs that do not return
+-- enough error information may be converted to this error.
+MAKE_SUB_EX(SomeHServerException, SomeUnknown)
+
+MAKE_PARTICULAR_EX_1(SomeUnknown, Unknown, (ExInfo String), exDescription)
+MAKE_PARTICULAR_EX_1(SomeUnknown, UnknownPushQueryStatus, String, )
+
+-------------------------------------------------------------------------------
+-- Exception: SomeInvalidArgument
 
 -- $invalidArgument
 --
 -- The client specified an invalid argument. Note that 'InvalidArgument'
 -- indicates arguments that are problematic regardless of the state of the
 -- system.
-MAKE_SUB_EX(SomeHServerException, InvalidArgument)
+MAKE_SUB_EX(SomeHServerException, SomeInvalidArgument)
 
-MAKE_PARTICULAR_EX_1(InvalidArgument, InvalidReplicaFactor, String, )
-MAKE_PARTICULAR_EX_1(InvalidArgument, InvalidShardCount, String, )
-MAKE_PARTICULAR_EX_1(InvalidArgument, InvalidRecord, String, )
-MAKE_PARTICULAR_EX_1(InvalidArgument, InvalidShardOffset, String, )
-MAKE_PARTICULAR_EX_1(InvalidArgument, InvalidSubscriptionOffset, String, )
-MAKE_PARTICULAR_EX_1(InvalidArgument, DecodeHStreamRecordErr, String, )
-MAKE_PARTICULAR_EX_0(InvalidArgument, NoRecordHeader, "HStreamRecord doesn't have a header.")
-MAKE_PARTICULAR_EX_0(InvalidArgument, UnknownCompressionType, "UnknownCompressionType")
-MAKE_PARTICULAR_EX_1(InvalidArgument, InvalidStatsInterval, String, )
-MAKE_PARTICULAR_EX_1(InvalidArgument, InvalidSqlStatement, String, )
+MAKE_PARTICULAR_EX_1(SomeInvalidArgument, InvalidArgument, (ExInfo String), exDescription)
+MAKE_PARTICULAR_EX_1(SomeInvalidArgument, InvalidReplicaFactor, String, )
+MAKE_PARTICULAR_EX_1(SomeInvalidArgument, InvalidShardCount, String, )
+MAKE_PARTICULAR_EX_1(SomeInvalidArgument, InvalidRecord, String, )
+MAKE_PARTICULAR_EX_1(SomeInvalidArgument, InvalidShardOffset, String, )
+MAKE_PARTICULAR_EX_1(SomeInvalidArgument, InvalidSubscriptionOffset, String, )
+MAKE_PARTICULAR_EX_1(SomeInvalidArgument, DecodeHStreamRecordErr, String, )
+MAKE_PARTICULAR_EX_0(SomeInvalidArgument, NoRecordHeader, "HStreamRecord doesn't have a header.")
+MAKE_PARTICULAR_EX_0(SomeInvalidArgument, UnknownCompressionType, "UnknownCompressionType")
+MAKE_PARTICULAR_EX_1(SomeInvalidArgument, InvalidStatsInterval, String, )
+MAKE_PARTICULAR_EX_1(SomeInvalidArgument, InvalidSqlStatement, String, )
 
 -------------------------------------------------------------------------------
--- Exception: NotFound
+-- Exception: SomeDeadlineExceeded
+
+-- $deadlineExceeded
+--
+-- The deadline expired before the operation could complete. For operations
+-- that change the state of the system, this error may be returned even if the
+-- operation has completed successfully. For example, a successful response
+-- from a server could have been delayed long.
+MAKE_SUB_EX(SomeHServerException, SomeDeadlineExceeded)
+
+MAKE_PARTICULAR_EX_1(SomeDeadlineExceeded, DeadlineExceeded, (ExInfo String), exDescription)
+
+-------------------------------------------------------------------------------
+-- Exception: SomeNotFound
 
 -- $notFound
 --
@@ -258,32 +341,63 @@ MAKE_PARTICULAR_EX_1(InvalidArgument, InvalidSqlStatement, String, )
 -- users, such as gradual feature rollout or undocumented allowlist, NotFound
 -- may be used. If a request is denied for some users within a class of users,
 -- such as user-based access control, PermissionDenied must be used.
-MAKE_SUB_EX(SomeHServerException, NotFound)
+MAKE_SUB_EX(SomeHServerException, SomeNotFound)
 
-MAKE_PARTICULAR_EX_1(NotFound, NodesNotFound, Text, Text.unpack)
-MAKE_PARTICULAR_EX_1(NotFound, StreamNotFound, Text, Text.unpack)
-MAKE_PARTICULAR_EX_1(NotFound, SubscriptionNotFound, Text, Text.unpack)
-MAKE_PARTICULAR_EX_1(NotFound, ConnectorNotFound, Text, Text.unpack)
-MAKE_PARTICULAR_EX_1(NotFound, ViewNotFound, Text, Text.unpack)
-MAKE_PARTICULAR_EX_1(NotFound, ShardNotFound, Text, Text.unpack)
-MAKE_PARTICULAR_EX_1(NotFound, RQLiteTableNotFound, String, )
-MAKE_PARTICULAR_EX_1(NotFound, RQLiteRowNotFound, String, )
+MAKE_PARTICULAR_EX_1(SomeNotFound, NotFound, (ExInfo String), exDescription)
+MAKE_PARTICULAR_EX_1(SomeNotFound, NodesNotFound, Text, Text.unpack)
+MAKE_PARTICULAR_EX_1(SomeNotFound, StreamNotFound, Text, Text.unpack)
+MAKE_PARTICULAR_EX_1(SomeNotFound, SubscriptionNotFound, Text, Text.unpack)
+MAKE_PARTICULAR_EX_1(SomeNotFound, ConnectorNotFound, Text, Text.unpack)
+MAKE_PARTICULAR_EX_1(SomeNotFound, ViewNotFound, Text, Text.unpack)
+MAKE_PARTICULAR_EX_1(SomeNotFound, ShardNotFound, Text, Text.unpack)
+MAKE_PARTICULAR_EX_1(SomeNotFound, QueryNotFound, String, )
+MAKE_PARTICULAR_EX_1(SomeNotFound, RQLiteTableNotFound, String, )
+MAKE_PARTICULAR_EX_1(SomeNotFound, RQLiteRowNotFound, String, )
 
 -------------------------------------------------------------------------------
--- Exception: AlreadyExists
+-- Exception: SomeAlreadyExists
 
 -- $alreadyExists
 --
 -- The entity that a client attempted to create (e.g., stream) already exists.
-MAKE_SUB_EX(SomeHServerException, AlreadyExists)
+MAKE_SUB_EX(SomeHServerException, SomeAlreadyExists)
 
-MAKE_PARTICULAR_EX_1(AlreadyExists, StreamExists, Text, Text.unpack)
-MAKE_PARTICULAR_EX_1(AlreadyExists, ShardReaderExists, Text, Text.unpack)
-MAKE_PARTICULAR_EX_1(AlreadyExists, RQLiteTableAlreadyExists, String, )
-MAKE_PARTICULAR_EX_1(AlreadyExists, RQLiteRowAlreadyExists, String, )
+MAKE_PARTICULAR_EX_1(SomeAlreadyExists, AlreadyExists, (ExInfo String), exDescription)
+MAKE_PARTICULAR_EX_1(SomeAlreadyExists, StreamExists, Text, Text.unpack)
+MAKE_PARTICULAR_EX_1(SomeAlreadyExists, ShardReaderExists, Text, Text.unpack)
+MAKE_PARTICULAR_EX_1(SomeAlreadyExists, RQLiteTableAlreadyExists, String, )
+MAKE_PARTICULAR_EX_1(SomeAlreadyExists, RQLiteRowAlreadyExists, String, )
+MAKE_PARTICULAR_EX_1(SomeAlreadyExists, PushQueryCreated, String, )
 
 -------------------------------------------------------------------------------
--- Exception: FailedPrecondition
+-- Exception: SomePermissionDenied
+
+-- $permissionDenied
+--
+-- The caller does not have permission to execute the specified operation.
+-- PERMISSION_DENIED must not be used for rejections caused by exhausting some
+-- resource (use RESOURCE_EXHAUSTED instead for those errors).
+-- PERMISSION_DENIED must not be used if the caller can not be identified
+-- (use UNAUTHENTICATED instead for those errors). This error code does not
+-- imply the request is valid or the requested entity exists or satisfies other
+-- pre-conditions.
+MAKE_SUB_EX(SomeHServerException, SomePermissionDenied)
+
+MAKE_PARTICULAR_EX_1(SomePermissionDenied, PermissionDenied, (ExInfo String), exDescription)
+
+-------------------------------------------------------------------------------
+-- Exception: SomeResourceExhausted
+
+-- $resourceExhausted
+--
+-- Some resource has been exhausted, perhaps a per-user quota, or perhaps the
+-- entire file system is out of space.
+MAKE_SUB_EX(SomeHServerException, SomeResourceExhausted)
+
+MAKE_PARTICULAR_EX_1(SomeResourceExhausted, ResourceExhausted, (ExInfo String), exDescription)
+
+-------------------------------------------------------------------------------
+-- Exception: SomeFailedPrecondition
 
 -- $failedPrecondition
 --
@@ -302,52 +416,77 @@ MAKE_PARTICULAR_EX_1(AlreadyExists, RQLiteRowAlreadyExists, String, )
 --     state has been explicitly fixed. E.g., if an "rmdir" fails because the
 --     directory is non-empty, FailedPrecondition should be returned since the
 --     client should not retry unless the files are deleted from the directory.
-MAKE_SUB_EX(SomeHServerException, FailedPrecondition)
+MAKE_SUB_EX(SomeHServerException, SomeFailedPrecondition)
 
-MAKE_PARTICULAR_EX_1(FailedPrecondition, FoundSubscription, String, )
-MAKE_PARTICULAR_EX_1(FailedPrecondition, EmptyShardReader, String, )
-MAKE_PARTICULAR_EX_1(FailedPrecondition, EmptyStream, String, )
-MAKE_PARTICULAR_EX_1(FailedPrecondition, WrongServer, String, )
-MAKE_PARTICULAR_EX_1(FailedPrecondition, FoundActiveConsumers, String, )
-MAKE_PARTICULAR_EX_1(FailedPrecondition, ShardCanNotSplit, String, )
-MAKE_PARTICULAR_EX_1(FailedPrecondition, ShardCanNotMerge, String, )
-MAKE_PARTICULAR_EX_1(FailedPrecondition, RQLiteRowBadVersion, String, )
+MAKE_PARTICULAR_EX_1(SomeFailedPrecondition, FailedPrecondition, (ExInfo String), exDescription)
+MAKE_PARTICULAR_EX_1(SomeFailedPrecondition, FoundSubscription, String, )
+MAKE_PARTICULAR_EX_1(SomeFailedPrecondition, EmptyShardReader, String, )
+MAKE_PARTICULAR_EX_1(SomeFailedPrecondition, EmptyStream, String, )
+MAKE_PARTICULAR_EX_1(SomeFailedPrecondition, WrongServer, String, )
+MAKE_PARTICULAR_EX_1(SomeFailedPrecondition, WrongExecutionPlan, String, )
+MAKE_PARTICULAR_EX_1(SomeFailedPrecondition, FoundActiveConsumers, String, )
+MAKE_PARTICULAR_EX_1(SomeFailedPrecondition, ShardCanNotSplit, String, )
+MAKE_PARTICULAR_EX_1(SomeFailedPrecondition, ShardCanNotMerge, String, )
+MAKE_PARTICULAR_EX_1(SomeFailedPrecondition, RQLiteRowBadVersion, String, )
 
 -------------------------------------------------------------------------------
--- Exception: Aborted
+-- Exception: SomeAborted
 
 -- $aborted
 --
 -- The operation was aborted, typically due to a concurrency issue such as a
 -- sequencer check failure or transaction abort. See the guidelines above for
 -- deciding between 'FailedPrecondition', 'Aborted', and 'Unavailable'.
-MAKE_SUB_EX(SomeHServerException, Aborted)
+MAKE_SUB_EX(SomeHServerException, SomeAborted)
 
-MAKE_PARTICULAR_EX_1(Aborted, SubscriptionIsDeleting, String, )
-MAKE_PARTICULAR_EX_1(Aborted, SubscriptionOnDifferentNode, String, )
-MAKE_PARTICULAR_EX_1(Aborted, SubscriptionInvalidError, String, )
-MAKE_PARTICULAR_EX_1(Aborted, ConsumerInvalidError, String, )
-MAKE_PARTICULAR_EX_1(Aborted, TerminateQueriesError, String, )
+MAKE_PARTICULAR_EX_1(SomeAborted, Aborted, (ExInfo String), exDescription)
+MAKE_PARTICULAR_EX_1(SomeAborted, SubscriptionIsDeleting, String, )
+MAKE_PARTICULAR_EX_1(SomeAborted, SubscriptionOnDifferentNode, String, )
+MAKE_PARTICULAR_EX_1(SomeAborted, SubscriptionInvalidError, String, )
+MAKE_PARTICULAR_EX_1(SomeAborted, ConsumerInvalidError, String, )
+MAKE_PARTICULAR_EX_1(SomeAborted, TerminateQueriesError, String, )
+MAKE_PARTICULAR_EX_1(SomeAborted, PushQueryTerminated, String, )
 
 -------------------------------------------------------------------------------
--- Exception: Internal
+-- Exception: SomeOutOfRange
+
+-- $outOfRange
+--
+-- The operation was attempted past the valid range. E.g., seeking or reading
+-- past end-of-file. Unlike INVALID_ARGUMENT, this error indicates a problem
+-- that may be fixed if the system state changes. For example, a 32-bit file
+-- system will generate INVALID_ARGUMENT if asked to read at an offset that is
+-- not in the range [0,2^32-1], but it will generate OUT_OF_RANGE if asked to
+-- read from an offset past the current file size. There is a fair bit of
+-- overlap between FAILED_PRECONDITION and OUT_OF_RANGE. We recommend using
+-- OUT_OF_RANGE (the more specific error) when it applies so that callers who
+-- are iterating through a space can easily look for an OUT_OF_RANGE error to
+-- detect when they are done.
+MAKE_SUB_EX(SomeHServerException, SomeOutOfRange)
+
+MAKE_PARTICULAR_EX_1(SomeOutOfRange, OutOfRange, (ExInfo String), exDescription)
+
+-------------------------------------------------------------------------------
+-- Exception: SomeInternal
 
 -- $internal
 --
 -- Internal errors. This means that some invariants expected by the underlying
 -- system have been broken. This error code is reserved for serious errors.
-MAKE_SUB_EX(SomeHServerException, Internal)
+MAKE_SUB_EX(SomeHServerException, SomeInternal)
 
-MAKE_PARTICULAR_EX_1(Internal, UnexpectedError, String, )
-MAKE_PARTICULAR_EX_1(Internal, WrongOffset, String, )
-MAKE_PARTICULAR_EX_1(Internal, ZstdCompresstionErr, String, )
-MAKE_PARTICULAR_EX_1(Internal, RQLiteNetworkErr, String, )
-MAKE_PARTICULAR_EX_1(Internal, RQLiteDecodeErr, String, )
-MAKE_PARTICULAR_EX_1(Internal, RQLiteUnspecifiedErr, String, )
-MAKE_PARTICULAR_EX_1(Internal, DiscardedMethod, String, )
+MAKE_PARTICULAR_EX_1(SomeInternal, Internal, (ExInfo String), exDescription)
+MAKE_PARTICULAR_EX_1(SomeInternal, UnexpectedError, String, )
+MAKE_PARTICULAR_EX_1(SomeInternal, WrongOffset, String, )
+MAKE_PARTICULAR_EX_1(SomeInternal, ZstdCompresstionErr, String, )
+MAKE_PARTICULAR_EX_1(SomeInternal, RQLiteNetworkErr, String, )
+MAKE_PARTICULAR_EX_1(SomeInternal, RQLiteDecodeErr, String, )
+MAKE_PARTICULAR_EX_1(SomeInternal, RQLiteUnspecifiedErr, String, )
+MAKE_PARTICULAR_EX_1(SomeInternal, DiscardedMethod, String, )
+MAKE_PARTICULAR_EX_1(SomeInternal, PushQuerySendError, String, )
 
 -------------------------------------------------------------------------------
--- Exception: Unavailable
+-- Exception: SomeUnavailable
 
 -- $unavailable
 --
@@ -355,12 +494,23 @@ MAKE_PARTICULAR_EX_1(Internal, DiscardedMethod, String, )
 -- condition, which can be corrected by retrying with a backoff.
 --
 -- Note that it is not always safe to retry non-idempotent operations.
-MAKE_SUB_EX(SomeHServerException, Unavailable)
+MAKE_SUB_EX(SomeHServerException, SomeUnavailable)
 
-MAKE_PARTICULAR_EX_0(Unavailable, ServerNotAvailable, "ServerNotAvailable")
+MAKE_PARTICULAR_EX_1(SomeUnavailable, Unavailable, (ExInfo String), exDescription)
+MAKE_PARTICULAR_EX_0(SomeUnavailable, ServerNotAvailable, "ServerNotAvailable")
 
 -------------------------------------------------------------------------------
--- Exception: Unauthenticated
+-- Exception: SomeDataLoss
+
+-- $dataLoss
+--
+-- Unrecoverable data loss or corruption.
+MAKE_SUB_EX(SomeHServerException, SomeDataLoss)
+
+MAKE_PARTICULAR_EX_1(SomeDataLoss, DataLoss, (ExInfo String), exDescription)
+
+-------------------------------------------------------------------------------
+-- Exception: SomeUnauthenticated
 
 -- $unauthenticated
 --
@@ -369,19 +519,21 @@ MAKE_PARTICULAR_EX_0(Unavailable, ServerNotAvailable, "ServerNotAvailable")
 -- Incorrect Auth metadata (Credentials failed to get metadata, Incompatible
 -- credentials set on channel and call, Invalid host set in :authority metadata,
 -- etc.)
-MAKE_SUB_EX(SomeHServerException, Unauthenticated)
+MAKE_SUB_EX(SomeHServerException, SomeUnauthenticated)
 
-MAKE_PARTICULAR_EX_1(Unauthenticated, RQLiteNoAuth, String, )
+MAKE_PARTICULAR_EX_1(SomeUnauthenticated, Unauthenticated, (ExInfo String), exDescription)
+MAKE_PARTICULAR_EX_1(SomeUnauthenticated, RQLiteNoAuth, String, )
 
 -------------------------------------------------------------------------------
--- Exception: Unimplemented
+-- Exception: SomeUnimplemented
 
 -- $unimplemented
 --
 -- The operation is not implemented or is not supported/enabled in this service.
-MAKE_SUB_EX(SomeHServerException, Unimplemented)
+MAKE_SUB_EX(SomeHServerException, SomeUnimplemented)
 
-MAKE_PARTICULAR_EX_1(Unimplemented, ExecPlanUnimplemented, String, )
+MAKE_PARTICULAR_EX_1(SomeUnimplemented, Unimplemented, (ExInfo String), exDescription)
+MAKE_PARTICULAR_EX_1(SomeUnimplemented, ExecPlanUnimplemented, String, )
 
 -------------------------------------------------------------------------------
 -- Handlers
@@ -412,39 +564,67 @@ mkStatusDetails = StatusDetails . BSC.pack . displayException
 
 defaultHServerExHandlers :: [E.Handler (StatusCode, StatusDetails)]
 defaultHServerExHandlers =
-  [ E.Handler $ \(err :: InvalidArgument) -> do
+  [ E.Handler $ \(err :: SomeInvalidArgument) -> do
       Log.warning $ Log.buildString' err
       return (StatusInvalidArgument, mkStatusDetails err)
 
-  , E.Handler $ \(err :: NotFound) -> do
+  , E.Handler $ \(err :: SomeCancelled) -> do
+      Log.fatal $ Log.buildString' err
+      return (StatusCancelled, mkStatusDetails err)
+
+  , E.Handler $ \(err :: SomeUnknown) -> do
+      Log.fatal $ Log.buildString' err
+      return (StatusUnknown, mkStatusDetails err)
+
+  , E.Handler $ \(err :: SomeDeadlineExceeded) -> do
+      Log.fatal $ Log.buildString' err
+      return (StatusDeadlineExceeded, mkStatusDetails err)
+
+  , E.Handler $ \(err :: SomeNotFound) -> do
       Log.warning $ Log.buildString' err
       return (StatusNotFound, mkStatusDetails err)
 
-  , E.Handler $ \(err :: AlreadyExists) -> do
+  , E.Handler $ \(err :: SomeAlreadyExists) -> do
       Log.warning $ Log.buildString' err
       return (StatusAlreadyExists, mkStatusDetails err)
 
-  , E.Handler $ \(err :: FailedPrecondition) -> do
+  , E.Handler $ \(err :: SomePermissionDenied) -> do
+      Log.warning $ Log.buildString' err
+      return (StatusPermissionDenied, mkStatusDetails err)
+
+  , E.Handler $ \(err :: SomeResourceExhausted) -> do
+      Log.warning $ Log.buildString' err
+      return (StatusResourceExhausted, mkStatusDetails err)
+
+  , E.Handler $ \(err :: SomeFailedPrecondition) -> do
       Log.warning $ Log.buildString' err
       return (StatusFailedPrecondition, mkStatusDetails err)
 
-  , E.Handler $ \(err :: Aborted) -> do
+  , E.Handler $ \(err :: SomeAborted) -> do
       Log.warning $ Log.buildString' err
       return (StatusAborted, mkStatusDetails err)
 
-  , E.Handler $ \(err :: Unavailable) -> do
+  , E.Handler $ \(err :: SomeOutOfRange) -> do
+      Log.warning $ Log.buildString' err
+      return (StatusOutOfRange, mkStatusDetails err)
+
+  , E.Handler $ \(err :: SomeUnavailable) -> do
       Log.fatal $ Log.buildString' err
       return (StatusUnavailable, mkStatusDetails err)
 
-  , E.Handler $ \(err :: Internal) -> do
+  , E.Handler $ \(err :: SomeDataLoss) -> do
+      Log.fatal $ Log.buildString' err
+      return (StatusDataLoss, mkStatusDetails err)
+
+  , E.Handler $ \(err :: SomeInternal) -> do
       Log.fatal $ Log.buildString' err
       return (StatusInternal, mkStatusDetails err)
 
-  , E.Handler $ \(err :: Unauthenticated) -> do
+  , E.Handler $ \(err :: SomeUnauthenticated) -> do
       Log.warning $ Log.buildString' err
       return (StatusUnauthenticated, mkStatusDetails err)
 
-  , E.Handler $ \(err :: Unimplemented) -> do
+  , E.Handler $ \(err :: SomeUnimplemented) -> do
       Log.warning $ Log.buildString' err
       return (StatusUnimplemented, mkStatusDetails err)
   ]
@@ -486,39 +666,67 @@ mkStatusMsg = Just . BSC.pack . displayException
 
 hServerExHandlers :: [E.Handler a]
 hServerExHandlers =
-  [ E.Handler $ \(err :: InvalidArgument) -> do
+  [ E.Handler $ \(err :: SomeInvalidArgument) -> do
       Log.warning $ Log.buildString' err
       HsGrpc.throwGrpcError $ mkGrpcStatus err HsGrpc.StatusInvalidArgument
 
-  , E.Handler $ \(err :: Cancelled) -> do
+  , E.Handler $ \(err :: SomeCancelled) -> do
       Log.fatal $ Log.buildString' err
       HsGrpc.throwGrpcError $ mkGrpcStatus err HsGrpc.StatusCancelled
 
-  , E.Handler $ \(err :: NotFound) -> do
+  , E.Handler $ \(err :: SomeUnknown) -> do
+      Log.fatal $ Log.buildString' err
+      HsGrpc.throwGrpcError $ mkGrpcStatus err HsGrpc.StatusUnknown
+
+  , E.Handler $ \(err :: SomeDeadlineExceeded) -> do
+      Log.fatal $ Log.buildString' err
+      HsGrpc.throwGrpcError $ mkGrpcStatus err HsGrpc.StatusDeadlineExceeded
+
+  , E.Handler $ \(err :: SomeNotFound) -> do
       Log.warning $ Log.buildString' err
       HsGrpc.throwGrpcError $ mkGrpcStatus err HsGrpc.StatusNotFound
 
-  , E.Handler $ \(err :: AlreadyExists) -> do
+  , E.Handler $ \(err :: SomeAlreadyExists) -> do
       Log.warning $ Log.buildString' err
       HsGrpc.throwGrpcError $ mkGrpcStatus err HsGrpc.StatusAlreadyExists
 
-  , E.Handler $ \(err :: FailedPrecondition) -> do
+  , E.Handler $ \(err :: SomePermissionDenied) -> do
+      Log.warning $ Log.buildString' err
+      HsGrpc.throwGrpcError $ mkGrpcStatus err HsGrpc.StatusPermissionDenied
+
+  , E.Handler $ \(err :: SomeResourceExhausted) -> do
+      Log.warning $ Log.buildString' err
+      HsGrpc.throwGrpcError $ mkGrpcStatus err HsGrpc.StatusResourceExhausted
+
+  , E.Handler $ \(err :: SomeFailedPrecondition) -> do
       Log.fatal $ Log.buildString' err
       HsGrpc.throwGrpcError $ mkGrpcStatus err HsGrpc.StatusFailedPrecondition
 
-  , E.Handler $ \(err :: Aborted) -> do
+  , E.Handler $ \(err :: SomeAborted) -> do
       Log.warning $ Log.buildString' err
       HsGrpc.throwGrpcError $ mkGrpcStatus err HsGrpc.StatusAborted
 
-  , E.Handler $ \(err :: Unavailable) -> do
+  , E.Handler $ \(err :: SomeOutOfRange) -> do
+      Log.warning $ Log.buildString' err
+      HsGrpc.throwGrpcError $ mkGrpcStatus err HsGrpc.StatusOutOfRange
+
+  , E.Handler $ \(err :: SomeUnavailable) -> do
       Log.fatal $ Log.buildString' err
       HsGrpc.throwGrpcError $ mkGrpcStatus err HsGrpc.StatusUnavailable
 
-  , E.Handler $ \(err :: Internal) -> do
+  , E.Handler $ \(err :: SomeDataLoss) -> do
+      Log.fatal $ Log.buildString' err
+      HsGrpc.throwGrpcError $ mkGrpcStatus err HsGrpc.StatusDataLoss
+
+  , E.Handler $ \(err :: SomeInternal) -> do
       Log.fatal $ Log.buildString' err
       HsGrpc.throwGrpcError $ mkGrpcStatus err HsGrpc.StatusInternal
 
-  , E.Handler $ \(err :: Unimplemented) -> do
+  , E.Handler $ \(err :: SomeUnauthenticated) -> do
+      Log.warning $ Log.buildString' err
+      HsGrpc.throwGrpcError $ mkGrpcStatus err HsGrpc.StatusUnauthenticated
+
+  , E.Handler $ \(err :: SomeUnimplemented) -> do
       Log.warning $ Log.buildString' err
       HsGrpc.throwGrpcError $ mkGrpcStatus err HsGrpc.StatusUnimplemented
   ]

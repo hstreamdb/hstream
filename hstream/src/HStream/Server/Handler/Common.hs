@@ -9,7 +9,7 @@ module HStream.Server.Handler.Common where
 import           Control.Concurrent
 import           Control.Exception                (Handler (Handler),
                                                    SomeException (..), catches,
-                                                   onException)
+                                                   onException, throw)
 import           Control.Exception.Base           (AsyncException (..))
 import           Control.Monad
 import qualified Data.Aeson                       as Aeson
@@ -42,6 +42,7 @@ import qualified DiffFlow.Graph                   as DiffFlow
 import qualified DiffFlow.Shard                   as DiffFlow
 import qualified DiffFlow.Types                   as DiffFlow
 import qualified DiffFlow.Weird                   as DiffFlow
+import qualified HStream.Exception                as HE
 
 runTaskWrapper :: ServerContext
                -> Text
@@ -196,10 +197,6 @@ handlePushQueryCanceled ServerCall{..} handle = do
       -> when b handle
     _ -> putStrLn "impossible happened"
 
-responseWithErrorMsgIfNothing :: Maybe a -> StatusCode -> StatusDetails -> IO (ServerResponse 'Normal a)
-responseWithErrorMsgIfNothing (Just resp) _ _ = return $ ServerNormalResponse (Just resp) mempty StatusOk ""
-responseWithErrorMsgIfNothing Nothing errCode msg = return $ ServerNormalResponse Nothing mempty errCode msg
-
 --------------------------------------------------------------------------------
 -- GRPC Handler Helper
 
@@ -224,7 +221,7 @@ handleCreateAsSelect ctx@ServerContext{..} plan commandQueryStmtText queryType =
           (tName,inNodesWithStreams,outNodeWithStream,win,builder, Nothing)
         CreateViewPlan tName _ inNodesWithStreams outNodeWithStream win builder accumulation ->
           (tName,inNodesWithStreams,outNodeWithStream,win,builder, Just accumulation)
-        _ -> undefined
+        _ -> throw $ HE.WrongExecutionPlan "Only support select sql in the method called"
     action qid = do
       Log.debug . Log.buildString
         $ "CREATE AS SELECT: query " <> show qid
