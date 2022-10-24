@@ -39,6 +39,8 @@ import qualified HStream.Utils.Aeson         as HsAeson
 import           DiffFlow.Graph
 import           DiffFlow.Types
 
+import qualified Prelude
+
 --------------------------------------------------------------------------------
 type Row = FlowObject
 
@@ -230,13 +232,9 @@ elabRValueExpr expr grp startBuilder subgraph startNode = case expr of
     return (builder2, ins, Out node)
   RExprCol name stream_m field -> do
     let mapper = Mapper $
-          \o -> let (skey,v) = getField field stream_m o
-                    skey' = case stream_m of
-                              Nothing -> skey
-                              Just _  -> skey { keyField = T.pack name
-                                              , keyStream_m = stream_m
-                                              } -- Note: Consider `SELECT s1.a, s2.a FROM s1 JOIN s2`
-                 in HM.fromList [(skey', v)]
+          \o -> case getField field stream_m o of
+                  Nothing       -> HM.fromList [(SKey field stream_m Nothing, FlowNull)]
+                  Just (skey,v) -> HM.fromList [(skey, v)]
     let (builder1, node) =
           addNode startBuilder subgraph (MapSpec startNode mapper)
     return (builder1, [], Out node)
@@ -344,11 +342,12 @@ elabRTableRef ref grp startBuilder subgraph =
       (builder2, ins2, out2) <- elabRTableRef ref2 grp builder1 subgraph
       let (builder3, node1_indexed) = addNode builder2 subgraph (IndexSpec (outNode out1))
           (builder4, node2_indexed) = addNode builder3 subgraph (IndexSpec (outNode out2))
-      let keygen1 = constantKeygen
-          keygen2 = constantKeygen
+      let joinCond = alwaysTrueJoinCond
+          joinType = MergeJoinInner
           joiner = Joiner HM.union
-      let (builder, node) = addNode builder2 subgraph
-                            (JoinSpec node1_indexed node2_indexed keygen1 keygen2 joiner)
+          nullRowgen = HM.map (const FlowNull)
+      let (builder, node) = addNode builder4 subgraph
+                            (JoinSpec node1_indexed node2_indexed joinType joinCond joiner nullRowgen)
       case alias_m of
         Nothing -> return (builder, L.nub (ins1++ins2), Out node)
         Just s  -> do
@@ -359,40 +358,81 @@ elabRTableRef ref grp startBuilder subgraph =
     RTableRefNaturalJoin ref1 typ ref2 alias_m -> do
       (builder1, ins1, out1) <- elabRTableRef ref1 grp startBuilder subgraph
       (builder2, ins2, out2) <- elabRTableRef ref2 grp builder1 subgraph
-      undefined
-    RTableRefJoinOn ref1 typ ref2 expr alias_m -> do
-      (builder1, ins1, out1) <- elabRTableRef ref1 grp startBuilder subgraph
-      (builder2, ins2, out2) <- elabRValueExpr expr grp builder1 subgraph (outNode out1)
-      (builder3, ins3, out3) <- elabRTableRef ref2 grp builder2 subgraph
-      let composer = Composer $ \[os1, oexpr] ->
-                 makeExtra "__s1__" os1 `HM.union` makeExtra "__expr__" oexpr
-          (builder4, node1_with_expr) = addNode builder3 subgraph (ComposeSpec (outNode <$> [out1,out2]) composer)
-          (builder5, node1_indexed) = addNode builder4 subgraph (IndexSpec node1_with_expr)
-          (builder6, node2_indexed) = addNode builder5 subgraph (IndexSpec (outNode out3))
-      let keygen1 = \o -> HM.mapKeys (\_ -> SKey "__k1__" Nothing Nothing) $
-                          getExtra "__expr__" o
-          keygen2 = \_ -> HM.fromList [(SKey "__k1__" Nothing Nothing, FlowBoolean True)]
-          joiner = Joiner $ \o1 o2 -> let o1' = getExtraAndReset "__s1__" o1
-                                          o2' = o2
-                                       in o1' <> o2' -- FIXME: join type
-      let (builder7, node) = addNode builder6 subgraph (JoinSpec node1_indexed node2_indexed keygen1 keygen2 joiner)
+      let (builder3, node1_indexed) = addNode builder2 subgraph (IndexSpec (outNode out1))
+          (builder4, node2_indexed) = addNode builder3 subgraph (IndexSpec (outNode out2))
+      let joinCond = \o1 o2 ->
+            HM.foldlWithKey (\acc k@(SKey f _ _) v ->
+                               if acc then
+                                 case getField f Nothing o2 of
+                                   Nothing     -> acc
+                                   Just (_,v') -> v == v'
+                               else False
+                            ) True o1
+          joinType = MergeJoinInner
+          joiner = Joiner HM.union
+          nullRowgen = HM.map (const FlowNull)
+      let (builder, node) = addNode builder4 subgraph
+                            (JoinSpec node1_indexed node2_indexed joinType joinCond joiner nullRowgen)
       case alias_m of
-        Nothing -> return (builder7, L.nub (ins1++ins2++ins3), Out node)
+        Nothing -> return (builder, L.nub (ins1++ins2), Out node)
         Just s  -> do
           let mapper = Mapper $ \o -> makeSKeyStream s o
-              (builder', node') = addNode builder7 subgraph (MapSpec node mapper)
+              (builder', node') = addNode builder subgraph (MapSpec node mapper)
           let out = Out { outNode = node' }
-          return (builder',  L.nub (ins1++ins2++ins3), out)
+          return (builder', L.nub (ins1++ins2), out)
+    RTableRefJoinOn ref1 typ ref2 expr alias_m -> do
+      Prelude.print $ "^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^"
+      Prelude.print expr
+      (builder1, ins1, out1) <- elabRTableRef ref1 grp startBuilder subgraph
+      (builder2, ins2, out2) <- elabRTableRef ref2 grp builder1 subgraph
+
+      -- FIXME: Incorrect impl!!!
+      let composer_init = Composer $ \[o1,o2] -> o1 <> o2
+          (builder3, node_tmp) = addNode builder2 subgraph (ComposeSpec (outNode <$> [out1,out2]) composer_init)
+      (builder4, ins4, out4) <- elabRValueExpr expr grp builder3 subgraph node_tmp
+
+      let composer = Composer $ \[os1, oexpr] ->
+                 makeExtra "__s1__" os1 `HM.union` makeExtra "__expr__" oexpr
+          (builder5, node1_with_expr) = addNode builder4 subgraph (ComposeSpec (outNode <$> [out1,out4]) composer)
+          (builder6, node1_indexed) = addNode builder5 subgraph (IndexSpec node1_with_expr)
+          (builder7, node2_indexed) = addNode builder6 subgraph (IndexSpec (outNode out2))
+      let joinCond = \o1 o2 ->
+            let [(_,v)] = HM.toList (getExtra "__expr__" o1)
+             in v == FlowBoolean True
+          joinType = case typ of
+                       InnerJoin -> MergeJoinInner
+                       LeftJoin  -> MergeJoinLeft
+                       RightJoin -> MergeJoinRight
+                       FullJoin  -> MergeJoinFull
+          joiner = Joiner $ \o1 o2 -> let o1' = getExtraAndReset "__s1__" o1
+                                          o2' = o2
+                                       in o1' <> o2'
+          nullRowgen = HM.map (const FlowNull)
+      let (builder8, node) = addNode builder7 subgraph (JoinSpec node1_indexed node2_indexed joinType joinCond joiner nullRowgen)
+      case alias_m of
+        Nothing -> return (builder8, L.nub (ins1++ins2++ins4), Out node)
+        Just s  -> do
+          let mapper = Mapper $ \o -> makeSKeyStream s o
+              (builder', node') = addNode builder8 subgraph (MapSpec node mapper)
+          let out = Out { outNode = node' }
+          return (builder',  L.nub (ins1++ins2++ins4), out)
     RTableRefJoinUsing ref1 typ ref2 fields alias_m -> do
       (builder1, ins1, out1) <- elabRTableRef ref1 grp startBuilder subgraph
       (builder2, ins2, out2) <- elabRTableRef ref2 grp builder1 subgraph
       let (builder3, node1_indexed) = addNode builder2 subgraph (IndexSpec (outNode out1))
           (builder4, node2_indexed) = addNode builder3 subgraph (IndexSpec (outNode out2))
-      let keygen1 = \o -> HM.mapKeys (\(SKey f _ _) -> SKey f Nothing Nothing) $
-                          HM.filterWithKey (\(SKey f _ _) _ -> L.elem f fields) o
-          keygen2 = keygen1
-          joiner = Joiner $ \o1 o2 -> o1 <> o2 --  FIXME: join type
-      let (builder5, node) = addNode builder4 subgraph (JoinSpec node1_indexed node2_indexed keygen1 keygen2 joiner)
+      let joinCond =
+            \o1 o2 ->
+              HM.mapKeys (\(SKey f _ _) -> SKey f Nothing Nothing) (HM.filterWithKey (\(SKey f _ _) _ -> L.elem f fields) o1) ==
+              HM.mapKeys (\(SKey f _ _) -> SKey f Nothing Nothing) (HM.filterWithKey (\(SKey f _ _) _ -> L.elem f fields) o2)
+          joinType = case typ of
+                       InnerJoin -> MergeJoinInner
+                       LeftJoin  -> MergeJoinLeft
+                       RightJoin -> MergeJoinRight
+                       FullJoin  -> MergeJoinFull
+          joiner = Joiner $ \o1 o2 -> o1 <> o2
+          nullRowgen = HM.map (const FlowNull)
+      let (builder5, node) = addNode builder4 subgraph (JoinSpec node1_indexed node2_indexed joinType joinCond joiner nullRowgen)
       case alias_m of
         Nothing -> return (builder5, L.nub (ins1++ins2), Out node)
         Just s  -> do
@@ -420,10 +460,11 @@ elabFrom (RFrom refs) grp baseBuilder subgraph = do
             (thisBuilder, thisIns, thisOut) <- elabRTableRef thisRef grp oldBuilder subgraph
             let (builder1, oldNode_indexed) = addNode thisBuilder subgraph (IndexSpec (outNode oldOut))
                 (builder2, thisNode_indexed) = addNode builder1 subgraph (IndexSpec (outNode thisOut))
-            let keygen1 = constantKeygen
-                keygen2 = constantKeygen
+            let joinCond = alwaysTrueJoinCond
                 joiner = Joiner $ HM.union
-            let (builder3, node) = addNode builder2 subgraph (JoinSpec oldNode_indexed thisNode_indexed keygen1 keygen2 joiner)
+                joinType = MergeJoinInner
+                nullRowgen = HM.map (const FlowNull)
+            let (builder3, node) = addNode builder2 subgraph (JoinSpec oldNode_indexed thisNode_indexed joinType joinCond joiner nullRowgen)
             return (builder3, L.nub (accIns++thisIns), Out node)
         ) (builder1, ins1, out1) (L.tail refs)
 
@@ -491,9 +532,7 @@ elabAggregate agg grp startBuilder subgraph startNode exprName =
 elabGroupBy :: RGroupBy -> FlowObject -> FlowObject
 elabGroupBy RGroupByEmpty o = constantKeygen o
 elabGroupBy (RGroupBy xs) o = (makeExtra "__reduce_key__") . HM.unions $
-  L.map (\(s_m, f) -> let (skey,v) = getField f s_m o
-                       in HM.fromList [(skey,v)]
-        ) xs
+  L.map (\(s_m, f) -> HM.fromList [getField' f s_m o]) xs
 
 genAggregateComponents :: Aggregate
                        -> Text

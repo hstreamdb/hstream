@@ -122,8 +122,11 @@ jsonValueToFlowValue v = case v of
 
 flowObjectToJsonObject :: FlowObject -> Aeson.Object
 flowObjectToJsonObject hm =
-  let list = L.map (\(SKey k _ _, v) ->
-                      (k, flowValueToJsonValue v)
+  let list = L.map (\(SKey k s_m _, v) ->
+                      let key = case s_m of
+                                  Nothing -> k
+                                  Just s  -> s <> "." <> k
+                       in (key, flowValueToJsonValue v)
                    ) (HM.toList hm)
    in HsAeson.fromList list
 
