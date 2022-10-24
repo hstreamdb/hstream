@@ -47,9 +47,11 @@ shardBody isDone reachOut_m reachSummaryOut_m = do
                                                     , ("v3", v2')
                                                     ]
                       )
-      keygen1 = \row -> let v1 = (A.!) row "v1" in A.fromList [("v1", v1)]
-      keygen2 = \row -> let v1 = (A.!) row "v1" in A.fromList [("v1", v1)]
-  let (builder_9, joined) = addNode builder_8 subgraph_1 (JoinSpec distinct_reach_index swapped_edges_index keygen1 keygen2 joiner)
+      joinCond = \row1 row2 ->
+                   A.fromList [("v1", (A.!) row1 "v1")] == A.fromList [("v1", (A.!) row2 "v1")]
+      joinType = MergeJoinInner
+      nullRowgen = id
+  let (builder_9, joined) = addNode builder_8 subgraph_1 (JoinSpec distinct_reach_index swapped_edges_index joinType joinCond joiner nullRowgen)
 
   let mapper2 = Mapper (\row -> let v1 = (A.!) row "v1"
                                     v2 = (A.!) row "v2"

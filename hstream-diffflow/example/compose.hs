@@ -24,7 +24,10 @@ joinMany :: GraphBuilder Object
 joinMany startBuilder subgraph ins =
   foldl (\(oldBuilder, oldOut) thisNode ->
            let joiner = Joiner (<>)
-            in addNode oldBuilder subgraph (JoinSpec oldOut thisNode constantKeygen constantKeygen joiner)
+               joinType = MergeJoinInner
+               joinCond = \_ _ -> True
+               nullRowgen = \row -> A.fromList (map (\(k,v) -> (k,Null)) (A.toList row))
+            in addNode oldBuilder subgraph (JoinSpec oldOut thisNode joinType joinCond joiner nullRowgen)
         ) (startBuilder, head ins) (tail ins)
 
 main :: IO ()

@@ -39,6 +39,8 @@ newtype Filter row = Filter { filterF :: row -> Bool } deriving (Generic, NFData
 newtype Joiner row = Joiner { joiner :: row -> row -> row } deriving (Generic, NFData)
 newtype Reducer row = Reducer { reducer :: row -> row -> row } deriving (Generic, NFData) -- \acc x -> acc'
 type KeyGenerator row = row -> row
+type RowGenerator row = row -> row
+type JoinCondition row = row -> row -> Bool
 
 newtype Composer row = Composer { composer :: [row] -> row } deriving (Generic, NFData)
 
@@ -62,7 +64,7 @@ data NodeSpec row
   | FilterSpec        Node (Filter row)               -- input, filter
   | ComposeSpec       [Node] (Composer row)
   | IndexSpec         Node                      -- input
-  | JoinSpec          Node Node (KeyGenerator row) (KeyGenerator row) (Joiner row) -- input1, input2, keygen1, keygen2, joiner
+  | JoinSpec          Node Node MergeJoinType (JoinCondition row) (Joiner row) (RowGenerator row) -- input1, input2, joinType, joinCond, rowgen, nullRowgen
   | OutputSpec        Node                      -- input
   | TimestampPushSpec Node                      -- input
   | TimestampIncSpec  (Maybe Node)              -- input
@@ -73,19 +75,19 @@ data NodeSpec row
   deriving (Generic, NFData)
 
 instance Show (NodeSpec row) where
-  show InputSpec             = "InputSpec"
-  show (MapSpec _ _)         = "MapSpec"
-  show (FilterSpec _ _)      = "FilterSpec"
-  show (ComposeSpec _ _)     = "ComposeSpec"
-  show (IndexSpec _)         = "IndexSpec"
-  show (JoinSpec _ _ _ _ _)  = "JoinSpec"
-  show (OutputSpec _)        = "OutputSpec"
-  show (TimestampPushSpec _) = "TimestampPushSpec"
-  show (TimestampIncSpec _)  = "TimestampIncSpec"
-  show (TimestampPopSpec _)  = "TimestampPopSpec"
-  show (UnionSpec _ _)       = "UnionSpec"
-  show (DistinctSpec _)      = "DistinctSpec"
-  show (ReduceSpec _ _ _ _)  = "ReduceSpec"
+  show InputSpec              = "InputSpec"
+  show (MapSpec _ _)          = "MapSpec"
+  show (FilterSpec _ _)       = "FilterSpec"
+  show (ComposeSpec _ _)      = "ComposeSpec"
+  show (IndexSpec _)          = "IndexSpec"
+  show (JoinSpec _ _ _ _ _ _) = "JoinSpec"
+  show (OutputSpec _)         = "OutputSpec"
+  show (TimestampPushSpec _)  = "TimestampPushSpec"
+  show (TimestampIncSpec _)   = "TimestampIncSpec"
+  show (TimestampPopSpec _)   = "TimestampPopSpec"
+  show (UnionSpec _ _)        = "UnionSpec"
+  show (DistinctSpec _)       = "DistinctSpec"
+  show (ReduceSpec _ _ _ _)   = "ReduceSpec"
 
 outputIndex :: NodeSpec row -> Bool
 outputIndex (IndexSpec _)        = True
@@ -104,7 +106,7 @@ getInputsFromSpec (MapSpec node _) = V.singleton node
 getInputsFromSpec (FilterSpec node _) = V.singleton node
 getInputsFromSpec (ComposeSpec nodes _) = V.fromList nodes
 getInputsFromSpec (IndexSpec node) = V.singleton node
-getInputsFromSpec (JoinSpec node1 node2 _ _ _) = V.fromList [node1, node2]
+getInputsFromSpec (JoinSpec node1 node2 _ _ _ _) = V.fromList [node1, node2]
 getInputsFromSpec (OutputSpec node) = V.singleton node
 getInputsFromSpec (TimestampPushSpec node) = V.singleton node
 getInputsFromSpec (TimestampIncSpec m_node) = case m_node of
@@ -156,7 +158,7 @@ specToState (IndexSpec _) = do
   index <- newTVarIO $ Index []
   pendingChanges <- newTVarIO []
   return $ IndexState index pendingChanges
-specToState (JoinSpec _ _ _ _ _) = do
+specToState (JoinSpec _ _ _ _ _ _) = do
   frontier1 <- newTVarIO Set.empty
   frontier2 <- newTVarIO Set.empty
   return $ JoinState frontier1 frontier2

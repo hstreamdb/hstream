@@ -308,7 +308,7 @@ processChangeBatch shard@Shard{..} = do
           let (IndexState _ pendingChanges_m) = shardNodeStates' HM.! nodeId node
           atomically $
             modifyTVar pendingChanges_m (\xs -> xs ++ dcbChanges changeBatch)
-        JoinSpec node1 node2 keygen1 keygen2 (Joiner joiner) -> do
+        JoinSpec node1 node2 joinType joinCond (Joiner joiner) nullRowgen -> do
           let inputIx = nodeInputIndex nodeInput
               otherNode = case inputIx of
                             0 -> node2
@@ -320,12 +320,12 @@ processChangeBatch shard@Shard{..} = do
                       0 -> readTVarIO ft2_m
                       1 -> readTVarIO ft1_m
                       _ -> throw ImpossibleError
-          let (keygen1', keygen2', joiner') = case inputIx of
-                                                0 -> (keygen2, keygen1, flip joiner)
-                                                1 -> (keygen1, keygen2, joiner)
-                                                _ -> throw ImpossibleError
+          let (joinCond', joiner') = case inputIx of
+                                       0 -> (flip joinCond, flip joiner)
+                                       1 -> (joinCond, joiner)
+                                       _ -> throw ImpossibleError
           let outputChangeBatch =
-                mergeJoinIndex otherIndex joinFt changeBatch keygen1' keygen2' joiner'
+                mergeJoinIndex otherIndex joinFt changeBatch joinType joinCond' joiner' nullRowgen
           unless (L.null $ dcbChanges outputChangeBatch) $
             emitChangeBatch shard node outputChangeBatch
           let inputFt = fromJust $ cbiInputFrontier cbi -- FIXME: unsafe

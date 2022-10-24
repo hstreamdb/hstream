@@ -24,13 +24,14 @@ main = do
       (builder_5, node_2') = addNode builder_4 subgraph_0 (IndexSpec node_2)
 
 
-  let keygen1 o = A.fromList [("b", (A.!) o "b")]
-      keygen2 o = A.fromList [("b", (A.!) o "b")]
+  let joinCond = \row1 row2 -> (A.!) row1 "b" == (A.!) row2 "b"
       rowgen o1 o2 = A.fromList [ ("a", (A.!) o1 "a")
                                 , ("b", (A.!) o1 "b")
                                 , ("c", (A.!) o2 "c")
                                 ]
-  let (builder_6, node_3) = addNode builder_5 subgraph_0 (JoinSpec node_1' node_2' keygen1 keygen2 (Joiner rowgen))
+      joinType = MergeJoinInner
+      nullRowgen = \row -> A.fromList (map (\(k,v) -> (k,Null)) (A.toList row))
+  let (builder_6, node_3) = addNode builder_5 subgraph_0 (JoinSpec node_1' node_2' joinType joinCond (Joiner rowgen) nullRowgen)
 
   let (builder_7, node_4) = addNode builder_6 subgraph_0 (OutputSpec node_3)
 

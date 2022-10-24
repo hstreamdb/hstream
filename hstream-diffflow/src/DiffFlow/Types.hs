@@ -9,6 +9,7 @@
 
 module DiffFlow.Types where
 
+import           Control.DeepSeq   (NFData)
 import           Control.Exception (throw)
 import           Control.Monad
 import           Data.Aeson        (Object (..), Value (..))
@@ -27,6 +28,8 @@ import           Data.Word         (Word64)
 import           GHC.Generics      (Generic)
 
 import           DiffFlow.Error
+
+import           Debug.Trace
 
 type Bag row = MultiSet row
 
@@ -315,27 +318,51 @@ updateDataChangeBatch :: (Hashable a, Ord a, Show a,
 updateDataChangeBatch oldBatch f =
   mkDataChangeBatch $ f (dcbChanges oldBatch)
 
+data MergeJoinType
+  = MergeJoinInner
+  | MergeJoinLeft
+  | MergeJoinRight
+  | MergeJoinFull
+  deriving (Eq, Show, Generic, NFData)
+
 mergeJoinDataChangeBatch :: (Hashable a, Ord a, Show a,
                              Hashable row, Ord row, Show row)
                          => DataChangeBatch row a
                          -> Frontier a
                          -> DataChangeBatch row a
-                         -> (row -> row)
-                         -> (row -> row)
+                         -> MergeJoinType
+                         -> (row -> row -> Bool)
                          -> (row -> row -> row)
+                         -> (row -> row)
                          -> DataChangeBatch row a
-mergeJoinDataChangeBatch self selfFt other keygen1 keygen2 rowgen =
+mergeJoinDataChangeBatch self selfFt other joinType joinCond rowgen nullRowgen =
   L.foldl (\acc (this,that) ->
-             let thisKey = keygen1 (dcRow this)
-                 thatKey = keygen2 (dcRow that)
-              in if thisKey == thatKey && selfFt `causalCompare` dcTimestamp this == PGT then
-               let newDataChange =
+             if selfFt `causalCompare` dcTimestamp this == PGT then
+               let newDataChange_inner =
                      DataChange
                      { dcRow = rowgen (dcRow this) (dcRow that)
                      , dcTimestamp = leastUpperBound (dcTimestamp this) (dcTimestamp that)
                      , dcDiff = dcDiff this * dcDiff that
                      }
-                in updateDataChangeBatch acc (\xs -> xs ++ [newDataChange])
+                   newDataChange_left =
+                     DataChange
+                     { dcRow = rowgen (nullRowgen $ dcRow this) (dcRow that)
+                     , dcTimestamp = leastUpperBound (dcTimestamp this) (dcTimestamp that)
+                     , dcDiff = dcDiff this * dcDiff that
+                     }
+                   newDataChange_right =
+                     DataChange
+                     { dcRow = rowgen (dcRow this) (nullRowgen $ dcRow that)
+                     , dcTimestamp = leastUpperBound (dcTimestamp this) (dcTimestamp that)
+                     , dcDiff = dcDiff this * dcDiff that
+                     }
+                in case trace ("========================" <> "this: " <> show (dcRow this) <> ", that: " <> show (dcRow that)) (joinCond (dcRow this) (dcRow that)) of
+                     True  -> updateDataChangeBatch acc (\xs -> xs ++ [newDataChange_inner])
+                     False -> case joinType of
+                                MergeJoinInner -> acc
+                                MergeJoinLeft  -> updateDataChangeBatch acc (\xs -> xs ++ [newDataChange_left])
+                                MergeJoinRight -> updateDataChangeBatch acc (\xs -> xs ++ [newDataChange_right])
+                                MergeJoinFull  -> updateDataChangeBatch acc (\xs -> xs ++ [newDataChange_left, newDataChange_right])
              else acc
           ) emptyDataChangeBatch
   [(self_x, other_x) | self_x <- dcbChanges self, other_x <- dcbChanges other]
@@ -395,13 +422,14 @@ mergeJoinIndex :: (Hashable a, Ord a, Show a,
                => Index row a
                -> Frontier a
                -> DataChangeBatch row a
-               -> (row -> row)
-               -> (row -> row)
+               -> MergeJoinType
+               -> (row -> row -> Bool)
                -> (row -> row -> row)
+               -> (row -> row)
                -> DataChangeBatch row a
-mergeJoinIndex self selfFt otherChangeBatch keygen1 keygen2 rowgen =
+mergeJoinIndex self selfFt otherChangeBatch joinType joinCond rowgen nullRowgen =
   L.foldl (\acc selfChangeBatch ->
              let newChangeBatch =
-                   mergeJoinDataChangeBatch selfChangeBatch selfFt otherChangeBatch keygen1 keygen2 rowgen
+                   mergeJoinDataChangeBatch selfChangeBatch selfFt otherChangeBatch joinType joinCond rowgen nullRowgen
               in updateDataChangeBatch acc (\xs -> xs ++ dcbChanges newChangeBatch)
           ) emptyDataChangeBatch (indexChangeBatches self)
