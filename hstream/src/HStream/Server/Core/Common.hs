@@ -220,3 +220,13 @@ handleQueryTerminate ServerContext{..} (ManyQueries qids) = do
            <> "because of " <> show e
           return terminatedQids
         Right _                  -> return (x:terminatedQids)
+
+data ResourceType
+  = ResShardReader
+  | ResSubscription
+  | ResShard
+  | ResConnector
+  deriving (Show, Eq)
+
+mkAllocationKey :: ResourceType -> T.Text -> T.Text
+mkAllocationKey rtype rid = T.pack (show rtype) <> "_" <> rid

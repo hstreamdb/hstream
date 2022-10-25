@@ -25,6 +25,8 @@ import           HStream.Gossip                   (GossipContext (..), getEpoch,
 import           HStream.Gossip.Types             (ServerStatus (..))
 import qualified HStream.Logger                   as Log
 import           HStream.MetaStore.Types          (MetaStore (..))
+import           HStream.Server.Core.Common       (ResourceType (..),
+                                                   mkAllocationKey)
 import           HStream.Server.HStreamApi
 import           HStream.Server.MetaData          (TaskAllocation (..))
 import           HStream.Server.MetaData.Value    (clusterStartTimeId)
@@ -61,10 +63,13 @@ describeCluster ServerContext{gossipContext = gc@GossipContext{..}, ..} = do
       { serverNodeStatusNode  = Just node
       , serverNodeStatusState = EnumPB state}
 
+
+-- TODO: Currently we use the old version of lookup for minimal impact on performance
 lookupShard :: ServerContext -> LookupShardRequest -> IO LookupShardResponse
-lookupShard sc req@LookupShardRequest {
+lookupShard sc@ServerContext{..} req@LookupShardRequest {
   lookupShardRequestShardId = shardId} = do
-  theNode <- lookupResource sc ResShard (T.pack $ show shardId)
+  hashRing <- readTVarIO loadBalanceHashRing
+  theNode <- getResNode hashRing (T.pack $ show shardId) scAdvertisedListenersKey
   Log.info $ "receive lookupShard request: " <> Log.buildString' req <> ", should send to " <> Log.buildString' (show theNode)
   return $ LookupShardResponse
     { lookupShardResponseShardId    = shardId
@@ -108,7 +113,8 @@ lookupShardReader sc@ServerContext{..} req@LookupShardReaderRequest{lookupShardR
 
 lookupResource :: ServerContext -> ResourceType -> Text -> IO ServerNode
 lookupResource sc@ServerContext{..} rtype rid = do
-  let metaId = T.pack (show rtype) <> "_" <> rid
+  let metaId = mkAllocationKey rtype rid
+  -- FIXME: it will insert the results of lookup no matter the resource exists or not
   getMetaWithVer @TaskAllocation metaId metaHandle >>= \case
     Nothing -> do
       hashRing <- readTVarIO loadBalanceHashRing
@@ -137,13 +143,6 @@ lookupResource sc@ServerContext{..} rtype rid = do
               throwIO $ HE.ResourceAllocationException "the server has not yet synced with the latest member list"
 
 -------------------------------------------------------------------------------
-
-data ResourceType
-  = ResShardReader
-  | ResSubscription
-  | ResShard
-  | ResConnector
-  deriving (Show, Eq)
 
 getResNode :: HashRing -> Text -> Maybe Text -> IO ServerNode
 getResNode hashRing hashKey listenerKey = do
