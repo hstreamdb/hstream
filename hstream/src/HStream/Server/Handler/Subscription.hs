@@ -136,7 +136,7 @@ streamingFetchHandler ctx (ServerBiDiRequest _ streamRecv streamSend) =
 -- TODO: imporvements for read or write error
 handleStreamingFetch
   :: ServerContext
-  -> G.BiDiStreamHandler StreamingFetchRequest StreamingFetchResponse ()
+  -> G.BidiStreamHandler StreamingFetchRequest StreamingFetchResponse ()
 handleStreamingFetch sc _ stream =
   let streamSend x = first (const GRPCIOShutdown) <$> G.streamWrite stream (Just x)
       streamRecv = do Right <$> G.streamRead stream
