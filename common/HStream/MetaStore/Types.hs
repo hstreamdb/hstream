@@ -11,6 +11,7 @@
 
 module HStream.MetaStore.Types where
 
+import           Control.Exception                (try)
 import           Control.Monad                    (void)
 import           Data.Aeson                       (FromJSON, ToJSON)
 import qualified Data.Aeson                       as A
@@ -24,6 +25,8 @@ import           GHC.Stack                        (HasCallStack)
 import           Network.HTTP.Client              (Manager)
 import qualified Z.Foreign                        as ZF
 import qualified ZooKeeper                        as Z
+import           ZooKeeper                        (zooDeleteAll)
+import           ZooKeeper.Exception              (ZooException)
 import qualified ZooKeeper.Types                  as Z
 import           ZooKeeper.Types                  (ZHandle)
 
@@ -32,8 +35,10 @@ import           HStream.MetaStore.RqliteUtils    (ROp (..), deleteFrom,
                                                    transaction, updateSet,
                                                    upsert)
 import           HStream.MetaStore.ZookeeperUtils (createInsertZK,
+                                                   decodeDataCompletion,
                                                    decodeZNodeValue,
-                                                   deleteZKPath, setZkData,
+                                                   deleteZkChildren,
+                                                   deleteZkPath, setZkData,
                                                    upsertZkData)
 import           HStream.Utils                    (cBytesToText, textToCBytes)
 
@@ -64,11 +69,13 @@ class MetaStore value handle where
   myPath     :: HasPath value handle => T.Text -> T.Text
   insertMeta :: (HasPath value handle, HasCallStack) => Key -> value -> handle -> IO ()
   updateMeta :: (HasPath value handle, HasCallStack) => Key -> value -> Maybe Version -> handle -> IO ()
-  upsertMeta  :: (HasPath value handle, HasCallStack) => Key -> value -> handle -> IO ()
+  upsertMeta :: (HasPath value handle, HasCallStack) => Key -> value -> handle -> IO ()
   deleteMeta :: (HasPath value handle, HasCallStack) => Key -> Maybe Version -> handle  -> IO ()
   listMeta   :: (HasPath value handle, HasCallStack) => handle -> IO [value]
   getMeta    :: (HasPath value handle, HasCallStack) => Key -> handle -> IO (Maybe value)
-  getAllMeta :: (HasPath value handle, HasCallStack) => handle -> IO (Map.Map Key value)
+  getMetaWithVer  :: (HasPath value handle, HasCallStack) => Key -> handle -> IO (Maybe (value, Int))
+  getAllMeta      :: (HasPath value handle, HasCallStack) => handle -> IO (Map.Map Key value)
+  deleteAllMeta   :: (HasPath value handle, HasCallStack) => handle -> IO ()
   checkMetaExists :: (HasPath value handle, HasCallStack) => Key -> handle -> IO Bool
 
   -- FIXME: The Operation is not atomic
@@ -78,7 +85,7 @@ class MetaStore value handle where
   insertMetaOp :: HasPath value handle => Key -> value -> handle -> MetaOp
   updateMetaOp :: HasPath value handle => Key -> value -> Maybe Version -> handle -> MetaOp
   deleteMetaOp :: HasPath value handle => Key -> Maybe Version -> handle -> MetaOp
-  checkOp :: HasPath value handle => Key -> Version -> handle -> MetaOp
+  checkOp      :: HasPath value handle => Key -> Version -> handle -> MetaOp
   insertMetaOp mid value    _ = InsertOp (myRootPath @value @handle) mid (BL.toStrict $ A.encode value)
   updateMetaOp mid value mv _ = UpdateOp (myRootPath @value @handle) mid (BL.toStrict $ A.encode value) mv
   deleteMetaOp mid mv       _ = DeleteOp (myRootPath @value @handle) mid mv
@@ -91,16 +98,24 @@ instance MetaStore value ZHandle where
   myPath mid = myRootPath @value @ZHandle <> "/" <> mid
   insertMeta mid x zk    = createInsertZK zk (myPath @value @ZHandle mid) x
   updateMeta mid x mv zk = setZkData      zk (myPath @value @ZHandle mid) x mv
-  upsertMeta mid x zk    = upsertZkData   zk (myPath @value @ZHandle mid) x
-  deleteMeta mid   mv zk = deleteZKPath   zk (myPath @value @ZHandle mid) mv
+  upsertMeta mid x    zk = upsertZkData   zk (myPath @value @ZHandle mid) x
+  deleteMeta mid   mv zk = deleteZkPath   zk (myPath @value @ZHandle mid) mv
+  deleteAllMeta       zk = deleteZkChildren zk (myRootPath @value @ZHandle)
+
   checkMetaExists mid zk = isJust <$> Z.zooExists zk (textToCBytes (myPath @value @ZHandle mid))
-  getMeta mid zk = decodeZNodeValue zk (myPath @value @ZHandle mid)
-  getAllMeta zk = do
+  getMeta         mid zk = decodeZNodeValue zk (myPath @value @ZHandle mid)
+  getMetaWithVer  mid zk = do
+    e_a <- try $ Z.zooGet zk (textToCBytes $ myPath @value @ZHandle mid)
+    case e_a of
+      Left (_ :: ZooException) -> return Nothing
+      Right a                  -> return $ (, fromIntegral . Z.statVersion . Z.dataCompletionStat $ a) <$> decodeDataCompletion a
+
+  getAllMeta          zk = do
     let path = textToCBytes $ myRootPath @value @ZHandle
     ids <- Z.unStrVec . Z.strsCompletionValues <$> Z.zooGetChildren zk path
     idAndValues <- catMaybes <$> mapM (\x -> let x' = cBytesToText x in getMeta @value x' zk <&> fmap (x',)) ids
     pure $ Map.fromList idAndValues
-  listMeta zk = do
+  listMeta            zk = do
     let path = textToCBytes $ myRootPath @value @ZHandle
     ids <- Z.unStrVec . Z.strsCompletionValues <$> Z.zooGetChildren zk path
     catMaybes <$> mapM (flip (getMeta @value) zk . cBytesToText) ids
@@ -121,13 +136,15 @@ instance MetaStore value RHandle where
   insertMeta mid x    (RHandle m url) = insertInto m url (myRootPath @value @RHandle) mid x
   updateMeta mid x mv (RHandle m url) = updateSet  m url (myRootPath @value @RHandle) mid x mv
   upsertMeta mid x    (RHandle m url) = upsert     m url (myRootPath @value @RHandle) mid x
-  deleteMeta mid   mv (RHandle m url) = deleteFrom m url (myRootPath @value @RHandle) mid mv
+  deleteMeta mid   mv (RHandle m url) = deleteFrom m url (myRootPath @value @RHandle) (Just mid) mv
+  deleteAllMeta       (RHandle m url) = deleteFrom m url (myRootPath @value @RHandle) Nothing Nothing
   checkMetaExists mid (RHandle m url) = selectFrom @value m url (myRootPath @value @RHandle) (Just mid)
-                                        <&> not . Map.null
-  getMeta mid  (RHandle m url) = selectFrom m url (myRootPath @value @RHandle) (Just mid)
-                              <&> Map.lookup mid
-  getAllMeta   (RHandle m url) = selectFrom m url (myRootPath @value @RHandle) Nothing
-  listMeta     (RHandle m url) = Map.elems <$> selectFrom m url (myRootPath @value @RHandle) Nothing
+                                    <&> not . Map.null
+  getMeta         mid (RHandle m url) = fmap fst <$> getMetaWithVer mid  (RHandle m url)
+  getMetaWithVer  mid (RHandle m url) = selectFrom m url (myRootPath @value @RHandle) (Just mid)
+                                    <&> Map.lookup mid
+  getAllMeta          (RHandle m url) = fmap fst <$> selectFrom m url (myRootPath @value @RHandle) Nothing
+  listMeta            (RHandle m url) = Map.elems <$> getAllMeta (RHandle m url)
 
 instance MetaMulti RHandle where
   metaMulti ops (RHandle m url) = do
@@ -155,9 +172,11 @@ instance (HasPath value ZHandle, HasPath value RHandle) => MetaStore value MetaH
   updateMeta mid x mv h = USE_WHICH_HANDLE(h, updateMeta mid x mv)
   upsertMeta mid x    h = USE_WHICH_HANDLE(h, upsertMeta mid x)
   deleteMeta mid   mv h = USE_WHICH_HANDLE(h, deleteMeta @value mid mv)
+  deleteAllMeta       h = USE_WHICH_HANDLE(h, deleteAllMeta @value)
   checkMetaExists mid h = USE_WHICH_HANDLE(h, checkMetaExists @value mid)
   getMeta mid         h = USE_WHICH_HANDLE(h, getMeta @value mid)
-  getAllMeta h = USE_WHICH_HANDLE(h, getAllMeta @value)
+  getMetaWithVer mid  h = USE_WHICH_HANDLE(h, getMetaWithVer @value mid)
+  getAllMeta          h = USE_WHICH_HANDLE(h, getAllMeta @value)
 
   insertMetaOp mid value    h = USE_WHICH_HANDLE(h, insertMetaOp mid value)
   updateMetaOp mid value mv h = USE_WHICH_HANDLE(h, updateMetaOp mid value mv)

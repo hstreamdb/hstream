@@ -43,7 +43,7 @@ createTable :: H.Manager -> Url -> TableName -> IO ()
 createTable manager uri tableName = do
   let table = T.encodeUtf8 tableName
   let stmt = wrapStmt $ "\"CREATE TABLE " <> table
-          <> " (id TEXT NOT NULL PRIMARY KEY, value TEXT NOT NULL, version INTEGER)\""
+          <> " (id TEXT NOT NULL PRIMARY KEY, value TEXT, version INTEGER)\""
   debug stmt
   httpExecute manager uri stmt False mempty
 
@@ -86,13 +86,17 @@ deleteFromIfExists manager uri t i v = do
   debug stmt
   httpExecute manager uri stmt True (i <> "@" <> t)
 
-deleteFrom :: H.Manager -> Url -> TableName -> Id -> Maybe Version -> IO ()
-deleteFrom manager uri t i ver = transaction manager uri $
+deleteFrom :: H.Manager -> Url -> TableName -> Maybe Id -> Maybe Version -> IO ()
+deleteFrom manager uri t (Just i) ver = transaction manager uri $
   ExistROp t i : case ver of
     Nothing   -> [DeleteROp t i]
     Just ver' -> [CheckROp t i ver', DeleteROp t i]
+deleteFrom manager uri t Nothing _ = do
+  let stmt = wrapStmt $ wrapStmts $ mkDeleteAllStmt t
+  debug stmt
+  httpExecute manager uri stmt True ("all@" <> t )
 
-selectFrom :: FromJSON a => H.Manager -> Url -> TableName -> Maybe Id -> IO (Map.Map Id a)
+selectFrom :: FromJSON a => H.Manager -> Url -> TableName -> Maybe Id -> IO (Map.Map Id (a, Int))
 selectFrom manager uri table i = catchHttpException $ do
   let stmt = wrapStmt $ wrapStmts $ mkSelectStmtWithKey table i
   debug stmt
@@ -105,10 +109,10 @@ selectFrom manager uri table i = catchHttpException $ do
       }
   (H.responseBody -> bsl) <- H.httpLbs req manager
   debug bsl
-  ivs <- getRqSelectIdValue bsl
+  ivs <- getRqSelectIdValueVersion bsl
   debug ivs
-  idValues <- case mapM (\(x, y) -> (TL.toStrict x,) <$> (A.decode . TL.encodeUtf8) y) ivs of
-    Nothing -> throwIO . RQLiteDecodeErr . T.unpack . TL.toStrict . TL.concat . map snd $ ivs
+  idValues <- case mapM (\(x, y, z) -> (TL.toStrict x,) . (,z) <$> (A.decode . TL.encodeUtf8) y) ivs of
+    Nothing -> throwIO . RQLiteDecodeErr . T.unpack . TL.toStrict . TL.concat . map (\(_, y, _) -> y) $ ivs
     Just xs -> pure xs
   pure $ Map.fromList idValues
 
@@ -142,11 +146,11 @@ rOp2Stmt (DeleteROp t i)   = wrapStmts $ mkDeleteStmt t i Nothing
 rOp2Stmt (ExistROp t i)    = wrapStmts $ mkCheckExistStmt t i
 
 mkInsertStmt :: TableName -> Id -> EncodedValue -> [Statement]
-mkInsertStmt t i p = [ "\"INSERT INTO " <> T.encodeUtf8 t <> "(id, value, version) VALUES (?, ?, 1)\""
+mkInsertStmt t i p = [ "\"INSERT INTO " <> T.encodeUtf8 t <> "(id, value, version) VALUES (?, ?, 0)\""
                      , quotes i , quotes p]
 
 mkUpsertStmt :: TableName -> Id -> EncodedValue -> [Statement]
-mkUpsertStmt t i p = [ "\"INSERT INTO " <> T.encodeUtf8 t <> "(id, value, version) VALUES (?, ?, 1) "
+mkUpsertStmt t i p = [ "\"INSERT INTO " <> T.encodeUtf8 t <> "(id, value, version) VALUES (?, ?, 0) "
                     <> "ON CONFLICT (id) DO UPDATE SET version = version + 1, value = excluded.value \""
                      , quotes i , quotes p]
 
@@ -162,9 +166,12 @@ mkDeleteStmt :: TableName -> Id -> Maybe Version -> [Statement]
 mkDeleteStmt t i (Just v) = [ "\"DELETE FROM " <> T.encodeUtf8 t <> " WHERE id = ? AND version = ? \"", quotes i, quotes v]
 mkDeleteStmt t i Nothing  = [ "\"DELETE FROM " <> T.encodeUtf8 t <> " WHERE id = ? \"", quotes i]
 
+mkDeleteAllStmt :: TableName ->  [Statement]
+mkDeleteAllStmt t = [ "\"DELETE FROM " <> T.encodeUtf8 t <> "\""]
+
 mkSelectStmtWithKey :: TableName -> Maybe Id -> [Statement]
-mkSelectStmtWithKey t (Just i) = ["\"SELECT id, value FROM " <> T.encodeUtf8 t <> " WHERE id = ? \"", quotes i]
-mkSelectStmtWithKey t Nothing  = ["\"SELECT id, value FROM " <> T.encodeUtf8 t <> "\""]
+mkSelectStmtWithKey t (Just i) = ["\"SELECT id, value, cast (version as text) FROM " <> T.encodeUtf8 t <> " WHERE id = ? \"", quotes i]
+mkSelectStmtWithKey t Nothing  = ["\"SELECT id, value, cast (version as text) FROM " <> T.encodeUtf8 t <> "\""]
 
 mkCheckVerStmt :: TableName -> Id -> Version -> [Statement]
 mkCheckVerStmt t i v = [ "\"INSERT INTO " <> T.encodeUtf8 t
@@ -242,10 +249,10 @@ getRqResult bsl requireResults msg = case getResults bsl of
     Err e  -> throwRqHttpErrMsg e msg
   _ -> throwIO $ RQLiteUnspecifiedErr "No result in response from rqlite server"
 
-getRqSelectIdValue :: BL.ByteString -> IO [(TL.Text, TL.Text)]
-getRqSelectIdValue bsl = case getResults bsl of
+getRqSelectIdValueVersion :: BL.ByteString -> IO [(TL.Text, TL.Text, Int)]
+getRqSelectIdValueVersion bsl = case getResults bsl of
   x:_ -> case x of
-    Ok _ ivs -> pure $ map (\(i:v:_) -> (i, v)) ivs
+    Ok _ ivs -> pure $ map (\(i:v:ver:_) -> (i, v, read $ TL.unpack ver)) ivs
     Err e    -> throwRqHttpErrMsg e ""
   _ -> throwIO $ RQLiteUnspecifiedErr "No result in response from rqlite server"
 

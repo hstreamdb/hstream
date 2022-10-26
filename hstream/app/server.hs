@@ -57,7 +57,8 @@ import qualified HStream.Server.HStreamInternal   as I
 import           HStream.Server.Initialization    (initializeServer,
                                                    initializeTlsConfig,
                                                    readTlsPemFile)
-import           HStream.Server.MetaData          (clusterStartTimeId,
+import           HStream.Server.MetaData          (TaskAllocation,
+                                                   clusterStartTimeId,
                                                    initializeAncestors,
                                                    initializeTables)
 import           HStream.Server.Types             (ServerContext (..),
@@ -140,7 +141,9 @@ serve host port tlsConfig sc@ServerContext{..} listeners = do
           void (readMVar (clusterReady gossipContext)) >> Log.i "Cluster is ready!"
           readMVar (clusterInited gossipContext) >>= \case
             Gossip -> return ()
-            _ -> getProtoTimestamp >>= \x -> upsertMeta @Proto.Timestamp clusterStartTimeId x zkHandle
+            _ -> do
+              getProtoTimestamp >>= \x -> upsertMeta @Proto.Timestamp clusterStartTimeId x metaHandle
+              deleteAllMeta @TaskAllocation metaHandle
 
 #ifdef HStreamUseHsGrpc
   sslOpts <- mapM readTlsPemFile tlsConfig

@@ -60,7 +60,7 @@ data ServerContext = ServerContext
   , scAdvertisedListenersKey :: Maybe Text
   , scDefaultStreamRepFactor :: Int
   , scMaxRecordSize          :: Int
-  , zkHandle                 :: MetaHandle
+  , metaHandle               :: MetaHandle
   , runningQueries           :: MVar (HM.HashMap Text ThreadId)
   , scSubscribeContexts      :: TVar (HM.HashMap SubscriptionId SubscribeContextNewWrapper)
   , cmpStrategy              :: HS.Compression
