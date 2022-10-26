@@ -18,16 +18,16 @@ import           Network.GRPC.HighLevel.Generated (ClientRequest (..),
                                                    ClientResult (..),
                                                    GRPCMethodType (..),
                                                    withGRPCClient)
+import           Proto3.Suite                     (Enumerated (Enumerated))
 
-import           HStream.Client.Execute           (executeWithAddr_)
-import           HStream.Client.Gadget            (lookupSubscription)
+import           HStream.Client.Execute           (executeWithAddr_,
+                                                   lookupSubscription)
 import           HStream.Client.Types             (HStreamSqlContext (..))
 import           HStream.Client.Utils             (mkClientNormalRequest')
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.Utils                    (HStreamClientApi,
                                                    mkGRPCClientConfWithSSL,
                                                    serverNodeToSocketAddr)
-import           Proto3.Suite                     (Enumerated (Enumerated))
 
 callSubscription :: HStreamSqlContext -> T.Text -> T.Text -> IO ()
 callSubscription ctx subId stream = void $ execute ctx getRespApp handleRespApp

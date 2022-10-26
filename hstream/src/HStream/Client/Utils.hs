@@ -11,15 +11,20 @@ module HStream.Client.Utils
   , requestTimeout
   , extractSelect
   , printResult
-  ) where
+  , waitForServerToStart) where
 
-import           Data.Char                     (toUpper)
-import qualified Data.Text                     as T
+import           Control.Concurrent               (threadDelay)
+import           Data.Char                        (toUpper)
+import qualified Data.Text                        as T
 import           Network.GRPC.HighLevel.Client
-import           Proto3.Suite.Class            (HasDefault, def)
+import           Network.GRPC.HighLevel.Generated (withGRPCClient)
+import           Proto3.Suite.Class               (HasDefault, def)
 
-import           HStream.Utils                 (Format (formatResult),
-                                                mkClientNormalRequest)
+import qualified HStream.Server.HStreamApi        as API
+import           HStream.Utils                    (Format (formatResult),
+                                                   SocketAddr (..),
+                                                   mkClientNormalRequest,
+                                                   mkGRPCClientConfWithSSL)
 
 clientDefaultRequest :: HasDefault a => ClientRequest 'Normal a b
 clientDefaultRequest = mkClientNormalRequest' def
@@ -36,6 +41,23 @@ extractSelect = T.pack .
   dropWhile ((/= "EMIT") . map toUpper) .
   reverse .
   dropWhile ((/= "SELECT") . map toUpper)
+
+waitForServerToStart :: Int -> SocketAddr -> Maybe ClientSSLConfig -> IO (Maybe ())
+waitForServerToStart t addr clientSSLConfig = withGRPCClient (mkGRPCClientConfWithSSL addr clientSSLConfig) $ \client -> do
+  api <- API.hstreamApiClient client
+  loop t api
+  where
+    interval = 1000000
+    loop timeout api@API.HStreamApi{..} = do
+     resp <- hstreamApiEcho (mkClientNormalRequest' $ API.EchoRequest "")
+     case resp of
+       ClientNormalResponse {} -> return $ Just ()
+       _                       -> do
+         let newTimeout = timeout - interval
+         threadDelay interval
+         putStrLn "Waiting for server to start..."
+         if newTimeout <= 0 then return Nothing
+           else loop newTimeout api
 
 --------------------------------------------------------------------------------
 

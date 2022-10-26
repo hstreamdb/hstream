@@ -2,10 +2,10 @@ module HStream.Client.Types where
 
 import           Control.Concurrent            (MVar)
 import           Data.ByteString               (ByteString)
+import           Data.Word                     (Word32)
 import           Network.GRPC.HighLevel.Client (ClientSSLConfig)
 import qualified Options.Applicative           as O
 
-import           Data.Word                     (Word32)
 import           HStream.Admin.Server.Types    (StreamCommand, streamCmdParser)
 import           HStream.Server.Types          (ServerID)
 import           HStream.Utils                 (SocketAddr)
