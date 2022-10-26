@@ -368,6 +368,7 @@ jobs:
         run: |
           cd hstream-connectors/integration_tests
           export HSTREAM_IMAGE_NAME=$NEW_HSTREAM_IMAGE
+          export HSTREAM_IO_USE_DEFAULT_IMAGES=true
           ./gradlew test --info --fail-fast
 
       - name: collect tests reports
