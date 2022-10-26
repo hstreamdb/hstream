@@ -161,10 +161,10 @@ restartQueryHandler
 restartQueryHandler _ (ServerNormalRequest _metadata _) = do
   Log.fatal "Restart Query Not Supported"
   returnErrResp StatusUnimplemented "restart query not suppported yet"
-    -- queries <- P.withMaybeZHandle zkHandle P.getQueries
+    -- queries <- P.withMaybeZHandle metaHandle P.getQueries
     -- case find (\P.PersistentQuery{..} -> cBytesToLazyText queryId == restartQueryRequestId) queries of
     --   Just query -> do
-    --     P.withMaybeZHandle zkHandle $ P.setQueryStatus (P.queryId query) P.Running
+    --     P.withMaybeZHandle metaHandle $ P.setQueryStatus (P.queryId query) P.Running
     --     returnResp Empty
       -- Nothing    -> returnErrResp StatusInternal "Query does not exist"
 

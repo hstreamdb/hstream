@@ -63,7 +63,7 @@ smokeTest h = do
       checkMetaExists @MetaExample id_2 h `shouldReturn` True
       getMeta @MetaExample id_1 h `shouldReturn` Just meta
       getMeta @MetaExample id_2 h `shouldReturn` Just meta2
-      updateMeta id_1 newMeta Nothing h
+      updateMeta id_1 newMeta (Just 0) h
       upsertMeta id_2 newMeta h
       getMeta @MetaExample id_1 h `shouldReturn` Just newMeta
       getMeta @MetaExample id_2 h `shouldReturn` Just newMeta
@@ -84,11 +84,12 @@ smokeTest h = do
            [ insertMetaOp metaId1 meta1 h
            , insertMetaOp metaId2 meta2 h]
       let opUpdateFail =
-           [ checkOp @MetaExample metaId1 2 h
+           [ checkOp @MetaExample metaId1 1 h
            , updateMetaOp metaId1 newMeta1 Nothing h
            , updateMetaOp metaId2 newMeta2 Nothing h]
       let opUpdate =
-           [ updateMetaOp metaId1 newMeta1 Nothing h
+           [ checkOp @MetaExample metaId1 0 h
+           , updateMetaOp metaId1 newMeta1 Nothing h
            , updateMetaOp metaId2 newMeta2 Nothing h]
       let opDelete =
            [ deleteMetaOp @MetaExample metaId1 Nothing h

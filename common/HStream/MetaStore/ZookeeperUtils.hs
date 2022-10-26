@@ -15,9 +15,11 @@ import           GHC.Stack            (HasCallStack)
 import           Z.Data.CBytes        (CBytes)
 import           Z.Data.Vector        (Bytes)
 import qualified Z.Foreign            as ZF
-import           ZooKeeper            (zooCreate, zooDelete, zooGet, zooSet)
+import           ZooKeeper            (zooCreate, zooDelete, zooGet,
+                                       zooGetChildren, zooSet)
 import           ZooKeeper.Exception
-import           ZooKeeper.Types      (DataCompletion (DataCompletion), ZHandle,
+import           ZooKeeper.Types      (DataCompletion (..), StringVector (..),
+                                       StringsCompletion (..), ZHandle,
                                        pattern ZooPersistent, zooOpenAclUnsafe)
 
 import qualified HStream.Logger       as Log
@@ -45,10 +47,17 @@ upsertZkData zk path contents = do
       Log.debug . Log.buildString $ "path exists, set the value instead"
       setZkData zk path contents Nothing
 
-deleteZKPath :: ZHandle -> T.Text -> Maybe Int -> IO ()
-deleteZKPath zk path mv = do
+deleteZkPath :: ZHandle -> T.Text -> Maybe Int -> IO ()
+deleteZkPath zk path mv = do
   Log.debug . Log.buildString $ "delete path " <> show path
   void $ zooDelete zk (textToCBytes path) (fromIntegral <$> mv)
+
+deleteZkChildren :: ZHandle -> T.Text -> IO ()
+deleteZkChildren zk path = do
+  let path' = textToCBytes path
+  Log.debug . Log.buildString $ "delete children under path: " <> show path
+  StringsCompletion (StringVector children) <- zooGetChildren zk path'
+  mapM_ (\p -> zooDelete zk (path' <> "/" <> p) Nothing) children
 
 decodeZNodeValue :: FromJSON a => ZHandle -> T.Text -> IO (Maybe a)
 decodeZNodeValue zk path = do

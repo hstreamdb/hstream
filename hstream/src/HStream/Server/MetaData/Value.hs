@@ -22,6 +22,7 @@ paths = [ textToCBytes rootPath
         , textToCBytes $ myRootPath @PersistentQuery  @ZHandle
         , textToCBytes $ myRootPath @SubscriptionWrap @ZHandle
         , textToCBytes $ myRootPath @Proto.Timestamp  @ZHandle
+        , textToCBytes $ myRootPath @TaskAllocation   @ZHandle
         ]
 
 tables :: [Text]
@@ -32,6 +33,7 @@ tables = [
   , myRootPath @ShardReader      @RHandle
   , myRootPath @SubscriptionWrap @RHandle
   , myRootPath @Proto.Timestamp  @RHandle
+  , myRootPath @TaskAllocation @RHandle
   ]
 
 clusterStartTimeId :: Text

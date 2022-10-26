@@ -34,8 +34,7 @@ import qualified HStream.IO.Types                 as IO
 import qualified HStream.IO.Worker                as IO
 import qualified HStream.Logger                   as Log
 import           HStream.MetaStore.Types          (MetaHandle (..))
-import           HStream.Server.Config            (MetaStoreAddr (ZkAddr),
-                                                   ServerOpts (..),
+import           HStream.Server.Config            (ServerOpts (..),
                                                    TlsConfig (..))
 import           HStream.Server.Types
 import           HStream.Stats                    (newServerStatsHolder)
@@ -78,7 +77,7 @@ initializeServer opts@ServerOpts{..} gossipContext hh serverState = do
 
   return
     ServerContext
-      { zkHandle                 = hh
+      { metaHandle                 = hh
       , scLDClient               = ldclient
       , serverID                 = _serverID
       , scAdvertisedListenersKey = Nothing

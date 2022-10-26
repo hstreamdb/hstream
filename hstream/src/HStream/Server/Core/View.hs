@@ -32,8 +32,9 @@ deleteView sc name checkIfExist = do
 getView :: ServerContext -> T.Text -> IO API.View
 getView ServerContext{..} viewId = do
   query <- do
-    viewQueries <- filter P.isViewQuery <$> M.listMeta zkHandle
-    return $ find ((== viewId) . P.getQuerySink) viewQueries
+    viewQueries <- filter P.isViewQuery <$> M.listMeta metaHandle
+    return $
+      find (\P.PersistentQuery {..} -> queryId == viewId) viewQueries
   case query of
     Just q -> pure $ hstreamQueryToView q
     _      -> do
@@ -52,9 +53,9 @@ hstreamQueryToView (P.PersistentQuery _ sqlStatement createdTime (P.ViewQuery _ 
 hstreamQueryToView _ = throw $ UnexpectedError "unexpected match in hstreamQueryToView."
 
 listViews :: HasCallStack => ServerContext -> IO [API.View]
-listViews ServerContext{..} = map hstreamQueryToView . filter P.isViewQuery <$> M.listMeta zkHandle
+listViews ServerContext{..} = map hstreamQueryToView . filter P.isViewQuery <$> M.listMeta metaHandle
 
 listViewNames :: ServerContext -> IO [T.Text]
 listViewNames ServerContext{..} = do
-  xs <- map hstreamQueryToView . filter P.isViewQuery <$> M.listMeta zkHandle
+  xs <- map hstreamQueryToView . filter P.isViewQuery <$> M.listMeta metaHandle
   pure (API.viewViewId <$> xs)

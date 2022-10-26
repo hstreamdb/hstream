@@ -91,14 +91,14 @@ deleteStream ServerContext{..} API.DeleteStreamRequest{deleteStreamRequestForce 
   where
     streamId = transToStreamName sName
     doDelete = do
-      subs <- P.getSubscriptionWithStream zkHandle sName
+      subs <- P.getSubscriptionWithStream metaHandle sName
       if null subs
       then S.removeStream scLDClient streamId
       else if force
            then do
              -- TODO: delete the archived stream when the stream is no longer needed
              _archivedStream <- S.archiveStream scLDClient streamId
-             P.updateSubscription zkHandle sName (cBytesToText $ S.getArchivedStreamName _archivedStream)
+             P.updateSubscription metaHandle sName (cBytesToText $ S.getArchivedStreamName _archivedStream)
            else
              throwIO $ HE.FoundSubscription "Stream still has subscription"
 
@@ -177,12 +177,12 @@ createShardReader
 createShardReader ServerContext{..} API.CreateShardReaderRequest{createShardReaderRequestStreamName=rStreamName,
     createShardReaderRequestShardId=rShardId, createShardReaderRequestShardOffset=rOffset, createShardReaderRequestTimeout=rTimeout,
     createShardReaderRequestReaderId=rId} = do
-  exist <- M.checkMetaExists @P.ShardReader rId zkHandle
+  exist <- M.checkMetaExists @P.ShardReader rId metaHandle
   when exist $ throwIO $ HE.ShardReaderExists "ShardReaderExists"
   startLSN <- getStartLSN rShardId
   let shardReader = mkShardReader startLSN
   Log.info $ "create shardReader " <> Log.buildString' (show shardReader)
-  M.insertMeta rId shardReader zkHandle
+  M.insertMeta rId shardReader metaHandle
   return API.CreateShardReaderResponse
     { API.createShardReaderResponseStreamName  = rStreamName
     , API.createShardReaderResponseShardId     = rShardId
@@ -214,7 +214,7 @@ deleteShardReader ServerContext{..} API.DeleteShardReaderRequest{..} = do
   hashRing <- readTVarIO loadBalanceHashRing
   unless (getAllocatedNodeId hashRing deleteShardReaderRequestReaderId == serverID) $
     throwIO $ HE.WrongServer "Send deleteShard request to wrong server."
-  isSuccess <- catch (M.deleteMeta @P.ShardReader deleteShardReaderRequestReaderId Nothing zkHandle >> return True) $
+  isSuccess <- catch (M.deleteMeta @P.ShardReader deleteShardReaderRequestReaderId Nothing metaHandle >> return True) $
       \ (_ :: ZNONODE) -> return False
   modifyMVar_ shardReaderMap $ \mp -> do
     case HM.lookup deleteShardReaderRequestReaderId mp of
@@ -275,7 +275,7 @@ readShard ServerContext{..} API.ReadShardRequest{..} = do
      case mReader of
        Just readerMvar -> takeMVar readerMvar
        Nothing         -> do
-         r@P.ShardReader{..} <- M.getMeta readShardRequestReaderId zkHandle >>= \case
+         r@P.ShardReader{..} <- M.getMeta readShardRequestReaderId metaHandle >>= \case
            Nothing     -> throwIO $ HE.EmptyShardReader "ShardReaderNotExists"
            Just reader -> return reader
          Log.info $ "get reader from persistence: " <> Log.buildString' (show r)

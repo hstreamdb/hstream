@@ -208,8 +208,8 @@ handleCreateAsSelect :: ServerContext
                      -> IO (Text, Int64)
 handleCreateAsSelect ctx@ServerContext{..} plan commandQueryStmtText queryType = do
   (qid, timestamp) <- P.createInsertPersistentQuery
-    tName commandQueryStmtText queryType serverID zkHandle
-  P.setQueryStatus qid Running zkHandle
+    tName commandQueryStmtText queryType serverID metaHandle
+  P.setQueryStatus qid Running metaHandle
   tid <- forkIO $ catches (action qid) (cleanup qid)
   modifyMVar_ runningQueries (return . HM.insert qid tid)
   return (qid, timestamp)
@@ -232,13 +232,13 @@ handleCreateAsSelect ctx@ServerContext{..} plan commandQueryStmtText queryType =
                     Log.debug . Log.buildString
                        $ "CREATE AS SELECT: query " <> show qid
                       <> " is killed because of " <> show e
-                    P.setQueryStatus qid Terminated zkHandle
+                    P.setQueryStatus qid Terminated metaHandle
                     void $ releasePid qid)
       , Handler (\(e :: SomeException) -> do
                     Log.warning . Log.buildString
                        $ "CREATE AS SELECT: query " <> show qid
                       <> " died because of " <> show e
-                    P.setQueryStatus qid ConnectionAbort zkHandle
+                    P.setQueryStatus qid ConnectionAbort metaHandle
                     void $ releasePid qid)
       ]
     releasePid qid = modifyMVar_ runningQueries (return . HM.delete qid)
