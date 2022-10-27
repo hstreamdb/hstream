@@ -589,6 +589,7 @@ newLDRsmCkpReader client name logid timeout max_logs m_buffer_size = do
   reader <- LD.newLDReader client max_logs m_buffer_size
   LD.newLDSyncCkpReader name reader store
 
+-- TODO: remove
 newLDZkCkpReader
   :: FFI.LDClient
   -> CBytes

@@ -47,6 +47,7 @@ newRSMBasedCheckpointStore client log_id stop_timeout =
     i <- c_new_rsm_based_checkpoint_store client' log_id stop_timeout
     newForeignPtr c_free_checkpoint_store_fun i
 
+-- TODO: remove
 -- | Creates a zookeeper based CheckpointStore.
 --
 -- zk path: "/logdevice/{}/checkpoints/"
