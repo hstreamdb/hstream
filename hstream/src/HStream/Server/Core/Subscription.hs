@@ -500,7 +500,7 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
     readRecordBatches :: IO [S.DataRecord BS.ByteString]
     readRecordBatches = do
       S.ckpReaderReadAllowGap subLdCkpReader 100 >>= \case
-        Left gap@S.GapRecord {..} -> do
+        Left gap@S.GapRecord{..} -> do
           Log.debug $ "reader meet gap: " <> Log.buildString (show gap)
           atomically $ do
             scs <- readTVar subShardContexts
@@ -931,7 +931,7 @@ doAck ldclient subCtx@SubscribeContext {..} logId recordIds= do
         return Nothing
   case res of
     Just lsn -> do
-        Log.info $ "[stream " <> Log.buildInt logId <> "] commit checkpoint = " <> Log.buildString (show lsn)
+        Log.debug $ "[stream " <> Log.buildInt logId <> "] commit checkpoint = " <> Log.buildString (show lsn)
         S.writeCheckpoints subLdCkpReader (Map.singleton logId lsn) 10{-retries-}
     Nothing  -> return ()
 
