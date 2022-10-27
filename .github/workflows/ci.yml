@@ -9,6 +9,7 @@ on:
 
 env:
   NEW_HSTREAM_IMAGE: new_hstream_image
+  HS_IMAGE_TAG_PREFIX: "rqlite_"
 
 jobs:
   pre-build:
@@ -62,12 +63,14 @@ jobs:
 
       - name: set env
         run: |
-          docker pull docker.io/hstreamdb/haskell:${{ matrix.ghc }}
-          echo "CABAL=python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }}" >> $GITHUB_ENV
-          echo "SHELL=python3 script/dev-tools shell --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }}" >> $GITHUB_ENV
+          docker pull docker.io/hstreamdb/haskell:${HS_IMAGE_TAG_PREFIX}${{ matrix.ghc }}
+          echo "CABAL=python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${HS_IMAGE_TAG_PREFIX}${{ matrix.ghc }}" >> $GITHUB_ENV
+          echo "SHELL=python3 script/dev-tools shell --check --no-interactive -i docker.io/hstreamdb/haskell:${HS_IMAGE_TAG_PREFIX}${{ matrix.ghc }}" >> $GITHUB_ENV
 
       - name: start required services
-        run: python3 script/dev-tools start-services
+        run: |
+          export DB_IMAGE=docker.io/hstreamdb/logdevice:rqlite
+          python3 script/dev-tools start-services
 
       - name: cabal update
         run: ${{ env.CABAL }} update
@@ -103,13 +106,15 @@ jobs:
       - name: start hstream server
         run: |
           export CONTAINER_NAME="test-hstream-server"
-          export IMAGE="docker.io/hstreamdb/haskell:${{ matrix.ghc }}"
-          export EXTRA_OPTS="--check --no-interactive --detach"
+          export IMAGE="docker.io/hstreamdb/haskell:${HS_IMAGE_TAG_PREFIX}${{ matrix.ghc }}"
+          export EXTRA_OPTS="--check --no-interactive --no-rm --detach"
           export COMMAND=" "
           export EXE=$(find dist-newstyle -name "hstream-server" -type f)
           ./script/start-server.sh
           sleep 5
           docker logs --tail 100 $CONTAINER_NAME
+          # TODO
+          # [ ! "$(docker ps --filter name=${CONTAINER_NAME} --filter status=running --format '{{.Names}}')" ] && exit 1
 
       - name: test
         run: |
@@ -147,7 +152,7 @@ jobs:
           mkdir -p ~/data
 
           python3 script/dev-tools quick-build-dev-image \
-            --builder-image docker.io/hstreamdb/haskell:${{ matrix.ghc }} \
+            --builder-image docker.io/hstreamdb/haskell:${HS_IMAGE_TAG_PREFIX}${{ matrix.ghc }} \
             -t $NEW_HSTREAM_IMAGE
 
           docker save -o ~/data/new_hstream_image.tar $NEW_HSTREAM_IMAGE

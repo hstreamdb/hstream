@@ -71,7 +71,7 @@ with open(BASH_HISTORY_FILE, "a"):
 IMAGES = {
     "HS_IMAGE": os.getenv("DEV_IMAGE", "docker.io/hstreamdb/haskell"),
     "LD_IMAGE": "docker.io/hstreamdb/logdevice",
-    "DB_IMAGE": "docker.io/hstreamdb/hstream",
+    "DB_IMAGE": os.getenv("DB_IMAGE", "docker.io/hstreamdb/hstream"),
     "SWAGGER_IMAGE": "swaggerapi/swagger-ui",
     "ZOOKEEPER_IMAGE": "zookeeper:3.6",
     "RQLITE_IMAGE": "rqlite/rqlite",
@@ -696,6 +696,7 @@ class ShellCommand:
         parser_haskell.add_argument("--command", default=None)
         parser_haskell.add_argument("--no-interactive", action="store_true")
         parser_haskell.add_argument("--no-tty", action="store_true")
+        parser_haskell.add_argument("--no-rm", action="store_true")
         parser_haskell.add_argument(
             "--no-services-required", action="store_true"
         )
@@ -711,16 +712,17 @@ class ShellCommand:
     def run(self, **args):
         args["interactive"] = not args.pop("no_interactive")
         args["tty"] = not args.pop("no_tty")
+        args["rm"] = not args.pop("no_rm")
         if args["command"] is None:
             if args["interactive"]:
                 args["command"] = "bash"
                 args["cmd_args"] = ""
-                dev_env(rm=True, **args)
+                dev_env(**args)
             else:
                 args["command"] = "bash -c"
-                dev_env(rm=True, **args)
+                dev_env(**args)
         else:
-            dev_env(rm=True, **args)
+            dev_env(**args)
 
 
 class CabalCommand:
