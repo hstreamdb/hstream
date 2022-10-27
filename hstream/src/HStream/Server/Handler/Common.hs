@@ -39,7 +39,7 @@ import           HStream.Server.Types
 import           HStream.SQL.AST
 import           HStream.SQL.Codegen
 import qualified HStream.Store                    as S
-import           HStream.Utils                    (TaskStatus (..),
+import           HStream.Utils                    (TaskStatus (..), genUnique,
                                                    newRandomText)
 
 import qualified DiffFlow.Graph                   as DiffFlow
@@ -137,11 +137,13 @@ runTask ctx@ServerContext{..} taskName sink insWithRole outWithRole graphBuilder
         tid <- forkIO $ withReadRecordsWithoutCkp inStream $ \sourceRecords -> do
           forM_ sourceRecords $ \SourceRecord{..} -> do
             ts <- HCT.getCurrentTimestamp
+            uniq <- genUnique
             let dataChange
                   = DiffFlow.DataChange
                     { dcRow = (jsonObjectToFlowObject srcStream) . fromJust . Aeson.decode $ srcValue
                     , dcTimestamp = DiffFlow.Timestamp ts [] -- Timestamp srcTimestamp []
                     , dcDiff = 1
+                    , dcExtra = fromIntegral uniq
                     }
             Log.debug . Log.buildString $ "Get input: " <> show dataChange
             DiffFlow.pushInput shard inNode dataChange -- original update
@@ -227,10 +229,11 @@ runImmTask ctx@ServerContext{..} insWithRole out out_m graphBuilder = do
         throwIO $ HE.InvalidSqlStatement "Can not perform non-pushing SELECT from streams. "
 
   -- advance input
-  forM_ insWithRole $ \(In{..}, _) -> do
+  forM_ insWithRole $ \(In{..}, _) -> replicateM_ 10 $ do
     ts <- HCT.getCurrentTimestamp
     -- Log.debug . Log.buildString $ "### Advance time to " <> show ts
     DiffFlow.advanceInput shard inNode (DiffFlow.Timestamp ts [])
+    threadDelay 1000
 
   -- push output from OUTPUT node
   replicateM_ 5 $ do
@@ -272,7 +275,7 @@ handleCreateAsSelect ctx@ServerContext{..} sink insWithRole outWithRole builder 
   taskName <- newRandomText 10
   (qid, timestamp) <- P.createInsertPersistentQuery
                       taskName commandQueryStmtText queryType serverID metaHandle
-  P.setQueryStatus qid Running zkHandle
+  P.setQueryStatus qid Running metaHandle
   tid <- forkIO $ catches (action qid taskName) (cleanup qid)
   modifyMVar_ runningQueries (return . HM.insert qid tid)
   return (qid, timestamp)

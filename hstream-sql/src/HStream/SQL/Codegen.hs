@@ -180,7 +180,11 @@ elabRValueExpr expr grp startBuilder subgraph startNode = case expr of
     let composer = Composer $ \os ->
                      let vs = L.map (snd . L.head . HM.toList) os
                       in HM.fromList [(SKey (T.pack name) Nothing Nothing, FlowArray vs)]
-    let (builder2, node) = addNode builder1 subgraph (ComposeSpec (outNode <$> outs) composer)
+    let (builder_acc, outs') = L.foldl (\(acc_builder, acc_outs) this_outNode ->
+                                           let (tmp_builder, tmp_node) = addNode acc_builder subgraph (IndexSpec this_outNode)
+                                            in (tmp_builder, acc_outs ++ [tmp_node])
+                                       ) (builder1, []) (outNode <$> outs)
+    let (builder2, node) = addNode builder_acc subgraph (ComposeSpec outs' composer)
     return (builder2, ins, Out node)
   RExprMap name emap -> do
     (builder1, ins, outTups) <-
@@ -198,8 +202,14 @@ elabRValueExpr expr grp startBuilder subgraph startNode = case expr of
                      let vs = L.map (snd . L.head . HM.toList ) os
                       in HM.fromList [(SKey (T.pack name) Nothing Nothing, FlowMap (mkMap vs))]
     let (kOuts,vOuts) = L.unzip outTups
+
+    let (builder_acc, outs') = L.foldl (\(acc_builder, acc_outs) this_outNode ->
+                                           let (tmp_builder, tmp_node) = addNode acc_builder subgraph (IndexSpec this_outNode)
+                                            in (tmp_builder, acc_outs ++ [tmp_node])
+                                       ) (builder1, []) (outNode <$> (kOuts++vOuts))
+
     let (builder2, node) =
-          addNode builder1 subgraph (ComposeSpec (outNode <$> (kOuts++vOuts)) composer)
+          addNode builder_acc subgraph (ComposeSpec outs' composer)
     return (builder2, ins, Out node)
     where
       mkMap :: [FlowValue] -> Map.Map FlowValue FlowValue
@@ -210,12 +220,16 @@ elabRValueExpr expr grp startBuilder subgraph startNode = case expr of
       elabRValueExpr emap grp startBuilder subgraph startNode
     (builder2, ins2, out2) <-
       elabRValueExpr ek grp builder1 subgraph startNode
+
+    let (builder_2_1, out1_indexed) = addNode builder2    subgraph (IndexSpec (outNode out1))
+        (builder_2_2, out2_indexed) = addNode builder_2_1 subgraph (IndexSpec (outNode out2))
+
     let composer = Composer $ \[omap,okey] ->
                      let (FlowMap theMap) = L.head (HM.elems omap)
                          theKey = L.head (HM.elems okey)
                       in HM.fromList [(SKey (T.pack name) Nothing Nothing, theMap Map.! theKey)]
     let (builder3, node) =
-          addNode builder2 subgraph (ComposeSpec (outNode <$> [out1,out2]) composer)
+          addNode builder_2_2 subgraph (ComposeSpec [out1_indexed,out2_indexed] composer)
     return (builder3, L.nub (ins1++ins2), Out node)
   RExprAccessArray name earr rhs -> do
     (builder1, ins, Out out) <-
@@ -252,10 +266,14 @@ elabRValueExpr expr grp startBuilder subgraph startNode = case expr of
   RExprBinOp name op e1 e2 -> do
     (builder1, ins1, out1) <- elabRValueExpr e1 grp startBuilder subgraph startNode
     (builder2, ins2, out2) <- elabRValueExpr e2 grp builder1 subgraph startNode
+
+    let (builder_2_1, out1_indexed) = addNode builder2    subgraph (IndexSpec (outNode out1))
+        (builder_2_2, out2_indexed) = addNode builder_2_1 subgraph (IndexSpec (outNode out2))
+
     let composer = Composer $ \[o1,o2] ->
                      makeExtra "__op1__" o1 `HM.union` makeExtra "__op2__" o2
     let mapper = mkBinaryOpMapper op (T.pack name)
-    let (builder3, composed) = addNode builder2 subgraph (ComposeSpec (outNode <$> [out1,out2]) composer)
+    let (builder3, composed) = addNode builder_2_2 subgraph (ComposeSpec [out1_indexed,out2_indexed] composer)
     let (builder4, node) = addNode builder3 subgraph (MapSpec composed mapper)
     return (builder4, L.nub (ins1++ins2), Out node)
   RExprAccessJson name jop e1 e2 -> do
@@ -263,10 +281,14 @@ elabRValueExpr expr grp startBuilder subgraph startNode = case expr of
       elabRValueExpr e1 grp startBuilder subgraph startNode
     (builder2, ins2, out2) <-
       elabRValueExpr e2 grp builder1 subgraph startNode
+
+    let (builder_2_1, out1_indexed) = addNode builder2    subgraph (IndexSpec (outNode out1))
+        (builder_2_2, out2_indexed) = addNode builder_2_1 subgraph (IndexSpec (outNode out2))
+
     let composer = Composer $ \[o1,o2] ->
                      jsonOpOnObject jop o1 o2 (T.pack name)
     let (builder3, node) =
-          addNode builder2 subgraph (ComposeSpec (outNode <$> [out1,out2]) composer)
+          addNode builder_2_2 subgraph (ComposeSpec [out1_indexed,out2_indexed] composer)
     return (builder3, L.nub (ins1++ins2), Out node)
 
 mkCastMapper :: RDataType -> Text -> Mapper Row
@@ -386,14 +408,19 @@ elabRTableRef ref grp startBuilder subgraph =
       (builder1, ins1, out1) <- elabRTableRef ref1 grp startBuilder subgraph
       (builder2, ins2, out2) <- elabRTableRef ref2 grp builder1 subgraph
 
+      let (builder_2_1, out1_indexed) = addNode builder2    subgraph (IndexSpec (outNode out1))
+          (builder_2_2, out2_indexed) = addNode builder_2_1 subgraph (IndexSpec (outNode out2))
+
       -- FIXME: Incorrect impl!!!
       let composer_init = Composer $ \[o1,o2] -> o1 <> o2
-          (builder3, node_tmp) = addNode builder2 subgraph (ComposeSpec (outNode <$> [out1,out2]) composer_init)
+          (builder3, node_tmp) = addNode builder_2_2 subgraph (ComposeSpec [out1_indexed,out2_indexed] composer_init)
       (builder4, ins4, out4) <- elabRValueExpr expr grp builder3 subgraph node_tmp
+
+      let (builder_4_1, out4_indexed) = addNode builder4 subgraph (IndexSpec (outNode out4))
 
       let composer = Composer $ \[os1, oexpr] ->
                  makeExtra "__s1__" os1 `HM.union` makeExtra "__expr__" oexpr
-          (builder5, node1_with_expr) = addNode builder4 subgraph (ComposeSpec (outNode <$> [out1,out4]) composer)
+          (builder5, node1_with_expr) = addNode builder_4_1 subgraph (ComposeSpec [out1_indexed,out4_indexed] composer)
           (builder6, node1_indexed) = addNode builder5 subgraph (IndexSpec node1_with_expr)
           (builder7, node2_indexed) = addNode builder6 subgraph (IndexSpec (outNode out2))
       let joinCond = \o1 o2 ->
@@ -495,10 +522,14 @@ elabAggregate agg grp startBuilder subgraph startNode exprName =
     Unary _ expr -> do
       (builder_1, ins, Out node_expr) <-
         elabRValueExpr expr grp startBuilder subgraph startNode
+
+      let (builder_1_1, node_expr_indexed) = addNode builder_1   subgraph (IndexSpec node_expr)
+          (builder_1_2, startNode_indexed) = addNode builder_1_1 subgraph (IndexSpec startNode)
+
       let composer = Composer $ \[oexpr,ofrom] ->
             makeExtra "__expr__" oexpr `HM.union` makeExtra "__from__" ofrom
       let (builder_2, composed) =
-            addNode builder_1 subgraph (ComposeSpec [node_expr,startNode] composer)
+            addNode builder_1_2 subgraph (ComposeSpec [node_expr_indexed,startNode_indexed] composer)
       let AggregateComponents{..} = genAggregateComponents agg exprName
       let (builder_3, indexed) =
             addNode builder_2 subgraph (IndexSpec composed)
@@ -513,12 +544,17 @@ elabAggregate agg grp startBuilder subgraph startNode exprName =
         elabRValueExpr expr1 grp startBuilder subgraph startNode
       (builder_2, ins2, Out node_expr2) <-
         elabRValueExpr expr2 grp builder_1 subgraph startNode
+
+      let (builder_2_1, node_expr1_indexed) = addNode builder_2   subgraph (IndexSpec node_expr1)
+          (builder_2_2, node_expr2_indexed) = addNode builder_2_1 subgraph (IndexSpec node_expr2)
+          (builder_2_3, startNode_indexed) = addNode builder_2_2 subgraph (IndexSpec startNode)
+
       let composer = Composer $ \[oexpr1,oexpr2,ofrom] ->
             makeExtra "__expr1__" oexpr1 `HM.union`
             makeExtra "__expr2__" oexpr2 `HM.union`
             makeExtra "__from__"  ofrom
       let (builder_3, composed) =
-            addNode builder_2 subgraph (ComposeSpec [node_expr1,node_expr2,startNode] composer)
+            addNode builder_2_3 subgraph (ComposeSpec [node_expr1_indexed,node_expr2_indexed,startNode_indexed] composer)
       let AggregateComponents{..} = genAggregateComponents agg exprName
       let (builder_4, indexed) =
             addNode builder_3 subgraph (IndexSpec composed)
@@ -622,9 +658,13 @@ elabRWhere whr grp startBuilder subgraph startNode = case whr of
   RWhere expr -> do
     (builder_1, ins, Out node_expr) <-
       elabRValueExpr expr grp startBuilder subgraph startNode
+
+    let (builder_1_1, node_expr_indexed) = addNode builder_1   subgraph (IndexSpec node_expr)
+        (builder_1_2, startNode_indexed) = addNode builder_1_1 subgraph (IndexSpec startNode)
+
     let composer = Composer $ \[oexpr,ofrom] ->
           makeExtra "__expr__" oexpr `HM.union` makeExtra "__from__" ofrom
-    let (builder_2, composed) = addNode builder_1 subgraph (ComposeSpec [node_expr,startNode] composer)
+    let (builder_2, composed) = addNode builder_1_2 subgraph (ComposeSpec [node_expr_indexed,startNode_indexed] composer)
     let filter = Filter $ \o ->
           let oexpr = getExtra "__expr__" o
            in case HM.toList oexpr of
@@ -692,8 +732,15 @@ elabRSel (RSel items) grp startBuilder subgraph startNode = do
                 elabRSelectItem item grp oldBuilder subgraph startNode
               return (newBuilder, L.nub (ins++oldIns), out:oldOuts)
           ) (startBuilder, [], []) items
+
+  let (builder_acc, outs') = L.foldl (\(acc_builder, acc_outs) this_outNode ->
+                                         let (tmp_builder, tmp_node) = addNode acc_builder subgraph (IndexSpec this_outNode)
+                                          in (tmp_builder, acc_outs ++ [tmp_node])
+                                     ) (builder_1, []) (outNode <$> outs)
+
+
   let composer = Composer $ \os -> L.foldl1 HM.union os
-  let (builder_2, node) = addNode builder_1 subgraph (ComposeSpec (outNode <$> outs) composer)
+  let (builder_2, node) = addNode builder_acc subgraph (ComposeSpec outs' composer)
   return (builder_2, ins, Out node)
 
 --------------------------------------------------------------------------------
