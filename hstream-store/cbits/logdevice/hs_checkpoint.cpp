@@ -34,11 +34,12 @@ new_rsm_based_checkpoint_store(logdevice_client_t* client, c_logid_t log_id,
 
 logdevice_checkpoint_store_t*
 new_zookeeper_based_checkpoint_store(logdevice_client_t* client) {
-  std::unique_ptr<CheckpointStore> checkpoint_store =
-      CheckpointStoreFactory().createZookeeperBasedCheckpointStore(client->rep);
-  logdevice_checkpoint_store_t* result = new logdevice_checkpoint_store_t;
-  result->rep = std::move(checkpoint_store);
-  return result;
+  throw std::logic_error("There is no zk based checkpoint store.");
+  // std::unique_ptr<CheckpointStore> checkpoint_store =
+  //     CheckpointStoreFactory().createZookeeperBasedCheckpointStore(client->rep);
+  // logdevice_checkpoint_store_t* result = new logdevice_checkpoint_store_t;
+  // result->rep = std::move(checkpoint_store);
+  // return result;
 }
 
 void free_checkpoint_store(logdevice_checkpoint_store_t* p) { delete p; }
@@ -74,10 +75,12 @@ void checkpoint_store_update_lsn(logdevice_checkpoint_store_t* store,
   store->rep->updateLSN(customer_id_, logid_t(logid), lsn, cb);
 }
 
-void checkpoint_store_remove_checkpoints(
-    logdevice_checkpoint_store_t* store, const char* customer_id,
-    c_logid_t* logids, HsInt logid_offset, HsInt logid_len, HsStablePtr mvar,
-    HsInt cap, facebook::logdevice::Status* st_out) {
+void checkpoint_store_remove_checkpoints(logdevice_checkpoint_store_t* store,
+                                         const char* customer_id,
+                                         c_logid_t* logids, HsInt logid_offset,
+                                         HsInt logid_len, HsStablePtr mvar,
+                                         HsInt cap,
+                                         facebook::logdevice::Status* st_out) {
   std::string customer_id_ = std::string(customer_id);
   logids += logid_offset;
   std::vector<logid_t> checkpoints;
