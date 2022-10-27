@@ -50,10 +50,14 @@ main = do
       (builder_4, node_map_2) = addNode builder_3 subgraph_0 (MapSpec node_1 mapper_2)
       (builder_5, node_map_3) = addNode builder_4 subgraph_0 (MapSpec node_1 mapper_1)
 
-      (builder_6, node_pre_index) = addNode builder_5 subgraph_0 (ComposeSpec [node_map_2, node_map_3] composer)
+      (builder_5_0, node_map_1_index) = addNode builder_5   subgraph_0 (IndexSpec node_map_1)
+      (builder_5_1, node_map_2_index) = addNode builder_5_0 subgraph_0 (IndexSpec node_map_2)
+      (builder_5_2, node_map_3_index) = addNode builder_5_1 subgraph_0 (IndexSpec node_map_3)
+
+      (builder_6, node_pre_index) = addNode builder_5_2 subgraph_0 (ComposeSpec [node_map_2_index, node_map_3_index] composer)
       (builder_7, node_indexed) = addNode builder_6 subgraph_0 (IndexSpec node_pre_index)
       (builder_8, node_reduced) = addNode builder_7 subgraph_0 (ReduceSpec node_indexed initValue keygen reducer)
-      (builder_9, node_composed) = addNode builder_8 subgraph_0 (ComposeSpec [node_map_1, node_reduced] composer)
+      (builder_9, node_composed) = addNode builder_8 subgraph_0 (ComposeSpec [node_map_1_index, node_reduced] composer)
 
       (builder_10, node_out) = addNode builder_9 subgraph_0  (OutputSpec node_composed)
 
@@ -65,22 +69,22 @@ main = do
   forkIO . forever $ popOutput shard node_out (\dcb -> print $ "---> Output DataChangeBatch: " <> show dcb)
 
   pushInput shard node_1
-    (DataChange (A.fromList [("a", Number 1), ("b", Number 2)]) (Timestamp (1 :: Word32) []) 1)
+    (DataChange (A.fromList [("a", Number 1), ("b", Number 2)]) (Timestamp (1 :: Word32) []) 1 0)
   pushInput shard node_1
-    (DataChange (A.fromList [("a", Number 3), ("b", Number 4)]) (Timestamp (2 :: Word32) []) 1)
+    (DataChange (A.fromList [("a", Number 3), ("b", Number 4)]) (Timestamp (2 :: Word32) []) 1 1)
   pushInput shard node_1
-    (DataChange (A.fromList [("a", Number 5), ("b", Number 6)]) (Timestamp (2 :: Word32) []) 1)
+    (DataChange (A.fromList [("a", Number 5), ("b", Number 6)]) (Timestamp (2 :: Word32) []) 1 2)
   pushInput shard node_1
-    (DataChange (A.fromList [("a", Number 7), ("b", Number 8)]) (Timestamp (2 :: Word32) []) 1)
+    (DataChange (A.fromList [("a", Number 7), ("b", Number 8)]) (Timestamp (2 :: Word32) []) 1 3)
   flushInput shard node_1
   advanceInput shard node_1 (Timestamp 3 [])
 
   threadDelay 1000000
 
   pushInput shard node_1
-    (DataChange (A.fromList [("a", Number 9), ("b", Number 10)]) (Timestamp (4 :: Word32) []) 1)
+    (DataChange (A.fromList [("a", Number 9), ("b", Number 10)]) (Timestamp (4 :: Word32) []) 1 4)
   pushInput shard node_1
-    (DataChange (A.fromList [("a", Number 11), ("b", Number 12)]) (Timestamp (5 :: Word32) []) 1)
+    (DataChange (A.fromList [("a", Number 11), ("b", Number 12)]) (Timestamp (5 :: Word32) []) 1 5)
   advanceInput shard node_1 (Timestamp 6 [])
 
   threadDelay 100000000

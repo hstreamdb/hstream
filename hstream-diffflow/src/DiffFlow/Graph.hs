@@ -10,6 +10,7 @@ import           Control.Concurrent.MVar
 import           Control.Concurrent.STM
 import           Control.DeepSeq         (NFData)
 import           Control.Exception       (throw)
+import           Control.Monad
 import           Data.Aeson              (Value (..))
 import           Data.Hashable           (Hashable)
 import           Data.HashMap.Lazy       (HashMap)
@@ -120,7 +121,7 @@ getInputsFromSpec (ReduceSpec node _ _ _) = V.singleton node
 
 data NodeState row a
   = InputState (TVar (Frontier a)) (TVar (DataChangeBatch row a))
-  | ComposeState Int (TVar (HashMap Int [DataChangeBatch row a]))
+  | ComposeState Int [TVar (Frontier a)]
   | IndexState (TVar (Index row a)) (TVar [DataChange row a])
   | JoinState (TVar (Frontier a)) (TVar (Frontier a))
   | OutputState (TVar [DataChangeBatch row a])
@@ -152,8 +153,8 @@ specToState InputSpec = do
   return $ InputState frontier unflushedChanges
 specToState spec@(ComposeSpec _ _) = do
   let inputsCnt = V.length (getInputsFromSpec spec)
-  unpopedBatches <- newTVarIO $ HM.fromList [(i,[]) | i <- [0..(inputsCnt-1)]]
-  return $ ComposeState inputsCnt unpopedBatches
+  fts <- replicateM inputsCnt (newTVarIO Set.empty)
+  return $ ComposeState inputsCnt fts
 specToState (IndexSpec _) = do
   index <- newTVarIO $ Index []
   pendingChanges <- newTVarIO []

@@ -85,19 +85,19 @@ main = do
   ----
 
   pushInput shard edges
-    (DataChange (A.fromList [("v1", String "a"), ("v2", String "b")]) (Timestamp (0 :: Word32) []) 1)
+    (DataChange (A.fromList [("v1", String "a"), ("v2", String "b")]) (Timestamp (0 :: Word32) []) 1 0)
 
   pushInput shard edges
-    (DataChange (A.fromList [("v1", String "b"), ("v2", String "c")]) (Timestamp (0 :: Word32) []) 1)
+    (DataChange (A.fromList [("v1", String "b"), ("v2", String "c")]) (Timestamp (0 :: Word32) []) 1 1)
 
   pushInput shard edges
-    (DataChange (A.fromList [("v1", String "b"), ("v2", String "d")]) (Timestamp (0 :: Word32) []) 1)
+    (DataChange (A.fromList [("v1", String "b"), ("v2", String "d")]) (Timestamp (0 :: Word32) []) 1 2)
 
   pushInput shard edges
-    (DataChange (A.fromList [("v1", String "c"), ("v2", String "a")]) (Timestamp (0 :: Word32) []) 1)
+    (DataChange (A.fromList [("v1", String "c"), ("v2", String "a")]) (Timestamp (0 :: Word32) []) 1 3)
 
   pushInput shard edges
-    (DataChange (A.fromList [("v1", String "b"), ("v2", String "c")]) (Timestamp (1 :: Word32) []) (-1))
+    (DataChange (A.fromList [("v1", String "b"), ("v2", String "c")]) (Timestamp (1 :: Word32) []) (-1) 4)
 
   flushInput shard edges
 

@@ -94,19 +94,19 @@ shardBody isDone reachOut_m reachSummaryOut_m = do
   putMVar reachSummaryOut_m []
 
   pushInput shard edges
-    (DataChange (A.fromList [("v1", String "a"), ("v2", String "b")]) (Timestamp (0 :: Word32) []) 1)
+    (DataChange (A.fromList [("v1", String "a"), ("v2", String "b")]) (Timestamp (0 :: Word32) []) 1 0)
 
   pushInput shard edges
-    (DataChange (A.fromList [("v1", String "b"), ("v2", String "c")]) (Timestamp (0 :: Word32) []) 1)
+    (DataChange (A.fromList [("v1", String "b"), ("v2", String "c")]) (Timestamp (0 :: Word32) []) 1 1)
 
   pushInput shard edges
-    (DataChange (A.fromList [("v1", String "b"), ("v2", String "d")]) (Timestamp (0 :: Word32) []) 1)
+    (DataChange (A.fromList [("v1", String "b"), ("v2", String "d")]) (Timestamp (0 :: Word32) []) 1 2)
 
   pushInput shard edges
-    (DataChange (A.fromList [("v1", String "c"), ("v2", String "a")]) (Timestamp (0 :: Word32) []) 1)
+    (DataChange (A.fromList [("v1", String "c"), ("v2", String "a")]) (Timestamp (0 :: Word32) []) 1 3)
 
   pushInput shard edges
-    (DataChange (A.fromList [("v1", String "b"), ("v2", String "c")]) (Timestamp (1 :: Word32) []) (-1))
+    (DataChange (A.fromList [("v1", String "b"), ("v2", String "c")]) (Timestamp (1 :: Word32) []) (-1) 4)
 
   flushInput shard edges
   advanceInput shard edges (Timestamp (1 :: Word32) [])
@@ -154,66 +154,66 @@ checkStep2 isDone reach_m reachSummary_m = describe "check reach summary out" $ 
 
 
 dcbs1 :: [[DataChange Object Word32]]
-dcbs1 = [ [DataChange (A.fromList [("v1", "b"), ("v2", "c")]) (Timestamp 0 []) 1]
-        , [DataChange (A.fromList [("v1", "c"), ("v2", "a")]) (Timestamp 0 []) 1]
-        , [DataChange (A.fromList [("v1", "b"), ("v2", "d")]) (Timestamp 0 []) 1]
-        , [DataChange (A.fromList [("v1", "a"), ("v2", "b")]) (Timestamp 0 []) 1]
+dcbs1 = [ [DataChange (A.fromList [("v1", "b"), ("v2", "c")]) (Timestamp 0 []) 1 0]
+        , [DataChange (A.fromList [("v1", "c"), ("v2", "a")]) (Timestamp 0 []) 1 0]
+        , [DataChange (A.fromList [("v1", "b"), ("v2", "d")]) (Timestamp 0 []) 1 0]
+        , [DataChange (A.fromList [("v1", "a"), ("v2", "b")]) (Timestamp 0 []) 1 0]
 
-        , [DataChange (A.fromList [("v1", "a"), ("v2", "c")]) (Timestamp 0 []) 1]
-        , [DataChange (A.fromList [("v1", "c"), ("v2", "b")]) (Timestamp 0 []) 1]
-        , [DataChange (A.fromList [("v1", "a"), ("v2", "d")]) (Timestamp 0 []) 1]
-        , [DataChange (A.fromList [("v1", "b"), ("v2", "a")]) (Timestamp 0 []) 1]
+        , [DataChange (A.fromList [("v1", "a"), ("v2", "c")]) (Timestamp 0 []) 1 0]
+        , [DataChange (A.fromList [("v1", "c"), ("v2", "b")]) (Timestamp 0 []) 1 0]
+        , [DataChange (A.fromList [("v1", "a"), ("v2", "d")]) (Timestamp 0 []) 1 0]
+        , [DataChange (A.fromList [("v1", "b"), ("v2", "a")]) (Timestamp 0 []) 1 0]
 
-        , [DataChange (A.fromList [("v1", "b"), ("v2", "b")]) (Timestamp 0 []) 1]
-        , [DataChange (A.fromList [("v1", "c"), ("v2", "d")]) (Timestamp 0 []) 1]
-        , [DataChange (A.fromList [("v1", "c"), ("v2", "c")]) (Timestamp 0 []) 1]
-        , [DataChange (A.fromList [("v1", "a"), ("v2", "a")]) (Timestamp 0 []) 1]
+        , [DataChange (A.fromList [("v1", "b"), ("v2", "b")]) (Timestamp 0 []) 1 0]
+        , [DataChange (A.fromList [("v1", "c"), ("v2", "d")]) (Timestamp 0 []) 1 0]
+        , [DataChange (A.fromList [("v1", "c"), ("v2", "c")]) (Timestamp 0 []) 1 0]
+        , [DataChange (A.fromList [("v1", "a"), ("v2", "a")]) (Timestamp 0 []) 1 0]
         ]
 
 dcbs2 :: [[DataChange Object Word32]]
-dcbs2 = [ [DataChange (A.fromList [("v1", "b"), ("reduced", "cd")]) (Timestamp 0 [1]) 1]
-        , [DataChange (A.fromList [("v1", "a"), ("reduced", "b" )]) (Timestamp 0 [1]) 1]
-        , [DataChange (A.fromList [("v1", "c"), ("reduced", "a" )]) (Timestamp 0 [1]) 1]
+dcbs2 = [ [DataChange (A.fromList [("v1", "b"), ("reduced", "cd")]) (Timestamp 0 [1]) 1 0]
+        , [DataChange (A.fromList [("v1", "a"), ("reduced", "b" )]) (Timestamp 0 [1]) 1 0]
+        , [DataChange (A.fromList [("v1", "c"), ("reduced", "a" )]) (Timestamp 0 [1]) 1 0]
 
-        , [DataChange (A.fromList [("v1", "b"), ("reduced", "cd" )]) (Timestamp 0 [2]) (-1)
-        ,  DataChange (A.fromList [("v1", "b"), ("reduced", "cda")]) (Timestamp 0 [2]) 1]
-        , [DataChange (A.fromList [("v1", "a"), ("reduced", "b"  )]) (Timestamp 0 [2]) (-1)
-        ,  DataChange (A.fromList [("v1", "a"), ("reduced", "bcd")]) (Timestamp 0 [2]) 1]
-        , [DataChange (A.fromList [("v1", "c"), ("reduced", "a"  )]) (Timestamp 0 [2]) (-1)
-        ,  DataChange (A.fromList [("v1", "c"), ("reduced", "ab" )]) (Timestamp 0 [2]) 1]
+        , [DataChange (A.fromList [("v1", "b"), ("reduced", "cd" )]) (Timestamp 0 [2]) (-1) 0
+        ,  DataChange (A.fromList [("v1", "b"), ("reduced", "cda")]) (Timestamp 0 [2]) 1 0]
+        , [DataChange (A.fromList [("v1", "a"), ("reduced", "b"  )]) (Timestamp 0 [2]) (-1) 0
+        ,  DataChange (A.fromList [("v1", "a"), ("reduced", "bcd")]) (Timestamp 0 [2]) 1 0]
+        , [DataChange (A.fromList [("v1", "c"), ("reduced", "a"  )]) (Timestamp 0 [2]) (-1) 0
+        ,  DataChange (A.fromList [("v1", "c"), ("reduced", "ab" )]) (Timestamp 0 [2]) 1 0]
 
-        , [DataChange (A.fromList [("v1", "b"), ("reduced", "cda" )]) (Timestamp 0 [3]) (-1)
-        ,  DataChange (A.fromList [("v1", "b"), ("reduced", "cdab")]) (Timestamp 0 [3]) 1]
-        , [DataChange (A.fromList [("v1", "a"), ("reduced", "bcd" )]) (Timestamp 0 [3]) (-1)
-        ,  DataChange (A.fromList [("v1", "a"), ("reduced", "bcda")]) (Timestamp 0 [3]) 1]
-        , [DataChange (A.fromList [("v1", "c"), ("reduced", "ab"  )]) (Timestamp 0 [3]) (-1)
-        ,  DataChange (A.fromList [("v1", "c"), ("reduced", "abcd")]) (Timestamp 0 [3]) 1]
+        , [DataChange (A.fromList [("v1", "b"), ("reduced", "cda" )]) (Timestamp 0 [3]) (-1) 0
+        ,  DataChange (A.fromList [("v1", "b"), ("reduced", "cdab")]) (Timestamp 0 [3]) 1 0]
+        , [DataChange (A.fromList [("v1", "a"), ("reduced", "bcd" )]) (Timestamp 0 [3]) (-1) 0
+        ,  DataChange (A.fromList [("v1", "a"), ("reduced", "bcda")]) (Timestamp 0 [3]) 1 0]
+        , [DataChange (A.fromList [("v1", "c"), ("reduced", "ab"  )]) (Timestamp 0 [3]) (-1) 0
+        ,  DataChange (A.fromList [("v1", "c"), ("reduced", "abcd")]) (Timestamp 0 [3]) 1 0]
         ]
 
 dcbs3 :: [[DataChange Object Word32]]
-dcbs3 = [ [DataChange (A.fromList [("v1", "b"), ("v2", "c")]) (Timestamp 1 []) (-1)]
+dcbs3 = [ [DataChange (A.fromList [("v1", "b"), ("v2", "c")]) (Timestamp 1 []) (-1) 0]
 
-        , [DataChange (A.fromList [("v1", "a"), ("v2", "c")]) (Timestamp 1 []) (-1)]
-        , [DataChange (A.fromList [("v1", "b"), ("v2", "a")]) (Timestamp 1 []) (-1)]
+        , [DataChange (A.fromList [("v1", "a"), ("v2", "c")]) (Timestamp 1 []) (-1) 0]
+        , [DataChange (A.fromList [("v1", "b"), ("v2", "a")]) (Timestamp 1 []) (-1) 0]
 
-        , [DataChange (A.fromList [("v1", "b"), ("v2", "b")]) (Timestamp 1 []) (-1)]
-        , [DataChange (A.fromList [("v1", "c"), ("v2", "c")]) (Timestamp 1 []) (-1)]
-        , [DataChange (A.fromList [("v1", "a"), ("v2", "a")]) (Timestamp 1 []) (-1)]
+        , [DataChange (A.fromList [("v1", "b"), ("v2", "b")]) (Timestamp 1 []) (-1) 0]
+        , [DataChange (A.fromList [("v1", "c"), ("v2", "c")]) (Timestamp 1 []) (-1) 0]
+        , [DataChange (A.fromList [("v1", "a"), ("v2", "a")]) (Timestamp 1 []) (-1) 0]
         ]
 
 dcbs4 :: [[DataChange Object Word32]]
-dcbs4 = [ [DataChange (A.fromList [("v1", "b"), ("reduced", "cd")]) (Timestamp 1 [1]) (-1)
-        ,  DataChange (A.fromList [("v1", "b"), ("reduced", "d" )]) (Timestamp 1 [1]) 1]
+dcbs4 = [ [DataChange (A.fromList [("v1", "b"), ("reduced", "cd")]) (Timestamp 1 [1]) (-1) 0
+        ,  DataChange (A.fromList [("v1", "b"), ("reduced", "d" )]) (Timestamp 1 [1]) 1 0]
 
-        , [DataChange (A.fromList [("v1", "b"), ("reduced", "cd" )]) (Timestamp 1 [2]) 1
-        ,  DataChange (A.fromList [("v1", "b"), ("reduced", "cda")]) (Timestamp 1 [2]) (-1)]
-        , [DataChange (A.fromList [("v1", "a"), ("reduced", "bcd")]) (Timestamp 1 [2]) (-1)
-        ,  DataChange (A.fromList [("v1", "a"), ("reduced", "bd" )]) (Timestamp 1 [2]) 1]
+        , [DataChange (A.fromList [("v1", "b"), ("reduced", "cd" )]) (Timestamp 1 [2]) 1 0
+        ,  DataChange (A.fromList [("v1", "b"), ("reduced", "cda")]) (Timestamp 1 [2]) (-1) 0]
+        , [DataChange (A.fromList [("v1", "a"), ("reduced", "bcd")]) (Timestamp 1 [2]) (-1) 0
+        ,  DataChange (A.fromList [("v1", "a"), ("reduced", "bd" )]) (Timestamp 1 [2]) 1 0]
 
-        , [DataChange (A.fromList [("v1", "b"), ("reduced", "cda" )]) (Timestamp 1 [3]) 1
-        ,  DataChange (A.fromList [("v1", "b"), ("reduced", "cdab")]) (Timestamp 1 [3]) (-1)]
-        , [DataChange (A.fromList [("v1", "a"), ("reduced", "bcd" )]) (Timestamp 1 [3]) 1
-        ,  DataChange (A.fromList [("v1", "a"), ("reduced", "bcda")]) (Timestamp 1 [3]) (-1)]
-        , [DataChange (A.fromList [("v1", "c"), ("reduced", "abcd")]) (Timestamp 1 [3]) (-1)
-        ,  DataChange (A.fromList [("v1", "c"), ("reduced", "abd" )]) (Timestamp 1 [3]) 1]
+        , [DataChange (A.fromList [("v1", "b"), ("reduced", "cda" )]) (Timestamp 1 [3]) 1 0
+        ,  DataChange (A.fromList [("v1", "b"), ("reduced", "cdab")]) (Timestamp 1 [3]) (-1) 0]
+        , [DataChange (A.fromList [("v1", "a"), ("reduced", "bcd" )]) (Timestamp 1 [3]) 1 0
+        ,  DataChange (A.fromList [("v1", "a"), ("reduced", "bcda")]) (Timestamp 1 [3]) (-1) 0]
+        , [DataChange (A.fromList [("v1", "c"), ("reduced", "abcd")]) (Timestamp 1 [3]) (-1) 0
+        ,  DataChange (A.fromList [("v1", "c"), ("reduced", "abd" )]) (Timestamp 1 [3]) 1 0]
         ]

@@ -9,27 +9,26 @@
 
 module DiffFlow.Types where
 
-import           Control.DeepSeq   (NFData)
-import           Control.Exception (throw)
+import           Control.DeepSeq       (NFData)
+import           Control.Exception     (throw)
 import           Control.Monad
-import           Data.Aeson        (Object (..), Value (..))
-import qualified Data.Aeson        as Aeson
-import           Data.Hashable     (Hashable)
-import qualified Data.HashMap.Lazy as HM
-import qualified Data.List         as L
-import           Data.MultiSet     (MultiSet)
-import qualified Data.MultiSet     as MultiSet
-import           Data.Set          (Set)
-import qualified Data.Set          as Set
-import qualified Data.Text         as T
-import           Data.Vector       (Vector)
-import qualified Data.Vector       as V
-import           Data.Word         (Word64)
-import           GHC.Generics      (Generic)
+import           Data.Aeson            (Object (..), Value (..))
+import qualified Data.Aeson            as Aeson
+import           Data.Hashable         (Hashable)
+import qualified Data.HashMap.Lazy     as HM
+import qualified Data.List             as L
+import           Data.MultiSet         (MultiSet)
+import qualified Data.MultiSet         as MultiSet
+import           Data.Set              (Set)
+import qualified Data.Set              as Set
+import qualified Data.Text             as T
+import qualified Data.Universe.Helpers as Helpers
+import           Data.Vector           (Vector)
+import qualified Data.Vector           as V
+import           Data.Word             (Word64)
+import           GHC.Generics          (Generic)
 
 import           DiffFlow.Error
-
-import           Debug.Trace
 
 type Bag row = MultiSet row
 
@@ -257,8 +256,12 @@ data DataChange row a = DataChange
   { dcRow       :: row
   , dcTimestamp :: Timestamp a
   , dcDiff      :: Int
+  , dcExtra     :: Int
   }
-deriving instance (Eq row, Eq a) => Eq (DataChange row a)
+instance (Eq row, Eq a) => Eq (DataChange row a) where
+  dc1 == dc2 = dcRow dc1 == dcRow dc2
+            && dcTimestamp dc1 == dcTimestamp dc2
+            && dcDiff dc1 == dcDiff dc2
 deriving instance (Show row, Show a) => Show (DataChange row a)
 instance (Ord row, Ord a) => Ord (DataChange row a) where
   compare dc1 dc2 =
@@ -343,20 +346,23 @@ mergeJoinDataChangeBatch self selfFt other joinType joinCond rowgen nullRowgen =
                      { dcRow = rowgen (dcRow this) (dcRow that)
                      , dcTimestamp = leastUpperBound (dcTimestamp this) (dcTimestamp that)
                      , dcDiff = dcDiff this * dcDiff that
+                     , dcExtra = dcExtra that
                      }
                    newDataChange_left =
                      DataChange
                      { dcRow = rowgen (nullRowgen $ dcRow this) (dcRow that)
                      , dcTimestamp = leastUpperBound (dcTimestamp this) (dcTimestamp that)
                      , dcDiff = dcDiff this * dcDiff that
+                     , dcExtra = dcExtra that
                      }
                    newDataChange_right =
                      DataChange
                      { dcRow = rowgen (dcRow this) (nullRowgen $ dcRow that)
                      , dcTimestamp = leastUpperBound (dcTimestamp this) (dcTimestamp that)
                      , dcDiff = dcDiff this * dcDiff that
+                     , dcExtra = dcExtra that
                      }
-                in case trace ("========================" <> "this: " <> show (dcRow this) <> ", that: " <> show (dcRow that)) (joinCond (dcRow this) (dcRow that)) of
+                in case joinCond (dcRow this) (dcRow that) of
                      True  -> updateDataChangeBatch acc (\xs -> xs ++ [newDataChange_inner])
                      False -> case joinType of
                                 MergeJoinInner -> acc
@@ -366,6 +372,47 @@ mergeJoinDataChangeBatch self selfFt other joinType joinCond rowgen nullRowgen =
              else acc
           ) emptyDataChangeBatch
   [(self_x, other_x) | self_x <- dcbChanges self, other_x <- dcbChanges other]
+
+
+setAt :: [a] -> Int -> a -> [a]
+setAt xs i x = take i xs ++ [x] ++ drop (i + 1) xs
+
+
+composeDataChange :: (Hashable a, Ord a, Show a,
+                      Hashable row, Ord row, Show row)
+                  => [(DataChangeBatch row a, Frontier a)]
+                  -> DataChange row a
+                  -> Int
+                  -> ([row] -> row)
+                  -> DataChangeBatch row a
+composeDataChange basesWithFt that ix rowgen =
+  let sameIdChanges =
+        L.map (\(base, ft) ->
+                 L.filter (\this -> ft `causalCompare` dcTimestamp this == PGT && dcExtra this == dcExtra that) (dcbChanges base) -- [change]
+              ) basesWithFt
+      ixAltered = setAt sameIdChanges ix [that]
+      eachCompose = Helpers.choices ixAltered
+      eachNewChange = L.map (\changes -> DataChange
+                                         { dcRow = rowgen (dcRow <$> changes)
+                                         , dcTimestamp = L.foldl1 leastUpperBound (dcTimestamp <$> changes)
+                                         , dcDiff = product (dcDiff <$> changes)
+                                         , dcExtra = dcExtra (L.head changes)
+                                         }
+                            ) eachCompose
+   in mkDataChangeBatch eachNewChange
+
+composeDataChangeBatch :: (Hashable a, Ord a, Show a,
+                           Hashable row, Ord row, Show row)
+                       => [(DataChangeBatch row a, Frontier a)]
+                       -> DataChangeBatch row a
+                       -> Int
+                       -> ([row] -> row)
+                       -> DataChangeBatch row a
+composeDataChangeBatch basesWithFt thatBatch ix rowgen =
+  L.foldl (\acc that ->
+             let thisRes = composeDataChange basesWithFt that ix rowgen
+              in updateDataChangeBatch acc (\changes -> changes ++ dcbChanges thisRes)
+          ) emptyDataChangeBatch (dcbChanges thatBatch)
 
 ----
 
@@ -433,3 +480,22 @@ mergeJoinIndex self selfFt otherChangeBatch joinType joinCond rowgen nullRowgen 
                    mergeJoinDataChangeBatch selfChangeBatch selfFt otherChangeBatch joinType joinCond rowgen nullRowgen
               in updateDataChangeBatch acc (\xs -> xs ++ dcbChanges newChangeBatch)
           ) emptyDataChangeBatch (indexChangeBatches self)
+
+indexToDataChangeBatch :: (Hashable a, Ord a, Show a,
+                           Hashable row, Ord row, Show row)
+                       => Index row a -> DataChangeBatch row a
+indexToDataChangeBatch Index{..} =
+  L.foldl (\acc thisBatch ->
+             updateDataChangeBatch acc (\changes -> changes ++ dcbChanges thisBatch)
+          ) emptyDataChangeBatch indexChangeBatches
+
+composeIndex :: (Hashable a, Ord a, Show a,
+                 Hashable row, Ord row, Show row)
+             => [(Index row a, Frontier a)]
+             -> DataChangeBatch row a
+             -> Int
+             -> ([row] -> row)
+             -> DataChangeBatch row a
+composeIndex basesWithFt thatBatch ix rowgen =
+  let basesWithFt' = L.map (\(index_, ft) -> (indexToDataChangeBatch index_, ft)) basesWithFt
+   in composeDataChangeBatch basesWithFt' thatBatch ix rowgen

@@ -49,6 +49,7 @@ data Pointstamp a = Pointstamp
   , pointstampSubgraphs :: [Subgraph]
   , pointstampTimestamp :: Timestamp a
   }
+deriving instance (Show a) => Show (Pointstamp a)
 deriving instance (Eq a) => Eq (Pointstamp a)
 deriving instance Generic (Pointstamp a)
 deriving instance (Hashable a) => Hashable (Pointstamp a)
@@ -235,6 +236,7 @@ processChangeBatch shard@Shard{..} = do
                           { dcRow = outputRow
                           , dcTimestamp = dcTimestamp change
                           , dcDiff = dcDiff change
+                          , dcExtra = dcExtra change
                           }
                     updateDataChangeBatch acc (\xs -> xs ++ [newChange])
                 ) emptyDataChangeBatch (dcbChanges changeBatch)
@@ -248,56 +250,19 @@ processChangeBatch shard@Shard{..} = do
                 ) emptyDataChangeBatch (dcbChanges changeBatch)
           unless (L.null $ dcbChanges outputChangeBatch) $
             emitChangeBatch shard node outputChangeBatch
-        ComposeSpec _ (Composer composer) -> do
-          let (ComposeState totalIns unpopedBatches_m) = shardNodeStates' HM.! nodeId node
+        ComposeSpec nodes (Composer composer) -> do
+          let (ComposeState totalIns fts_m) = shardNodeStates' HM.! nodeId node
           let ix = nodeInputIndex nodeInput
           if ix < 0 || ix >= totalIns then
             throw . RunShardError $ "Entry index out of bound: " <> T.pack (show ix) <> " (expected 0 <= ix < " <> T.pack (show totalIns) <> ")" else do
-            atomically $ modifyTVar unpopedBatches_m (\hm -> HM.adjust (\dcbs -> changeBatch:dcbs) ix hm)
-            unpopedBatches <- readTVarIO unpopedBatches_m
-            let haveEmptyEntry = L.or $
-                  L.map (\i -> L.null (unpopedBatches HM.! i)) [0..(totalIns-1)]
-            unless haveEmptyEntry $ do
-              let headBatches = HM.map L.head unpopedBatches
-              atomically $ modifyTVar unpopedBatches_m (HM.map L.tail)
-              let (outputChangeBatch, headBatches') =
-                    composeGo totalIns emptyDataChangeBatch headBatches
-              forM_ (HM.toList headBatches') $ \(i,dcb_m') ->
-                case dcb_m' of
-                  Nothing   -> return ()
-                  Just dcb' -> atomically $ modifyTVar unpopedBatches_m (\hm -> HM.adjust (\dcbs -> dcb':dcbs) ix hm)
-              unless (L.null $ dcbChanges outputChangeBatch) $
-                emitChangeBatch shard node outputChangeBatch
-          where
-            {-
-            composeGo :: (Show a, Ord a, Hashable a,
-                          Hashable row, Ord row, Show row)
-                      => Int
-                      -> DataChangeBatch row a
-                      -> HashMap Int (DataChangeBatch row a)
-                      -> (DataChangeBatch row a,
-                          HashMap Int (Maybe (DataChangeBatch row a)))
-            -}
-            composeGo totalIns acc hm =
-              case L.or (HM.map (\(DataChangeBatch _ changes) -> L.null changes) hm) of
-                True ->
-                  let headBatches = HM.map (\batch@(DataChangeBatch _ changes) -> if L.null changes then Nothing else Just batch) hm
-                   in (acc, headBatches)
-                False ->
-                  let headChanges = HM.elems $ HM.map (\(DataChangeBatch _ changes) -> L.head changes) hm
-                      hm' = HM.map (\dcb -> updateDataChangeBatch dcb (L.tail)) hm
-                   in case allSame (dcDiff <$> headChanges) of
-                        False -> let hm'' = HM.map (\dcb -> updateDataChangeBatch dcb (\changes -> if dcDiff (L.head changes) < 0 then L.tail changes else changes)) hm
-                                  in composeGo totalIns acc hm''
-                                     --composeGo totalIns acc hm' -- FIXME: Cutting strategy
-                        True  ->
-                          let resultChange = DataChange
-                                { dcRow = composer (dcRow <$> headChanges)
-                                , dcTimestamp = leastUpperBoundMany (dcTimestamp <$> headChanges)
-                                , dcDiff = dcDiff (L.head headChanges)
-                                }
-                              newAcc = updateDataChangeBatch acc (\dcs -> resultChange:dcs)
-                           in composeGo totalIns newAcc hm'
+            indexes <- forM nodes (\node_ -> readTVarIO $ getIndexFromState (shardNodeStates' HM.! nodeId node_))
+            fts <- forM fts_m readTVarIO
+            let outputChangeBatch =
+                  composeIndex (indexes `zip` fts) changeBatch ix composer
+            unless (L.null $ dcbChanges outputChangeBatch) $
+              emitChangeBatch shard node outputChangeBatch
+            let inputFt = fromJust $ cbiInputFrontier cbi -- FIXME: unsafe
+            atomically $ writeTVar (fts_m L.!! ix) inputFt
         IndexSpec _ -> do
           mapM_ (\change -> do
                     shardNodeFrontiers' <- readMVar shardNodeFrontiers
@@ -344,6 +309,7 @@ processChangeBatch shard@Shard{..} = do
                           { dcRow = dcRow change
                           , dcTimestamp = outputTs
                           , dcDiff = dcDiff change
+                          , dcExtra = dcExtra change
                           }
                     updateDataChangeBatch acc (\xs -> xs ++ [newChange])
                 ) emptyDataChangeBatch (dcbChanges changeBatch)
@@ -357,6 +323,7 @@ processChangeBatch shard@Shard{..} = do
                           { dcRow = dcRow change
                           , dcTimestamp = outputTs
                           , dcDiff = dcDiff change
+                          , dcExtra = dcExtra change
                           }
                     updateDataChangeBatch acc (\xs -> xs ++ [newChange])
                 ) emptyDataChangeBatch (dcbChanges changeBatch)
@@ -370,6 +337,7 @@ processChangeBatch shard@Shard{..} = do
                           { dcRow = dcRow change
                           , dcTimestamp = outputTs
                           , dcDiff = dcDiff change
+                          , dcExtra = dcExtra change
                           }
                     updateDataChangeBatch acc (\xs -> xs ++ [newChange])
                 ) emptyDataChangeBatch (dcbChanges changeBatch)
@@ -590,7 +558,12 @@ processFrontierUpdates shard@Shard{..} = do
                                                        , dcTimestamp = tsToCheck
                                                        })
                                 (L.filter (\change -> dcTimestamp change <.= tsToCheck) outputChanges)
-                        let newOutput = DataChange (key <> inputValue) tsToCheck 1
+                        let newOutput = DataChange
+                                        { dcRow = key <> inputValue
+                                        , dcTimestamp = tsToCheck
+                                        , dcDiff = 1
+                                        , dcExtra = if L.null inputChanges then 0 else dcExtra (L.last inputChanges) -- FIXME: correct value?
+                                        }
                         let outputChanges'' = outputChanges' ++ [newOutput]
                         let thisChangeBatch = mkDataChangeBatch outputChanges''
                         atomically $
@@ -607,6 +580,7 @@ processFrontierUpdates shard@Shard{..} = do
                                        { dcRow = key
                                        , dcTimestamp = tsToCheck
                                        , dcDiff = diffOutputCount
+                                       , dcExtra = if L.null inputChanges then 0 else dcExtra (L.last inputChanges) -- FIXME: correct value?
                                        }
                           let thisChangeBatch = mkDataChangeBatch [change]
                           atomically $

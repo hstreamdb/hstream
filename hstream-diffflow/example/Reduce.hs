@@ -36,15 +36,15 @@ main = do
   forkIO . forever $ popOutput shard node_4 (\dcb -> print $ "---> Output DataChangeBatch: " <> show dcb)
 
   pushInput shard node_1
-    (DataChange (A.fromList [("a", Number 1), ("b", Number 2)]) (Timestamp (0 :: Word32) []) 1)
+    (DataChange (A.fromList [("a", Number 1), ("b", Number 2)]) (Timestamp (0 :: Word32) []) 1 0)
   pushInput shard node_1
-    (DataChange (A.fromList [("a", Number 1), ("b", Number 2)]) (Timestamp (0 :: Word32) []) 1)
+    (DataChange (A.fromList [("a", Number 1), ("b", Number 2)]) (Timestamp (0 :: Word32) []) 1 1)
   flushInput shard node_1
 
   advanceInput shard node_1 (Timestamp 1 [])
 
   pushInput shard node_1
-    (DataChange (A.fromList [("a", Number 1), ("b", Number 2)]) (Timestamp (2 :: Word32) []) 1)
+    (DataChange (A.fromList [("a", Number 1), ("b", Number 2)]) (Timestamp (2 :: Word32) []) 1 2)
 
   advanceInput shard node_1 (Timestamp 4 [])
 
