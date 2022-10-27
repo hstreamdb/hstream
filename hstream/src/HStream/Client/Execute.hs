@@ -31,8 +31,8 @@ import           HStream.Client.Types             (HStreamSqlContext (..),
 import           HStream.Client.Utils
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.SQL
-import           HStream.Utils                    (Format, SocketAddr,
-                                                   getServerResp,
+import           HStream.Utils                    (Format, HStreamClientApi,
+                                                   SocketAddr, getServerResp,
                                                    mkGRPCClientConfWithSSL,
                                                    serverNodeToSocketAddr)
 
@@ -51,7 +51,7 @@ execute_ ctx@HStreamSqlContext{..} action = do
   void $ executeWithAddr_ ctx addr action printResult
 
 executeWithLookupResource_ :: Format a => HStreamSqlContext
-  -> ResourceType -> Action a -> IO ()
+  -> ResourceType -> (HStreamClientApi -> IO a)  -> IO ()
 executeWithLookupResource_ ctx@HStreamSqlContext{..} rtype action = do
   addr <- readMVar currentServer
   lookupWithAddr ctx addr rtype >>= \case
@@ -123,6 +123,6 @@ getInfoWithAddr ctx@HStreamSqlContext{..} addr action cont = do
       void . swapMVar currentServer $ addr
       cont resp
 
-simpleExecuteWithAddr :: SocketAddr -> Maybe ClientSSLConfig -> Action a -> IO (ClientResult 'Normal a)
+simpleExecuteWithAddr :: SocketAddr -> Maybe ClientSSLConfig -> (HStreamClientApi -> IO a) -> IO a
 simpleExecuteWithAddr addr sslConfig action =
   withGRPCClient (mkGRPCClientConfWithSSL addr sslConfig) (API.hstreamApiClient >=> action)

@@ -22,18 +22,8 @@ import qualified Data.Text                        as T
 import qualified Data.Text.Encoding               as T
 import qualified Data.Text.IO                     as T
 import qualified Data.Vector                      as V
-import           Network.GRPC.HighLevel.Generated (ClientError (ClientIOError),
-                                                   ClientRequest (..),
-                                                   ClientResult (..),
-                                                   GRPCIOError (GRPCIOBadStatusCode),
-                                                   StatusDetails (unStatusDetails),
-                                                   withGRPCClient)
-import           Network.GRPC.LowLevel.Call       (clientCallCancel)
 import qualified System.Console.Haskeline         as RL
 import qualified System.Console.Haskeline.History as RL
-import           System.Posix                     (Handler (Catch),
-                                                   installHandler,
-                                                   keyboardSignal)
 import           Text.RawString.QQ                (r)
 
 import           HStream.Client.Action            (createConnector,
@@ -46,28 +36,23 @@ import           HStream.Client.Action            (createConnector,
 import           HStream.Client.Execute           (execute, executeShowPlan,
                                                    executeWithLookupResource_,
                                                    execute_, updateClusterInfo)
-import           HStream.Client.Internal          (callDeleteSubscription,
-                                                   callDeleteSubscriptionAll,
-                                                   callListSubscriptions,
-                                                   callStreamingFetch,
-                                                   callSubscription)
+import           HStream.Client.Internal          (cliFetch)
 import           HStream.Client.Types             (HStreamSqlContext (..),
                                                    ResourceType (..))
 import           HStream.Client.Utils             (calculateShardId,
                                                    dropPlanToResType)
-import           HStream.Server.HStreamApi        (CommandPushQuery (..),
-                                                   CommandQuery (..),
+import           HStream.Server.HStreamApi        (CommandQuery (..),
                                                    CommandQueryResponse (..),
                                                    HStreamApi (..),
                                                    hstreamApiClient)
 import qualified HStream.Server.HStreamApi        as API
-import           HStream.SQL                      (DropObject (..),
-                                                   HStreamPlan (..),
+import           HStream.SQL                      (HStreamPlan (..),
                                                    PauseObject (..),
                                                    RCreate (..), RSQL (..),
                                                    ResumeObject (..),
                                                    hstreamCodegen,
                                                    parseAndRefine)
+import           HStream.SQL.Codegen              (DropObject (..))
 import           HStream.SQL.Exception            (SomeSQLException,
                                                    formatSomeSQLException,
                                                    isEOF)
@@ -76,8 +61,9 @@ import           HStream.Utils                    (HStreamClientApi,
                                                    formatResult, genUnique,
                                                    mkGRPCClientConfWithSSL,
                                                    serverNodeToSocketAddr)
-
--- FIXME: Currently, every new command will create a new connection to a server,
+import           Network.GRPC.HighLevel.Client    (ClientRequest (..),
+                                                   ClientResult (..))
+import           Network.GRPC.HighLevel.Generated (withGRPCClient)
 -- and this needs to be optimized. This could be done with a grpc client pool.
 interactiveSQLApp :: HStreamSqlContext -> Maybe FilePath -> IO ()
 interactiveSQLApp ctx@HStreamSqlContext{..} historyFile = do
@@ -116,14 +102,14 @@ commandExec :: HStreamSqlContext -> String -> IO ()
 commandExec ctx@HStreamSqlContext{..} xs = case words xs of
   [] -> return ()
 
-  -- The Following commands are for testing only
-  -- {
-  ":sub":subId:stream:_ -> callSubscription ctx (T.pack subId) (T.pack stream)
-  ":delSub":subId:_     -> callDeleteSubscription ctx (T.pack subId)
-  ":delAllSubs":_       -> callDeleteSubscriptionAll ctx
-  ":fetch":subId:_      -> HStream.Utils.genUnique >>= callStreamingFetch ctx V.empty (T.pack subId) . T.pack . show
-  ":listSubs":_         -> callListSubscriptions ctx
-  -- }
+  -- -- The Following commands are for testing only
+  -- -- {
+  -- ":sub":subId:stream:_ -> callSubscription ctx (T.pack subId) (T.pack stream)
+  -- ":delSub":subId:_     -> callDeleteSubscription ctx (T.pack subId)
+  -- ":delAllSubs":_       -> callDeleteSubscriptionAll ctx
+  -- ":fetch":subId:_      -> genClientId >>= callStreamingFetch ctx V.empty (T.pack subId)
+  -- ":listSubs":_         -> callListSubscriptions ctx
+  -- -- }
 
   ":h": _     -> putStrLn helpInfo
   [":help"]   -> putStr groupedHelpInfo
@@ -132,7 +118,7 @@ commandExec ctx@HStreamSqlContext{..} xs = case words xs of
   (_:_)       -> liftIO $ handle (\(e :: SomeSQLException) -> putStrLn . formatSomeSQLException $ e) $ do
     rSQL <- parseAndRefine $ T.pack xs
     case rSQL of
-      RQPushSelect{} -> runActionWithGrpc ctx (\api -> sqlStreamAction api (T.pack xs))
+      RQPushSelect{} -> cliFetch ctx xs
       RQCreate RCreateAs {} ->
         execute_ ctx $ createStreamBySelect xs
       rSql' -> hstreamCodegen rSql' >>= \case
@@ -176,26 +162,6 @@ readToSQL acc = do
               pure Nothing
       Right _ -> pure . Just $ T.unpack acc
 
-sqlStreamAction :: HStream.Utils.HStreamClientApi -> T.Text -> IO ()
-sqlStreamAction HStreamApi{..} sql = do
-  let commandPushQuery = CommandPushQuery{ commandPushQueryQueryText = sql }
-  resp <- hstreamApiExecutePushQuery (ClientReaderRequest commandPushQuery 10000000 mempty action)
-  case resp of
-    ClientReaderResponse {} -> return ()
-    ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode _ details)) -> do
-      T.putStrLn $ "Error: " <> T.decodeUtf8 (unStatusDetails details)
-    ClientErrorResponse err -> do
-      putStrLn $ "Error: " <> (case err of ClientIOError ge -> show ge; _ -> show err) <> ", please try a different server node"
-  where
-    action call _meta recv = do
-      msg <- withInterrupt (clientCallCancel call) recv
-      case msg of
-        Left err            -> print err
-        Right Nothing       -> putStrLn ("\x1b[32m" <> "Terminated" <> "\x1b[0m")
-        Right (Just result) -> do
-          putStr $ HStream.Utils.formatResult result
-          action call _meta recv
-
 sqlAction :: HStream.Utils.HStreamClientApi -> T.Text -> IO ()
 sqlAction HStreamApi{..} sql = do
   let commandQuery = CommandQuery{ commandQueryStmtText = sql }
@@ -204,11 +170,6 @@ sqlAction HStreamApi{..} sql = do
     ClientNormalResponse x@CommandQueryResponse{} _meta1 _meta2 _status _details -> do
       putStr $ HStream.Utils.formatCommandQueryResponse x
     ClientErrorResponse _ -> putStr $ HStream.Utils.formatResult resp
-
-withInterrupt :: IO () -> IO a -> IO a
-withInterrupt interruptHandle act = do
-  old_handler <- installHandler keyboardSignal (Catch interruptHandle) Nothing
-  act `finally` installHandler keyboardSignal old_handler Nothing
 
 helpInfo :: String
 helpInfo =

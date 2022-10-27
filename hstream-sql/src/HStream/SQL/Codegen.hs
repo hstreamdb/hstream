@@ -120,7 +120,7 @@ hstreamCodegen = \case
   RQDrop (RDropIf RDropConnector x)  -> return $ DropPlan True (DConnector x)
   RQDrop (RDropIf RDropStream x)     -> return $ DropPlan True (DStream x)
   RQDrop (RDropIf RDropView x)       -> return $ DropPlan True (DView x)
-  RQTerminate (RTerminateQuery qid)  -> return $ TerminatePlan (OneQuery $ T.pack qid)
+  RQTerminate (RTerminateQuery qid)  -> return $ TerminatePlan (OneQuery qid)
   RQTerminate RTerminateAll          -> return $ TerminatePlan AllQueries
   --RQSelectView rSelectView           -> return $ SelectViewPlan rSelectView
   RQExplain rexplain                 -> return $ ExplainPlan rexplain

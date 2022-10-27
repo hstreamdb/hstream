@@ -9,20 +9,24 @@ module HStream.Client.Action
   ( Action
 
   , createStream
-  , listStreams
-  , listViews
-  , listQueries
-  , listConnectors
-  , terminateQueries
-  , dropAction
-  , insertIntoStream
   , createStreamBySelect
+  , createConnector
+  , createSubscription
+  , createSubscription'
+  , describeCluster
+  , dropAction
+  , deleteSubscription
+  , insertIntoStream
+  , listConnectors
+  , listStreams
+  , listQueries
   , listShards
   , lookupResource
-  , describeCluster
   , pauseConnector
   , resumeConnector
-  , createConnector
+  , listSubscriptions
+  , listViews
+  , terminateQueries
   ) where
 
 import qualified Data.ByteString                  as BS
@@ -46,6 +50,8 @@ import           HStream.SQL.Codegen              (DropObject (..),
 import           HStream.ThirdParty.Protobuf      (Empty (..))
 import           HStream.Utils
 
+type Action a = HStreamClientApi -> IO (ClientResult 'Normal a)
+
 createStream :: StreamName -> Int
   -> Action API.Stream
 createStream sName rFac API.HStreamApi{..} =
@@ -62,6 +68,8 @@ listQueries :: Action API.ListQueriesResponse
 listQueries    API.HStreamApi{..} = hstreamApiListQueries clientDefaultRequest
 listConnectors :: Action API.ListConnectorsResponse
 listConnectors API.HStreamApi{..} = hstreamApiListConnectors clientDefaultRequest
+listSubscriptions :: Action API.ListSubscriptionsResponse
+listSubscriptions API.HStreamApi{..} = hstreamApiListSubscriptions clientDefaultRequest
 
 terminateQueries :: TerminationSelection
   -> HStreamClientApi
@@ -121,7 +129,6 @@ createConnector sql API.HStreamApi{..} =
   hstreamApiCreateConnector (mkClientNormalRequest' def
     { API.createConnectorRequestSql = T.pack sql})
 
-type Action a = HStreamClientApi -> IO (ClientResult 'Normal a)
 
 listShards :: T.Text -> Action API.ListShardsResponse
 listShards sName API.HStreamApi{..} = do
@@ -150,6 +157,16 @@ pauseConnector cid HStreamApi{..} = hstreamApiPauseConnector $
 resumeConnector :: T.Text -> Action Empty
 resumeConnector cid HStreamApi{..} = hstreamApiResumeConnector $
   mkClientNormalRequest' def { resumeConnectorRequestName = cid }
+
+createSubscription :: T.Text -> T.Text -> Action Subscription
+createSubscription subId sName = createSubscription' (subscriptionWithDefaultSetting subId sName)
+
+createSubscription' :: Subscription -> Action Subscription
+createSubscription' sub HStreamApi{..} = hstreamApiCreateSubscription $ mkClientNormalRequest' sub
+
+deleteSubscription :: T.Text -> Action Empty
+deleteSubscription subId HStreamApi{..} = hstreamApiDeleteSubscription $
+  mkClientNormalRequest' def { deleteSubscriptionRequestSubscriptionId = subId }
 
 --------------------------------------------------------------------------------
 
