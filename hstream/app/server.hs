@@ -97,14 +97,14 @@ app config@ServerOpts{..} = do
       action serverState $ RLHandle rq
   where
     action serverState h = do
-      let serverNode =
+      let serverHostBS = cbytes2bs _serverHost
+          serverNode =
             I.ServerNode { serverNodeId = _serverID
-                         , serverNodeHost = encodeUtf8 . T.pack $ _serverAddress
+                         , serverNodeHost = serverHostBS
                          , serverNodePort = fromIntegral _serverPort
                          , serverNodeGossipPort = fromIntegral _serverInternalPort
                          , serverNodeAdvertisedListeners = advertisedListenersToPB _serverAdvertisedListeners
                          }
-          serverHostBS = cbytes2bs _serverHost
       gossipContext <- initGossipContext defaultGossipOpts mempty serverNode _seedNodes
 
       serverContext <- initializeServer config gossipContext h serverState
