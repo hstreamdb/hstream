@@ -14,13 +14,13 @@ jsonOpOnObject op o1 o2 field = case op of
   JOpArrow -> let v2 = L.head (HM.elems o2)
                in case v2 of
                     FlowText t ->
-                      let (_,v) = getField' t Nothing o1
+                      let (_,v) = getField' t Nothing Nothing o1
                        in HM.fromList [(SKey field Nothing Nothing, v)]
                     _ -> throwSQLException CodegenException Nothing (show v2 <> " is not supported on the right of operator ->")
   JOpLongArrow -> let v2 = L.head (HM.elems o2)
                    in case v2 of
                         FlowText t ->
-                          let (_,v) = getField' t Nothing o1
+                          let (_,v) = getField' t Nothing Nothing o1
                            in HM.fromList [(SKey field Nothing Nothing, FlowText (T.pack $ show v))] -- FIXME: show FlowValue
                         _ -> throwSQLException CodegenException Nothing (show v2 <> " is not supported on the right of operator ->>")
   JOpHashArrow -> let v2 = L.head (HM.elems o2)
@@ -41,7 +41,7 @@ jsonOpOnObject op o1 o2 field = case op of
     go value (v:vs) =
       case v of
         FlowText t -> let (FlowSubObject object) = value
-                          (_,value') = getField' t Nothing object
+                          (_,value') = getField' t Nothing Nothing object
                        in go value' vs
         FlowInt n -> let (FlowArray arr) = value
                          value' = arr L.!! n

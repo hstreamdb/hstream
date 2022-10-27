@@ -98,50 +98,34 @@ library
   build-tool-depends: alex:alex ==3.2.6, happy:happy -any
   default-language:   Haskell2010
 
--- executable sql-example-mock
---   import:           shared-properties
---   main-is:          Example.hs
---   hs-source-dirs:   sql-example-mock
+-- test-suite hstream-sql-test
+--   import:             shared-properties
+--   type:               exitcode-stdio-1.0
+--   main-is:            Spec.hs
+--   other-modules:
+--     HStream.SQL.Codegen.ArraySpec
+--     HStream.SQL.Codegen.MathSpec
+--     HStream.SQL.ParseRefineSpec
+--     HStream.SQL.ValidateSpec
+--
+--   hs-source-dirs:     test
 --   build-depends:
 --     , aeson
---     , base
---     , hstream-processing
+--     , base                  >=4.11 && <5
+--     , bytestring
+--     , containers
+--     , hspec
+--     , hstream-common
 --     , hstream-sql
---     , random
---     , rio
+--     , HUnit
+--     , random                ^>=1.2
 --     , scientific
 --     , text
 --     , unordered-containers
+--     , vector
+--     , Z-Data
 --
---   default-language: Haskell2010
-
-test-suite hstream-sql-test
-  import:             shared-properties
-  type:               exitcode-stdio-1.0
-  main-is:            Spec.hs
-  other-modules:
-    HStream.SQL.Codegen.ArraySpec
-    HStream.SQL.Codegen.MathSpec
-    HStream.SQL.ParseRefineSpec
-    HStream.SQL.ValidateSpec
-
-  hs-source-dirs:     test
-  build-depends:
-    , aeson
-    , base                  >=4.11 && <5
-    , bytestring
-    , containers
-    , hspec
-    , hstream-common
-    , hstream-sql
-    , HUnit
-    , random                ^>=1.2
-    , scientific
-    , text
-    , unordered-containers
-    , vector
-    , Z-Data
-
-  default-language:   Haskell2010
-  build-tool-depends: hspec-discover:hspec-discover ==2.*
-  ghc-options:        -threaded -rtsopts -with-rtsopts=-N
+--   default-language:   Haskell2010
+--   build-tool-depends: hspec-discover:hspec-discover ==2.*
+--   ghc-options:        -threaded -rtsopts -with-rtsopts=-N
+--

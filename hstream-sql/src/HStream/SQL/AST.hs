@@ -17,6 +17,7 @@ import qualified Data.HashMap.Strict   as HM
 import           Data.Int              (Int64)
 import           Data.Kind             (Type)
 import qualified Data.List             as L
+import           Data.List.Extra       (anySame)
 import qualified Data.Map.Strict       as Map
 import qualified Data.Scientific       as Scientific
 import           Data.Text             (Text)
@@ -122,10 +123,11 @@ jsonValueToFlowValue v = case v of
 
 flowObjectToJsonObject :: FlowObject -> Aeson.Object
 flowObjectToJsonObject hm =
-  let list = L.map (\(SKey k s_m _, v) ->
+  let anySameFields = anySame $ L.map (\(SKey k _ _) -> k) (HM.keys hm)
+      list = L.map (\(SKey k s_m _, v) ->
                       let key = case s_m of
                                   Nothing -> k
-                                  Just s  -> s <> "." <> k
+                                  Just s  -> if anySameFields then s <> "." <> k else k
                        in (key, flowValueToJsonValue v)
                    ) (HM.toList hm)
    in HsAeson.fromList list

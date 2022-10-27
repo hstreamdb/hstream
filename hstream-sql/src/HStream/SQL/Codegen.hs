@@ -246,7 +246,7 @@ elabRValueExpr expr grp startBuilder subgraph startNode = case expr of
     return (builder2, ins, Out node)
   RExprCol name stream_m field -> do
     let mapper = Mapper $
-          \o -> case getField field stream_m o of
+          \o -> case getField field stream_m Nothing o of
                   Nothing       -> HM.fromList [(SKey field stream_m Nothing, FlowNull)]
                   Just (skey,v) -> HM.fromList [(skey, v)]
     let (builder1, node) =
@@ -385,7 +385,7 @@ elabRTableRef ref grp startBuilder subgraph =
       let joinCond = \o1 o2 ->
             HM.foldlWithKey (\acc k@(SKey f _ _) v ->
                                if acc then
-                                 case getField f Nothing o2 of
+                                 case getField f Nothing Nothing o2 of
                                    Nothing     -> acc
                                    Just (_,v') -> v == v'
                                else False
@@ -568,7 +568,7 @@ elabAggregate agg grp startBuilder subgraph startNode exprName =
 elabGroupBy :: RGroupBy -> FlowObject -> FlowObject
 elabGroupBy RGroupByEmpty o = constantKeygen o
 elabGroupBy (RGroupBy xs) o = (makeExtra "__reduce_key__") . HM.unions $
-  L.map (\(s_m, f) -> HM.fromList [getField' f s_m o]) xs
+  L.map (\(s_m, f) -> HM.fromList [getField' f s_m (Just "__from__") o]) xs
 
 genAggregateComponents :: Aggregate
                        -> Text
