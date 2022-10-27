@@ -49,6 +49,7 @@ baseSpec = aroundAll provideHstreamApi $ aroundWith baseSpecAround $
       threadDelay 5000000
       Log.d $ "Insert into " <> Log.buildText source <> " ..."
       runInsertSql api ("INSERT INTO " <> source <> " (temperature, humidity) VALUES (22, 80);")
+      threadDelay 1000000
       runInsertSql api ("INSERT INTO " <> source <> " (temperature, humidity) VALUES (15, 10);")
 
     -- TODO
@@ -64,8 +65,11 @@ baseSpec = aroundAll provideHstreamApi $ aroundWith baseSpecAround $
       threadDelay 5000000
       Log.d $ "Insert into " <> Log.buildText source <> " ..."
       runInsertSql api ("INSERT INTO " <> source <> " (a, b) VALUES (1, 2);")
+      threadDelay 500000
       runInsertSql api ("INSERT INTO " <> source <> " (a, b) VALUES (2, 2);")
+      threadDelay 500000
       runInsertSql api ("INSERT INTO " <> source <> " (a, b) VALUES (3, 2);")
+      threadDelay 500000
       runInsertSql api ("INSERT INTO " <> source <> " (a, b) VALUES (4, 3);")
 
     -- TODO
@@ -95,10 +99,10 @@ viewSpecAround = provideRunTest setup clean
       runCreateStreamSql     api $ "CREATE STREAM " <> source1 <> ";"
       runCreateWithSelectSql api $ "CREATE STREAM " <> source2
                                 <> " AS SELECT a, 1 AS b FROM " <> source1
-                                <> " EMIT CHANGES;"
+                                <> ";"
       runQuerySimple_ api $ "CREATE VIEW " <> viewName
                          <> " AS SELECT SUM(a), b FROM " <> source2
-                         <> " GROUP BY b EMIT CHANGES;"
+                         <> " GROUP BY b;"
       -- FIXME: wait the SELECT task to be initialized.
       threadDelay 5000000
       return (source1, source2, viewName)
@@ -128,16 +132,19 @@ viewSpec =
 
   it "select from view" $ \(api, (source1, _source2, viewName)) -> do
     runInsertSql api $ "INSERT INTO " <> source1 <> " (a) VALUES (1);"
+    threadDelay 500000
     runInsertSql api $ "INSERT INTO " <> source1 <> " (a) VALUES (2);"
-    threadDelay 4000000
+    threadDelay 5000000
     runQuerySimple api ("SELECT * FROM " <> viewName <> " WHERE b = 1;")
       `grpcShouldReturn` mkViewResponse (mkStruct [ ("SUM(a)", Aeson.Number 3)
                                                   , ("b", Aeson.Number 1)
                                                   ])
 
+    threadDelay 500000
     runInsertSql api $ "INSERT INTO " <> source1 <> " (a) VALUES (3);"
+    threadDelay 500000
     runInsertSql api $ "INSERT INTO " <> source1 <> " (a) VALUES (4);"
-    threadDelay 4000000
+    threadDelay 5000000
     runQuerySimple api ("SELECT * FROM " <> viewName <> " WHERE b = 1;")
       `grpcShouldReturn` mkViewResponse (mkStruct [ ("SUM(a)", Aeson.Number 10)
                                                   , ("b", Aeson.Number 1)

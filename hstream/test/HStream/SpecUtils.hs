@@ -103,7 +103,7 @@ provideRunTest setup clean runTest api =
 mkQueryReqSimple :: T.Text -> ClientRequest 'Normal CommandQuery a
 mkQueryReqSimple sql =
   let req = CommandQuery{ commandQueryStmtText = sql }
-   in ClientNormalRequest req 5 (MetadataMap Map.empty)
+   in ClientNormalRequest req 10 (MetadataMap Map.empty)
 
 runQuerySimple :: HStreamClientApi -> T.Text -> IO (ClientResult 'Normal CommandQueryResponse)
 runQuerySimple HStreamApi{..} sql = hstreamApiExecuteQuery $ mkQueryReqSimple sql
