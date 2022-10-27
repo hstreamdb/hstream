@@ -100,7 +100,7 @@ app config@ServerOpts{..} = do
       let serverHostBS = cbytes2bs _serverHost
           serverNode =
             I.ServerNode { serverNodeId = _serverID
-                         , serverNodeHost = serverHostBS
+                         , serverNodeHost = encodeUtf8 . T.pack $ _serverAddress
                          , serverNodePort = fromIntegral _serverPort
                          , serverNodeGossipPort = fromIntegral _serverInternalPort
                          , serverNodeAdvertisedListeners = advertisedListenersToPB _serverAdvertisedListeners
@@ -113,7 +113,7 @@ app config@ServerOpts{..} = do
       Async.withAsync
         (serve serverHostBS _serverPort _tlsConfig serverContext
                _serverAdvertisedListeners) $ \a -> do
-        a1 <- startGossip gossipContext
+        a1 <- startGossip serverHostBS gossipContext
         Async.link2Only (const True) a a1
         waitGossipBoot gossipContext
         Async.wait a

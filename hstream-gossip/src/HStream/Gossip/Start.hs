@@ -81,10 +81,9 @@ initGossipContext gossipOpts _eventHandlers serverSelf seeds = do
   let eventHandlers = Map.insert eventNameINITED (handleINITEDEvent numInited (length seeds) clusterReady) _eventHandlers
   return GossipContext {..}
 
-startGossip :: GossipContext -> IO (Async ())
-startGossip gc@GossipContext{..} = do
-  let grpcHost = I.serverNodeHost serverSelf
-      port = I.serverNodeGossipPort serverSelf
+startGossip :: ByteString -> GossipContext -> IO (Async ())
+startGossip grpcHost gc@GossipContext{..} = do
+  let port = I.serverNodeGossipPort serverSelf
   let serverOnStarted = do
         void . forkIO $ amIASeed serverSelf seeds >>= putMVar seedsInfo
         Log.debug . Log.buildString $ "Internal gossiping server " <> show serverSelf <> " started"
