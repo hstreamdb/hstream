@@ -37,10 +37,9 @@ import           Text.RawString.QQ                (r)
 
 import qualified HStream.Admin.Server.Command     as Admin
 import           HStream.Admin.Server.Types       (StreamCommand (..))
-import           HStream.Client.Action            (dropAction, listStreams,
-                                                   runActionWithAddr)
-import           HStream.Client.Execute           (describeCluster)
-
+import           HStream.Client.Action            (dropAction, listStreams)
+import           HStream.Client.Execute           (simpleExecuteWithAddr,
+                                                   updateClusterInfo)
 import           HStream.Client.SQL               (commandExec,
                                                    interactiveSQLApp)
 import           HStream.Client.Types             (CliConnOpts (..),
@@ -123,7 +122,7 @@ hstreamSQL RefinedCliConnOpts{..} HStreamSqlOpts{_updateInterval = updateInterva
   case connected of
     Nothing -> errorWithoutStackTrace "Connection timed out. Please check the server URI and try again."
     Just _  -> pure ()
-  void $ describeCluster ctx addr
+  void $ updateClusterInfo ctx addr
   case _execute of
     Nothing        -> showHStream *> interactiveSQLApp ctx _historyFile
     Just statement -> do
@@ -192,11 +191,11 @@ hstreamInit RefinedCliConnOpts{..} HStreamInitOpts{..} = do
 hstreamStream :: RefinedCliConnOpts -> StreamCommand -> IO ()
 hstreamStream RefinedCliConnOpts{..}  = \case
   StreamCmdList ->
-    runActionWithAddr addr sslConfig listStreams >>= printResult
+    simpleExecuteWithAddr addr sslConfig listStreams >>= printResult
   StreamCmdCreate stream ->
-    runActionWithAddr addr sslConfig (\HStreamApi{..} -> hstreamApiCreateStream (mkClientNormalRequest' stream)) >>= printResult
+    simpleExecuteWithAddr addr sslConfig (\HStreamApi{..} -> hstreamApiCreateStream (mkClientNormalRequest' stream)) >>= printResult
   StreamCmdDelete sName ignoreNonExist ->
-    runActionWithAddr addr sslConfig (dropAction ignoreNonExist (DStream sName)) >>= printResult
+    simpleExecuteWithAddr addr sslConfig (dropAction ignoreNonExist (DStream sName)) >>= printResult
   where
     printResult :: Format response => ClientResult 'Normal response -> IO ()
     printResult = \case

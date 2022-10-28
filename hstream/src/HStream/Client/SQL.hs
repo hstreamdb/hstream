@@ -36,31 +36,38 @@ import           System.Posix                     (Handler (Catch),
                                                    keyboardSignal)
 import           Text.RawString.QQ                (r)
 
-import           HStream.Client.Action            (createStream,
+import           HStream.Client.Action            (createConnector,
+                                                   createStream,
                                                    createStreamBySelect,
                                                    dropAction, insertIntoStream,
-                                                   listShards, terminateQueries)
-import           HStream.Client.Execute           (describeCluster, execute,
-                                                   executeShowPlan, execute_,
-                                                   lookupConnector)
+                                                   listShards, pauseConnector,
+                                                   resumeConnector,
+                                                   terminateQueries)
+import           HStream.Client.Execute           (execute, executeShowPlan,
+                                                   executeWithLookupResource_,
+                                                   execute_, updateClusterInfo)
 import           HStream.Client.Internal          (callDeleteSubscription,
                                                    callDeleteSubscriptionAll,
                                                    callListSubscriptions,
                                                    callStreamingFetch,
                                                    callSubscription)
-import           HStream.Client.Types             (HStreamSqlContext (..))
+import           HStream.Client.Types             (HStreamSqlContext (..),
+                                                   ResourceType (..))
+import           HStream.Client.Utils             (calculateShardId,
+                                                   dropPlanToResType)
 import           HStream.Server.HStreamApi        (CommandPushQuery (..),
                                                    CommandQuery (..),
                                                    CommandQueryResponse (..),
                                                    HStreamApi (..),
                                                    hstreamApiClient)
 import qualified HStream.Server.HStreamApi        as API
-import           HStream.SQL                      (HStreamPlan (..),
+import           HStream.SQL                      (DropObject (..),
+                                                   HStreamPlan (..),
+                                                   PauseObject (..),
                                                    RCreate (..), RSQL (..),
-                                                   RStreamOptions (..),
+                                                   ResumeObject (..),
                                                    hstreamCodegen,
-                                                   parseAndRefine,
-                                                   pattern ConnectorWritePlan)
+                                                   parseAndRefine)
 import           HStream.SQL.Exception            (SomeSQLException,
                                                    formatSomeSQLException,
                                                    isEOF)
@@ -85,7 +92,7 @@ interactiveSQLApp ctx@HStreamSqlContext{..} historyFile = do
     maintainAvailableNodes = forever $ do
       readMVar availableServers >>= \case
         []     -> return ()
-        node:_ -> void $ describeCluster ctx node
+        node:_ -> void $ updateClusterInfo ctx node
       threadDelay $ updateInterval * 1000 * 1000
 
     loop :: RL.InputT IO ()
@@ -126,32 +133,28 @@ commandExec ctx@HStreamSqlContext{..} xs = case words xs of
     rSQL <- parseAndRefine $ T.pack xs
     case rSQL of
       RQPushSelect{} -> runActionWithGrpc ctx (\api -> sqlStreamAction api (T.pack xs))
-      RQCreate (RCreateAs stream _ rOptions) ->
-        execute_ ctx $ createStreamBySelect stream (rRepFactor rOptions) xs
+      RQCreate RCreateAs {} ->
+        execute_ ctx $ createStreamBySelect xs
       rSql' -> hstreamCodegen rSql' >>= \case
-        CreatePlan sName rFac
-          -> execute_ ctx $ createStream sName rFac
-        ShowPlan showObj
-          -> executeShowPlan ctx showObj
-        TerminatePlan termSel
-          -> execute_ ctx $ terminateQueries termSel
-        DropPlan checkIfExists dropObj
-          -> execute_ ctx $ dropAction checkIfExists dropObj
-        InsertPlan sName insertType payload
-          -> do
+        ShowPlan showObj      -> executeShowPlan ctx showObj
+        -- FIXME: add lookup after supporting lookup stream and lookup view
+        DropPlan checkIfExists dropObj@DStream{} -> execute_ ctx $ dropAction checkIfExists dropObj
+        DropPlan checkIfExists dropObj@DView{} -> execute_ ctx $ dropAction checkIfExists dropObj
+        DropPlan checkIfExists dropObj -> executeWithLookupResource_ ctx (dropPlanToResType dropObj) $ dropAction checkIfExists dropObj
+        CreatePlan sName rFac -> execute_ ctx $ createStream sName rFac
+        -- FIXME: requires lookup
+        TerminatePlan termSel -> execute_ ctx $ terminateQueries termSel
+        InsertPlan sName insertType payload -> do
             result <- execute ctx $ listShards sName
             case result of
               Just (API.ListShardsResponse shards) -> do
-                let API.Shard{..}:_ = V.toList shards
-                execute_ ctx $ insertIntoStream sName shardShardId insertType payload
-              Nothing -> return ()
-        ConnectorWritePlan name -> do
-          addr <- readMVar currentServer
-          lookupConnector ctx addr name >>= \case
-            Nothing -> putStrLn "lookupConnector failed"
-            Just node -> do
-              withGRPCClient (HStream.Utils.mkGRPCClientConfWithSSL (HStream.Utils.serverNodeToSocketAddr node) sslConfig)
-                (hstreamApiClient >=> \api -> sqlAction api (T.pack xs))
+                case calculateShardId "" (V.toList shards) of
+                  Nothing  -> putStrLn "Failed to calculate shard id"
+                  Just sid -> executeWithLookupResource_ ctx (ResShard sid) (insertIntoStream sName sid insertType payload)
+              Nothing -> putStrLn "No shards found"
+        CreateConnectorPlan _ cName _ _ _  -> executeWithLookupResource_ ctx (ResConnector cName) (createConnector xs)
+        PausePlan  (PauseObjectConnector cName) -> executeWithLookupResource_ ctx (ResConnector cName) (pauseConnector cName)
+        ResumePlan (ResumeObjectConnector cName) -> executeWithLookupResource_ ctx (ResConnector cName) (resumeConnector cName)
         _ -> do
           addr <- readMVar currentServer
           withGRPCClient (HStream.Utils.mkGRPCClientConfWithSSL addr sslConfig)

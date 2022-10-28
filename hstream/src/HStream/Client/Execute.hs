@@ -9,27 +9,32 @@ module HStream.Client.Execute
   , executeWithAddr
   -- , executeInsert
   , executeWithAddr_
-  , describeCluster, lookupSubscription, lookupConnector) where
+  , executeWithLookupResource_
+  , updateClusterInfo
+  , lookupWithAddr
+  , simpleExecuteWithAddr
+  ) where
 
 import           Control.Concurrent
 import           Control.Monad
-import qualified Data.List                     as L
-import qualified Data.Text                     as T
-import qualified Data.Text.Encoding            as BS
-import qualified Data.Text.IO                  as T
-import qualified Data.Vector                   as V
-import           Network.GRPC.HighLevel        (GRPCIOError (..))
+import qualified Data.List                        as L
+import qualified Data.Text.Encoding               as BS
+import qualified Data.Text.IO                     as T
+import qualified Data.Vector                      as V
+import           Network.GRPC.HighLevel           (GRPCIOError (..))
 import           Network.GRPC.HighLevel.Client
+import           Network.GRPC.HighLevel.Generated (withGRPCClient)
 
 import           HStream.Client.Action
-import           HStream.Client.Types          (HStreamSqlContext (..))
+import           HStream.Client.Types             (HStreamSqlContext (..),
+                                                   ResourceType)
 import           HStream.Client.Utils
-import qualified HStream.Server.HStreamApi     as API
+import qualified HStream.Server.HStreamApi        as API
 import           HStream.SQL
-import           HStream.ThirdParty.Protobuf   (Empty (..))
-import           HStream.Utils                 (Format, SocketAddr,
-                                                getServerResp,
-                                                serverNodeToSocketAddr)
+import           HStream.Utils                    (Format, SocketAddr,
+                                                   getServerResp,
+                                                   mkGRPCClientConfWithSSL,
+                                                   serverNodeToSocketAddr)
 
 executeShowPlan :: HStreamSqlContext -> ShowObject -> IO ()
 executeShowPlan ctx showObject =
@@ -44,6 +49,15 @@ execute_ :: Format a => HStreamSqlContext
 execute_ ctx@HStreamSqlContext{..} action = do
   addr <- readMVar currentServer
   void $ executeWithAddr_ ctx addr action printResult
+
+executeWithLookupResource_ :: Format a => HStreamSqlContext
+  -> ResourceType -> Action a -> IO ()
+executeWithLookupResource_ ctx@HStreamSqlContext{..} rtype action = do
+  addr <- readMVar currentServer
+  lookupWithAddr ctx addr rtype >>= \case
+     Nothing -> putStrLn "Lookup failed"
+     Just sn -> simpleExecuteWithAddr (serverNodeToSocketAddr sn) sslConfig action
+            >>= printResult
 
 execute :: HStreamSqlContext -> Action a -> IO (Maybe a)
 execute ctx@HStreamSqlContext{..} action = do
@@ -66,12 +80,10 @@ executeWithAddr_
 executeWithAddr_ ctx addr action handleOKResp = do
   void $ getInfoWithAddr ctx addr action (\x -> handleOKResp x >> return Nothing)
 
-describeCluster :: HStreamSqlContext -> SocketAddr -> IO (Maybe API.DescribeClusterResponse)
-describeCluster ctx@HStreamSqlContext{..} addr = do
-  getInfoWithAddr ctx addr getRespApp handleRespApp
+updateClusterInfo :: HStreamSqlContext -> SocketAddr -> IO (Maybe API.DescribeClusterResponse)
+updateClusterInfo ctx@HStreamSqlContext{..} addr = do
+  getInfoWithAddr ctx addr describeCluster handleRespApp
   where
-    getRespApp API.HStreamApi{..} =
-      hstreamApiDescribeCluster (mkClientNormalRequest' Empty)
     handleRespApp :: ClientResult 'Normal API.DescribeClusterResponse -> IO (Maybe API.DescribeClusterResponse)
     handleRespApp
       (ClientNormalResponse resp@API.DescribeClusterResponse{ describeClusterResponseServerNodes = nodes } _meta1 _meta2 _code _details) = do
@@ -79,24 +91,13 @@ describeCluster ctx@HStreamSqlContext{..} addr = do
       unless (V.null nodes) $ do
         void $ swapMVar currentServer (serverNodeToSocketAddr $ V.head nodes)
       return $ Just resp
+    handleRespApp _ = return Nothing
 
-lookupSubscription :: HStreamSqlContext -> SocketAddr -> T.Text -> IO (Maybe API.ServerNode)
-lookupSubscription ctx addr subId = do
-  getInfoWithAddr ctx addr getRespApp handleRespApp
-  where
-    getRespApp API.HStreamApi{..} = do
-      let req = API.LookupSubscriptionRequest { lookupSubscriptionRequestSubscriptionId = subId }
-      hstreamApiLookupSubscription (mkClientNormalRequest' req)
-    handleRespApp = getServerResp >=> return . API.lookupSubscriptionResponseServerNode
+lookupWithAddr :: HStreamSqlContext -> SocketAddr -> ResourceType
+  -> IO (Maybe API.ServerNode)
+lookupWithAddr ctx addr rType = getInfoWithAddr ctx addr (lookupResource rType) getServerResp
 
-lookupConnector :: HStreamSqlContext -> SocketAddr -> T.Text -> IO (Maybe API.ServerNode)
-lookupConnector ctx addr name = do
-  getInfoWithAddr ctx addr getRespApp handleRespApp
-  where
-    getRespApp API.HStreamApi{..} = do
-      let req = API.LookupConnectorRequest { lookupConnectorRequestName = name }
-      hstreamApiLookupConnector (mkClientNormalRequest' req)
-    handleRespApp = getServerResp >=> return . API.lookupConnectorResponseServerNode
+--------------------------------------------------------------------------------
 
 -- | Try the best to execute an GRPC request until all possible choices failed,
 -- with the given address instead of which from HStreamSqlContext.
@@ -106,7 +107,7 @@ getInfoWithAddr
   -> (ClientResult 'Normal a -> IO (Maybe b))
   -> IO (Maybe b)
 getInfoWithAddr ctx@HStreamSqlContext{..} addr action cont = do
-  resp <- runActionWithAddr addr sslConfig action
+  resp <- simpleExecuteWithAddr addr sslConfig action
   case resp of
     ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode _ details)) -> do
       T.putStrLn $ "Error: " <> BS.decodeUtf8 (unStatusDetails details)
@@ -121,3 +122,7 @@ getInfoWithAddr ctx@HStreamSqlContext{..} addr action cont = do
     _ -> do
       void . swapMVar currentServer $ addr
       cont resp
+
+simpleExecuteWithAddr :: SocketAddr -> Maybe ClientSSLConfig -> Action a -> IO (ClientResult 'Normal a)
+simpleExecuteWithAddr addr sslConfig action =
+  withGRPCClient (mkGRPCClientConfWithSSL addr sslConfig) (API.hstreamApiClient >=> action)
