@@ -3,145 +3,74 @@
 {-# LANGUAGE RecordWildCards #-}
 
 module HStream.Client.Internal
-  ( callSubscription
-  , callDeleteSubscription
-  , callDeleteSubscriptionAll
-  , callListSubscriptions
-  , callStreamingFetch
+  ( streamingFetch
+  , cliFetch
   ) where
 
-import           Control.Concurrent               (readMVar)
-import           Control.Monad                    (forM_, void)
+import           Control.Monad                    (void)
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
-import           Network.GRPC.HighLevel.Generated (ClientRequest (..),
-                                                   ClientResult (..),
-                                                   GRPCMethodType (..),
-                                                   withGRPCClient)
-import           Proto3.Suite                     (Enumerated (Enumerated))
+import           Network.GRPC.HighLevel.Generated (ClientRequest (..))
+import qualified Proto3.Suite                     as PB
 
-import           HStream.Client.Execute           (executeWithAddr_,
-                                                   lookupWithAddr)
+
+import           HStream.Client.Action
+import           HStream.Client.Execute
 import           HStream.Client.Types             (HStreamSqlContext (..),
                                                    ResourceType (..))
-import           HStream.Client.Utils             (mkClientNormalRequest')
+import           HStream.Client.Utils
 import qualified HStream.Server.HStreamApi        as API
-import           HStream.Utils                    (HStreamClientApi,
-                                                   mkGRPCClientConfWithSSL,
-                                                   serverNodeToSocketAddr)
+import           HStream.SQL.Codegen              (DropObject (..))
+import qualified HStream.ThirdParty.Protobuf      as PB
+import           HStream.Utils                    (decompressBatchedRecord,
+                                                   formatResult)
+import           Text.StringRandom                (stringRandomIO)
 
-callSubscription :: HStreamSqlContext -> T.Text -> T.Text -> IO ()
-callSubscription ctx subId stream = void $ execute ctx getRespApp handleRespApp
+streamingFetch :: T.Text -> API.HStreamApi ClientRequest response -> IO ()
+streamingFetch subId API.HStreamApi{..} = do
+    clientId <- genClientId
+    void $ hstreamApiStreamingFetch (ClientBiDiRequest 10000 mempty (action clientId))
   where
-    getRespApp API.HStreamApi{..}  = do
-      let subReq = API.Subscription
-                   { API.subscriptionSubscriptionId = subId
-                   , API.subscriptionStreamName = stream
-                   , API.subscriptionAckTimeoutSeconds = 1
-                   , API.subscriptionMaxUnackedRecords = 100
-                   , API.subscriptionOffset = Enumerated (Right API.SpecialOffsetLATEST)
-                   }
-      hstreamApiCreateSubscription (mkClientNormalRequest' subReq)
-    handleRespApp :: ClientResult 'Normal API.Subscription -> IO ()
-    handleRespApp resp = case resp of
-      (ClientNormalResponse resp_ _meta1 _meta2 _code _details) -> do
-        putStrLn "-----------------"
-        print resp_
-        putStrLn "-----------------"
-      _ -> putStrLn "Failed!"
-
-callDeleteSubscription :: HStreamSqlContext -> T.Text -> IO ()
-callDeleteSubscription ctx subId = void $ execute ctx getRespApp handleRespApp
-  where
-    getRespApp API.HStreamApi{..} = do
-      let req = API.DeleteSubscriptionRequest
-                { deleteSubscriptionRequestSubscriptionId = subId,
-                  deleteSubscriptionRequestForce = True
-                }
-      hstreamApiDeleteSubscription (mkClientNormalRequest' req)
-    handleRespApp resp = case resp of
-      ClientNormalResponse {} -> do
-        putStrLn "-----------------"
-        putStrLn "Done."
-        putStrLn "-----------------"
-      _ -> putStrLn "Failed!"
-
-callDeleteSubscriptionAll :: HStreamSqlContext -> IO ()
-callDeleteSubscriptionAll HStreamSqlContext{..} = do
-  curNode <- readMVar currentServer
-  withGRPCClient (mkGRPCClientConfWithSSL curNode sslConfig) $ \client -> do
-    API.HStreamApi{..} <- API.hstreamApiClient client
-    let listReq = API.ListSubscriptionsRequest
-    listResp <- hstreamApiListSubscriptions (mkClientNormalRequest' listReq)
-    case listResp of
-      (ClientNormalResponse (API.ListSubscriptionsResponse subs) _meta1 _meta2 _code _details) -> do
-        forM_ subs $ \API.Subscription{..} -> do
-          let delReq = API.DeleteSubscriptionRequest
-                       { deleteSubscriptionRequestSubscriptionId = subscriptionSubscriptionId
-                       , deleteSubscriptionRequestForce = True
-                       }
-          _ <- hstreamApiDeleteSubscription (mkClientNormalRequest' delReq)
-          return ()
-        putStrLn "-----------------"
-        putStrLn "Done."
-        putStrLn "-----------------"
-      _ -> putStrLn "Failed!"
-
-callListSubscriptions :: HStreamSqlContext -> IO ()
-callListSubscriptions ctx = void $ execute ctx getRespApp handleRespApp
-  where
-    getRespApp API.HStreamApi{..} = do
-      let req = API.ListSubscriptionsRequest
-      hstreamApiListSubscriptions (mkClientNormalRequest' req)
-    handleRespApp :: ClientResult 'Normal API.ListSubscriptionsResponse -> IO ()
-    handleRespApp resp = case resp of
-      (ClientNormalResponse (API.ListSubscriptionsResponse subs) _meta1 _meta2 _code _details) -> do
-        putStrLn "-----------------"
-        mapM_ print subs
-        putStrLn "-----------------"
-      _ -> putStrLn "Failed!"
-
-callStreamingFetch :: HStreamSqlContext -> V.Vector API.RecordId -> T.Text -> T.Text -> IO ()
-callStreamingFetch ctx@HStreamSqlContext{..} startRecordIds subId clientId = do
-  curNode <- readMVar currentServer
-  m_node <- lookupWithAddr ctx curNode (ResSubscription subId)
-  case m_node of
-    Nothing   -> putStrLn "Subscription not found"
-    Just node -> withGRPCClient (mkGRPCClientConfWithSSL (serverNodeToSocketAddr node) sslConfig) $ \client -> do
-      API.HStreamApi{..} <- API.hstreamApiClient client
-      void $ hstreamApiStreamingFetch (ClientBiDiRequest 10000 mempty action)
-  where
-    action _clientCall _meta streamRecv streamSend _writeDone = do
-      let initReq = API.StreamingFetchRequest
-                    { API.streamingFetchRequestSubscriptionId = subId
-                    , API.streamingFetchRequestConsumerName = clientId
-                    , API.streamingFetchRequestAckIds = startRecordIds
-                    }
+    action clientId _clientCall _meta streamRecv streamSend writesDone = do
       _ <- streamSend initReq
-      recving
+      receiving
       where
-        recving :: IO ()
-        recving = do
-          m_recv <- streamRecv
-          case m_recv of
-            Left err -> print err
-            Right (Just resp@API.StreamingFetchResponse{..}) -> do
-              let recIds = maybe V.empty API.receivedRecordRecordIds streamingFetchResponseReceivedRecords
-              print resp
-              let ackReq = API.StreamingFetchRequest
-                           { API.streamingFetchRequestSubscriptionId = subId
-                           , API.streamingFetchRequestConsumerName = clientId
-                           , API.streamingFetchRequestAckIds = recIds
-                           }
-              _ <- streamSend ackReq
-              recving
-            Right Nothing -> do
-              putStrLn "Stopped."
+        initReq = API.StreamingFetchRequest
+          { API.streamingFetchRequestSubscriptionId = subId
+          , API.streamingFetchRequestConsumerName   = clientId
+          , API.streamingFetchRequestAckIds         = V.empty
+          }
+        receiving :: IO ()
+        receiving = withInterrupt (void writesDone) $ streamRecv >>= \case
+          Left err -> print err
+          Right (Just API.StreamingFetchResponse{streamingFetchResponseReceivedRecords = rs}) -> do
+            let hRecords = maybe V.empty decompressBatchedRecord (API.receivedRecordRecord =<< rs)
+            let ackReq = initReq { API.streamingFetchRequestAckIds
+                                 = maybe V.empty API.receivedRecordRecordIds rs }
+            let results = (formatResult @PB.Struct <$>) . PB.fromByteString . API.hstreamRecordPayload <$> hRecords
+            mapM_ (\case Right x -> putStr x; Left x -> print x) results
+            _ <- streamSend ackReq
+            receiving
+          Right Nothing -> putStrLn terminateMsg
 
-execute :: HStreamSqlContext
-  -> (HStreamClientApi -> IO (ClientResult 'Normal a))
-  -> (ClientResult 'Normal a -> IO ())
-  -> IO ()
-execute ctx@HStreamSqlContext{..} action cont = do
-  addr <- readMVar currentServer
-  executeWithAddr_ ctx addr action cont
+cliFetch :: HStream.Client.Types.HStreamSqlContext -> String -> IO ()
+cliFetch ctx sql = do
+  (sName, newSql) <- genRandomSinkStreamSQL (T.pack . removeEmitChanges . words $ sql)
+  subId <- genRandomSubscriptionId
+  void . execute ctx $ createStreamBySelect (T.unpack newSql)
+  void . execute ctx $ createSubscription subId sName
+  executeWithLookupResource_ ctx (HStream.Client.Types.ResSubscription subId) (streamingFetch subId)
+  executeWithLookupResource_ ctx (HStream.Client.Types.ResSubscription subId) (void . deleteSubscription subId)
+  -- FIXME: Replace resource type with Res Stream once lookup stream is supported
+  executeWithLookupResource_ ctx (HStream.Client.Types.ResSubscription subId) (void . dropAction False (DStream sName))
+
+genRandomSubscriptionId :: IO T.Text
+genRandomSubscriptionId =  do
+  randomName <- stringRandomIO "[a-zA-Z]{20}"
+  return $ "cli_internal_subscription_" <> randomName
+
+genRandomSinkStreamSQL :: T.Text -> IO (T.Text, T.Text)
+genRandomSinkStreamSQL sql = do
+  randomName <- stringRandomIO "[a-zA-Z]{20}"
+  let streamName = "cli_generated_stream_" <> randomName
+  return (streamName, "CREATE STREAM " <> streamName <> " AS " <> sql)

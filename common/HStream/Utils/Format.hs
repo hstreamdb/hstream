@@ -44,6 +44,9 @@ class Format a where
 instance Format Protobuf.Empty where
   formatResult = const "Done.\n"
 
+instance Format () where
+  formatResult = const ""
+
 instance Format API.Stream where
   formatResult = (<> "\n") . T.unpack . API.streamStreamName
 
@@ -62,11 +65,16 @@ instance Format API.Query where
 instance Format API.Connector where
   formatResult = renderConnectorsToTable . (:[])
 
+instance Format API.Subscription where
+  formatResult = renderSubscriptionsToTable . (:[])
 instance Format [API.Query] where
   formatResult = emptyNotice . renderQueriesToTable
 
 instance Format [API.Connector] where
   formatResult = emptyNotice . renderConnectorsToTable
+
+instance Format [API.Subscription] where
+  formatResult = emptyNotice . renderSubscriptionsToTable
 
 instance Format [API.ServerNode] where
   formatResult = emptyNotice . renderServerNodesToTable
@@ -96,7 +104,7 @@ instance Format API.TerminateQueriesResponse where
   formatResult = const "Done.\n"
 
 instance Format P.Struct where
-  formatResult (P.Struct kv) =
+  formatResult s@(P.Struct kv) =
     case M.toList kv of
       [("SELECT",      Just x)] -> (<> "\n") . TL.unpack . A.encodeToLazyText . valueToJsonValue $ x
       [("SELECTVIEW",  Just x)] -> (<> "\n") . TL.unpack . A.encodeToLazyText . valueToJsonValue $ x
@@ -105,7 +113,7 @@ instance Format P.Struct where
       [("view_query_id", Just x)]   -> let (A.String qid) = valueToJsonValue x
                                         in "Done. Query ID: " <> T.unpack qid <> "\n"
       [("Error Message:", Just v)] -> "Error Message: " ++ show v ++ "\n"
-      x -> show x
+      _ -> (<> "\n") . TL.unpack . A.encodeToLazyText . structToJsonObject $ s
 
 instance Format API.CommandQueryResponse where
   formatResult = formatCommandQueryResponse
@@ -139,6 +147,31 @@ renderQueriesToTable queries =
       , [T.unpack queryQueryText]
       ]
     rows = map formatRow queries
+    colSpec = [ Table.column Table.expand Table.left def def
+              , Table.column Table.expand Table.left def def
+              , Table.column Table.expand Table.left def def
+              , Table.column Table.expand Table.left def def
+              ]
+
+renderSubscriptionsToTable :: [API.Subscription] -> String
+renderSubscriptionsToTable [] = ""
+renderSubscriptionsToTable subscriptions =
+  Table.tableString colSpec Table.asciiS
+    (Table.fullH (repeat $ Table.headerColumn Table.left Nothing) titles)
+    (Table.colsAllG Table.center <$> rows) ++ "\n"
+  where
+    titles = [ "Subscription ID"
+             , "Stream Name"
+             , "Ack Timeout"
+             , "Max Unacked Records"
+             ]
+    formatRow API.Subscription {..} =
+      [ [T.unpack subscriptionSubscriptionId]
+      , [T.unpack subscriptionStreamName]
+      , [show subscriptionAckTimeoutSeconds <> "s"]
+      , [show subscriptionMaxUnackedRecords]
+      ]
+    rows = map formatRow subscriptions
     colSpec = [ Table.column Table.expand Table.left def def
               , Table.column Table.expand Table.left def def
               , Table.column Table.expand Table.left def def

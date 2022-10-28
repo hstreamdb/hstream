@@ -19,16 +19,14 @@ import qualified Data.List                        as L
 import           Data.Maybe                       (isNothing, mapMaybe,
                                                    maybeToList)
 import qualified Data.Text.Encoding               as T
-import qualified Data.Text.IO                     as T
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Client    (ClientConfig,
                                                    ClientSSLConfig (..),
                                                    ClientSSLKeyCertPair (..))
-import           Network.GRPC.HighLevel.Generated (ClientError (ClientIOError),
+import           Network.GRPC.HighLevel.Generated (ClientError (..),
                                                    ClientResult (..),
-                                                   GRPCIOError (GRPCIOBadStatusCode),
-                                                   GRPCMethodType (..),
-                                                   StatusDetails (unStatusDetails),
+                                                   GRPCIOError (..),
+                                                   StatusDetails (..),
                                                    withGRPCClient)
 import qualified Options.Applicative              as O
 import           System.Exit                      (exitFailure)
@@ -51,15 +49,16 @@ import           HStream.Client.Types             (CliConnOpts (..),
                                                    HStreamSqlOpts (..),
                                                    commandParser)
 import           HStream.Client.Utils             (mkClientNormalRequest',
+                                                   printResult,
                                                    waitForServerToStart)
 import           HStream.Server.HStreamApi        (DescribeClusterResponse (..),
                                                    HStreamApi (..),
-                                                   ServerNode (serverNodeId),
+                                                   ServerNode (..),
                                                    hstreamApiClient)
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.SQL                      (DropObject (..))
 import           HStream.ThirdParty.Protobuf      (Empty (Empty))
-import           HStream.Utils                    (Format, SocketAddr (..),
+import           HStream.Utils                    (SocketAddr (..),
                                                    fillWithJsonString',
                                                    formatResult,
                                                    mkGRPCClientConfWithSSL,
@@ -196,14 +195,6 @@ hstreamStream RefinedCliConnOpts{..}  = \case
     simpleExecuteWithAddr addr sslConfig (\HStreamApi{..} -> hstreamApiCreateStream (mkClientNormalRequest' stream)) >>= printResult
   StreamCmdDelete sName ignoreNonExist ->
     simpleExecuteWithAddr addr sslConfig (dropAction ignoreNonExist (DStream sName)) >>= printResult
-  where
-    printResult :: Format response => ClientResult 'Normal response -> IO ()
-    printResult = \case
-      ClientNormalResponse x _ _ _ _  -> putStrLn $ formatResult x
-      ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode _ details)) ->
-        T.putStrLn $ "Error: " <> T.decodeUtf8 (unStatusDetails details)
-      ClientErrorResponse err -> do
-        putStrLn $ "Error: " <> show err
 
 getNodes :: RefinedCliConnOpts -> IO DescribeClusterResponse
 getNodes RefinedCliConnOpts{..} =
