@@ -28,9 +28,7 @@ jobs:
           submodules: "recursive"
 
       - name: Docker build
-        run:
-          docker build . -f docker/Dockerfile -t ${IMAGE_NAME}:${GITHUB_REF#refs/*/}
-
+        run: |
           docker build . -f docker/Dockerfile \
             --build-arg BUILDER_IMAGE=${{ matrix.builder_image }} \
             --build-arg LD_IMAGE=${{ matrix.ld_image }} \
