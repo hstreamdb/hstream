@@ -33,8 +33,7 @@ getView :: ServerContext -> T.Text -> IO API.View
 getView ServerContext{..} viewId = do
   query <- do
     viewQueries <- filter P.isViewQuery <$> M.listMeta metaHandle
-    return $
-      find (\P.PersistentQuery {..} -> queryId == viewId) viewQueries
+    return $ find ((== viewId) . P.getQuerySink) viewQueries
   case query of
     Just q -> pure $ hstreamQueryToView q
     _      -> do
