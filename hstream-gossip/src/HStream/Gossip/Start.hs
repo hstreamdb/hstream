@@ -19,7 +19,8 @@ import           Control.Concurrent.STM           (TVar, atomically,
                                                    newBroadcastTChanIO,
                                                    newTQueueIO, newTVarIO,
                                                    stateTVar)
-import           Control.Exception                (handle, throwIO, try)
+import           Control.Exception                (SomeException, handle,
+                                                   throwIO, try)
 import           Control.Monad                    (void, when)
 import           Data.ByteString                  (ByteString)
 import qualified Data.ByteString.Lazy             as BL
@@ -155,13 +156,14 @@ bootstrap initialServers gc@GossipContext{..} = handle
 amIASeed :: I.ServerNode -> [(ByteString, Int)] -> IO (Bool, [(ByteString, Int)], Bool)
 amIASeed self@I.ServerNode{..} seeds = do
     Log.debug . Log.buildString' $ seeds
-    if current `elem` seeds then return (True, L.delete current seeds, False) else pingToFindOut (False, seeds, False) seeds
+    if current `elem` seeds then pingToFindOut (True, L.delete current seeds, False) (L.delete current seeds)
+                            else pingToFindOut (False, seeds, False) seeds
   where
     current = (serverNodeHost, fromIntegral serverNodeGossipPort)
     pingToFindOut old@(isSeed, oldSeeds, wasDead) (join@(joinHost, joinPort):rest) = do
-      GRPC.withGRPCClient (mkGRPCClientConf' joinHost joinPort) $ \client -> do
+      new <- GRPC.withGRPCClient (mkGRPCClientConf' joinHost joinPort) $ \client -> do
         started <- try (bootstrapPing join client)
-        new <- case started of
+        case started of
             Right Nothing     -> do
               Log.debug . Log.buildString $ "I am not " <> show join
               return old
@@ -169,8 +171,10 @@ amIASeed self@I.ServerNode{..} seeds = do
               Log.debug ("I am a seed: " <> Log.buildString' join)
               return (True, L.delete join oldSeeds, wasDead)
                                                  else return old
-            Left (_ :: ClusterReadyErr) -> return (isSeed, oldSeeds, True)
-        pingToFindOut new rest
+            Left (_ :: ClusterReadyErr) -> do
+              Log.debug . Log.buildString $ "The cluster has been bootstrapped and is running"
+              return (isSeed, oldSeeds, True)
+      pingToFindOut new rest
     pingToFindOut old _ = return old
 
 handleINITEDEvent :: MVar (Maybe (TVar Int)) -> Int -> MVar () -> EventPayload -> IO ()
