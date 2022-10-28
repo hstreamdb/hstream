@@ -4,7 +4,6 @@ on:
   push:
     tags:
       - "v*"
-  workflow_dispatch:
 
 env:
   IMAGE_NAME: "hstreamdb/hstream"
@@ -15,7 +14,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - builder_image: "hstreamdb/hstream:8.10.7"
+          - builder_image: "hstreamdb/haskell:8.10.7"
             ld_image: "hstreamdb/logdevice:latest"
             tag: "${GITHUB_REF#refs/*/}"
           - builder_image: "hstreamdb/haskell:rqlite_8.10.7"
