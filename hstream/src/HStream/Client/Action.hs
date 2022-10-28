@@ -6,7 +6,9 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module HStream.Client.Action
-  ( createStream
+  ( Action
+
+  , createStream
   , listStreams
   , listViews
   , listQueries
@@ -16,22 +18,24 @@ module HStream.Client.Action
   , insertIntoStream
   , createStreamBySelect
   , listShards
-  , runActionWithAddr
-  , Action
+  , lookupResource
+  , describeCluster
+  , pauseConnector
+  , resumeConnector
+  , createConnector
   ) where
 
-import           Control.Monad                    ((>=>))
 import qualified Data.ByteString                  as BS
 import qualified Data.Map                         as Map
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import           Data.Word                        (Word64)
-import           Network.GRPC.HighLevel.Client    (ClientSSLConfig)
 import           Network.GRPC.HighLevel.Generated (ClientResult (..),
-                                                   GRPCMethodType (Normal),
-                                                   withGRPCClient)
+                                                   GRPCMethodType (Normal))
+import qualified Proto3.Suite                     as PT
 import           Proto3.Suite.Class               (def)
 
+import           HStream.Client.Types             (ResourceType (..))
 import           HStream.Client.Utils
 import           HStream.Server.HStreamApi
 import qualified HStream.Server.HStreamApi        as API
@@ -41,7 +45,6 @@ import           HStream.SQL.Codegen              (DropObject (..),
                                                    TerminationSelection (..))
 import           HStream.ThirdParty.Protobuf      (Empty (..))
 import           HStream.Utils
-import qualified Proto3.Suite                     as PT
 
 createStream :: StreamName -> Int
   -> Action API.Stream
@@ -108,12 +111,15 @@ insertIntoStream sName shardId insertType payload API.HStreamApi{..} = do
     , API.appendRequestRecords    = Just record
     })
 
--- FIXME: unused args
-createStreamBySelect :: T.Text -> Int -> String
-  -> Action API.CommandQueryResponse
-createStreamBySelect sName rFac sql API.HStreamApi{..} =
-  hstreamApiExecuteQuery (mkClientNormalRequest' def
-    { API.commandQueryStmtText = T.pack sql})
+createStreamBySelect :: String -> Action API.Query
+createStreamBySelect sql API.HStreamApi{..} =
+  hstreamApiCreateQuery (mkClientNormalRequest' def
+    { API.createQueryRequestSql = T.pack sql})
+
+createConnector :: String -> Action API.Connector
+createConnector sql API.HStreamApi{..} =
+  hstreamApiCreateConnector (mkClientNormalRequest' def
+    { API.createConnectorRequestSql = T.pack sql})
 
 type Action a = HStreamClientApi -> IO (ClientResult 'Normal a)
 
@@ -123,6 +129,31 @@ listShards sName API.HStreamApi{..} = do
     listShardsRequestStreamName = sName
   }
 
-runActionWithAddr :: SocketAddr -> Maybe ClientSSLConfig -> Action a -> IO (ClientResult 'Normal a)
-runActionWithAddr addr sslConfig action =
-  withGRPCClient (mkGRPCClientConfWithSSL addr sslConfig) (hstreamApiClient >=> action)
+lookupResource :: ResourceType -> Action (Maybe API.ServerNode)
+lookupResource (ResSubscription sid) API.HStreamApi{..} =
+  fakeMap API.lookupSubscriptionResponseServerNode <$> hstreamApiLookupSubscription
+    (mkClientNormalRequest' def { lookupSubscriptionRequestSubscriptionId = sid })
+lookupResource (ResShard sid) API.HStreamApi{..} =
+  fakeMap API.lookupShardResponseServerNode <$> hstreamApiLookupShard
+    (mkClientNormalRequest' def { lookupShardRequestShardId = sid })
+lookupResource (ResConnector cid) API.HStreamApi{..}  =
+  fakeMap API.lookupConnectorResponseServerNode <$> hstreamApiLookupConnector
+    (mkClientNormalRequest' def { lookupConnectorRequestName = cid })
+
+describeCluster :: Action API.DescribeClusterResponse
+describeCluster API.HStreamApi{..} = hstreamApiDescribeCluster clientDefaultRequest
+
+pauseConnector :: T.Text -> Action Empty
+pauseConnector cid HStreamApi{..} = hstreamApiPauseConnector $
+  mkClientNormalRequest' def { pauseConnectorRequestName = cid }
+
+resumeConnector :: T.Text -> Action Empty
+resumeConnector cid HStreamApi{..} = hstreamApiResumeConnector $
+  mkClientNormalRequest' def { resumeConnectorRequestName = cid }
+
+--------------------------------------------------------------------------------
+
+fakeMap :: (a -> b) -> ClientResult 'Normal a -> ClientResult 'Normal b
+fakeMap f (ClientNormalResponse x _meta1 _meta2 _status _details) =
+  ClientNormalResponse (f x) _meta1 _meta2 _status _details
+fakeMap _ (ClientErrorResponse err) = ClientErrorResponse err

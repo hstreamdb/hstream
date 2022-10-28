@@ -18,16 +18,17 @@ import           Network.GRPC.HighLevel.Generated (ClientRequest (..),
                                                    ClientResult (..),
                                                    GRPCMethodType (..),
                                                    withGRPCClient)
+import           Proto3.Suite                     (Enumerated (Enumerated))
 
-import           HStream.Client.Execute           (executeWithAddr_)
-import           HStream.Client.Gadget            (lookupSubscription)
-import           HStream.Client.Types             (HStreamSqlContext (..))
+import           HStream.Client.Execute           (executeWithAddr_,
+                                                   lookupWithAddr)
+import           HStream.Client.Types             (HStreamSqlContext (..),
+                                                   ResourceType (..))
 import           HStream.Client.Utils             (mkClientNormalRequest')
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.Utils                    (HStreamClientApi,
                                                    mkGRPCClientConfWithSSL,
                                                    serverNodeToSocketAddr)
-import           Proto3.Suite                     (Enumerated (Enumerated))
 
 callSubscription :: HStreamSqlContext -> T.Text -> T.Text -> IO ()
 callSubscription ctx subId stream = void $ execute ctx getRespApp handleRespApp
@@ -103,7 +104,7 @@ callListSubscriptions ctx = void $ execute ctx getRespApp handleRespApp
 callStreamingFetch :: HStreamSqlContext -> V.Vector API.RecordId -> T.Text -> T.Text -> IO ()
 callStreamingFetch ctx@HStreamSqlContext{..} startRecordIds subId clientId = do
   curNode <- readMVar currentServer
-  m_node <- lookupSubscription ctx curNode subId
+  m_node <- lookupWithAddr ctx curNode (ResSubscription subId)
   case m_node of
     Nothing   -> putStrLn "Subscription not found"
     Just node -> withGRPCClient (mkGRPCClientConfWithSSL (serverNodeToSocketAddr node) sslConfig) $ \client -> do

@@ -56,6 +56,12 @@ instance Format [API.Stream] where
 instance Format [API.View] where
   formatResult = emptyNotice . renderViewsToTable
 
+instance Format API.Query where
+  formatResult = renderQueriesToTable . (:[])
+
+instance Format API.Connector where
+  formatResult = renderConnectorsToTable . (:[])
+
 instance Format [API.Query] where
   formatResult = emptyNotice . renderQueriesToTable
 

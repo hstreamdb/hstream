@@ -295,13 +295,8 @@ runInsertSql api sql = do
 
 runCreateWithSelectSql :: HStreamClientApi -> T.Text -> Expectation
 runCreateWithSelectSql api sql = do
-  RQCreate (RCreateAs stream _ rOptions) <- parseAndRefine sql
-  resp <- getServerResp =<< createStreamBySelect stream (rRepFactor rOptions) (T.unpack sql) api
-  commandQueryResponseResultSet resp `shouldSatisfy` \v ->
-    V.length v == 1 &&
-    let Struct kvmap = V.head v
-        [(label,_)] = M.toList kvmap
-     in label == "stream_query_id"
+  resp <- getServerResp =<< createStreamBySelect (T.unpack sql) api
+  resp `shouldSatisfy` \Query{..} -> queryQueryText == sql
 
 runShowStreamsSql :: HStreamClientApi -> T.Text -> IO String
 runShowStreamsSql api sql = do
