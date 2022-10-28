@@ -6,18 +6,30 @@ on:
 
 env:
   IMAGE_NAME: "hstreamdb/hstream"
-  DEPS_IMAGE_NAME: "hstreamdb/hstream-builder"
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - builder_image: "hstreamdb/hstream-builder"
+            ld_image: "hstreamdb/logdevice"
+            tag: "latest"
+          - builder_image: "hstreamdb/haskell:rqlite_8.10.7"
+            ld_image: "hstreamdb/logdevice:rqlite"
+            tag: "rqlite"
     steps:
       - uses: actions/checkout@v3
         with:
           submodules: "recursive"
 
       - name: Docker build
-        run: docker build . -f docker/Dockerfile --build-arg BUILDER_IMAGE=${DEPS_IMAGE_NAME} -t ${IMAGE_NAME}:latest
+        run: |
+          docker build . -f docker/Dockerfile \
+            --build-arg BUILDER_IMAGE=${{ matrix.builder_image }} \
+            --build-arg LD_IMAGE=${{ matrix.ld_image }} \
+            -t ${IMAGE_NAME}:${{ matrix.tag }}
 
       - name: Login to Docker Hub
         uses: docker/login-action@v1
@@ -26,7 +38,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Push image to dockerhub
-        run: docker push ${IMAGE_NAME}:latest
+        run: docker push ${IMAGE_NAME}:${{ matrix.tag }}
 
       - name: Trigger testing ci
         run: |
