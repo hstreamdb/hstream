@@ -1,20 +1,21 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 import           Control.Concurrent
+import           Control.Concurrent.MVar
 import           Control.Monad
-import           Data.Aeson            (Value (..))
-import qualified Data.HashMap.Lazy     as HM
+import           Data.Aeson              (Object, Value (..))
+import qualified Data.HashMap.Lazy       as HM
 import           Data.IORef
 import           Data.Time
 import           Data.Time.Clock.POSIX
-import           Data.Word             (Word64)
-import           System.IO.Unsafe      (unsafePerformIO)
+import           Data.Word               (Word64)
+import           System.IO.Unsafe        (unsafePerformIO)
 import           Z.IO.Logger
 
 import           DiffFlow.Graph
 import           DiffFlow.Shard
 import           DiffFlow.Types
-import qualified HStream.Utils.Aeson   as A
+import qualified HStream.Utils.Aeson     as A
 
 --------------------------------------------------------------------------------
 -- unit: ms
@@ -27,7 +28,7 @@ getCurrentTimestamp :: IO Word64
 getCurrentTimestamp = posixTimeToMilliSeconds <$> getPOSIXTime
 --------------------------------------------------------------------------------
 
-reducingShard :: IO (Shard Word64, Node, Node)
+reducingShard :: IO (Shard Object Word64, Node, Node)
 reducingShard = do
   let subgraph_0 = Subgraph 0
       (builder_1, subgraph_1) = addSubgraph emptyGraphBuilder subgraph_0
@@ -56,7 +57,8 @@ main = do
   withDefaultLogger $ do
     (shard, inNode, outNode) <- reducingShard
 
-    forkIO $ run shard
+    stop_m <- newEmptyMVar
+    forkIO $ run shard stop_m
 
     startTime <- getCurrentTimestamp
 

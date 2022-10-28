@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
@@ -34,7 +35,8 @@ import qualified Proto3.Suite.JSONPB              as PB
 import qualified Z.Data.CBytes                    as CB
 
 import           DiffFlow.Types                   (DataChange (..),
-                                                   DataChangeBatch (..))
+                                                   DataChangeBatch (..),
+                                                   emptyDataChangeBatch)
 import qualified HStream.Exception                as HE
 import qualified HStream.IO.Worker                as IO
 import qualified HStream.Logger                   as Log
@@ -55,7 +57,6 @@ import           HStream.Server.Types
 import           HStream.SQL.AST
 import           HStream.SQL.Codegen              hiding (StreamName)
 import qualified HStream.SQL.Codegen              as HSC
-import qualified HStream.SQL.Internal.Codegen     as HSC
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils
@@ -67,31 +68,66 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
   Log.debug $ "Receive Query Request: " <> Log.buildText commandQueryStmtText
   plan <- streamCodegen commandQueryStmtText
   case plan of
-    SelectPlan {} ->
+    PushSelectPlan {} ->
       let x = "Inconsistent method called: select from streams SQL statements should be sent to rpc `ExecutePushQuery`"
        in throwIO $ HE.InvalidSqlStatement x
-    CreateBySelectPlan _ inNodesWithStreams outNodeWithStream _ _ _ -> do
-      let sources = snd <$> inNodesWithStreams
-          sink    = snd outNodeWithStream
-          query   = P.StreamQuery sources sink
-      create (transToStreamName sink)
-      (qid,_) <- handleCreateAsSelect sc plan commandQueryStmtText query
-      pure $ API.CommandQueryResponse (mkVectorStruct qid "stream_query_id")
-    CreateViewPlan _ schema inNodesWithStreams outNodeWithStream _ _ accumulation -> do
-      let sources = snd <$> inNodesWithStreams
-          sink    = snd outNodeWithStream
-          query   = P.ViewQuery sources sink schema
-      -- make sure source streams exist
-      nonExistedSource <- filterM (fmap not . S.doesStreamExist scLDClient . transToStreamName) sources :: IO [T.Text]
-      case nonExistedSource of
-        [] -> do
-          create (transToStreamName sink)
-          (qid,_) <- handleCreateAsSelect sc plan commandQueryStmtText query
+    SelectPlan ins out builder -> do
+      let sources = inStream <$> ins
+      roles_m <- mapM (findIdentifierRole sc) sources
+      case all (== (Just RoleView)) roles_m of
+        False -> do
+          Log.warning $ "Can not perform non-pushing SELECT on streams."
+          throwIO $ HE.InvalidSqlStatement "Can not perform non-pushing SELECT on streams."
+        True  -> do
+          out_m <- newMVar emptyDataChangeBatch
+          runImmTask sc (ins `zip` (L.map fromJust roles_m)) out out_m builder
+          dcb@DataChangeBatch{..} <- readMVar out_m
+          case dcbChanges of
+            [] -> sendResp mempty
+            _  -> do
+              sendResp $ V.map (flowObjectToJsonObject . dcRow) (V.fromList dcbChanges)
+    CreateBySelectPlan stream ins out builder factor -> do
+      let sources = inStream <$> ins
+          sink    = stream
+      roles_m <- mapM (findIdentifierRole sc) sources
+      case all isJust roles_m of
+        False -> do
+          Log.warning $ "At least one of the streams/views do not exist: "
+              <> Log.buildString (show sources)
+          throwIO $ HE.StreamNotFound $ "At least one of the streams/views do not exist: " <> T.pack (show sources)
+        True  -> do
+          createStreamWithShard scLDClient (transToStreamName sink) "query" factor
+          let queryType = P.StreamQuery sources sink
+          (qid,_) <- handleCreateAsSelect
+                     sc
+                     sink
+                     (ins `zip` (L.map fromJust roles_m))
+                     (out, RoleStream)
+                     builder
+                     commandQueryStmtText
+                     queryType
+          pure $ API.CommandQueryResponse (mkVectorStruct qid "stream_query_id")
+    CreateViewPlan view ins out builder accumulation -> do
+      let sources = inStream <$> ins
+          sink    = view
+      roles_m <- mapM (findIdentifierRole sc) sources
+      case all isJust roles_m of
+        True -> do
+          let queryType = P.ViewQuery sources sink
+          (qid,_) <- handleCreateAsSelect
+                     sc
+                     sink
+                     (ins `zip` (L.map fromJust roles_m))
+                     (out, RoleView)
+                     builder
+                     commandQueryStmtText
+                     queryType
           atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert sink accumulation hm, ()))
           pure $ API.CommandQueryResponse (mkVectorStruct qid "view_query_id")
-        _ : _ -> do
-          let x = "Source " <> show (T.concat $ L.intersperse ", " nonExistedSource) <> " doesn't exist"
-          throwIO $ HE.InvalidSqlStatement x
+        False  -> do
+          Log.warning $ "At least one of the streams/views do not exist: "
+            <> Log.buildString (show sources)
+          throwIO $ HE.StreamNotFound $ "At least one of the streams/views do not exist: " <> T.pack (show sources)
     CreatePlan stream fac -> do
       let s = API.Stream
             { streamStreamName = stream
@@ -154,17 +190,6 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
           object = HM.fromList [("terminated", value)]
           result = V.singleton (jsonObjectToStruct object)
       pure $ API.CommandQueryResponse result
-    SelectViewPlan RSelectView {..} -> do
-      hm <- readIORef P.groupbyStores
-      case HM.lookup rSelectViewFrom hm of
-        Nothing -> throwIO $ HE.ViewNotFound "VIEW not found"
-        Just accumulation -> do
-          DataChangeBatch{..} <- readMVar accumulation
-          case dcbChanges of
-            [] -> sendResp mempty
-            _  -> do
-              sendResp $ V.map (dcRow . mapView rSelectViewSelect)
-                (V.fromList $ filterView rSelectViewWhere dcbChanges)
     ExplainPlan _ -> throwIO $ HE.ExecPlanUnimplemented "ExplainPlan Unimplemented"
     PausePlan (PauseObjectConnector name) -> do
       IO.stopIOTask scIOWorker name False False
@@ -173,9 +198,6 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
       IO.startIOTask scIOWorker name
       pure (CommandQueryResponse V.empty)
   where
-    create sName = do
-      Log.debug . Log.buildString $ "CREATE: new stream " <> show sName
-      createStreamWithShard scLDClient sName "query" scDefaultStreamRepFactor
     discard rpcName = throwIO $ HE.DiscardedMethod $
       "Discarded method called: should call rpc `" <> rpcName <> "` instead"
     sendResp results = pure $ API.CommandQueryResponse $
@@ -194,20 +216,28 @@ executePushQuery ctx@ServerContext{..} API.CommandPushQuery{..} meta streamSend 
     Log.debug $ "Receive Push Query Request: " <> Log.buildText commandPushQueryQueryText
     plan <- streamCodegen commandPushQueryQueryText
     case plan of
-      SelectPlan _ inNodesWithStreams outNodeWithStream _ _ -> do
-        let sources = snd <$> inNodesWithStreams
-            sink    = snd outNodeWithStream
-        exists <- mapM (S.doesStreamExist scLDClient . transToStreamName) sources
-        case and exists of
+      PushSelectPlan ins out builder -> do
+        let sources = inStream <$> ins
+        sink <- newRandomText 20
+
+        roles_m <- mapM (findIdentifierRole ctx) sources
+        case all isJust roles_m of
           False -> do
             Log.warning $ "At least one of the streams do not exist: "
               <> Log.buildString (show sources)
             throwIO $ HE.StreamNotFound $ "At least one of the streams do not exist: " <> T.pack (show sources)
           True  -> do
             createStreamWithShard scLDClient (transToStreamName sink) "query" scDefaultStreamRepFactor
-            let query = P.StreamQuery sources sink
+            let queryType = P.StreamQuery sources sink
             -- run task
-            (qid,_) <- handleCreateAsSelect ctx plan commandPushQueryQueryText query
+            (qid,_) <- handleCreateAsSelect
+                       ctx
+                       sink
+                       (ins `zip` (L.map fromJust roles_m))
+                       (out, RoleStream)
+                       builder
+                       commandPushQueryQueryText
+                       queryType
             tid <- readMVar runningQueries >>= \hm -> return $ (HM.!) hm qid
 
             -- sub from sink stream and push to client
@@ -260,25 +290,17 @@ createQuery ::
 createQuery
   sc@ServerContext {..} CreateQueryRequest {..} = do
     plan <- streamCodegen createQueryRequestSql
-    let (inNodesWithStreams, outNodeWithStream) = case plan of
-          CreateBySelectPlan _ ins out _ _ _ -> (ins, out)
-          SelectPlan         _ ins out _ _   -> (ins, out)
-          _ -> throw $ HE.WrongExecutionPlan "Create query only support select / create stream as select statements"
-    let sources = snd <$> inNodesWithStreams
-    exists <- mapM (S.doesStreamExist scLDClient . transToStreamName) sources
-    unless (and exists) $ do
-      Log.warning $ "At least one of the streams do not exist: "
-                 <> Log.buildString (show sources)
-      throwIO $ HE.StreamNotFound $ "At least one of the streams do not exist: "
-                                <> T.pack (show sources)
-    let sink    = snd outNodeWithStream
-        query   = P.StreamQuery sources sink
-    createStreamWithShard scLDClient (transToStreamName sink) "query" scDefaultStreamRepFactor
-    -- run task
-    (qid, _) <- handleCreateAsSelect sc plan createQueryRequestSql query
-    getMeta @P.PersistentQuery qid metaHandle >>= \case
-      Just pQuery -> return $ hstreamQueryToQuery pQuery
-      Nothing     -> throwIO $ HE.UnexpectedError "Failed to create query for some unknown reason"
+    case plan of
+      CreateBySelectPlan{} -> do
+        CommandQueryResponse{..} <-
+          executeQuery sc CommandQuery{commandQueryStmtText = createQueryRequestSql}
+        let (PB.Struct kvmap) = V.head commandQueryResponseResultSet
+            [(_,qid_m)] = Map.toList kvmap
+            (Just (PB.Value (Just (PB.ValueKindStringValue qid)))) = qid_m
+        getMeta @P.PersistentQuery qid metaHandle >>= \case
+          Just pQuery -> return $ hstreamQueryToQuery pQuery
+          Nothing     -> throwIO $ HE.UnexpectedError "Failed to create query for some unknown reason"
+      _ -> throw $ HE.WrongExecutionPlan "Create query only support select / create stream as select statements"
 
 listQueries :: ServerContext -> IO [Query]
 listQueries ServerContext{..} = do
@@ -333,19 +355,6 @@ hstreamQueryToQuery (P.PersistentQuery queryId sqlStatement createdTime _ status
   }
 
 -------------------------------------------------------------------------------
-
-mapView :: SelectViewSelect -> DataChange a -> DataChange a
-mapView SVSelectAll change = change
-mapView (SVSelectFields fieldsWithAlias) change@DataChange{..} =
-  let newRow = HM.fromList $
-               L.map (\(field,alias) ->
-                         (T.pack alias, HSC.getFieldByName dcRow field)
-                     ) fieldsWithAlias
-  in change {dcRow = newRow}
-
-filterView :: RWhere -> [DataChange a] -> [DataChange a]
-filterView rwhere =
-  L.filter (\DataChange{..} -> HSC.genFilterR rwhere dcRow)
 
 createStreamWithShard :: S.LDClient -> S.StreamId -> CB.CBytes -> Int -> IO ()
 createStreamWithShard client streamId shardName factor = do

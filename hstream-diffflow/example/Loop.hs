@@ -3,14 +3,15 @@
 module Main where
 
 import           Control.Concurrent
+import           Control.Concurrent.MVar
 import           Control.Monad
-import           Data.Aeson          (Value (..))
-import           Data.Word           (Word32)
+import           Data.Aeson              (Value (..))
+import           Data.Word               (Word32)
 
 import           DiffFlow.Graph
 import           DiffFlow.Shard
 import           DiffFlow.Types
-import qualified HStream.Utils.Aeson as A
+import qualified HStream.Utils.Aeson     as A
 
 main :: IO ()
 main = do
@@ -39,9 +40,12 @@ main = do
                                                     , ("v3", v2')
                                                     ]
                       )
-      keygen1 = \row -> let v1 = (A.!) row "v1" in A.fromList [("v1", v1)]
-      keygen2 = \row -> let v1 = (A.!) row "v1" in A.fromList [("v1", v1)]
-  let (builder_9, joined) = addNode builder_8 subgraph_1 (JoinSpec distinct_reach_index swapped_edges_index keygen1 keygen2 joiner)
+      joinCond = \row1 row2 -> let v1  = (A.!) row1 "v1"
+                                   v1' = (A.!) row2 "v1"
+                                in v1 == v1'
+      joinType = MergeJoinInner
+      nullRowgen = \row -> A.fromList (map (\(k,v) -> (k,Null)) (A.toList row))
+  let (builder_9, joined) = addNode builder_8 subgraph_1 (JoinSpec distinct_reach_index swapped_edges_index joinType joinCond joiner nullRowgen)
 
   let mapper2 = Mapper (\row -> let v1 = (A.!) row "v1"
                                     v2 = (A.!) row "v2"
@@ -70,7 +74,8 @@ main = do
 
   let graph = buildGraph builder_16
   shard <- buildShard graph
-  forkIO $ run shard
+  stop_m <- newEmptyMVar
+  forkIO $ run shard stop_m
 
   forkIO . forever $ popOutput shard reach_out (\dcb -> print $ "[reach_out        ] ---> Output DataChangeBatch: " <> show dcb)
   forkIO . forever $ popOutput shard reach_summary_out (\dcb -> print $ "[reach_summary_out] ---> Output DataChangeBatch: " <> show dcb)
@@ -80,19 +85,19 @@ main = do
   ----
 
   pushInput shard edges
-    (DataChange (A.fromList [("v1", String "a"), ("v2", String "b")]) (Timestamp (0 :: Word32) []) 1)
+    (DataChange (A.fromList [("v1", String "a"), ("v2", String "b")]) (Timestamp (0 :: Word32) []) 1 0)
 
   pushInput shard edges
-    (DataChange (A.fromList [("v1", String "b"), ("v2", String "c")]) (Timestamp (0 :: Word32) []) 1)
+    (DataChange (A.fromList [("v1", String "b"), ("v2", String "c")]) (Timestamp (0 :: Word32) []) 1 1)
 
   pushInput shard edges
-    (DataChange (A.fromList [("v1", String "b"), ("v2", String "d")]) (Timestamp (0 :: Word32) []) 1)
+    (DataChange (A.fromList [("v1", String "b"), ("v2", String "d")]) (Timestamp (0 :: Word32) []) 1 2)
 
   pushInput shard edges
-    (DataChange (A.fromList [("v1", String "c"), ("v2", String "a")]) (Timestamp (0 :: Word32) []) 1)
+    (DataChange (A.fromList [("v1", String "c"), ("v2", String "a")]) (Timestamp (0 :: Word32) []) 1 3)
 
   pushInput shard edges
-    (DataChange (A.fromList [("v1", String "b"), ("v2", String "c")]) (Timestamp (1 :: Word32) []) (-1))
+    (DataChange (A.fromList [("v1", String "b"), ("v2", String "c")]) (Timestamp (1 :: Word32) []) (-1) 4)
 
   flushInput shard edges
 

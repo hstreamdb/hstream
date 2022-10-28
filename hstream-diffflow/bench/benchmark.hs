@@ -10,7 +10,7 @@ import           DiffFlow.Shard
 import           DiffFlow.Types
 import qualified HStream.Utils.Aeson as A
 
-reducingGraph :: Graph
+reducingGraph :: Graph Object
 reducingGraph =
   let subgraph_0 = Subgraph 0
       (builder_1, subgraph_1) = addSubgraph emptyGraphBuilder subgraph_0 in

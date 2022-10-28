@@ -94,7 +94,7 @@ spec = aroundAll provideHstreamApi $
   source1 <- runIO $ newRandomText 20
   source2 <- runIO $ newRandomText 20
 
-  let sql = "CREATE STREAM " <> source2 <> " AS SELECT * FROM " <> source1 <> " EMIT CHANGES;"
+  let sql = "CREATE STREAM " <> source2 <> " AS SELECT * FROM " <> source1 <> ";"
 
   it "clean streams" $ \api -> do
     runDropSql api $ "DROP STREAM " <> source1 <> " IF EXISTS;"

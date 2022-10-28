@@ -14,7 +14,6 @@ module HStream.Server.ConnectorTypes
     SinkRecord (..),
     TimestampedKey (..),
     mkTimestampedKey,
-    TemporalFilter (..),
     getCurrentTimestamp
   )
 where
@@ -61,11 +60,6 @@ mkTimestampedKey key timestamp =
     { tkKey = key,
       tkTimestamp = timestamp
     }
-
-data TemporalFilter = NoFilter
-                    | Tumbling Timestamp
-                    | Hopping Timestamp Timestamp
-                    | Sliding Timestamp
 
 -- data StreamStoreConnector =
 --   StreamStoreConnector {

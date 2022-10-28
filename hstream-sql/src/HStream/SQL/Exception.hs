@@ -10,6 +10,7 @@ module HStream.SQL.Exception
   , SomeRuntimeException (..)
   , buildSQLException
   , throwSQLException
+  , throwRuntimeException
   , formatSomeSQLException
   , isEOF
   ) where
@@ -112,3 +113,9 @@ data SomeRuntimeException = SomeRuntimeException
 instance Show SomeRuntimeException where
   show SomeRuntimeException{..} = runtimeExceptionMessage
 instance Exception SomeRuntimeException
+
+throwRuntimeException :: String -> a
+throwRuntimeException msg =
+  throw $ SomeRuntimeException { runtimeExceptionMessage = msg
+                               , runtimeExceptionCallStack = callStack
+                               }

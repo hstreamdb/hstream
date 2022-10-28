@@ -32,6 +32,10 @@ module HStream.Server.Handler.Query
 
 import           Control.Exception                (Handler (..), catches)
 import qualified Data.ByteString.Char8            as BS
+import qualified Data.HashMap.Strict              as HM
+import qualified Data.List                        as L
+import qualified Data.Map.Strict                  as Map
+import           Data.Maybe                       (fromJust, isJust)
 import qualified Data.Vector                      as V
 import qualified HsGrpc.Server                    as G
 import qualified HsGrpc.Server.Types              as G
