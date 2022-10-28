@@ -11,13 +11,30 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - builder_image: "hstreamdb/hstream:8.10.7"
+            ld_image: "hstreamdb/logdevice:latest"
+            tag: "${GITHUB_REF#refs/*/}"
+          - builder_image: "hstreamdb/haskell:rqlite_8.10.7"
+            ld_image: "hstreamdb/logdevice:rqlite"
+            tag: "rqlite_${GITHUB_REF#refs/*/}"
     steps:
+      - run: |
+          echo "${{ matrix.tag }}"
       - uses: actions/checkout@v3
         with:
           submodules: "recursive"
 
       - name: Docker build
-        run: docker build . -f docker/Dockerfile -t ${IMAGE_NAME}:${GITHUB_REF#refs/*/}
+        run:
+          docker build . -f docker/Dockerfile -t ${IMAGE_NAME}:${GITHUB_REF#refs/*/}
+
+          docker build . -f docker/Dockerfile \
+            --build-arg BUILDER_IMAGE=${{ matrix.builder_image }} \
+            --build-arg LD_IMAGE=${{ matrix.ld_image }} \
+            -t ${IMAGE_NAME}:${{ matrix.tag }}
 
       - name: Login to Docker Hub
         uses: docker/login-action@v2
@@ -26,7 +43,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Push image to dockerhub
-        run: docker push ${IMAGE_NAME}:${GITHUB_REF#refs/*/}
+        run: docker push ${IMAGE_NAME}:${{ matrix.tag }}
 
       - name: Trigger testing ci
         run: |
