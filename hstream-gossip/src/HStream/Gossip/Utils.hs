@@ -81,6 +81,9 @@ mkGRPCClientConf' host port =
 mkClientNormalRequest :: req -> ClientRequest 'Normal req resp
 mkClientNormalRequest x = ClientNormalRequest x requestTimeout mempty
 
+mkClientNormalRequest' :: req -> Int -> ClientRequest 'Normal req resp
+mkClientNormalRequest' x tout = ClientNormalRequest x tout mempty
+
 requestTimeout :: Int
 requestTimeout = 100
 
