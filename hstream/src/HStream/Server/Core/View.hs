@@ -15,19 +15,33 @@ import           GHC.Stack                   (HasCallStack)
 
 import           HStream.Exception           (UnexpectedError (..),
                                               ViewNotFound (..))
+import qualified HStream.Exception           as HE
 import qualified HStream.Logger              as Log
 import qualified HStream.MetaStore.Types     as M
-import           HStream.Server.Core.Common  (deleteStoreStream)
+import           HStream.Server.Core.Common  (handleQueryTerminate)
 import qualified HStream.Server.HStreamApi   as API
 import qualified HStream.Server.MetaData     as P
 import           HStream.Server.Types
-import           HStream.ThirdParty.Protobuf (Empty)
+import           HStream.SQL.Codegen         (TerminationSelection (..))
+import           HStream.ThirdParty.Protobuf (Empty (..))
 import           HStream.Utils               (TaskStatus (..))
 
+-- TODO: refactor this function after the meta data has been reorganized
 deleteView :: ServerContext -> T.Text -> Bool -> IO Empty
-deleteView sc name checkIfExist = do
-  atomicModifyIORef' P.groupbyStores (\hm -> (HM.delete name hm, ()))
-  deleteStoreStream sc (transToStreamName name) checkIfExist
+deleteView sc@ServerContext{..} name checkIfExist = do
+  query <- do
+    viewQueries <- filter P.isViewQuery <$> M.listMeta metaHandle
+    return $ find ((== name) . P.getQuerySink) viewQueries
+  case query of
+    Just P.PersistentQuery{..} -> do
+      handleQueryTerminate sc (OneQuery queryId) >>= \case
+        [] -> throwIO $ HE.UnexpectedError "Failed to view related query for some unknown reason"
+        _  -> do
+          M.deleteMeta @P.PersistentQuery queryId Nothing metaHandle
+          atomicModifyIORef' P.groupbyStores (\hm -> (HM.delete name hm, ()))
+          return Empty
+    Nothing -> if checkIfExist then return Empty
+                               else throwIO $ HE.ViewNotFound (name <> " does not exist")
 
 getView :: ServerContext -> T.Text -> IO API.View
 getView ServerContext{..} viewId = do
