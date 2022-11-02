@@ -21,6 +21,7 @@ import qualified Data.Attoparsec.Text           as AP
 import           Data.Bifunctor                 (second)
 import           Data.ByteString                (ByteString)
 import qualified Data.ByteString.Char8          as BSC
+import           Data.Foldable                  (foldrM)
 import qualified Data.HashMap.Strict            as HM
 import           Data.Map.Strict                (Map)
 import qualified Data.Map.Strict                as Map
@@ -51,10 +52,10 @@ import           Options.Applicative            as O (Alternative (many, (<|>)),
 import           System.Directory               (makeAbsolute)
 import           System.Environment             (getArgs, getProgName)
 import           System.Exit                    (exitSuccess)
+import           Text.Read                      (readEither)
 import qualified Z.Data.CBytes                  as CB
 import           Z.Data.CBytes                  (CBytes)
 
-import           Data.Foldable                  (foldrM)
 import qualified HStream.Admin.Store.API        as AA
 import           HStream.Gossip                 (GossipOpts (..),
                                                  defaultGossipOpts)
@@ -207,7 +208,7 @@ parseJSONToOptions CliOptions {..} obj = do
   advertisedListeners <- nodeCfgObj .:? "advertised-listeners"
 
   nodeMetaStore     <- parseMetaStoreAddr <$> nodeCfgObj .:  "metastore-uri" :: Y.Parser MetaStoreAddr
-  serverCompression <- read <$> nodeCfgObj .:? "compression" .!= "lz4"
+  serverCompression <- readWithErrLog "compression" <$> nodeCfgObj .:? "compression" .!= "lz4"
   nodeLogLevel      <- nodeCfgObj .:? "log-level" .!= "info"
   nodeLogWithColor  <- nodeCfgObj .:? "log-with-color" .!= True
   -- TODO: For the max_record_size to work properly, we should also tell user
@@ -224,7 +225,7 @@ parseJSONToOptions CliOptions {..} obj = do
   let _serverAdvertisedListeners = fromMaybe Map.empty advertisedListeners
 
   let _metaStore          = fromMaybe nodeMetaStore _metaStore_
-  let _serverLogLevel     = fromMaybe (read nodeLogLevel) _serverLogLevel_
+  let _serverLogLevel     = fromMaybe (readWithErrLog "log-level" nodeLogLevel) _serverLogLevel_
   let _serverLogWithColor = nodeLogWithColor || _serverLogWithColor_
   let _compression        = fromMaybe serverCompression _compression_
 
@@ -245,7 +246,7 @@ parseJSONToOptions CliOptions {..} obj = do
 
   -- Store Config
   storeCfgObj         <- obj .:? "hstore" .!= mempty
-  storeLogLevel       <- read <$> storeCfgObj .:? "log-level" .!= "info"
+  storeLogLevel       <- readWithErrLog "store log-level" <$> storeCfgObj .:? "log-level" .!= "info"
   sAdminCfgObj        <- storeCfgObj .:? "store-admin" .!= mempty
   storeAdminHost      <- BSC.pack <$> sAdminCfgObj .:? "host" .!= "127.0.0.1"
   storeAdminPort      <- sAdminCfgObj .:? "port" .!= 6440
@@ -479,3 +480,8 @@ metaStoreP = do
 instance Show MetaStoreAddr where
   show (ZkAddr addr) = "zk://" <> CB.unpack addr
   show (RqAddr addr) = "rq://" <> T.unpack addr
+
+readWithErrLog :: Read a => String -> String -> a
+readWithErrLog opt v = case readEither v of
+  Right x -> x
+  Left e -> errorWithoutStackTrace $ "Failed to parse value " <> show v <> " for option " <> opt
