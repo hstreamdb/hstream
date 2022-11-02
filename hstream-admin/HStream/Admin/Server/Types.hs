@@ -176,7 +176,7 @@ streamParser = API.Stream
 data SubscriptionCommand
   = SubscriptionCmdList
   | SubscriptionCmdCreate API.Subscription
-  | SubscriptionCmdDelete API.Subscription Bool
+  | SubscriptionCmdDelete Text Bool
   deriving (Show)
 
 subscriptionCmdParser :: O.Parser SubscriptionCommand
@@ -184,7 +184,8 @@ subscriptionCmdParser = O.hsubparser
   ( O.command "list" (O.info (pure SubscriptionCmdList) (O.progDesc "get all subscriptions"))
  <> O.command "create" (O.info (SubscriptionCmdCreate <$> subscriptionParser)
                                (O.progDesc "create a subscription"))
- <> O.command "delete" (O.info (SubscriptionCmdDelete <$> subscriptionParser
+ <> O.command "delete" (O.info (SubscriptionCmdDelete <$> O.strOption ( O.long "id" <> O.metavar "SubID"
+                                                                      <> O.help "subscription id")
                                                       <*> O.switch ( O.long "force"
                                                                   <> O.short 'f' ))
                                (O.progDesc "delete a subscription")
