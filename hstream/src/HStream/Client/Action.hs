@@ -164,9 +164,10 @@ createSubscription subId sName = createSubscription' (subscriptionWithDefaultSet
 createSubscription' :: Subscription -> Action Subscription
 createSubscription' sub HStreamApi{..} = hstreamApiCreateSubscription $ mkClientNormalRequest' sub
 
-deleteSubscription :: T.Text -> Action Empty
-deleteSubscription subId HStreamApi{..} = hstreamApiDeleteSubscription $
-  mkClientNormalRequest' def { deleteSubscriptionRequestSubscriptionId = subId }
+deleteSubscription :: T.Text -> Bool -> Action Empty
+deleteSubscription subId force HStreamApi{..} = hstreamApiDeleteSubscription $
+  mkClientNormalRequest' def { deleteSubscriptionRequestSubscriptionId = subId
+                             , deleteSubscriptionRequestForce = force}
 
 --------------------------------------------------------------------------------
 

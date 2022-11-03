@@ -60,7 +60,7 @@ cliFetch ctx sql = do
   void . execute ctx $ createStreamBySelect (T.unpack newSql)
   void . execute ctx $ createSubscription subId sName
   executeWithLookupResource_ ctx (HStream.Client.Types.ResSubscription subId) (streamingFetch subId)
-  executeWithLookupResource_ ctx (HStream.Client.Types.ResSubscription subId) (void . deleteSubscription subId)
+  executeWithLookupResource_ ctx (HStream.Client.Types.ResSubscription subId) (void . deleteSubscription subId True)
   -- FIXME: Replace resource type with Res Stream once lookup stream is supported
   executeWithLookupResource_ ctx (HStream.Client.Types.ResSubscription subId) (void . dropAction False (DStream sName))
 
