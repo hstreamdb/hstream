@@ -163,6 +163,7 @@ emptyCliOptions = CliOptions {
   , _serverHost_         = Nothing
   , _serverPort_         = Nothing
   , _serverAddress_      = Nothing
+  , _serverAdvertisedListeners_ = mempty
   , _serverInternalPort_ = Nothing
   , _serverID_           = Nothing
   , _serverLogLevel_     = Nothing

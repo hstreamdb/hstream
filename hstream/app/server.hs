@@ -14,6 +14,7 @@ import           Control.Concurrent               (MVar, forkIO, newMVar,
 import qualified Control.Concurrent.Async         as Async
 import           Control.Concurrent.STM           (TVar, atomically, retry,
                                                    writeTVar)
+import           Control.Exception                (handle)
 import           Control.Monad                    (forM_, void, when)
 import           Data.ByteString                  (ByteString)
 import qualified Data.ByteString.Short            as BS
@@ -36,6 +37,7 @@ import           ZooKeeper.Types                  (ZHandle, ZooEvent, ZooState,
                                                    pattern ZooSessionEvent)
 
 import           HStream.Common.ConsistentHashing (HashRing, constructServerMap)
+import           HStream.Exception
 import           HStream.Gossip                   (GossipContext (..),
                                                    defaultGossipOpts,
                                                    getMemberListSTM,
@@ -143,7 +145,7 @@ serve host port tlsConfig sc@ServerContext{..} listeners = do
             Gossip -> return ()
             _ -> do
               getProtoTimestamp >>= \x -> upsertMeta @Proto.Timestamp clusterStartTimeId x metaHandle
-              deleteAllMeta @TaskAllocation metaHandle
+              handle (\(_ :: RQLiteRowNotFound) -> return ()) $ deleteAllMeta @TaskAllocation metaHandle
 
 #ifdef HStreamUseHsGrpc
   sslOpts <- mapM readTlsPemFile tlsConfig
@@ -168,7 +170,6 @@ serve host port tlsConfig sc@ServerContext{..} listeners = do
         , GRPC.sslConfig = sslOpts
         }
 #endif
-
   forM_ (Map.toList listeners) $ \(key, vs) ->
     forM_ vs $ \I.Listener{..} -> do
       Log.debug $ "Starting advertised listener, "
