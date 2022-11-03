@@ -40,6 +40,10 @@ jobs:
       - name: Push image to dockerhub
         run: docker push ${IMAGE_NAME}:${{ matrix.tag }}
 
+  trigger:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
       - name: Trigger testing ci
         run: |
           curl -X POST \
