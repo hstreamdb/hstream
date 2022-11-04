@@ -96,6 +96,8 @@ instance Format API.ListQueriesResponse where
   formatResult = formatResult . V.toList . API.listQueriesResponseQueries
 instance Format API.ListConnectorsResponse where
   formatResult = formatResult . V.toList . API.listConnectorsResponseConnectors
+instance Format API.ListSubscriptionsResponse where
+  formatResult = formatResult . V.toList . API.listSubscriptionsResponseSubscription
 
 instance Format API.AppendResponse where
   formatResult = const "Done.\n"

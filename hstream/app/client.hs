@@ -34,8 +34,12 @@ import           System.Timeout                   (timeout)
 import           Text.RawString.QQ                (r)
 
 import qualified HStream.Admin.Server.Command     as Admin
-import           HStream.Admin.Server.Types       (StreamCommand (..))
-import           HStream.Client.Action            (dropAction, listStreams)
+import           HStream.Admin.Server.Types       (StreamCommand (..),
+                                                   SubscriptionCommand (..))
+import           HStream.Client.Action            (createSubscription',
+                                                   deleteSubscription,
+                                                   dropAction, listStreams,
+                                                   listSubscriptions)
 import           HStream.Client.Execute           (simpleExecuteWithAddr,
                                                    updateClusterInfo)
 import           HStream.Client.SQL               (commandExec,
@@ -84,7 +88,7 @@ refineCliConnOpts CliConnOpts {..} = do
   clientSSLKeyCertPair <- do
     case _tlsKey of
       Nothing -> case _tlsCert of
-        Nothing -> pure $ Nothing
+        Nothing -> pure Nothing
         Just _  -> putStrLn "got `tls-cert`, but `tls-key` is missing" >> exitFailure
       Just tlsKey -> case _tlsCert of
         Nothing      -> putStrLn "got `tls-key`, but `tls-cert` is missing" >> exitFailure
@@ -106,10 +110,11 @@ runCommand :: HStreamCommand -> IO ()
 runCommand HStreamCommand {..} = do
   refinedCliConnOpts <- refineCliConnOpts cliConnOpts
   case cliCommand of
-    HStreamSql   opts   -> hstreamSQL   refinedCliConnOpts opts
-    HStreamNodes opts   -> hstreamNodes refinedCliConnOpts opts
-    HStreamInit  opts   -> hstreamInit  refinedCliConnOpts opts
-    HStreamStream  opts -> hstreamStream refinedCliConnOpts opts
+    HStreamSql    opts       -> hstreamSQL   refinedCliConnOpts opts
+    HStreamNodes  opts       -> hstreamNodes refinedCliConnOpts opts
+    HStreamInit   opts       -> hstreamInit  refinedCliConnOpts opts
+    HStreamStream opts       -> hstreamStream refinedCliConnOpts opts
+    HStreamSubscription opts -> hstreamSubscription refinedCliConnOpts opts
 
 hstreamSQL :: RefinedCliConnOpts -> HStreamSqlOpts -> IO ()
 hstreamSQL RefinedCliConnOpts{..} HStreamSqlOpts{_updateInterval = updateInterval, .. } = do
@@ -195,6 +200,15 @@ hstreamStream RefinedCliConnOpts{..}  = \case
     simpleExecuteWithAddr addr sslConfig (\HStreamApi{..} -> hstreamApiCreateStream (mkClientNormalRequest' stream)) >>= printResult
   StreamCmdDelete sName ignoreNonExist ->
     simpleExecuteWithAddr addr sslConfig (dropAction ignoreNonExist (DStream sName)) >>= printResult
+
+hstreamSubscription :: RefinedCliConnOpts -> SubscriptionCommand -> IO ()
+hstreamSubscription RefinedCliConnOpts{..}  = \case
+  SubscriptionCmdList ->
+    simpleExecuteWithAddr addr sslConfig listSubscriptions >>= printResult
+  SubscriptionCmdCreate subscription ->
+    simpleExecuteWithAddr addr sslConfig (createSubscription' subscription) >>= printResult
+  SubscriptionCmdDelete sid bool ->
+    simpleExecuteWithAddr addr sslConfig (deleteSubscription sid bool) >>= printResult
 
 getNodes :: RefinedCliConnOpts -> IO DescribeClusterResponse
 getNodes RefinedCliConnOpts{..} =

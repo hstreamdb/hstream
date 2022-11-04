@@ -208,9 +208,9 @@ runSubscription ctx AT.SubscriptionCmdList = do
            ]
   let content = Aeson.object ["headers" .= headers, "rows" .= rows]
   return $ tableResponse content
-runSubscription ctx (AT.SubscriptionCmdDelete subscription force) = do
+runSubscription ctx (AT.SubscriptionCmdDelete sid force) = do
   let req = API.DeleteSubscriptionRequest
-            { deleteSubscriptionRequestSubscriptionId = (API.subscriptionSubscriptionId subscription)
+            { deleteSubscriptionRequestSubscriptionId = sid
             , deleteSubscriptionRequestForce = force
             }
   HC.deleteSubscription ctx req
