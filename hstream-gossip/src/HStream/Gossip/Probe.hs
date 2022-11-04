@@ -38,7 +38,6 @@ import           HStream.Gossip.HStreamGossip   as API (Ack (..), Empty (..),
 import           HStream.Gossip.Types           (GossipContext (..),
                                                  GossipOpts (..), Messages,
                                                  RequestAction (..), ServerId,
-                                                 ServerState (..),
                                                  ServerStatus (..))
 import qualified HStream.Gossip.Types           as T
 import           HStream.Gossip.Utils           (ClusterInitedErr (..),
@@ -46,7 +45,8 @@ import           HStream.Gossip.Utils           (ClusterInitedErr (..),
                                                  broadcast, clusterInitedErr,
                                                  clusterReadyErr,
                                                  getMessagesToSend, getMsgInc,
-                                                 mkClientNormalRequest)
+                                                 mkClientNormalRequest,
+                                                 mkClientNormalRequest')
 import qualified HStream.Logger                 as Log
 import qualified HStream.Server.HStreamInternal as I
 
@@ -65,7 +65,8 @@ bootstrapPing (joinHost, joinPort) client = do
       Log.debug $ "The server "
                 <> Log.buildByteString joinHost <> ":"
                 <> Log.buildInt joinPort
-                <> " returned an unexpected status details" <> Log.buildByteString (unStatusDetails details)
+                <> " returned an unexpected status details"
+                <> Log.buildByteString (unStatusDetails details)
       return Nothing
     ClientErrorResponse err                   -> do
       Log.debug $ "The server "
@@ -75,11 +76,13 @@ bootstrapPing (joinHost, joinPort) client = do
                 <> Log.buildString' err
       return Nothing
 
-ping :: Messages -> GRPC.Client -> IO (Maybe Ack)
-ping msg client = do
+ping :: Int -> Messages -> GRPC.Client -> IO (Maybe Ack)
+ping ttSec msg client = do
   HStreamGossip{..} <- hstreamGossipClient client
-  hstreamGossipSendPing (mkClientNormalRequest $ Ping $ V.fromList msg) >>= \case
-    ClientNormalResponse ack _ _ _ _ -> do
+  hstreamGossipSendPing (mkClientNormalRequest' (Ping $ V.fromList msg) ttSec) >>= \case
+    ClientNormalResponse ack _ _ status _ -> do
+      Log.debug $ Log.buildString' ack
+      Log.debug $ Log.buildString' status
       return (Just ack)
     ClientErrorResponse _            -> Log.info "failed to ping" >> return Nothing
 
@@ -106,25 +109,28 @@ doPing
   :: GRPC.Client -> GossipContext -> ServerStatus
   -> Word32 -> Messages
   -> IO ()
-doPing client GossipContext{..} ss@ServerStatus{serverInfo = sNode@I.ServerNode{..}, ..} _sid msg = do
-  maybeAck <- timeout (probeInterval gossipOpts) $ do
+doPing client GossipContext{gossipOpts = GossipOpts{..}, ..}
+  ss@ServerStatus{serverInfo = sNode@I.ServerNode{..}, ..} _sid msg = do
+  cInc <- getMsgInc <$> readTVarIO latestMessage
+  maybeAck <- timeout probeInterval $ do
     Log.debug . Log.buildString $ show (I.serverNodeId serverSelf)
                                <> "Sending ping >>> " <> show serverNodeId
     isAcked  <- newEmptyTMVarIO
-    maybeAck <- timeout (roundtripTimeout gossipOpts) (ping msg client)
+    maybeAck <- timeout roundtripTimeout (ping (max 1 (roundtripTimeout `div` (1000*1000))) msg client)
     acked    <- join . atomically . handleAck isAcked . join $ maybeAck
-    if acked then return () else do
+    if acked then return True  else do
       atomically $ do
         inc     <- getMsgInc <$> readTVar latestMessage
         writeTQueue statePool $ T.GSuspect inc sNode serverSelf
       atomically $ takeTMVar isAcked
+      return True
   case maybeAck of
     Nothing -> do
-      Log.info $ "[" <> Log.buildString (show (I.serverNodeId serverSelf)) <> "]Ping and PingReq exceeds timeout"
+      Log.info $ "[" <> Log.buildString (show (I.serverNodeId serverSelf))
+              <> "]Ping and PingReq exceeds timeout"
       atomically $ do
         inc     <- getMsgInc <$> readTVar latestMessage
-        state   <- readTVar serverState
-        when (state == Suspicious) $
+        when (inc == cInc) $
           writeTQueue statePool $ T.GConfirm inc sNode serverSelf
     Just _ -> pure ()
   where
@@ -141,7 +147,7 @@ doPing client GossipContext{..} ss@ServerStatus{serverInfo = sNode@I.ServerNode{
           writeTChan actionChan (DoPingReq selected ss isAcked msg)
           return $ do
             Log.info "No Ack received, sending PingReq"
-            timeout (roundtripTimeout gossipOpts) (atomically $ readTMVar isAcked) >>= \case
+            timeout roundtripTimeout (atomically $ readTMVar isAcked) >>= \case
               Nothing -> do
                 atomically $ writeTQueue statePool $ T.GSuspect inc sNode serverSelf
                 pure False
