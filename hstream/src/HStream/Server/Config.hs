@@ -484,4 +484,4 @@ instance Show MetaStoreAddr where
 readWithErrLog :: Read a => String -> String -> a
 readWithErrLog opt v = case readEither v of
   Right x -> x
-  Left e -> errorWithoutStackTrace $ "Failed to parse value " <> show v <> " for option " <> opt
+  Left _err -> errorWithoutStackTrace $ "Failed to parse value " <> show v <> " for option " <> opt
