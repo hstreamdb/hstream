@@ -11,15 +11,17 @@ hserver:
   port: 6570
 
   # Server port value for internal communications between server nodes,
-  # the value must be given and can be overwritten by cli option `--internal-port`
+  # the value must be given
+  # and can be overwritten by cli option `--internal-port`
   internal-port: 6571
 
+  bind-address: 0.0.0.0
   # Server listener address value, the value must be given.
-  # It should NOT be "127.0.0.1", if you intend to start a cluster or trying to connect to the
-  # server from a different network.
+  # It should NOT be "127.0.0.1", if you intend to start a cluster or
+  # trying to connect to the server from a different network.
   #
-  # This value can be overwritten by cli option `--address`
-  address: "127.0.0.1"
+  # This value can be overwritten by cli option `--advertised-address`
+  advertised-address: 127.0.0.1
 
   #advertised-listeners:
   #  private:
@@ -30,19 +32,25 @@ hserver:
   # , this is essential for a server to start.
   #
   # Use Comma separated host:port pairs, with the storage protocol
-  # e.g. use a zookeeper cluster as meta storage, zk://127.0.0.1:2181,127.0.0.1:2182,127.0.0.1:2183
-  # e.g. use a Rqlite cluster as meta storage, rq://127.0.0.1:4001
-  # the value must be given and can be overwritten by cli option `--metastore-uri`
+  # e.g. use a zookeeper cluster as meta storage,
+  # zk://127.0.0.1:2181,127.0.0.1:2182,127.0.0.1:2183
+  # e.g. use a Rqlite cluster as meta storage，
+  # rq://127.0.0.1:4001
+  # the value must be given
+  # and can be overwritten by cli option `--metastore-uri`
 
   metastore-uri: zk://127.0.0.1:2181
 
   connector-meta-store: zk://127.0.0.1:2181
 
-  # To start a cluster, a list of host (and port) pairs must be provided, if the port is not specified,
+  # To start a cluster, a list of host (and port) pairs must be provided
+  # if the port is not specified,
   # the server will use `internal-port` value specified above.
-  # as a string of comma separated host:internal-port pairs, each corresponding to server gossip listener.
-  # the value must be given and can be overwritten by cli option `--seed-nodes`
-  seed-nodes: "127.0.0.1:6571"
+  # As a string of comma separated host:internal-port pairs,
+  # each corresponding to server gossip listener.
+  # the value must be given
+  # and can be overwritten by cli option `--seed-nodes`
+  seed-nodes: 127.0.0.1:6571
 
   # The option which compression should the server use when writing record to store,
   # which can be one of "none", "lz4", "lz4hc" or "zstd:1"(the next number "1" is for
@@ -52,15 +60,18 @@ hserver:
   #
   #compression: "lz4"
 
-  # The max record payload size the hstream server would accept. The value only indicates that the server would not
-  # reject the value, but has no guarantee that a record smaller than the specified value will be written successfully.
+  # The max record payload size the hstream server would accept.
+  # The value only indicates that the server would not reject the value,
+  # but has no guarantee that a record smaller than the specified value will be written successfully.
   # Optional; If not specified, the default value will be 1MB
   #
   #max-record-size: 1048576 # 1024*1024
 
-  # The options used to control logs print by the server node, the following values
-  # are the default values if the options is not specified. Also the default value will
-  # be overwritten by cli flag `--log-with-color` and option `--log-level`
+  # The options used to control logs print by the server node,
+  # the following values are the default values if the options is not specified.
+  # Also the default value will be overwritten by cli flag
+  # `--log-with-color` and option `--log-level`
+  #
   # Optional, the default value will be true
   #
   #log-with-color: true

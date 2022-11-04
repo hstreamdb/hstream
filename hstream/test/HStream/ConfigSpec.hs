@@ -114,9 +114,9 @@ instance ToJSON ServerOpts where
   toJSON ServerOpts{..} = object [
       "hserver" .= object ([
           "id"      .= _serverID
-        , "host"    .= _serverHost
         , "port"    .= _serverPort
-        , "address" .= _serverAddress
+        , "bind-address" .= decodeUtf8 _serverHost
+        , "advertised-address" .= _serverAddress
         , "internal-port"   .= _serverInternalPort
         , "seed-nodes"      .= showSeedNodes _seedNodes
         , "metastore-uri"   .= show _metaStore          --TODO
@@ -184,6 +184,8 @@ emptyCliOptions = CliOptions {
   , _serverHost_         = Nothing
   , _serverPort_         = Nothing
   , _serverAddress_      = Nothing
+  , _serverBindAddress_      = Nothing
+  , _serverAdvertisedAddress_   = Nothing
   , _serverAdvertisedListeners_ = mempty
   , _serverInternalPort_ = Nothing
   , _serverID_           = Nothing
@@ -214,10 +216,10 @@ emptyCliOptions = CliOptions {
 
 instance Arbitrary ServerOpts where
   arbitrary = do
-    let _serverHost = "0.0.0.0"
+    _serverHost <- encodeUtf8 . T.pack <$> addressGen
     _serverID                  <- arbitrary
     _serverPort                <- fromIntegral <$> portGen
-    _serverAddress             <- addressGen
+    _serverAddress   <- addressGen
     _serverInternalPort        <- fromIntegral <$> portGen
     _serverAdvertisedListeners <- M.fromList <$> listOf5' ((,) <$> (T.pack <$> nameGen) <*> arbitrary)
     _metaStore                 <- arbitrary
@@ -244,9 +246,11 @@ instance Arbitrary ServerOpts where
 instance Arbitrary CliOptions where
   arbitrary = do
     let _configPath = ""
-    _serverHost_         <- genMaybe $ CB.pack <$> addressGen
+    _serverHost_         <- genMaybe $ encodeUtf8 . T.pack <$> addressGen
     _serverPort_         <- genMaybe $ fromIntegral <$> portGen
     _serverAddress_      <- genMaybe addressGen
+    _serverBindAddress_  <- genMaybe $ encodeUtf8 . T.pack <$> addressGen
+    _serverAdvertisedAddress_ <- genMaybe addressGen
     _serverAdvertisedListeners_ <- arbitrary
     _serverInternalPort_ <- genMaybe $ fromIntegral <$> portGen
     _serverID_           <- arbitrary
@@ -379,10 +383,10 @@ seedNodesStringGen = T.intercalate ", " <$> listOf5' (T.pack <$> uriGen)
 
 updateServerOptsWithCliOpts :: CliOptions -> ServerOpts -> ServerOpts
 updateServerOptsWithCliOpts CliOptions {..} x@ServerOpts{..} = x {
-    _serverHost = fromMaybe _serverHost _serverHost_
+    _serverHost = fromMaybe _serverHost (_serverBindAddress_ <|> _serverHost_ )
   , _serverPort = port
   , _serverInternalPort = fromMaybe _serverInternalPort _serverInternalPort_
-  , _serverAddress = fromMaybe _serverAddress _serverAddress_
+  , _serverAddress = fromMaybe _serverAddress (_serverAdvertisedAddress_ <|> _serverAddress_)
   , _serverAdvertisedListeners = Map.union _serverAdvertisedListeners_ _serverAdvertisedListeners
   , _serverID = fromMaybe _serverID _serverID_
   , _metaStore = fromMaybe _metaStore _metaStore_
