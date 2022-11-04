@@ -13,6 +13,7 @@ module HStream.Server.Config
   , MetaStoreAddr(..)
   , parseJSONToOptions
   , readProtocol
+  , parseHostPorts
   ) where
 
 import           Control.Exception              (throwIO)

@@ -2,16 +2,25 @@
 
 module HStream.ConfigSpec where
 
+import           Control.Applicative            ((<|>))
+import           Control.Exception              (SomeException (SomeException),
+                                                 evaluate, try)
+import           Data.Aeson.Encode.Pretty       (encodePretty)
+import           Data.Bifunctor                 (second)
 import           Data.ByteString                (ByteString)
+import qualified Data.ByteString.Lazy           as BSL
 import qualified Data.HashMap.Strict            as HM
 import qualified Data.Map.Strict                as M
+import qualified Data.Map.Strict                as Map
+import           Data.Maybe                     (fromMaybe, isJust)
 import           Data.Text                      (Text)
 import qualified Data.Text                      as T
 import           Data.Text.Encoding             (decodeUtf8, encodeUtf8)
 import           Data.Yaml                      (ToJSON (..), Value (..),
                                                  decodeThrow, encode, object,
                                                  parseEither, (.=))
-import           Test.Hspec                     (Spec, describe, it, shouldBe)
+import           Test.Hspec                     (Spec, anyException, describe,
+                                                 it, shouldBe, shouldThrow)
 import           Test.Hspec.QuickCheck          (prop)
 import           Test.QuickCheck                (Arbitrary, Gen, choose,
                                                  elements, listOf, listOf1)
@@ -27,7 +36,7 @@ import           HStream.IO.Types               (IOOptions (..))
 import           HStream.Server.Config          (CliOptions (..),
                                                  MetaStoreAddr (..),
                                                  ServerOpts (..),
-                                                 TlsConfig (..),
+                                                 TlsConfig (..), parseHostPorts,
                                                  parseJSONToOptions,
                                                  readProtocol)
 import           HStream.Server.HStreamInternal
@@ -50,6 +59,18 @@ spec = describe "HStream.ConfigSpec" $ do
       obj <- decodeThrow yaml
       -- putStrLn $ T.unpack $ decodeUtf8 $ BSL.toStrict $ encodePretty obj
       parseEither (parseJSONToOptions emptyCliOptions) obj `shouldBe` Right x
+
+    prop "Cli options override configuration files" $ \(serverOpts, cliOptions) -> do
+      let yaml = encode $ toJSON serverOpts
+      -- putStrLn $ T.unpack $ decodeUtf8 yaml
+      obj <- decodeThrow yaml
+      -- putStrLn $ T.unpack $ decodeUtf8 $ BSL.toStrict $ encodePretty obj
+      -- print cliOptions
+      try (evaluate $ updateServerOptsWithCliOpts cliOptions serverOpts) >>= \case
+        Left (_ :: SomeException) -> do
+          evaluate (parseEither (parseJSONToOptions cliOptions) obj) `shouldThrow` anyException
+        Right success -> parseEither (parseJSONToOptions cliOptions) obj `shouldBe` Right success
+
 
 defaultConfig :: ServerOpts
 defaultConfig = ServerOpts
@@ -198,7 +219,7 @@ instance Arbitrary ServerOpts where
     _serverPort                <- fromIntegral <$> portGen
     _serverAddress             <- addressGen
     _serverInternalPort        <- fromIntegral <$> portGen
-    _serverAdvertisedListeners <- M.fromList <$> listOf5 ((,) <$> (T.pack <$> nameGen) <*> arbitrary)
+    _serverAdvertisedListeners <- M.fromList <$> listOf5' ((,) <$> (T.pack <$> nameGen) <*> arbitrary)
     _metaStore                 <- arbitrary
     let _ldConfigPath   = "/data/store/logdevice.conf"
     let _topicRepFactor = 1
@@ -219,6 +240,33 @@ instance Arbitrary ServerOpts where
     _gossipOpts                <- arbitrary
     _ioOptions                 <- arbitrary
     pure ServerOpts{..}
+
+instance Arbitrary CliOptions where
+  arbitrary = do
+    let _configPath = ""
+    _serverHost_         <- genMaybe $ CB.pack <$> addressGen
+    _serverPort_         <- genMaybe $ fromIntegral <$> portGen
+    _serverAddress_      <- genMaybe addressGen
+    _serverAdvertisedListeners_ <- arbitrary
+    _serverInternalPort_ <- genMaybe $ fromIntegral <$> portGen
+    _serverID_           <- arbitrary
+    _serverLogLevel_     <- genMaybe $ read <$> logLevelGen
+    _serverLogWithColor_ <- arbitrary
+    _compression_        <- arbitrary
+    _metaStore_          <- arbitrary
+    _seedNodes_          <- genMaybe seedNodesStringGen
+    _enableTls_          <- arbitrary
+    _tlsKeyPath_         <- genMaybe pathGen
+    _tlsCertPath_        <- genMaybe pathGen
+    _tlsCaPath_          <- genMaybe pathGen
+    _ldAdminHost_        <- genMaybe $ encodeUtf8 . T.pack <$> addressGen
+    _ldAdminPort_        <- genMaybe portGen
+    _ldLogLevel_         <- genMaybe $ read <$> ldLogLevelGen
+    _storeConfigPath     <- CB.pack <$> pathGen
+    _ioTasksPath_        <- genMaybe $ T.pack <$> pathGen
+    _ioTasksNetwork_     <- genMaybe $ T.pack <$> nameGen
+    _ioConnectorImages_  <- listOf5' $ T.pack <$> connectorImageCliOptGen
+    pure CliOptions{..}
 
 instance Arbitrary Listener where
   arbitrary = do
@@ -315,3 +363,65 @@ listOf5 x = resize 5 (listOf x)
 
 listOf5' :: Gen a -> Gen [a]
 listOf5' x = resize 5 (listOf1 x)
+
+connectorImageCliOptGen :: Gen String
+connectorImageCliOptGen = do
+  cType <- elements ["source", "sink"]
+  cName <- nameGen
+  iName <- nameGen
+  pure $ unwords [cType, cName, iName]
+
+genMaybe :: Gen a -> Gen (Maybe a)
+genMaybe gen = oneof [pure Nothing, Just <$> gen]
+
+seedNodesStringGen :: Gen Text
+seedNodesStringGen = T.intercalate ", " <$> listOf5' (T.pack <$> uriGen)
+
+updateServerOptsWithCliOpts :: CliOptions -> ServerOpts -> ServerOpts
+updateServerOptsWithCliOpts CliOptions {..} x@ServerOpts{..} = x {
+    _serverHost = fromMaybe _serverHost _serverHost_
+  , _serverPort = port
+  , _serverInternalPort = fromMaybe _serverInternalPort _serverInternalPort_
+  , _serverAddress = fromMaybe _serverAddress _serverAddress_
+  , _serverAdvertisedListeners = Map.union _serverAdvertisedListeners_ _serverAdvertisedListeners
+  , _serverID = fromMaybe _serverID _serverID_
+  , _metaStore = fromMaybe _metaStore _metaStore_
+  , _ldConfigPath = _storeConfigPath
+  , _compression = fromMaybe _compression _compression_
+  , _tlsConfig = _tlsConfig_
+  , _serverLogLevel = fromMaybe _serverLogLevel _serverLogLevel_
+  , _serverLogWithColor = _serverLogWithColor || _serverLogWithColor_
+  , _seedNodes = fromMaybe _seedNodes $ parseCliSeeds =<< _seedNodes_
+  , _ldAdminHost = fromMaybe _ldAdminHost _ldAdminHost_
+  , _ldAdminPort = fromMaybe _ldAdminPort _ldAdminPort_
+  , _ldLogLevel = fromMaybe _ldLogLevel _ldLogLevel_
+  , _ioOptions = _ioOptions_}
+  where
+    port = fromMaybe _serverPort _serverPort_
+    updateSeedsPort = second $ fromMaybe (fromIntegral port)
+    parseCliSeeds = either (const Nothing) (Just . (updateSeedsPort <$>)) . parseHostPorts
+
+    _tlsConfig_  = case (_enableTls_ || isJust _tlsConfig, _tlsKeyPath_ <|> keyPath <$> _tlsConfig,  _tlsCertPath_ <|> certPath <$> _tlsConfig ) of
+        (False, _, _) -> Nothing
+        (_, Nothing, _) -> errorWithoutStackTrace "enable-tls=true, but tls-key-path is empty"
+        (_, _, Nothing) -> errorWithoutStackTrace "enable-tls=true, but tls-cert-path is empty"
+        (_, Just kp, Just cp) -> Just $ TlsConfig kp cp (_tlsCaPath_ <|> (caPath =<< _tlsConfig) )
+
+    (ssi,ski) = foldr
+        (\img (ss, sk) -> do
+          -- "source mysql IMAGE" -> ("source" "mysq" "IMAGE")
+          let parseImage = toThreeTuple . T.words
+              toThreeTuple [a, b, c] = pure (a, b, c)
+          (typ, ct, di) <- parseImage img
+          case T.toLower typ of
+            "source" -> (HM.insert ct di ss, sk)
+            "sink"   -> (ss, HM.insert ct di sk)
+            _        -> (ss, sk)
+        )
+        (optSourceImages _ioOptions, optSinkImages _ioOptions) _ioConnectorImages_
+    _ioOptions_ = IOOptions {
+            optTasksNetwork = fromMaybe (optTasksNetwork _ioOptions) _ioTasksNetwork_
+          , optTasksPath = fromMaybe (optTasksPath _ioOptions) _ioTasksPath_
+          , optSourceImages = ssi
+          , optSinkImages = ski
+          }
