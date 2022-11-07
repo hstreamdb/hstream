@@ -6,6 +6,8 @@ module HStream.Server.Core.Cluster
   , lookupSubscription
   , lookupShardReader
   , lookupConnector
+
+  , lookupResource
   ) where
 
 import           Control.Concurrent               (tryReadMVar)
@@ -25,15 +27,15 @@ import           HStream.Gossip                   (GossipContext (..), getEpoch,
 import           HStream.Gossip.Types             (ServerStatus (..))
 import qualified HStream.Logger                   as Log
 import           HStream.MetaStore.Types          (MetaStore (..))
-import           HStream.Server.Core.Common       (ResourceType (..),
-                                                   mkAllocationKey)
+import           HStream.Server.Core.Common       (mkAllocationKey)
 import           HStream.Server.HStreamApi
 import           HStream.Server.MetaData          (TaskAllocation (..))
 import           HStream.Server.MetaData.Value    (clusterStartTimeId)
 import           HStream.Server.Types             (ServerContext (..))
 import qualified HStream.Server.Types             as Types
 import qualified HStream.ThirdParty.Protobuf      as Proto
-import           HStream.Utils                    (getProtoTimestamp,
+import           HStream.Utils                    (ResourceType (..),
+                                                   getProtoTimestamp,
                                                    pattern EnumPB)
 
 describeCluster :: ServerContext -> IO DescribeClusterResponse

@@ -298,7 +298,7 @@ handleCreateAsSelect ctx@ServerContext{..} sink insWithRole outWithRole builder 
                     Log.warning . Log.buildString
                        $ "CREATE AS SELECT: query " <> show qid
                       <> " died because of " <> show e
-                    P.setQueryStatus qid ConnectionAbort metaHandle
+                    P.setQueryStatus qid Abort metaHandle
                     void $ releasePid qid)
       ]
     releasePid qid = modifyMVar_ runningQueries (return . HM.delete qid)

@@ -1,6 +1,7 @@
 {-# LANGUAGE BlockArguments      #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
+{-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module HStream.Server.Handler.Cluster
@@ -10,6 +11,7 @@ module HStream.Server.Handler.Cluster
   , lookupSubscriptionHandler
   , lookupConnectorHandler
   , lookupShardReaderHandler
+  , lookupResourceHandler
     -- * For hs-grpc-server
   , handleDescribeCluster
   , handleLookupShard
@@ -18,15 +20,18 @@ module HStream.Server.Handler.Cluster
   , handleLookupConnector
   ) where
 
+import           Control.Exception                (throwIO)
 import qualified HsGrpc.Server                    as G
 import           Network.GRPC.HighLevel.Generated
 
+import qualified HStream.Exception                as HE
 import qualified HStream.Server.Core.Cluster      as C
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
 import           HStream.Server.Types             (ServerContext (..))
 import           HStream.ThirdParty.Protobuf      (Empty)
 import           HStream.Utils                    (returnResp)
+import           Proto3.Suite                     (Enumerated (..))
 
 -------------------------------------------------------------------------------
 
@@ -64,6 +69,15 @@ lookupShardReaderHandler
   -> IO (ServerResponse 'Normal LookupShardReaderResponse)
 lookupShardReaderHandler sc (ServerNormalRequest _meta req) =
   defaultExceptionHandle $ returnResp =<< C.lookupShardReader sc req
+
+lookupResourceHandler
+  :: ServerContext
+  -> ServerRequest 'Normal LookupResourceRequest ServerNode
+  -> IO (ServerResponse 'Normal ServerNode)
+lookupResourceHandler sc (ServerNormalRequest _meta LookupResourceRequest{..}) = defaultExceptionHandle $ do
+  case lookupResourceRequestResType of
+    Enumerated (Right rType) -> returnResp =<< C.lookupResource sc rType lookupResourceRequestResId
+    _ -> throwIO $ HE.InvalidResourceType "Invalid resource type"
 
 -------------------------------------------------------------------------------
 
