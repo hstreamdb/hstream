@@ -13,6 +13,7 @@ module HStream.Server.Config
   , MetaStoreAddr(..)
   , parseJSONToOptions
   , readProtocol
+  , parseHostPorts
   ) where
 
 import           Control.Exception              (throwIO)
@@ -31,6 +32,7 @@ import qualified Data.Text                      as T
 import qualified Data.Text                      as Text
 import           Data.Text.Encoding             (encodeUtf8)
 import           Data.Vector                    (Vector)
+import qualified Data.Vector                    as V
 import           Data.Word                      (Word16, Word32)
 import           Data.Yaml                      as Y (Object,
                                                       ParseException (..),
@@ -39,8 +41,7 @@ import           Data.Yaml                      as Y (Object,
                                                       (.:?))
 import           Options.Applicative            as O (Alternative (many, (<|>)),
                                                       CompletionResult (execCompletion),
-                                                      Parser,
-                                                      ParserResult (CompletionInvoked, Failure, Success),
+                                                      Parser, ParserResult (..),
                                                       auto, defaultPrefs,
                                                       execParserPure, flag,
                                                       fullDesc, help, helper,
@@ -64,7 +65,6 @@ import qualified HStream.Logger                 as Log
 import qualified HStream.Server.HStreamInternal as SAI
 import           HStream.Store                  (Compression (..))
 import qualified HStream.Store.Logger           as Log
-
 
 -------------------------------------------------------------------------------
 
@@ -139,31 +139,32 @@ getConfig = do
 -------------------------------------------------------------------------------
 
 data CliOptions = CliOptions
-  { _configPath          :: !String
-  , _serverHost_         :: !(Maybe CBytes)
-  , _serverPort_         :: !(Maybe Word16)
-  , _serverAddress_      :: !(Maybe String)
-  , _serverInternalPort_ :: !(Maybe Word16)
-  , _serverID_           :: !(Maybe Word32)
-  , _serverLogLevel_     :: !(Maybe Log.Level)
-  , _serverLogWithColor_ :: !Bool
-  , _compression_        :: !(Maybe Compression)
-  , _metaStore_          :: !(Maybe MetaStoreAddr)
-  , _seedNodes_          :: !(Maybe Text)
+  { _configPath                 :: !String
+  , _serverHost_                :: !(Maybe CBytes)
+  , _serverPort_                :: !(Maybe Word16)
+  , _serverAddress_             :: !(Maybe String)
+  , _serverAdvertisedListeners_ :: !AdvertisedListeners
+  , _serverInternalPort_        :: !(Maybe Word16)
+  , _serverID_                  :: !(Maybe Word32)
+  , _serverLogLevel_            :: !(Maybe Log.Level)
+  , _serverLogWithColor_        :: !Bool
+  , _compression_               :: !(Maybe Compression)
+  , _metaStore_                 :: !(Maybe MetaStoreAddr)
+  , _seedNodes_                 :: !(Maybe Text)
 
-  , _enableTls_          :: !Bool
-  , _tlsKeyPath_         :: !(Maybe String)
-  , _tlsCertPath_        :: !(Maybe String)
-  , _tlsCaPath_          :: !(Maybe String)
+  , _enableTls_                 :: !Bool
+  , _tlsKeyPath_                :: !(Maybe String)
+  , _tlsCertPath_               :: !(Maybe String)
+  , _tlsCaPath_                 :: !(Maybe String)
 
-  , _ldAdminHost_        :: !(Maybe ByteString)
-  , _ldAdminPort_        :: !(Maybe Int)
-  , _ldLogLevel_         :: !(Maybe Log.LDLogLevel)
-  , _storeConfigPath     :: !CBytes
+  , _ldAdminHost_               :: !(Maybe ByteString)
+  , _ldAdminPort_               :: !(Maybe Int)
+  , _ldLogLevel_                :: !(Maybe Log.LDLogLevel)
+  , _storeConfigPath            :: !CBytes
 
-  , _ioTasksPath_        :: !(Maybe Text)
-  , _ioTasksNetwork_     :: !(Maybe Text)
-  , _ioConnectorImages_  :: ![Text]
+  , _ioTasksPath_               :: !(Maybe Text)
+  , _ioTasksNetwork_            :: !(Maybe Text)
+  , _ioConnectorImages_         :: ![Text]
   }
   deriving Show
 
@@ -176,6 +177,7 @@ cliOptionsParser = do
   _configPath          <- configPath
   _serverHost_         <- optional serverHost
   _serverAddress_      <- optional serverAddress
+  _serverAdvertisedListeners_ <- Map.fromList <$> many advertisedListeners
   _serverPort_         <- optional serverPort
   _serverInternalPort_ <- optional serverInternalPort
   _seedNodes_          <- optional seedNodes
@@ -200,12 +202,11 @@ cliOptionsParser = do
 parseJSONToOptions :: CliOptions -> Y.Object -> Y.Parser ServerOpts
 parseJSONToOptions CliOptions {..} obj = do
   nodeCfgObj  <- obj .: "hserver"
-
   nodeId              <- nodeCfgObj .:  "id"
   nodePort            <- nodeCfgObj .:? "port" .!= 6570
   nodeAddress         <- nodeCfgObj .:  "address"
   nodeInternalPort    <- nodeCfgObj .:? "internal-port" .!= 6571
-  advertisedListeners <- nodeCfgObj .:? "advertised-listeners"
+  nodeAdvertisedListeners <- nodeCfgObj .:? "advertised-listeners" .!= mempty
 
   nodeMetaStore     <- parseMetaStoreAddr <$> nodeCfgObj .:  "metastore-uri" :: Y.Parser MetaStoreAddr
   serverCompression <- readWithErrLog "compression" <$> nodeCfgObj .:? "compression" .!= "lz4"
@@ -217,17 +218,17 @@ parseJSONToOptions CliOptions {..} obj = do
   when (_maxRecordSize < 0 && _maxRecordSize > 1048576)
     $ errorWithoutStackTrace "max-record-size has to be a positive number less than 1MB"
 
-  let _serverID           = fromMaybe nodeId _serverID_
-  let _serverHost         = fromMaybe "0.0.0.0" _serverHost_
-  let _serverPort         = fromMaybe nodePort _serverPort_
-  let _serverInternalPort = fromMaybe nodeInternalPort _serverInternalPort_
-  let _serverAddress      = fromMaybe nodeAddress _serverAddress_
-  let _serverAdvertisedListeners = fromMaybe Map.empty advertisedListeners
+  let !_serverID           = fromMaybe nodeId _serverID_
+  let !_serverHost         = fromMaybe "0.0.0.0" _serverHost_
+  let !_serverAddress      = fromMaybe nodeAddress _serverAddress_
+  let !_serverPort         = fromMaybe nodePort _serverPort_
+  let !_serverInternalPort = fromMaybe nodeInternalPort _serverInternalPort_
+  let !_serverAdvertisedListeners = Map.union _serverAdvertisedListeners_ nodeAdvertisedListeners
 
-  let _metaStore          = fromMaybe nodeMetaStore _metaStore_
-  let _serverLogLevel     = fromMaybe (readWithErrLog "log-level" nodeLogLevel) _serverLogLevel_
-  let _serverLogWithColor = nodeLogWithColor || _serverLogWithColor_
-  let _compression        = fromMaybe serverCompression _compression_
+  let !_metaStore          = fromMaybe nodeMetaStore _metaStore_
+  let !_serverLogLevel     = fromMaybe (readWithErrLog "log-level" nodeLogLevel) _serverLogLevel_
+  let !_serverLogWithColor = nodeLogWithColor || _serverLogWithColor_
+  let !_compression        = fromMaybe serverCompression _compression_
 
   -- Cluster Option
   seeds <- flip fromMaybe _seedNodes_ <$> (nodeCfgObj .: "seed-nodes")
@@ -255,22 +256,22 @@ parseJSONToOptions CliOptions {..} obj = do
   _ldAdminSendTimeout <- sAdminCfgObj .:? "send-timeout" .!= 5000
   _ldAdminRecvTimeout <- sAdminCfgObj .:? "recv-timeout" .!= 5000
 
-  let _ldAdminHost    = fromMaybe storeAdminHost _ldAdminHost_
-  let _ldAdminPort    = fromMaybe storeAdminPort _ldAdminPort_
-  let _ldConfigPath   = _storeConfigPath
-  let _ldLogLevel     = fromMaybe storeLogLevel  _ldLogLevel_
-  let _topicRepFactor = 1
-  let _ckpRepFactor   = 3
+  let !_ldAdminHost    = fromMaybe storeAdminHost _ldAdminHost_
+  let !_ldAdminPort    = fromMaybe storeAdminPort _ldAdminPort_
+  let !_ldConfigPath   = _storeConfigPath
+  let !_ldLogLevel     = fromMaybe storeLogLevel  _ldLogLevel_
+  let !_topicRepFactor = 1
+  let !_ckpRepFactor   = 3
 
   -- TLS config
   nodeEnableTls   <- nodeCfgObj .:? "enable-tls" .!= False
   nodeTlsKeyPath  <- nodeCfgObj .:? "tls-key-path"
   nodeTlsCertPath <- nodeCfgObj .:? "tls-cert-path"
   nodeTlsCaPath   <- nodeCfgObj .:? "tls-ca-path"
-  let _enableTls   = _enableTls_ || nodeEnableTls
-      _tlsKeyPath  = _tlsKeyPath_  <|> nodeTlsKeyPath
-      _tlsCertPath = _tlsCertPath_ <|> nodeTlsCertPath
-      _tlsCaPath   = _tlsCaPath_   <|> nodeTlsCaPath
+  let !_enableTls   = _enableTls_ || nodeEnableTls
+      !_tlsKeyPath  = _tlsKeyPath_  <|> nodeTlsKeyPath
+      !_tlsCertPath = _tlsCertPath_ <|> nodeTlsCertPath
+      !_tlsCaPath   = _tlsCaPath_   <|> nodeTlsCaPath
       !_tlsConfig  = case (_enableTls, _tlsKeyPath, _tlsCertPath) of
         (False, _, _) -> Nothing
         (_, Nothing, _) -> errorWithoutStackTrace "enable-tls=true, but tls-key-path is empty"
@@ -299,7 +300,7 @@ parseJSONToOptions CliOptions {..} obj = do
         (nodeSourceImages, nodeSinkImages) _ioConnectorImages_
   let optTasksPath = fromMaybe nodeIOTasksPath _ioTasksPath_
       optTasksNetwork = fromMaybe nodeIOTasksNetwork _ioTasksNetwork_
-      _ioOptions = IO.IOOptions {..}
+      !_ioOptions = IO.IOOptions {..}
   return ServerOpts {..}
 
 -------------------------------------------------------------------------------
@@ -340,6 +341,17 @@ serverID = option auto
   $ long "server-id"
   <> metavar "UINT32"
   <> help "ID of the hstream server node"
+
+-- | Format:  <listener_key>:hstream://<address>:<port>
+-- Equivalent to the following in configuration file:
+-- <listener_key>:
+--  address: <host>
+--  port: <port>
+advertisedListeners :: O.Parser (Text, Vector SAI.Listener)
+advertisedListeners = option (maybeReader (either (const Nothing) Just . AP.parseOnly listenerP . T.pack))
+  $  long "advertised-listeners"
+  <> metavar "LISTENER"
+  <> help "advertised listener, in format <listener_key>:hstream://<address>:<port>. e.g. private:hstream://127.0.0.1:6580"
 
 seedNodes :: O.Parser Text
 seedNodes = strOption
@@ -466,6 +478,16 @@ metaStoreP = do
   AP.string "://"
   ip <- AP.takeText
   return (scheme, ip)
+
+listenerP :: AP.Parser (Text, Vector SAI.Listener)
+listenerP = do
+  key <- AP.takeTill (== ':')
+  AP.string ":hstream://"
+  address <- AP.takeTill (== ':')
+  AP.char ':'
+  port <- AP.decimal
+  AP.endOfInput
+  return (key, V.singleton SAI.Listener { listenerAddress = address, listenerPort = port})
 
 -- TODO: Haskell libraries does not support the case where multiple auths exist
 -- case parseURI str of
