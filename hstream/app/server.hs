@@ -177,7 +177,6 @@ serve host port tlsConfig sc@ServerContext{..} listeners = do
                <> "address: " <> Log.buildText listenerAddress <> ", "
                <> "port: " <> Log.buildInt listenerPort
       forkIO $ do
-        -- TODO: support HStreamUseHsGrpc
         let listenerOnStarted = Log.info $ "Extra listener is started on port "
                                         <> Log.buildInt listenerPort
         let sc' = sc{scAdvertisedListenersKey = Just key}
