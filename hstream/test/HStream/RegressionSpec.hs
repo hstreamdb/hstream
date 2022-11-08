@@ -35,7 +35,7 @@ spec = aroundAll provideHstreamApi $
       threadDelay 5000000 -- FIXME: requires a notification mechanism to ensure that the task starts successfully before inserting data
       runInsertSql api "INSERT INTO s1 (a, b) VALUES (1, 3);"
       runInsertSql api "INSERT INTO s2 (a, b) VALUES (2, 3);"
-    executeCommandPushQuery "SELECT s1.a, s2.a, s1.b, s2.b, SUM(s1.a), SUM(s2.a) FROM s1, s2 WHERE s1.b = s2.b GROUP BY s1.b EMIT CHANGES;"
+    executeCommandPushQuery "SELECT s1.a, s2.a, s1.b, s2.b, SUM(s1.a), SUM(s2.a) FROM s1 INNER JOIN s2 ON s1.b = s2.b GROUP BY s1.b EMIT CHANGES;"
       `shouldReturn` [ mkStruct
         [ ("SUM(s1.a)", Aeson.Number 1)
         , ("SUM(s2.a)", Aeson.Number 2)

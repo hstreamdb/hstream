@@ -403,26 +403,24 @@ elabRTableRef ref grp startBuilder subgraph =
           let out = Out { outNode = node' }
           return (builder', L.nub (ins1++ins2), out)
     RTableRefJoinOn ref1 typ ref2 expr alias_m -> do
-      Prelude.print $ "^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^"
-      Prelude.print expr
       (builder1, ins1, out1) <- elabRTableRef ref1 grp startBuilder subgraph
       (builder2, ins2, out2) <- elabRTableRef ref2 grp builder1 subgraph
 
       let (builder_2_1, out1_indexed) = addNode builder2    subgraph (IndexSpec (outNode out1))
           (builder_2_2, out2_indexed) = addNode builder_2_1 subgraph (IndexSpec (outNode out2))
 
-      -- FIXME: Incorrect impl!!!
       let composer_init = Composer $ \[o1,o2] -> o1 <> o2
           (builder3, node_tmp) = addNode builder_2_2 subgraph (ComposeSpec [out1_indexed,out2_indexed] composer_init)
-      (builder4, ins4, out4) <- elabRValueExpr expr grp builder3 subgraph node_tmp
 
+      (builder4, ins4, out4) <- elabRValueExpr expr grp builder3 subgraph node_tmp
       let (builder_4_1, out4_indexed) = addNode builder4 subgraph (IndexSpec (outNode out4))
 
       let composer = Composer $ \[os1, oexpr] ->
                  makeExtra "__s1__" os1 `HM.union` makeExtra "__expr__" oexpr
           (builder5, node1_with_expr) = addNode builder_4_1 subgraph (ComposeSpec [out1_indexed,out4_indexed] composer)
-          (builder6, node1_indexed) = addNode builder5 subgraph (IndexSpec node1_with_expr)
-          (builder7, node2_indexed) = addNode builder6 subgraph (IndexSpec (outNode out2))
+
+      let (builder6, node1_indexed) = addNode builder5 subgraph (IndexSpec node1_with_expr)
+
       let joinCond = \o1 o2 ->
             let [(_,v)] = HM.toList (getExtra "__expr__" o1)
              in v == FlowBoolean True
@@ -435,7 +433,7 @@ elabRTableRef ref grp startBuilder subgraph =
                                           o2' = o2
                                        in o1' <> o2'
           nullRowgen = HM.map (const FlowNull)
-      let (builder8, node) = addNode builder7 subgraph (JoinSpec node1_indexed node2_indexed joinType joinCond joiner nullRowgen)
+      let (builder8, node) = addNode builder6 subgraph (JoinSpec node1_indexed out2_indexed joinType joinCond joiner nullRowgen)
       case alias_m of
         Nothing -> return (builder8, L.nub (ins1++ins2++ins4), Out node)
         Just s  -> do
