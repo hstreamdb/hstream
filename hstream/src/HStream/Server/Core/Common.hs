@@ -24,25 +24,25 @@ import           HStream.ThirdParty.Protobuf (Empty (Empty))
 import           HStream.Utils               (TaskStatus (..), cBytesToText,
                                               decodeByteStringBatch)
 
-deleteStoreStream
-  :: ServerContext
-  -> HS.StreamId
-  -> Bool
-  -> IO Empty
-deleteStoreStream sc@ServerContext{..} s checkIfExist = do
-  streamExists <- HS.doesStreamExist scLDClient s
-  if streamExists then clean >> return Empty else ignore checkIfExist
-  where
-    streamNameText = cBytesToText $ HS.streamName s
-    clean = do
-      terminateQueryAndRemove sc streamNameText
-      terminateRelatedQueries sc streamNameText
-      HS.removeStream scLDClient s
-    ignore True  = return Empty
-    ignore False = do
-      Log.warning $ "Drop: tried to remove a nonexistent object: "
-                 <> Log.buildCBytes (HS.streamName s)
-      throwIO $ HE.StreamNotFound $ "Stream " <> streamNameText <> " not found."
+-- deleteStoreStream
+--   :: ServerContext
+--   -> HS.StreamId
+--   -> Bool
+--   -> IO Empty
+-- deleteStoreStream sc@ServerContext{..} s checkIfExist = do
+--   streamExists <- HS.doesStreamExist scLDClient s
+--   if streamExists then clean >> return Empty else ignore checkIfExist
+--   where
+--     streamNameText = cBytesToText $ HS.streamName s
+--     clean = do
+--       terminateQueryAndRemove sc streamNameText
+--       terminateRelatedQueries sc streamNameText
+--       HS.removeStream scLDClient s
+--     ignore True  = return Empty
+--     ignore False = do
+--       Log.warning $ "Drop: tried to remove a nonexistent object: "
+--                  <> Log.buildCBytes (HS.streamName s)
+--       throwIO $ HE.StreamNotFound $ "Stream " <> streamNameText <> " not found."
 
 --------------------------------------------------------------------------------
 
@@ -159,29 +159,28 @@ decodeRecordBatch dataRecord = do
 --------------------------------------------------------------------------------
 -- Query
 
-terminateQueryAndRemove :: ServerContext -> T.Text -> IO ()
-terminateQueryAndRemove sc@ServerContext{..} objectId = do
-  queries <- M.listMeta metaHandle
-  let queryExists = L.find (\query -> P.getQuerySink query == objectId) queries
-  case queryExists of
-    Just query -> do
-      Log.debug . Log.buildString
-         $ "TERMINATE: found query " <> show (P.queryType query)
-        <> " with query id " <> show (P.queryId query)
-        <> " writes to the stream being dropped " <> show objectId
-      void $ handleQueryTerminate sc (OneQuery $ P.queryId query)
-      M.deleteMeta @P.PersistentQuery (P.queryId query) Nothing metaHandle
-      Log.debug . Log.buildString
-         $ "TERMINATE: query " <> show (P.queryType query)
-        <> " has been removed"
-    Nothing    -> do
-      Log.debug . Log.buildString
-        $ "TERMINATE: found no query writes to the stream being dropped " <> show objectId
+-- terminateQueryAndRemove :: ServerContext -> T.Text -> IO ()
+-- terminateQueryAndRemove sc@ServerContext{..} stream = do
+--   queries <- M.listMeta metaHandle
+--   let queryExists = L.find (\query -> P.getQuerySink query == stream) queries
+--   case queryExists of
+--     Just query -> do
+--       Log.debug . Log.buildString
+--          $ "TERMINATE: found a query " <> show query
+--         <> " which writes to the stream being removed " <> show stream
+--       void $ handleQueryTerminate sc (OneQuery $ P.queryId query)
+--       M.deleteMeta @P.QueryInfo (P.queryId query) Nothing metaHandle
+--       -- TODO: delete status
+--       Log.debug . Log.buildString
+--         $ "TERMINATE: query " <> show query <> " has been removed"
+--     Nothing    -> do
+--       Log.debug . Log.buildString
+--         $ "TERMINATE: found no query writes to the stream being dropped " <> show stream
 
 terminateRelatedQueries :: ServerContext -> T.Text -> IO ()
 terminateRelatedQueries sc@ServerContext{..} name = do
   queries <- M.listMeta metaHandle
-  let getRelatedQueries = [P.queryId query | query <- queries, name `elem` P.getRelatedStreams query]
+  let getRelatedQueries = [P.queryId query | query <- queries, name `elem` P.getQuerySources query]
   Log.debug . Log.buildString
      $ "TERMINATE: the queries related to the terminating stream " <> show name
     <> ": " <> show getRelatedQueries
@@ -191,7 +190,7 @@ handleQueryTerminate :: ServerContext -> TerminationSelection -> IO [T.Text]
 handleQueryTerminate ServerContext{..} (OneQuery qid) = do
   hmapQ <- readMVar runningQueries
   case HM.lookup qid hmapQ of Just tid -> killThread tid; _ -> pure ()
-  P.setQueryStatus qid Terminated metaHandle
+  M.updateMeta qid P.QueryTerminated Nothing metaHandle
   void $ swapMVar runningQueries (HM.delete qid hmapQ)
   Log.debug . Log.buildString $ "TERMINATE: terminated query: " <> show qid
   return [qid]
@@ -209,7 +208,7 @@ handleQueryTerminate ServerContext{..} (ManyQueries qids) = do
         case HM.lookup x hm of
           Just tid -> do
             killThread tid
-            P.setQueryStatus x Terminated metaHandle
+            M.updateMeta x P.QueryTerminated Nothing metaHandle
             void $ swapMVar runningQueries (HM.delete x hm)
           _        ->
             Log.debug $ "query id " <> Log.buildString' x <> " not found"

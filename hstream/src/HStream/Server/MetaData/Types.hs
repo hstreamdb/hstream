@@ -5,26 +5,23 @@
 {-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE PatternSynonyms       #-}
 {-# LANGUAGE PolyKinds             #-}
 {-# LANGUAGE TypeFamilies          #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
 module HStream.Server.MetaData.Types
   ( RelatedStreams
-  , PersistentQuery (..)
-  , PersistentConnector (..)
-  , QueryType (..)
+  , QueryInfo (..)
+  , QueryStatus (QueryTerminated, QueryRunning, QueryCreated, QueryAbort, ..)
   , ShardReader (..)
   , TaskAllocation (..)
-  , createInsertPersistentQuery
-  , getQuerySink
-  , getRelatedStreams
-  , isStreamQuery
-  , isViewQuery
+  , createInsertQueryInfo
   , getSubscriptionWithStream
-  , setQueryStatus
   , groupbyStores
-  , getQueryStatus
   , rootPath
+  , getQuerySink
+  , getQuerySources
   ) where
 
 import           Control.Concurrent
@@ -43,6 +40,7 @@ import           Z.IO.Time                     (getSystemTime')
 import           ZooKeeper.Types               (ZHandle)
 
 import           HStream.MetaStore.Types       (HasPath (..), MetaHandle,
+                                                MetaMulti (metaMulti),
                                                 MetaStore (..), MetaType,
                                                 RHandle)
 import qualified HStream.Server.ConnectorTypes as HCT
@@ -56,31 +54,32 @@ import           HStream.Utils                 (TaskStatus (..), cBytesToText)
 
 --------------------------------------------------------------------------------
 
-type RelatedStreams = [Text]
-
-data PersistentQuery = PersistentQuery
+data QueryInfo = QueryInfo
   { queryId          :: Text
-  , queryBindedSql   :: Text
+  , querySql         :: Text
   , queryCreatedTime :: Int64
-  , queryType        :: QueryType
-  , queryStatus      :: TaskStatus
-  , queryTimeCkp     :: Int64
-  , queryHServer     :: ServerID
+  , queryStreams     :: RelatedStreams
   } deriving (Generic, Show, FromJSON, ToJSON)
 
-data PersistentConnector = PersistentConnector
-  { connectorId          :: Text
-  , connectorBoundSql    :: Text
-  , connectorCreatedTime :: Int64
-  , connectorStatus      :: TaskStatus
-  , connectorTimeCkp     :: Int64
-  , connectorHServer     :: ServerID
-  } deriving (Generic, Show, FromJSON, ToJSON)
+data QueryStatus = QueryStatus { queryState :: TaskStatus }
+  deriving (Generic, Show, FromJSON, ToJSON)
 
-data QueryType
-  = StreamQuery RelatedStreams Text            -- ^ related streams and the stream it creates
-  | ViewQuery   RelatedStreams Text            -- ^ related streams and the view it creates
-  deriving (Show, Eq, Generic, FromJSON, ToJSON)
+pattern QueryTerminated :: QueryStatus
+pattern QueryTerminated = QueryStatus { queryState = Terminated }
+pattern QueryCreated :: QueryStatus
+pattern QueryCreated = QueryStatus { queryState = Created }
+pattern QueryRunning :: QueryStatus
+pattern QueryRunning = QueryStatus { queryState = Running }
+pattern QueryAbort :: QueryStatus
+pattern QueryAbort = QueryStatus { queryState = Abort }
+
+type SourceStreams  = [Text]
+type SinkStream     = Text
+type RelatedStreams = (SourceStreams, SinkStream)
+
+  -- = StreamQuery RelatedStreams Text            -- ^ related streams and the stream it creates
+  --  | ViewQuery   RelatedStreams Text            -- ^ related streams and the view it creates
+  --  deriving (Show, Eq, Generic, FromJSON, ToJSON)
 
 data ShardReader = ShardReader
   { readerStreamName  :: Text
@@ -97,11 +96,13 @@ rootPath :: Text
 rootPath = "/hstream"
 
 instance HasPath ShardReader ZHandle where
-  myRootPath = rootPath <> "/queries"
+  myRootPath = rootPath <> "/shardReader"
 instance HasPath SubscriptionWrap ZHandle where
   myRootPath = rootPath <> "/subscriptions"
-instance HasPath PersistentQuery ZHandle where
-  myRootPath = rootPath <> "/shardReader"
+instance HasPath QueryInfo ZHandle where
+  myRootPath = rootPath <> "/queries"
+instance HasPath QueryStatus ZHandle where
+  myRootPath = rootPath <> "/queryStatus"
 instance HasPath Proto.Timestamp ZHandle where
   myRootPath = rootPath <> "/timestamp"
 
@@ -109,25 +110,19 @@ instance HasPath ShardReader RHandle where
   myRootPath = "readers"
 instance HasPath SubscriptionWrap RHandle where
   myRootPath = "subscriptions"
-instance HasPath PersistentQuery RHandle where
+instance HasPath QueryInfo RHandle where
   myRootPath = "queries"
+instance HasPath QueryStatus RHandle where
+  myRootPath = "queryStatus"
 instance HasPath Proto.Timestamp RHandle where
   myRootPath = "timestamp"
 
-insertQuery :: MetaType PersistentQuery handle
-  => Text -> Text -> Int64 -> QueryType -> ServerID -> handle -> IO ()
-insertQuery queryId queryBindedSql queryCreatedTime queryType queryHServer h = do
-  MkSystemTime queryTimeCkp _ <- getSystemTime'
-  let queryStatus = Created
-  insertMeta queryId PersistentQuery{..} h
-
-getQueryStatus :: MetaType PersistentQuery handle => Text -> handle -> IO TaskStatus
-getQueryStatus qid h = queryStatus . fromJust <$> getMeta qid h
-
-setQueryStatus
-  :: (MetaStore PersistentQuery handle, HasPath PersistentQuery handle) =>
-  Text -> TaskStatus -> handle -> IO ()
-setQueryStatus mid status = updateMetaWith mid (\(Just q) -> q { queryStatus = status }) Nothing
+insertQuery :: (MetaType QueryInfo handle, MetaType QueryStatus handle, MetaMulti handle)
+  => QueryInfo -> handle -> IO ()
+insertQuery qInfo@QueryInfo{..} h = do
+  metaMulti [ insertMetaOp queryId qInfo h
+            , insertMetaOp queryId QueryCreated h]
+            h
 
 getSubscriptionWithStream :: MetaType SubscriptionWrap handle => handle -> Text -> IO [SubscriptionWrap]
 getSubscriptionWithStream zk sName = do
@@ -136,35 +131,18 @@ getSubscriptionWithStream zk sName = do
 
 --------------------------------------------------------------------------------
 
-isViewQuery :: PersistentQuery -> Bool
-isViewQuery PersistentQuery{..} =
-  case queryType of
-    ViewQuery{} -> True
-    _           -> False
+getQuerySink :: QueryInfo -> SinkStream
+getQuerySink QueryInfo{..} = snd queryStreams
 
-isStreamQuery :: PersistentQuery -> Bool
-isStreamQuery PersistentQuery{..} =
-  case queryType of
-    StreamQuery{} -> True
-    _             -> False
+getQuerySources :: QueryInfo -> SourceStreams
+getQuerySources QueryInfo{..} = fst queryStreams
 
-getRelatedStreams :: PersistentQuery -> RelatedStreams
-getRelatedStreams PersistentQuery{..} =
-  case queryType of
-    (StreamQuery ss _) -> ss
-    (ViewQuery ss _ )  -> ss
-
-getQuerySink :: PersistentQuery -> Text
-getQuerySink PersistentQuery{..} =
-  case queryType of
-    (StreamQuery _ s) -> s
-    (ViewQuery _ s )  -> s
-
-createInsertPersistentQuery :: Text -> Text -> QueryType -> ServerID -> MetaHandle -> IO (Text, Int64)
-createInsertPersistentQuery qid queryText queryType queryHServer h = do
-  MkSystemTime timestamp _ <- getSystemTime'
-  insertQuery qid queryText timestamp queryType queryHServer h
-  return (qid, timestamp)
+createInsertQueryInfo :: Text -> Text -> RelatedStreams -> MetaHandle -> IO QueryInfo
+createInsertQueryInfo queryId querySql queryStreams h = do
+  MkSystemTime queryCreatedTime _ <- getSystemTime'
+  let qInfo = QueryInfo {..}
+  insertQuery qInfo h
+  return qInfo
 
 groupbyStores :: IORef (HM.HashMap Text (MVar (DataChangeBatch AST.FlowObject HCT.Timestamp)))
 groupbyStores = unsafePerformIO $ newIORef HM.empty

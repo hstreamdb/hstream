@@ -10,7 +10,7 @@ import           HStream.MetaStore.Types       (HasPath (myRootPath),
 import           HStream.Server.MetaData.Types
 import           HStream.Server.Types          (SubscriptionWrap (..))
 import qualified HStream.ThirdParty.Protobuf   as Proto
-import           HStream.Utils                 (textToCBytes)
+import           HStream.Utils                 (TaskStatus (..), textToCBytes)
 
 paths :: [CBytes]
 paths = [ textToCBytes rootPath
@@ -19,7 +19,8 @@ paths = [ textToCBytes rootPath
         , textToCBytes $ myRootPath @TaskMeta         @ZHandle
         , textToCBytes $ myRootPath @TaskKvMeta       @ZHandle
         , textToCBytes $ myRootPath @ShardReader      @ZHandle
-        , textToCBytes $ myRootPath @PersistentQuery  @ZHandle
+        , textToCBytes $ myRootPath @QueryInfo        @ZHandle
+        , textToCBytes $ myRootPath @QueryStatus      @ZHandle
         , textToCBytes $ myRootPath @SubscriptionWrap @ZHandle
         , textToCBytes $ myRootPath @Proto.Timestamp  @ZHandle
         , textToCBytes $ myRootPath @TaskAllocation   @ZHandle
@@ -29,7 +30,8 @@ tables :: [Text]
 tables = [
     myRootPath @TaskMeta         @RHandle
   , myRootPath @TaskIdMeta       @RHandle
-  , myRootPath @PersistentQuery  @RHandle
+  , myRootPath @QueryInfo        @RHandle
+  , myRootPath @QueryStatus       @RHandle
   , myRootPath @ShardReader      @RHandle
   , myRootPath @SubscriptionWrap @RHandle
   , myRootPath @Proto.Timestamp  @RHandle

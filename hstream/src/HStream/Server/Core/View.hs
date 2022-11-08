@@ -28,47 +28,49 @@ import           HStream.Utils               (TaskStatus (..))
 
 -- TODO: refactor this function after the meta data has been reorganized
 deleteView :: ServerContext -> T.Text -> Bool -> IO Empty
-deleteView sc@ServerContext{..} name checkIfExist = do
-  query <- do
-    viewQueries <- filter P.isViewQuery <$> M.listMeta metaHandle
-    return $ find ((== name) . P.getQuerySink) viewQueries
-  case query of
-    Just P.PersistentQuery{..} -> do
-      handleQueryTerminate sc (OneQuery queryId) >>= \case
-        [] -> throwIO $ HE.UnexpectedError "Failed to view related query for some unknown reason"
-        _  -> do
-          M.deleteMeta @P.PersistentQuery queryId Nothing metaHandle
-          atomicModifyIORef' P.groupbyStores (\hm -> (HM.delete name hm, ()))
-          return Empty
-    Nothing -> if checkIfExist then return Empty
-                               else throwIO $ HE.ViewNotFound (name <> " does not exist")
+deleteView sc@ServerContext{..} name checkIfExist = undefined
+-- do
+--   query <- do
+--     viewQueries <- filter P.isViewQuery <$> M.listMeta metaHandle
+--     return $ find ((== name) . P.getQuerySink) viewQueries
+--   case query of
+--     Just P.PersistentQuery{..} -> do
+--       handleQueryTerminate sc (OneQuery queryId) >>= \case
+--         [] -> throwIO $ HE.UnexpectedError "Failed to view related query for some unknown reason"
+--         _  -> do
+--           M.deleteMeta @P.PersistentQuery queryId Nothing metaHandle
+--           atomicModifyIORef' P.groupbyStores (\hm -> (HM.delete name hm, ()))
+--           return Empty
+--     Nothing -> if checkIfExist then return Empty
+--                                else throwIO $ HE.ViewNotFound (name <> " does not exist")
 
 getView :: ServerContext -> T.Text -> IO API.View
-getView ServerContext{..} viewId = do
-  query <- do
-    viewQueries <- filter P.isViewQuery <$> M.listMeta metaHandle
-    return $ find ((== viewId) . P.getQuerySink) viewQueries
-  case query of
-    Just q -> pure $ hstreamQueryToView q
-    _      -> do
-      Log.warning $ "Cannot Find View with Name: " <> Log.buildString (T.unpack viewId)
-      throwIO $ ViewNotFound "View does not exist"
+getView ServerContext{..} viewId = undefined
+  -- query <- do
+  --   viewQueries <- filter P.isViewQuery <$> M.listMeta metaHandle
+  --   return $ find ((== viewId) . P.getQuerySink) viewQueries
+  -- case query of
+  --   Just q -> pure $ hstreamQueryToView q
+  --   _      -> do
+  --     Log.warning $ "Cannot Find View with Name: " <> Log.buildString (T.unpack viewId)
+  --     throwIO $ ViewNotFound "View does not exist"
 
-hstreamQueryToView :: P.PersistentQuery -> API.View
-hstreamQueryToView (P.PersistentQuery _ sqlStatement createdTime (P.ViewQuery _ viewName) status _ _) =
-  API.View {
-      viewViewId = viewName
-    , viewStatus = getPBStatus status
-    , viewCreatedTime = createdTime
-    , viewSql = sqlStatement
-    , viewSchema = V.empty
-    }
-hstreamQueryToView _ = throw $ UnexpectedError "unexpected match in hstreamQueryToView."
+-- hstreamQueryToView :: P.PersistentQuery -> API.View
+-- hstreamQueryToView (P.PersistentQuery _ sqlStatement createdTime (P.ViewQuery _ viewName) status _ _) =
+--   API.View {
+--       viewViewId = viewName
+--     , viewStatus = getPBStatus status
+--     , viewCreatedTime = createdTime
+--     , viewSql = sqlStatement
+--     , viewSchema = V.empty
+--     }
+-- hstreamQueryToView _ = throw $ UnexpectedError "unexpected match in hstreamQueryToView."
 
 listViews :: HasCallStack => ServerContext -> IO [API.View]
-listViews ServerContext{..} = map hstreamQueryToView . filter P.isViewQuery <$> M.listMeta metaHandle
+listViews ServerContext{..} = undefined -- map hstreamQueryToView . filter P.isViewQuery <$> M.listMeta metaHandle
 
 listViewNames :: ServerContext -> IO [T.Text]
-listViewNames ServerContext{..} = do
-  xs <- map hstreamQueryToView . filter P.isViewQuery <$> M.listMeta metaHandle
-  pure (API.viewViewId <$> xs)
+listViewNames ServerContext{..} = undefined
+  --  do
+  -- xs <- map hstreamQueryToView . filter P.isViewQuery <$> M.listMeta metaHandle
+  -- pure (API.viewViewId <$> xs)

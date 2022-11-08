@@ -47,6 +47,7 @@ import qualified DiffFlow.Shard                   as DiffFlow
 import qualified DiffFlow.Types                   as DiffFlow
 import qualified DiffFlow.Weird                   as DiffFlow
 import qualified HStream.Exception                as HE
+import qualified HStream.MetaStore.Types          as M
 
 -------------------------------------------------------------------------------
 data IdentifierRole = RoleStream | RoleView deriving (Eq, Show)
@@ -271,16 +272,16 @@ handleCreateAsSelect :: ServerContext
                      -> (Out, IdentifierRole)
                      -> DiffFlow.GraphBuilder Row
                      -> Text
-                     -> P.QueryType
-                     -> IO (Text, Int64)
+                     -> P.RelatedStreams
+                     -> IO P.QueryInfo
 handleCreateAsSelect ctx@ServerContext{..} sink insWithRole outWithRole builder commandQueryStmtText queryType = do
   taskName <- newRandomText 10
-  (qid, timestamp) <- P.createInsertPersistentQuery
-                      taskName commandQueryStmtText queryType serverID metaHandle
-  P.setQueryStatus qid Running metaHandle
-  tid <- forkIO $ catches (action qid taskName) (cleanup qid)
-  modifyMVar_ runningQueries (return . HM.insert qid tid)
-  return (qid, timestamp)
+  qInfo@P.QueryInfo{..} <- P.createInsertQueryInfo
+                      taskName commandQueryStmtText queryType metaHandle
+  M.updateMeta queryId P.QueryRunning Nothing metaHandle
+  tid <- forkIO $ catches (action queryId taskName) (cleanup queryId)
+  modifyMVar_ runningQueries (return . HM.insert queryId tid)
+  return qInfo
   where
     action qid taskName = do
       Log.debug . Log.buildString
@@ -292,13 +293,13 @@ handleCreateAsSelect ctx@ServerContext{..} sink insWithRole outWithRole builder 
                     Log.debug . Log.buildString
                        $ "CREATE AS SELECT: query " <> show qid
                       <> " is killed because of " <> show e
-                    P.setQueryStatus qid Terminated metaHandle
+                    M.updateMeta qid P.QueryTerminated Nothing metaHandle
                     void $ releasePid qid)
       , Handler (\(e :: SomeException) -> do
                     Log.warning . Log.buildString
                        $ "CREATE AS SELECT: query " <> show qid
                       <> " died because of " <> show e
-                    P.setQueryStatus qid Abort metaHandle
+                    M.updateMeta qid P.QueryAbort Nothing metaHandle
                     void $ releasePid qid)
       ]
     releasePid qid = modifyMVar_ runningQueries (return . HM.delete qid)
