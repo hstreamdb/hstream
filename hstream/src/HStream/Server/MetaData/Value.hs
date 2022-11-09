@@ -21,6 +21,7 @@ paths = [ textToCBytes rootPath
         , textToCBytes $ myRootPath @ShardReader      @ZHandle
         , textToCBytes $ myRootPath @QueryInfo        @ZHandle
         , textToCBytes $ myRootPath @QueryStatus      @ZHandle
+        , textToCBytes $ myRootPath @ViewInfo      @ZHandle
         , textToCBytes $ myRootPath @SubscriptionWrap @ZHandle
         , textToCBytes $ myRootPath @Proto.Timestamp  @ZHandle
         , textToCBytes $ myRootPath @TaskAllocation   @ZHandle
@@ -32,6 +33,7 @@ tables = [
   , myRootPath @TaskIdMeta       @RHandle
   , myRootPath @QueryInfo        @RHandle
   , myRootPath @QueryStatus       @RHandle
+  , myRootPath @ViewInfo        @RHandle
   , myRootPath @ShardReader      @RHandle
   , myRootPath @SubscriptionWrap @RHandle
   , myRootPath @Proto.Timestamp  @RHandle

@@ -13,6 +13,7 @@
 module HStream.Server.MetaData.Types
   ( RelatedStreams
   , QueryInfo (..)
+  , ViewInfo (..)
   , QueryStatus (QueryTerminated, QueryRunning, QueryCreated, QueryAbort, ..)
   , ShardReader (..)
   , TaskAllocation (..)
@@ -73,6 +74,11 @@ pattern QueryRunning = QueryStatus { queryState = Running }
 pattern QueryAbort :: QueryStatus
 pattern QueryAbort = QueryStatus { queryState = Abort }
 
+data ViewInfo = ViewInfo {
+    viewName  :: Text
+  , viewQuery :: QueryInfo
+} deriving (Generic, Show, FromJSON, ToJSON)
+
 type SourceStreams  = [Text]
 type SinkStream     = Text
 type RelatedStreams = (SourceStreams, SinkStream)
@@ -101,6 +107,8 @@ instance HasPath SubscriptionWrap ZHandle where
   myRootPath = rootPath <> "/subscriptions"
 instance HasPath QueryInfo ZHandle where
   myRootPath = rootPath <> "/queries"
+instance HasPath ViewInfo ZHandle where
+  myRootPath = rootPath <> "/views"
 instance HasPath QueryStatus ZHandle where
   myRootPath = rootPath <> "/queryStatus"
 instance HasPath Proto.Timestamp ZHandle where
@@ -112,6 +120,8 @@ instance HasPath SubscriptionWrap RHandle where
   myRootPath = "subscriptions"
 instance HasPath QueryInfo RHandle where
   myRootPath = "queries"
+instance HasPath ViewInfo RHandle where
+  myRootPath = "views"
 instance HasPath QueryStatus RHandle where
   myRootPath = "queryStatus"
 instance HasPath Proto.Timestamp RHandle where

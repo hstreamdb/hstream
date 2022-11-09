@@ -647,7 +647,9 @@ zkExceptionHandlers =
   , E.Handler $ \(e :: ZK.ZMARSHALLINGERROR  )   -> handleZKException e StatusUnknown
   , E.Handler $ \(e :: ZK.ZUNIMPLEMENTED     )   -> handleZKException e StatusUnknown
   , E.Handler $ \(e :: ZK.ZNEWCONFIGNOQUORUM )   -> handleZKException e StatusUnknown
-  , E.Handler $ \(e :: ZK.ZNODEEXISTS        )   -> handleZKException e StatusAlreadyExists
+  , E.Handler $ \(e :: ZK.ZNODEEXISTS        )   -> do
+      Log.fatal $ Log.buildString' e
+      return (StatusAlreadyExists, "object exists")
   , E.Handler $ \(e :: ZK.ZNONODE            )   -> handleZKException e StatusNotFound
   , E.Handler $ \(e :: ZK.ZooException       )   -> handleZKException e StatusInternal
   ]

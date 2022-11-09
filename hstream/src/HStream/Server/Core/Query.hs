@@ -108,26 +108,9 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
                      relatedStreams
           pure $ API.CommandQueryResponse (mkVectorStruct queryId "stream_query_id")
     CreateViewPlan view ins out builder accumulation -> do
-      let sources = inStream <$> ins
-          sink    = view
-      roles_m <- mapM (findIdentifierRole sc) sources
-      case all isJust roles_m of
-        True -> do
-          let relatedStreams = (sources, sink)
-          P.QueryInfo{..} <- handleCreateAsSelect
-                     sc
-                     sink
-                     (ins `zip` L.map fromJust roles_m)
-                     (out, RoleView)
-                     builder
-                     commandQueryStmtText
-                     relatedStreams
-          atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert sink accumulation hm, ()))
-          pure $ API.CommandQueryResponse (mkVectorStruct queryId "view_query_id")
-        False  -> do
-          Log.warning $ "At least one of the streams/views do not exist: "
-            <> Log.buildString (show sources)
-          throwIO $ HE.StreamNotFound $ "At least one of the streams/views do not exist: " <> T.pack (show sources)
+      P.ViewInfo{viewQuery=P.QueryInfo{..}} <-
+        Core.createView' sc view ins out builder accumulation commandQueryStmtText
+      pure $ API.CommandQueryResponse (mkVectorStruct queryId "view_query_id")
     CreatePlan stream fac -> do
       let s = API.Stream
             { streamStreamName = stream
