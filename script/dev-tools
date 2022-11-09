@@ -915,6 +915,9 @@ class QuickBuildDevImageCommand:
         )
         p.add_argument("--tag", "-t", required=True, help="target image tag")
         p.add_argument("--use-hs-grpc", default=False, action="store_true")
+        p.add_argument(
+            "--enable-debug-info", default=False, action="store_true"
+        )
         p.add_argument("--fast", default=False, action="store_true")
         # p.add_argument("--force-rebuild", "-f", action="store_true")  # TODO
         p.add_argument("--no-clean-installdir", action="store_true")
@@ -924,15 +927,24 @@ class QuickBuildDevImageCommand:
         tag,
         builder_image,
         use_hs_grpc=False,
+        enable_debug_info=False,
         fast=False,
         **kargs,
     ):
-        cabal_flag = (
-            "--constraint=hstream+hstream_use_hs_grpc --constraint=hstream-gossip+hstream_use_hs_grpc"
+        hs_targets = "hstream hstream-admin"
+
+        debug_arg = "--enable-debug-info" if enable_debug_info else ""
+        hsgrpc_arg = (
+            " ".join(
+                [
+                    "--constraint=hstream+hstream_use_hs_grpc",
+                    "--constraint=hstream-gossip+hstream_use_hs_grpc",
+                ]
+            )
             if use_hs_grpc
             else ""
         )
-        hs_targets = "hstream hstream-admin"
+        cabal_args = f"{debug_arg} {hsgrpc_arg}"
         tmp_name = "tmp_build_dev_image_" + gen_randoms(20)
         base_image = IMAGES["DB_IMAGE"]
 
@@ -940,7 +952,7 @@ class QuickBuildDevImageCommand:
             run_sh(
                 f"python3 {__file__} cabal --check --no-interactive "
                 f"--no-services-required --image {builder_image} --no-services-required "
-                f"-- build {cabal_flag} {hs_targets}"
+                f"-- build {cabal_args} {hs_targets}"
             )
             out = (
                 run_sh(
@@ -962,7 +974,10 @@ class QuickBuildDevImageCommand:
             # Copy
             run_sh(f"docker run -td --rm --name {tmp_name} {base_image} bash")
             copy_execs = " && ".join(
-                f"docker cp -L {x} {tmp_name}:/usr/local/bin/" for x in results
+                f"docker cp -L {x} {tmp_name}:/usr/local/bin/hstream-server-sid"
+                if os.path.basename(x) == "hstream-server" and use_hs_grpc
+                else f"docker cp -L {x} {tmp_name}:/usr/local/bin/"
+                for x in results
             )
             copy_config = f"docker cp -L {DEFAULT_HSTREAM_CONF} {tmp_name}:/etc/hstream/config.yaml"
             run_sh(copy_execs + " && " + copy_config)
@@ -980,7 +995,9 @@ class QuickBuildDevImageCommand:
             files = [
                 (
                     f"{installdir}/hstream-server",
-                    "/usr/local/bin/hstream-server",
+                    "/usr/local/bin/hstream-server-sid"
+                    if use_hs_grpc
+                    else "/usr/local/bin/hstream-server",
                 ),
                 (
                     f"{installdir}/hstream",
@@ -994,7 +1011,7 @@ class QuickBuildDevImageCommand:
             run_sh(
                 f"python3 {__file__} cabal --check --no-interactive "
                 f"--no-services-required --image {builder_image} --no-services-required "
-                f"-- install {cabal_flag} --installdir={installdir} {hs_targets}"
+                f"-- install {cabal_args} --installdir={installdir} {hs_targets}"
             )
             # Copy
             run_sh(f"docker run -td --rm --name {tmp_name} {base_image} bash")

@@ -236,8 +236,8 @@ services:
 
   zookeeper:
     image: zookeeper
-    expose:
-      - 2181
+    # expose:
+    #   - 2181
     networks:
       hstream-local-cluster:
         ipv4_address: 172.16.156.10

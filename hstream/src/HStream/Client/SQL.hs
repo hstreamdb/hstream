@@ -64,6 +64,7 @@ import           HStream.Utils                    (HStreamClientApi,
 import           Network.GRPC.HighLevel.Client    (ClientRequest (..),
                                                    ClientResult (..))
 import           Network.GRPC.HighLevel.Generated (withGRPCClient)
+
 -- and this needs to be optimized. This could be done with a grpc client pool.
 interactiveSQLApp :: HStreamSqlContext -> Maybe FilePath -> IO ()
 interactiveSQLApp ctx@HStreamSqlContext{..} historyFile = do
