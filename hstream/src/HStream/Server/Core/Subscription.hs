@@ -486,7 +486,6 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
     addRead ldCkpReader Assignment {..} startOffsets = do
       shards <- atomically $ swapTVar waitingReadShards []
       forM_ shards $ \shard -> do
-        Log.debug $ "start reading " <> Log.buildString (show shard)
         offset <- case HM.lookup shard startOffsets of
           Nothing -> do
             Log.fatal $ "can't find startOffsets for shard "
@@ -495,6 +494,8 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
                      <> Log.buildString' (show startOffsets)
             throwIO . HE.UnexpectedError $ "can't find startOffsets for shard " <> show shard
           Just s -> return s
+        Log.debug $ "Start reading " <> Log.buildString' shard <> " from "
+                 <> Log.buildString' offset
         S.startReadingFromCheckpointOrStart ldCkpReader shard (Just offset) S.LSN_MAX
 
     readRecordBatches :: IO [S.DataRecord BS.ByteString]
