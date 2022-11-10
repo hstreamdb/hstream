@@ -39,7 +39,7 @@ import           HStream.Server.Types
 import           HStream.SQL.AST
 import           HStream.SQL.Codegen
 import qualified HStream.Store                    as S
-import           HStream.Utils                    (TaskStatus (..), genUnique,
+import           HStream.Utils                    (TaskStatus (..),
                                                    newRandomText)
 
 import qualified DiffFlow.Graph                   as DiffFlow
@@ -133,17 +133,19 @@ runTask ctx@ServerContext{..} taskName sink insWithRole outWithRole graphBuilder
   tids2_m <- forM (insWithRole `zip` srcConnectors_m) $ \((in_@In{..}, role), srcConnector_m) -> do
     case role of
       RoleStream -> do
+        -- Note: the N_th input DataChange of each input node has the same `dcExtra`
+        extra_m <- newMVar 0
         let (Just SourceConnectorWithoutCkp{..}) = srcConnector_m
         tid <- forkIO $ withReadRecordsWithoutCkp inStream $ \sourceRecords -> do
           forM_ sourceRecords $ \SourceRecord{..} -> do
             ts <- HCT.getCurrentTimestamp
-            uniq <- genUnique
+            extra <- modifyMVar extra_m (\x -> return (x+1, x))
             let dataChange
                   = DiffFlow.DataChange
                     { dcRow = (jsonObjectToFlowObject srcStream) . fromJust . Aeson.decode $ srcValue
                     , dcTimestamp = DiffFlow.Timestamp ts [] -- Timestamp srcTimestamp []
                     , dcDiff = 1
-                    , dcExtra = fromIntegral uniq
+                    , dcExtra = fromIntegral extra
                     }
             Log.debug . Log.buildString $ "Get input: " <> show dataChange
             DiffFlow.pushInput shard inNode dataChange -- original update
