@@ -81,8 +81,8 @@ ping ttSec msg client = do
   HStreamGossip{..} <- hstreamGossipClient client
   hstreamGossipSendPing (mkClientNormalRequest' (Ping $ V.fromList msg) ttSec) >>= \case
     ClientNormalResponse ack _ _ status _ -> do
-      Log.debug $ Log.buildString' ack
-      Log.debug $ Log.buildString' status
+      Log.trace $ Log.buildString' ack
+      Log.trace $ Log.buildString' status
       return (Just ack)
     ClientErrorResponse _            -> Log.info "failed to ping" >> return Nothing
 
@@ -113,7 +113,7 @@ doPing client GossipContext{gossipOpts = GossipOpts{..}, ..}
   ss@ServerStatus{serverInfo = sNode@I.ServerNode{..}, ..} _sid msg = do
   cInc <- getMsgInc <$> readTVarIO latestMessage
   maybeAck <- timeout probeInterval $ do
-    Log.debug . Log.buildString $ show (I.serverNodeId serverSelf)
+    Log.trace . Log.buildString $ show (I.serverNodeId serverSelf)
                                <> "Sending ping >>> " <> show serverNodeId
     isAcked  <- newEmptyTMVarIO
     maybeAck <- timeout roundtripTimeout (ping (max 1 (roundtripTimeout `div` (1000*1000))) msg client)
