@@ -16,14 +16,14 @@ import qualified HStream.Server.HStreamInternal as I
 fromInternalServerNode :: I.ServerNode -> A.ServerNode
 fromInternalServerNode I.ServerNode{..} =
   A.ServerNode { serverNodeId   = serverNodeId
-               , serverNodeHost = Text.decodeUtf8 serverNodeHost
+               , serverNodeHost = Text.decodeUtf8 serverNodeAdvertisedAddress
                , serverNodePort = serverNodePort
                }
 
 fromInternalServerNodeWithKey :: Maybe Text -> I.ServerNode -> IO (V.Vector A.ServerNode)
 fromInternalServerNodeWithKey Nothing I.ServerNode{..} = pure . V.singleton $
   A.ServerNode { serverNodeId   = serverNodeId
-               , serverNodeHost = Text.decodeUtf8 serverNodeHost
+               , serverNodeHost = Text.decodeUtf8 serverNodeAdvertisedAddress
                , serverNodePort = serverNodePort
                }
 fromInternalServerNodeWithKey (Just key) I.ServerNode{..} =

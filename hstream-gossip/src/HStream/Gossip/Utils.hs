@@ -66,7 +66,7 @@ returnErrResp = (return .) . mkServerErrResp
 
 mkGRPCClientConf :: I.ServerNode -> ClientConfig
 mkGRPCClientConf I.ServerNode{..} =
-  mkGRPCClientConf' serverNodeHost (fromIntegral serverNodeGossipPort)
+  mkGRPCClientConf' serverNodeGossipAddress (fromIntegral serverNodeGossipPort)
 
 mkGRPCClientConf' :: ByteString -> Int -> ClientConfig
 mkGRPCClientConf' host port =
@@ -156,28 +156,6 @@ updateLamportTime localClock eventTime = do
 
 incrementTVar :: Enum a => TVar a -> STM a
 incrementTVar localClock = stateTVar localClock (\x -> let y = succ x in (y, y))
-
-showNodesTable :: [I.ServerNode] -> String
-showNodesTable nodes =
-  Table.tableString colSpec Table.asciiS
-    (Table.fullH (repeat $ Table.headerColumn Table.left Nothing) titles)
-    (Table.colsAllG Table.center <$> rows) ++ "\n"
-  where
-    titles = [ "Server ID"
-             , "Server Host"
-             , "Server Port"
-             ]
-    formatRow I.ServerNode{..} =
-      [ [show serverNodeId]
-      , [show serverNodeHost]
-      , [show serverNodePort]
-      ]
-    rows = map formatRow nodes
-    colSpec = [ Table.column Table.expand Table.left def def
-              , Table.column Table.expand Table.left def def
-              , Table.column Table.expand Table.left def def
-              , Table.column Table.expand Table.left def def
-              ]
 
 maxRetryTimeInterval :: Int
 maxRetryTimeInterval = 10 * 1000 * 1000

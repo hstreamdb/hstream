@@ -16,6 +16,7 @@ hserver:
   internal-port: 6571
 
   bind-address: 0.0.0.0
+
   # Server listener address value, the value must be given.
   # It should NOT be "127.0.0.1", if you intend to start a cluster or
   # trying to connect to the server from a different network.
@@ -27,6 +28,11 @@ hserver:
   #  private:
   #    - address: "127.0.0.1"
   #      port: 6580
+
+  # The address used for internal communications between server nodes,
+  # if not given, it will use the value of `advertised-listeners`
+  #
+  #gossip-address:
 
   # The server nodes in the same cluster shares a meta store unit
   # , this is essential for a server to start.

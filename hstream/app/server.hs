@@ -101,9 +101,10 @@ app config@ServerOpts{..} = do
     action serverState h = do
       let serverNode =
             I.ServerNode { serverNodeId = _serverID
-                         , serverNodeHost = encodeUtf8 . T.pack $ _serverAddress
                          , serverNodePort = fromIntegral _serverPort
+                         , serverNodeAdvertisedAddress = encodeUtf8 . T.pack $ _serverAddress
                          , serverNodeGossipPort = fromIntegral _serverInternalPort
+                         , serverNodeGossipAddress = encodeUtf8 . T.pack $ _serverGossipAddress
                          , serverNodeAdvertisedListeners = advertisedListenersToPB _serverAdvertisedListeners
                          }
       gossipContext <- initGossipContext defaultGossipOpts mempty serverNode _seedNodes

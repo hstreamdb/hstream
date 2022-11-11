@@ -89,6 +89,7 @@ data ServerOpts = ServerOpts
   { _serverHost                :: !ByteString
   , _serverPort                :: !Word16
   , _serverInternalPort        :: !Word16
+  , _serverGossipAddress       :: !String
   , _serverAddress             :: !String
   , _serverAdvertisedListeners :: !AdvertisedListeners
   , _serverID                  :: !Word32
@@ -148,6 +149,7 @@ data CliOptions = CliOptions
   , _serverAddress_             :: !(Maybe String)
   , _serverBindAddress_         :: !(Maybe ByteString)
   , _serverAdvertisedAddress_   :: !(Maybe String)
+  , _serverGossipAddress_       :: !(Maybe String)
   , _serverAdvertisedListeners_ :: !AdvertisedListeners
   , _serverInternalPort_        :: !(Maybe Word16)
   , _serverID_                  :: !(Maybe Word32)
@@ -181,6 +183,7 @@ cliOptionsParser = do
   _configPath          <- configPath
   _serverHost_         <- optional serverHost
   _serverAddress_      <- optional serverAddress
+  _serverGossipAddress_       <- optional serverGossipAddress
   _serverAdvertisedAddress_   <- optional advertisedAddress
   _serverAdvertisedListeners_ <- Map.fromList <$> many advertisedListeners
   _serverBindAddress_  <- optional bindAddress
@@ -211,6 +214,7 @@ parseJSONToOptions CliOptions {..} obj = do
   nodeId              <- nodeCfgObj .:  "id"
   nodeHost            <- fromString <$> nodeCfgObj .:? "bind-address" .!= "0.0.0.0"
   nodePort            <- nodeCfgObj .:? "port" .!= 6570
+  nodeGossipAddress   <- nodeCfgObj .:?  "gossip-address"
   nodeInternalPort    <- nodeCfgObj .:? "internal-port" .!= 6571
   nodeAdvertisedListeners <- nodeCfgObj .:? "advertised-listeners" .!= mempty
   nodeAddress         <- nodeCfgObj .:  "advertised-address"
@@ -231,6 +235,7 @@ parseJSONToOptions CliOptions {..} obj = do
   let !_serverInternalPort = fromMaybe nodeInternalPort _serverInternalPort_
   let !_serverAddress      = fromMaybe nodeAddress (_serverAdvertisedAddress_ <|> _serverAddress_)
   let !_serverAdvertisedListeners = Map.union _serverAdvertisedListeners_ nodeAdvertisedListeners
+  let !_serverGossipAddress = fromMaybe _serverAddress (_serverGossipAddress_ <|> nodeGossipAddress)
 
   let !_metaStore          = fromMaybe nodeMetaStore _metaStore_
   let !_serverLogLevel     = fromMaybe (readWithErrLog "log-level" nodeLogLevel) _serverLogLevel_
@@ -348,6 +353,12 @@ advertisedAddress = strOption
    $ long "advertised-address"
   <> metavar "ADDRESS"
   <> help "server advertised address, e.g. 127.0.0.1"
+
+serverGossipAddress :: O.Parser String
+serverGossipAddress = strOption
+  $  long "gossip-address"
+  <> metavar "ADDRESS"
+  <> help "server gossip address, if not given will use advertised-address"
 
 serverInternalPort :: O.Parser Word16
 serverInternalPort = option auto

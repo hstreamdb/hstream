@@ -78,6 +78,7 @@ defaultConfig = ServerOpts
   , _serverPort                = 6570
   , _serverInternalPort        = 6571
   , _serverAddress             = "127.0.0.1"
+  , _serverGossipAddress       = "127.0.0.1"
   , _serverAdvertisedListeners = mempty
   , _serverID                  = 1
   , _metaStore                 = ZkAddr "127.0.0.1:2181"
@@ -117,6 +118,7 @@ instance ToJSON ServerOpts where
         , "port"    .= _serverPort
         , "bind-address" .= decodeUtf8 _serverHost
         , "advertised-address" .= _serverAddress
+        , "gossip-address" .= _serverGossipAddress
         , "internal-port"   .= _serverInternalPort
         , "seed-nodes"      .= showSeedNodes _seedNodes
         , "metastore-uri"   .= show _metaStore          --TODO
@@ -185,6 +187,7 @@ emptyCliOptions = CliOptions {
   , _serverPort_         = Nothing
   , _serverAddress_      = Nothing
   , _serverBindAddress_      = Nothing
+  , _serverGossipAddress_      = Nothing
   , _serverAdvertisedAddress_   = Nothing
   , _serverAdvertisedListeners_ = mempty
   , _serverInternalPort_ = Nothing
@@ -216,10 +219,11 @@ emptyCliOptions = CliOptions {
 
 instance Arbitrary ServerOpts where
   arbitrary = do
-    _serverHost <- encodeUtf8 . T.pack <$> addressGen
+    _serverHost                <- encodeUtf8 . T.pack <$> addressGen
     _serverID                  <- arbitrary
     _serverPort                <- fromIntegral <$> portGen
-    _serverAddress   <- addressGen
+    _serverAddress             <- addressGen
+    _serverGossipAddress       <- addressGen
     _serverInternalPort        <- fromIntegral <$> portGen
     _serverAdvertisedListeners <- M.fromList <$> listOf5' ((,) <$> (T.pack <$> nameGen) <*> arbitrary)
     _metaStore                 <- arbitrary
@@ -250,6 +254,7 @@ instance Arbitrary CliOptions where
     _serverPort_         <- genMaybe $ fromIntegral <$> portGen
     _serverAddress_      <- genMaybe addressGen
     _serverBindAddress_  <- genMaybe $ encodeUtf8 . T.pack <$> addressGen
+    _serverGossipAddress_     <- genMaybe addressGen
     _serverAdvertisedAddress_ <- genMaybe addressGen
     _serverAdvertisedListeners_ <- arbitrary
     _serverInternalPort_ <- genMaybe $ fromIntegral <$> portGen
@@ -387,6 +392,7 @@ updateServerOptsWithCliOpts CliOptions {..} x@ServerOpts{..} = x {
   , _serverPort = port
   , _serverInternalPort = fromMaybe _serverInternalPort _serverInternalPort_
   , _serverAddress = fromMaybe _serverAddress (_serverAdvertisedAddress_ <|> _serverAddress_)
+  , _serverGossipAddress = fromMaybe _serverGossipAddress _serverGossipAddress_
   , _serverAdvertisedListeners = Map.union _serverAdvertisedListeners_ _serverAdvertisedListeners
   , _serverID = fromMaybe _serverID _serverID_
   , _metaStore = fromMaybe _metaStore _metaStore_
