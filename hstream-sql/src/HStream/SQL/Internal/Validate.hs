@@ -99,8 +99,7 @@ instance Validate Timestamp where
   validate ts@(TimestampWithZone _ tsStr) = validate tsStr >> return ts
 instance Validate Interval where
   validate interval@(IntervalWithoutDate _ timeStr) = validate timeStr >> return interval
-  validate interval@(IntervalWithDate _ datetimeStr) = validate datetimeStr >> return interval
-
+  validate interval@(IntervalWithDate _ (DDateTimeStr _ _ timeStr)) = validate timeStr >> return interval
 
 -- 1. only supports "col" and "stream.col"
 instance Validate ColName where
