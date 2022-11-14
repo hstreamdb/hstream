@@ -12,8 +12,15 @@ PDouble.  PNDouble ::= "+" Double ;
 IPDouble. PNDouble ::=     Double ;
 NDouble.  PNDouble ::= "-" Double ;
 
+token HyphenIdent letter (letter | digit | '_' | '\'' | '-')* ;
 token SString '\'' char+ '\'' ;
-token RawColumn '`' (char - ["`"])+ '`' ;
+token QuotedRaw '`' (char - ["`"])+ '`' ;
+
+ColumnIdentNormal. ColumnIdent ::= HyphenIdent ;
+ColumnIdentRaw.    ColumnIdent ::= QuotedRaw;
+
+HIdentNormal. HIdent ::= HyphenIdent ;
+HIdentRaw.    HIdent ::= QuotedRaw ;
 --------------------------------------------------------------------------------
 
 comment "//" ;
@@ -33,38 +40,38 @@ QPause.       SQL ::= Pause       ";" ;
 QResume.      SQL ::= Resume      ";" ;
 
 ---- Create Query
-DCreate.  Create ::= "CREATE" "STREAM" Ident ;
-CreateOp. Create ::= "CREATE" "STREAM" Ident "WITH" "(" [StreamOption] ")" ;
+DCreate.  Create ::= "CREATE" "STREAM" HIdent ;
+CreateOp. Create ::= "CREATE" "STREAM" HIdent "WITH" "(" [StreamOption] ")" ;
 separator StreamOption "," ;
-CreateAs. Create ::= "CREATE" "STREAM" Ident "AS" Select ;
-CreateAsOp. Create ::= "CREATE" "STREAM" Ident "AS" Select "WITH" "(" [StreamOption] ")" ;
+CreateAs. Create ::= "CREATE" "STREAM" HIdent "AS" Select ;
+CreateAsOp. Create ::= "CREATE" "STREAM" HIdent "AS" Select "WITH" "(" [StreamOption] ")" ;
 
 -- OptionTopic.  StreamOption ::= "TOPIC"  "=" String ;
 -- OptionFormat. StreamOption ::= "FORMAT" "=" String ;
 OptionRepFactor. StreamOption ::= "REPLICATE" "=" PNInteger ;
 
-CreateSourceConnector. Create ::= "CREATE" "SOURCE" "CONNECTOR" Ident "FROM" Ident "WITH" "(" [ConnectorOption] ")" ;
-CreateSourceConnectorIf. Create ::= "CREATE" "SOURCE" "CONNECTOR" Ident "FROM" Ident "IF" "NOT" "EXIST" "WITH" "(" [ConnectorOption] ")" ;
-CreateSinkConnector. Create ::= "CREATE" "SINK" "CONNECTOR" Ident "TO" Ident "WITH" "(" [ConnectorOption] ")" ;
-CreateSinkConnectorIf. Create ::= "CREATE" "SINK" "CONNECTOR" Ident "TO" Ident "IF" "NOT" "EXIST" "WITH" "(" [ConnectorOption] ")" ;
+CreateSourceConnector. Create ::= "CREATE" "SOURCE" "CONNECTOR" HIdent "FROM" HIdent "WITH" "(" [ConnectorOption] ")" ;
+CreateSourceConnectorIf. Create ::= "CREATE" "SOURCE" "CONNECTOR" HIdent "FROM" HIdent "IF" "NOT" "EXIST" "WITH" "(" [ConnectorOption] ")" ;
+CreateSinkConnector. Create ::= "CREATE" "SINK" "CONNECTOR" HIdent "TO" HIdent "WITH" "(" [ConnectorOption] ")" ;
+CreateSinkConnectorIf. Create ::= "CREATE" "SINK" "CONNECTOR" HIdent "TO" HIdent "IF" "NOT" "EXIST" "WITH" "(" [ConnectorOption] ")" ;
 separator ConnectorOption "," ;
 
-CreateView. Create ::= "CREATE" "VIEW" Ident "AS" Select ;
+CreateView. Create ::= "CREATE" "VIEW" HIdent "AS" Select ;
 
 ConnectorProperty. ConnectorOption ::= String "=" ValueExpr ;
 
 ---- Pause Query
-PauseConnector. Pause ::= "PAUSE" "CONNECTOR" Ident ;
+PauseConnector. Pause ::= "PAUSE" "CONNECTOR" HIdent ;
 
 --- Resume Query
-ResumeConnector. Resume ::= "RESUME" "CONNECTOR" Ident ;
+ResumeConnector. Resume ::= "RESUME" "CONNECTOR" HIdent ;
 
 ---- Insert Query
-DInsert. Insert ::= "INSERT" "INTO" Ident "(" [Ident] ")" "VALUES" "(" [ValueExpr] ")" ;
-separator Ident "," ;
+DInsert. Insert ::= "INSERT" "INTO" HIdent "(" [ColumnIdent] ")" "VALUES" "(" [ValueExpr] ")" ;
+separator ColumnIdent "," ;
 separator ValueExpr "," ;
-InsertBinary. Insert ::= "INSERT" "INTO" Ident "VALUES" String ;
-InsertJson.   Insert ::= "INSERT" "INTO" Ident "VALUES" SString ;
+InsertBinary. Insert ::= "INSERT" "INTO" HIdent "VALUES" String ;
+InsertJson.   Insert ::= "INSERT" "INTO" HIdent "VALUES" SString ;
 
 ---- Show Query
 DShow. ShowQ ::= "SHOW" ShowOption ;
@@ -74,15 +81,15 @@ ShowConnectors. ShowOption ::= "CONNECTORS" ;
 ShowViews. ShowOption ::= "VIEWS" ;
 
 --- Drop Query
-DDrop.  Drop ::= "DROP" DropOption Ident ;
-DropIf. Drop ::= "DROP" DropOption Ident "IF" "EXISTS" ;
+DDrop.  Drop ::= "DROP" DropOption HIdent ;
+DropIf. Drop ::= "DROP" DropOption HIdent "IF" "EXISTS" ;
 
 DropConnector. DropOption ::= "CONNECTOR" ;
 DropStream.    DropOption ::= "STREAM"    ;
 DropView.      DropOption ::= "VIEW"      ;
 
 -- Terminate Query
-TerminateQuery. Terminate ::= "TERMINATE" "QUERY" Ident ;
+TerminateQuery. Terminate ::= "TERMINATE" "QUERY" HIdent ;
 TerminateAll. Terminate ::= "TERMINATE" "ALL";
 
 ---- Explain
@@ -97,8 +104,8 @@ DSel. Sel ::= "SELECT" [SelectItem] ;
 separator SelectItem "," ;
 
 SelectItemUnnamedExpr.       SelectItem ::= ValueExpr ;
-SelectItemExprWithAlias.     SelectItem ::= ValueExpr "AS" Ident ;
-SelectItemQualifiedWildcard. SelectItem ::= Ident "." "*" ;
+SelectItemExprWithAlias.     SelectItem ::= ValueExpr "AS" ColumnIdent ;
+SelectItemQualifiedWildcard. SelectItem ::= HIdent "." "*" ;
 SelectItemWildcard.          SelectItem ::= "*" ;
 
 -- From
@@ -106,7 +113,7 @@ DFrom. From ::= "FROM" [TableRef] ;
 separator TableRef "," ;
 
 
-TableRefAs. TableRef ::= TableRef1 "AS" Ident ;
+TableRefAs. TableRef ::= TableRef1 "AS" HIdent ;
 
 TableRefTumbling. TableRef1 ::= "TUMBLING" "(" TableRef2 "," Interval ")" ;
 TableRefHopping.  TableRef1 ::= "HOPPING"  "(" TableRef2 "," Interval "," Interval ")" ;
@@ -116,7 +123,7 @@ TableRefCrossJoin.   TableRef2 ::= TableRef2 JoinTypeWithoutCond "JOIN" TableRef
 TableRefNaturalJoin. TableRef2 ::= TableRef2 "NATURAL" JoinTypeWithCond "JOIN" TableRef3 ;
 TableRefJoinOn.      TableRef2 ::= TableRef2 JoinTypeWithCond "JOIN" TableRef3 "ON" ValueExpr ;
 TableRefJoinUsing.   TableRef2 ::= TableRef2 JoinTypeWithCond "JOIN" TableRef3 "USING" "(" [ColName] ")" ;
-TableRefIdent.     TableRef3 ::= Ident ;
+TableRefIdent.     TableRef3 ::= HIdent ;
 TableRefSubquery.  TableRef3 ::= "(" Select ")" ;
 coercions TableRef 3 ;
 separator ColName "," ;
@@ -243,9 +250,8 @@ separator LabelledValueExpr "," ;
 ExprSubquery. ValueExpr7 ::= "(" Select ")" ;
 
 -- Column Name
-ColNameSimple. ColName ::= Ident ;
-ColNameRaw.    ColName ::= RawColumn ;
-ColNameStream. ColName ::= Ident "." ColName ;
+ColNameSimple. ColName ::= ColumnIdent ;
+ColNameStream. ColName ::= HIdent "." ColumnIdent ;
 ExprColName. ValueExpr7 ::= ColName ;
 
 -- Set Functions

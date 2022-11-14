@@ -176,10 +176,15 @@ instance HavePos ScalarFunc where
 instance HavePos TableRef where
   getPos ref = case ref of
     TableRefAs     pos _ _        -> pos
+    TableRefCrossJoin pos _ _ _   -> pos
+    TableRefNaturalJoin pos _ _ _ -> pos
     TableRefJoinOn pos _ _ _ _    -> pos
     TableRefJoinUsing pos _ _ _ _ -> pos
     TableRefIdent pos _           -> pos
     TableRefSubquery pos _        -> pos
+    TableRefTumbling pos _ _      -> pos
+    TableRefHopping pos _ _ _     -> pos
+    TableRefSliding pos _ _       -> pos
 
 --------------------------------------------------------------------------------
 -- mask
