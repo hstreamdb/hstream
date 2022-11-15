@@ -32,6 +32,18 @@ class Validate t where
   {-# MINIMAL validate #-}
 
 --------------------------------- Basic Types ----------------------------------
+maxIdentifierLength :: Int
+maxIdentifierLength = 255
+
+identifierLetters :: [Char]
+identifierLetters =
+  ['A'..'Z'] ++ ['a'..'z']
+  ++ (['\192'..'\255'] L.\\ ['\215', '\247'])
+
+identifierChars :: [Char]
+identifierChars =
+  '_' : '-' : '\'' : ['0'..'9'] ++ identifierLetters
+
 instance Validate DataType where
   validate = return
 
@@ -44,8 +56,38 @@ instance Validate PNDouble where
 instance Validate SString where
   validate = return
 
-instance Validate RawColumn where
+instance Validate HyphenIdent where
   validate = return
+
+instance Validate QuotedRaw where
+  validate = return
+
+instance Validate HIdent where
+  validate ident@(HIdentNormal pos (HyphenIdent text)) = do
+    unless (Text.length text <= maxIdentifierLength) (Left $ buildSQLException ParseException pos ("The length of an identifier should be equal to or less than " <> show maxIdentifierLength))
+    return ident
+  validate ident@(HIdentRaw pos (QuotedRaw text')) = do
+    let text = Text.tail . Text.init $ text'
+    unless (isValidIdent text) (Left $ buildSQLException ParseException pos ("Invalid identifier " <> Text.unpack text' <> ", please refer to the document"))
+    unless (Text.length text <= maxIdentifierLength) (Left $ buildSQLException ParseException pos ("The length of an identifier should be equal to or less than " <> show maxIdentifierLength))
+    return ident
+    where
+      isValidIdent :: Text.Text -> Bool
+      isValidIdent ts =
+        Text.head ts `elem` identifierLetters &&
+        Text.foldl (\acc x -> if acc then
+                                (x `elem` identifierChars) && acc else
+                                acc
+                   ) True (Text.tail ts)
+
+instance Validate ColumnIdent where
+  validate ident@(ColumnIdentNormal pos (HyphenIdent text)) = do
+    unless (Text.length text <= maxIdentifierLength) (Left $ buildSQLException ParseException pos ("The length of an identifier should be equal to or less than " <> show maxIdentifierLength))
+    return ident
+  validate ident@(ColumnIdentRaw pos (QuotedRaw text')) = do
+    let text = Text.tail . Text.init $ text'
+    unless (Text.length text <= maxIdentifierLength) (Left $ buildSQLException ParseException pos ("The length of an identifier should be equal to or less than " <> show maxIdentifierLength))
+    return ident
 
 instance Validate Boolean where
   validate e@(BoolTrue  _) = return e
@@ -101,9 +143,10 @@ instance Validate Interval where
   validate interval@(IntervalWithoutDate _ timeStr) = validate timeStr >> return interval
   validate interval@(IntervalWithDate _ (DDateTimeStr _ _ timeStr)) = validate timeStr >> return interval
 
--- 1. only supports "col" and "stream.col"
 instance Validate ColName where
-  validate = return
+  validate col@(ColNameSimple _ colIdent) = validate colIdent >> return col
+  validate col@(ColNameStream _ hIdent colIdent) =
+    validate hIdent >> validate colIdent >> return col
 
 -- 1. Aggregate functions can not be nested
 instance Validate SetFunc where
@@ -555,8 +598,8 @@ instance Validate [SelectItem] where
 
 instance Validate SelectItem where
   validate item@(SelectItemUnnamedExpr _ expr) = validate expr >> return item
-  validate item@(SelectItemExprWithAlias _ expr _) = validate expr >> return item
-  validate item@(SelectItemQualifiedWildcard _ _) = return item
+  validate item@(SelectItemExprWithAlias _ expr colIdent) = validate expr >> validate colIdent >> return item
+  validate item@(SelectItemQualifiedWildcard _ hIdent) = validate hIdent >> return item
   validate item@(SelectItemWildcard _) = return item
 
 -- From
@@ -567,7 +610,7 @@ instance Validate TableRef where
   validate r@(TableRefTumbling _ ref interval) = validate ref >> validate interval >> return r
   validate r@(TableRefHopping _ ref interval1 interval2) = validate ref >> validate interval1 >> validate interval2 >> return r
   validate r@(TableRefSliding _ ref interval) = validate ref >> validate interval >> return r
-  validate r@(TableRefAs _ ref _) = validate ref >> return r
+  validate r@(TableRefAs _ ref hIdent) = validate ref >> validate hIdent >> return r
   validate r@(TableRefCrossJoin _ ref1 _ ref2) = validate ref1 >> validate ref2 >> return r
   validate r@(TableRefNaturalJoin _ ref1 _ ref2) = validate ref1 >> validate ref2 >> return r
   validate r@(TableRefJoinOn _ ref1 jointype ref2 expr) = validate ref1 >> validate ref2 >> validate expr >> return r
@@ -575,13 +618,12 @@ instance Validate TableRef where
     validate ref1
     validate ref2
     mapM_ (\col -> case col of
-              ColNameRaw{} -> return col
               ColNameSimple{} -> return col
               ColNameStream pos _ _ ->
                 Left $ buildSQLException ParseException pos "JOIN USING can only use column names without stream name"
           ) cols
     return r
-  validate r@(TableRefIdent _ _) = Right r
+  validate r@(TableRefIdent _ hIdent) = validate hIdent >> Right r
   validate r@(TableRefSubquery _ select) = validate select >> return r
 
 -- Where
@@ -629,16 +671,26 @@ instance Validate Explain where
 
 ------------------------------------- CREATE -----------------------------------
 instance Validate Create where
-  validate create@(DCreate _ _) = return create
-  validate create@(CreateOp _ _ options) = validate (StreamOptions options) >> return create
-  validate create@(CreateAs _ _ select) = validate select >> return create
-  validate create@(CreateAsOp _ _ select options) =
-    validate select >> validate (StreamOptions options) >> return create
-  validate create@(CreateSourceConnector _ _ _ options) = validate (ConnectorOptions options) >> return create
-  validate create@(CreateSourceConnectorIf _ _ _ options) = validate (ConnectorOptions options) >> return create
-  validate create@(CreateSinkConnector _ _ _ options) = validate (ConnectorOptions options) >> return create
-  validate create@(CreateSinkConnectorIf _ _ _ options) = validate (ConnectorOptions options) >> return create
-  validate create@(CreateView _ _ select@(DSelect _ _ _ _ grp _)) = validate select >> return create
+  validate create@(DCreate _ hIdent) = validate hIdent >> return create
+  validate create@(CreateOp _ hIdent options) = validate hIdent >> validate (StreamOptions options) >> return create
+  validate create@(CreateAs _ hIdent select) = validate hIdent >> validate select >> return create
+  validate create@(CreateAsOp _ hIdent select options) =
+    validate hIdent >> validate select >>
+    validate (StreamOptions options) >> return create
+  validate create@(CreateSourceConnector _ i1 i2 options) =
+    validate i1 >> validate i2 >>
+    validate (ConnectorOptions options) >> return create
+  validate create@(CreateSourceConnectorIf _ i1 i2 options) =
+    validate i1 >> validate i2 >>
+    validate (ConnectorOptions options) >> return create
+  validate create@(CreateSinkConnector _ i1 i2 options) =
+    validate i1 >> validate i2 >>
+    validate (ConnectorOptions options) >> return create
+  validate create@(CreateSinkConnectorIf _ i1 i2 options) =
+    validate i1 >> validate i2 >>
+    validate (ConnectorOptions options) >> return create
+  validate create@(CreateView _ hIdent select@(DSelect _ _ _ _ grp _)) =
+    validate hIdent >> validate select >> return create
 
 instance Validate StreamOption where
   validate op@(OptionRepFactor pos n') = do
@@ -668,15 +720,24 @@ instance Validate ConnectorOption where
   -- validate op@(PropertyAny _ _ expr) = isConstExpr expr >> return op
   validate op                        = return op
 
+instance Validate Pause where
+  validate pause@(PauseConnector _ hIdent) = validate hIdent >> return pause
+
+instance Validate Resume where
+  validate resume@(ResumeConnector _ hIdent) = validate hIdent >> return resume
+
 ------------------------------------- INSERT -----------------------------------
 instance Validate Insert where
-  validate insert@(DInsert pos _ fields exprs) = do
+  validate insert@(DInsert pos hIdent fields exprs) = do
     unless (L.length fields == L.length exprs) (Left $ buildSQLException ParseException pos "Number of fields should match expressions")
+    validate hIdent
+    mapM_ validate fields
     mapM_ validate exprs
     mapM_ isConstExpr exprs
     return insert
-  validate insert@InsertBinary {} = return insert
-  validate insert@(InsertJson pos _ (SString text)) = do
+  validate insert@(InsertBinary _ hIdent _) = validate hIdent >> return insert
+  validate insert@(InsertJson pos hIdent (SString text)) = do
+    validate hIdent
     let serialized = BSL.fromStrict . encodeUtf8 . Text.init . Text.tail $ text
     let (o' :: Maybe Aeson.Object) = Aeson.decode serialized
     case o' of
@@ -689,11 +750,13 @@ instance Validate ShowQ where
 
 ------------------------------------- DROP -------------------------------------
 instance Validate Drop where
-  validate = return
+  validate d@(DDrop _ _ hIdent)  = validate hIdent >> return d
+  validate d@(DropIf _ _ hIdent) = validate hIdent >> return d
 
 ------------------------------------- Terminate --------------------------------
 instance Validate Terminate where
-  validate = return
+  validate t@(TerminateQuery _ hIdent) = validate hIdent >> return t
+  validate t@(TerminateAll _)          = return t
 
 ------------------------------------- SQL --------------------------------------
 instance Validate SQL where

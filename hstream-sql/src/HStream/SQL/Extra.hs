@@ -1,6 +1,8 @@
 module HStream.SQL.Extra
   ( extractPNInteger
   , extractPNDouble
+  , extractColumnIdent
+  , extractHIdent
   , extractRefNameFromExpr
   , trimSpacesPrint
   ) where
@@ -8,6 +10,7 @@ module HStream.SQL.Extra
 import           Data.Char         (isSpace)
 import qualified Data.List         as L
 import           Data.Text         (Text)
+import qualified Data.Text         as Text
 import           HStream.SQL.Abs
 import           HStream.SQL.Print (Print, printTree)
 
@@ -21,6 +24,16 @@ extractPNDouble :: PNDouble -> Double
 extractPNDouble (PDouble  _ n) = n
 extractPNDouble (IPDouble _ n) = n
 extractPNDouble (NDouble  _ n) = (-n)
+
+extractColumnIdent :: ColumnIdent -> Text
+extractColumnIdent (ColumnIdentNormal _ (HyphenIdent text)) = text
+extractColumnIdent (ColumnIdentRaw _ (QuotedRaw text')) =
+  Text.tail . Text.init $ text'
+
+extractHIdent :: HIdent -> Text
+extractHIdent (HIdentNormal _ (HyphenIdent text)) = text
+extractHIdent (HIdentRaw _ (QuotedRaw text')) =
+  Text.tail . Text.init $ text'
 
 trimSpacesPrint :: Print a => a -> String
 trimSpacesPrint = removeSpace . printTree
@@ -47,10 +60,10 @@ extractRefNameFromExpr (ExprLEQ pos e1 e2) = extractRefNameFromExpr (ExprEQ pos 
 extractRefNameFromExpr (ExprGEQ pos e1 e2) = extractRefNameFromExpr (ExprEQ pos e1 e2)
 extractRefNameFromExpr (ExprAccessMap pos e1 e2) = extractRefNameFromExpr (ExprEQ pos e1 e2)
 extractRefNameFromExpr (ExprAccessArray _ e _) = extractRefNameFromExpr e
-extractRefNameFromExpr (ExprSubquery _ select) = (False, []) -- FIXME
+extractRefNameFromExpr (ExprSubquery _ _) = (False, []) -- FIXME
 
 extractRefNameFromExpr (ExprColName _ (ColNameSimple _ _)) = (True, [])
-extractRefNameFromExpr (ExprColName _ (ColNameStream _ (Ident s) _)) = (False, [s])
+extractRefNameFromExpr (ExprColName _ (ColNameStream _ hIdent _)) = (False, [extractHIdent hIdent])
 extractRefNameFromExpr (ExprSetFunc _ (SetFuncCountAll _)) = (False, [])
 extractRefNameFromExpr (ExprSetFunc _ (SetFuncCount          _ e)) = extractRefNameFromExpr e
 extractRefNameFromExpr (ExprSetFunc _ (SetFuncAvg            _ e)) = extractRefNameFromExpr e

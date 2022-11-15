@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveAnyClass    #-}
 {-# LANGUAGE DeriveGeneric     #-}
+{-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -31,7 +32,8 @@ import           GHC.Stack             (HasCallStack)
 import           HStream.SQL.Abs
 import           HStream.SQL.Exception (SomeSQLException (..),
                                         throwSQLException)
-import           HStream.SQL.Extra     (extractPNDouble, extractPNInteger,
+import           HStream.SQL.Extra     (extractColumnIdent, extractHIdent,
+                                        extractPNDouble, extractPNInteger,
                                         trimSpacesPrint)
 import           HStream.SQL.Print     (printTree)
 import           HStream.Utils         (cBytesToText)
@@ -196,9 +198,13 @@ type instance RefinedType SString = BS.ByteString
 instance Refine SString where
   refine (SString t) = encodeUtf8 . Text.init . Text.tail $ t
 
-type instance RefinedType RawColumn = Text
-instance Refine RawColumn where
-  refine (RawColumn t) = Text.init . Text.tail $ t
+type instance RefinedType ColumnIdent = Text
+instance Refine ColumnIdent where
+  refine = extractColumnIdent
+
+type instance RefinedType HIdent = Text
+instance Refine HIdent where
+  refine = extractHIdent
 
 type RBool = Bool
 type instance RefinedType Boolean = RBool
@@ -584,11 +590,10 @@ instance Refine SetFunc where
 type instance RefinedType ColName = RValueExpr
 instance Refine ColName where
   refine col = case col of
-    ColNameSimple _ (Ident t) -> RExprCol (trimSpacesPrint col) Nothing t
-    ColNameRaw _ raw -> RExprCol (trimSpacesPrint col) Nothing (refine raw)
-    ColNameStream _ (Ident s) col' ->
-      let (RExprCol _ _ c) = refine col'
-       in RExprCol (trimSpacesPrint col) (Just s) c
+    ColNameSimple _ colIdent ->
+      RExprCol (trimSpacesPrint col) Nothing (refine colIdent)
+    ColNameStream _ hIdent colIdent ->
+      RExprCol (trimSpacesPrint col) (Just $ refine hIdent) (refine colIdent)
 
 --------------------------------------------------------------------------------
 ---- Sel
@@ -603,18 +608,18 @@ data RSelectItem
 type instance RefinedType SelectItem = RSelectItem
 instance Refine SelectItem where
   refine item = case item of
-    SelectItemQualifiedWildcard _ (Ident t) -> RSelectProjectQualifiedAll t
+    SelectItemQualifiedWildcard _ hIdent -> RSelectProjectQualifiedAll (refine hIdent)
     SelectItemWildcard _ -> RSelectProjectAll
     SelectItemUnnamedExpr _ expr ->
       let rexpr = refine expr
        in case rexpr of
             RExprAggregate _ agg -> RSelectItemAggregate agg Nothing
             _                    -> RSelectItemProject rexpr Nothing
-    SelectItemExprWithAlias _ expr (Ident t) ->
+    SelectItemExprWithAlias _ expr colIdent ->
       let rexpr = refine expr
        in case rexpr of
-            RExprAggregate _ agg -> RSelectItemAggregate agg (Just t)
-            _                    -> RSelectItemProject rexpr (Just t)
+            RExprAggregate _ agg -> RSelectItemAggregate agg (Just $ refine colIdent)
+            _                    -> RSelectItemProject rexpr (Just $ refine colIdent)
 
 newtype RSel = RSel [RSelectItem] deriving (Show, Eq)
 type instance RefinedType Sel = RSel
@@ -663,19 +668,18 @@ instance Refine JoinTypeWithCond where
 
 type instance RefinedType TableRef = RTableRef
 instance Refine TableRef where
-  refine (TableRefIdent _ (Ident t)) = RTableRefSimple t Nothing
+  refine (TableRefIdent _ hIdent) = RTableRefSimple (refine hIdent) Nothing
   refine (TableRefSubquery _ select) = RTableRefSubquery (refine select) Nothing
-  refine (TableRefAs _ ref (Ident alias)) =
+  refine (TableRefAs _ ref alias) =
     let rRef = refine ref
-     in setRTableRefAlias rRef alias
+     in setRTableRefAlias rRef (refine alias)
   refine (TableRefCrossJoin _ r1 _ r2) = RTableRefCrossJoin (refine r1) (refine r2) Nothing
   refine (TableRefNaturalJoin _ r1 typ r2) = RTableRefNaturalJoin (refine r1) (refine typ) (refine r2) Nothing
   refine (TableRefJoinOn _ r1 typ r2 e) = RTableRefJoinOn (refine r1) (refine typ) (refine r2) (refine e) Nothing
   refine (TableRefJoinUsing _ r1 typ r2 cols) = RTableRefJoinUsing (refine r1) (refine typ) (refine r2) (extractStreamNameFromColName <$> cols) Nothing
     where extractStreamNameFromColName col = case col of
-            ColNameSimple _ (Ident t) -> t
-            ColNameRaw _ raw          -> refine raw
-            ColNameStream pos _ _     -> throwImpossible
+            ColNameSimple _ colIdent -> refine colIdent
+            ColNameStream pos _ _    -> throwImpossible
   refine (TableRefTumbling _ ref interval) = RTableRefWindowed (refine ref) (Tumbling (refine interval)) Nothing
   refine (TableRefHopping _ ref len hop) = RTableRefWindowed (refine ref) (Hopping (refine len) (refine hop)) Nothing
   refine (TableRefSliding _ ref interval) = RTableRefWindowed (refine ref) (Sliding (refine interval)) Nothing
@@ -763,15 +767,15 @@ instance Refine [ConnectorOption] where
 
 type instance RefinedType Create = RCreate
 instance Refine Create where
-  refine (DCreate  _ (Ident s)) = RCreate s $ refine ([] :: [StreamOption])
-  refine (CreateOp _ (Ident s) options)  = RCreate s (refine options)
-  refine (CreateAs   _ (Ident s) select) = RCreateAs s (refine select) (refine ([] :: [StreamOption]))
-  refine (CreateAsOp _ (Ident s) select options) = RCreateAs s (refine select) (refine options)
-  refine (CreateSourceConnector _ (Ident s) (Ident t) options) = RCreateConnector "SOURCE" s t False (refine options)
-  refine (CreateSourceConnectorIf _ (Ident s) (Ident t) options) = RCreateConnector "SOURCE" s t True (refine options)
-  refine (CreateSinkConnector _ (Ident s) (Ident t) options) = RCreateConnector "SINK" s t False (refine options)
-  refine (CreateSinkConnectorIf _ (Ident s) (Ident t) options) = RCreateConnector "SINK" s t True (refine options)
-  refine (CreateView _ (Ident s) select) = RCreateView s (refine select)
+  refine (DCreate  _ hIdent) = RCreate (refine hIdent) $ refine ([] :: [StreamOption])
+  refine (CreateOp _ hIdent options)  = RCreate (refine hIdent) (refine options)
+  refine (CreateAs   _ hIdent select) = RCreateAs (refine hIdent) (refine select) (refine ([] :: [StreamOption]))
+  refine (CreateAsOp _ hIdent select options) = RCreateAs (refine hIdent) (refine select) (refine options)
+  refine (CreateSourceConnector _ s t options) = RCreateConnector "SOURCE" (refine s) (refine t) False (refine options)
+  refine (CreateSourceConnectorIf _ s t options) = RCreateConnector "SOURCE" (refine s) (refine t) True (refine options)
+  refine (CreateSinkConnector _ s t options) = RCreateConnector "SINK" (refine s) (refine t) False (refine options)
+  refine (CreateSinkConnectorIf _ s t options) = RCreateConnector "SINK" (refine s) (refine t) True (refine options)
+  refine (CreateView _ s select) = RCreateView (refine s) (refine select)
 
 ---- INSERT
 data RInsert = RInsert Text [(FieldName,Constant)]
@@ -780,15 +784,15 @@ data RInsert = RInsert Text [(FieldName,Constant)]
              deriving (Show)
 type instance RefinedType Insert = RInsert
 instance Refine Insert where
-  refine (DInsert _ (Ident s) fields exprs) = RInsert s $
-    zip ((\(Ident f) -> f) <$> fields) (refineConst <$> exprs)
+  refine (DInsert _ s fields exprs) = RInsert (refine s) $
+    zip ((\colIdent -> refine colIdent) <$> fields) (refineConst <$> exprs)
     where
       refineConst expr =
         let (RExprConst _ constant) = refine expr -- Ensured by Validate
          in constant
-  refine (InsertBinary _ (Ident s) bin) = RInsertBinary s (BSC.pack bin)
-  refine (InsertJson _ (Ident s) ss) =
-    RInsertJSON s (refine $ ss)
+  refine (InsertBinary _ s bin) = RInsertBinary (refine s) (BSC.pack bin)
+  refine (InsertJson _ s ss) =
+    RInsertJSON (refine s) (refine $ ss)
 
 ---- SHOW
 data RShow
@@ -817,8 +821,8 @@ data RDrop
   | RDropIf RDropOption Text
   deriving (Eq, Show)
 instance Refine Drop where
-  refine (DDrop  _ dropOp (Ident x)) = RDrop   (refine dropOp) x
-  refine (DropIf _ dropOp (Ident x)) = RDropIf (refine dropOp) x
+  refine (DDrop  _ dropOp x) = RDrop   (refine dropOp) (refine x)
+  refine (DropIf _ dropOp x) = RDropIf (refine dropOp) (refine x)
 type instance RefinedType Drop = RDrop
 
 data RDropOption
@@ -839,8 +843,8 @@ data RTerminate
   | RTerminateAll
   deriving (Eq, Show)
 instance Refine Terminate where
-  refine (TerminateQuery _ (Ident x)) = RTerminateQuery x
-  refine (TerminateAll   _  )         = RTerminateAll
+  refine (TerminateQuery _ x) = RTerminateQuery (refine x)
+  refine (TerminateAll   _  ) = RTerminateAll
 type instance RefinedType Terminate = RTerminate
 
 ---- Pause
@@ -850,7 +854,7 @@ newtype RPause = RPauseConnector Text
 type instance RefinedType Pause = RPause
 
 instance Refine Pause where
-  refine (PauseConnector _ (Ident name)) = RPauseConnector name
+  refine (PauseConnector _ name) = RPauseConnector (refine name)
 
 ---- Resume
 newtype RResume = RResumeConnector Text
@@ -859,7 +863,7 @@ newtype RResume = RResumeConnector Text
 type instance RefinedType Resume = RResume
 
 instance Refine Resume where
-  refine (ResumeConnector _ (Ident name)) = RResumeConnector name
+  refine (ResumeConnector _ name) = RResumeConnector (refine name)
 
 ---- SQL
 data RSQL = RQSelect      RSelect
