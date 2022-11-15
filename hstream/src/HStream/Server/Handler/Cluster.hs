@@ -1,6 +1,7 @@
 {-# LANGUAGE BlockArguments      #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
+{-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module HStream.Server.Handler.Cluster
@@ -10,8 +11,10 @@ module HStream.Server.Handler.Cluster
   , lookupSubscriptionHandler
   , lookupConnectorHandler
   , lookupShardReaderHandler
+  , lookupResourceHandler
     -- * For hs-grpc-server
   , handleDescribeCluster
+  , handleLookupResource
   , handleLookupShard
   , handleLookupSubscription
   , handleLookupShardReader
@@ -37,6 +40,13 @@ describeClusterHandler
 describeClusterHandler sc (ServerNormalRequest _meta _) =
   defaultExceptionHandle $ returnResp =<< C.describeCluster sc
 
+lookupResourceHandler
+  :: ServerContext
+  -> ServerRequest 'Normal LookupResourceRequest ServerNode
+  -> IO (ServerResponse 'Normal ServerNode)
+lookupResourceHandler sc (ServerNormalRequest _meta req) =
+  defaultExceptionHandle $ returnResp =<< C.lookupResource sc req
+
 lookupShardHandler
   :: ServerContext
   -> ServerRequest 'Normal LookupShardRequest LookupShardResponse
@@ -44,6 +54,7 @@ lookupShardHandler
 lookupShardHandler sc (ServerNormalRequest _meta req) =
   defaultExceptionHandle $ returnResp =<< C.lookupShard sc req
 
+{-# DEPRECATED lookupSubscriptionHandler "Use lookupResourceHandler instead" #-}
 lookupSubscriptionHandler
   :: ServerContext
   -> ServerRequest 'Normal LookupSubscriptionRequest LookupSubscriptionResponse
@@ -51,6 +62,7 @@ lookupSubscriptionHandler
 lookupSubscriptionHandler sc (ServerNormalRequest _meta req) =
   defaultExceptionHandle $ returnResp =<< C.lookupSubscription sc req
 
+{-# DEPRECATED lookupConnectorHandler "Use lookupResourceHandler instead" #-}
 lookupConnectorHandler
   :: ServerContext
   -> ServerRequest 'Normal LookupConnectorRequest LookupConnectorResponse
@@ -58,6 +70,7 @@ lookupConnectorHandler
 lookupConnectorHandler sc (ServerNormalRequest _meta req) =
   defaultExceptionHandle $ returnResp =<< C.lookupConnector sc req
 
+{-# DEPRECATED lookupShardReaderHandler "Use lookupResourceHandler instead" #-}
 lookupShardReaderHandler
   :: ServerContext
   -> ServerRequest 'Normal LookupShardReaderRequest LookupShardReaderResponse
@@ -70,20 +83,26 @@ lookupShardReaderHandler sc (ServerNormalRequest _meta req) =
 handleDescribeCluster :: ServerContext -> G.UnaryHandler Empty DescribeClusterResponse
 handleDescribeCluster sc _ _ = catchDefaultEx $ C.describeCluster sc
 
+handleLookupResource :: ServerContext -> G.UnaryHandler LookupResourceRequest ServerNode
+handleLookupResource sc _ req = catchDefaultEx $ C.lookupResource sc req
+
 handleLookupShard :: ServerContext -> G.UnaryHandler LookupShardRequest LookupShardResponse
 handleLookupShard sc _ req = catchDefaultEx $ C.lookupShard sc req
 
+{-# DEPRECATED handleLookupSubscription "Use handleLookupResource instead" #-}
 handleLookupSubscription
   :: ServerContext
   -> G.UnaryHandler LookupSubscriptionRequest LookupSubscriptionResponse
 handleLookupSubscription sc _ req = catchDefaultEx $ C.lookupSubscription sc req
 
+{-# DEPRECATED handleLookupShardReader "Use handleLookupResource instead" #-}
 handleLookupShardReader
   :: ServerContext
   -> G.UnaryHandler LookupShardReaderRequest LookupShardReaderResponse
 handleLookupShardReader sc _ req = catchDefaultEx $
   C.lookupShardReader sc req
 
+{-# DEPRECATED handleLookupConnector "Use handleLookupResource instead" #-}
 handleLookupConnector
   :: ServerContext -> G.UnaryHandler LookupConnectorRequest LookupConnectorResponse
 handleLookupConnector sc _ req = catchDefaultEx $ C.lookupConnector sc req

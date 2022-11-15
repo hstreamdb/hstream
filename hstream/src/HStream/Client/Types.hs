@@ -2,22 +2,24 @@ module HStream.Client.Types where
 
 import           Control.Concurrent            (MVar)
 import           Data.ByteString               (ByteString)
-import           Data.Text                     (Text)
-import           Data.Word                     (Word32, Word64)
+import           Data.Word                     (Word32)
 import           Network.GRPC.HighLevel.Client (ClientSSLConfig)
 import qualified Options.Applicative           as O
 
+import           Data.Text                     (Text)
 import           HStream.Admin.Server.Types    (StreamCommand,
                                                 SubscriptionCommand,
                                                 streamCmdParser,
                                                 subscriptionCmdParser)
 import           HStream.Server.Types          (ServerID)
-import           HStream.Utils                 (SocketAddr)
+import           HStream.Utils                 (ResourceType, SocketAddr)
 
 data HStreamCommand = HStreamCommand
   { cliConnOpts :: CliConnOpts
   , cliCommand  :: Command
   }
+
+data Resource = Resource ResourceType Text
 
 data Command
   = HStreamSql HStreamSqlOpts
@@ -50,12 +52,6 @@ data HStreamSqlOpts = HStreamSqlOpts
   , _execute        :: Maybe String
   , _historyFile    :: Maybe FilePath
   }
-
-data ResourceType
-  = ResSubscription Text
-  | ResShard Word64
-  | ResConnector Text
-  deriving (Show, Eq)
 
 hstreamSqlOptsParser :: O.Parser HStreamSqlOpts
 hstreamSqlOptsParser = HStreamSqlOpts

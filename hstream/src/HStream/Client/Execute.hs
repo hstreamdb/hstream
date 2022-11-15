@@ -2,6 +2,7 @@
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+
 module HStream.Client.Execute
   ( executeShowPlan
   , execute_
@@ -19,15 +20,15 @@ import           Control.Concurrent
 import           Control.Monad
 import qualified Data.List                        as L
 import qualified Data.Text.Encoding               as BS
-import qualified Data.Text.IO                     as T
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel           (GRPCIOError (..))
 import           Network.GRPC.HighLevel.Client
 import           Network.GRPC.HighLevel.Generated (withGRPCClient)
 
+import qualified Data.Text                        as T
 import           HStream.Client.Action
 import           HStream.Client.Types             (HStreamSqlContext (..),
-                                                   ResourceType)
+                                                   Resource)
 import           HStream.Client.Utils
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.SQL
@@ -51,13 +52,12 @@ execute_ ctx@HStreamSqlContext{..} action = do
   void $ executeWithAddr_ ctx addr action printResult
 
 executeWithLookupResource_ :: Format a => HStreamSqlContext
-  -> ResourceType -> (HStreamClientApi -> IO a)  -> IO ()
+  -> Resource -> (HStreamClientApi -> IO a)  -> IO ()
 executeWithLookupResource_ ctx@HStreamSqlContext{..} rtype action = do
   addr <- readMVar currentServer
-  lookupWithAddr ctx addr rtype >>= \case
-     Nothing -> putStrLn "Lookup failed"
-     Just sn -> simpleExecuteWithAddr (serverNodeToSocketAddr sn) sslConfig action
-            >>= printResult
+  lookupWithAddr ctx addr rtype
+  >>= \sn -> simpleExecuteWithAddr (serverNodeToSocketAddr sn) sslConfig action
+  >>= printResult
 
 execute :: HStreamSqlContext -> Action a -> IO (Maybe a)
 execute ctx@HStreamSqlContext{..} action = do
@@ -93,8 +93,8 @@ updateClusterInfo ctx@HStreamSqlContext{..} addr = do
       return $ Just resp
     handleRespApp _ = return Nothing
 
-lookupWithAddr :: HStreamSqlContext -> SocketAddr -> ResourceType
-  -> IO (Maybe API.ServerNode)
+lookupWithAddr :: HStreamSqlContext -> SocketAddr -> Resource
+  -> IO API.ServerNode
 lookupWithAddr ctx addr rType = getInfoWithAddr ctx addr (lookupResource rType) getServerResp
 
 --------------------------------------------------------------------------------
@@ -104,14 +104,13 @@ lookupWithAddr ctx addr rType = getInfoWithAddr ctx addr (lookupResource rType) 
 getInfoWithAddr
   :: HStreamSqlContext -> SocketAddr
   -> Action a
-  -> (ClientResult 'Normal a -> IO (Maybe b))
-  -> IO (Maybe b)
+  -> (ClientResult 'Normal a -> IO b)
+  -> IO b
 getInfoWithAddr ctx@HStreamSqlContext{..} addr action cont = do
   resp <- simpleExecuteWithAddr addr sslConfig action
   case resp of
     ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode _ details)) -> do
-      T.putStrLn $ "Error: " <> BS.decodeUtf8 (unStatusDetails details)
-      return Nothing
+      errorWithoutStackTrace $ "Error: " <> T.unpack (BS.decodeUtf8 (unStatusDetails details))
     ClientErrorResponse err -> do
       putStrLn $ "Error: " <> (case err of ClientIOError ge -> show ge; _ -> show err )<> " , retrying on a different server node"
       modifyMVar_ availableServers (return . L.delete addr)
