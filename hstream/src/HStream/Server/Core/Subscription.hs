@@ -10,8 +10,7 @@ module HStream.Server.Core.Subscription where
 import           Control.Concurrent
 import           Control.Concurrent.Async   (async, wait, withAsync)
 import           Control.Concurrent.STM
-import           Control.Exception          (Exception, catch, onException,
-                                             throwIO)
+import           Control.Exception          (catch, onException, throwIO)
 import           Control.Monad
 import qualified Data.ByteString            as BS
 import           Data.Foldable              (foldl')
