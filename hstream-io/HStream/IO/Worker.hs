@@ -25,6 +25,7 @@ import qualified HStream.Logger            as Log
 import           HStream.MetaStore.Types   (MetaHandle (..))
 import qualified HStream.Server.HStreamApi as API
 import qualified HStream.SQL.Codegen       as CG
+import           HStream.Utils.Validation  (validateNameAndThrow)
 
 newWorker :: MetaHandle -> HStreamConfig -> IOOptions -> (T.Text -> IO Bool) -> IO Worker
 newWorker mHandle hsConfig options checkNode = do
@@ -56,6 +57,7 @@ monitor worker@Worker{..} = do
 createIOTaskFromSql :: Worker -> T.Text -> IO API.Connector
 createIOTaskFromSql worker@Worker{..} sql = do
   (CG.CreateConnectorPlan cType cName cTarget ifNotExist cfg) <- CG.streamCodegen sql
+  validateNameAndThrow cName
   Log.info $ "CreateConnector CodeGen"
            <> ", connector type: " <> Log.buildText cType
            <> ", connector name: " <> Log.buildText cName

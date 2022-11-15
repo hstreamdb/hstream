@@ -5,6 +5,7 @@ import           Data.Char         (isAlphaNum, isLetter)
 import qualified Data.Text         as T
 
 import           HStream.Exception (InvalidObjectIdentifier (..))
+import           HStream.Logger    as Log
 
 -- FIXME: Currently CLI does not support
 -- parsing "." or "-" in the stream name
@@ -14,7 +15,9 @@ validMarks = "-_"
 validateNameAndThrow :: T.Text -> IO ()
 validateNameAndThrow n =
   case validateNameText n of
-    Left s   -> throwIO (InvalidObjectIdentifier s)
+    Left s   -> do
+      Log.warning $ "Invalid Object Identifier:" <> Log.buildString s
+      throwIO (InvalidObjectIdentifier s)
     Right () -> return ()
 
 validateChar :: Char -> Either String ()

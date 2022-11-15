@@ -39,7 +39,7 @@ import           HStream.Server.HStreamApi
 import           HStream.Server.Types
 import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils                    (returnResp)
-
+import           HStream.Utils.Validation
 -------------------------------------------------------------------------------
 
 createSubscriptionHandler
@@ -48,6 +48,7 @@ createSubscriptionHandler
   -> IO (ServerResponse 'Normal Subscription)
 createSubscriptionHandler ctx (ServerNormalRequest _metadata sub) = defaultExceptionHandle $ do
   Log.debug $ "Receive createSubscription request: " <> Log.buildString' sub
+  validateNameAndThrow $ subscriptionSubscriptionId sub
   Core.createSubscription ctx sub >>= returnResp
 
 handleCreateSubscription :: ServerContext -> G.UnaryHandler Subscription Subscription
@@ -62,8 +63,8 @@ deleteSubscriptionHandler
   -> IO (ServerResponse 'Normal Empty)
 deleteSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata req) = defaultExceptionHandle $ do
   Log.debug $ "Receive deleteSubscription request: " <> Log.buildString' req
-
   let subId = deleteSubscriptionRequestSubscriptionId req
+  validateNameAndThrow subId
   hr <- readTVarIO loadBalanceHashRing
   unless (getAllocatedNodeId hr subId == serverID) $
     throwIO $ HE.SubscriptionOnDifferentNode "Subscription is bound to a different node"
@@ -75,6 +76,7 @@ deleteSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata r
 handleDeleteSubscription :: ServerContext -> G.UnaryHandler DeleteSubscriptionRequest Empty
 handleDeleteSubscription ctx@ServerContext{..} _ req = catchDefaultEx $ do
   let subId = deleteSubscriptionRequestSubscriptionId req
+  validateNameAndThrow subId
   hr <- readTVarIO loadBalanceHashRing
   unless (getAllocatedNodeId hr subId == serverID) $
     throwIO $ HE.SubscriptionOnDifferentNode "Subscription is bound to a different node"
