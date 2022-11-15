@@ -36,6 +36,7 @@ import           HStream.SQL.Extra     (extractPNDouble, extractPNInteger,
 import           HStream.SQL.Print     (printTree)
 import           HStream.Utils         (cBytesToText)
 import qualified HStream.Utils.Aeson   as HsAeson
+import qualified Z.Data.CBytes         as CB
 import           Z.Data.CBytes         (CBytes)
 
 ----------------------------- Refinement Main class ----------------------------
@@ -96,7 +97,7 @@ flowValueToJsonValue flowValue = case flowValue of
   FlowFloat n -> Aeson.Number (Scientific.fromFloatDigits n)
   FlowNumeral n -> Aeson.Number n
   FlowBoolean b -> Aeson.Bool b
-  FlowByte bs -> Aeson.String (cBytesToText bs)
+  FlowByte bs -> Aeson.String (Text.pack . show $ CB.toBytes bs)
   FlowText t -> Aeson.String t
   FlowDate d -> Aeson.String (Text.pack . show $ d)
   FlowTime t -> Aeson.String (Text.pack . show $ t)
@@ -477,7 +478,7 @@ instance Refine ValueExpr where
     -- 2. Constants
     (ExprNull _)              -> RExprConst (trimSpacesPrint expr) ConstantNull
     (ExprInt _ n)             -> RExprConst (trimSpacesPrint expr) (ConstantInt . fromInteger . refine $ n)
-    (ExprNum _ n)             -> RExprConst (trimSpacesPrint expr) (ConstantNumeric $ refine n)
+    (ExprNum _ n)             -> RExprConst (trimSpacesPrint expr) (ConstantFloat $ refine n)
     (ExprString _ s)          -> RExprConst (trimSpacesPrint expr) (ConstantText (Text.pack s))
     (ExprBool _ b)            -> RExprConst (trimSpacesPrint expr) (ConstantBoolean $ refine b)
     (ExprDate _ date)         -> RExprConst (trimSpacesPrint expr) (ConstantDate $ refine date)

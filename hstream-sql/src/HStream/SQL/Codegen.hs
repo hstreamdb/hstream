@@ -290,6 +290,9 @@ elabRValueExpr expr grp startBuilder subgraph startNode = case expr of
     let (builder3, node) =
           addNode builder_2_2 subgraph (ComposeSpec [out1_indexed,out2_indexed] composer)
     return (builder3, L.nub (ins1++ins2), Out node)
+  RExprSubquery name select -> do
+    (builder, ins, out) <- elabRSelect select startBuilder subgraph
+    return (builder, ins, out)
 
 mkCastMapper :: RDataType -> Text -> Mapper Row
 mkCastMapper typ field =
