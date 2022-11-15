@@ -1,6 +1,5 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
-{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -35,10 +34,11 @@ import           Control.Exception                (finally)
 import           Data.Functor                     ((<&>))
 import           Data.Int                         (Int32)
 import           Data.String                      (IsString)
-import           HStream.Client.Types             (ResourceType (..))
+import           HStream.Client.Types             (Resource (..))
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.SQL                      (DropObject (..))
 import           HStream.Utils                    (Format (formatResult),
+                                                   ResourceType (..),
                                                    SocketAddr (..), genUnique,
                                                    mkClientNormalRequest,
                                                    mkGRPCClientConfWithSSL)
@@ -112,8 +112,8 @@ calculateShardId key (API.Shard{..}:ss) =
     result = hash (BS.encodeUtf8 key)
 calculateShardId _ _ = Nothing
 
-dropPlanToResType :: DropObject -> ResourceType
-dropPlanToResType (DConnector cid ) = ResConnector cid
+dropPlanToResType :: DropObject -> Resource
+dropPlanToResType (DConnector cid ) = Resource ResConnector cid
 dropPlanToResType DView{}           = undefined
 dropPlanToResType DStream{}         = undefined
 

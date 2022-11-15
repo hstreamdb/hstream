@@ -29,7 +29,8 @@ module HStream.Utils.RPC
 
   , pattern EnumPB
   , showNodeStatus
-  , TaskStatus (Created, Creating, Running, CreationAbort, ConnectionAbort, Terminated, ..)
+  , TaskStatus (Created, Creating, Running, CreationAbort, Abort, Unknown, Terminated, ..)
+  , ResourceType (ResStream, ResSubscription, ResShard, ResShardReader, ResConnector, ResQuery, ResView, ..)
   ) where
 
 import           Control.Monad
@@ -166,7 +167,7 @@ instance FromJSON (PB.Enumerated TaskStatusPB)
 -- * Terminated: The task has stopped as per user request and the thread running
 -- the task is killed
 --
--- * ConnectionAbort: The task has stopped due to an error occurred when the
+-- * Abort: The task has stopped due to an error occurred when the
 -- thread is running, e.g. the execution of a SQL command by the connector
 -- failed
 --
@@ -186,9 +187,6 @@ pattern Running = TaskStatus (PB.Enumerated (Right TaskStatusPBTASK_RUNNING))
 pattern Terminated :: TaskStatus
 pattern Terminated = TaskStatus (PB.Enumerated (Right TaskStatusPBTASK_TERMINATED))
 
-pattern ConnectionAbort :: TaskStatus
-pattern ConnectionAbort = TaskStatus (PB.Enumerated (Right TaskStatusPBTASK_CONNECTION_ABORT))
-
 pattern Creating :: TaskStatus
 pattern Creating = TaskStatus (PB.Enumerated (Right TaskStatusPBTASK_CREATING))
 
@@ -197,3 +195,18 @@ pattern Created = TaskStatus (PB.Enumerated (Right TaskStatusPBTASK_CREATED))
 
 pattern CreationAbort :: TaskStatus
 pattern CreationAbort = TaskStatus (PB.Enumerated (Right TaskStatusPBTASK_CREATION_ABORT))
+
+pattern Unknown :: TaskStatus
+pattern Unknown = TaskStatus (PB.Enumerated (Right TaskStatusPBTASK_UNKNOWN))
+
+pattern Abort :: TaskStatus
+pattern Abort = TaskStatus (PB.Enumerated (Right TaskStatusPBTASK_ABORT))
+
+pattern ResStream, ResSubscription, ResShard, ResConnector, ResShardReader, ResQuery, ResView :: ResourceType
+pattern ResStream       = ResourceTypeResStream
+pattern ResSubscription = ResourceTypeResSubscription
+pattern ResShard        = ResourceTypeResShard
+pattern ResShardReader  = ResourceTypeResShardReader
+pattern ResConnector    = ResourceTypeResConnector
+pattern ResQuery        = ResourceTypeResQuery
+pattern ResView         = ResourceTypeResView

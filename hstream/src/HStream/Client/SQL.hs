@@ -13,14 +13,12 @@ module HStream.Client.SQL where
 import           Control.Concurrent               (forkFinally, myThreadId,
                                                    readMVar, threadDelay,
                                                    throwTo)
-import           Control.Exception                (finally, handle, try)
+import           Control.Exception                (SomeException, handle, try)
 import           Control.Monad                    (forM_, forever, void, (>=>))
 import           Control.Monad.IO.Class           (liftIO)
 import           Data.Char                        (toUpper)
 import qualified Data.Map                         as M
 import qualified Data.Text                        as T
-import qualified Data.Text.Encoding               as T
-import qualified Data.Text.IO                     as T
 import qualified Data.Vector                      as V
 import qualified System.Console.Haskeline         as RL
 import qualified System.Console.Haskeline.History as RL
@@ -38,7 +36,7 @@ import           HStream.Client.Execute           (execute, executeShowPlan,
                                                    execute_, updateClusterInfo)
 import           HStream.Client.Internal          (cliFetch)
 import           HStream.Client.Types             (HStreamSqlContext (..),
-                                                   ResourceType (..))
+                                                   Resource (..))
 import           HStream.Client.Utils             (calculateShardId,
                                                    dropPlanToResType)
 import           HStream.Server.HStreamApi        (CommandQuery (..),
@@ -57,10 +55,10 @@ import           HStream.SQL.Exception            (SomeSQLException,
                                                    formatSomeSQLException,
                                                    isEOF)
 import           HStream.Utils                    (HStreamClientApi,
+                                                   ResourceType (..),
                                                    formatCommandQueryResponse,
-                                                   formatResult, genUnique,
-                                                   mkGRPCClientConfWithSSL,
-                                                   serverNodeToSocketAddr)
+                                                   formatResult,
+                                                   mkGRPCClientConfWithSSL)
 import           Network.GRPC.HighLevel.Client    (ClientRequest (..),
                                                    ClientResult (..))
 import           Network.GRPC.HighLevel.Generated (withGRPCClient)
@@ -96,7 +94,7 @@ interactiveSQLApp ctx@HStreamSqlContext{..} historyFile = do
                 Nothing  -> loop
                 Just str'' -> do
                   RL.getHistory >>= RL.putHistory . RL.addHistoryUnlessConsecutiveDupe str
-                  liftIO (commandExec ctx str'')
+                  liftIO (handle (\(e :: SomeException) -> print e) $ commandExec ctx str'')
                   loop
 
 commandExec :: HStreamSqlContext -> String -> IO ()
@@ -137,11 +135,11 @@ commandExec ctx@HStreamSqlContext{..} xs = case words xs of
               Just (API.ListShardsResponse shards) -> do
                 case calculateShardId "" (V.toList shards) of
                   Nothing  -> putStrLn "Failed to calculate shard id"
-                  Just sid -> executeWithLookupResource_ ctx (ResShard sid) (insertIntoStream sName sid insertType payload)
+                  Just sid -> executeWithLookupResource_ ctx (Resource ResShard (T.pack $ show sid)) (insertIntoStream sName sid insertType payload)
               Nothing -> putStrLn "No shards found"
-        CreateConnectorPlan _ cName _ _ _  -> executeWithLookupResource_ ctx (ResConnector cName) (createConnector xs)
-        PausePlan  (PauseObjectConnector cName) -> executeWithLookupResource_ ctx (ResConnector cName) (pauseConnector cName)
-        ResumePlan (ResumeObjectConnector cName) -> executeWithLookupResource_ ctx (ResConnector cName) (resumeConnector cName)
+        CreateConnectorPlan _ cName _ _ _  -> executeWithLookupResource_ ctx (Resource ResConnector cName) (createConnector xs)
+        PausePlan  (PauseObjectConnector cName) -> executeWithLookupResource_ ctx (Resource ResConnector cName) (pauseConnector cName)
+        ResumePlan (ResumeObjectConnector cName) -> executeWithLookupResource_ ctx (Resource ResConnector cName) (resumeConnector cName)
         _ -> do
           addr <- readMVar currentServer
           withGRPCClient (HStream.Utils.mkGRPCClientConfWithSSL addr sslConfig)

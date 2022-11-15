@@ -39,7 +39,7 @@ import           Network.GRPC.HighLevel.Generated (ClientResult (..),
 import qualified Proto3.Suite                     as PT
 import           Proto3.Suite.Class               (def)
 
-import           HStream.Client.Types             (ResourceType (..))
+import           HStream.Client.Types             (Resource (..))
 import           HStream.Client.Utils
 import           HStream.Server.HStreamApi
 import qualified HStream.Server.HStreamApi        as API
@@ -136,16 +136,12 @@ listShards sName API.HStreamApi{..} = do
     listShardsRequestStreamName = sName
   }
 
-lookupResource :: ResourceType -> Action (Maybe API.ServerNode)
-lookupResource (ResSubscription sid) API.HStreamApi{..} =
-  fakeMap API.lookupSubscriptionResponseServerNode <$> hstreamApiLookupSubscription
-    (mkClientNormalRequest' def { lookupSubscriptionRequestSubscriptionId = sid })
-lookupResource (ResShard sid) API.HStreamApi{..} =
-  fakeMap API.lookupShardResponseServerNode <$> hstreamApiLookupShard
-    (mkClientNormalRequest' def { lookupShardRequestShardId = sid })
-lookupResource (ResConnector cid) API.HStreamApi{..}  =
-  fakeMap API.lookupConnectorResponseServerNode <$> hstreamApiLookupConnector
-    (mkClientNormalRequest' def { lookupConnectorRequestName = cid })
+lookupResource :: Resource -> Action API.ServerNode
+lookupResource (Resource rType rid) API.HStreamApi{..} = hstreamApiLookupResource $
+  mkClientNormalRequest' def
+    { lookupResourceRequestResId   = rid
+    , lookupResourceRequestResType = PT.Enumerated $ Right rType
+    }
 
 describeCluster :: Action API.DescribeClusterResponse
 describeCluster API.HStreamApi{..} = hstreamApiDescribeCluster clientDefaultRequest

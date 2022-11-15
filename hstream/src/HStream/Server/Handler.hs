@@ -87,6 +87,7 @@ handlers serverContext@ServerContext{..} =
 
         -- Cluster
         hstreamApiDescribeCluster    = describeClusterHandler serverContext,
+        hstreamApiLookupResource     = lookupResourceHandler serverContext,
         hstreamApiLookupShard        = lookupShardHandler serverContext,
         hstreamApiLookupSubscription = lookupSubscriptionHandler serverContext,
         hstreamApiLookupShardReader  = lookupShardReaderHandler serverContext,

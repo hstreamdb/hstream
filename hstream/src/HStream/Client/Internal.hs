@@ -17,12 +17,13 @@ import qualified Proto3.Suite                     as PB
 import           HStream.Client.Action
 import           HStream.Client.Execute
 import           HStream.Client.Types             (HStreamSqlContext (..),
-                                                   ResourceType (..))
+                                                   Resource (..))
 import           HStream.Client.Utils
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.SQL.Codegen              (DropObject (..))
 import qualified HStream.ThirdParty.Protobuf      as PB
-import           HStream.Utils                    (decompressBatchedRecord,
+import           HStream.Utils                    (ResourceType (..),
+                                                   decompressBatchedRecord,
                                                    formatResult)
 import           Text.StringRandom                (stringRandomIO)
 
@@ -59,10 +60,10 @@ cliFetch ctx sql = do
   subId <- genRandomSubscriptionId
   void . execute ctx $ createStreamBySelect (T.unpack newSql)
   void . execute ctx $ createSubscription subId sName
-  executeWithLookupResource_ ctx (HStream.Client.Types.ResSubscription subId) (streamingFetch subId)
-  executeWithLookupResource_ ctx (HStream.Client.Types.ResSubscription subId) (void . deleteSubscription subId True)
+  executeWithLookupResource_ ctx (Resource ResSubscription subId) (streamingFetch subId)
+  executeWithLookupResource_ ctx (Resource ResSubscription subId) (void . deleteSubscription subId True)
   -- FIXME: Replace resource type with Res Stream once lookup stream is supported
-  executeWithLookupResource_ ctx (HStream.Client.Types.ResSubscription subId) (void . dropAction False (DStream sName))
+  executeWithLookupResource_ ctx (Resource ResSubscription subId) (void . dropAction False (DStream sName))
 
 genRandomSubscriptionId :: IO T.Text
 genRandomSubscriptionId =  do
