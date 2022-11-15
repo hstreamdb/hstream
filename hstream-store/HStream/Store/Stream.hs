@@ -133,8 +133,7 @@ module HStream.Store.Stream
 import           Control.Concurrent               (MVar, modifyMVar_, newMVar,
                                                    readMVar)
 import           Control.Exception                (finally, try)
-import           Control.Monad                    (filterM, forM, forM_, void,
-                                                   (<=<))
+import           Control.Monad                    (filterM, forM, forM_, (<=<))
 import           Data.Bits                        (bit)
 import qualified Data.Cache                       as Cache
 import           Data.Default                     (def)
@@ -145,7 +144,6 @@ import           Data.IORef                       (IORef, atomicModifyIORef',
                                                    newIORef, readIORef)
 import           Data.Map.Strict                  (Map)
 import qualified Data.Map.Strict                  as Map
-import           Data.Maybe                       (fromMaybe)
 import           Foreign.C                        (CSize)
 import           Foreign.ForeignPtr               (withForeignPtr)
 import           GHC.Generics                     (Generic)

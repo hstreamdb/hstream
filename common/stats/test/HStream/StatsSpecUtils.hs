@@ -22,7 +22,7 @@ mkTimeSeriesTest
 mkTimeSeriesTest h intervals stats_name stats_add stats_get stats_getall = do
   stats_add h "key_1" 1000
   stats_add h "key_2" 10000
-  -- NOTE: we choose to sleep 1s so that we can assume the speed of topic_1
+  -- NOTE: we choose to sleep 1s so that we can assume the speed of key_1
   -- won't be faster than 2000B/s
   threadDelay 1000000
   stats_add h "key_1" 1000
@@ -35,6 +35,8 @@ mkTimeSeriesTest h intervals stats_name stats_add stats_get stats_getall = do
   rate1_p5s `shouldSatisfy` (\s -> s > 0 && s <= 2000)
   rate1_p10s `shouldSatisfy` (\s -> s > 0 && s <= 2000)
   Just [rate2_p5s, rate2_p10s] <- stats_get h stats_name "key_2" intervals
+  -- NOTE: There is a possibility that the speed is less than 2000. However, in
+  -- typical cases, it shouldn't.
   rate2_p5s `shouldSatisfy` (\s -> s > 2000 && s <= 20000)
   rate2_p10s `shouldSatisfy` (\s -> s > 2000 && s <= 20000)
 
