@@ -26,7 +26,8 @@ import           Data.Foldable                  (foldrM)
 import qualified Data.HashMap.Strict            as HM
 import           Data.Map.Strict                (Map)
 import qualified Data.Map.Strict                as Map
-import           Data.Maybe                     (fromMaybe)
+import           Data.Maybe                     (fromMaybe, isJust)
+import           Data.String                    (IsString (..))
 import           Data.Text                      (Text)
 import qualified Data.Text                      as T
 import qualified Data.Text                      as Text
@@ -85,9 +86,10 @@ data MetaStoreAddr
   deriving (Eq)
 
 data ServerOpts = ServerOpts
-  { _serverHost                :: !CBytes
+  { _serverHost                :: !ByteString
   , _serverPort                :: !Word16
   , _serverInternalPort        :: !Word16
+  , _serverGossipAddress       :: !String
   , _serverAddress             :: !String
   , _serverAdvertisedListeners :: !AdvertisedListeners
   , _serverID                  :: !Word32
@@ -120,6 +122,8 @@ getConfig = do
     Success opts@CliOptions{..} -> do
       path <- makeAbsolute _configPath
       jsonCfg <- decodeFileThrow path
+      when (isJust _serverHost_) $ Log.warning "Option `host` will soon be removed, please use `bind-address` instead"
+      when (isJust _serverAddress_) $ Log.warning "Option `address` will soon be removed, please use `advertised-address` instead"
       case parseEither (parseJSONToOptions opts) jsonCfg of
         Left err  -> throwIO (AesonException err)
         Right cfg -> return cfg
@@ -140,9 +144,12 @@ getConfig = do
 
 data CliOptions = CliOptions
   { _configPath                 :: !String
-  , _serverHost_                :: !(Maybe CBytes)
+  , _serverHost_                :: !(Maybe ByteString)
   , _serverPort_                :: !(Maybe Word16)
   , _serverAddress_             :: !(Maybe String)
+  , _serverBindAddress_         :: !(Maybe ByteString)
+  , _serverAdvertisedAddress_   :: !(Maybe String)
+  , _serverGossipAddress_       :: !(Maybe String)
   , _serverAdvertisedListeners_ :: !AdvertisedListeners
   , _serverInternalPort_        :: !(Maybe Word16)
   , _serverID_                  :: !(Maybe Word32)
@@ -165,8 +172,7 @@ data CliOptions = CliOptions
   , _ioTasksPath_               :: !(Maybe Text)
   , _ioTasksNetwork_            :: !(Maybe Text)
   , _ioConnectorImages_         :: ![Text]
-  }
-  deriving Show
+  } deriving Show
 
 parseCliOptions :: [String] -> ParserResult CliOptions
 parseCliOptions = execParserPure defaultPrefs $
@@ -177,7 +183,10 @@ cliOptionsParser = do
   _configPath          <- configPath
   _serverHost_         <- optional serverHost
   _serverAddress_      <- optional serverAddress
+  _serverGossipAddress_       <- optional serverGossipAddress
+  _serverAdvertisedAddress_   <- optional advertisedAddress
   _serverAdvertisedListeners_ <- Map.fromList <$> many advertisedListeners
+  _serverBindAddress_  <- optional bindAddress
   _serverPort_         <- optional serverPort
   _serverInternalPort_ <- optional serverInternalPort
   _seedNodes_          <- optional seedNodes
@@ -203,10 +212,12 @@ parseJSONToOptions :: CliOptions -> Y.Object -> Y.Parser ServerOpts
 parseJSONToOptions CliOptions {..} obj = do
   nodeCfgObj  <- obj .: "hserver"
   nodeId              <- nodeCfgObj .:  "id"
+  nodeHost            <- fromString <$> nodeCfgObj .:? "bind-address" .!= "0.0.0.0"
   nodePort            <- nodeCfgObj .:? "port" .!= 6570
-  nodeAddress         <- nodeCfgObj .:  "address"
+  nodeGossipAddress   <- nodeCfgObj .:?  "gossip-address"
   nodeInternalPort    <- nodeCfgObj .:? "internal-port" .!= 6571
   nodeAdvertisedListeners <- nodeCfgObj .:? "advertised-listeners" .!= mempty
+  nodeAddress         <- nodeCfgObj .:  "advertised-address"
 
   nodeMetaStore     <- parseMetaStoreAddr <$> nodeCfgObj .:  "metastore-uri" :: Y.Parser MetaStoreAddr
   serverCompression <- readWithErrLog "compression" <$> nodeCfgObj .:? "compression" .!= "lz4"
@@ -219,11 +230,12 @@ parseJSONToOptions CliOptions {..} obj = do
     $ errorWithoutStackTrace "max-record-size has to be a positive number less than 1MB"
 
   let !_serverID           = fromMaybe nodeId _serverID_
-  let !_serverHost         = fromMaybe "0.0.0.0" _serverHost_
-  let !_serverAddress      = fromMaybe nodeAddress _serverAddress_
+  let !_serverHost         = fromMaybe nodeHost (_serverBindAddress_ <|> _serverHost_)
   let !_serverPort         = fromMaybe nodePort _serverPort_
   let !_serverInternalPort = fromMaybe nodeInternalPort _serverInternalPort_
+  let !_serverAddress      = fromMaybe nodeAddress (_serverAdvertisedAddress_ <|> _serverAddress_)
   let !_serverAdvertisedListeners = Map.union _serverAdvertisedListeners_ nodeAdvertisedListeners
+  let !_serverGossipAddress = fromMaybe _serverAddress (_serverGossipAddress_ <|> nodeGossipAddress)
 
   let !_metaStore          = fromMaybe nodeMetaStore _metaStore_
   let !_serverLogLevel     = fromMaybe (readWithErrLog "log-level" nodeLogLevel) _serverLogLevel_
@@ -312,11 +324,16 @@ configPath = strOption
   <> help "hstream config path"
 
 -- TODO: This option will be removed
-serverHost :: O.Parser CBytes
+serverHost :: O.Parser ByteString
 serverHost = strOption
   $ long "host" <> metavar "HOST"
   <> showDefault
-  <> help "server host value"
+  <> help "server host value, the address which the server will bind to, this will soon be removed, please use option `bind-address` instead"
+
+bindAddress :: O.Parser ByteString
+bindAddress = strOption
+  $ long "bind-address" <> metavar "ADDRESS"
+  <> help "the address the server will bind to"
 
 serverPort :: O.Parser Word16
 serverPort = option auto
@@ -326,9 +343,22 @@ serverPort = option auto
 
 serverAddress :: O.Parser String
 serverAddress = strOption
-  $  long "address"
+   $ long "address"
   <> metavar "ADDRESS"
-  <> help "server address"
+  <> help ( "Server advertised address, this will soon be removed."
+          <> "Please use option `advertised-address`instead" )
+
+advertisedAddress :: O.Parser String
+advertisedAddress = strOption
+   $ long "advertised-address"
+  <> metavar "ADDRESS"
+  <> help "server advertised address, e.g. 127.0.0.1"
+
+serverGossipAddress :: O.Parser String
+serverGossipAddress = strOption
+  $  long "gossip-address"
+  <> metavar "ADDRESS"
+  <> help "server gossip address, if not given will use advertised-address"
 
 serverInternalPort :: O.Parser Word16
 serverInternalPort = option auto

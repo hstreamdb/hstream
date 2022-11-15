@@ -67,7 +67,7 @@ import           HStream.Server.Types             (ServerContext (..),
                                                    ServerState)
 import qualified HStream.Store.Logger             as Log
 import qualified HStream.ThirdParty.Protobuf      as Proto
-import           HStream.Utils                    (cbytes2bs, getProtoTimestamp,
+import           HStream.Utils                    (getProtoTimestamp,
                                                    pattern EnumPB,
                                                    setupSigsegvHandler)
 
@@ -99,12 +99,12 @@ app config@ServerOpts{..} = do
       action serverState $ RLHandle rq
   where
     action serverState h = do
-      let serverHostBS = cbytes2bs _serverHost
-          serverNode =
+      let serverNode =
             I.ServerNode { serverNodeId = _serverID
-                         , serverNodeHost = encodeUtf8 . T.pack $ _serverAddress
                          , serverNodePort = fromIntegral _serverPort
+                         , serverNodeAdvertisedAddress = encodeUtf8 . T.pack $ _serverAddress
                          , serverNodeGossipPort = fromIntegral _serverInternalPort
+                         , serverNodeGossipAddress = encodeUtf8 . T.pack $ _serverGossipAddress
                          , serverNodeAdvertisedListeners = advertisedListenersToPB _serverAdvertisedListeners
                          }
       gossipContext <- initGossipContext defaultGossipOpts mempty serverNode _seedNodes
@@ -113,9 +113,9 @@ app config@ServerOpts{..} = do
       void . forkIO $ updateHashRing gossipContext (loadBalanceHashRing serverContext)
 
       Async.withAsync
-        (serve serverHostBS _serverPort _tlsConfig serverContext
+        (serve _serverHost _serverPort _tlsConfig serverContext
                _serverAdvertisedListeners) $ \a -> do
-        a1 <- startGossip serverHostBS gossipContext
+        a1 <- startGossip _serverHost gossipContext
         Async.link2Only (const True) a a1
         waitGossipBoot gossipContext
         Async.wait a

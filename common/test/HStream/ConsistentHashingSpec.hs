@@ -4,7 +4,6 @@
 
 module HStream.ConsistentHashingSpec where
 
-import qualified Data.ByteString.Char8            as BSC
 import qualified Data.Map.Strict                  as M
 import qualified Data.Map.Strict                  as Map
 import qualified Data.Text                        as T
@@ -15,11 +14,12 @@ import           Test.Hspec.QuickCheck            (prop)
 import           Test.QuickCheck                  (Arbitrary (..), Gen,
                                                    Property, Testable,
                                                    arbitrarySizedNatural,
-                                                   chooseInt, elements, forAll,
+                                                   choose, elements, forAll,
                                                    label, listOf1, scale,
                                                    shuffle, sublistOf, suchThat,
-                                                   vectorOf, (===), (==>))
+                                                   (===), (==>))
 
+import           Data.Text.Encoding               (encodeUtf8)
 import           HStream.Common.ConsistentHashing (ServerMap,
                                                    constructServerMap,
                                                    getAllocatedNode)
@@ -31,11 +31,19 @@ instance Arbitrary ServerNode where
     serverNodeId <- arbitrarySizedNatural
     serverNodePort <- arbitrarySizedNatural
     serverNodeGossipPort <- arbitrarySizedNatural
-    xs <- fmap (map (BSC.pack . show)) . vectorOf 4 $ chooseInt (0,255)
-    let [a,b,c,d] = xs
-    let serverNodeHost = a <> "." <> b <> "." <> c <> "." <> d
-        serverNodeAdvertisedListeners = Map.empty
+    serverNodeAdvertisedAddress <- genAddr
+    serverNodeGossipAddress <- genAddr
+    let serverNodeAdvertisedListeners = Map.empty
     return ServerNode {..}
+    where
+      aByteGen = show <$> (choose (0, 255) :: Gen Int)
+      genAddr = do
+        x <- aByteGen
+        y <- aByteGen
+        z <- aByteGen
+        w <- aByteGen
+        return $ encodeUtf8 $ T.pack (x <> "." <> y <> "." <> z <> "." <> w)
+
 
 newtype N = N ServerMap deriving (Show, Eq)
 

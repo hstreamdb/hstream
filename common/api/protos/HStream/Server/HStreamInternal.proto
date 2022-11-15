@@ -4,10 +4,11 @@ package hstream.server.internal;
 
 message ServerNode {
   uint32 id = 1;
-  bytes  host = 2;
-  uint32 port = 3;
-  uint32 gossipPort = 4;
-  map<string, ListOfListener> advertisedListeners = 5;
+  uint32 port = 2;
+  uint32 gossipPort = 3;
+  bytes advertisedAddress = 4;
+  bytes gossipAddress = 5;
+  map<string, ListOfListener> advertisedListeners = 6;
 }
 
 message Listener {

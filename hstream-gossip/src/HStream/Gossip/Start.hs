@@ -19,8 +19,7 @@ import           Control.Concurrent.STM           (TVar, atomically,
                                                    newBroadcastTChanIO,
                                                    newTQueueIO, newTVarIO,
                                                    stateTVar)
-import           Control.Exception                (SomeException, handle,
-                                                   throwIO, try)
+import           Control.Exception                (handle, throwIO, try)
 import           Control.Monad                    (void, when)
 import           Data.ByteString                  (ByteString)
 import qualified Data.ByteString.Lazy             as BL
@@ -159,7 +158,7 @@ amIASeed self@I.ServerNode{..} seeds = do
     if current `elem` seeds then pingToFindOut (True, L.delete current seeds, False) (L.delete current seeds)
                             else pingToFindOut (False, seeds, False) seeds
   where
-    current = (serverNodeHost, fromIntegral serverNodeGossipPort)
+    current = (serverNodeGossipAddress, fromIntegral serverNodeGossipPort)
     pingToFindOut old@(isSeed, oldSeeds, wasDead) (join@(joinHost, joinPort):rest) = do
       new <- GRPC.withGRPCClient (mkGRPCClientConf' joinHost joinPort) $ \client -> do
         started <- try (bootstrapPing join client)
