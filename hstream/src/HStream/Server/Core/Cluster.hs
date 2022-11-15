@@ -2,12 +2,12 @@
 
 module HStream.Server.Core.Cluster
   ( describeCluster
+  , lookupResource
+
   , lookupShard
   , lookupSubscription
   , lookupShardReader
   , lookupConnector
-
-  , lookupResource
   ) where
 
 import           Control.Concurrent               (tryReadMVar)
@@ -17,6 +17,7 @@ import qualified Data.Map.Strict                  as Map
 import           Data.Text                        (Text)
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
+import           Proto3.Suite                     (Enumerated (..))
 
 import           HStream.Common.ConsistentHashing (HashRing, getAllocatedNode)
 import           HStream.Common.Types             (fromInternalServerNodeWithKey)
@@ -65,10 +66,15 @@ describeCluster ServerContext{gossipContext = gc@GossipContext{..}, ..} = do
       { serverNodeStatusNode  = Just node
       , serverNodeStatusState = EnumPB state}
 
+lookupResource :: ServerContext -> LookupResourceRequest -> IO ServerNode
+lookupResource sc LookupResourceRequest{..} = do
+  case lookupResourceRequestResType of
+    Enumerated (Right rType) -> lookupResource' sc rType lookupResourceRequestResId
+    x -> throwIO $ HE.InvalidResourceType (show x)
 
 -- TODO: Currently we use the old version of lookup for minimal impact on performance
 lookupShard :: ServerContext -> LookupShardRequest -> IO LookupShardResponse
-lookupShard sc@ServerContext{..} req@LookupShardRequest {
+lookupShard ServerContext{..} req@LookupShardRequest {
   lookupShardRequestShardId = shardId} = do
   hashRing <- readTVarIO loadBalanceHashRing
   theNode <- getResNode hashRing (T.pack $ show shardId) scAdvertisedListenersKey
@@ -78,6 +84,7 @@ lookupShard sc@ServerContext{..} req@LookupShardRequest {
     , lookupShardResponseServerNode = Just theNode
     }
 
+{-# DEPRECATED lookupConnector "Use lookupResource instead" #-}
 lookupConnector
   :: ServerContext
   -> LookupConnectorRequest
@@ -85,12 +92,13 @@ lookupConnector
 lookupConnector sc req@LookupConnectorRequest{
   lookupConnectorRequestName = name} = do
   Log.info $ "receive lookupConnector request: " <> Log.buildString (show req)
-  theNode <- lookupResource sc ResConnector name
+  theNode <- lookupResource' sc ResConnector name
   return $ LookupConnectorResponse
     { lookupConnectorResponseName = name
     , lookupConnectorResponseServerNode     = Just theNode
     }
 
+{-# DEPRECATED lookupSubscription "Use lookupResource instead" #-}
 lookupSubscription
   :: ServerContext
   -> LookupSubscriptionRequest
@@ -98,23 +106,26 @@ lookupSubscription
 lookupSubscription sc req@LookupSubscriptionRequest{
   lookupSubscriptionRequestSubscriptionId = subId} = do
   Log.info $ "receive lookupSubscription request: " <> Log.buildString (show req)
-  theNode <- lookupResource sc ResSubscription subId
+  theNode <- lookupResource' sc ResSubscription subId
   return $ LookupSubscriptionResponse
     { lookupSubscriptionResponseSubscriptionId = subId
     , lookupSubscriptionResponseServerNode     = Just theNode
     }
 
+{-# DEPRECATED lookupShardReader "Use lookupResource instead" #-}
 lookupShardReader :: ServerContext -> LookupShardReaderRequest -> IO LookupShardReaderResponse
-lookupShardReader sc@ServerContext{..} req@LookupShardReaderRequest{lookupShardReaderRequestReaderId=readerId} = do
-  theNode <- lookupResource sc ResShardReader readerId
+lookupShardReader sc req@LookupShardReaderRequest{lookupShardReaderRequestReaderId=readerId} = do
+  theNode <- lookupResource' sc ResShardReader readerId
   Log.info $ "receive lookupShardReader request: " <> Log.buildString' req <> ", should send to " <> Log.buildString' (show theNode)
   return $ LookupShardReaderResponse
     { lookupShardReaderResponseReaderId    = readerId
     , lookupShardReaderResponseServerNode  = Just theNode
     }
 
-lookupResource :: ServerContext -> ResourceType -> Text -> IO ServerNode
-lookupResource sc@ServerContext{..} rtype rid = do
+-------------------------------------------------------------------------------
+
+lookupResource' :: ServerContext -> ResourceType -> Text -> IO ServerNode
+lookupResource' sc@ServerContext{..} rtype rid = do
   let metaId = mkAllocationKey rtype rid
   -- FIXME: it will insert the results of lookup no matter the resource exists or not
   getMetaWithVer @TaskAllocation metaId metaHandle >>= \case
@@ -124,8 +135,8 @@ lookupResource sc@ServerContext{..} rtype rid = do
       theNode <- getResNode hashRing rid scAdvertisedListenersKey
       try (insertMeta @TaskAllocation metaId (TaskAllocation epoch theNode) metaHandle) >>=
         \case
-          Left (e :: SomeException) -> lookupResource sc rtype rid
-          Right ()                  -> return theNode
+          Left (_e :: SomeException) -> lookupResource' sc rtype rid
+          Right ()                   -> return theNode
     Just (TaskAllocation epoch theNode, version) -> do
       serverList <- getMemberList gossipContext >>= fmap V.concat . mapM (fromInternalServerNodeWithKey scAdvertisedListenersKey)
       epoch' <- getEpoch gossipContext
@@ -138,13 +149,11 @@ lookupResource sc@ServerContext{..} rtype rid = do
               theNode' <- getResNode hashRing rid scAdvertisedListenersKey
               try (updateMeta @TaskAllocation metaId (TaskAllocation epoch' theNode') (Just version) metaHandle) >>=
                 \case
-                  Left (e :: SomeException) -> lookupResource sc rtype rid
-                  Right ()                  -> return theNode'
+                  Left (_e :: SomeException) -> lookupResource' sc rtype rid
+                  Right ()                   -> return theNode'
             else do
               Log.warning "LookupResource: the server has not yet synced with the latest member list "
               throwIO $ HE.ResourceAllocationException "the server has not yet synced with the latest member list"
-
--------------------------------------------------------------------------------
 
 getResNode :: HashRing -> Text -> Maybe Text -> IO ServerNode
 getResNode hashRing hashKey listenerKey = do

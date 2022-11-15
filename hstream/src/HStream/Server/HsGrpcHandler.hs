@@ -24,6 +24,7 @@ handlers sc =
   [ unary (GRPC :: GRPC P.HStreamApi "echo") handleEcho
     -- Cluster
   , unary (GRPC :: GRPC P.HStreamApi "describeCluster") (H.handleDescribeCluster sc)
+  , unary (GRPC :: GRPC P.HStreamApi "lookupResource") (H.handleLookupResource sc)
   , unary (GRPC :: GRPC P.HStreamApi "lookupShard") (H.handleLookupShard sc)
   , unary (GRPC :: GRPC P.HStreamApi "lookupSubscription") (H.handleLookupSubscription sc)
   , unary (GRPC :: GRPC P.HStreamApi "lookupShardReader") (H.handleLookupShardReader sc)
