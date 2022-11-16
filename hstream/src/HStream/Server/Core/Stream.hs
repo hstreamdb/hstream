@@ -73,7 +73,7 @@ createStream ServerContext{..} stream@API.Stream{
                     , S.logAttrsExtras       = extraAttr
                     }
   catch (S.createStream scLDClient streamId attrs) $ \(_ :: S.EXISTS) ->
-    throwIO $ HE.StreamExists "StreamExists: Stream has been created"
+    throwIO $ HE.StreamExists $ "Stream (" <> show streamId <> ") has been created"
 
   let partitions = devideKeySpace (fromIntegral shardCount)
   shards <- forM partitions $ \(startKey, endKey) -> do

@@ -37,6 +37,8 @@ spec:
           - "$(POD_NAME)"
           - "--local-log-store-path"
           - "/data/logdevice"
+          - "--num-shards"
+          - "1"
         ports:
         # Plain text data port
         - containerPort: 4440
