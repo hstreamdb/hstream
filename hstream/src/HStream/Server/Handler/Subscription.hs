@@ -27,7 +27,6 @@ import           Control.Exception                (throwIO)
 import           Control.Monad
 import           Data.Bifunctor                   (first)
 import qualified HsGrpc.Server                    as G
-import           Network.GRPC.HighLevel           (GRPCIOError (..))
 import           Network.GRPC.HighLevel.Generated
 
 import           HStream.Common.ConsistentHashing (getAllocatedNodeId)
@@ -49,12 +48,11 @@ createSubscriptionHandler
   -> IO (ServerResponse 'Normal Subscription)
 createSubscriptionHandler ctx (ServerNormalRequest _metadata sub) = defaultExceptionHandle $ do
   Log.debug $ "Receive createSubscription request: " <> Log.buildString' sub
-  Core.createSubscription ctx sub
-  returnResp sub
+  Core.createSubscription ctx sub >>= returnResp
 
 handleCreateSubscription :: ServerContext -> G.UnaryHandler Subscription Subscription
 handleCreateSubscription sc _ sub = catchDefaultEx $
-  Core.createSubscription sc sub >> pure sub
+  Core.createSubscription sc sub
 
 -------------------------------------------------------------------------------
 

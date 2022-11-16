@@ -168,6 +168,7 @@ streamParser = API.Stream
                      <> O.value 1
                      <> O.help "shard numbers of the stream"
                       )
+  <*> pure Nothing
 
 -------------------------------------------------------------------------------
 
@@ -217,6 +218,7 @@ subscriptionParser = API.Subscription
                                      <> O.help "maximum count of unacked records"
                                       )
     )
+  <*> pure Nothing
 
 -------------------------------------------------------------------------------
 

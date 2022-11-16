@@ -90,8 +90,9 @@ subscribeToHStoreStream' ctx consumerName streamName offset = do
             , subscriptionAckTimeoutSeconds = hstoreSubscriptionAckTimeoutSeconds
             , subscriptionMaxUnackedRecords = hstoreSubscriptionMaxUnackedRecords
             , subscriptionOffset = Enumerated (Right offset)
+            , subscriptionCreationTime = Nothing
             }
-  Core.createSubscription ctx sub
+  void $ Core.createSubscription ctx sub
 
 unSubscribeToHStoreStream :: S.LDClient -> S.LDSyncCkpReader -> S.StreamId -> IO ()
 unSubscribeToHStoreStream ldclient reader streamId = do

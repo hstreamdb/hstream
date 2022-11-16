@@ -23,6 +23,7 @@ import           Control.Exception                (bracket, catch, throw,
                                                    throwIO)
 import           Control.Monad                    (forM, unless, when)
 import qualified Data.ByteString                  as BS
+import qualified Data.ByteString.Lazy             as BSL
 import           Data.Foldable                    (foldl')
 import qualified Data.HashMap.Strict              as HM
 import qualified Data.Map.Strict                  as M
@@ -31,9 +32,11 @@ import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import           GHC.Stack                        (HasCallStack)
 import           Proto3.Suite                     (Enumerated (Enumerated))
+import qualified Proto3.Suite                     as PT
 import qualified Z.Data.CBytes                    as CB
 import           ZooKeeper.Exception              (ZNONODE (..))
 
+import           Google.Protobuf.Timestamp        (Timestamp)
 import           HStream.Common.ConsistentHashing (getAllocatedNodeId)
 import qualified HStream.Exception                as HE
 import qualified HStream.Logger                   as Log
@@ -54,17 +57,21 @@ import           HStream.Utils
 
 -------------------------------------------------------------------------------
 
-createStream :: HasCallStack => ServerContext -> API.Stream -> IO ()
-createStream ServerContext{..} API.Stream{
+createStream :: HasCallStack => ServerContext -> API.Stream -> IO API.Stream
+createStream ServerContext{..} stream@API.Stream{
   streamBacklogDuration = backlogSec, streamShardCount = shardCount, ..} = do
 
   when (streamReplicationFactor == 0) $ throwIO (HE.InvalidReplicaFactor "Stream replicationFactor cannot be zero")
   when (shardCount <= 0) $ throwIO (HE.InvalidShardCount "ShardCount should be a positive number")
 
+  timeStamp <- getProtoTimestamp
+  let extraAttr = M.fromList [("createTime", lazyByteStringToCBytes $ PT.toLazyByteString timeStamp)]
   let streamId = transToStreamName streamStreamName
-      attrs = S.def{ S.logReplicationFactor = S.defAttr1 $ fromIntegral streamReplicationFactor
-                   , S.logBacklogDuration   = S.defAttr1 $
-                      if backlogSec > 0 then Just $ fromIntegral backlogSec else Nothing}
+      attrs = S.def { S.logReplicationFactor = S.defAttr1 $ fromIntegral streamReplicationFactor
+                    , S.logBacklogDuration   = S.defAttr1 $
+                       if backlogSec > 0 then Just $ fromIntegral backlogSec else Nothing
+                    , S.logAttrsExtras       = extraAttr
+                    }
   catch (S.createStream scLDClient streamId attrs) $ \(_ :: S.EXISTS) ->
     throwIO $ HE.StreamExists "StreamExists: Stream has been created"
 
@@ -78,6 +85,7 @@ createStream ServerContext{..} API.Stream{
   modifyMVar_ shardInfo $ return . HM.insert streamStreamName shardMp
   let shardDict = foldl' (\acc Shard{startKey=key, shardId=sId} -> M.insert key sId acc) M.empty shards
   modifyMVar_ shardTable $ return . HM.insert streamStreamName shardDict
+  return stream{API.streamCreationTime = Just timeStamp}
 
 deleteStream :: ServerContext
              -> API.DeleteStreamRequest
@@ -114,8 +122,15 @@ listStreams ServerContext{..} API.ListStreamsRequest = do
     -- FIXME: should the default value be 0?
     let r = fromMaybe 0 . S.attrValue . S.logReplicationFactor $ attrs
         b = fromMaybe 0 . fromMaybe Nothing . S.attrValue . S.logBacklogDuration $ attrs
+        extraAttr = getCreateTime $ S.logAttrsExtras attrs
     shardCnt <- length <$> S.listStreamPartitions scLDClient stream
-    return $ API.Stream (T.pack . S.showStreamName $ stream) (fromIntegral r) (fromIntegral b) (fromIntegral shardCnt)
+    return $ API.Stream (T.pack . S.showStreamName $ stream) (fromIntegral r) (fromIntegral b) (fromIntegral shardCnt) extraAttr
+ where
+   getCreateTime :: M.Map CB.CBytes CB.CBytes -> Maybe Timestamp
+   getCreateTime attr = M.lookup "createTime" attr >>= \tmp -> do
+     case PT.fromByteString . BSL.toStrict . cBytesToLazyByteString $ tmp of
+       Left _          -> Nothing
+       Right timestamp -> Just timestamp
 
 listStreamNames :: ServerContext -> IO (V.Vector T.Text)
 listStreamNames ServerContext{..} = do
