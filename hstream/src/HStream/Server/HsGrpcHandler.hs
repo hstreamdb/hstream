@@ -39,6 +39,7 @@ handlers sc =
   , unary (GRPC :: GRPC P.HStreamApi "deleteShardReader") (H.handleDeleteShardReader sc)
     -- Subscription
   , unary (GRPC :: GRPC P.HStreamApi "createSubscription") (H.handleCreateSubscription sc)
+  , unary (GRPC :: GRPC P.HStreamApi "getSubscription") (H.handleGetSubscription sc)
   , handlerUseThreadPool $ unary (GRPC :: GRPC P.HStreamApi "deleteSubscription") (H.handleDeleteSubscription sc)
   , unary (GRPC :: GRPC P.HStreamApi "listSubscriptions") (H.handleListSubscriptions sc)
   , unary (GRPC :: GRPC P.HStreamApi "checkSubscriptionExist") (H.handleCheckSubscriptionExist sc)

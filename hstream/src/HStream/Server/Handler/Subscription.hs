@@ -10,12 +10,14 @@ module HStream.Server.Handler.Subscription
   ( -- * For grpc-haskell
     createSubscriptionHandler
   , deleteSubscriptionHandler
+  , getSubscriptionHandler
   , listSubscriptionsHandler
   , checkSubscriptionExistHandler
   , streamingFetchHandler
     -- * For hs-grpc-server
   , handleCreateSubscription
   , handleDeleteSubscription
+  , handleGetSubscription
   , handleCheckSubscriptionExist
   , handleListSubscriptions
   , handleStreamingFetch
@@ -54,6 +56,22 @@ createSubscriptionHandler ctx (ServerNormalRequest _metadata sub) = defaultExcep
 handleCreateSubscription :: ServerContext -> G.UnaryHandler Subscription Subscription
 handleCreateSubscription sc _ sub = catchDefaultEx $
   Core.createSubscription sc sub
+
+-------------------------------------------------------------------------------
+
+getSubscriptionHandler
+  :: ServerContext
+  -> ServerRequest 'Normal GetSubscriptionRequest GetSubscriptionResponse
+  -> IO (ServerResponse 'Normal GetSubscriptionResponse)
+getSubscriptionHandler ctx (ServerNormalRequest _metadata req) = defaultExceptionHandle $ do
+  Log.debug $ "Receive getSubscription request: " <> Log.buildString' req
+  validateNameAndThrow $ getSubscriptionRequestId req
+  Core.getSubscription ctx req >>= returnResp
+
+handleGetSubscription :: ServerContext -> G.UnaryHandler GetSubscriptionRequest GetSubscriptionResponse
+handleGetSubscription sc _ req = catchDefaultEx $ do
+  validateNameAndThrow $ getSubscriptionRequestId req
+  Core.getSubscription sc req
 
 -------------------------------------------------------------------------------
 

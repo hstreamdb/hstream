@@ -21,6 +21,7 @@ import qualified Data.List                  as L
 import qualified Data.Map.Strict            as Map
 import           Data.Maybe                 (fromJust, isNothing)
 import qualified Data.Set                   as Set
+import           Data.Text                  (Text)
 import qualified Data.Text                  as T
 import qualified Data.Vector                as V
 import           Data.Word                  (Word32, Word64)
@@ -53,6 +54,13 @@ listSubscriptions ServerContext{..} = do
      archived <- S.isArchiveStreamName (textToCBytes subscriptionStreamName)
      if archived then return sub {subscriptionStreamName = "__deleted_stream__"}
                  else return sub
+
+getSubscription :: ServerContext -> GetSubscriptionRequest -> IO GetSubscriptionResponse
+getSubscription ServerContext{..} GetSubscriptionRequest{ getSubscriptionRequestId = subId} = do
+  mMeta <- M.getMeta subId metaHandle
+  case mMeta of
+   Nothing  -> throwIO $ HE.SubscriptionNotFound subId
+   Just sub -> pure $ GetSubscriptionResponse { getSubscriptionResponseSubscription = Just $ originSub sub}
 
 createSubscription :: HasCallStack => ServerContext -> Subscription -> IO Subscription
 createSubscription ServerContext {..} sub@Subscription{..} = do
