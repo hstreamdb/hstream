@@ -366,7 +366,7 @@ MAKE_PARTICULAR_EX_1(SomeNotFound, RQLiteRowNotFound, String, )
 MAKE_SUB_EX(SomeHServerException, SomeAlreadyExists)
 
 MAKE_PARTICULAR_EX_1(SomeAlreadyExists, AlreadyExists, (ExInfo String), exDescription)
-MAKE_PARTICULAR_EX_1(SomeAlreadyExists, StreamExists, Text, Text.unpack)
+MAKE_PARTICULAR_EX_1(SomeAlreadyExists, StreamExists, String, )
 MAKE_PARTICULAR_EX_1(SomeAlreadyExists, ShardReaderExists, Text, Text.unpack)
 MAKE_PARTICULAR_EX_1(SomeAlreadyExists, RQLiteTableAlreadyExists, String, )
 MAKE_PARTICULAR_EX_1(SomeAlreadyExists, RQLiteRowAlreadyExists, String, )

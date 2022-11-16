@@ -66,7 +66,7 @@ createStream ServerContext{..} API.Stream{
                    , S.logBacklogDuration   = S.defAttr1 $
                       if backlogSec > 0 then Just $ fromIntegral backlogSec else Nothing}
   catch (S.createStream scLDClient streamId attrs) $ \(_ :: S.EXISTS) ->
-    throwIO $ HE.StreamExists "StreamExists: Stream has been created"
+    throwIO $ HE.StreamExists $ "Stream (" <> show streamId <> ") has been created"
 
   let partitions = devideKeySpace (fromIntegral shardCount)
   shards <- forM partitions $ \(startKey, endKey) -> do

@@ -38,9 +38,9 @@ spec:
               ordinal=${BASH_REMATCH[1]}
               /usr/local/bin/hstream-server \
                 --config-path /etc/hstream/config.yaml \
-                --host 0.0.0.0 --port 6570 \
+                --bind-address 0.0.0.0 --port 6570 \
                 --internal-port 6571 \
-                --address $(POD_IP) \
+                --advertised-address $(POD_IP) \
                 --seed-nodes "hstream-server-0.hstream-server:6571,hstream-server-1.hstream-server:6571,hstream-server-2.hstream-server:6571" \
                 --server-id $((100 + $ordinal)) \
                 --metastore-uri zk://zookeeper-0.zookeeper-headless:2181,zookeeper-1.zookeeper-headless:2181,zookeeper-2.zookeeper-headless:2181 \
