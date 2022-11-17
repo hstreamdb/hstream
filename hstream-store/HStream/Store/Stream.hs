@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP             #-}
 {-# LANGUAGE MultiWayIf      #-}
 {-# LANGUAGE PatternSynonyms #-}
 
@@ -130,12 +131,9 @@ module HStream.Store.Stream
   , def
   ) where
 
-import           Control.Concurrent               (MVar, modifyMVar_, newMVar,
-                                                   readMVar)
-import           Control.Exception                (finally, try)
-import           Control.Monad                    (filterM, forM, forM_, (<=<))
+import           Control.Exception                (try)
+import           Control.Monad                    (filterM, forM, (<=<))
 import           Data.Bits                        (bit)
-import qualified Data.Cache                       as Cache
 import           Data.Default                     (def)
 import           Data.Foldable                    (foldrM)
 import           Data.Hashable                    (Hashable)
@@ -162,6 +160,18 @@ import qualified HStream.Store.Internal.LogDevice as LD
 import qualified HStream.Store.Internal.Types     as FFI
 import           HStream.Utils                    (genUnique)
 
+-- Comment this to disable local cache
+#define HSTREAM_USE_LOCAL_STREAM_CACHE
+
+#ifdef HSTREAM_USE_LOCAL_STREAM_CACHE
+import           Control.Concurrent               (MVar, modifyMVar_, newMVar,
+                                                   readMVar)
+import           Control.Exception                (finally)
+import           Control.Monad                    (forM_)
+import qualified Data.Cache                       as Cache
+import           Data.Maybe                       (isJust)
+#endif
+
 -------------------------------------------------------------------------------
 
 data StreamSettings = StreamSettings
@@ -186,6 +196,10 @@ gloStreamSettings = unsafePerformIO . newIORef $
 updateGloStreamSettings :: (StreamSettings -> StreamSettings)-> IO ()
 updateGloStreamSettings f = atomicModifyIORef' gloStreamSettings $ \s -> (f s, ())
 
+-------------------------------------------------------------------------------
+
+#ifdef HSTREAM_USE_LOCAL_STREAM_CACHE
+
 -- StreamId : { streamKey: logid }
 type StreamCache = Cache.Cache StreamId (Map CBytes FFI.C_LogID)
 
@@ -206,6 +220,11 @@ getGloLogPathCache streamid key = do
     Nothing -> pure Nothing
     Just mp -> pure $ Map.lookup key mp
 
+doesCacheExist :: StreamId -> IO Bool
+doesCacheExist streamid = do
+  cache <- readMVar gloLogPathCache
+  isJust <$> Cache.lookup' cache streamid
+
 updateGloLogPathCache :: StreamId -> CBytes -> FFI.C_LogID -> IO ()
 updateGloLogPathCache streamid key logid =
   modifyMVar_ gloLogPathCache $ \c -> do
@@ -213,6 +232,10 @@ updateGloLogPathCache streamid key logid =
     case m_v of
       Nothing -> Cache.insert c streamid (Map.singleton key logid) >> pure c
       Just mp -> Cache.insert c streamid (Map.insert key logid mp) >> pure c
+
+#endif
+
+-------------------------------------------------------------------------------
 
 newtype ArchivedStream = ArchivedStream { getArchivedStreamName :: CBytes}
 
@@ -306,6 +329,7 @@ createStreamPartition
   -> IO FFI.C_LogID
 createStreamPartition client streamid m_key attr = do
   stream_exist <- doesStreamExist client streamid
+#ifdef HSTREAM_USE_LOCAL_STREAM_CACHE
   if stream_exist
      then do (log_path, key) <- getStreamLogPath streamid m_key
              logid <- createRandomLogGroup client log_path def{LD.logAttrsExtras = attr}
@@ -313,6 +337,13 @@ createStreamPartition client streamid m_key attr = do
              pure logid
      else E.throwStoreError ("No such stream: " <> ZT.pack (showStreamName streamid))
                             callStack
+#else
+  if stream_exist
+     then do (log_path, _key) <- getStreamLogPath streamid m_key
+             createRandomLogGroup client log_path def{LD.logAttrsExtras = attr}
+     else E.throwStoreError ("No such stream: " <> ZT.pack (showStreamName streamid))
+                            callStack
+#endif
 
 renameStream
   :: HasCallStack
@@ -341,12 +372,16 @@ _renameStream_ :: HasCallStack => FFI.LDClient -> StreamId -> StreamId -> IO ()
 _renameStream_ client from to = do
   from' <- getStreamDirPath from
   to'   <- getStreamDirPath to
+#ifdef HSTREAM_USE_LOCAL_STREAM_CACHE
   modifyMVar_ gloLogPathCache $ \cache -> do
     m_v <- Cache.lookup' cache from
     finally (LD.syncLogsConfigVersion client =<< LD.renameLogGroup client from' to')
             (Cache.delete cache from)
     forM_ m_v $ Cache.insert cache to
     pure cache
+#else
+  LD.syncLogsConfigVersion client =<< LD.renameLogGroup client from' to'
+#endif
 {-# INLINABLE _renameStream_ #-}
 
 -- | Archive a stream, then you won't find it by 'findStreams'.
@@ -372,11 +407,17 @@ removeArchivedStream client (ArchivedStream name) =
   removeStream client $ StreamId StreamTypeStream name
 
 removeStream :: HasCallStack => FFI.LDClient -> StreamId -> IO ()
+#ifdef HSTREAM_USE_LOCAL_STREAM_CACHE
 removeStream client streamid = modifyMVar_ gloLogPathCache $ \cache -> do
   path <- getStreamDirPath streamid
   finally (LD.syncLogsConfigVersion client =<< LD.removeLogDirectory client path True)
           (Cache.delete cache streamid)
   pure cache
+#else
+removeStream client streamid = do
+  path <- getStreamDirPath streamid
+  LD.syncLogsConfigVersion client =<< LD.removeLogDirectory client path True
+#endif
 
 -- | Find all active streams.
 findStreams
@@ -393,16 +434,17 @@ findStreams client streamType = do
 
 doesStreamExist :: HasCallStack => FFI.LDClient -> StreamId -> IO Bool
 doesStreamExist client streamid = do
-  cache <- readMVar gloLogPathCache
-  m_v <- Cache.lookup' cache streamid
-  case m_v of
-    Just _  -> return True
-    Nothing -> do
-      path <- getStreamDirPath streamid
-      r <- try $ LD.getLogDirectory client path
-      case r of
-        Left (_ :: E.NOTFOUND) -> return False
-        Right _                -> return True
+#ifdef HSTREAM_USE_LOCAL_STREAM_CACHE
+  cacheExist <- doesCacheExist streamid
+  if cacheExist
+     then return True
+     else do
+#endif
+        path <- getStreamDirPath streamid
+        r <- try $ LD.getLogDirectory client path
+        case r of
+          Left (_ :: E.NOTFOUND) -> return False
+          Right _                -> return True
 
 listStreamPartitions :: HasCallStack => FFI.LDClient -> StreamId -> IO (Map.Map CBytes FFI.C_LogID)
 listStreamPartitions client streamid = do
@@ -421,6 +463,7 @@ doesStreamPartitionExist
   -> Maybe CBytes
   -> IO Bool
 doesStreamPartitionExist client streamid m_key = do
+#ifdef HSTREAM_USE_LOCAL_STREAM_CACHE
   (logpath, key) <- getStreamLogPath streamid m_key
   m_v <- getGloLogPathCache streamid key
   case m_v of
@@ -432,6 +475,13 @@ doesStreamPartitionExist client streamid m_key = do
         Right lg               -> do
           updateGloLogPathCache streamid key . fst =<< LD.logGroupGetRange lg
           return True
+#else
+  (logpath, _key) <- getStreamLogPath streamid m_key
+  r <- try $ LD.getLogGroup client logpath
+  case r of
+    Left (_ :: E.NOTFOUND) -> return False
+    Right _loggroup        -> return True
+#endif
 
 -------------------------------------------------------------------------------
 -- StreamAttrs
@@ -496,6 +546,7 @@ getUnderlyingLogId
   -> Maybe CBytes
   -> IO FFI.C_LogID
 getUnderlyingLogId client streamid m_key = do
+#ifdef HSTREAM_USE_LOCAL_STREAM_CACHE
   (log_path, key) <- getStreamLogPath streamid m_key
   m_logid <- getGloLogPathCache streamid key
   case m_logid of
@@ -504,6 +555,10 @@ getUnderlyingLogId client streamid m_key = do
       updateGloLogPathCache streamid key logid
       pure logid
     Just ld -> pure ld
+#else
+  (log_path, _key) <- getStreamLogPath streamid m_key
+  fst <$> (LD.logGroupGetRange =<< LD.getLogGroup client log_path)
+#endif
 {-# INLINABLE getUnderlyingLogId #-}
 
 getStreamIdFromLogId
@@ -651,3 +706,7 @@ getStreamLogPath streamid m_key = do
   full_path <- dir_path `FS.join` key_name
   pure (full_path, key_name)
 {-# INLINABLE getStreamLogPath #-}
+
+-------------------------------------------------------------------------------
+
+#undef HSTREAM_USE_LOCAL_STREAM_CACHE
