@@ -74,13 +74,13 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
     SelectPlan ins out builder -> do
       let sources = inStream <$> ins
       roles_m <- mapM (findIdentifierRole sc) sources
-      case all (== (Just RoleView)) roles_m of
+      case all (== Just RoleView) roles_m of
         False -> do
-          Log.warning $ "Can not perform non-pushing SELECT on streams."
+          Log.warning "Can not perform non-pushing SELECT on streams."
           throwIO $ HE.InvalidSqlStatement "Can not perform non-pushing SELECT on streams."
         True  -> do
           out_m <- newMVar emptyDataChangeBatch
-          runImmTask sc (ins `zip` (L.map fromJust roles_m)) out out_m builder
+          runImmTask sc (ins `zip` L.map fromJust roles_m) out out_m builder
           dcb@DataChangeBatch{..} <- readMVar out_m
           case dcbChanges of
             [] -> sendResp mempty
@@ -97,37 +97,20 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
           throwIO $ HE.StreamNotFound $ "At least one of the streams/views do not exist: " <> T.pack (show sources)
         True  -> do
           createStreamWithShard scLDClient (transToStreamName sink) "query" factor
-          let queryType = P.StreamQuery sources sink
-          (qid,_) <- handleCreateAsSelect
+          let relatedStreams = (sources, sink)
+          P.QueryInfo{..} <- handleCreateAsSelect
                      sc
                      sink
-                     (ins `zip` (L.map fromJust roles_m))
+                     (ins `zip` L.map fromJust roles_m)
                      (out, RoleStream)
                      builder
                      commandQueryStmtText
-                     queryType
-          pure $ API.CommandQueryResponse (mkVectorStruct qid "stream_query_id")
+                     relatedStreams
+          pure $ API.CommandQueryResponse (mkVectorStruct queryId "stream_query_id")
     CreateViewPlan view ins out builder accumulation -> do
-      let sources = inStream <$> ins
-          sink    = view
-      roles_m <- mapM (findIdentifierRole sc) sources
-      case all isJust roles_m of
-        True -> do
-          let queryType = P.ViewQuery sources sink
-          (qid,_) <- handleCreateAsSelect
-                     sc
-                     sink
-                     (ins `zip` (L.map fromJust roles_m))
-                     (out, RoleView)
-                     builder
-                     commandQueryStmtText
-                     queryType
-          atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert sink accumulation hm, ()))
-          pure $ API.CommandQueryResponse (mkVectorStruct qid "view_query_id")
-        False  -> do
-          Log.warning $ "At least one of the streams/views do not exist: "
-            <> Log.buildString (show sources)
-          throwIO $ HE.StreamNotFound $ "At least one of the streams/views do not exist: " <> T.pack (show sources)
+      P.ViewInfo{viewQuery=P.QueryInfo{..}} <-
+        Core.createView' sc view ins out builder accumulation commandQueryStmtText
+      pure $ API.CommandQueryResponse (mkVectorStruct queryId "view_query_id")
     CreatePlan stream fac -> do
       let s = API.Stream
             { streamStreamName = stream
@@ -140,7 +123,7 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
     CreateConnectorPlan {} -> do
       void $ IO.createIOTaskFromSql scIOWorker commandQueryStmtText
       pure $ CommandQueryResponse V.empty
-    InsertPlan _ _ _ -> discard "Append"
+    InsertPlan {} -> discard "Append"
     DropPlan checkIfExist dropObject ->
       case dropObject of
         DStream stream -> do
@@ -228,29 +211,29 @@ executePushQuery ctx@ServerContext{..} API.CommandPushQuery{..} meta streamSend 
             throwIO $ HE.StreamNotFound $ "At least one of the streams do not exist: " <> T.pack (show sources)
           True  -> do
             createStreamWithShard scLDClient (transToStreamName sink) "query" scDefaultStreamRepFactor
-            let queryType = P.StreamQuery sources sink
+            let relatedStreams = (sources, sink)
             -- run task
-            (qid,_) <- handleCreateAsSelect
+            P.QueryInfo{..} <- handleCreateAsSelect
                        ctx
                        sink
-                       (ins `zip` (L.map fromJust roles_m))
+                       (ins `zip` L.map fromJust roles_m)
                        (out, RoleStream)
                        builder
                        commandPushQueryQueryText
-                       queryType
-            tid <- readMVar runningQueries >>= \hm -> return $ (HM.!) hm qid
+                       relatedStreams
+            tid <- readMVar runningQueries >>= \hm -> return $ (HM.!) hm queryId
 
             -- sub from sink stream and push to client
             consumerName <- newRandomText 20
             let sc = HStore.hstoreSourceConnectorWithoutCkp ctx consumerName
             subscribeToStreamWithoutCkp sc sink API.SpecialOffsetLATEST
 
-            sending <- async (sendToClient metaHandle qid sink sc streamSend)
+            sending <- async (sendToClient metaHandle queryId sink sc streamSend)
 
             void . forkIO $ handlePushQueryCanceled meta $ do
               killThread tid
               cancel sending
-              P.setQueryStatus qid Terminated metaHandle
+              M.updateMeta queryId P.QueryTerminated Nothing metaHandle
               unSubscribeToStreamWithoutCkp sc sink
 
             wait sending
@@ -266,15 +249,16 @@ sendToClient
   -> (Struct -> IO (Either GRPCIOError ()))
   -> IO ()
 sendToClient metaHandle qid streamName SourceConnectorWithoutCkp{..} streamSend = do
-  P.getQueryStatus qid metaHandle >>= \case
-    Terminated -> throwIO $ HE.PushQueryTerminated ""
-    Created -> throwIO $ HE.PushQueryCreated ""
-    Running -> do
+  M.getMeta @P.QueryStatus qid metaHandle >>= \case
+    Just Terminated -> throwIO $ HE.PushQueryTerminated ""
+    Just Created -> throwIO $ HE.PushQueryCreated ""
+    Just Running -> do
       withReadRecordsWithoutCkp streamName $ \sourceRecords -> do
         let (objects' :: [Maybe Aeson.Object]) = Aeson.decode' . srcValue <$> sourceRecords
             structs = jsonObjectToStruct . fromJust <$> filter isJust objects'
         void $ streamSendMany structs
     _ -> throwIO $ HE.UnknownPushQueryStatus ""
+    . (P.queryState <$>)
   where
     streamSendMany = \case
       []        -> pure ()
@@ -297,15 +281,15 @@ createQuery
         let (PB.Struct kvmap) = V.head commandQueryResponseResultSet
             [(_,qid_m)] = Map.toList kvmap
             (Just (PB.Value (Just (PB.ValueKindStringValue qid)))) = qid_m
-        getMeta @P.PersistentQuery qid metaHandle >>= \case
-          Just pQuery -> return $ hstreamQueryToQuery pQuery
+        getMeta @P.QueryInfo qid metaHandle >>= \case
+          Just pQuery -> hstreamQueryToQuery metaHandle pQuery
           Nothing     -> throwIO $ HE.UnexpectedError "Failed to create query for some unknown reason"
       _ -> throw $ HE.WrongExecutionPlan "Create query only support select / create stream as select statements"
 
 listQueries :: ServerContext -> IO [Query]
 listQueries ServerContext{..} = do
   queries <- M.listMeta metaHandle
-  return $ map hstreamQueryToQuery queries
+  mapM (hstreamQueryToQuery metaHandle) queries
 
 getQuery :: ServerContext -> GetQueryRequest -> IO Query
 getQuery ctx req = do
@@ -315,8 +299,8 @@ getQuery ctx req = do
 getQuery' :: ServerContext -> GetQueryRequest -> IO (Maybe Query)
 getQuery' ServerContext{..} GetQueryRequest{..} = do
   queries <- M.listMeta metaHandle
-  return $ hstreamQueryToQuery <$>
-    L.find (\P.PersistentQuery{..} -> queryId == getQueryRequestId) queries
+  hstreamQueryToQuery metaHandle `traverse`
+    L.find (\P.QueryInfo{..} -> queryId == getQueryRequestId) queries
 
 terminateQueries
   :: ServerContext -> TerminateQueriesRequest -> IO TerminateQueriesResponse
@@ -341,18 +325,21 @@ terminateQueries' ctx@ServerContext{..} TerminateQueriesRequest{..} = do
 
 deleteQuery :: ServerContext -> DeleteQueryRequest -> IO ()
 deleteQuery ServerContext{..} DeleteQueryRequest{..} =
-  M.deleteMeta @P.PersistentQuery deleteQueryRequestId Nothing metaHandle
+  M.deleteMeta @P.QueryInfo deleteQueryRequestId Nothing metaHandle
 
 -------------------------------------------------------------------------------
 
-hstreamQueryToQuery :: P.PersistentQuery -> Query
-hstreamQueryToQuery (P.PersistentQuery queryId sqlStatement createdTime _ status _ _) =
-  Query
-  { queryId          = queryId
-  , queryStatus      = getPBStatus status
-  , queryCreatedTime = createdTime
-  , queryQueryText   = sqlStatement
-  }
+hstreamQueryToQuery :: MetaHandle -> P.QueryInfo -> IO Query
+hstreamQueryToQuery h P.QueryInfo{..} = do
+  state <- getMeta @P.QueryStatus queryId h >>= \case
+    Nothing                -> return Unknown
+    Just P.QueryStatus{..} -> return queryState
+  return Query
+    { queryId = queryId
+    , queryQueryText = querySql
+    , queryStatus = getPBStatus state
+    , queryCreatedTime = queryCreatedTime
+    }
 
 -------------------------------------------------------------------------------
 

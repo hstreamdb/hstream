@@ -293,8 +293,9 @@ approxNaturalTime n
 formatStatus ::  PB.Enumerated API.TaskStatusPB -> String
 formatStatus (PB.Enumerated (Right API.TaskStatusPBTASK_RUNNING)) = "RUNNING"
 formatStatus (PB.Enumerated (Right API.TaskStatusPBTASK_TERMINATED)) = "TERMINATED"
-formatStatus (PB.Enumerated (Right API.TaskStatusPBTASK_ABORT)) = "ABORT"
+formatStatus (PB.Enumerated (Right API.TaskStatusPBTASK_ABORT)) = "ABORTED"
 formatStatus (PB.Enumerated (Right API.TaskStatusPBTASK_CREATING)) = "CREATING"
 formatStatus (PB.Enumerated (Right API.TaskStatusPBTASK_CREATED)) = "CREATED"
 formatStatus (PB.Enumerated (Right API.TaskStatusPBTASK_CREATION_ABORT)) = "CREATION_ABORT"
+formatStatus (PB.Enumerated (Right API.TaskStatusPBTASK_UNKNOWN)) = "UNKNOWN"
 formatStatus _ = "Unknown Status"
