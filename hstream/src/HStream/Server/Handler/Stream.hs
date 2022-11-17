@@ -50,12 +50,11 @@ createStreamHandler
   -> IO (ServerResponse 'Normal Stream)
 createStreamHandler sc (ServerNormalRequest _metadata stream) = defaultExceptionHandle $ do
   Log.debug $ "Receive Create Stream Request: " <> Log.buildString' stream
-  C.createStream sc stream
-  returnResp stream
+  C.createStream sc stream >>= returnResp
 
 handleCreateStream :: ServerContext -> G.UnaryHandler Stream Stream
 handleCreateStream sc _ stream = catchDefaultEx $
-  C.createStream sc stream >> pure stream
+  C.createStream sc stream
 
 -- DeleteStream have two mod: force delete or normal delete
 -- For normal delete, if current stream have active subscription, the delete request will return error.

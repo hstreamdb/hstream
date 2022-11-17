@@ -18,9 +18,8 @@ import qualified Data.ByteString.Char8            as BSC
 import qualified Data.ByteString.Internal         as BS
 import qualified Data.HashMap.Strict              as HM
 import           Data.IORef
-import qualified Data.Map                         as M
 import qualified Data.Map.Strict                  as Map
-import           Data.Maybe                       (fromMaybe)
+import           Data.Maybe                       (fromMaybe, isJust)
 import           Data.Text                        (Text)
 import qualified Data.Text                        as T
 import qualified Data.Text                        as Text
@@ -279,7 +278,9 @@ executeCommandPushQuery sql = withGRPCClient clientConfig $ \client -> do
 runCreateStreamSql :: HStreamClientApi -> T.Text -> Expectation
 runCreateStreamSql api sql = do
   CreatePlan sName rFac <- streamCodegen sql
-  createStream sName rFac api`grpcShouldReturn`
+  res <- getServerResp =<< createStream sName rFac api
+  res `shouldSatisfy` isJust . streamCreationTime
+  res{streamCreationTime = Nothing} `shouldBe`
     def { streamStreamName        = sName
         , streamReplicationFactor = fromIntegral rFac
         , streamShardCount        = 1

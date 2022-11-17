@@ -39,7 +39,8 @@ import           HStream.Server.Types
 import qualified HStream.Stats              as Stats
 import qualified HStream.Store              as S
 import           HStream.Utils              (decompressBatchedRecord,
-                                             mkBatchedRecord, textToCBytes)
+                                             getProtoTimestamp, mkBatchedRecord,
+                                             textToCBytes)
 
 --------------------------------------------------------------------------------
 
@@ -53,7 +54,7 @@ listSubscriptions ServerContext{..} = do
      if archived then return sub {subscriptionStreamName = "__deleted_stream__"}
                  else return sub
 
-createSubscription :: HasCallStack => ServerContext -> Subscription -> IO ()
+createSubscription :: HasCallStack => ServerContext -> Subscription -> IO Subscription
 createSubscription ServerContext {..} sub@Subscription{..} = do
   let streamName = transToStreamName subscriptionStreamName
   streamExists <- S.doesStreamExist scLDClient streamName
@@ -67,11 +68,14 @@ createSubscription ServerContext {..} sub@Subscription{..} = do
     (Enumerated (Right SpecialOffsetLATEST))   -> foldM gatherTailLSN HM.empty shards
     _                                          -> throwIO $ HE.InvalidSubscriptionOffset "subscriptionOffset is invalid."
 
+  createTime <- getProtoTimestamp
+  let newSub = sub {subscriptionCreationTime = Just createTime}
   let subWrap = SubscriptionWrap
-        { originSub  = sub
+        { originSub  = newSub
         , subOffsets = startOffsets
         }
   M.insertMeta subscriptionSubscriptionId subWrap metaHandle
+  return newSub
  where
    gatherTailLSN acc shard = do
      lsn <- (+1) <$> S.getTailLSN scLDClient shard
@@ -891,8 +895,6 @@ doAcks ldclient subCtx@SubscribeContext{..} ackRecordIds = do
         checkList
       writeTVar subWaitingCheckedRecordIds newCheckList
       writeTVar subWaitingCheckedRecordIdsIndex newCheckListIndex
-
-
 
 doAck
   :: S.LDClient
