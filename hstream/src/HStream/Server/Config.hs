@@ -220,7 +220,6 @@ parseJSONToOptions CliOptions {..} obj = do
   nodeAddress         <- nodeCfgObj .:  "advertised-address"
 
   nodeMetaStore     <- parseMetaStoreAddr <$> nodeCfgObj .:  "metastore-uri" :: Y.Parser MetaStoreAddr
-  serverCompression <- readWithErrLog "compression" <$> nodeCfgObj .:? "compression" .!= "lz4"
   nodeLogLevel      <- nodeCfgObj .:? "log-level" .!= "info"
   nodeLogWithColor  <- nodeCfgObj .:? "log-with-color" .!= True
   -- TODO: For the max_record_size to work properly, we should also tell user
@@ -240,7 +239,7 @@ parseJSONToOptions CliOptions {..} obj = do
   let !_metaStore          = fromMaybe nodeMetaStore _metaStore_
   let !_serverLogLevel     = fromMaybe (readWithErrLog "log-level" nodeLogLevel) _serverLogLevel_
   let !_serverLogWithColor = nodeLogWithColor || _serverLogWithColor_
-  let !_compression        = fromMaybe serverCompression _compression_
+  let !_compression        = fromMaybe CompressionNone _compression_
 
   -- Cluster Option
   seeds <- flip fromMaybe _seedNodes_ <$> (nodeCfgObj .: "seed-nodes")
@@ -391,9 +390,9 @@ seedNodes = strOption
 
 compression :: O.Parser Compression
 compression = option auto
-  $ long "compression"
+  $ long "store-compression"
   <> metavar "none | lz4 | lz4hc"
-  <> help "Compression option when write records to store"
+  <> help "For debug only, compression option when write records to store."
 
 logLevel :: O.Parser Log.Level
 logLevel = option auto

@@ -58,14 +58,6 @@ hserver:
   # and can be overwritten by cli option `--seed-nodes`
   seed-nodes: 127.0.0.1:6571
 
-  # The option which compression should the server use when writing record to store,
-  # which can be one of "none", "lz4", "lz4hc" or "zstd:1"(the next number "1" is for
-  # zstd_level, you can also choose other level)
-  #
-  # Optional, If not given, then the default value is "lz4"
-  #
-  #compression: "lz4"
-
   # The max record payload size the hstream server would accept.
   # The value only indicates that the server would not reject the value,
   # but has no guarantee that a record smaller than the specified value will be written successfully.
