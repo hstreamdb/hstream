@@ -1,4 +1,5 @@
 {-# LANGUAGE BlockArguments      #-}
+{-# LANGUAGE CPP                 #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE OverloadedStrings   #-}
@@ -181,21 +182,24 @@ appendStreamExceptionHandle f = HE.mkExceptionHandle' whileEx mkHandlers
           return (StatusUnavailable, HE.mkStatusDetails err))
       , Handler (\(err :: Store.NOSEQUENCER) -> do
           return (StatusUnavailable, HE.mkStatusDetails err))
+      , Handler (\(err :: Store.TIMEDOUT) -> do
+          return (StatusUnavailable, HE.mkStatusDetails err))
       ] ++ defaultHandlers
     mkHandlers = HE.setRespType mkServerErrResp handlers
 
+#define MkUnavailable(E) \
+  Handler $ \(err :: E) -> do \
+    Log.warning (Log.buildString' err); \
+    G.throwGrpcError $ HE.mkGrpcStatus err G.StatusUnavailable
+
 appendExHandle :: IO () -> (IO a -> IO a)
-appendExHandle f = HE.mkExceptionHandle' whileEx handlers
+appendExHandle f = HE.mkExceptionHandle' (const f) handlers
   where
-    whileEx :: forall e. Exception e => e -> IO ()
-    whileEx err = Log.warning (Log.buildString' err) >> f
     handlers =
-      [ Handler $ \(err :: Store.NOTFOUND) -> do
-          G.throwGrpcError $ HE.mkGrpcStatus err G.StatusUnavailable
-      , Handler $ \(err :: Store.NOTINSERVERCONFIG) ->
-          G.throwGrpcError $ HE.mkGrpcStatus err G.StatusUnavailable
-      , Handler $ \(err :: Store.NOSEQUENCER) -> do
-          G.throwGrpcError $ HE.mkGrpcStatus err G.StatusUnavailable
+      [ MkUnavailable(Store.NOTFOUND)
+      , MkUnavailable(Store.NOTINSERVERCONFIG)
+      , MkUnavailable(Store.NOSEQUENCER)
+      , MkUnavailable(Store.TIMEDOUT)
       ] ++ defaultExHandlers
 
 listShardsExceptionHandle :: HE.ExceptionHandle (ServerResponse 'Normal a)
@@ -211,3 +215,5 @@ listShardsExHandle = HE.mkExceptionHandle handlers
       [ Handler $ \(err :: Store.NOTFOUND) -> do
           G.throwGrpcError $ HE.mkGrpcStatus err G.StatusUnavailable
       ] ++ defaultExHandlers
+
+#undef MkUnavailable
