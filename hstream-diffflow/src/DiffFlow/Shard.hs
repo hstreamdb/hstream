@@ -625,11 +625,11 @@ doWork shard@Shard{..} = do
     debug . stringUTF8 $ "=== Working (processChangeBatch)..."
     processChangeBatch shard else
     if not (L.null shardUnprocessedFrontierUpdates') then do
-      debug . stringUTF8 $ "=== Working (processFrontierUpdates)..."
+      -- debug . stringUTF8 $ "=== Working (processFrontierUpdates)..."
       processFrontierUpdates shard else return ()
 
-popOutput :: (Show a, Show row) => Shard row a -> Node -> (DataChangeBatch row a -> IO ()) -> IO ()
-popOutput Shard{..} node action = do
+popOutput :: (Show a, Show row) => Shard row a -> Node -> IO () -> (DataChangeBatch row a -> IO ()) -> IO ()
+popOutput Shard{..} node delayAction action = do
   shardNodeStates' <- readMVar shardNodeStates
   let (OutputState dcbs_m) = shardNodeStates' HM.! nodeId node
 
@@ -638,14 +638,14 @@ popOutput Shard{..} node action = do
                                []      -> (Nothing, xs)
                                (x:xs') -> (Just x, xs'))
   case dcb' of
-    Nothing  -> threadDelay 1000000
+    Nothing  -> delayAction
     Just dcb -> action dcb
 
 run :: (Hashable a, Ord a, Show a,
         Hashable row, Ord row, Show row, Semigroup row) => Shard row a -> MVar () -> IO ()
 run shard stop = do
   work <- hasWork shard
-  debug . stringUTF8 $ "Loop: still has work?" <> show work
+  -- debug . stringUTF8 $ "Loop: still has work?" <> show work
   case work of
     True  -> do
       doWork shard
@@ -654,6 +654,6 @@ run shard stop = do
       stop_m <- tryTakeMVar stop
       case stop_m of
         Nothing -> do
-          threadDelay 2000000
+          threadDelay 100000
           run shard stop
         Just _  -> return ()
