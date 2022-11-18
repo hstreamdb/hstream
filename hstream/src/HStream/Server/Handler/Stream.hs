@@ -32,8 +32,10 @@ import qualified HsGrpc.Server                    as G
 import qualified HsGrpc.Server.Types              as G
 import           Network.GRPC.HighLevel.Generated
 
+import           Control.Monad                    (unless)
 import qualified HStream.Exception                as HE
 import qualified HStream.Logger                   as Log
+import           HStream.Server.Core.Common       (lookupResource')
 import qualified HStream.Server.Core.Stream       as C
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
@@ -136,27 +138,37 @@ createShardReaderHandler
   :: ServerContext
   -> ServerRequest 'Normal CreateShardReaderRequest CreateShardReaderResponse
   -> IO (ServerResponse 'Normal CreateShardReaderResponse)
-createShardReaderHandler sc (ServerNormalRequest _metadata request) = defaultExceptionHandle $ do
+createShardReaderHandler sc@ServerContext{..} (ServerNormalRequest _metadata request) = defaultExceptionHandle $ do
   Log.debug $ "Receive Create ShardReader Request" <> Log.buildString' (show request)
+  validateNameAndThrow $ createShardReaderRequestReaderId request
   C.createShardReader sc request >>= returnResp
 
 handleCreateShardReader
   :: ServerContext
   -> G.UnaryHandler CreateShardReaderRequest CreateShardReaderResponse
-handleCreateShardReader sc _ req = catchDefaultEx $ C.createShardReader sc req
+handleCreateShardReader sc@ServerContext{..} _ req = catchDefaultEx $ do
+  validateNameAndThrow $ createShardReaderRequestReaderId req
+  C.createShardReader sc req
 
 deleteShardReaderHandler
   :: ServerContext
   -> ServerRequest 'Normal DeleteShardReaderRequest Empty
   -> IO (ServerResponse 'Normal Empty)
-deleteShardReaderHandler sc (ServerNormalRequest _metadata request) = defaultExceptionHandle $ do
+deleteShardReaderHandler sc@ServerContext{..} (ServerNormalRequest _metadata request) = defaultExceptionHandle $ do
   Log.debug $ "Receive Delete ShardReader Request" <> Log.buildString' (show request)
+  validateNameAndThrow $ deleteShardReaderRequestReaderId request
+  ServerNode{..} <- lookupResource' sc ResShardReader (deleteShardReaderRequestReaderId request)
+  unless (serverNodeId == serverID) $
+    throwIO $ HE.WrongServer "ShardReader is bound to a different node"
   C.deleteShardReader sc request >> returnResp Empty
 
 handleDeleteShardReader
   :: ServerContext
   -> G.UnaryHandler DeleteShardReaderRequest Empty
-handleDeleteShardReader sc _ req = catchDefaultEx $
+handleDeleteShardReader sc@ServerContext{..} _ req = catchDefaultEx $ do
+  ServerNode{..} <- lookupResource' sc ResShardReader (deleteShardReaderRequestReaderId req)
+  unless (serverNodeId == serverID) $
+    throwIO $ HE.WrongServer "ShardReader is bound to a different node"
   C.deleteShardReader sc req >> pure Empty
 
 readShardHandler
