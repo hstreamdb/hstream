@@ -8,11 +8,12 @@ module HStream.Server.Core.Cluster
   , lookupSubscription
   , lookupShardReader
   , lookupConnector
-  ) where
+  , getOverview) where
 
 import           Control.Concurrent               (tryReadMVar)
 import           Control.Concurrent.STM           (readTVarIO)
 import           Control.Exception                (SomeException, throwIO, try)
+import           Data.Functor                     ((<&>))
 import qualified Data.Map.Strict                  as Map
 import           Data.Text                        (Text)
 import qualified Data.Text                        as T
@@ -26,9 +27,15 @@ import           HStream.Gossip                   (GossipContext (..), getEpoch,
                                                    getFailedNodes,
                                                    getMemberList)
 import           HStream.Gossip.Types             (ServerStatus (..))
+import qualified HStream.IO.Worker                as IO
 import qualified HStream.Logger                   as Log
 import           HStream.MetaStore.Types          (MetaStore (..))
 import           HStream.Server.Core.Common       (mkAllocationKey)
+import           HStream.Server.Core.Query        (listQueries)
+import           HStream.Server.Core.Stream       (listShardReaders, listShards,
+                                                   listStreams)
+import           HStream.Server.Core.Subscription (listSubscriptions)
+import           HStream.Server.Core.View         (listViews)
 import           HStream.Server.HStreamApi
 import           HStream.Server.MetaData          (TaskAllocation (..))
 import           HStream.Server.MetaData.Value    (clusterStartTimeId)
@@ -121,6 +128,24 @@ lookupShardReader sc req@LookupShardReaderRequest{lookupShardReaderRequestReader
     { lookupShardReaderResponseReaderId    = readerId
     , lookupShardReaderResponseServerNode  = Just theNode
     }
+
+getOverview :: ServerContext -> GetOverviewRequest -> IO GetOverviewResponse
+getOverview sc@ServerContext{..} _req = do
+  DescribeClusterResponse{
+      describeClusterResponseServerNodesStatus = getOverviewResponseServerNodesStatus
+    , describeClusterResponseClusterUpTime = getOverviewResponseClusterUpTime
+    , describeClusterResponseServerVersion = getOverviewResponseServerVersion
+    , describeClusterResponseProtocolVersion = getOverviewResponseProtocolVersion
+    } <- describeCluster sc
+  getOverviewResponseAllStreams <- listStreams sc ListStreamsRequest
+  getOverviewResponseAllShards  <-
+    mapM (listShards sc  . ListShardsRequest . streamStreamName) (V.toList getOverviewResponseAllStreams) <&> V.concat
+  getOverviewResponseAllSubscriptions <- listSubscriptions sc
+  getOverviewResponseAllShardReaders <- listShardReaders sc
+  getOverviewResponseAllConnectors <- V.fromList <$> IO.listIOTasks scIOWorker
+  getOverviewResponseAllQueries <-   V.fromList <$> listQueries sc
+  getOverviewResponseAllViews <- V.fromList <$> listViews sc
+  return GetOverviewResponse{..}
 
 -------------------------------------------------------------------------------
 

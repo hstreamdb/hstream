@@ -19,6 +19,7 @@ module HStream.Server.Handler.Cluster
   , handleLookupSubscription
   , handleLookupShardReader
   , handleLookupConnector
+  , getOverviewHandler
   ) where
 
 import qualified HsGrpc.Server                    as G
@@ -77,6 +78,9 @@ lookupShardReaderHandler
   -> IO (ServerResponse 'Normal LookupShardReaderResponse)
 lookupShardReaderHandler sc (ServerNormalRequest _meta req) =
   defaultExceptionHandle $ returnResp =<< C.lookupShardReader sc req
+
+getOverviewHandler :: ServerContext -> ServerRequest 'Normal GetOverviewRequest GetOverviewResponse -> IO (ServerResponse 'Normal GetOverviewResponse)
+getOverviewHandler sc (ServerNormalRequest _meta req) = defaultExceptionHandle $ returnResp =<< C.getOverview sc req
 
 -------------------------------------------------------------------------------
 

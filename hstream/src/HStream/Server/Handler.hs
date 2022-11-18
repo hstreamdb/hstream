@@ -86,6 +86,7 @@ handlers serverContext@ServerContext{..} =
         hstreamApiListNodes = listStoreNodesHandler serverContext,
 
         -- Cluster
+        hstreamApiGetOverview = getOverviewHandler serverContext,
         hstreamApiDescribeCluster    = describeClusterHandler serverContext,
         hstreamApiLookupResource     = lookupResourceHandler serverContext,
         hstreamApiLookupShard        = lookupShardHandler serverContext,

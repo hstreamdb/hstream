@@ -13,6 +13,7 @@ module HStream.Server.Core.Stream
   , createShardReader
   , deleteShardReader
   , readShard
+  , listShardReaders
   ) where
 
 import           Control.Concurrent               (modifyMVar_, newEmptyMVar,
@@ -25,18 +26,19 @@ import           Control.Monad                    (forM, unless, when)
 import qualified Data.ByteString                  as BS
 import qualified Data.ByteString.Lazy             as BSL
 import           Data.Foldable                    (foldl')
+import           Data.Functor                     ((<&>))
 import qualified Data.HashMap.Strict              as HM
 import qualified Data.Map.Strict                  as M
 import           Data.Maybe                       (fromJust, fromMaybe)
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import           GHC.Stack                        (HasCallStack)
+import           Google.Protobuf.Timestamp        (Timestamp)
 import           Proto3.Suite                     (Enumerated (Enumerated))
 import qualified Proto3.Suite                     as PT
 import qualified Z.Data.CBytes                    as CB
 import           ZooKeeper.Exception              (ZNONODE (..))
 
-import           Google.Protobuf.Timestamp        (Timestamp)
 import           HStream.Common.ConsistentHashing (getAllocatedNodeId)
 import qualified HStream.Exception                as HE
 import qualified HStream.Logger                   as Log
@@ -236,6 +238,10 @@ deleteShardReader ServerContext{..} API.DeleteShardReaderRequest{..} = do
       Nothing -> return mp
       Just _  -> return (HM.delete deleteShardReaderRequestReaderId mp)
   unless isSuccess $ throwIO $ HE.EmptyShardReader "ShardReaderNotExists"
+
+listShardReaders :: ServerContext -> IO (V.Vector API.ShardReader)
+listShardReaders ServerContext{..} =
+  M.listMeta @P.ShardReader metaHandle <&> V.fromList . (API.ShardReader . P.readerReaderId <$>)
 
 listShards
   :: HasCallStack
