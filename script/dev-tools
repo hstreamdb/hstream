@@ -656,7 +656,7 @@ class StartHServerCommand:
             command = "cabal run -- hstream-server"
             port = next(free_ports)
             cmd_args = [
-                "--host 127.0.0.1 --address 127.0.0.1",
+                "--bind-address 127.0.0.1 --advertised-address 127.0.0.1",
                 f"--port {port} --internal-port {find_free_port()}",
                 f"--config-path {DEFAULT_HSTREAM_CONF}",
                 f"--server-id {i}",

@@ -122,8 +122,6 @@ getConfig = do
     Success opts@CliOptions{..} -> do
       path <- makeAbsolute _configPath
       jsonCfg <- decodeFileThrow path
-      when (isJust _serverHost_) $ Log.warning "Option `host` will soon be removed, please use `bind-address` instead"
-      when (isJust _serverAddress_) $ Log.warning "Option `address` will soon be removed, please use `advertised-address` instead"
       case parseEither (parseJSONToOptions opts) jsonCfg of
         Left err  -> throwIO (AesonException err)
         Right cfg -> return cfg
@@ -144,9 +142,7 @@ getConfig = do
 
 data CliOptions = CliOptions
   { _configPath                 :: !String
-  , _serverHost_                :: !(Maybe ByteString)
   , _serverPort_                :: !(Maybe Word16)
-  , _serverAddress_             :: !(Maybe String)
   , _serverBindAddress_         :: !(Maybe ByteString)
   , _serverAdvertisedAddress_   :: !(Maybe String)
   , _serverGossipAddress_       :: !(Maybe String)
@@ -181,8 +177,6 @@ parseCliOptions = execParserPure defaultPrefs $
 cliOptionsParser :: O.Parser CliOptions
 cliOptionsParser = do
   _configPath          <- configPath
-  _serverHost_         <- optional serverHost
-  _serverAddress_      <- optional serverAddress
   _serverGossipAddress_       <- optional serverGossipAddress
   _serverAdvertisedAddress_   <- optional advertisedAddress
   _serverAdvertisedListeners_ <- Map.fromList <$> many advertisedListeners
@@ -229,10 +223,10 @@ parseJSONToOptions CliOptions {..} obj = do
     $ errorWithoutStackTrace "max-record-size has to be a positive number less than 1MB"
 
   let !_serverID           = fromMaybe nodeId _serverID_
-  let !_serverHost         = fromMaybe nodeHost (_serverBindAddress_ <|> _serverHost_)
+  let !_serverHost         = fromMaybe nodeHost _serverBindAddress_
   let !_serverPort         = fromMaybe nodePort _serverPort_
   let !_serverInternalPort = fromMaybe nodeInternalPort _serverInternalPort_
-  let !_serverAddress      = fromMaybe nodeAddress (_serverAdvertisedAddress_ <|> _serverAddress_)
+  let !_serverAddress      = fromMaybe nodeAddress _serverAdvertisedAddress_
   let !_serverAdvertisedListeners = Map.union _serverAdvertisedListeners_ nodeAdvertisedListeners
   let !_serverGossipAddress = fromMaybe _serverAddress (_serverGossipAddress_ <|> nodeGossipAddress)
 
@@ -322,13 +316,6 @@ configPath = strOption
   <> metavar "PATH" <> value "/etc/hstream/config.yaml"
   <> help "hstream config path"
 
--- TODO: This option will be removed
-serverHost :: O.Parser ByteString
-serverHost = strOption
-  $ long "host" <> metavar "HOST"
-  <> showDefault
-  <> help "server host value, the address which the server will bind to, this will soon be removed, please use option `bind-address` instead"
-
 bindAddress :: O.Parser ByteString
 bindAddress = strOption
   $ long "bind-address" <> metavar "ADDRESS"
@@ -339,13 +326,6 @@ serverPort = option auto
   $  long "port" <> short 'p'
   <> metavar "INT"
   <> help "server port value"
-
-serverAddress :: O.Parser String
-serverAddress = strOption
-   $ long "address"
-  <> metavar "ADDRESS"
-  <> help ( "Server advertised address, this will soon be removed."
-          <> "Please use option `advertised-address`instead" )
 
 advertisedAddress :: O.Parser String
 advertisedAddress = strOption

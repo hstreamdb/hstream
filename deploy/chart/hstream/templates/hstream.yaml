@@ -62,9 +62,9 @@ spec:
           ordinal=${BASH_REMATCH[1]}
           /usr/local/bin/hstream-server \
             --config-path /etc/hstream/config.yaml \
-            --host 0.0.0.0 --port 6570 \
+            --bind-address 0.0.0.0 --port 6570 \
             --internal-port 6571 \
-            --address $(POD_IP) \
+            --advertised-address $(POD_IP) \
             --seed-nodes {{ include "hstream.seedNodes" . }} \
             --server-id $((100 + $ordinal)) \
             --metastore-uri zk://{{ include "hstream.zookeeper.uri" . }} \

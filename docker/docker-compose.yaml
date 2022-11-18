@@ -29,11 +29,11 @@ services:
         set -e
         /usr/local/script/wait-for-storage.sh hstore-admin-server 6440 zookeeper 2181 600 \
         /usr/local/bin/hstream-server-sid \
-        --host 0.0.0.0 --port 6570 \
+        --bind-address 0.0.0.0 --port 6570 \
         --internal-port 6571 \
         --server-id 100 \
         --seed-nodes "hserver1:6571,hserver2:6571,hserver3:6571" \
-        --address $$(hostname -I | awk '{print $$1}') \
+        --advertised-address $$(hostname -I | awk '{print $$1}') \
         --metastore-uri zk://zookeeper:2181 \
         --store-config /etc/logdevice/logdevice.json \
         --store-admin-host hstore-admin-server --store-admin-port 6440 \
@@ -49,11 +49,11 @@ services:
         set -e
         /usr/local/script/wait-for-storage.sh hstore-admin-server 6440 zookeeper 2181 600 \
         /usr/local/bin/hstream-server-sid \
-        --host 0.0.0.0 --port 6570 \
+        --bind-address 0.0.0.0 --port 6570 \
         --internal-port 6571 \
         --server-id 101 \
         --seed-nodes "hserver1:6571,hserver2:6571,hserver3:6571" \
-        --address $$(hostname -I | awk '{print $$1}') \
+        --advertised-address $$(hostname -I | awk '{print $$1}') \
         --metastore-uri zk://zookeeper:2181 \
         --store-config /etc/logdevice/logdevice.json \
         --store-admin-host hstore-admin-server --store-admin-port 6440 \
@@ -69,11 +69,11 @@ services:
         set -e
         /usr/local/script/wait-for-storage.sh hstore-admin-server 6440 zookeeper 2181 600 \
         /usr/local/bin/hstream-server-sid \
-        --host 0.0.0.0 --port 6570 \
+        --bind-address 0.0.0.0 --port 6570 \
         --internal-port 6571 \
         --server-id 102 \
         --seed-nodes "hserver1:6571,hserver2:6571,hserver3:6571" \
-        --address $$(hostname -I | awk '{print $$1}') \
+        --advertised-address $$(hostname -I | awk '{print $$1}') \
         --metastore-uri zk://zookeeper:2181 \
         --store-config /etc/logdevice/logdevice.json \
         --store-admin-host hstore-admin-server --store-admin-port 6440 \
