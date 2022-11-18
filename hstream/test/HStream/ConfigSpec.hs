@@ -122,7 +122,6 @@ instance ToJSON ServerOpts where
         , "internal-port"   .= _serverInternalPort
         , "seed-nodes"      .= showSeedNodes _seedNodes
         , "metastore-uri"   .= show _metaStore          --TODO
-        , "compression"     .= showCompression _compression --TODO
         , "log-level"       .= show _serverLogLevel  --TODO
         , "log-with-color"  .= _serverLogWithColor
         , "max-record-size" .= _maxRecordSize
@@ -230,7 +229,7 @@ instance Arbitrary ServerOpts where
     let _ldConfigPath   = "/data/store/logdevice.conf"
     let _topicRepFactor = 1
     let _ckpRepFactor   = 3
-    _compression               <- arbitrary
+    let _compression = CompressionNone
     _maxRecordSize             <- arbitrary
     _tlsConfig                 <- arbitrary
     _serverLogLevel            <- read <$> logLevelGen
