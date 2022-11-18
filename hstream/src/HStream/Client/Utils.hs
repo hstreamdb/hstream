@@ -67,6 +67,7 @@ subscriptionWithDefaultSetting subscriptionSubscriptionId subscriptionStreamName
   API.Subscription { subscriptionAckTimeoutSeconds = subAckTimeout
                    , subscriptionMaxUnackedRecords = subMaxUnack
                    , subscriptionOffset = Enumerated (Right API.SpecialOffsetLATEST)
+                   , subscriptionCreationTime = Nothing
                    , ..}
 
 mkClientNormalRequest' :: a -> ClientRequest 'Normal a b
