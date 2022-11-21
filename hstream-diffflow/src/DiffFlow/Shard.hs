@@ -37,6 +37,8 @@ import           DiffFlow.Graph
 import           DiffFlow.Types
 import qualified DiffFlow.Weird          as Weird
 
+import qualified HStream.Logger          as Log
+
 data ChangeBatchAtNodeInput row a = ChangeBatchAtNodeInput
   { cbiChangeBatch   :: DataChangeBatch row a
   , cbiInputFrontier :: Maybe (Frontier a)
@@ -622,10 +624,10 @@ doWork shard@Shard{..} = do
   shardUnprocessedFrontierUpdates' <- readMVar shardUnprocessedFrontierUpdates
   shardNodeStates' <- readMVar shardNodeStates
   if not (L.null shardUnprocessedChangeBatches') then do
-    debug . stringUTF8 $ "=== Working (processChangeBatch)..."
+    Log.trace . stringUTF8 $ "=== Working (processChangeBatch)..."
     processChangeBatch shard else
     if not (L.null shardUnprocessedFrontierUpdates') then do
-      -- debug . stringUTF8 $ "=== Working (processFrontierUpdates)..."
+      Log.trace . stringUTF8 $ "=== Working (processFrontierUpdates)..."
       processFrontierUpdates shard else return ()
 
 popOutput :: (Show a, Show row) => Shard row a -> Node -> IO () -> (DataChangeBatch row a -> IO ()) -> IO ()
@@ -645,7 +647,7 @@ run :: (Hashable a, Ord a, Show a,
         Hashable row, Ord row, Show row, Semigroup row) => Shard row a -> MVar () -> IO ()
 run shard stop = do
   work <- hasWork shard
-  -- debug . stringUTF8 $ "Loop: still has work?" <> show work
+  Log.trace . stringUTF8 $ "Loop: still has work?" <> show work
   case work of
     True  -> do
       doWork shard

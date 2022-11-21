@@ -42,6 +42,7 @@ import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as Store
 import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils
+import           HStream.Utils.Validation         (validateNameAndThrow)
 
 --------------------------------------------------------------------------------
 
@@ -51,11 +52,14 @@ createStreamHandler
   -> IO (ServerResponse 'Normal Stream)
 createStreamHandler sc (ServerNormalRequest _metadata stream) = defaultExceptionHandle $ do
   Log.debug $ "Receive Create Stream Request: " <> Log.buildString' stream
+  validateNameAndThrow $ streamStreamName stream
   C.createStream sc stream >>= returnResp
 
 handleCreateStream :: ServerContext -> G.UnaryHandler Stream Stream
-handleCreateStream sc _ stream = catchDefaultEx $
+handleCreateStream sc _ stream = catchDefaultEx $ do
+  validateNameAndThrow $ streamStreamName stream
   C.createStream sc stream
+
 
 -- DeleteStream have two mod: force delete or normal delete
 -- For normal delete, if current stream have active subscription, the delete request will return error.
@@ -71,11 +75,13 @@ deleteStreamHandler
   -> IO (ServerResponse 'Normal Empty)
 deleteStreamHandler sc (ServerNormalRequest _metadata request) = defaultExceptionHandle $ do
   Log.debug $ "Receive Delete Stream Request: " <> Log.buildString' request
+  validateNameAndThrow $ deleteStreamRequestStreamName request
   C.deleteStream sc request
   returnResp Empty
 
 handleDeleteStream :: ServerContext -> G.UnaryHandler DeleteStreamRequest Empty
-handleDeleteStream sc _ req = catchDefaultEx $
+handleDeleteStream sc _ req = catchDefaultEx $ do
+  validateNameAndThrow $ deleteStreamRequestStreamName req
   C.deleteStream sc req >> pure Empty
 
 listStreamsHandler

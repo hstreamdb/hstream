@@ -182,9 +182,7 @@ showProtocol pid | pid == binaryProtocolId  = "binary"
 emptyCliOptions :: CliOptions
 emptyCliOptions = CliOptions {
     _configPath          = ""
-  , _serverHost_         = Nothing
   , _serverPort_         = Nothing
-  , _serverAddress_      = Nothing
   , _serverBindAddress_      = Nothing
   , _serverGossipAddress_      = Nothing
   , _serverAdvertisedAddress_   = Nothing
@@ -249,9 +247,7 @@ instance Arbitrary ServerOpts where
 instance Arbitrary CliOptions where
   arbitrary = do
     let _configPath = ""
-    _serverHost_         <- genMaybe $ encodeUtf8 . T.pack <$> addressGen
     _serverPort_         <- genMaybe $ fromIntegral <$> portGen
-    _serverAddress_      <- genMaybe addressGen
     _serverBindAddress_  <- genMaybe $ encodeUtf8 . T.pack <$> addressGen
     _serverGossipAddress_     <- genMaybe addressGen
     _serverAdvertisedAddress_ <- genMaybe addressGen
@@ -387,10 +383,10 @@ seedNodesStringGen = T.intercalate ", " <$> listOf5' (T.pack <$> uriGen)
 
 updateServerOptsWithCliOpts :: CliOptions -> ServerOpts -> ServerOpts
 updateServerOptsWithCliOpts CliOptions {..} x@ServerOpts{..} = x {
-    _serverHost = fromMaybe _serverHost (_serverBindAddress_ <|> _serverHost_ )
+    _serverHost = fromMaybe _serverHost _serverBindAddress_
   , _serverPort = port
   , _serverInternalPort = fromMaybe _serverInternalPort _serverInternalPort_
-  , _serverAddress = fromMaybe _serverAddress (_serverAdvertisedAddress_ <|> _serverAddress_)
+  , _serverAddress = fromMaybe _serverAddress _serverAdvertisedAddress_
   , _serverGossipAddress = fromMaybe _serverGossipAddress _serverGossipAddress_
   , _serverAdvertisedListeners = Map.union _serverAdvertisedListeners_ _serverAdvertisedListeners
   , _serverID = fromMaybe _serverID _serverID_

@@ -17,4 +17,4 @@ META_STORE="zk://127.0.0.1:$ZOOKEEPER_PORT"
 
 python3 script/dev-tools shell $EXTRA_OPTS --command "$COMMAND" \
     --container-name $CONTAINER_NAME -i $IMAGE -- \
-    $EXE --config-path "conf/hstream.yaml" --port $SERVER_PORT --log-with-color --store-admin-port $LD_ADMIN_PORT --metastore-uri $META_STORE --server-id $SERVER_ID --address 127.0.0.1
+    $EXE --config-path "conf/hstream.yaml" --port $SERVER_PORT --log-with-color --store-admin-port $LD_ADMIN_PORT --metastore-uri $META_STORE --server-id $SERVER_ID --advertised-address 127.0.0.1
