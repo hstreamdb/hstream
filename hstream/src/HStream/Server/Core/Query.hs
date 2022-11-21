@@ -60,6 +60,7 @@ import qualified HStream.SQL.Codegen              as HSC
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils
+import           HStream.Utils.Validation         (validateNameAndThrow)
 
 -------------------------------------------------------------------------------
 
@@ -87,6 +88,7 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
             _  -> do
               sendResp $ V.map (flowObjectToJsonObject . dcRow) (V.fromList dcbChanges)
     CreateBySelectPlan stream ins out builder factor -> do
+      validateNameAndThrow stream
       let sources = inStream <$> ins
           sink    = stream
       roles_m <- mapM (findIdentifierRole sc) sources
@@ -108,10 +110,12 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
                      relatedStreams
           pure $ API.CommandQueryResponse (mkVectorStruct queryId "stream_query_id")
     CreateViewPlan view ins out builder accumulation -> do
+      validateNameAndThrow view
       P.ViewInfo{viewQuery=P.QueryInfo{..}} <-
         Core.createView' sc view ins out builder accumulation commandQueryStmtText
       pure $ API.CommandQueryResponse (mkVectorStruct queryId "view_query_id")
     CreatePlan stream fac -> do
+      validateNameAndThrow stream
       let s = API.Stream
             { streamStreamName = stream
             , streamReplicationFactor = fromIntegral fac
@@ -120,7 +124,8 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
             }
       Core.createStream sc s
       pure $ API.CommandQueryResponse (mkVectorStruct s "created_stream")
-    CreateConnectorPlan {} -> do
+    CreateConnectorPlan _ cName _ _ _ -> do
+      validateNameAndThrow cName
       void $ IO.createIOTaskFromSql scIOWorker commandQueryStmtText
       pure $ CommandQueryResponse V.empty
     InsertPlan {} -> discard "Append"
