@@ -1,4 +1,5 @@
-FROM hstreamdb/haskell
+ARG HS_TAG=latest
+FROM hstreamdb/haskell:${HS_TAG}
 
 ARG CABAL_MIRROR_NAME="hackage.haskell.org"
 ARG CABAL_MIRROR_URL="http://hackage.haskell.org/"
