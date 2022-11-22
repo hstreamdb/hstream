@@ -162,8 +162,38 @@ benchmark lib-bench
   default-language: Haskell2010
   ghc-options:      -threaded -rtsopts -with-rtsopts=-N
 
-executable throughout-bench
-  main-is:          bench/throughout.hs
+executable throughout-bench-reduce
+  main-is:          bench/throughout-reduce.hs
+  build-depends:
+    , aeson
+    , base                  >=4.11 && <5
+    , diff-flow
+    , hstream-common
+    , time
+    , unordered-containers
+    , Z-Data
+    , Z-IO
+
+  default-language: Haskell2010
+  ghc-options:      -threaded -rtsopts -with-rtsopts=-N
+
+executable throughout-bench-join
+  main-is:          bench/throughout-join.hs
+  build-depends:
+    , aeson
+    , base                  >=4.11 && <5
+    , diff-flow
+    , hstream-common
+    , time
+    , unordered-containers
+    , Z-Data
+    , Z-IO
+
+  default-language: Haskell2010
+  ghc-options:      -threaded -rtsopts -with-rtsopts=-N
+
+executable throughout-bench-map
+  main-is:          bench/throughout-map.hs
   build-depends:
     , aeson
     , base                  >=4.11 && <5
