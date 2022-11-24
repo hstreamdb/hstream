@@ -1,4 +1,6 @@
-module HStream.SQL.Codegen.UnaryOp where
+module HStream.SQL.Codegen.UnaryOp
+  ( unaryOpOnValue
+  ) where
 
 import qualified Data.List                 as L
 import           Data.Scientific
