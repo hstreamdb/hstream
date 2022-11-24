@@ -84,8 +84,8 @@ shardBody isDone reachOut_m reachSummaryOut_m = do
   stop_m <- newEmptyMVar
   forkIO $ run shard stop_m
 
-  forkIO . forever $ popOutput shard reach_out         (\dcb -> modifyMVar_ reachOut_m        (\xs -> return $ xs ++ [dcb]))
-  forkIO . forever $ popOutput shard reach_summary_out (\dcb -> modifyMVar_ reachSummaryOut_m (\xs -> return $ xs ++ [dcb]))
+  forkIO . forever $ popOutput shard reach_out         (threadDelay 1000000) (\dcb -> modifyMVar_ reachOut_m        (\xs -> return $ xs ++ [dcb]))
+  forkIO . forever $ popOutput shard reach_summary_out (threadDelay 1000000) (\dcb -> modifyMVar_ reachSummaryOut_m (\xs -> return $ xs ++ [dcb]))
 
   threadDelay 1000000
 

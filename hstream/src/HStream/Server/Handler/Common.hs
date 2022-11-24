@@ -176,7 +176,7 @@ runTask ctx@ServerContext{..} taskName sink insWithRole outWithRole graphBuilder
   -- third loop: push output from OUTPUT node to output stream
   let (out, outRole) = outWithRole
   forever (do
-    DiffFlow.popOutput shard (outNode out) $ \dcb@DiffFlow.DataChangeBatch{..} -> do
+    DiffFlow.popOutput shard (outNode out) (threadDelay 100000) $ \dcb@DiffFlow.DataChangeBatch{..} -> do
       Log.debug . Log.buildString $ "~~~ POPOUT: " <> show dcb
       case outRole of
         RoleStream -> do
@@ -240,11 +240,10 @@ runImmTask ctx@ServerContext{..} insWithRole out out_m graphBuilder = do
 
   -- push output from OUTPUT node
   replicateM_ 5 $ do
-    DiffFlow.popOutput shard (outNode out) $ \dcb@DiffFlow.DataChangeBatch{..} -> do
+    DiffFlow.popOutput shard (outNode out) (threadDelay 100000) $ \dcb@DiffFlow.DataChangeBatch{..} -> do
       Log.debug . Log.buildString $ "~~~ POPOUT: " <> show dcb
       modifyMVar_ out_m
         (\old -> return $ DiffFlow.updateDataChangeBatch' old (\xs -> xs ++ dcbChanges))
-      threadDelay 100000
 
   -- stop DiffFlow.run
   putMVar stop_m ()

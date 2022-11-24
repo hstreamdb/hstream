@@ -83,6 +83,7 @@ main = do
       advanceInput shard inNode (Timestamp ts [])
 
     forkIO . forever $ popOutput shard outNode
+      (threadDelay 1000000)
       (\dcb -> do
           let lastChange = last $ dcbChanges dcb
           let (Number x) = (dcRow lastChange) A.! "cnt"
