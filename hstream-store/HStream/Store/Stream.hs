@@ -161,7 +161,7 @@ import qualified HStream.Store.Internal.Types     as FFI
 import           HStream.Utils                    (genUnique)
 
 -- Comment this to disable local cache
-#define HSTREAM_USE_LOCAL_STREAM_CACHE
+-- #define HSTREAM_USE_LOCAL_STREAM_CACHE
 
 #ifdef HSTREAM_USE_LOCAL_STREAM_CACHE
 import           Control.Concurrent               (MVar, modifyMVar_, newMVar,
