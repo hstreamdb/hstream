@@ -1,4 +1,6 @@
-module HStream.SQL.Codegen.BinOp where
+module HStream.SQL.Codegen.BinOp
+  ( binOpOnValue
+  ) where
 
 import qualified Data.List                 as L
 import           Data.Scientific

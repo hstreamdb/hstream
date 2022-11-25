@@ -27,6 +27,7 @@ import qualified RIO.ByteString.Lazy         as BL
 
 import           HStream.SQL.AST
 import           HStream.SQL.Codegen.BinOp
+import           HStream.SQL.Codegen.Cast
 import           HStream.SQL.Codegen.JsonOp
 import           HStream.SQL.Codegen.SKey
 import           HStream.SQL.Codegen.UnaryOp
@@ -297,13 +298,7 @@ elabRValueExpr expr grp startBuilder subgraph startNode = case expr of
 mkCastMapper :: RDataType -> Text -> Mapper Row
 mkCastMapper typ field =
   Mapper $ \o -> let [(_,v)] = HM.toList o
-                     v' = case typ of
-                       RTypeInteger -> case v of
-                         FlowInt n -> FlowInt n
-                         FlowFloat n -> FlowInt (floor n)
-                         FlowNumeral n -> FlowInt (floor $ toRealFloat n)
-                         _ -> throwSQLException CodegenException Nothing ("Can not convert value " <> show v <> " to type " <> show typ)
-                       _            ->  throwSQLException CodegenException Nothing ("Can not convert to type " <> show typ)
+                     v' = castOnValue typ v
                   in HM.fromList [(SKey field Nothing Nothing, v')]
 
 mkConstantMapper :: Constant -> Mapper Row

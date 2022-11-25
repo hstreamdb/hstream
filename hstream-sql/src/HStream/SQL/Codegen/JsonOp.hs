@@ -1,4 +1,6 @@
-module HStream.SQL.Codegen.JsonOp where
+module HStream.SQL.Codegen.JsonOp
+  ( jsonOpOnObject
+  ) where
 
 import qualified Data.HashMap.Lazy        as HM
 import qualified Data.List                as L
