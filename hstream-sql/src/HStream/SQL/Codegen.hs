@@ -37,11 +37,16 @@ import           HStream.SQL.Codegen.Cast
 import           HStream.SQL.Codegen.JsonOp
 import           HStream.SQL.Codegen.SKey
 import           HStream.SQL.Codegen.UnaryOp
+import           HStream.SQL.Codegen.Utils   (destructSingletonFlowObject)
 import           HStream.SQL.Exception       (SomeSQLException (..),
                                               throwSQLException)
 import           HStream.SQL.Parse           (parseAndRefine)
 import           HStream.Utils               (cBytesToText, jsonObjectToStruct)
 import qualified HStream.Utils.Aeson         as HsAeson
+
+import           DiffFlow.Error
+import           DiffFlow.Graph
+import           DiffFlow.Types
 
 --------------------------------------------------------------------------------
 type Row = FlowObject
@@ -236,21 +241,33 @@ elabRValueExpr expr grp startBuilder subgraph startNode = case expr of
   RExprAccessArray name earr rhs -> do
     (builder1, ins, Out out) <-
       elabRValueExpr earr grp startBuilder subgraph startNode
-    let mapper = Mapper $ \o -> let (FlowArray arr) = L.head (HM.elems o)
-                                 in case rhs of
-                   RArrayAccessRhsIndex n -> HM.fromList [(SKey (T.pack name) Nothing Nothing, arr L.!! n)]
-                   RArrayAccessRhsRange start_m end_m ->
-                     let start = fromMaybe 0 start_m
-                         end   = fromMaybe (maxBound :: Int) end_m
-                      in HM.fromList [(SKey (T.pack name) Nothing Nothing, FlowArray (L.drop start (L.take end arr)))]
+    let mapper = Mapper $ \o ->
+          let errObject = HM.fromList [(SKey (T.pack name) Nothing Nothing, FlowNull)]
+           in case destructSingletonFlowObject o of
+                Left e -> Left (e, errObject)
+                Right (_,FlowArray arr) ->
+                  case rhs of
+                    RArrayAccessRhsIndex n ->
+                      if n >= 0 && n < L.length arr then
+                        Right $ HM.fromList [(SKey (T.pack name) Nothing Nothing, arr L.!! n)] else
+                        let e = RunShardError "Access array operator: out of bound"
+                         in Left (e, errObject)
+                    RArrayAccessRhsRange start_m end_m ->
+                      let start = fromMaybe 0 start_m
+                          end   = fromMaybe (maxBound :: Int) end_m
+                      in if start >= 0 && end < L.length arr then
+                           Right $ HM.fromList [(SKey (T.pack name) Nothing Nothing, FlowArray (L.drop start (L.take (end+1) arr)))] else
+                           let e = RunShardError "Access array operator: out of bound"
+                            in Left (e, errObject)
     let (builder2, node) =
           addNode builder1 subgraph (MapSpec out mapper)
     return (builder2, ins, Out node)
   RExprCol name stream_m field -> do
     let mapper = Mapper $
           \o -> case getField field stream_m Nothing o of
-                  Nothing       -> HM.fromList [(SKey field stream_m Nothing, FlowNull)]
-                  Just (skey,v) -> HM.fromList [(skey, v)]
+                  Nothing       -> let e = RunShardError $ "ExprCol: can not find field " <> T.pack name
+                                    in Left (e, HM.fromList [(SKey field stream_m Nothing, FlowNull)])
+                  Just (skey,v) -> Right $ HM.fromList [(skey, v)]
     let (builder1, node) =
           addNode startBuilder subgraph (MapSpec startNode mapper)
     return (builder1, [], Out node)
@@ -298,39 +315,51 @@ elabRValueExpr expr grp startBuilder subgraph startNode = case expr of
 
 mkCastMapper :: RDataType -> Text -> Mapper Row
 mkCastMapper typ field =
-  Mapper $ \o -> let [(_,v)] = HM.toList o
-                     v' = castOnValue typ v
-                  in HM.fromList [(SKey field Nothing Nothing, v')]
+  Mapper $ \o -> let errObject = HM.fromList [(SKey field Nothing Nothing, FlowNull)]
+                  in case destructSingletonFlowObject o of
+                       Left e      -> Left (e, errObject)
+                       Right (_,v) -> case castOnValue typ v of
+                                        Left e   -> Left (e, errObject)
+                                        Right v' -> Right $ HM.fromList [(SKey field Nothing Nothing, v')]
 
 mkConstantMapper :: Constant -> Mapper Row
 mkConstantMapper constant =
   let v = constantToFlowValue constant
    in case constant of
-        ConstantNull -> Mapper $ \_ -> HM.fromList [(SKey "null" Nothing Nothing, v)]
-        ConstantInt n -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show n)) Nothing Nothing, v)]
-        ConstantFloat n -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show n)) Nothing Nothing, v)]
-        ConstantNumeric n -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show n)) Nothing Nothing, v)]
-        ConstantText t -> Mapper $ \_ -> HM.fromList [(SKey t Nothing Nothing, v)]
-        ConstantBoolean b -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show b)) Nothing Nothing, v)]
-        ConstantDate d -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show d)) Nothing Nothing, v)]
-        ConstantTime t -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show t)) Nothing Nothing, v)]
-        ConstantTimestamp ts -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show ts)) Nothing Nothing, v)]
-        ConstantInterval i -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show i)) Nothing Nothing, v)]
-        ConstantBytea bs -> Mapper $ \_ -> HM.fromList [(SKey (cBytesToText bs) Nothing Nothing, v)]
-        ConstantJsonb json -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show json)) Nothing Nothing, v)]
-        ConstantArray arr -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show arr)) Nothing Nothing, v)]
-        ConstantMap m -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show m)) Nothing Nothing, v)]
+        ConstantNull         -> Mapper $ \_ -> Right $ HM.fromList [(SKey "null" Nothing Nothing, v)]
+        ConstantInt n        -> Mapper $ \_ -> Right $ HM.fromList [(SKey (T.pack (show n)) Nothing Nothing, v)]
+        ConstantFloat n      -> Mapper $ \_ -> Right $ HM.fromList [(SKey (T.pack (show n)) Nothing Nothing, v)]
+        ConstantNumeric n    -> Mapper $ \_ -> Right $ HM.fromList [(SKey (T.pack (show n)) Nothing Nothing, v)]
+        ConstantText t       -> Mapper $ \_ -> Right $ HM.fromList [(SKey t Nothing Nothing, v)]
+        ConstantBoolean b    -> Mapper $ \_ -> Right $ HM.fromList [(SKey (T.pack (show b)) Nothing Nothing, v)]
+        ConstantDate d       -> Mapper $ \_ -> Right $ HM.fromList [(SKey (T.pack (show d)) Nothing Nothing, v)]
+        ConstantTime t       -> Mapper $ \_ -> Right $ HM.fromList [(SKey (T.pack (show t)) Nothing Nothing, v)]
+        ConstantTimestamp ts -> Mapper $ \_ -> Right $ HM.fromList [(SKey (T.pack (show ts)) Nothing Nothing, v)]
+        ConstantInterval i   -> Mapper $ \_ -> Right $ HM.fromList [(SKey (T.pack (show i)) Nothing Nothing, v)]
+        ConstantBytea bs     -> Mapper $ \_ -> Right $ HM.fromList [(SKey (cBytesToText bs) Nothing Nothing, v)]
+        ConstantJsonb json   -> Mapper $ \_ -> Right $ HM.fromList [(SKey (T.pack (show json)) Nothing Nothing, v)]
+        ConstantArray arr    -> Mapper $ \_ -> Right $ HM.fromList [(SKey (T.pack (show arr)) Nothing Nothing, v)]
+        ConstantMap m        -> Mapper $ \_ -> Right $ HM.fromList [(SKey (T.pack (show m)) Nothing Nothing, v)]
 
 mkUnaryOpMapper :: UnaryOp -> Text -> Mapper Row
 mkUnaryOpMapper op field =
-  Mapper $ \o -> let [(_,v)] = HM.toList o
-                  in HM.fromList [(SKey field Nothing Nothing, unaryOpOnValue op v)]
+  Mapper $ \o -> let errObject = HM.fromList [(SKey field Nothing Nothing, FlowNull)]
+                  in case destructSingletonFlowObject o of
+                       Left e      -> Left (e, errObject)
+                       Right (_,v) -> case unaryOpOnValue op v of
+                                        Left e   -> Left (e, errObject)
+                                        Right v' -> Right $ HM.fromList [(SKey field Nothing Nothing, v')]
 
 mkBinaryOpMapper :: BinaryOp -> Text -> Mapper Row
 mkBinaryOpMapper op field =
-  Mapper $ \o -> let [(_,v1)] = HM.toList $ getExtra "__op1__" o
-                     [(_,v2)] = HM.toList $ getExtra "__op2__" o
-                  in HM.fromList [(SKey field Nothing Nothing, binOpOnValue op v1 v2)]
+  Mapper $ \o -> let errObject = HM.fromList [(SKey field Nothing Nothing, FlowNull)]
+                  in case destructSingletonFlowObject (getExtra "__op1__" o) of
+                       Left e       -> Left (e, errObject)
+                       Right (_,v1) -> case destructSingletonFlowObject (getExtra "__op2__" o) of
+                         Left e       -> Left (e, errObject)
+                         Right (_,v2) -> case binOpOnValue op v1 v2 of
+                           Left e   -> Left (e, errObject)
+                           Right v' -> Right $ HM.fromList [(SKey field Nothing Nothing, v')]
 
 -- For alias test:
 -- SELECT res.r1 AS mm, res.r2 AS nn FROM (SELECT s01.a AS r1, SUM(s02.c) AS r2 FROM s01 JOIN s02 ON TRUE GROUP BY s02.a) AS res;
@@ -345,7 +374,7 @@ elabRTableRef ref grp startBuilder subgraph =
           let out = Out { outNode = node }
           return (builder, [inner], out)
         Just s  -> do
-          let mapper = Mapper $ \o -> makeSKeyStream s o
+          let mapper = Mapper $ \o -> Right $ makeSKeyStream s o
               (builder', node') = addNode builder subgraph (MapSpec node mapper)
           let out = Out { outNode = node' }
           return (builder', [inner], out)
@@ -354,7 +383,7 @@ elabRTableRef ref grp startBuilder subgraph =
       case alias_m of
         Nothing -> return (builder, ins, out)
         Just s  -> do
-          let mapper = Mapper $ \o -> makeSKeyStream s o
+          let mapper = Mapper $ \o -> Right $ makeSKeyStream s o
               (builder', node') = addNode builder subgraph (MapSpec (outNode out) mapper)
           let out = Out { outNode = node' }
           return (builder', ins, out)
@@ -372,7 +401,7 @@ elabRTableRef ref grp startBuilder subgraph =
       case alias_m of
         Nothing -> return (builder, L.nub (ins1++ins2), Out node)
         Just s  -> do
-          let mapper = Mapper $ \o -> makeSKeyStream s o
+          let mapper = Mapper $ \o -> Right $ makeSKeyStream s o
               (builder', node') = addNode builder subgraph (MapSpec node mapper)
           let out = Out { outNode = node' }
           return (builder', L.nub (ins1++ins2), out)
@@ -397,7 +426,7 @@ elabRTableRef ref grp startBuilder subgraph =
       case alias_m of
         Nothing -> return (builder, L.nub (ins1++ins2), Out node)
         Just s  -> do
-          let mapper = Mapper $ \o -> makeSKeyStream s o
+          let mapper = Mapper $ \o -> Right $ makeSKeyStream s o
               (builder', node') = addNode builder subgraph (MapSpec node mapper)
           let out = Out { outNode = node' }
           return (builder', L.nub (ins1++ins2), out)
@@ -436,7 +465,7 @@ elabRTableRef ref grp startBuilder subgraph =
       case alias_m of
         Nothing -> return (builder8, L.nub (ins1++ins2++ins4), Out node)
         Just s  -> do
-          let mapper = Mapper $ \o -> makeSKeyStream s o
+          let mapper = Mapper $ \o -> Right $ makeSKeyStream s o
               (builder', node') = addNode builder8 subgraph (MapSpec node mapper)
           let out = Out { outNode = node' }
           return (builder',  L.nub (ins1++ins2++ins4), out)
@@ -460,7 +489,7 @@ elabRTableRef ref grp startBuilder subgraph =
       case alias_m of
         Nothing -> return (builder5, L.nub (ins1++ins2), Out node)
         Just s  -> do
-          let mapper = Mapper $ \o -> makeSKeyStream s o
+          let mapper = Mapper $ \o -> Right $ makeSKeyStream s o
               (builder', node') = addNode builder5 subgraph (MapSpec node mapper)
           let out = Out { outNode = node' }
           return (builder', L.nub (ins1++ins2), out)
@@ -470,7 +499,7 @@ elabRTableRef ref grp startBuilder subgraph =
       case alias_m of
         Nothing -> return (builder1, ins', out)
         Just s  -> do
-          let mapper = Mapper $ \o -> makeSKeyStream s o
+          let mapper = Mapper $ \o -> Right $ makeSKeyStream s o
               (builder', node') = addNode builder1 subgraph (MapSpec (outNode out) mapper)
           let out = Out { outNode = node' }
           return (builder', ins', out)
@@ -513,7 +542,7 @@ elabAggregate agg grp startBuilder subgraph startNode exprName =
       let reducer = Reducer aggregateF
           keygen = elabGroupBy grp
       let (builder_2, reduced) = addNode builder_1 subgraph (ReduceSpec indexed aggregateInit keygen reducer)
-      let mapper = Mapper $ \o -> discardExtra "__reduce_key__" o
+      let mapper = Mapper $ \o -> Right $ discardExtra "__reduce_key__" o
           (builder_3, node) = addNode builder_2 subgraph (MapSpec reduced mapper)
       return (builder_3, [], Out node)
     Unary _ expr -> do
@@ -533,7 +562,7 @@ elabAggregate agg grp startBuilder subgraph startNode exprName =
       let reducer = Reducer aggregateF
           keygen = elabGroupBy grp
       let (builder_4, reduced) = addNode builder_3 subgraph (ReduceSpec indexed aggregateInit keygen reducer)
-      let mapper = Mapper $ \o -> discardExtra "__reduce_key__" o
+      let mapper = Mapper $ \o -> Right $ discardExtra "__reduce_key__" o
           (builder_5, node) = addNode builder_4 subgraph (MapSpec reduced mapper)
       return (builder_5, ins, Out node)
     Binary _ expr1 expr2 -> do
@@ -558,7 +587,7 @@ elabAggregate agg grp startBuilder subgraph startNode exprName =
       let reducer = Reducer aggregateF
           keygen = elabGroupBy grp
       let (builder_5, reduced) = addNode builder_4 subgraph (ReduceSpec indexed aggregateInit keygen reducer)
-      let mapper = Mapper $ \o -> discardExtra "__reduce_key__" o
+      let mapper = Mapper $ \o -> Right $ discardExtra "__reduce_key__" o
           (builder_6, node) = addNode builder_5 subgraph (MapSpec reduced mapper)
       return (builder_6, L.nub (ins1++ins2), Out node)
 
@@ -667,7 +696,7 @@ elabRWhere whr grp startBuilder subgraph startNode = case whr of
            in case HM.toList oexpr of
                 [(_, FlowBoolean True)] -> True
                 _                       -> False
-    let mapper = Mapper $ \o -> getExtraAndReset "__from__" o
+    let mapper = Mapper $ \o -> Right $ getExtraAndReset "__from__" o
     let (builder_3, filtered) = addNode builder_2 subgraph (FilterSpec composed filter)
     let (builder_4, mapped) = addNode builder_3 subgraph (MapSpec filtered mapper)
     return (builder_4, ins, Out mapped)
@@ -696,7 +725,7 @@ elabRSelectItem item grp startBuilder subgraph startNode =
         Nothing -> return (builder_1, ins, Out node_expr)
         Just alias -> do
           let mapper = Mapper $ \o ->
-                HM.mapKeys (\(SKey f s_m extra_m) -> SKey alias s_m extra_m) o
+                Right $ HM.mapKeys (\(SKey f s_m extra_m) -> SKey alias s_m extra_m) o
           let (builder_2, node) = addNode builder_1 subgraph (MapSpec node_expr mapper)
           return (builder_2, ins, Out node)
     RSelectItemAggregate agg alias_m -> do
@@ -705,12 +734,12 @@ elabRSelectItem item grp startBuilder subgraph startNode =
         Nothing -> return (builder_1, ins, Out node_agg)
         Just alias -> do
           let mapper = Mapper $ \o ->
-                HM.mapKeys (\(SKey f s_m extra_m) -> SKey alias s_m extra_m) o
+                Right $ HM.mapKeys (\(SKey f s_m extra_m) -> SKey alias s_m extra_m) o
           let (builder_2, node) = addNode builder_1 subgraph (MapSpec node_agg mapper)
           return (builder_2, ins, Out node)
     RSelectProjectQualifiedAll s -> do
       let mapper = Mapper $ \o ->
-            HM.filterWithKey (\(SKey f s_m extra_m) v -> s_m == Just s) o
+            Right $ HM.filterWithKey (\(SKey f s_m extra_m) v -> s_m == Just s) o
       let (builder_1, node) = addNode startBuilder subgraph (MapSpec startNode mapper)
       return (builder_1, [], Out node)
     RSelectProjectAll -> return (startBuilder, [], Out startNode)

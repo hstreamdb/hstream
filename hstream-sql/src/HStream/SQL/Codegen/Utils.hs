@@ -7,6 +7,7 @@ module HStream.SQL.Codegen.Utils where
 import           Data.Function         ((&))
 import           Data.List             (foldl')
 import           Data.Maybe            (fromMaybe)
+import qualified Data.HashMap.Strict   as HM
 import           Data.Scientific
 import           Data.Text             (Text)
 import qualified Data.Text             as T
@@ -18,6 +19,8 @@ import           HStream.Utils
 import           Text.StringRandom     (stringRandomIO)
 import qualified Z.Data.CBytes         as ZCB
 import           Z.IO.Time
+
+import           DiffFlow.Error
 
 funcOnScientific :: RealFloat a => (a -> a) -> Scientific -> Scientific
 funcOnScientific f = fromFloatDigits . f . toRealFloat
@@ -76,3 +79,10 @@ timeFmt fmt
 
 genRandomSinkStream :: IO Text
 genRandomSinkStream = stringRandomIO "[a-zA-Z]{20}"
+
+--------------------------------------------------------------------------------
+destructSingletonFlowObject :: FlowObject -> Either DiffFlowError (SKey,FlowValue)
+destructSingletonFlowObject o =
+  case HM.toList o of
+    [(k,v)] -> Right (k,v)
+    _       -> Left . RunShardError $ "Error on object " <> T.pack (show o) <> ": not a singleton FlowObject type. If you believe you are right, please report this as a bug."

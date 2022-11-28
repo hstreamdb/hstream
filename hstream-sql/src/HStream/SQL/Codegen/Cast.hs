@@ -9,12 +9,13 @@ import           Data.Scientific
 import qualified Data.Text                      as T
 import           Data.Time
 import           Data.Time.Calendar.OrdinalDate (fromOrdinalDate)
+import           DiffFlow.Error
 import           HStream.SQL.AST
 import           HStream.SQL.Exception
 import qualified Z.Data.CBytes                  as CB
 
 --------------------------------------------------------------------------------
-castOnValue :: RDataType -> FlowValue -> FlowValue
+castOnValue :: RDataType -> FlowValue -> Either DiffFlowError FlowValue
 castOnValue RTypeInteger     v = cast_integer v
 castOnValue RTypeFloat       v = cast_float v
 castOnValue RTypeNumeric     v = cast_numeric v
@@ -30,102 +31,108 @@ castOnValue (RTypeArray t)   v = cast_array t v
 castOnValue (RTypeMap kt vt) v = cast_map kt vt v
 
 --------------------------------------------------------------------------------
-cast_integer :: FlowValue -> FlowValue
-cast_integer (FlowInt n) = FlowInt n
-cast_integer (FlowFloat n) = FlowInt (floor n)
-cast_integer (FlowNumeral n) = FlowInt (floor (toRealFloat n :: Double))
+cast_integer :: FlowValue -> Either DiffFlowError FlowValue
+cast_integer (FlowInt n) = Right $ FlowInt n
+cast_integer (FlowFloat n) = Right $ FlowInt (floor n)
+cast_integer (FlowNumeral n) = Right $ FlowInt (floor (toRealFloat n :: Double))
 cast_integer v =
-  throwRuntimeException $ "Can not cast value <" <> show v <> "> to type <Integer>"
+  Left . RunShardError $ "Can not cast value <" <> T.pack (show v) <> "> to type <Integer>"
 
-cast_float :: FlowValue -> FlowValue
-cast_float (FlowInt n) = FlowFloat (fromIntegral n)
-cast_float (FlowFloat n) = FlowFloat n
-cast_float (FlowNumeral n) = FlowFloat (toRealFloat n)
+cast_float :: FlowValue -> Either DiffFlowError FlowValue
+cast_float (FlowInt n) = Right $ FlowFloat (fromIntegral n)
+cast_float (FlowFloat n) = Right $ FlowFloat n
+cast_float (FlowNumeral n) = Right $ FlowFloat (toRealFloat n)
 cast_float v =
-  throwRuntimeException $ "Can not cast value <" <> show v <> "> to type <Float>"
+  Left . RunShardError $ "Can not cast value <" <> T.pack (show v) <> "> to type <Float>"
 
-cast_numeric :: FlowValue -> FlowValue
-cast_numeric (FlowInt n) = FlowNumeral (scientific (fromIntegral n) 0)
-cast_numeric (FlowFloat n) = FlowNumeral (fromFloatDigits n)
-cast_numeric (FlowNumeral n) = FlowNumeral n
+cast_numeric :: FlowValue -> Either DiffFlowError FlowValue
+cast_numeric (FlowInt n) = Right $ FlowNumeral (scientific (fromIntegral n) 0)
+cast_numeric (FlowFloat n) = Right $ FlowNumeral (fromFloatDigits n)
+cast_numeric (FlowNumeral n) = Right $ FlowNumeral n
 cast_numeric v =
-  throwRuntimeException $ "Can not cast value <" <> show v <> "> to type <Numeric>"
+  Left . RunShardError $ "Can not cast value <" <> T.pack (show v) <> "> to type <Numeric>"
 
-cast_boolean :: FlowValue -> FlowValue
-cast_boolean (FlowBoolean b) = FlowBoolean b
+cast_boolean :: FlowValue -> Either DiffFlowError FlowValue
+cast_boolean (FlowBoolean b) = Right $ FlowBoolean b
 cast_boolean v =
-  throwRuntimeException $ "Can not cast value <" <> show v <> "> to type <Boolean>"
+  Left . RunShardError $ "Can not cast value <" <> T.pack (show v) <> "> to type <Boolean>"
 
-cast_byte :: FlowValue -> FlowValue
-cast_byte (FlowByte b) = FlowByte b
+cast_byte :: FlowValue -> Either DiffFlowError FlowValue
+cast_byte (FlowByte b) = Right $ FlowByte b
 cast_byte v =
-  throwRuntimeException $ "Can not cast value <" <> show v <> "> to type <Bytea>"
+  Left . RunShardError $ "Can not cast value <" <> T.pack (show v) <> "> to type <Bytea>"
 
-cast_text :: FlowValue -> FlowValue
-cast_text FlowNull           = FlowText "NULL"
-cast_text (FlowInt n)        = FlowText (T.pack . show $ n)
-cast_text (FlowFloat n)      = FlowText (T.pack . show $ n)
-cast_text (FlowNumeral n)    = FlowText (T.pack . show $ n)
-cast_text (FlowBoolean b)    = FlowText (T.pack . show $ b)
-cast_text (FlowByte cb)      = FlowText (T.pack . show . CB.toBytes $ cb)
-cast_text (FlowText t)       = FlowText t
-cast_text (FlowDate d)       = FlowText (T.pack . show $ d)
-cast_text (FlowTime t)       = FlowText (T.pack . show $ t)
-cast_text (FlowTimestamp ts) = FlowText (T.pack . show $ ts)
-cast_text (FlowInterval d)   = FlowText (T.pack . show $ d)
-cast_text (FlowJson o)       = FlowText (T.pack . show $ o)
-cast_text (FlowArray arr)    = FlowText (T.pack . show $ arr)
-cast_text (FlowMap m)        = FlowText (T.pack . show $ m)
-cast_text (FlowSubObject o)  = FlowText (T.pack . show $ o)
+cast_text :: FlowValue -> Either DiffFlowError FlowValue
+cast_text FlowNull           = Right $ FlowText "NULL"
+cast_text (FlowInt n)        = Right $ FlowText (T.pack . show $ n)
+cast_text (FlowFloat n)      = Right $ FlowText (T.pack . show $ n)
+cast_text (FlowNumeral n)    = Right $ FlowText (T.pack . show $ n)
+cast_text (FlowBoolean b)    = Right $ FlowText (T.pack . show $ b)
+cast_text (FlowByte cb)      = Right $ FlowText (T.pack . show . CB.toBytes $ cb)
+cast_text (FlowText t)       = Right $ FlowText t
+cast_text (FlowDate d)       = Right $ FlowText (T.pack . show $ d)
+cast_text (FlowTime t)       = Right $ FlowText (T.pack . show $ t)
+cast_text (FlowTimestamp ts) = Right $ FlowText (T.pack . show $ ts)
+cast_text (FlowInterval d)   = Right $ FlowText (T.pack . show $ d)
+cast_text (FlowJson o)       = Right $ FlowText (T.pack . show $ o)
+cast_text (FlowArray arr)    = Right $ FlowText (T.pack . show $ arr)
+cast_text (FlowMap m)        = Right $ FlowText (T.pack . show $ m)
+cast_text (FlowSubObject o)  = Right $ FlowText (T.pack . show $ o)
 
-cast_date :: FlowValue -> FlowValue
-cast_date (FlowDate d) = FlowDate d
-cast_date (FlowTimestamp ts) = FlowDate (utctDay . zonedTimeToUTC $ ts)
+cast_date :: FlowValue -> Either DiffFlowError FlowValue
+cast_date (FlowDate d) = Right $ FlowDate d
+cast_date (FlowTimestamp ts) = Right $ FlowDate (utctDay . zonedTimeToUTC $ ts)
 cast_date v =
   throwRuntimeException $ "Can not cast value <" <> show v <> "> to type <Date>"
 
-cast_time :: FlowValue -> FlowValue
-cast_time (FlowTime t) = FlowTime t
-cast_time (FlowTimestamp ts) = FlowTime (timeToTimeOfDay . utctDayTime . zonedTimeToUTC $ ts)
+cast_time :: FlowValue -> Either DiffFlowError FlowValue
+cast_time (FlowTime t) = Right $ FlowTime t
+cast_time (FlowTimestamp ts) = Right $ FlowTime (timeToTimeOfDay . utctDayTime . zonedTimeToUTC $ ts)
 cast_time v =
-  throwRuntimeException $ "Can not cast value <" <> show v <> "> to type <Time>"
+  Left . RunShardError $ "Can not cast value <" <> T.pack (show v) <> "> to type <Time>"
 
-cast_timestamp :: FlowValue -> FlowValue
-cast_timestamp (FlowTimestamp ts) = FlowTimestamp ts
+cast_timestamp :: FlowValue -> Either DiffFlowError FlowValue
+cast_timestamp (FlowTimestamp ts) = Right $ FlowTimestamp ts
 cast_timestamp (FlowDate d) =
   let utcTime = UTCTime{utctDay = d, utctDayTime = 0}
-   in FlowTimestamp (utcToZonedTime utc utcTime)
+   in Right $ FlowTimestamp (utcToZonedTime utc utcTime)
 cast_timestamp (FlowTime t) =
   let utcTime = UTCTime{utctDay = fromOrdinalDate 1970 1, utctDayTime = timeOfDayToTime t}
-   in FlowTimestamp (utcToZonedTime utc utcTime)
+   in Right $ FlowTimestamp (utcToZonedTime utc utcTime)
 cast_timestamp v =
-  throwRuntimeException $ "Can not cast value <" <> show v <> "> to type <Timestamp>"
+  Left . RunShardError $ "Can not cast value <" <> T.pack (show v) <> "> to type <Timestamp>"
 
-cast_interval :: FlowValue -> FlowValue
-cast_interval (FlowInterval i) = FlowInterval i
+cast_interval :: FlowValue -> Either DiffFlowError FlowValue
+cast_interval (FlowInterval i) = Right $ FlowInterval i
 cast_interval (FlowInt n) =
   let cd = CalendarDiffTime{ ctMonths = 0, ctTime = fromIntegral n }
-   in FlowInterval cd
+   in Right $ FlowInterval cd
 cast_interval (FlowFloat n) =
   let cd = CalendarDiffTime{ ctMonths = 0, ctTime = realToFrac n }
-   in FlowInterval cd
+   in Right $ FlowInterval cd
 cast_interval (FlowNumeral n) =
   let cd = CalendarDiffTime{ ctMonths = 0, ctTime = fromRational . toRational $ n }
-   in FlowInterval cd
+   in Right $ FlowInterval cd
 cast_interval v =
-  throwRuntimeException $ "Can not cast value <" <> show v <> "> to type <Interval>"
+  Left . RunShardError $ "Can not cast value <" <> T.pack (show v) <> "> to type <Interval>"
 
-cast_json :: FlowValue -> FlowValue
-cast_json (FlowJson o) = FlowJson o
+cast_json :: FlowValue -> Either DiffFlowError FlowValue
+cast_json (FlowJson o) = Right $ FlowJson o
 cast_json v =
-  throwRuntimeException $ "Can not cast value <" <> show v <> "> to type <Jsonb>"
+  Left . RunShardError $ "Can not cast value <" <> T.pack (show v) <> "> to type <Jsonb>"
 
-cast_array :: RDataType -> FlowValue -> FlowValue
-cast_array typ (FlowArray vs) = FlowArray (castOnValue typ <$> vs)
+cast_array :: RDataType -> FlowValue -> Either DiffFlowError FlowValue
+cast_array typ (FlowArray vs) = do
+  vs' <- mapM (castOnValue typ) vs
+  Right $ FlowArray vs'
 cast_array typ v =
-  throwRuntimeException $ "Can not cast value <" <> show v <> "> to type <[" <> show typ <> "]>"
+  Left . RunShardError $ "Can not cast value <" <> T.pack (show v) <> "> to type <[" <> T.pack (show typ) <> "]>"
 
-cast_map :: RDataType -> RDataType -> FlowValue -> FlowValue
-cast_map kt vt (FlowMap m) = FlowMap (Map.mapKeys (castOnValue kt) (Map.map (castOnValue vt) m))
+cast_map :: RDataType -> RDataType -> FlowValue -> Either DiffFlowError FlowValue
+cast_map kt vt (FlowMap m) = do
+  let (ks,vs) = unzip $ Map.toList m
+  ks' <- mapM (castOnValue kt) ks
+  vs' <- mapM (castOnValue vt) vs
+  Right . FlowMap $ Map.fromList (zip ks' vs')
 cast_map kt vt v =
-  throwRuntimeException $ "Can not cast value <" <> show v <> "> to type Map[" <> show kt <> "=>" <> show vt <> "]"
+  Left . RunShardError $ "Can not cast value <" <> T.pack (show v) <> "> to type Map[" <> T.pack (show kt) <> "=>" <> T.pack (show vt) <> "]"
