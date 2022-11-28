@@ -32,8 +32,8 @@ joinMany startBuilder subgraph ins =
 
 main :: IO ()
 main = do
-  let mapper_1 = Mapper (\row -> A.fromList [("a", row A.! "a")])
-      mapper_2 = Mapper (\row -> A.fromList [("b", row A.! "b")])
+  let mapper_1 = Mapper (\row -> Right $ A.fromList [("a", row A.! "a")])
+      mapper_2 = Mapper (\row -> Right $ A.fromList [("b", row A.! "b")])
       composer = Composer (\rows -> foldl1 (\acc x -> acc <> x) rows)
       reducer = Reducer (\acc row -> let (Number x) = row A.! "b"
                                          [(_, Number acc_n)] = A.toList acc

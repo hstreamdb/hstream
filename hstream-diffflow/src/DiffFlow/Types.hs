@@ -317,7 +317,7 @@ updateDataChangeBatch :: (Hashable a, Ord a, Show a,
                           Hashable row, Ord row, Show row)
                       => DataChangeBatch row a
                       -> ([DataChange row a] -> [DataChange row a])
-                      -> DataChangeBatch row  a
+                      -> DataChangeBatch row a
 updateDataChangeBatch oldBatch f =
   mkDataChangeBatch $ f (dcbChanges oldBatch)
 

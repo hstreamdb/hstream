@@ -35,7 +35,7 @@ data NodeInput = NodeInput
   , nodeInputIndex :: Int
   } deriving (Eq, Show, Ord, Generic, Hashable, NFData)
 
-newtype Mapper row = Mapper { mapper :: row -> row } deriving (Generic, NFData)
+newtype Mapper row = Mapper { mapper :: row -> Either (DiffFlowError,row) row } deriving (Generic, NFData)
 newtype Filter row = Filter { filterF :: row -> Bool } deriving (Generic, NFData)
 newtype Joiner row = Joiner { joiner :: row -> row -> row } deriving (Generic, NFData)
 newtype Reducer row = Reducer { reducer :: row -> row -> row } deriving (Generic, NFData) -- \acc x -> acc'

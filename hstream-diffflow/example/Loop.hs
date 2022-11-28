@@ -27,7 +27,7 @@ main = do
 
   let mapper = Mapper (\row -> let v1 = (A.!) row "v1"
                                    v2 = (A.!) row "v2"
-                                in A.fromList [("v1", v2), ("v2", v1)])
+                                in Right $ A.fromList [("v1", v2), ("v2", v1)])
   let (builder_7, swapped_edges) = addNode builder_6 subgraph_1 (MapSpec edges_1 mapper)
       (builder_8, swapped_edges_index) = addNode builder_7 subgraph_1 (IndexSpec swapped_edges)
 
@@ -50,7 +50,7 @@ main = do
   let mapper2 = Mapper (\row -> let v1 = (A.!) row "v1"
                                     v2 = (A.!) row "v2"
                                     v3 = (A.!) row "v3"
-                                 in A.fromList [("v1", v3), ("v2", v2)]
+                                 in Right $ A.fromList [("v1", v3), ("v2", v2)]
                        ) -- drop middle
   let (builder_10, without_middle) = addNode builder_9 subgraph_1 (MapSpec joined mapper2)
 
