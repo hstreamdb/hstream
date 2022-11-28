@@ -1,12 +1,14 @@
 {-# LANGUAGE DeriveAnyClass        #-}
+{-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TypeSynonymInstances  #-}
 
 module HStream.TestUtils where
 
 import qualified Data.Aeson              as A
 import qualified Data.Text               as T
 import           GHC.Generics            (Generic)
-import           HStream.MetaStore.Types (HasPath (..), RHandle)
+import           HStream.MetaStore.Types (FHandle, HasPath (..), RHandle)
 import           Test.QuickCheck         (Arbitrary (..), Gen, chooseEnum,
                                           elements, frequency, listOf, listOf1,
                                           oneof)
@@ -22,6 +24,8 @@ data MetaExample = Meta {
 instance HasPath MetaExample ZHandle where
   myRootPath = "/testTemp"
 instance HasPath MetaExample RHandle where
+  myRootPath = "testTemp"
+instance HasPath MetaExample FHandle where
   myRootPath = "testTemp"
 
 data StateExample
