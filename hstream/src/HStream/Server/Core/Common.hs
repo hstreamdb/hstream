@@ -8,6 +8,7 @@ import           Control.Monad
 import qualified Data.ByteString                  as BS
 import           Data.Foldable                    (foldrM)
 import qualified Data.HashMap.Strict              as HM
+import           Data.List                        (find)
 import qualified Data.Map.Strict                  as Map
 import           Data.Text                        (Text)
 import qualified Data.Text                        as T
@@ -193,24 +194,22 @@ lookupResource' sc@ServerContext{..} rtype rid = do
   -- FIXME: it will insert the results of lookup no matter the resource exists or not
   M.getMetaWithVer @P.TaskAllocation metaId metaHandle >>= \case
     Nothing -> do
-      hashRing <- readTVarIO loadBalanceHashRing
-      epoch <- getEpoch gossipContext
+      (epoch, hashRing) <- readTVarIO loadBalanceHashRing
       theNode <- getResNode hashRing rid scAdvertisedListenersKey
-      try (M.insertMeta @P.TaskAllocation metaId (P.TaskAllocation epoch theNode) metaHandle) >>=
+      try (M.insertMeta @P.TaskAllocation metaId (P.TaskAllocation epoch (serverNodeId theNode)) metaHandle) >>=
         \case
           Left (_e :: SomeException) -> lookupResource' sc rtype rid
           Right ()                   -> return theNode
-    Just (P.TaskAllocation epoch theNode, version) -> do
+    Just (P.TaskAllocation epoch nodeId, version) -> do
       serverList <- getMemberList gossipContext >>= fmap V.concat . mapM (fromInternalServerNodeWithKey scAdvertisedListenersKey)
-      epoch' <- getEpoch gossipContext
-      if theNode `V.elem` serverList
-        then return theNode
-        else do
+      case find ((nodeId == ) . serverNodeId) serverList of
+        Just theNode -> return theNode
+        Nothing -> do
+          (epoch', hashRing) <- readTVarIO loadBalanceHashRing
           if epoch' > epoch
             then do
-              hashRing <- readTVarIO loadBalanceHashRing
               theNode' <- getResNode hashRing rid scAdvertisedListenersKey
-              try (M.updateMeta @P.TaskAllocation metaId (P.TaskAllocation epoch' theNode') (Just version) metaHandle) >>=
+              try (M.updateMeta @P.TaskAllocation metaId (P.TaskAllocation epoch' (serverNodeId theNode')) (Just version) metaHandle) >>=
                 \case
                   Left (_e :: SomeException) -> lookupResource' sc rtype rid
                   Right ()                   -> return theNode'
