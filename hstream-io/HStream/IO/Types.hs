@@ -1,6 +1,7 @@
 {-# LANGUAGE TemplateHaskell       #-}
 {-# OPTIONS_GHC -Wno-deferred-out-of-scope-variables #-}
 {-# LANGUAGE DeriveAnyClass        #-}
+{-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 
 module HStream.IO.Types where
@@ -18,7 +19,7 @@ import qualified GHC.IO.Handle              as IO
 import qualified System.Process.Typed       as TP
 import           ZooKeeper.Types            (ZHandle)
 
-import           HStream.MetaStore.Types    (HasPath (..), MetaHandle,
+import           HStream.MetaStore.Types    (FHandle, HasPath (..), MetaHandle,
                                              RHandle (..))
 import qualified HStream.Server.HStreamApi  as API
 import           HStream.Utils              (pairListToStruct, textToMaybeValue)
@@ -126,6 +127,15 @@ instance HasPath TaskIdMeta RHandle where
   myRootPath = "ioTaskNames"
 
 instance HasPath TaskKvMeta RHandle where
+  myRootPath = "ioTaskKvs"
+
+instance HasPath TaskMeta FHandle where
+  myRootPath = "ioTasks"
+
+instance HasPath TaskIdMeta FHandle where
+  myRootPath = "ioTaskNames"
+
+instance HasPath TaskKvMeta FHandle where
   myRootPath = "ioTaskKvs"
 
 class TaskJson cm where

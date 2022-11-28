@@ -4,20 +4,26 @@ module HStream.Server.MetaData.Utils where
 -- Path
 
 import           Control.Exception                (handle)
-import           Control.Monad                    (void)
+import           Control.Monad                    (unless, void)
 import qualified Data.Text                        as T
 import           GHC.Stack                        (HasCallStack)
 import           ZooKeeper.Types                  (ZHandle)
 
+import qualified Data.Aeson                       as A
+import qualified Data.ByteString.Lazy             as BSL
 import           HStream.Exception                (RQLiteTableAlreadyExists)
+import           HStream.MetaStore.FileUtils      (Contents, createTables)
 import           HStream.MetaStore.RqliteUtils    (createTable)
-import           HStream.MetaStore.Types          (MetaHandle, MetaMulti (..),
+import           HStream.MetaStore.Types          (FHandle, MetaHandle,
+                                                   MetaMulti (..),
                                                    MetaStore (..), RHandle (..))
 import           HStream.MetaStore.ZookeeperUtils (tryCreate)
 import           HStream.Server.HStreamApi        (Subscription (..))
 import           HStream.Server.MetaData.Types    ()
-import           HStream.Server.MetaData.Value    (paths, tables)
+import           HStream.Server.MetaData.Value    (fileTables, paths, tables)
 import           HStream.Server.Types             (SubscriptionWrap (..))
+import           System.Directory                 (doesFileExist)
+import           System.FileLock
 
 initializeAncestors :: HasCallStack => ZHandle -> IO ()
 initializeAncestors zk = do
@@ -28,6 +34,12 @@ initializeTables (RHandle m url) = do
   mapM_ (handleExists . createTable m url) tables
   where
     handleExists = handle (\(_:: RQLiteTableAlreadyExists) -> pure ())
+
+initializeFile :: FHandle -> IO ()
+initializeFile fp = do
+  fileExists <- doesFileExist fp
+  unless fileExists $ void $ withTryFileLock fp Exclusive $ \_ -> BSL.writeFile fp (A.encode (mempty :: Contents))
+  createTables fileTables fp
 
 -- FIXME: Concurrency
 updateSubscription :: MetaHandle -> T.Text -> T.Text ->  IO ()

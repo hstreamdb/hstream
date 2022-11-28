@@ -4,6 +4,7 @@
 {-# LANGUAGE DeriveAnyClass        #-}
 {-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PatternSynonyms       #-}
 {-# LANGUAGE PolyKinds             #-}
@@ -40,7 +41,8 @@ import           GHC.IO                        (unsafePerformIO)
 import           Z.IO.Time                     (getSystemTime')
 import           ZooKeeper.Types               (ZHandle)
 
-import           HStream.MetaStore.Types       (HasPath (..), MetaHandle,
+import           HStream.MetaStore.Types       (FHandle, HasPath (..),
+                                                MetaHandle,
                                                 MetaMulti (metaMulti),
                                                 MetaStore (..), MetaType,
                                                 RHandle)
@@ -113,6 +115,8 @@ instance HasPath QueryStatus ZHandle where
   myRootPath = rootPath <> "/queryStatus"
 instance HasPath Proto.Timestamp ZHandle where
   myRootPath = rootPath <> "/timestamp"
+instance HasPath TaskAllocation ZHandle where
+  myRootPath = rootPath <> "/taskAllocations"
 
 instance HasPath ShardReader RHandle where
   myRootPath = "readers"
@@ -126,6 +130,23 @@ instance HasPath QueryStatus RHandle where
   myRootPath = "queryStatus"
 instance HasPath Proto.Timestamp RHandle where
   myRootPath = "timestamp"
+instance HasPath TaskAllocation RHandle where
+  myRootPath = "taskAllocations"
+
+instance HasPath ShardReader FHandle where
+  myRootPath = "readers"
+instance HasPath SubscriptionWrap FHandle where
+  myRootPath = "subscriptions"
+instance HasPath QueryInfo FHandle where
+  myRootPath = "queries"
+instance HasPath ViewInfo FHandle where
+  myRootPath = "views"
+instance HasPath QueryStatus FHandle where
+  myRootPath = "queryStatus"
+instance HasPath Proto.Timestamp FHandle where
+  myRootPath = "timestamp"
+instance HasPath TaskAllocation FHandle where
+  myRootPath = "taskAllocations"
 
 insertQuery :: (MetaType QueryInfo handle, MetaType QueryStatus handle, MetaMulti handle)
   => QueryInfo -> handle -> IO ()
@@ -159,9 +180,3 @@ groupbyStores = unsafePerformIO $ newIORef HM.empty
 {-# NOINLINE groupbyStores #-}
 
 --------------------------------------------------------------------------------
-
-instance HasPath TaskAllocation ZHandle where
-  myRootPath = rootPath <> "/taskAllocations"
-
-instance HasPath TaskAllocation RHandle where
-  myRootPath = "taskAllocations"

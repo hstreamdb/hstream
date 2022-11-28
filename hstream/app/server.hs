@@ -62,6 +62,7 @@ import           HStream.Server.Initialization    (initializeServer,
 import           HStream.Server.MetaData          (TaskAllocation,
                                                    clusterStartTimeId,
                                                    initializeAncestors,
+                                                   initializeFile,
                                                    initializeTables)
 import           HStream.Server.Types             (ServerContext (..),
                                                    ServerState)
@@ -97,6 +98,9 @@ app config@ServerOpts{..} = do
       let rq = RHandle m addr
       initializeTables rq
       action serverState $ RLHandle rq
+    FileAddr addr -> do
+      initializeFile addr
+      action serverState $ FileHandle addr
   where
     action serverState h = do
       let serverNode =
