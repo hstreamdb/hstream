@@ -28,7 +28,7 @@ import           HStream.Gossip.HStreamGossip   as G (EventMessage (..),
                                                       UserEvent (..))
 import qualified HStream.Server.HStreamInternal as I
 
-type ServerId  = Word32
+type ServerId  = Text
 type ServerUrl = Text
 type Messages = [G.Message]
 type Epoch = Word32
@@ -215,8 +215,8 @@ serverAddress = strOption
   <> metavar "ADDRESS"
   <> help "server address"
 
-serverID :: O.Parser Word32
-serverID = option auto
+serverID :: O.Parser ServerId
+serverID = strOption
   $  long "server-id"
-  <> metavar "UINT32"
+  <> metavar "STR"
   <> help "ID of the hstream server node"

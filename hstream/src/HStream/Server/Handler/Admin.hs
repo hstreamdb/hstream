@@ -247,7 +247,7 @@ runStatus ServerContext{..} = do
   where
     show' = Text.pack . show
     consRow API.ServerNodeStatus{..} =
-      let nodeID = maybe "UNKNOWN" (show' . API.serverNodeId) serverNodeStatusNode
+      let nodeID = maybe "UNKNOWN" API.serverNodeId serverNodeStatusNode
           nodeHost = maybe "UNKNOWN" API.serverNodeHost serverNodeStatusNode
           nodePort = maybe "UNKNOWN" (show' . API.serverNodePort) serverNodeStatusNode
        in [ nodeID

@@ -7,7 +7,7 @@ module HStream.ConsistentHashingSpec where
 import qualified Data.Map.Strict                  as M
 import qualified Data.Map.Strict                  as Map
 import qualified Data.Text                        as T
-import           Data.Word                        (Word32)
+import           Data.Text.Encoding               (encodeUtf8)
 import           Test.Hspec                       (SpecWith, describe, shouldBe,
                                                    xdescribe)
 import           Test.Hspec.QuickCheck            (prop)
@@ -15,20 +15,22 @@ import           Test.QuickCheck                  (Arbitrary (..), Gen,
                                                    Property, Testable,
                                                    arbitrarySizedNatural,
                                                    choose, elements, forAll,
-                                                   label, listOf1, scale,
-                                                   shuffle, sublistOf, suchThat,
-                                                   (===), (==>))
+                                                   label, listOf, listOf1,
+                                                   scale, shuffle, sublistOf,
+                                                   suchThat, (===), (==>))
 
-import           Data.Text.Encoding               (encodeUtf8)
+
 import           HStream.Common.ConsistentHashing (ServerMap,
                                                    constructServerMap,
                                                    getAllocatedNode)
 import qualified HStream.Common.ConsistentHashing as CH
 import           HStream.Server.HStreamInternal   (ServerNode (..))
 
+type ServerId = T.Text
+
 instance Arbitrary ServerNode where
   arbitrary = do
-    serverNodeId <- arbitrarySizedNatural
+    serverNodeId <- T.pack <$> (listOf . elements) (['a'..'z'] <> ['A'..'Z'] <> ['1'..'9'])
     serverNodePort <- arbitrarySizedNatural
     serverNodeGossipPort <- arbitrarySizedNatural
     serverNodeAdvertisedAddress <- genAddr
@@ -112,7 +114,7 @@ distributeSpec = describe "distribute" $ do
             (\(xs, N hr) -> length xs > 30 * CH.size hr && CH.size hr > 3)
           let frequency = getFrequency hr $ unA <$> xs
           return (frequency, getStdDev frequency)
-    forAll (examples :: Gen (M.Map Word32 Int, Double)) (\(_, stdDev) -> labelStdDev stdDev True)
+    forAll (examples :: Gen (M.Map ServerId Int, Double)) (\(_, stdDev) -> labelStdDev stdDev True)
 
 reallocationSpec :: SpecWith ()
 reallocationSpec = xdescribe "reallocation" $ do
@@ -141,7 +143,7 @@ reallocationSpec = xdescribe "reallocation" $ do
 
 -- -------------------------------------------------------------------------- --
 
-getStdDev :: M.Map Word32 Int -> Double
+getStdDev :: M.Map ServerId Int -> Double
 getStdDev m =
   let values = map fromIntegral $ M.elems m in
   let sizeM = fromIntegral (M.size m) in
@@ -153,6 +155,6 @@ labelStdDev x
   | x <= 0.2  = label "Less Than 0.2"
   | otherwise = label "Greater than 0.2"
 
-getFrequency :: ServerMap -> [T.Text] -> M.Map Word32 Int
+getFrequency :: ServerMap -> [T.Text] -> M.Map ServerId Int
 getFrequency nodes = let base = M.fromList $ zip (M.keys nodes) (repeat 0)
   in foldr ((\x y -> M.insertWith (+) x 1 y) . serverNodeId . getAllocatedNode nodes) base

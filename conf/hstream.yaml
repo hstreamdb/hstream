@@ -4,7 +4,7 @@
 hserver:
   # The identifier of a single HServer node,
   # the value must be given and can be overwritten by cli option `--server-id`
-  id: 1
+  id: "1"
 
   # Server port value, the value must be given and can be overwritten by cli
   # option `--port`

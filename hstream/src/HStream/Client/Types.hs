@@ -69,7 +69,7 @@ data HStreamNodes
 hstreamNodesParser :: O.Parser HStreamNodes
 hstreamNodesParser = O.hsubparser
   (  O.command "list"     (O.info (pure HStreamNodesList) (O.progDesc "List all running nodes in the cluster"))
-  <> O.command "status"   (O.info (HStreamNodesStatus <$> (O.optional . O.option O.auto) (O.long "id" <> O.help "Specify the id of the node"))
+  <> O.command "status"   (O.info (HStreamNodesStatus <$> (O.optional . O.strOption) (O.long "id" <> O.help "Specify the id of the node"))
                                   (O.progDesc "Show the status of nodes specified, if not specified show the status of all nodes"))
   <> O.command "check-running" (O.info (HStreamNodesCheck <$> (O.optional . O.option O.auto) (O.long "minimum-running" <> O.short 'n' <> O.help "Specify minimum number of the nodes") )
                                        (O.progDesc "Check if all nodes in the the cluster are running, and the number of nodes is at least as specified"))

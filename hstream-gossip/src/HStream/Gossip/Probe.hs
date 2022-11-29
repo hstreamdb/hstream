@@ -107,7 +107,7 @@ pingReqPing msg isAcked client = do
 
 doPing
   :: GRPC.Client -> GossipContext -> ServerStatus
-  -> Word32 -> Messages
+  -> ServerId -> Messages
   -> IO ()
 doPing client GossipContext{gossipOpts = GossipOpts{..}, ..}
   ss@ServerStatus{serverInfo = sNode@I.ServerNode{..}, ..} _sid msg = do

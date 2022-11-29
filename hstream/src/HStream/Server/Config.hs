@@ -26,7 +26,7 @@ import           Data.Foldable                  (foldrM)
 import qualified Data.HashMap.Strict            as HM
 import           Data.Map.Strict                (Map)
 import qualified Data.Map.Strict                as Map
-import           Data.Maybe                     (fromMaybe, isJust)
+import           Data.Maybe                     (fromMaybe)
 import           Data.String                    (IsString (..))
 import           Data.Text                      (Text)
 import qualified Data.Text                      as T
@@ -34,7 +34,7 @@ import qualified Data.Text                      as Text
 import           Data.Text.Encoding             (encodeUtf8)
 import           Data.Vector                    (Vector)
 import qualified Data.Vector                    as V
-import           Data.Word                      (Word16, Word32)
+import           Data.Word                      (Word16)
 import           Data.Yaml                      as Y (Object,
                                                       ParseException (..),
                                                       Parser, decodeFileThrow,
@@ -49,8 +49,8 @@ import           Options.Applicative            as O (Alternative (many, (<|>)),
                                                       info, long, maybeReader,
                                                       metavar, option, optional,
                                                       progDesc, renderFailure,
-                                                      short, showDefault,
-                                                      strOption, value, (<**>))
+                                                      short, strOption, value,
+                                                      (<**>))
 import           System.Directory               (makeAbsolute)
 import           System.Environment             (getArgs, getProgName)
 import           System.Exit                    (exitSuccess)
@@ -61,6 +61,7 @@ import           Z.Data.CBytes                  (CBytes)
 import qualified HStream.Admin.Store.API        as AA
 import           HStream.Gossip                 (GossipOpts (..),
                                                  defaultGossipOpts)
+import           HStream.Gossip.Types           (ServerId)
 import qualified HStream.IO.Types               as IO
 import qualified HStream.Logger                 as Log
 import qualified HStream.Server.HStreamInternal as SAI
@@ -93,7 +94,7 @@ data ServerOpts = ServerOpts
   , _serverGossipAddress       :: !String
   , _serverAddress             :: !String
   , _serverAdvertisedListeners :: !AdvertisedListeners
-  , _serverID                  :: !Word32
+  , _serverID                  :: !Text
   , _metaStore                 :: !MetaStoreAddr
   , _ldConfigPath              :: !CBytes
   , _topicRepFactor            :: !Int
@@ -149,7 +150,7 @@ data CliOptions = CliOptions
   , _serverGossipAddress_       :: !(Maybe String)
   , _serverAdvertisedListeners_ :: !AdvertisedListeners
   , _serverInternalPort_        :: !(Maybe Word16)
-  , _serverID_                  :: !(Maybe Word32)
+  , _serverID_                  :: !(Maybe ServerId)
   , _serverLogLevel_            :: !(Maybe Log.Level)
   , _serverLogWithColor_        :: !Bool
   , _compression_               :: !(Maybe Compression)
@@ -346,10 +347,10 @@ serverInternalPort = option auto
   <> metavar "INT"
   <> help "server channel port value for internal communication"
 
-serverID :: O.Parser Word32
-serverID = option auto
+serverID :: O.Parser ServerId
+serverID = strOption
   $ long "server-id"
-  <> metavar "UINT32"
+  <> metavar "STR"
   <> help "ID of the hstream server node"
 
 -- | Format:  <listener_key>:hstream://<address>:<port>

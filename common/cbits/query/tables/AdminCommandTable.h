@@ -74,7 +74,7 @@ protected:
 private:
   mutable ldquery::TableColumns columns_;
 
-  typedef int32_t node_id_t;
+  typedef std::string node_id_t;
 
   // Checks whether a node matches a constraint. Used by `selectNodes`.
   // Retuns:

@@ -97,8 +97,7 @@ AdminCommandTable::nodeMatchesConstraint(AdminCommandTable::node_id_t nid,
   if (!c.expr.has_value()) {
     return MatchResult::UNUSED;
   }
-  std::string expr = c.expr.value();
-  int node_id = folly::to<int>(expr);
+  std::string node_id = c.expr.value();
   if (c.op == SQLITE_INDEX_CONSTRAINT_EQ) {
     if (nid != node_id) {
       return MatchResult::NO_MATCH;
@@ -615,17 +614,16 @@ void AdminCommandTable::refillCache(ldquery::QueryContext& ctx) {
   for (int i = 0; i < results.size(); ++i) {
     if (!results[i].cols.empty()) {
       size_t rows = results[i].cols.begin()->second.size();
-      std::string node_id_str = std::to_string(selected_nodes[i].id());
-      results[i].cols["node_id"] = ldquery::Column(rows, node_id_str);
+      results[i].cols["node_id"] = ldquery::Column(rows, selected_nodes[i].id());
     }
   }
 
   for (int i = 0; i < requests.size(); i++) {
     if (!responses[i].success) {
       auto node_id = selected_nodes[i].id();
-      ld_info("Failed request for N%d (%s): %s", node_id,
+      ld_info("Failed request for N%s (%s): %s", node_id.c_str(),
               requests[i].addr.c_str(), responses[i].failure_reason.c_str());
-      ctx_->activeQueryMetadata.failures[node_id] = ldquery::FailedNodeDetails{
+      ctx_->activeQueryMetadata.failures[i] = ldquery::FailedNodeDetails{
           requests[i].addr, responses[i].failure_reason};
     }
   }

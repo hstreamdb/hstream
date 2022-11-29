@@ -39,7 +39,7 @@ import           HStream.Gossip.Types             (BroadcastPool, EventHandler,
                                                    GossipContext (..),
                                                    InitType (..), Message (..),
                                                    Messages, SeenEvents,
-                                                   ServerState,
+                                                   ServerId, ServerState,
                                                    ServerStatus (..),
                                                    StateDelta,
                                                    StateMessage (..),
@@ -300,7 +300,7 @@ getFailedNodes GossipContext {..} = readTVarIO deadServers <&> Map.elems
 getFailedNodesSTM :: GossipContext -> STM [I.ServerNode]
 getFailedNodesSTM GossipContext {..} = readTVar deadServers <&> Map.elems
 
-getClusterStatus :: GossipContext -> IO (HM.HashMap Word32 ServerNodeStatus)
+getClusterStatus :: GossipContext -> IO (HM.HashMap ServerId ServerNodeStatus)
 getClusterStatus gc@GossipContext {..} = do
   alives <- readTVarIO serverList <&> (map serverInfo . Map.elems . snd)
   deads <- getFailedNodes gc

@@ -34,10 +34,10 @@ getAllocatedNode nodes k =
 
 --------------------------------------------------------------------------------
 
-type ServerNodeId = Word32
+type ServerNodeId = T.Text
 
 type HashRing = ServerMap
-type ServerMap = M.Map Word32 ServerNode
+type ServerMap = M.Map ServerNodeId ServerNode
 
 insert :: ServerNode -> ServerMap -> ServerMap
 insert node@ServerNode{..} = M.insert serverNodeId node

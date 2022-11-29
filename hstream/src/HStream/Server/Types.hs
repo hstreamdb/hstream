@@ -24,7 +24,7 @@ import qualified Proto3.Suite                     as PB
 
 import qualified HStream.Admin.Store.API          as AA
 import           HStream.Common.ConsistentHashing (HashRing)
-import           HStream.Gossip.Types             (GossipContext)
+import           HStream.Gossip.Types             (GossipContext, ServerId)
 import qualified HStream.IO.Types                 as IO
 import           HStream.MetaStore.Types          (MetaHandle)
 import           HStream.Server.Config
@@ -50,13 +50,13 @@ data SubscriptionWrap = SubscriptionWrap
   } deriving (Generic, Show, FromJSON, ToJSON)
 
 type Timestamp = Int64
-type ServerID = Word32
+type ServerID = ServerId
 type ServerState = PB.Enumerated NodeState
 type ShardDict = M.Map ShardKey HS.C_LogID
 
 data ServerContext = ServerContext
   { scLDClient               :: HS.LDClient
-  , serverID                 :: Word32
+  , serverID                 :: Text
   , scAdvertisedListenersKey :: Maybe Text
   , scDefaultStreamRepFactor :: Int
   , scMaxRecordSize          :: Int
