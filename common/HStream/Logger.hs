@@ -2,6 +2,15 @@
 {-# LANGUAGE PatternSynonyms      #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 
+{-
+This is needed to make ghci work.
+
+Relatead ghc issues:
+* https://gitlab.haskell.org/ghc/ghc/-/issues/19733
+* https://gitlab.haskell.org/ghc/ghc/-/issues/15454
+-}
+{-# OPTIONS_GHC -fobject-code #-}
+
 module HStream.Logger
   ( trace
   , Log.debug
