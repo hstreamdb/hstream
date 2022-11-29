@@ -24,24 +24,25 @@ module HStream.Server.Handler.Subscription
   )
 where
 
-import           Control.Concurrent.STM
 import           Control.Exception                (throwIO)
 import           Control.Monad
 import           Data.Bifunctor                   (first)
 import qualified HsGrpc.Server                    as G
 import           Network.GRPC.HighLevel.Generated
 
-import           HStream.Common.ConsistentHashing (getAllocatedNodeId)
 import qualified HStream.Exception                as HE
 import qualified HStream.Logger                   as Log
 import qualified HStream.MetaStore.Types          as M
+import           HStream.Server.Core.Common       (lookupResource')
 import qualified HStream.Server.Core.Subscription as Core
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
 import           HStream.Server.Types
 import           HStream.ThirdParty.Protobuf      as PB
-import           HStream.Utils                    (returnResp)
-import           HStream.Utils.Validation
+import           HStream.Utils                    (ResourceType (ResSubscription),
+                                                   returnResp,
+                                                   validateNameAndThrow)
+
 -------------------------------------------------------------------------------
 
 createSubscriptionHandler
@@ -83,8 +84,8 @@ deleteSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata r
   Log.debug $ "Receive deleteSubscription request: " <> Log.buildString' req
   let subId = deleteSubscriptionRequestSubscriptionId req
   validateNameAndThrow subId
-  hr <- readTVarIO loadBalanceHashRing
-  unless (getAllocatedNodeId hr subId == serverID) $
+  ServerNode{..} <- lookupResource' ctx ResSubscription subId
+  unless (serverNodeId == serverID) $
     throwIO $ HE.SubscriptionOnDifferentNode "Subscription is bound to a different node"
 
   Core.deleteSubscription ctx req
@@ -95,8 +96,8 @@ handleDeleteSubscription :: ServerContext -> G.UnaryHandler DeleteSubscriptionRe
 handleDeleteSubscription ctx@ServerContext{..} _ req = catchDefaultEx $ do
   let subId = deleteSubscriptionRequestSubscriptionId req
   validateNameAndThrow subId
-  hr <- readTVarIO loadBalanceHashRing
-  unless (getAllocatedNodeId hr subId == serverID) $
+  ServerNode{..} <- lookupResource' ctx ResSubscription subId
+  unless (serverNodeId == serverID) $
     throwIO $ HE.SubscriptionOnDifferentNode "Subscription is bound to a different node"
   Core.deleteSubscription ctx req
   pure Empty

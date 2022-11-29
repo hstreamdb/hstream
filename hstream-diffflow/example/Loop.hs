@@ -77,8 +77,8 @@ main = do
   stop_m <- newEmptyMVar
   forkIO $ run shard stop_m
 
-  forkIO . forever $ popOutput shard reach_out (\dcb -> print $ "[reach_out        ] ---> Output DataChangeBatch: " <> show dcb)
-  forkIO . forever $ popOutput shard reach_summary_out (\dcb -> print $ "[reach_summary_out] ---> Output DataChangeBatch: " <> show dcb)
+  forkIO . forever $ popOutput shard reach_out (threadDelay 1000000) (\dcb -> print $ "[reach_out        ] ---> Output DataChangeBatch: " <> show dcb)
+  forkIO . forever $ popOutput shard reach_summary_out (threadDelay 1000000) (\dcb -> print $ "[reach_summary_out] ---> Output DataChangeBatch: " <> show dcb)
 
   threadDelay 1000000
 

@@ -1,28 +1,31 @@
 module HStream.Server.Core.Common where
 
 import           Control.Concurrent
-import           Control.Exception           (SomeException (..), throwIO, try)
+import           Control.Concurrent.STM           (readTVarIO)
+import           Control.Exception                (SomeException (..), throwIO,
+                                                   try)
 import           Control.Monad
-import qualified Data.ByteString             as BS
-import           Data.Foldable               (foldrM)
-import qualified Data.HashMap.Strict         as HM
-import qualified Data.List                   as L
-import qualified Data.Map.Strict             as Map
-import qualified Data.Vector                 as V
-import           Data.Word                   (Word32, Word64)
+import qualified Data.ByteString                  as BS
+import           Data.Foldable                    (foldrM)
+import qualified Data.HashMap.Strict              as HM
+import qualified Data.Map.Strict                  as Map
+import           Data.Text                        (Text)
+import qualified Data.Text                        as T
+import qualified Data.Vector                      as V
+import           Data.Word                        (Word32, Word64)
 
-import qualified Data.Text                   as T
-import qualified HStream.Exception           as HE
-import qualified HStream.Logger              as Log
-import qualified HStream.MetaStore.Types     as M
+import           HStream.Common.ConsistentHashing
+import           HStream.Common.Types             (fromInternalServerNodeWithKey)
+import qualified HStream.Exception                as HE
+import           HStream.Gossip
+import qualified HStream.Logger                   as Log
+import qualified HStream.MetaStore.Types          as M
 import           HStream.Server.HStreamApi
-import qualified HStream.Server.MetaData     as P
+import qualified HStream.Server.MetaData          as P
 import           HStream.Server.Types
 import           HStream.SQL.Codegen
-import qualified HStream.Store               as HS
-import           HStream.ThirdParty.Protobuf (Empty (Empty))
-import           HStream.Utils               (TaskStatus (..), cBytesToText,
-                                              decodeByteStringBatch)
+import qualified HStream.Store                    as HS
+import           HStream.Utils                    (decodeByteStringBatch)
 
 -- deleteStoreStream
 --   :: ServerContext
@@ -222,3 +225,41 @@ handleQueryTerminate ServerContext{..} (ManyQueries qids) = do
 
 mkAllocationKey :: ResourceType -> T.Text -> T.Text
 mkAllocationKey rtype rid = T.pack (show rtype) <> "_" <> rid
+
+lookupResource' :: ServerContext -> ResourceType -> Text -> IO ServerNode
+lookupResource' sc@ServerContext{..} rtype rid = do
+  let metaId = mkAllocationKey rtype rid
+  -- FIXME: it will insert the results of lookup no matter the resource exists or not
+  M.getMetaWithVer @P.TaskAllocation metaId metaHandle >>= \case
+    Nothing -> do
+      hashRing <- readTVarIO loadBalanceHashRing
+      epoch <- getEpoch gossipContext
+      theNode <- getResNode hashRing rid scAdvertisedListenersKey
+      try (M.insertMeta @P.TaskAllocation metaId (P.TaskAllocation epoch theNode) metaHandle) >>=
+        \case
+          Left (_e :: SomeException) -> lookupResource' sc rtype rid
+          Right ()                   -> return theNode
+    Just (P.TaskAllocation epoch theNode, version) -> do
+      serverList <- getMemberList gossipContext >>= fmap V.concat . mapM (fromInternalServerNodeWithKey scAdvertisedListenersKey)
+      epoch' <- getEpoch gossipContext
+      if theNode `V.elem` serverList
+        then return theNode
+        else do
+          if epoch' > epoch
+            then do
+              hashRing <- readTVarIO loadBalanceHashRing
+              theNode' <- getResNode hashRing rid scAdvertisedListenersKey
+              try (M.updateMeta @P.TaskAllocation metaId (P.TaskAllocation epoch' theNode') (Just version) metaHandle) >>=
+                \case
+                  Left (_e :: SomeException) -> lookupResource' sc rtype rid
+                  Right ()                   -> return theNode'
+            else do
+              Log.warning "LookupResource: the server has not yet synced with the latest member list "
+              throwIO $ HE.ResourceAllocationException "the server has not yet synced with the latest member list"
+
+getResNode :: HashRing -> Text -> Maybe Text -> IO ServerNode
+getResNode hashRing hashKey listenerKey = do
+  let serverNode = getAllocatedNode hashRing hashKey
+  theNodes <- fromInternalServerNodeWithKey listenerKey serverNode
+  if V.null theNodes then throwIO $ HE.NodesNotFound "Got empty nodes"
+                     else pure $ V.head theNodes

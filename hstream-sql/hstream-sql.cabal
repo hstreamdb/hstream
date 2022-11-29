@@ -49,13 +49,14 @@ library
     HStream.SQL.Abs
     HStream.SQL.AST
     HStream.SQL.Codegen
-    HStream.SQL.Exception
-    HStream.SQL.Internal.Validate
-    HStream.SQL.Codegen.UnaryOp
     HStream.SQL.Codegen.BinOp
+    HStream.SQL.Codegen.Cast
     HStream.SQL.Codegen.JsonOp
     HStream.SQL.Codegen.SKey
+    HStream.SQL.Codegen.UnaryOp
     HStream.SQL.Codegen.Utils
+    HStream.SQL.Exception
+    HStream.SQL.Internal.Validate
     HStream.SQL.Parse
 
   other-modules:
@@ -77,6 +78,7 @@ library
     , containers
     , diff-flow
     , extra
+    , hashable
     , hstream-common
     , mysql-haskell
     , proto3-suite
@@ -85,13 +87,12 @@ library
     , string-random
     , text                  ^>=1.2
     , time                  >=1.9.1 && <2
+    , time-compat
     , unordered-containers
     , uuid
     , vector
     , Z-Data
     , Z-IO
-    , hashable
-    , time-compat
 
   -- Note: build on osx may require this
   -- alex == 3.2.7 will fail to build language-c, see: https://github.com/simonmar/alex/issues/197

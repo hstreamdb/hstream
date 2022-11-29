@@ -15,44 +15,40 @@ module HStream.Server.Core.Stream
   , readShard
   ) where
 
-import           Control.Concurrent               (modifyMVar_, newEmptyMVar,
-                                                   putMVar, readMVar, takeMVar,
-                                                   withMVar)
-import           Control.Concurrent.STM           (readTVarIO)
-import           Control.Exception                (bracket, catch, throw,
-                                                   throwIO)
-import           Control.Monad                    (forM, unless, when)
-import qualified Data.ByteString                  as BS
-import qualified Data.ByteString.Lazy             as BSL
-import           Data.Foldable                    (foldl')
-import qualified Data.HashMap.Strict              as HM
-import qualified Data.Map.Strict                  as M
-import           Data.Maybe                       (fromJust, fromMaybe)
-import qualified Data.Text                        as T
-import qualified Data.Vector                      as V
-import           GHC.Stack                        (HasCallStack)
-import           Proto3.Suite                     (Enumerated (Enumerated))
-import qualified Proto3.Suite                     as PT
-import qualified Z.Data.CBytes                    as CB
-import           ZooKeeper.Exception              (ZNONODE (..))
+import           Control.Concurrent         (modifyMVar_, newEmptyMVar, putMVar,
+                                             readMVar, takeMVar, withMVar)
+import           Control.Exception          (bracket, catch, throw, throwIO)
+import           Control.Monad              (forM, unless, when)
+import qualified Data.ByteString            as BS
+import qualified Data.ByteString.Lazy       as BSL
+import           Data.Foldable              (foldl')
+import qualified Data.HashMap.Strict        as HM
+import qualified Data.Map.Strict            as M
+import           Data.Maybe                 (fromJust, fromMaybe)
+import qualified Data.Text                  as T
+import qualified Data.Vector                as V
+import           GHC.Stack                  (HasCallStack)
+import           Google.Protobuf.Timestamp  (Timestamp)
+import           Proto3.Suite               (Enumerated (Enumerated))
+import qualified Proto3.Suite               as PT
+import qualified Z.Data.CBytes              as CB
+import           ZooKeeper.Exception        (ZNONODE (..))
 
-import           Google.Protobuf.Timestamp        (Timestamp)
-import           HStream.Common.ConsistentHashing (getAllocatedNodeId)
-import qualified HStream.Exception                as HE
-import qualified HStream.Logger                   as Log
-import qualified HStream.MetaStore.Types          as M
-import           HStream.Server.Core.Common       (decodeRecordBatch)
-import           HStream.Server.HStreamApi        (CreateShardReaderRequest (createShardReaderRequestShardId))
-import qualified HStream.Server.HStreamApi        as API
-import qualified HStream.Server.MetaData          as P
-import           HStream.Server.Shard             (Shard (..), createShard,
-                                                   devideKeySpace,
-                                                   mkShardWithDefaultId,
-                                                   mkSharedShardMapWithShards)
-import           HStream.Server.Types             (ServerContext (..),
-                                                   transToStreamName)
-import qualified HStream.Stats                    as Stats
-import qualified HStream.Store                    as S
+import qualified HStream.Exception          as HE
+import qualified HStream.Logger             as Log
+import qualified HStream.MetaStore.Types    as M
+import           HStream.Server.Core.Common (decodeRecordBatch)
+import           HStream.Server.HStreamApi  (CreateShardReaderRequest (..))
+import qualified HStream.Server.HStreamApi  as API
+import qualified HStream.Server.MetaData    as P
+import           HStream.Server.Shard       (Shard (..), createShard,
+                                             devideKeySpace,
+                                             mkShardWithDefaultId,
+                                             mkSharedShardMapWithShards)
+import           HStream.Server.Types       (ServerContext (..),
+                                             transToStreamName)
+import qualified HStream.Stats              as Stats
+import qualified HStream.Store              as S
 import           HStream.Utils
 
 -------------------------------------------------------------------------------
@@ -225,10 +221,7 @@ deleteShardReader
   => ServerContext
   -> API.DeleteShardReaderRequest
   -> IO ()
-deleteShardReader ServerContext{..} API.DeleteShardReaderRequest{..} = do
-  hashRing <- readTVarIO loadBalanceHashRing
-  unless (getAllocatedNodeId hashRing deleteShardReaderRequestReaderId == serverID) $
-    throwIO $ HE.WrongServer "Send deleteShard request to wrong server."
+deleteShardReader ctx@ServerContext{..} API.DeleteShardReaderRequest{..} = do
   isSuccess <- catch (M.deleteMeta @P.ShardReader deleteShardReaderRequestReaderId Nothing metaHandle >> return True) $
       \ (_ :: ZNONODE) -> return False
   modifyMVar_ shardReaderMap $ \mp -> do
@@ -278,9 +271,6 @@ readShard
   -> API.ReadShardRequest
   -> IO (V.Vector API.ReceivedRecord)
 readShard ServerContext{..} API.ReadShardRequest{..} = do
-  hashRing <- readTVarIO loadBalanceHashRing
-  unless (getAllocatedNodeId hashRing readShardRequestReaderId == serverID) $
-    throwIO $ HE.WrongServer "Send readShard request to wrong server."
   bracket getReader putReader readRecords
  where
    ldReaderBufferSize = 10

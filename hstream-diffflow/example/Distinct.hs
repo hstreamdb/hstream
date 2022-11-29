@@ -27,7 +27,7 @@ main = do
   shard <- buildShard graph
   stop_m <- newEmptyMVar
   forkIO $ run shard stop_m
-  forkIO . forever $ popOutput shard node_4 (\dcb -> print $ "---> Output DataChangeBatch: " <> show dcb)
+  forkIO . forever $ popOutput shard node_4 (threadDelay 1000000) (\dcb -> print $ "---> Output DataChangeBatch: " <> show dcb)
 
   pushInput shard node_1
     (DataChange (A.fromList [("a", Number 1), ("b", Number 2)]) (Timestamp (1 :: Word32) []) 1 0)
