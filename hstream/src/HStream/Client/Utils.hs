@@ -20,20 +20,25 @@ module HStream.Client.Utils
   , removeEmitChanges) where
 
 import           Control.Concurrent               (threadDelay)
+import           Control.Exception                (finally)
 import           Crypto.Hash.MD5                  (hash)
 import qualified Data.ByteString                  as BS
 import           Data.Char                        (toUpper)
+import           Data.Functor                     ((<&>))
+import           Data.Int                         (Int32)
+import           Data.String                      (IsString)
 import qualified Data.Text                        as T
 import qualified Data.Text.Encoding               as BS
 import           Data.Word                        (Word64)
 import           Network.GRPC.HighLevel.Client
 import           Network.GRPC.HighLevel.Generated (withGRPCClient)
+import           Proto3.Suite                     (Enumerated (..))
 import           Proto3.Suite.Class               (HasDefault, def)
+import           System.Posix                     (Handler (Catch),
+                                                   installHandler,
+                                                   keyboardSignal)
 
-import           Control.Exception                (finally)
-import           Data.Functor                     ((<&>))
-import           Data.Int                         (Int32)
-import           Data.String                      (IsString)
+
 import           HStream.Client.Types             (Resource (..))
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.SQL                      (DropObject (..))
@@ -42,10 +47,6 @@ import           HStream.Utils                    (Format (formatResult),
                                                    SocketAddr (..), genUnique,
                                                    mkClientNormalRequest,
                                                    mkGRPCClientConfWithSSL)
-import           Proto3.Suite                     (Enumerated (..))
-import           System.Posix                     (Handler (Catch),
-                                                   installHandler,
-                                                   keyboardSignal)
 
 terminateMsg :: IsString a => a
 terminateMsg = "\x1b[32mTerminated\x1b[0m"

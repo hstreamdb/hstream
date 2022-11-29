@@ -20,6 +20,9 @@ import           Data.Char                        (toUpper)
 import qualified Data.Map                         as M
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
+import           Network.GRPC.HighLevel.Client    (ClientRequest (..),
+                                                   ClientResult (..))
+import           Network.GRPC.HighLevel.Generated (withGRPCClient)
 import qualified System.Console.Haskeline         as RL
 import qualified System.Console.Haskeline.History as RL
 import           Text.RawString.QQ                (r)
@@ -35,7 +38,8 @@ import           HStream.Client.Execute           (execute, executeShowPlan,
                                                    executeWithLookupResource_,
                                                    execute_, updateClusterInfo)
 import           HStream.Client.Internal          (cliFetch)
-import           HStream.Client.Types             (HStreamSqlContext (..),
+import           HStream.Client.Types             (HStreamCliContext (..),
+                                                   HStreamSqlContext (..),
                                                    Resource (..))
 import           HStream.Client.Utils             (calculateShardId,
                                                    dropPlanToResType)
@@ -59,13 +63,10 @@ import           HStream.Utils                    (HStreamClientApi,
                                                    formatCommandQueryResponse,
                                                    formatResult,
                                                    mkGRPCClientConfWithSSL)
-import           Network.GRPC.HighLevel.Client    (ClientRequest (..),
-                                                   ClientResult (..))
-import           Network.GRPC.HighLevel.Generated (withGRPCClient)
 
 -- and this needs to be optimized. This could be done with a grpc client pool.
 interactiveSQLApp :: HStreamSqlContext -> Maybe FilePath -> IO ()
-interactiveSQLApp ctx@HStreamSqlContext{..} historyFile = do
+interactiveSQLApp HStreamSqlContext{hstreamCliContext = ctx@HStreamCliContext{..},..} historyFile = do
   putStrLn helpInfo
   tid <- myThreadId
   void $ forkFinally maintainAvailableNodes (\case Left err -> throwTo tid err; _ -> return ())
@@ -97,8 +98,8 @@ interactiveSQLApp ctx@HStreamSqlContext{..} historyFile = do
                   liftIO (handle (\(e :: SomeException) -> print e) $ commandExec ctx str'')
                   loop
 
-commandExec :: HStreamSqlContext -> String -> IO ()
-commandExec ctx@HStreamSqlContext{..} xs = case words xs of
+commandExec :: HStreamCliContext -> String -> IO ()
+commandExec ctx@HStreamCliContext{..} xs = case words xs of
   [] -> return ()
 
   -- -- The Following commands are for testing only
@@ -225,9 +226,9 @@ helpInfos = M.fromList [
 groupedHelpInfo :: String
 groupedHelpInfo = ("SQL Statements\n" <> ) . unlines . map (\(x, y) -> x <> "  " <> y) . M.toList $ helpInfos
 
-runActionWithGrpc :: HStreamSqlContext
+runActionWithGrpc :: HStreamCliContext
   -> (HStream.Utils.HStreamClientApi -> IO b) -> IO b
-runActionWithGrpc HStreamSqlContext{..} action= do
+runActionWithGrpc HStreamCliContext{..} action= do
   addr <- readMVar currentServer
   withGRPCClient (HStream.Utils.mkGRPCClientConfWithSSL addr sslConfig)
     (hstreamApiClient >=> action)

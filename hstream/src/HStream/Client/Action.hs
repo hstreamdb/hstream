@@ -27,7 +27,7 @@ module HStream.Client.Action
   , listSubscriptions
   , listViews
   , terminateQueries
-  ) where
+  , deleteStream) where
 
 import qualified Data.ByteString                  as BS
 import qualified Data.Map                         as Map
@@ -164,6 +164,10 @@ deleteSubscription :: T.Text -> Bool -> Action Empty
 deleteSubscription subId force HStreamApi{..} = hstreamApiDeleteSubscription $
   mkClientNormalRequest' def { deleteSubscriptionRequestSubscriptionId = subId
                              , deleteSubscriptionRequestForce = force}
+deleteStream :: T.Text -> Bool -> Action Empty
+deleteStream sName force HStreamApi{..} = hstreamApiDeleteStream $
+  mkClientNormalRequest' def { deleteStreamRequestStreamName = sName
+                             , deleteStreamRequestForce = force}
 
 --------------------------------------------------------------------------------
 

@@ -12,11 +12,11 @@ import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated (ClientRequest (..))
 import qualified Proto3.Suite                     as PB
-
+import           Text.StringRandom                (stringRandomIO)
 
 import           HStream.Client.Action
 import           HStream.Client.Execute
-import           HStream.Client.Types             (HStreamSqlContext (..),
+import           HStream.Client.Types             (HStreamCliContext,
                                                    Resource (..))
 import           HStream.Client.Utils
 import qualified HStream.Server.HStreamApi        as API
@@ -25,7 +25,6 @@ import qualified HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils                    (ResourceType (..),
                                                    decompressBatchedRecord,
                                                    formatResult)
-import           Text.StringRandom                (stringRandomIO)
 
 streamingFetch :: T.Text -> API.HStreamApi ClientRequest response -> IO ()
 streamingFetch subId API.HStreamApi{..} = do
@@ -54,7 +53,7 @@ streamingFetch subId API.HStreamApi{..} = do
             receiving
           Right Nothing -> putStrLn terminateMsg
 
-cliFetch :: HStream.Client.Types.HStreamSqlContext -> String -> IO ()
+cliFetch :: HStreamCliContext -> String -> IO ()
 cliFetch ctx sql = do
   (sName, newSql) <- genRandomSinkStreamSQL (T.pack . removeEmitChanges . words $ sql)
   subId <- genRandomSubscriptionId
