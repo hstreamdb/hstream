@@ -1,8 +1,19 @@
 packages:
-  hstream
+  -- * External
+  external/proto3-wire/proto3-wire.cabal
+  external/proto3-suite/proto3-suite.cabal
+  -- We need to add this table-layout since the hackage version is too old.
+  external/table-layout/table-layout.cabal
+  external/hs-grpc/hs-grpc-server/hs-grpc-server.cabal
+  external/gRPC-haskell/grpc-haskell.cabal
+  external/gRPC-haskell/core/grpc-haskell-core.cabal
+
+  -- * HStream common
   common/hstream-common.cabal
   common/stats/hstream-common-stats.cabal
   common/api/hstream-api-protolens.cabal
+
+  hstream
   hstream-store
   hstream-sql
   hstream-io
@@ -10,24 +21,34 @@ packages:
   hstream-gossip
   hstream-diffflow
 
-  external/hs-grpc/hs-grpc-server/hs-grpc-server.cabal
-  external/gRPC-haskell
-  external/gRPC-haskell/core
-  external/proto3-wire/proto3-wire.cabal
-  external/proto3-suite/proto3-suite.cabal
   external/hsthrift/common/util/fb-util.cabal
   external/hsthrift/common/github/fb-stubs.cabal
   external/hsthrift/common/mangle/mangle.cabal
   external/hsthrift/lib/thrift-lib.cabal
   external/hsthrift/cpp-channel/thrift-cpp-channel.cabal
 
--- https://github.com/haskell/cabal/issues/4271
-package thrift-lib
-  flags: +use_sys_thrift_compiler
+package proto3-wire
+  tests: false
+
+package proto3-suite
+  tests: false
+
+package table-layout
   tests: false
 
 package hs-grpc-server
   flags: +UseProtoSuite
+  tests: false
+
+package grpc-haskell
+  tests: false
+
+package grpc-haskell-core
+  tests: false
+
+-- https://github.com/haskell/cabal/issues/4271
+package thrift-lib
+  flags: +use_sys_thrift_compiler
   tests: false
 
 package fb-util
@@ -42,18 +63,6 @@ package mangle
 package thrift-cpp-channel
   tests: false
 
-package grpc-haskell
-  tests: false
-
-package grpc-haskell-core
-  tests: false
-
-package proto3-wire
-  tests: false
-
-package proto3-suite
-  tests: false
-
 constraints:
     Z-IO          == 0.8.1.1
   , Z-Data        == 0.8.8.0
@@ -61,3 +70,4 @@ constraints:
   , blaze-textual == 0.2.1.0
   , entropy       == 0.4.1.7
   , criterion    ^>= 1.6
+  , aeson >=1.5   && <2.0

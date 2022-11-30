@@ -116,7 +116,7 @@ library
     , hsc2hs:hsc2hs
 
   build-depends:
-    , aeson                 <2.0
+    , aeson                 >=1.5   && <2.0 || ^>=2.0
     , ansi-terminal
     , attoparsec
     , base                  >=4.11  && <5
@@ -241,8 +241,8 @@ benchmark codec-bench
     Util
 
   build-depends:
-    , base            >=4.11  && <5
-    , bytestring      ^>=0.10
+    , base            >=4.11 && <5
+    , bytestring
     , criterion
     , hstream-common
     , proto3-suite

@@ -90,14 +90,15 @@ getTables ldq = withForeignPtr (eqQueryBaseRep ldq) $ \ldq' -> do
 
 formatTables :: [(CBytes, CBytes)] -> String
 formatTables tables =
-  let titles  = ["Table", "Description"]
+  let titles  = ["Table", "Description" :: String]
       width   = 40
       format  = formatRow <$> tables
       formatRow (name, desc) = [[CBytes.unpack name], Table.justifyText width $ CBytes.unpack desc]
       colSpec = [Table.column Table.expand Table.left def def, Table.fixedLeftCol width]
-   in Table.tableString colSpec Table.asciiS
-                        (Table.titlesH titles)
-                        (Table.colsAllG Table.center <$> format)
+   in Table.tableString $ Table.columnHeaderTableS
+        colSpec Table.asciiS
+        (Table.titlesH titles)
+        (Table.colsAllG Table.center <$> format)
 
 showTableColumns :: QueryBaseRep a => a -> CBytes -> IO String
 showTableColumns ldq tableName = do
@@ -129,7 +130,7 @@ getTableColumns ldq tableName =
 formatTableColumns :: String -> ([CBytes], [CBytes], [CBytes]) -> String
 formatTableColumns tableName ([], [], []) = "Unknown table `" <> tableName <> "`"
 formatTableColumns _ (cols, typs, descs) =
-  let titles = ["Column", "Type", "Description"]
+  let titles = ["Column", "Type", "Description" :: String]
       width  = 40
       format = zipWith3 (\col typ desc -> [[CBytes.unpack col], [CBytes.unpack typ], Table.justifyText width $ CBytes.unpack desc])
                         cols typs descs
@@ -137,7 +138,8 @@ formatTableColumns _ (cols, typs, descs) =
                 , Table.column Table.expand Table.left def def
                 , Table.fixedLeftCol width
                 ]
-   in Table.tableString colSpec Table.asciiS (Table.titlesH titles) (Table.colsAllG Table.center <$> format)
+   in Table.tableString $ Table.columnHeaderTableS
+        colSpec Table.asciiS (Table.titlesH titles) (Table.colsAllG Table.center <$> format)
 
 runQuery :: QueryBaseRep a => a -> CBytes -> IO (Either String [String])
 runQuery ldq query = second formatQueryResults <$> execStatement ldq query

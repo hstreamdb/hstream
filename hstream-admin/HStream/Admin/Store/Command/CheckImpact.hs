@@ -268,7 +268,7 @@ instance TableCell.Cell P.Doc where
   visibleLength = docVisibleLength
   measureAlignment = error "TODO: measureAlignment for Doc"
   buildCell = Table.stringB . show
-  dropBoth = error "TODO: dropBoth for Doc"
+  buildCellView = error "TODO: buildCellView for Doc"
 
 -- (Title string, List of row)
 type Column a = (String, Table.Col a)
@@ -278,7 +278,8 @@ consTable :: Columns P.Doc -> [String]
 consTable cell =
   let (titles, cols) = unzip cell
       rowGroup = Table.colsAllG Table.top cols
-   in Table.tableLines (def <$ cols) Table.asciiS (Table.titlesH titles) [rowGroup]
+   in Table.tableLines $ Table.columnHeaderTableS
+        (def <$ cols) Table.asciiS (Table.titlesH titles) [rowGroup]
 
 isRowFill :: Columns P.Doc -> Bool
 isRowFill = (>= maxTableWidth) . length . head . consTable
