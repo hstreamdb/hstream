@@ -37,7 +37,6 @@ import           Control.Monad
 import           Data.Aeson                       (FromJSON, ToJSON)
 import           Data.ByteString                  (ByteString)
 import           Data.String                      (IsString)
-import           Data.Swagger                     (ToSchema)
 import qualified Data.Vector                      as V
 import           GHC.Generics                     (Generic)
 import           Network.GRPC.HighLevel.Client
@@ -152,7 +151,7 @@ showNodeStatus = \case
 -- A type synonym could also work but the pattern synonyms defined below cannot
 -- be bundled with a type synonym when other modules import these definitions
 newtype TaskStatus = TaskStatus { getPBStatus :: PB.Enumerated TaskStatusPB}
-  deriving (Generic, Show, JSON, Eq, ToJSON, FromJSON, ToSchema)
+  deriving (Generic, Show, JSON, Eq, ToJSON, FromJSON)
 
 instance JSON (PB.Enumerated TaskStatusPB)
 instance JSON TaskStatusPB

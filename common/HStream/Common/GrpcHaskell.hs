@@ -13,7 +13,7 @@ import qualified HStream.Logger               as Log
 
 initGrpcClient :: GRPC.ClientConfig -> IO GRPC.Client
 initGrpcClient config = do
-  grpc <- GRPC.grpcInit >> return GRPC.GRPC
+  grpc <- GRPC.startGRPC
   GRPC.createClient grpc config
 
 deleteGrpcClient :: GRPC.Client -> IO ()
