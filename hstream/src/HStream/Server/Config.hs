@@ -83,6 +83,7 @@ advertisedListenersToPB = Map.map $ Just . SAI.ListOfListener
 data MetaStoreAddr
   = ZkAddr CBytes
   | RqAddr Text
+  | FileAddr FilePath
   deriving (Eq)
 
 data ServerOpts = ServerOpts
@@ -478,6 +479,7 @@ parseMetaStoreAddr t =
     Right (s, ip)
       | s == "zk" -> ZkAddr . CB.pack .T.unpack $ ip
       | s == "rq" -> RqAddr ip
+      | s == "file" -> FileAddr . T.unpack $ ip
       | otherwise -> errorWithoutStackTrace $ "Invalid meta store address, unsupported scheme: " <> show s
     Left eMsg -> errorWithoutStackTrace eMsg
 

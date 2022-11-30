@@ -60,6 +60,7 @@ library
     HStream.Foreign
     HStream.Gossip.HStreamGossip
     HStream.Logger
+    HStream.MetaStore.FileUtils
     HStream.MetaStore.RqliteUtils
     HStream.MetaStore.Types
     HStream.MetaStore.ZookeeperUtils
@@ -125,6 +126,7 @@ library
     , data-default
     , deepseq
     , digest
+    , filelock
     , ghc-prim              >=0.5   && <1.0
     , grpc-haskell
     , grpc-haskell-core
@@ -198,6 +200,7 @@ test-suite hstream-common-test
     , base                  >=4.11 && <5
     , bytestring
     , containers            ^>=0.6
+    , directory
     , hspec
     , hstream-common
     , http-client

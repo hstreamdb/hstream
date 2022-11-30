@@ -25,15 +25,14 @@ import           GHC.Stack                        (HasCallStack)
 import           Network.HTTP.Client              (Manager)
 import qualified Z.Foreign                        as ZF
 import qualified ZooKeeper                        as Z
-import           ZooKeeper                        (zooDeleteAll)
 import           ZooKeeper.Exception              (ZooException)
 import qualified ZooKeeper.Types                  as Z
 import           ZooKeeper.Types                  (ZHandle)
 
-import           HStream.MetaStore.RqliteUtils    (ROp (..), deleteFrom,
-                                                   insertInto, selectFrom,
-                                                   transaction, updateSet,
-                                                   upsert)
+import           Data.Text.Encoding               (decodeUtf8)
+import qualified HStream.MetaStore.FileUtils      as File
+import           HStream.MetaStore.RqliteUtils    (ROp (..), transaction)
+import qualified HStream.MetaStore.RqliteUtils    as RQ
 import           HStream.MetaStore.ZookeeperUtils (createInsertZK,
                                                    decodeDataCompletion,
                                                    decodeZNodeValue,
@@ -48,13 +47,14 @@ type Url = T.Text
 type Version = Int
 class (MetaStore value handle, HasPath value handle) => MetaType value handle
 instance (MetaStore value handle, HasPath value handle) => MetaType value handle
-
+type FHandle = FilePath
 data RHandle = RHandle Manager Url
 data MetaHandle
   = ZkHandle ZHandle
   | RLHandle RHandle
+  | FileHandle FHandle
 -- TODO
---  | LocalHandle IO.Handle
+--  | LocalHandle FHandle
 
 data MetaOp
   = InsertOp Path Key BS.ByteString
@@ -133,17 +133,17 @@ instance MetaMulti ZHandle where
 
 instance MetaStore value RHandle where
   myPath _ = myRootPath @value @RHandle
-  insertMeta mid x    (RHandle m url) = insertInto m url (myRootPath @value @RHandle) mid x
-  updateMeta mid x mv (RHandle m url) = updateSet  m url (myRootPath @value @RHandle) mid x mv
-  upsertMeta mid x    (RHandle m url) = upsert     m url (myRootPath @value @RHandle) mid x
-  deleteMeta mid   mv (RHandle m url) = deleteFrom m url (myRootPath @value @RHandle) (Just mid) mv
-  deleteAllMeta       (RHandle m url) = deleteFrom m url (myRootPath @value @RHandle) Nothing Nothing
-  checkMetaExists mid (RHandle m url) = selectFrom @value m url (myRootPath @value @RHandle) (Just mid)
+  insertMeta mid x    (RHandle m url) = RQ.insertInto m url (myRootPath @value @RHandle) mid x
+  updateMeta mid x mv (RHandle m url) = RQ.updateSet  m url (myRootPath @value @RHandle) mid x mv
+  upsertMeta mid x    (RHandle m url) = RQ.upsert     m url (myRootPath @value @RHandle) mid x
+  deleteMeta mid   mv (RHandle m url) = RQ.deleteFrom m url (myRootPath @value @RHandle) (Just mid) mv
+  deleteAllMeta       (RHandle m url) = RQ.deleteFrom m url (myRootPath @value @RHandle) Nothing Nothing
+  checkMetaExists mid (RHandle m url) = RQ.selectFrom @value m url (myRootPath @value @RHandle) (Just mid)
                                     <&> not . Map.null
   getMeta         mid (RHandle m url) = fmap fst <$> getMetaWithVer mid  (RHandle m url)
-  getMetaWithVer  mid (RHandle m url) = selectFrom m url (myRootPath @value @RHandle) (Just mid)
+  getMetaWithVer  mid (RHandle m url) = RQ.selectFrom m url (myRootPath @value @RHandle) (Just mid)
                                     <&> Map.lookup mid
-  getAllMeta          (RHandle m url) = fmap fst <$> selectFrom m url (myRootPath @value @RHandle) Nothing
+  getAllMeta          (RHandle m url) = fmap fst <$> RQ.selectFrom m url (myRootPath @value @RHandle) Nothing
   listMeta            (RHandle m url) = Map.elems <$> getAllMeta (RHandle m url)
 
 instance MetaMulti RHandle where
@@ -160,12 +160,39 @@ instance MetaMulti RHandle where
                               in maybe ops' (\version -> CheckROp p k version: ops') mv
         CheckOp  p k v    -> [CheckROp p k v]
 
-instance (ToJSON a, FromJSON a, HasPath a ZHandle, HasPath a RHandle, Show a) => HasPath a MetaHandle
+instance MetaStore value FHandle where
+  myPath _   = myRootPath @value @FHandle
+  insertMeta = File.insertIntoTable (myRootPath @value @FHandle)
+  updateMeta = File.updateSet  (myRootPath @value @FHandle)
+  upsertMeta = File.upsert     (myRootPath @value @FHandle)
+  deleteMeta = File.deleteFromTable (myRootPath @value @FHandle)
+  deleteAllMeta = File.deleteAllFromTable (myRootPath @value @FHandle)
+  checkMetaExists mid ioH = File.selectFrom @value (myRootPath @value @FHandle) mid ioH
+                        <&> not . null
+  getMeta        = ((fmap fst <$>) . ) . getMetaWithVer
+  getMetaWithVer = File.selectFrom (myRootPath @value @FHandle)
+
+  getAllMeta     = (fmap fst <$>)  . File.selectAllFrom (myRootPath @value @FHandle)
+  listMeta       = (Map.elems <$>) . getAllMeta
+
+instance MetaMulti FHandle where
+  metaMulti ops ioH = do
+    let fileOps = map opToFile ops
+    -- TODO: if failing show which operation failed
+    File.runOps fileOps ioH
+    where
+      opToFile op = case op of
+        InsertOp p k v    -> File.InsertOp p k (decodeUtf8 v)
+        UpdateOp p k v mv -> File.UpdateOp p k (decodeUtf8 v) mv
+        DeleteOp p k mv   -> File.DeleteOp p k mv
+        CheckOp  p k v    -> File.CheckOp p k v
+
+instance (ToJSON a, FromJSON a, HasPath a ZHandle, HasPath a RHandle, HasPath a FHandle, Show a) => HasPath a MetaHandle
 
 #define USE_WHICH_HANDLE(handle, action) \
-  case handle of ZkHandle zk -> action zk; RLHandle rq -> action rq
+  case handle of ZkHandle zk -> action zk; RLHandle rq -> action rq; FileHandle io -> action io;
 
-instance (HasPath value ZHandle, HasPath value RHandle) => MetaStore value MetaHandle where
+instance (HasPath value ZHandle, HasPath value RHandle, HasPath value FHandle) => MetaStore value MetaHandle where
   myPath = undefined
   listMeta            h = USE_WHICH_HANDLE(h, listMeta @value)
   insertMeta mid x    h = USE_WHICH_HANDLE(h, insertMeta mid x)

@@ -66,6 +66,8 @@ module HStream.Exception
   , QueryNotFound (..)
   , RQLiteTableNotFound (..)
   , RQLiteRowNotFound (..)
+  , LocalMetaStoreTableNotFound (..)
+  , LocalMetaStoreObjectNotFound (..)
 
     -- * Exception: SomeAlreadyExists
     --
@@ -76,6 +78,8 @@ module HStream.Exception
   , ShardReaderExists (..)
   , RQLiteTableAlreadyExists (..)
   , RQLiteRowAlreadyExists (..)
+  , LocalMetaStoreTableAlreadyExists (..)
+  , LocalMetaStoreObjectAlreadyExists (..)
   , PushQueryCreated (..)
 
     -- * Exception: SomePermissionDenied
@@ -104,6 +108,7 @@ module HStream.Exception
   , ShardCanNotSplit (..)
   , ShardCanNotMerge (..)
   , RQLiteRowBadVersion (..)
+  , LocalMetaStoreObjectBadVersion (..)
   , ResourceAllocationException (..)
 
     -- * Exception: SomeAborted
@@ -142,6 +147,7 @@ module HStream.Exception
   , RQLiteNetworkErr (..)
   , RQLiteDecodeErr (..)
   , RQLiteUnspecifiedErr (..)
+  , LocalMetaStoreInternalErr (..)
   , DiscardedMethod (..)
   , PushQuerySendError (..)
 
@@ -358,6 +364,8 @@ MAKE_PARTICULAR_EX_1(SomeNotFound, ShardNotFound, Text, Text.unpack)
 MAKE_PARTICULAR_EX_1(SomeNotFound, QueryNotFound, String, )
 MAKE_PARTICULAR_EX_1(SomeNotFound, RQLiteTableNotFound, String, )
 MAKE_PARTICULAR_EX_1(SomeNotFound, RQLiteRowNotFound, String, )
+MAKE_PARTICULAR_EX_1(SomeNotFound, LocalMetaStoreTableNotFound, String, )
+MAKE_PARTICULAR_EX_1(SomeNotFound, LocalMetaStoreObjectNotFound, String, )
 
 -------------------------------------------------------------------------------
 -- Exception: SomeAlreadyExists
@@ -372,6 +380,8 @@ MAKE_PARTICULAR_EX_1(SomeAlreadyExists, StreamExists, String, )
 MAKE_PARTICULAR_EX_1(SomeAlreadyExists, ShardReaderExists, Text, Text.unpack)
 MAKE_PARTICULAR_EX_1(SomeAlreadyExists, RQLiteTableAlreadyExists, String, )
 MAKE_PARTICULAR_EX_1(SomeAlreadyExists, RQLiteRowAlreadyExists, String, )
+MAKE_PARTICULAR_EX_1(SomeAlreadyExists, LocalMetaStoreTableAlreadyExists, String, )
+MAKE_PARTICULAR_EX_1(SomeAlreadyExists, LocalMetaStoreObjectAlreadyExists, String, )
 MAKE_PARTICULAR_EX_1(SomeAlreadyExists, PushQueryCreated, String, )
 
 -------------------------------------------------------------------------------
@@ -433,6 +443,7 @@ MAKE_PARTICULAR_EX_1(SomeFailedPrecondition, FoundActiveConsumers, String, )
 MAKE_PARTICULAR_EX_1(SomeFailedPrecondition, ShardCanNotSplit, String, )
 MAKE_PARTICULAR_EX_1(SomeFailedPrecondition, ShardCanNotMerge, String, )
 MAKE_PARTICULAR_EX_1(SomeFailedPrecondition, RQLiteRowBadVersion, String, )
+MAKE_PARTICULAR_EX_1(SomeFailedPrecondition, LocalMetaStoreObjectBadVersion, String, )
 
 -------------------------------------------------------------------------------
 -- Exception: SomeAborted
@@ -487,6 +498,7 @@ MAKE_PARTICULAR_EX_1(SomeInternal, ZstdCompresstionErr, String, )
 MAKE_PARTICULAR_EX_1(SomeInternal, RQLiteNetworkErr, String, )
 MAKE_PARTICULAR_EX_1(SomeInternal, RQLiteDecodeErr, String, )
 MAKE_PARTICULAR_EX_1(SomeInternal, RQLiteUnspecifiedErr, String, )
+MAKE_PARTICULAR_EX_1(SomeInternal, LocalMetaStoreInternalErr, String, )
 MAKE_PARTICULAR_EX_1(SomeInternal, DiscardedMethod, String, )
 MAKE_PARTICULAR_EX_1(SomeInternal, PushQuerySendError, String, )
 

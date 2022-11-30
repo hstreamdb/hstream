@@ -1,11 +1,17 @@
 module HStream.MetaStoreSpec where
+
 import           Control.Monad                    (void)
+import qualified Data.Aeson                       as A
+import           Data.ByteString                  (writeFile)
+import qualified Data.ByteString.Lazy             as BS
 import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as Map
-import           Data.Maybe
+import           Data.Maybe                       (fromMaybe)
 import qualified Data.Text                        as T
 import           Network.HTTP.Client              (defaultManagerSettings,
                                                    newManager)
+import           Prelude                          hiding (writeFile)
+import           System.Directory                 (createDirectoryIfMissing)
 import           System.Environment               (lookupEnv)
 import           Test.Hspec                       (HasCallStack, Spec,
                                                    afterAll_, anyException,
@@ -18,8 +24,9 @@ import           ZooKeeper.Types                  (ZHandle)
 
 
 import qualified HStream.Logger                   as Log
+import qualified HStream.MetaStore.FileUtils      as File
 import           HStream.MetaStore.RqliteUtils    (createTable, deleteTable)
-import           HStream.MetaStore.Types          (HasPath (..),
+import           HStream.MetaStore.Types          (FHandle, HasPath (..),
                                                    MetaHandle (..),
                                                    MetaMulti (..),
                                                    MetaStore (..), RHandle (..))
@@ -34,6 +41,8 @@ spec = do
   portRq <- runIO $ fromMaybe "4001" <$> lookupEnv "RQLITE_LOCAL_PORT"
   portZk <- runIO $ fromMaybe "2181" <$> lookupEnv "ZOOKEEPER_LOCAL_PORT"
   let host = "127.0.0.1"
+  let localMetaFilepath = "local-data/metastore"
+  runIO $ createDirectoryIfMissing True "local-data"
   let urlRq = T.pack $ host <> ":" <> portRq
   let urlZk = textToCBytes $ T.pack $ host <> ":" <> portZk
   let mHandle1 = RLHandle $ RHandle m urlRq
@@ -42,6 +51,9 @@ spec = do
   runIO $ withResource res $ \zk -> do
     let mHandle2 = ZkHandle zk
     hspec $ smokeTest mHandle2
+  runIO $ writeFile localMetaFilepath (BS.toStrict $  A.encode (mempty :: File.Contents))
+  let mHandle3 = FileHandle localMetaFilepath
+  afterAll_ (void $ File.deleteTable (myRootPath @MetaExample @FHandle) localMetaFilepath) (smokeTest mHandle3)
 
 smokeTest :: HasCallStack => MetaHandle -> Spec
 smokeTest h = do
@@ -52,6 +64,10 @@ smokeTest h = do
     RLHandle (RHandle m url) -> do
       runIO $ createTable m url (myRootPath @MetaExample @RHandle)
       return "RQLite Handle"
+    FileHandle fh -> do
+      runIO $ File.createTable (myRootPath @MetaExample @FHandle) fh
+      return "Local File IO Handle"
+
   describe ("Run with " <> hName) $ do
     it "Basic Meta Test " $ do
       meta@Meta{metaId = id_1} <- generate metaGen
