@@ -1,6 +1,6 @@
 packages:
   hstream
-  common/hstream-common.cabal
+  common/hstream/hstream-common.cabal
   common/stats/hstream-common-stats.cabal
   common/api/hstream-api-protolens.cabal
   hstream-store
