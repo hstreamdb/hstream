@@ -1,4 +1,5 @@
 CABAL ?= cabal
+CABAL_PROJECT_FILE ?= cabal.project
 
 all:: thrift grpc sql
 
@@ -16,18 +17,21 @@ grpc:: grpc-cpp grpc-hs
 
 grpc-hs-deps::
 	(cd ~ && command -v proto-lens-protoc || cabal install proto-lens-protoc)
-	($(CABAL) build proto3-suite && mkdir -p ~/.cabal/bin && \
-		$(CABAL) exec which compile-proto-file_hstream | tail -1 | xargs -I{} cp {} $(PROTO_COMPILE_HS))
+	($(CABAL) build --project-file $(CABAL_PROJECT_FILE) proto3-suite && \
+		mkdir -p ~/.cabal/bin && \
+		$(CABAL) exec --project-file $(CABAL_PROJECT_FILE) \
+			which compile-proto-file_hstream | tail -1 | xargs -I{} cp {} $(PROTO_COMPILE_HS)\
+	)
 
 grpc-hs: grpc-hs-deps grpc-cpp
-	(cd common/api/protos && $(PROTO_COMPILE_HS) \
+	($(PROTO_COMPILE_HS) \
 		--includeDir /usr/local/include \
 		--proto google/protobuf/struct.proto \
-		--out ../gen-hs)
-	(cd common/api/protos && $(PROTO_COMPILE_HS) \
+		--out common/hstream/gen-hs)
+	($(PROTO_COMPILE_HS) \
 		--includeDir /usr/local/include \
 		--proto google/protobuf/empty.proto \
-		--out ../gen-hs)
+		--out common/hstream/gen-hs)
 	(cd common/api/protos && $(PROTO_COMPILE_HS) \
 		--includeDir /usr/local/include \
 		--includeDir . \
@@ -57,9 +61,8 @@ sql:: sql-deps
 	(cd hstream-sql/gen-sql && mv HStream/SQL/Lex.x.new HStream/SQL/Lex.x && make)
 
 sql-deps::
-	(cd ~ && command -v bnfc || cabal install BNFC --constraint 'BNFC >= 2.9')
-	# alex == 3.2.7 will fail to build language-c, see: https://github.com/simonmar/alex/issues/197
-	(cd ~ && command -v alex || cabal install alex --constraint 'alex == 3.2.6')
+	(cd ~ && command -v bnfc || cabal install BNFC --constraint 'BNFC ^>= 2.9')
+	(cd ~ && command -v alex || cabal install alex --constraint 'alex ^>= 3.2')
 	(cd ~ && command -v happy || cabal install happy)
 
 clean:
