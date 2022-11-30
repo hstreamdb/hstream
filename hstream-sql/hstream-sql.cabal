@@ -95,8 +95,7 @@ library
     , Z-IO
 
   -- Note: build on osx may require this
-  -- alex == 3.2.7 will fail to build language-c, see: https://github.com/simonmar/alex/issues/197
-  build-tool-depends: alex:alex ==3.2.6, happy:happy -any
+  build-tool-depends: alex:alex ^>=3.2.7.1, happy:happy -any
   default-language:   Haskell2010
 
 -- test-suite hstream-sql-test

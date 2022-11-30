@@ -16,3 +16,6 @@
 [submodule "external/hs-grpc"]
 	path = external/hs-grpc
 	url = git@github.com:4eUeP/hs-grpc.git
+[submodule "external/table-layout"]
+	path = external/table-layout
+	url = https://github.com/muesli4/table-layout.git
