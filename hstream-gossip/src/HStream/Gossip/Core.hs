@@ -31,7 +31,6 @@ import qualified Proto3.Suite                   as PT
 import qualified SlaveThread
 
 import qualified HStream.Common.GrpcHaskell     as GRPC
-
 import           HStream.Gossip.Gossip          (gossip)
 import           HStream.Gossip.HStreamGossip   (ServerList (..))
 import           HStream.Gossip.Probe           (doPing, pingReq, pingReqPing)
@@ -75,13 +74,14 @@ addToServerList gc@GossipContext{..} node@I.ServerNode{..} msg state isJoin = un
     client <- GRPC.initGrpcClient $ mkGRPCClientConf node
     writeIORef grpcClientRef (Just client)
     joinWorkers client gc status
-  (old, new) <- atomically $ do
+  ((e1,old), (e2,new)) <- atomically $ do
     old <- getMemberListWithEpochSTM gc
     modifyTVar' serverList $ bimap (if isJoin then id else succ) (Map.insert serverNodeId status)
     modifyTVar' workers (Map.insert serverNodeId workersThread)
     new <- getMemberListWithEpochSTM gc
     return (old, new)
-  Log.info $ "Update server list from " <> Log.buildString' old <> " to " <> Log.buildString' new
+  Log.debug $ "Update server list from " <> Log.buildString' (map I.serverNodeId old) <> " with epoch " <> Log.buildString' e1
+                               <> " to " <> Log.buildString' (map I.serverNodeId new) <> " with epoch " <> Log.buildString' e2
 
 joinWorkers :: GRPC.Client -> GossipContext -> ServerStatus -> IO ()
 joinWorkers client gc@GossipContext{..} ss@ServerStatus{serverInfo = sNode@I.ServerNode{..}, ..} = do
@@ -159,9 +159,9 @@ handleStateMessage GossipContext{..} msg@(T.GConfirm _inc node@I.ServerNode{..} 
       case mWorker of
         Nothing -> pure ()
         Just  a -> do
-          Log.debug . Log.buildString $ "[Server Node " <> show (I.serverNodeId serverSelf) <> "] " <> show node <> " left cluster"
           Log.info . Log.buildString $ "Stopping Worker" <> show serverNodeId
           killThread a
+          Log.info . Log.buildString $ "[Server Node " <> show (I.serverNodeId serverSelf) <> "] " <> show node <> " left cluster"
       atomically $ do
         modifyTVar' serverList $ bimap succ (Map.delete serverNodeId)
         modifyTVar' deadServers $ Map.insert serverNodeId serverInfo

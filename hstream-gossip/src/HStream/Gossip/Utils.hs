@@ -7,6 +7,7 @@
 
 module HStream.Gossip.Utils where
 
+import           Control.Concurrent
 import           Control.Concurrent.STM           (STM, TQueue, TVar,
                                                    atomically, readTVar,
                                                    readTVarIO, stateTVar,
@@ -16,6 +17,8 @@ import           Control.Exception.Base
 import           Control.Monad                    (unless)
 import           Data.ByteString                  (ByteString)
 import           Data.Foldable                    (foldl')
+import           Data.Functor
+import qualified Data.HashMap.Strict              as HM
 import qualified Data.Map                         as Map
 import           Data.String                      (IsString (fromString))
 import           Data.Text                        (Text)
@@ -28,12 +31,7 @@ import           Network.GRPC.HighLevel.Generated (ClientConfig (..),
                                                    ServerResponse (..),
                                                    StatusCode (..),
                                                    StatusDetails (..))
-import qualified Text.Layout.Table                as Table
-import           Text.Layout.Table                (def)
 
-import           Control.Concurrent
-import           Data.Functor
-import qualified Data.HashMap.Strict              as HM
 import           HStream.Common.Types             (fromInternalServerNode)
 import qualified HStream.Exception                as HE
 import           HStream.Gossip.Types             (BroadcastPool, EventHandler,
