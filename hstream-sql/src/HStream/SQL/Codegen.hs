@@ -1,6 +1,5 @@
 {-# LANGUAGE BlockArguments      #-}
 {-# LANGUAGE LambdaCase          #-}
-{-# LANGUAGE NoImplicitPrelude   #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE RecordWildCards     #-}
@@ -10,21 +9,28 @@
 
 module HStream.SQL.Codegen where
 
+import           Control.Concurrent
+import           Control.Monad
 import           Data.Aeson                  (Object, Value (..))
 import qualified Data.Aeson                  as Aeson
 import           Data.Bifunctor
+import           Data.ByteString             (ByteString)
+import qualified Data.ByteString.Lazy        as BL
 import           Data.Function
 import           Data.Functor
 import qualified Data.HashMap.Strict         as HM
+import           Data.Int                    (Int64)
 import qualified Data.List                   as L
 import qualified Data.Map.Strict             as Map
 import           Data.Maybe
 import           Data.Scientific             (toRealFloat)
+import           Data.Text                   (Text)
 import qualified Data.Text                   as T
+import           GHC.Stack                   (HasCallStack)
 import qualified Proto3.Suite                as PB
-import           RIO
-import qualified RIO.ByteString.Lazy         as BL
 
+import           DiffFlow.Graph
+import           DiffFlow.Types
 import           HStream.SQL.AST
 import           HStream.SQL.Codegen.BinOp
 import           HStream.SQL.Codegen.Cast
@@ -36,11 +42,6 @@ import           HStream.SQL.Exception       (SomeSQLException (..),
 import           HStream.SQL.Parse           (parseAndRefine)
 import           HStream.Utils               (cBytesToText, jsonObjectToStruct)
 import qualified HStream.Utils.Aeson         as HsAeson
-
-import           DiffFlow.Graph
-import           DiffFlow.Types
-
-import qualified Prelude
 
 --------------------------------------------------------------------------------
 type Row = FlowObject
@@ -107,7 +108,7 @@ hstreamCodegen = \case
     return $ CreateConnectorPlan cType cName cTarget ifNotExist cOptions
   RQInsert (RInsert stream tuples)   -> do
     let jsonObj = HsAeson.fromList $
-          second (flowValueToJsonValue . constantToFlowValue) <$> tuples
+          bimap HsAeson.fromText (flowValueToJsonValue . constantToFlowValue) <$> tuples
     return $ InsertPlan stream JsonFormat (BL.toStrict . PB.toLazyByteString . jsonObjectToStruct $ jsonObj)
   RQInsert (RInsertBinary stream bs) -> return $ InsertPlan stream RawFormat  bs
   RQInsert (RInsertJSON stream bs)   -> return $ InsertPlan stream JsonFormat (BL.toStrict . PB.toLazyByteString . jsonObjectToStruct . fromJust $ Aeson.decode (BL.fromStrict bs))

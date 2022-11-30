@@ -74,15 +74,13 @@ library
     , array
     , base                  >=4.11  && <5
     , binary
-    , bytestring            ^>=0.10
+    , bytestring
     , containers
     , diff-flow
     , extra
     , hashable
     , hstream-common
-    , mysql-haskell
     , proto3-suite
-    , rio
     , scientific
     , string-random
     , text                  ^>=1.2
@@ -95,7 +93,10 @@ library
     , Z-IO
 
   -- Note: build on osx may require this
-  build-tool-depends: alex:alex ^>=3.2.7.1, happy:happy -any
+  build-tool-depends:
+    , alex:alex    ^>=3.2.7.1
+    , happy:happy
+
   default-language:   Haskell2010
 
 -- test-suite hstream-sql-test
