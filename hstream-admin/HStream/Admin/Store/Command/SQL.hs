@@ -7,9 +7,10 @@ import           Data.Char                        (toLower, toUpper)
 import           Data.List                        (isPrefixOf)
 import qualified System.Console.Haskeline         as H
 import           Text.Layout.Table                (asciiS, center, colsAllG,
-                                                   column, def, expand,
-                                                   fixedLeftCol, justifyText,
-                                                   left, tableString, titlesH)
+                                                   column, columnHeaderTableS,
+                                                   def, expand, fixedLeftCol,
+                                                   justifyText, left,
+                                                   tableString, titlesH)
 import           Z.Data.CBytes                    (pack, unpack)
 
 import           HStream.Admin.Store.API
@@ -21,18 +22,19 @@ import           HStream.Utils                    (simpleShowTable)
 runShowTables :: S.LDQuery -> IO String
 runShowTables ldq = do
   tables <- S.showTables ldq
-  let titles  = ["Table", "Description"]
+  let titles  = ["Table", "Description" :: String]
   let width   = 40
   let format  = formatRow width <$> tables
   let colSpec = [column expand left def def, fixedLeftCol width]
-  return $ tableString colSpec asciiS (titlesH titles) (colsAllG center <$> format)
+  return $ tableString $ columnHeaderTableS
+    colSpec asciiS (titlesH titles) (colsAllG center <$> format)
   where
     formatRow width (name, desc) =
       [[unpack name], justifyText width $ unpack desc]
 
 runDescribe :: S.LDQuery -> String -> IO String
 runDescribe ldq name = do
-  let titles  = ["Column", "Type", "Description"]
+  let titles  = ["Column", "Type", "Description" :: String]
   columns <- S.showTableColumns ldq $ pack name
   case columns of
     ([], [], []) -> return $ "Unknown table `" <> name <> "`"
@@ -42,7 +44,8 @@ runDescribe ldq name = do
                           , column expand left def def
                           , fixedLeftCol width
                           ]
-            return $ tableString colSpec asciiS (titlesH titles) (colsAllG center <$> format)
+            return $ tableString $ columnHeaderTableS
+              colSpec asciiS (titlesH titles) (colsAllG center <$> format)
   where
     formatRow width (cols, typs, descs) =
       zipWith3 (\col typ desc ->

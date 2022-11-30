@@ -152,7 +152,7 @@ benchmark common-bench-stats
   hs-source-dirs:     bench
   build-depends:
     , base                  >=4.11 && <5
-    , bytestring            ^>=0.10
+    , bytestring
     , criterion
     , hstream-common
     , hstream-common-stats

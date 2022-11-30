@@ -35,7 +35,7 @@ splitTable isRowFill = f []
                                then f ([x] : acc) xs
                                else f ((x : head acc) : tail acc) xs
 
-defaultShowTable :: (Table.Cell a, Monoid a) => Int -> Columns a -> String
+defaultShowTable :: (Table.Cell a) => Int -> Columns a -> String
 defaultShowTable maxWidth cell =
   Table.concatLines . map (Table.concatLines . consTable)
                     $ splitTable isRowFill cell
@@ -45,12 +45,13 @@ defaultShowTable maxWidth cell =
     consTable a_cell =
       let (titles, cols) = unzip a_cell
           rowGroup = Table.colsAllG Table.top cols
-       in Table.tableLines (def <$ cols) Table.asciiS (Table.titlesH titles) [rowGroup]
+          t = Table.columnHeaderTableS (def <$ cols) Table.asciiS (Table.titlesH titles) [rowGroup]
+       in Table.tableLines t
 
-defaultShowTableIO :: (Table.Cell a, Monoid a) => Columns a -> IO String
+defaultShowTableIO :: (Table.Cell a) => Columns a -> IO String
 defaultShowTableIO cell = termialWidth >>= \w -> pure $ defaultShowTable w cell
 
-defaultShowTableIO' :: (Table.Cell a, Monoid a)
+defaultShowTableIO' :: (Table.Cell a)
                     => [String] -> [Table.Row a] -> IO String
 defaultShowTableIO' titles rows =
   -- Note: here 'Table.colsAsRowsAll' is actually a 'rowAsColsAll'
@@ -68,7 +69,5 @@ simpleShowTable _ [] = ""
 simpleShowTable colconfs rols =
   let titles = map (\(t, _, _) -> t) colconfs
       colout = map (\(_, maxlen, pos) -> Table.column (Table.expandUntil maxlen) pos def def) colconfs
-   in Table.tableString colout
-                        Table.asciiS
-                        (Table.titlesH titles)
-                        [ Table.rowsG rols ]
+   in Table.tableString $
+        Table.columnHeaderTableS colout Table.asciiS (Table.titlesH titles) [ Table.rowsG rols ]

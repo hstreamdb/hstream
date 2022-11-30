@@ -132,16 +132,9 @@ formatCommandQueryResponse (API.CommandQueryResponse x) = case V.toList x of
 
 renderQueriesToTable :: [API.Query] -> String
 renderQueriesToTable [] = ""
-renderQueriesToTable queries =
-  Table.tableString colSpec Table.asciiS
-    (Table.fullH (repeat $ Table.headerColumn Table.left Nothing) titles)
-    (Table.colsAllG Table.center <$> rows) ++ "\n"
+renderQueriesToTable queries = showTable titles rows
   where
-    titles = [ "Query ID"
-             , "Status"
-             , "Created Time"
-             , "SQL Text"
-             ]
+    titles = ["Query ID", "Status", "Created Time", "SQL Text"]
     formatRow API.Query {..} =
       [ [T.unpack queryId]
       , [formatStatus queryStatus]
@@ -149,18 +142,10 @@ renderQueriesToTable queries =
       , [T.unpack queryQueryText]
       ]
     rows = map formatRow queries
-    colSpec = [ Table.column Table.expand Table.left def def
-              , Table.column Table.expand Table.left def def
-              , Table.column Table.expand Table.left def def
-              , Table.column Table.expand Table.left def def
-              ]
 
 renderSubscriptionsToTable :: [API.Subscription] -> String
 renderSubscriptionsToTable [] = ""
-renderSubscriptionsToTable subscriptions =
-  Table.tableString colSpec Table.asciiS
-    (Table.fullH (repeat $ Table.headerColumn Table.left Nothing) titles)
-    (Table.colsAllG Table.center <$> rows) ++ "\n"
+renderSubscriptionsToTable subscriptions = showTable titles rows
   where
     titles = [ "Subscription ID"
              , "Stream Name"
@@ -174,22 +159,12 @@ renderSubscriptionsToTable subscriptions =
       , [show subscriptionMaxUnackedRecords]
       ]
     rows = map formatRow subscriptions
-    colSpec = [ Table.column Table.expand Table.left def def
-              , Table.column Table.expand Table.left def def
-              , Table.column Table.expand Table.left def def
-              , Table.column Table.expand Table.left def def
-              ]
 
 renderConnectorsToTable :: [API.Connector] -> String
 renderConnectorsToTable [] = ""
-renderConnectorsToTable connectors =
-  Table.tableString colSpec Table.asciiS
-    (Table.fullH (repeat $ Table.headerColumn Table.left Nothing) titles)
-    (Table.colsAllG Table.center <$> rows) ++ "\n"
+renderConnectorsToTable connectors = showTable titles rows
   where
-    titles = [ "Name"
-             , "Status"
-             ]
+    titles = ["Name", "Status"]
     formatRow API.Connector {connectorInfo=Just info} =
       [ [maybe "Nothing" toString $ A.lookup "name" infoJson]
       , [maybe "Nothing" toString $ A.lookup "status" infoJson]
@@ -197,18 +172,10 @@ renderConnectorsToTable connectors =
       where infoJson = structToJsonObject info
             toString (A.String v) = T.unpack v
     rows = map formatRow connectors
-    colSpec = [ Table.column Table.expand Table.left def def
-              , Table.column Table.expand Table.left def def
-              , Table.column Table.expand Table.left def def
-              , Table.column Table.expand Table.left def def
-              ]
 
 renderStreamsToTable :: [API.Stream] -> String
 renderStreamsToTable [] = ""
-renderStreamsToTable streams =
-  Table.tableString colSpec Table.asciiS
-    (Table.fullH (repeat $ Table.headerColumn Table.left Nothing) titles)
-    (Table.colsAllG Table.center <$> rows) ++ "\n"
+renderStreamsToTable streams = showTable titles rows
   where
     titles = [ "Stream Name"
              , "Replica"
@@ -221,18 +188,10 @@ renderStreamsToTable streams =
       , [show streamShardCount]
       ]
     rows = map formatRow streams
-    colSpec = [ Table.column Table.expand Table.left def def
-              , Table.column Table.expand Table.left def def
-              , Table.column Table.expand Table.left def def
-              , Table.column Table.expand Table.left def def
-              ]
 
 renderViewsToTable :: [API.View] -> String
 renderViewsToTable [] = ""
-renderViewsToTable views =
-  Table.tableString colSpec Table.asciiS
-    (Table.fullH (repeat $ Table.headerColumn Table.left Nothing) titles)
-    (Table.colsAllG Table.center <$> rows) ++ "\n"
+renderViewsToTable views = showTable titles rows
   where
     titles = [ "View Name"
              , "Status"
@@ -245,35 +204,32 @@ renderViewsToTable views =
       , [show viewSchema]
       ]
     rows = map formatRow views
-    colSpec = [ Table.column Table.expand Table.left def def
-              , Table.column Table.expand Table.left def def
-              , Table.column Table.expand Table.left def def
-              , Table.column Table.expand Table.left def def
-              ]
 
 renderServerNodesToTable :: [API.ServerNode] -> String
-renderServerNodesToTable values =
-  Table.tableString colSpec Table.asciiS
-    (Table.fullH (repeat $ Table.headerColumn Table.left Nothing) titles)
-    (Table.colsAllG Table.center <$> rows) ++ "\n"
+renderServerNodesToTable values = showTable titles rows
   where
     titles = ["Server Id"]
     formatRow API.ServerNode {..} = [[show serverNodeId]]
     rows = map formatRow values
-    colSpec = [ Table.column Table.expand Table.left def def]
 
 renderServerNodesStatusToTable :: [API.ServerNodeStatus] -> String
-renderServerNodesStatusToTable values =
-  Table.tableString colSpec Table.asciiS
-    (Table.fullH (repeat $ Table.headerColumn Table.left Nothing) titles)
-    (Table.colsAllG Table.center <$> rows) ++ "\n"
+renderServerNodesStatusToTable values = showTable titles rows
   where
     titles = ["Server Id", "State", "Address"]
     formatRow API.ServerNodeStatus {serverNodeStatusNode = Just API.ServerNode{..}, ..} =
       [[show serverNodeId], [showNodeStatus serverNodeStatusState], [show serverNodeHost <> ":" <> show serverNodePort]]
     formatRow API.ServerNodeStatus {serverNodeStatusNode = Nothing} = []
     rows = map formatRow . L.sort $ values
-    colSpec = replicate (length titles) $ Table.column Table.expand Table.left def def
+
+showTable :: [String] -> [[[String]]] -> String
+showTable titles rows = Table.tableString t ++ "\n"
+  where
+    t = Table.columnHeaderTableS
+          colSpec
+          Table.asciiS
+          (Table.fullH (repeat $ Table.headerColumn Table.left Nothing) titles)
+          (Table.colsAllG Table.center <$> rows)
+    colSpec = map (const $ Table.column Table.expand Table.left def def) titles
 
 approxNaturalTime :: NominalDiffTime -> String
 approxNaturalTime n
