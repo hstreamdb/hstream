@@ -186,7 +186,7 @@ benchmark hstore-bench-append
     , base                  >=4.11 && <5
     , bytestring            ^>=0.10
     , byteunits             ^>=0.4
-    , criterion             ^>=1.5
+    , criterion
     , hstream-store
     , optparse-applicative  ^>=0.16
     , Z-Data
@@ -217,7 +217,7 @@ benchmark hstore-bench-append-batch
     , base                  >=4.11 && <5
     , bytestring            ^>=0.10
     , byteunits             ^>=0.4
-    , criterion             ^>=1.5
+    , criterion
     , hstream-store
     , optparse-applicative  ^>=0.16
     , Z-Data
@@ -248,7 +248,7 @@ benchmark hstore-bench-stream
     , base                  >=4.11   && <5
     , bytestring            ^>=0.10
     , byteunits             ^>=0.4
-    , criterion             ^>=1.5
+    , criterion
     , hstream-store
     , optparse-applicative  ^>=0.16
     , unordered-containers  ^>=0.2.19

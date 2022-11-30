@@ -60,3 +60,4 @@ constraints:
   , zoovisitor    == 0.2.1.0
   , blaze-textual == 0.2.1.0
   , entropy       == 0.4.1.7
+  , criterion    ^>= 1.6

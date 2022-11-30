@@ -153,7 +153,7 @@ benchmark common-bench-stats
   build-depends:
     , base                  >=4.11 && <5
     , bytestring            ^>=0.10
-    , criterion             ^>=1.5
+    , criterion
     , hstream-common
     , hstream-common-stats
     , Z-Data
