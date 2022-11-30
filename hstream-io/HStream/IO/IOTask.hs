@@ -5,6 +5,7 @@
 module HStream.IO.IOTask where
 
 import qualified Control.Concurrent         as C
+import qualified Control.Concurrent.STM     as STM
 import           Control.Exception          (throwIO)
 import qualified Control.Exception          as E
 import           Control.Monad              (forever, msum, unless, void, when)
@@ -14,11 +15,10 @@ import qualified Data.ByteString.Lazy       as BSL
 import qualified Data.ByteString.Lazy.Char8 as BSLC
 import           Data.IORef                 (newIORef, readIORef, writeIORef)
 import qualified Data.Text                  as T
-import           RIO.Directory              (createDirectoryIfMissing)
+import qualified GHC.IO.Handle              as IO
+import           System.Directory           (createDirectoryIfMissing)
 import qualified System.Process.Typed       as TP
 
-import qualified Control.Concurrent.STM     as STM
-import qualified GHC.IO.Handle              as IO
 import qualified HStream.IO.Messages        as MSG
 import qualified HStream.IO.Meta            as M
 import           HStream.IO.Types
