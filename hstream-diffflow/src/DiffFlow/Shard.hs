@@ -554,10 +554,15 @@ processFrontierUpdates shard@Shard{..} = do
                         -- sort changes by a well defined rule because the reducer may not be commutative
                         let sortedInputs = L.sortBy compareDataChangeByTimeFirst inputBag
 
-                        let inputValue = L.foldl
+                        inputValue <- foldlM
                               (\acc DataChange{..} ->
                                  -- do 'reducer' for 'n' times, n=dcDiff
-                                 L.foldl (\acc' _ -> reducer acc' dcRow) acc [1..dcDiff]
+                                 foldlM (\acc' _ -> case reducer acc' dcRow of
+                                                       Right row_ -> return row_
+                                                       Left (e,errRow_) -> do
+                                                         Log.warning . Log.buildString $ show e
+                                                         return errRow_
+                                        ) acc [1..dcDiff]
                               ) initValue sortedInputs
                         let outputChanges' =
                               L.map (\change -> change { dcDiff = - (dcDiff change)

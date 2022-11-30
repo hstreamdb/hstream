@@ -36,7 +36,7 @@ reducingShard = do
   let mapper o = A.adjust (\(Number n) -> (Number n)) "a" o
       keygen o = A.fromList $ [("b", (A.!) o "b")]
       reducer value row = let (Number x) = (A.!) row "a"
-                           in A.adjust (\(Number n) -> (Number (n+1))) "cnt" value
+                           in Right $ A.adjust (\(Number n) -> (Number (n+1))) "cnt" value
       initValue = A.fromList [("cnt", Number 0)]
 
   let (builder_3, node_2) = addNode builder_2 subgraph_0 (IndexSpec node_1)

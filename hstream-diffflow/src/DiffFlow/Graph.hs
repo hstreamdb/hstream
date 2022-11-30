@@ -38,12 +38,12 @@ data NodeInput = NodeInput
 newtype Mapper row = Mapper { mapper :: row -> Either (DiffFlowError,row) row } deriving (Generic, NFData)
 newtype Filter row = Filter { filterF :: row -> Bool } deriving (Generic, NFData)
 newtype Joiner row = Joiner { joiner :: row -> row -> row } deriving (Generic, NFData)
-newtype Reducer row = Reducer { reducer :: row -> row -> row } deriving (Generic, NFData) -- \acc x -> acc'
+newtype Reducer row = Reducer { reducer :: row -> row -> Either (DiffFlowError,row) row } deriving (Generic, NFData) -- \acc x -> acc'
 type KeyGenerator row = row -> row
 type RowGenerator row = row -> row
 type JoinCondition row = row -> row -> Bool
 
-newtype Composer row = Composer { composer :: [row] -> row } deriving (Generic, NFData)
+newtype Composer row = Composer { composer :: [row] -> Either (DiffFlowError,row) row } deriving (Generic, NFData)
 
 {-
 class HasIndex a where

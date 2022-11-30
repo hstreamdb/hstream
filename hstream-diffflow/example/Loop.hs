@@ -63,7 +63,7 @@ main = do
 
   let reducer = Reducer (\acc row -> let (String reduced) = (A.!) acc "reduced"
                                          (String v2)      = (A.!) row "v2"
-                                      in A.fromList [("reduced", String (reduced <> v2))]
+                                      in Right $ A.fromList [("reduced", String (reduced <> v2))]
                         ) -- acc ++ row[1]
       initValue = A.fromList [("reduced", String "")]
       keygen = \row -> let v1 = (A.!) row "v1" in A.fromList [("v1", v1)]
