@@ -5,9 +5,9 @@
 module HStream.SQL.Codegen.Utils where
 
 import           Data.Function         ((&))
+import qualified Data.HashMap.Strict   as HM
 import           Data.List             (foldl')
 import           Data.Maybe            (fromMaybe)
-import qualified Data.HashMap.Strict   as HM
 import           Data.Scientific
 import           Data.Text             (Text)
 import qualified Data.Text             as T

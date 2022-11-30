@@ -48,11 +48,14 @@ getField k stream_m extra_m o =
           case L.filter (\(SKey _ _ extra_, _) -> extra_ == extra_m) xs of
             []         -> Nothing
             [(skey,v)] -> Just (skey, v)
+            _          -> Nothing
+{-
             _          -> throw
                           SomeRuntimeException
                           { runtimeExceptionMessage = "!!! Ambiguous field name with different <stream> and/or <extra>: " <> show xs <> ": " <> show callStack
                           , runtimeExceptionCallStack = callStack
                           }
+-}
 
 getField' :: Text -> Maybe Text -> Maybe Text -> FlowObject -> (SKey, FlowValue)
 getField' k stream_m extra_m o =
