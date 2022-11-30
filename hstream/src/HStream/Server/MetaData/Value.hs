@@ -5,7 +5,7 @@ import           Z.Data.CBytes                 (CBytes)
 import           ZooKeeper.Types               (ZHandle)
 
 import           HStream.IO.Types
-import           HStream.MetaStore.Types       (HasPath (myRootPath),
+import           HStream.MetaStore.Types       (FHandle, HasPath (myRootPath),
                                                 RHandle (..))
 import           HStream.Server.MetaData.Types
 import           HStream.Server.Types          (SubscriptionWrap (..))
@@ -38,6 +38,19 @@ tables = [
   , myRootPath @SubscriptionWrap @RHandle
   , myRootPath @Proto.Timestamp  @RHandle
   , myRootPath @TaskAllocation @RHandle
+  ]
+
+fileTables :: [Text]
+fileTables = [
+    myRootPath @TaskMeta         @FHandle
+  , myRootPath @TaskIdMeta       @FHandle
+  , myRootPath @QueryInfo        @FHandle
+  , myRootPath @QueryStatus       @FHandle
+  , myRootPath @ViewInfo        @FHandle
+  , myRootPath @ShardReader      @FHandle
+  , myRootPath @SubscriptionWrap @FHandle
+  , myRootPath @Proto.Timestamp  @FHandle
+  , myRootPath @TaskAllocation @FHandle
   ]
 
 clusterStartTimeId :: Text
