@@ -32,6 +32,7 @@ handlers sc =
     -- Stream
   , unary (GRPC :: GRPC P.HStreamApi "createStream") (H.handleCreateStream sc)
   , unary (GRPC :: GRPC P.HStreamApi "deleteStream") (H.handleDeleteStream sc)
+  , unary (GRPC :: GRPC P.HStreamApi "getStream") (H.handleGetStream sc)
   , unary (GRPC :: GRPC P.HStreamApi "listStreams") (H.handleListStreams sc)
   , unary (GRPC :: GRPC P.HStreamApi "listShards") (H.handleListShard sc)
     -- Reader

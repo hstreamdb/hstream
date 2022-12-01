@@ -37,6 +37,7 @@ handlers serverContext@ServerContext{..} =
         -- Streams
         hstreamApiCreateStream = createStreamHandler serverContext,
         hstreamApiDeleteStream = deleteStreamHandler serverContext,
+        hstreamApiGetStream = getStreamHandler serverContext,
         hstreamApiListStreams = listStreamsHandler serverContext,
         hstreamApiAppend = appendHandler serverContext,
 

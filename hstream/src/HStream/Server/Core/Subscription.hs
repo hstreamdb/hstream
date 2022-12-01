@@ -32,9 +32,11 @@ import           GHC.Stack                  (HasCallStack)
 import qualified HStream.Exception          as HE
 import qualified HStream.Logger             as Log
 import qualified HStream.MetaStore.Types    as M
-import           HStream.Server.Core.Common (decodeRecordBatch,
-                                             getCommitRecordId, getSuccessor,
-                                             insertAckedRecordId)
+import           HStream.Server.Core.Common as CC (decodeRecordBatch,
+                                                   getCommitRecordId,
+                                                   getSuccessor,
+                                                   insertAckedRecordId,
+                                                   listSubscriptions)
 import           HStream.Server.HStreamApi
 import           HStream.Server.Types
 import qualified HStream.Stats              as Stats
@@ -46,14 +48,7 @@ import           HStream.Utils              (decompressBatchedRecord,
 --------------------------------------------------------------------------------
 
 listSubscriptions :: ServerContext -> IO (V.Vector Subscription)
-listSubscriptions ServerContext{..} = do
-  subs <- M.listMeta metaHandle
-  mapM update $ V.fromList (map originSub subs)
- where
-   update sub@Subscription{..} = do
-     archived <- S.isArchiveStreamName (textToCBytes subscriptionStreamName)
-     if archived then return sub {subscriptionStreamName = "__deleted_stream__"}
-                 else return sub
+listSubscriptions sc = CC.listSubscriptions sc Nothing
 
 getSubscription :: ServerContext -> GetSubscriptionRequest -> IO GetSubscriptionResponse
 getSubscription ServerContext{..} GetSubscriptionRequest{ getSubscriptionRequestId = subId} = do
