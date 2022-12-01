@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
+{-# LANGUAGE CPP              #-}
 {-# LANGUAGE DeriveAnyClass   #-}
 {-# LANGUAGE DeriveGeneric    #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -22,7 +23,9 @@ import           GHC.Generics                     (Generic)
 import           Network.GRPC.HighLevel           (StreamSend)
 import qualified Proto3.Suite                     as PB
 
+#if __GLASGOW_HASKELL__ < 902
 import qualified HStream.Admin.Store.API          as AA
+#endif
 import           HStream.Common.ConsistentHashing (HashRing)
 import           HStream.Gossip.Types             (GossipContext)
 import qualified HStream.IO.Types                 as IO
@@ -64,7 +67,9 @@ data ServerContext = ServerContext
   , runningQueries           :: MVar (HM.HashMap Text ThreadId)
   , scSubscribeContexts      :: TVar (HM.HashMap SubscriptionId SubscribeContextNewWrapper)
   , cmpStrategy              :: HS.Compression
+#if __GLASGOW_HASKELL__ < 902
   , headerConfig             :: AA.HeaderConfig AA.AdminAPI
+#endif
   , scStatsHolder            :: Stats.StatsHolder
   , loadBalanceHashRing      :: TVar HashRing
   , scServerState            :: MVar ServerState

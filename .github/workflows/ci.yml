@@ -63,8 +63,17 @@ jobs:
       - name: set env
         run: |
           docker pull docker.io/hstreamdb/haskell:${{ matrix.ghc }}
-          echo "CABAL=python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }}" >> $GITHUB_ENV
-          echo "SHELL=python3 script/dev-tools shell --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }}" >> $GITHUB_ENV
+          GHC_MAJOR_VER="$(echo ${{ matrix.ghc }} | cut -d'.' -f1)"
+          echo "GHC_MAJOR_VER=$GHC_MAJOR_VER" >> $GITHUB_ENV
+          if [ "$GHC_MAJOR_VER" = "9" ]; then
+            echo "EXTRA_CABAL_ARGS='--project-file=cabal.project.ghc9'" >> $GITHUB_ENV
+          else
+            echo "EXTRA_CABAL_ARGS=''" >> $GITHUB_ENV
+          fi
+          echo "CABAL=python3 script/dev-tools cabal --check --no-interactive \
+                -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- " >> $GITHUB_ENV
+          echo "SHELL=python3 script/dev-tools shell --check --no-interactive \
+                -i docker.io/hstreamdb/haskell:${{ matrix.ghc }}" >> $GITHUB_ENV
 
       - name: start required services
         run: python3 script/dev-tools start-services
@@ -73,7 +82,7 @@ jobs:
         run: ${{ env.CABAL }} update
 
       - name: cabal freeze
-        run: ${{ env.CABAL }} freeze
+        run: ${{ env.CABAL }} ${{ env.EXTRA_CABAL_ARGS }} freeze
 
       - name: cache
         uses: actions/cache@v3
@@ -97,8 +106,8 @@ jobs:
           ${{ env.CABAL }} update
           ${{ env.SHELL }} "'make clean'"
           ${{ env.SHELL }} make
-          ${{ env.CABAL }} -- build --enable-tests --enable-benchmarks all
-          ${{ env.CABAL }} -- install hstream
+          ${{ env.CABAL }} ${{ env.EXTRA_CABAL_ARGS }} build --enable-tests --enable-benchmarks all
+          ${{ env.CABAL }} ${{ env.EXTRA_CABAL_ARGS }} install hstream
 
       - name: start hstream server
         run: |
@@ -113,7 +122,7 @@ jobs:
 
       - name: test
         run: |
-          ${{ env.CABAL }} -- test --test-show-details=direct all
+          ${{ env.CABAL }} ${{ env.EXTRA_CABAL_ARGS }} test --test-show-details=direct all
 
       # Due to an [cabal bug](https://github.com/haskell/cabal/issues/7423),
       # `cabal check` will emit a warning even if the `-O2` option is just
@@ -145,35 +154,46 @@ jobs:
       - name: quick build new hstream image
         run: |
           mkdir -p ~/data
-
-          python3 script/dev-tools quick-build-dev-image \
-            --builder-image docker.io/hstreamdb/haskell:${{ matrix.ghc }} \
-            -t $NEW_HSTREAM_IMAGE
+          if [ "${{ env.GHC_MAJOR_VER }}" = "9" ]; then
+            python3 script/dev-tools quick-build-dev-image \
+              --builder-image docker.io/hstreamdb/haskell:${{ matrix.ghc }} \
+              --project-file cabal.project.ghc9 \
+              --only-hstream \
+              -t $NEW_HSTREAM_IMAGE
+          else
+            python3 script/dev-tools quick-build-dev-image \
+              --builder-image docker.io/hstreamdb/haskell:${{ matrix.ghc }} \
+              -t $NEW_HSTREAM_IMAGE
+          fi
 
           docker save -o ~/data/new_hstream_image.tar $NEW_HSTREAM_IMAGE
 
       - uses: actions/upload-artifact@v3
         with:
-          name: image-testing
+          name: image-testing-${{ matrix.ghc }}
           path: ~/data/new_hstream_image.tar
-          retention-days: 5
+          retention-days: 2
 
   integration-tests:
-    needs: build-and-test
+    needs: [pre-build, build-and-test]
     runs-on: ubuntu-latest
-    name: integration-tests
+    name: integration-tests-ghc-${{ matrix.ghc }}
     strategy:
       fail-fast: false
+      matrix:
+        ghc: ${{ fromJson(needs.pre-build.outputs.ghc) }}
 
     steps:
       - name: retrieve saved docker image
         uses: actions/download-artifact@v3
         with:
-          name: image-testing
+          name: image-testing-${{ matrix.ghc }}
           path: ~/data
 
       - name: docker load
-        run: docker load -i ~/data/new_hstream_image.tar
+        run: |
+          docker load -i ~/data/new_hstream_image.tar
+          docker run -t --rm $NEW_HSTREAM_IMAGE /usr/local/bin/hstream-server +RTS --info
 
       - name: fetch integration tests source code
         uses: actions/checkout@v3
@@ -212,21 +232,25 @@ jobs:
           retention-days: 7
 
   integration-tests-rqlite:
-    needs: build-and-test
+    needs: [pre-build, build-and-test]
     runs-on: ubuntu-latest
-    name: integration-tests-rqlite
+    name: integration-tests-rqlite-ghc-${{ matrix.ghc }}
     strategy:
       fail-fast: false
+      matrix:
+        ghc: ${{ fromJson(needs.pre-build.outputs.ghc) }}
 
     steps:
       - name: retrieve saved docker image
         uses: actions/download-artifact@v3
         with:
-          name: image-testing
+          name: image-testing-${{ matrix.ghc }}
           path: ~/data
 
       - name: docker load
-        run: docker load -i ~/data/new_hstream_image.tar
+        run: |
+          docker load -i ~/data/new_hstream_image.tar
+          docker run -t --rm $NEW_HSTREAM_IMAGE /usr/local/bin/hstream-server +RTS --info
 
       - name: fetch integration tests source code
         uses: actions/checkout@v3
@@ -266,21 +290,25 @@ jobs:
           retention-days: 7
 
   distributed-tests:
-    needs: build-and-test
+    needs: [pre-build, build-and-test]
     runs-on: ubuntu-latest
-    name: distributed-tests
+    name: distributed-tests-ghc-${{ matrix.ghc }}
     strategy:
       fail-fast: false
+      matrix:
+        ghc: ${{ fromJson(needs.pre-build.outputs.ghc) }}
 
     steps:
       - name: retrieve saved docker image
         uses: actions/download-artifact@v3
         with:
-          name: image-testing
+          name: image-testing-${{ matrix.ghc }}
           path: ~/data
 
       - name: docker load
-        run: docker load -i ~/data/new_hstream_image.tar
+        run: |
+          docker load -i ~/data/new_hstream_image.tar
+          docker run -t --rm $NEW_HSTREAM_IMAGE /usr/local/bin/hstream-server +RTS --info
 
       - name: fetch distributed tests source code
         uses: actions/checkout@v3
@@ -320,21 +348,25 @@ jobs:
           retention-days: 7
 
   hstream-io-tests:
-    needs: build-and-test
+    needs: [pre-build, build-and-test]
     runs-on: ubuntu-latest
-    name: hstream-io-tests
+    name: hstream-io-tests-ghc-${{ matrix.ghc }}
     strategy:
       fail-fast: false
+      matrix:
+        ghc: ${{ fromJson(needs.pre-build.outputs.ghc) }}
 
     steps:
       - name: retrieve saved docker image
         uses: actions/download-artifact@v3
         with:
-          name: image-testing
+          name: image-testing-${{ matrix.ghc }}
           path: ~/data
 
       - name: docker load
-        run: docker load -i ~/data/new_hstream_image.tar
+        run: |
+          docker load -i ~/data/new_hstream_image.tar
+          docker run -t --rm $NEW_HSTREAM_IMAGE /usr/local/bin/hstream-server +RTS --info
 
       - name: fetch hstream io tests source code
         uses: actions/checkout@v3
@@ -391,11 +423,13 @@ jobs:
   deploy-k8s:
     # disabled due to a lack of hardware resources of the github action
     if: false
-    needs: build-and-test
+    needs: [pre-build, build-and-test]
     runs-on: ubuntu-latest
-    name: deploy to minikube
+    name: deploy-to-minikube-ghc-${{ matrix.ghc }}
     strategy:
       fail-fast: true
+      matrix:
+        ghc: ${{ fromJson(needs.pre-build.outputs.ghc) }}
 
     steps:
       - name: Start minikube
@@ -404,10 +438,10 @@ jobs:
       - name: Try the cluster !
         run: kubectl get pods -A
 
-      - name: Retrieve saved docker image
+      - name: retrieve saved docker image
         uses: actions/download-artifact@v3
         with:
-          name: image-testing
+          name: image-testing-${{ matrix.ghc }}
           path: ~/data
 
       - name: Load image
