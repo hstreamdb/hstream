@@ -43,26 +43,21 @@ library
   import:             shared-properties
   exposed-modules:
     HStream.IO.IOTask
-    HStream.IO.Types
-    HStream.IO.Worker
     HStream.IO.Messages
     HStream.IO.Meta
+    HStream.IO.Types
+    HStream.IO.Worker
 
   build-depends:
     , aeson
     , base
     , bytestring
     , containers
+    , directory
     , grpc-haskell
     , grpc-haskell-core
-    , haxl
     , hstream-common
     , hstream-sql
-    , hstream-store
-    , mysql-haskell
-    , proto3-suite
-    , proto3-wire
-    , rio
     , scientific
     , stm
     , text

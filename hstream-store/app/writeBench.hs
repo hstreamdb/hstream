@@ -1,4 +1,5 @@
 {-# LANGUAGE BangPatterns      #-}
+{-# LANGUAGE CPP               #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TypeApplications  #-}
@@ -26,6 +27,13 @@ import qualified HStream.Store            as HS
 import qualified HStream.Store.Logger     as Log
 
 type Timestamp = Int64
+
+zReplicateM :: (Applicative f, ZV.Vec v a) => Int -> f a -> f (v a)
+#if MIN_VERSION_Z_Data(2, 0, 0)
+zReplicateM = ZV.replicateM
+#else
+zReplicateM = ZV.replicateMVec
+#endif
 
 -- | Use CountWindow to count the results in a specified time window
 data CountWindow = CountWindow
@@ -102,7 +110,7 @@ perfWrite (AppendOpts CommonConfig{..}) = do
   ldClient <- HS.newLDClient configPath
   oldStats <- initWriteStats reportInterval numRecords
   putStrLn "-----PERF START----"
-  payload <- ZV.replicateMVec recordSize (c2w <$> randomRIO ('a', 'z'))
+  payload <- zReplicateM recordSize (c2w <$> randomRIO ('a', 'z'))
   loop ldClient targetLogID oldStats payload numRecords
   where
     loop :: HS.LDClient -> HS.C_LogID -> WriteStats -> ZV.Bytes -> Int64 -> IO ()
@@ -121,7 +129,7 @@ perfBenchWrite (BatchOpts CommonConfig{..} BatchConfig{..})  = do
   ldClient <- HS.newLDClient configPath
   oldStats <- initWriteStats reportInterval numRecords
   putStrLn "-----PERF START----"
-  payloads <- replicateM batchSize $ ZF.toByteString <$> ZV.replicateMVec recordSize (c2w <$> randomRIO ('a', 'z'))
+  payloads <- replicateM batchSize $ ZF.toByteString <$> zReplicateM recordSize (c2w <$> randomRIO ('a', 'z'))
   putStrLn $ "compression: " <> show compression
   loop ldClient targetLogID oldStats payloads numRecords
   where
@@ -143,7 +151,7 @@ parallelBench :: HasCallStack => ParallelOpts -> IO ()
 parallelBench ParallelOpts{..} = do
   ldClient <- HS.newLDClient pConfigPath
   oldStats <- initWriteStats pReportInterval pNumRecords
-  payloads <- replicateM pbatchSize $ ZF.toByteString <$> ZV.replicateMVec pRecordSize (c2w <$> randomRIO ('a', 'z'))
+  payloads <- replicateM pbatchSize $ ZF.toByteString <$> zReplicateM pRecordSize (c2w <$> randomRIO ('a', 'z'))
   ls <- forM targets $ \logId -> do
     s <- newMVar oldStats
     return (logId, s)

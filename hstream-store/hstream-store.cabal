@@ -71,21 +71,21 @@ library
     HStream.Store.Stream
 
   build-depends:
-    , base            >=4.13  && <5
-    , bytestring      ^>=0.10
+    , base            >=4.13   && <5
+    , bytestring      >=0.10   && <0.12
     , cache           ^>=0.1
     , containers      ^>=0.6
     , data-default    ^>=0.7
-    , ghc-prim        >=0.5   && <1.0
+    , ghc-prim        >=0.5    && <1.0
     , hashable        ^>=1.3.5
     , hstream-common
     , primitive       ^>=0.7
     , random          ^>=1.2
-    , time            >=1.9   && <2.0
+    , time            >=1.9    && <2.0
     , vector          ^>=0.12
     , Z-Data
     , Z-IO
-    , zoovisitor      >=0.1.2 && <1
+    , zoovisitor      >=0.1.2  && <1
 
   default-language:   Haskell2010
   default-extensions:
@@ -128,7 +128,9 @@ library
   extra-lib-dirs:     /usr/local/lib
   includes:           hs_logdevice.h
   include-dirs:       include /usr/local/include
-  build-tool-depends: hsc2hs:hsc2hs -any, cpphs:cpphs >=1.20 && <1.21
+  build-tool-depends:
+    , cpphs:cpphs    >=1.20 && <1.21
+    , hsc2hs:hsc2hs
 
 test-suite hstream-store-test
   import:             shared-properties
@@ -146,8 +148,8 @@ test-suite hstream-store-test
 
   hs-source-dirs:     test
   build-depends:
-    , base                  >=4.11   && <5
-    , bytestring            ^>=0.10
+    , base                  >=4.11    && <5
+    , bytestring
     , containers            ^>=0.6
     , data-default          ^>=0.7
     , hspec
@@ -174,7 +176,7 @@ test-suite hstream-store-test
     TypeApplications
     UnliftedFFITypes
 
-  build-tool-depends: hspec-discover:hspec-discover ==2.*
+  build-tool-depends: hspec-discover:hspec-discover >=2 && <3
   ghc-options:        -threaded -rtsopts -with-rtsopts=-N
 
 benchmark hstore-bench-append
@@ -183,8 +185,8 @@ benchmark hstore-bench-append
   main-is:            AppendBench.hs
   hs-source-dirs:     bench
   build-depends:
-    , base                  >=4.11 && <5
-    , bytestring            ^>=0.10
+    , base                  >=4.11  && <5
+    , bytestring
     , byteunits             ^>=0.4
     , criterion
     , hstream-store
@@ -214,8 +216,8 @@ benchmark hstore-bench-append-batch
   main-is:            AppendBatchBench.hs
   hs-source-dirs:     bench
   build-depends:
-    , base                  >=4.11 && <5
-    , bytestring            ^>=0.10
+    , base                  >=4.11  && <5
+    , bytestring
     , byteunits             ^>=0.4
     , criterion
     , hstream-store
@@ -245,8 +247,8 @@ benchmark hstore-bench-stream
   main-is:          StreamBench.hs
   hs-source-dirs:   bench
   build-depends:
-    , base                  >=4.11   && <5
-    , bytestring            ^>=0.10
+    , base                  >=4.11    && <5
+    , bytestring
     , byteunits             ^>=0.4
     , criterion
     , hstream-store

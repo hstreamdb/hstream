@@ -1,18 +1,20 @@
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes        #-}
 {-# LANGUAGE StrictData        #-}
 
 module HStream.SQL.Codegen.Utils where
 
+import           Data.Function         ((&))
+import           Data.List             (foldl')
+import           Data.Maybe            (fromMaybe)
 import           Data.Scientific
+import           Data.Text             (Text)
 import qualified Data.Text             as T
+
 import           HStream.SQL.AST
 import           HStream.SQL.Exception (SomeSQLException (..),
                                         throwSQLException)
 import           HStream.Utils
-import qualified Prelude
-import           RIO
 import           Text.StringRandom     (stringRandomIO)
 import qualified Z.Data.CBytes         as ZCB
 import           Z.IO.Time

@@ -2,18 +2,19 @@
 
 module HStream.IO.Messages where
 
-import qualified Data.Aeson    as J
-import qualified Data.Aeson.TH as JT
-import           Data.Char     (toLower)
-import qualified Data.Text     as T
+import qualified Data.Aeson          as J
+import qualified Data.Aeson.TH       as JT
+import           Data.Char           (toLower)
+import qualified Data.Text           as T
 
+import qualified HStream.Utils.Aeson as A
 
 data InputCommand
   = InputCommandStop
   deriving (Show, Eq)
 
 instance J.ToJSON InputCommand where
-  toJSON InputCommandStop = J.object [("type" :: T.Text) J..= ("stop" :: T.Text)]
+  toJSON InputCommandStop = J.object [(A.fromText "type") J..= ("stop" :: T.Text)]
 
 data CheckResult
   = CheckResult
@@ -63,7 +64,7 @@ data ConnectorCallResponse = ConnectorCallResponse
 
 instance J.ToJSON ConnectorCallResponse where
   toJSON ConnectorCallResponse{..} =
-    J.object [ ("type" :: T.Text) J..= CONNECTOR_CALL
-             , ("id" :: T.Text) J..= ccrId
-             , ("message" :: T.Text) J..= ccrMessage
+    J.object [ (A.fromText "type") J..= CONNECTOR_CALL
+             , (A.fromText "id") J..= ccrId
+             , (A.fromText "message") J..= ccrMessage
              ]

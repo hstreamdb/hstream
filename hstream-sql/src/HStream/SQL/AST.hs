@@ -108,7 +108,7 @@ flowValueToJsonValue flowValue = case flowValue of
   FlowJson object -> Aeson.Object object
   FlowArray vs -> Aeson.Array (V.fromList $ flowValueToJsonValue <$> vs)
   FlowMap m ->
-    let l = L.map (\(k,v) -> (Text.pack (show k), flowValueToJsonValue v)) (Map.toList m)
+    let l = L.map (\(k,v) -> (HsAeson.fromText $ Text.pack (show k), flowValueToJsonValue v)) (Map.toList m)
      in Aeson.Object (HsAeson.fromList l)
   FlowSubObject object -> Aeson.Object (flowObjectToJsonObject object)
 
@@ -121,7 +121,7 @@ jsonValueToFlowValue v = case v of
   Aeson.Array v -> FlowArray (jsonValueToFlowValue <$> (V.toList v))
   Aeson.Object o ->
     let list = HsAeson.toList o
-        list' = L.map (\(k,v) -> (SKey k Nothing Nothing, jsonValueToFlowValue v)) list
+        list' = L.map (\(k,v) -> (SKey (HsAeson.toText k) Nothing Nothing, jsonValueToFlowValue v)) list
      in FlowSubObject (HM.fromList list')
 
 flowObjectToJsonObject :: FlowObject -> Aeson.Object
@@ -131,13 +131,14 @@ flowObjectToJsonObject hm =
                       let key = case s_m of
                                   Nothing -> k
                                   Just s  -> if anySameFields then s <> "." <> k else k
-                       in (key, flowValueToJsonValue v)
+                       in (HsAeson.fromText key, flowValueToJsonValue v)
                    ) (HM.toList hm)
    in HsAeson.fromList list
 
 jsonObjectToFlowObject :: Text -> Aeson.Object -> FlowObject
 jsonObjectToFlowObject streamName object =
-  HM.mapKeys (\k -> SKey k (Just streamName) Nothing) (HM.map jsonValueToFlowValue object)
+  HM.mapKeys (\k -> SKey (HsAeson.toText k) (Just streamName) Nothing)
+             (HM.map jsonValueToFlowValue $ HsAeson.toHashMap object)
 
 --------------------------------------------------------------------------------
 class HasName a where
