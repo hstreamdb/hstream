@@ -1,0 +1,140 @@
+cabal-version:      2.4
+name:               hstream-admin-store
+version:            0.1.0.0
+synopsis:
+  High performance stream processing platform for IoT data written in Haskell.
+
+description:
+  Please see the README on GitHub at
+  <https://github.com/hstreamdb/hstream#readme>
+
+license:            BSD-3-Clause
+license-file:       LICENSE
+copyright:          Copyright (c) 2020 EMQ Technologies Co., Ltd.
+author:             lambda@emqx.io
+maintainer:         lambda@emqx.io
+tested-with:        GHC ==8.10.7
+category:           Database
+homepage:           https://github.com/hstreamdb/hstream
+bug-reports:        https://github.com/hstreamdb/hstream/issues
+build-type:         Simple
+extra-source-files: LICENSE
+
+source-repository head
+  type:     git
+  location: https://github.com/hstreamdb/hstream
+
+flag ReleaseBuild
+  default:     False
+  description:
+    Enables all optimisations, leads to slower build time and better performance
+
+common shared-properties
+  ghc-options:
+    -Wall -Wcompat -Widentities -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+
+  if flag(releasebuild)
+    ghc-options:
+      -feager-blackholing -flate-dmd-anal -flate-specialise
+      -fspec-constr-keen -fstatic-argument-transformation
+      -funbox-strict-fields -O2
+
+library
+  import:             shared-properties
+  hs-source-dirs:     . gen-hs2
+
+  exposed-modules:
+    HStream.Admin.Store.API
+    HStream.Admin.Store.Command
+    HStream.Admin.Store.Types
+    --HStream.Admin.Types
+
+  other-modules:
+    Admin.AdminAPI.Client
+    Admin.AdminAPI.Service
+    Admin.Types
+    AdminCommands.Types
+    ClusterMembership.Types
+    Common.Types
+    Exceptions.Types
+    Fb303.FacebookService.Client
+    Fb303.FacebookService.Service
+    Fb303.Types
+    HStream.Admin.Store.Command.CheckImpact
+    HStream.Admin.Store.Command.Config
+    HStream.Admin.Store.Command.Connect
+    HStream.Admin.Store.Command.Logs
+    HStream.Admin.Store.Command.Maintenance
+    HStream.Admin.Store.Command.NodesConfig
+    HStream.Admin.Store.Command.SQL
+    HStream.Admin.Store.Command.Status
+    Logtree.Types
+    Maintenance.Types
+    Membership.Types
+    Nodes.Types
+    Safety.Types
+    Settings.Types
+
+  build-tool-depends:
+    , cpphs:cpphs    >=1.20 && <1.21
+    , hsc2hs:hsc2hs
+
+  build-depends:
+    , aeson
+    , aeson-pretty
+    , ansi-wl-pprint        >=0.6.9     && <1
+    , base                  >=4.11.1    && <4.15
+    , bytestring            ^>=0.10.8.2
+    , casing                ^>=0.1
+    , colourista            ^>=0.1.0.1
+    , containers
+    , data-default
+    , deepseq
+    , fb-util
+    , grpc-haskell
+    , grpc-haskell-core
+    , hashable              >=1.2.7.0   && <1.4
+    , haskeline             ^>=0.8.1
+    , hstream-common
+    , hstream-store
+    , network               ^>=3.1.2
+    , optparse-applicative  ^>=0.16
+    , proto3-suite
+    , STMonadTrans
+    , table-layout          ^>=0.9.1
+    , text                  ^>=1.2.3.0
+    , thrift-cpp-channel
+    , thrift-lib
+    , time
+    , transformers          ^>=0.5.5.0
+    , unordered-containers  ^>=0.2.9.0
+    , vector                ^>=0.12.0.1
+    , Z-Data
+    , Z-IO
+    , zoovisitor            >=0.1.2     && <1
+
+  include-dirs:       . /usr/local/include
+  extra-lib-dirs:     /usr/local/lib
+  extra-libraries:
+    stdc++
+    logdevice
+    ldquery
+
+  default-language:   Haskell2010
+  default-extensions:
+    DeriveGeneric
+    DerivingStrategies
+    EmptyDataDeriving
+    FlexibleContexts
+    GADTSyntax
+    GeneralizedNewtypeDeriving
+    InstanceSigs
+    LambdaCase
+    OverloadedStrings
+    RankNTypes
+    RecordWildCards
+    ScopedTypeVariables
+    TupleSections
+    TypeApplications
+    UnliftedFFITypes

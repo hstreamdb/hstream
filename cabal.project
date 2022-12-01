@@ -17,7 +17,9 @@ packages:
   hstream-store
   hstream-sql
   hstream-io
-  hstream-admin
+  hstream-admin/server/hstream-admin-server.cabal
+  hstream-admin/store/hstream-admin-store.cabal
+  hstream-admin/hstream-admin.cabal
   hstream-gossip
   hstream-diffflow
 

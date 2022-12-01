@@ -1,4 +1,3 @@
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE StrictData        #-}
@@ -18,12 +17,15 @@ module HStream.Server.ConnectorTypes
   )
 where
 
+import qualified Data.ByteString.Lazy      as BL
+import           Data.Int                  (Int64)
+import qualified Data.Text                 as T
 import           Data.Time
 import           Data.Time.Clock.POSIX
+import           Data.Word                 (Word64)
 import qualified HStream.Server.HStreamApi as API
-import           RIO
-import qualified RIO.ByteString.Lazy       as BL
-import qualified RIO.Text                  as T
+
+import qualified HStream.Server.HStreamApi as API
 
 type Timestamp = Int64 -- ms
 

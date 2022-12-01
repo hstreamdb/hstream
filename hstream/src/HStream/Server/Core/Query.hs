@@ -60,6 +60,7 @@ import qualified HStream.SQL.Codegen              as HSC
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils
+import qualified HStream.Utils.Aeson              as AesonComp
 import           HStream.Utils.Validation         (validateNameAndThrow)
 
 -------------------------------------------------------------------------------
@@ -175,7 +176,7 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
                                 }
       TerminateQueriesResponse{..} <- terminateQueries sc request
       let value  = PB.toAesonValue terminateQueriesResponseQueryId
-          object = HM.fromList [("terminated", value)]
+          object = AesonComp.fromList [("terminated", value)]
           result = V.singleton (jsonObjectToStruct object)
       pure $ API.CommandQueryResponse result
     ExplainPlan _ -> throwIO $ HE.ExecPlanUnimplemented "ExplainPlan Unimplemented"
@@ -191,7 +192,7 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
     sendResp results = pure $ API.CommandQueryResponse $
       V.map (structToStruct "SELECTVIEW" . jsonObjectToStruct) results
     mkVectorStruct a label =
-      let object = HM.fromList [(label, PB.toAesonValue a)]
+      let object = AesonComp.fromList [(label, PB.toAesonValue a)]
        in V.singleton (jsonObjectToStruct object)
 
 executePushQuery

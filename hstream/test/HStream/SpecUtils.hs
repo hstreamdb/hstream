@@ -13,6 +13,7 @@ import           Control.Concurrent
 import           Control.Exception                (Exception, bracket, bracket_)
 import           Control.Monad
 import qualified Data.Aeson                       as Aeson
+import           Data.Bifunctor                   (first)
 import qualified Data.ByteString                  as BS
 import qualified Data.ByteString.Char8            as BSC
 import qualified Data.ByteString.Internal         as BS
@@ -43,6 +44,7 @@ import           HStream.ThirdParty.Protobuf      (Empty (Empty), Struct (..),
                                                    ValueKind (ValueKindStructValue))
 import qualified HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils                    hiding (newRandomText)
+import qualified HStream.Utils.Aeson              as AesonComp
 
 clientConfig :: ClientConfig
 clientConfig = unsafePerformIO $ do
@@ -204,7 +206,7 @@ appendRequest HStreamApi{..} streamName shardId records =
 -------------------------------------------------------------------------------
 
 mkStruct :: [(Text, Aeson.Value)] -> Struct
-mkStruct = jsonObjectToStruct . HM.fromList
+mkStruct = jsonObjectToStruct . AesonComp.fromList . (map $ first AesonComp.fromText)
 
 mkViewResponse :: Struct -> CommandQueryResponse
 mkViewResponse = CommandQueryResponse . V.singleton . structToStruct "SELECTVIEW"
