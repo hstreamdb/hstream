@@ -31,7 +31,6 @@ import qualified Z.Data.CBytes                    as CB
 import           Z.Data.CBytes                    (CBytes)
 
 import qualified HStream.Admin.Server.Types       as AT
-import qualified HStream.Admin.Types              as Admin
 import           HStream.Gossip                   (GossipContext (clusterReady),
                                                    getClusterStatus,
                                                    initCluster)
@@ -50,6 +49,10 @@ import           HStream.Utils                    (Interval, formatStatus,
 
 -------------------------------------------------------------------------------
 -- All command line data types are defined in 'HStream.Admin.Types'
+
+cliParser :: O.Parser AT.Cli
+cliParser = O.hsubparser $
+  O.command "server" (O.info AT.cliParser (O.progDesc "Admin command"))
 
 adminCommandHandler
   :: ServerContext
@@ -72,10 +75,10 @@ handleAdminCommand sc _ (API.AdminCommandRequest cmd) = catchDefaultEx $ do
 parseAdminCommand :: [String] -> IO AT.AdminCommand
 parseAdminCommand args = extractAdminCmd =<< execParser
   where
-    extractAdminCmd (Admin.ServerCli AT.Cli{command = AT.ServerAdminCmd cmd}) = return cmd
+    extractAdminCmd AT.Cli{command = AT.ServerAdminCmd cmd} = return cmd
     extractAdminCmd _ = throwParsingErr "Only admin commands are accepted"
     execParser = handleParseResult $ O.execParserPure O.defaultPrefs cliInfo args
-    cliInfo = O.info Admin.cliParser (O.progDesc "The parser to use for admin commands")
+    cliInfo = O.info cliParser (O.progDesc "The parser to use for admin commands")
 
 runAdminCommand :: ServerContext -> Text -> IO Text
 runAdminCommand sc@ServerContext{..} cmd = do

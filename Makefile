@@ -11,7 +11,7 @@ PROTO_CPP_PLUGIN ?= /usr/local/bin/grpc_cpp_plugin
 
 thrift::
 	(cd external/hsthrift && THRIFT_COMPILE=$(THRIFT_COMPILE) make thrift)
-	(cd hstream-admin/if && $(THRIFT_COMPILE) logdevice/admin/if/admin.thrift --hs -r -o ..)
+	(cd hstream-admin/store/if && $(THRIFT_COMPILE) logdevice/admin/if/admin.thrift --hs -r -o ..)
 
 grpc:: grpc-cpp grpc-hs
 

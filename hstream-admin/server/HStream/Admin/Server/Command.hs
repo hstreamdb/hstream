@@ -10,7 +10,6 @@ module HStream.Admin.Server.Command
 import           Control.Monad                          ((<=<))
 import qualified Data.Aeson                             as Aeson
 import           Data.ByteString                        (ByteString)
-import qualified Data.HashMap.Strict                    as HMap
 import qualified Data.Map.Strict                        as Map
 import           Data.Text                              (Text)
 import qualified Data.Text                              as Text
@@ -27,6 +26,7 @@ import           HStream.Admin.Server.Command.ServerSql
 import           HStream.Admin.Server.Types
 import qualified HStream.Server.HStreamApi              as API
 import qualified HStream.Utils                          as U
+import qualified HStream.Utils.Aeson                    as AesonComp
 
 formatCommandResponse :: Text -> IO String
 formatCommandResponse resp =
@@ -35,8 +35,8 @@ formatCommandResponse resp =
     Right (v :: Aeson.Value) -> parseVal v
   where
     parseVal (Aeson.Object obj) = do
-      let m_type = HMap.lookup "type" obj
-          m_content = HMap.lookup "content" obj
+      let m_type = AesonComp.lookup "type" obj
+          m_content = AesonComp.lookup "content" obj
       case m_type of
         Just (Aeson.String "table") -> extractJsonTable m_content
         Just (Aeson.String "plain") -> pure $ U.fillWithJsonString' "content" obj
@@ -55,14 +55,14 @@ formatCommandResponse resp =
     extractJsonTable Nothing = pure "No such \"content\" key"
 
 formatTableHeader :: Aeson.Object -> Either String [String]
-formatTableHeader obj = format $ HMap.lookup "headers" obj
+formatTableHeader obj = format $ AesonComp.lookup "headers" obj
   where
     format (Just (Aeson.Array xs)) = Right . V.toList . V.map showTableValue $ xs
     format (Just x) = Left $ "Expecting array value, but got " <> show x
     format Nothing  = Left "No such \"headers\" key"
 
 formatTableRows :: Aeson.Object -> Either String [[String]]
-formatTableRows obj = format $ HMap.lookup "rows" obj
+formatTableRows obj = format $ AesonComp.lookup "rows" obj
   where
     format (Just (Aeson.Array xs)) = Right . V.toList . V.map extractArray $ xs
     format (Just x) = Left $ "Expecting array value, but got " <> show x

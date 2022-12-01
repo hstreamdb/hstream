@@ -105,9 +105,9 @@ library
     , grpc-haskell-core
     , hashable
     , haskeline
-    , haxl
     , hs-grpc-server
-    , hstream-admin
+    , hstream-admin-server
+    , hstream-admin-store
     , hstream-api-protolens
     , hstream-common
     , hstream-common-stats
@@ -118,14 +118,12 @@ library
     , memory
     , microlens
     , microlens-aeson
-    , mysql-haskell
     , network
     , network-uri
     , optparse-applicative
     , proto3-suite
     , proto3-wire
     , raw-strings-qq
-    , rio
     , scientific
     , statgrab
     , stm
@@ -172,7 +170,7 @@ executable hstream-server
     , grpc-haskell-core
     , hs-grpc-server
     , hstream
-    , hstream-admin
+    , hstream-admin-server
     , hstream-api-protolens
     , hstream-common
     , hstream-common-stats
@@ -213,7 +211,7 @@ executable hstream
     , grpc-haskell-core
     , haskeline
     , hstream
-    , hstream-admin
+    , hstream-admin-server
     , hstream-common
     , hstream-common-stats
     , hstream-sql
@@ -261,7 +259,7 @@ test-suite hstream-test
     , grpc-haskell-core
     , hspec
     , hstream
-    , hstream-admin
+    , hstream-admin-store
     , hstream-common
     , hstream-common-stats
     , hstream-gossip
@@ -269,7 +267,6 @@ test-suite hstream-test
     , hstream-sql
     , hstream-store
     , io-streams
-    , mysql-haskell
     , proto3-suite
     , QuickCheck
     , random                ^>=1.2

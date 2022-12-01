@@ -15,7 +15,6 @@ import qualified HStream.Admin.Server.Types   as Server
 import qualified HStream.Admin.Store.API      as Store hiding (checkImpact)
 import qualified HStream.Admin.Store.Command  as Store
 import qualified HStream.Admin.Store.Types    as Store
-import           HStream.Admin.Types
 import qualified HStream.Logger               as Log
 import qualified HStream.Store.Logger         as CLog
 
@@ -25,6 +24,15 @@ main = runCli =<< O.customExecParser (O.prefs O.showHelpOnEmpty) opts
     opts = O.info
       (cliParser <**> O.helper)
       (O.fullDesc <> O.header "======= HStream Admin CLI =======")
+
+data Cli = ServerCli Server.Cli
+         | StoreCli Store.Cli
+
+cliParser :: O.Parser Cli
+cliParser = O.hsubparser
+  ( O.command "server" (O.info (ServerCli <$> Server.cliParser) (O.progDesc "Admin command"))
+ <> O.command "store" (O.info (StoreCli <$> Store.cliParser) (O.progDesc "Internal store admin command"))
+  )
 
 runCli :: Cli -> IO ()
 runCli (ServerCli cli) = runServerCli cli
