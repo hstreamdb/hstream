@@ -13,8 +13,8 @@ import           Control.Concurrent.MVar
 import           Control.Concurrent.STM
 import           Control.DeepSeq         (NFData)
 import           Control.Exception
-import           Control.Exception       (throw)
 import           Control.Monad
+import           Data.Foldable           (foldlM)
 import           Data.Foldable.Extra     (findM)
 import           Data.Hashable           (Hashable)
 import           Data.HashMap.Lazy       (HashMap)
@@ -231,16 +231,20 @@ processChangeBatch shard@Shard{..} = do
       case graphNodeSpecs shardGraph HM.! nodeId node of
         InputSpec -> throw $ RunShardError "Input node will never have work to do on its input"
         MapSpec _ (Mapper mapper) -> do
-          let outputChangeBatch = L.foldl
+          outputChangeBatch <- foldlM
                 (\acc change -> do
-                    let outputRow = mapper (dcRow change)
-                        newChange = DataChange
+                    outputRow <- case mapper (dcRow change) of
+                      Left (e, def_) -> do
+                        Log.warning . Log.buildString $ show e
+                        return def_
+                      Right row_     -> return row_
+                    let newChange = DataChange
                           { dcRow = outputRow
                           , dcTimestamp = dcTimestamp change
                           , dcDiff = dcDiff change
                           , dcExtra = dcExtra change
                           }
-                    updateDataChangeBatch acc (\xs -> xs ++ [newChange])
+                    return $ updateDataChangeBatch acc (\xs -> xs ++ [newChange])
                 ) emptyDataChangeBatch (dcbChanges changeBatch)
           unless (L.null $ dcbChanges outputChangeBatch) $
             emitChangeBatch shard node outputChangeBatch
@@ -550,10 +554,15 @@ processFrontierUpdates shard@Shard{..} = do
                         -- sort changes by a well defined rule because the reducer may not be commutative
                         let sortedInputs = L.sortBy compareDataChangeByTimeFirst inputBag
 
-                        let inputValue = L.foldl
+                        inputValue <- foldlM
                               (\acc DataChange{..} ->
                                  -- do 'reducer' for 'n' times, n=dcDiff
-                                 L.foldl (\acc' _ -> reducer acc' dcRow) acc [1..dcDiff]
+                                 foldlM (\acc' _ -> case reducer acc' dcRow of
+                                                       Right row_ -> return row_
+                                                       Left (e,errRow_) -> do
+                                                         Log.warning . Log.buildString $ show e
+                                                         return errRow_
+                                        ) acc [1..dcDiff]
                               ) initValue sortedInputs
                         let outputChanges' =
                               L.map (\change -> change { dcDiff = - (dcDiff change)

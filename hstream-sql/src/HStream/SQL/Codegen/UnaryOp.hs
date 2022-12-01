@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module HStream.SQL.Codegen.UnaryOp
   ( unaryOpOnValue
   ) where
@@ -5,298 +7,368 @@ module HStream.SQL.Codegen.UnaryOp
 import qualified Data.List                 as L
 import           Data.Scientific
 import qualified Data.Text                 as T
-import           GHC.Stack
+import           DiffFlow.Error
 import           HStream.SQL.AST
 import           HStream.SQL.Codegen.Utils
-import           HStream.SQL.Exception
 
 --------------------------------------------------------------------------------
-unaryOpOnValue :: HasCallStack => UnaryOp -> FlowValue -> FlowValue
-unaryOpOnValue OpSin   v = op_sin v
-unaryOpOnValue OpSinh  v = op_sinh v
-unaryOpOnValue OpAsin  v = op_asin v
-unaryOpOnValue OpAsinh v = op_asinh v
-unaryOpOnValue OpCos   v = op_cos v
-unaryOpOnValue OpCosh  v = op_cosh v
-unaryOpOnValue OpAcos  v = op_acos v
-unaryOpOnValue OpAcosh v = op_acosh v
-unaryOpOnValue OpTan   v = op_tan v
-unaryOpOnValue OpTanh  v = op_tanh v
-unaryOpOnValue OpAtan  v = op_atan v
-unaryOpOnValue OpAtanh v = op_atanh v
-unaryOpOnValue OpAbs   v = op_abs v
-unaryOpOnValue OpCeil  v = op_ceil v
-unaryOpOnValue OpFloor v = op_floor v
-unaryOpOnValue OpRound v = op_round v
-unaryOpOnValue OpSign  v = op_sign v
-unaryOpOnValue OpSqrt  v = op_sqrt v
-unaryOpOnValue OpLog   v = op_log v
-unaryOpOnValue OpLog2  v = op_log2 v
-unaryOpOnValue OpLog10 v = op_log10 v
-unaryOpOnValue OpExp   v = op_exp v
-unaryOpOnValue OpIsInt v = op_isInt v
-unaryOpOnValue OpIsFloat v = op_isFloat v
-unaryOpOnValue OpIsNum v = op_isNum v
-unaryOpOnValue OpIsBool v = op_isBool v
-unaryOpOnValue OpIsStr v = op_isStr v
-unaryOpOnValue OpIsMap v = op_isMap v
-unaryOpOnValue OpIsArr v = op_isArr v
-unaryOpOnValue OpIsDate v = op_isDate v
-unaryOpOnValue OpIsTime v = op_isTime v
-unaryOpOnValue OpToStr v = op_toStr v
-unaryOpOnValue OpToLower v = op_toLower v
-unaryOpOnValue OpToUpper v = op_toUpper v
-unaryOpOnValue OpTrim v = op_trim v
-unaryOpOnValue OpLTrim v = op_ltrim v
-unaryOpOnValue OpRTrim v = op_rtrim v
-unaryOpOnValue OpReverse v = op_reverse v
-unaryOpOnValue OpStrLen v = op_strlen v
+unaryOpOnValue :: UnaryOp -> FlowValue -> Either DiffFlowError FlowValue
+unaryOpOnValue OpSin   v    = op_sin v
+unaryOpOnValue OpSinh  v    = op_sinh v
+unaryOpOnValue OpAsin  v    = op_asin v
+unaryOpOnValue OpAsinh v    = op_asinh v
+unaryOpOnValue OpCos   v    = op_cos v
+unaryOpOnValue OpCosh  v    = op_cosh v
+unaryOpOnValue OpAcos  v    = op_acos v
+unaryOpOnValue OpAcosh v    = op_acosh v
+unaryOpOnValue OpTan   v    = op_tan v
+unaryOpOnValue OpTanh  v    = op_tanh v
+unaryOpOnValue OpAtan  v    = op_atan v
+unaryOpOnValue OpAtanh v    = op_atanh v
+unaryOpOnValue OpAbs   v    = op_abs v
+unaryOpOnValue OpCeil  v    = op_ceil v
+unaryOpOnValue OpFloor v    = op_floor v
+unaryOpOnValue OpRound v    = op_round v
+unaryOpOnValue OpSign  v    = op_sign v
+unaryOpOnValue OpSqrt  v    = op_sqrt v
+unaryOpOnValue OpLog   v    = op_log v
+unaryOpOnValue OpLog2  v    = op_log2 v
+unaryOpOnValue OpLog10 v    = op_log10 v
+unaryOpOnValue OpExp   v    = op_exp v
+unaryOpOnValue OpIsInt v    = op_isInt v
+unaryOpOnValue OpIsFloat v  = op_isFloat v
+unaryOpOnValue OpIsNum v    = op_isNum v
+unaryOpOnValue OpIsBool v   = op_isBool v
+unaryOpOnValue OpIsStr v    = op_isStr v
+unaryOpOnValue OpIsMap v    = op_isMap v
+unaryOpOnValue OpIsArr v    = op_isArr v
+unaryOpOnValue OpIsDate v   = op_isDate v
+unaryOpOnValue OpIsTime v   = op_isTime v
+unaryOpOnValue OpToStr v    = op_toStr v
+unaryOpOnValue OpToLower v  = op_toLower v
+unaryOpOnValue OpToUpper v  = op_toUpper v
+unaryOpOnValue OpTrim v     = op_trim v
+unaryOpOnValue OpLTrim v    = op_ltrim v
+unaryOpOnValue OpRTrim v    = op_rtrim v
+unaryOpOnValue OpReverse v  = op_reverse v
+unaryOpOnValue OpStrLen v   = op_strlen v
 unaryOpOnValue OpDistinct v = op_distinct v
-unaryOpOnValue OpArrJoin v = op_arrJoin v
-unaryOpOnValue OpLength v = op_length v
-unaryOpOnValue OpArrMax v = op_arrMax v
-unaryOpOnValue OpArrMin v = op_arrMin v
-unaryOpOnValue OpSort v = op_sort v
-unaryOpOnValue _ FlowNull = FlowNull
-unaryOpOnValue op v =
-  throwRuntimeException $ "Unsupported operator <" <> show op <> "> on value <" <> show v <> ">"
+unaryOpOnValue OpArrJoin v  = op_arrJoin v
+unaryOpOnValue OpLength v   = op_length v
+unaryOpOnValue OpArrMax v   = op_arrMax v
+unaryOpOnValue OpArrMin v   = op_arrMin v
+unaryOpOnValue OpSort v     = op_sort v
 
 --------------------------------------------------------------------------------
-op_sin :: HasCallStack => FlowValue -> FlowValue
-op_sin (FlowInt n)     = FlowNumeral (fromFloatDigits $ sin (fromIntegral n))
-op_sin (FlowFloat n)   = FlowNumeral (fromFloatDigits $ sin n)
-op_sin (FlowNumeral n) = FlowNumeral (funcOnScientific sin n)
+op_sin :: FlowValue -> Either DiffFlowError FlowValue
+op_sin (FlowInt n)     = Right $ FlowNumeral (fromFloatDigits $ (sin :: Double -> Double) (fromIntegral n))
+op_sin (FlowFloat n)   = Right $ FlowNumeral (fromFloatDigits $ sin n)
+op_sin (FlowNumeral n) = Right $ FlowNumeral (funcOnScientific (sin :: Double -> Double) n)
+op_sin FlowNull        = Right FlowNull
+op_sin v               = Left . RunShardError $ "Unsupported operator <sin> on value <" <> T.pack (show v) <> ">"
 
-op_sinh :: HasCallStack => FlowValue -> FlowValue
-op_sinh (FlowInt n)     = FlowNumeral (fromFloatDigits $ sinh (fromIntegral n))
-op_sinh (FlowFloat n)   = FlowNumeral (fromFloatDigits $ sinh n)
-op_sinh (FlowNumeral n) = FlowNumeral (funcOnScientific sinh n)
+op_sinh :: FlowValue -> Either DiffFlowError FlowValue
+op_sinh (FlowInt n)     = Right $ FlowNumeral (fromFloatDigits $ (sinh :: Double -> Double) (fromIntegral n))
+op_sinh (FlowFloat n)   = Right $ FlowNumeral (fromFloatDigits $ sinh n)
+op_sinh (FlowNumeral n) = Right $ FlowNumeral (funcOnScientific (sinh :: Double -> Double) n)
+op_sinh FlowNull        = Right FlowNull
+op_sinh v               = Left . RunShardError $ "Unsupported operator <sinh> on value <" <> T.pack (show v) <> ">"
 
-op_asin :: HasCallStack => FlowValue -> FlowValue
+op_asin :: FlowValue -> Either DiffFlowError FlowValue
 op_asin (FlowInt n)
-  | n >= (-1) && n <= 1 = FlowNumeral (fromFloatDigits $ asin (fromIntegral n))
-  | otherwise = throwRuntimeException "Function <asin>: mathematical error"
+  | n >= (-1) && n <= 1 = Right $ FlowNumeral (fromFloatDigits $ (asin :: Double -> Double) (fromIntegral n))
+  | otherwise = Left . RunShardError $ "Function <asin>: mathematical error"
 op_asin (FlowFloat n)
-  | n >= (-1) && n <= 1 = FlowNumeral (fromFloatDigits $ asin n)
-  | otherwise = throwRuntimeException "Function <asin>: mathematical error"
+  | n >= (-1) && n <= 1 = Right $ FlowNumeral (fromFloatDigits $ asin n)
+  | otherwise = Left . RunShardError $ "Function <asin>: mathematical error"
 op_asin (FlowNumeral n)
-  | n >= (-1) && n <= 1 = FlowNumeral (funcOnScientific asin n)
-  | otherwise = throwRuntimeException "Function <asin>: mathematical error"
+  | n >= (-1) && n <= 1 = Right $ FlowNumeral (funcOnScientific (asin :: Double -> Double) n)
+  | otherwise = Left . RunShardError $ "Function <asin>: mathematical error"
+op_asin FlowNull = Right FlowNull
+op_asin v = Left . RunShardError $ "Unsupported operator <asin> on value <" <> T.pack (show v) <> ">"
 
-op_asinh :: HasCallStack => FlowValue -> FlowValue
-op_asinh (FlowInt n) = FlowNumeral (fromFloatDigits $ asinh (fromIntegral n))
-op_asinh (FlowFloat n) = FlowNumeral (fromFloatDigits $ asinh n)
-op_asinh (FlowNumeral n) = FlowNumeral (funcOnScientific asinh n)
+op_asinh :: FlowValue -> Either DiffFlowError FlowValue
+op_asinh (FlowInt n)     = Right $ FlowNumeral (fromFloatDigits $ (asinh :: Double -> Double) (fromIntegral n))
+op_asinh (FlowFloat n)   = Right $ FlowNumeral (fromFloatDigits $ asinh n)
+op_asinh (FlowNumeral n) = Right $ FlowNumeral (funcOnScientific (asinh :: Double -> Double) n)
+op_asinh FlowNull        = Right FlowNull
+op_asinh v = Left . RunShardError $ "Unsupported operator <asinh> on value <" <> T.pack (show v) <> ">"
 
-op_cos :: HasCallStack => FlowValue -> FlowValue
-op_cos (FlowInt n)     = FlowNumeral (fromFloatDigits $ cos (fromIntegral n))
-op_cos (FlowFloat n)   = FlowNumeral (fromFloatDigits $ cos n)
-op_cos (FlowNumeral n) = FlowNumeral (funcOnScientific cos n)
+op_cos :: FlowValue -> Either DiffFlowError FlowValue
+op_cos (FlowInt n)     = Right $ FlowNumeral (fromFloatDigits $ (cos :: Double -> Double) (fromIntegral n))
+op_cos (FlowFloat n)   = Right $ FlowNumeral (fromFloatDigits $ cos n)
+op_cos (FlowNumeral n) = Right $ FlowNumeral (funcOnScientific (cos :: Double -> Double) n)
+op_cos FlowNull        = Right FlowNull
+op_cos v = Left . RunShardError $ "Unsupported operator <cos> on value <" <> T.pack (show v) <> ">"
 
-op_cosh :: HasCallStack => FlowValue -> FlowValue
-op_cosh (FlowInt n)     = FlowNumeral (fromFloatDigits $ cosh (fromIntegral n))
-op_cosh (FlowFloat n)   = FlowNumeral (fromFloatDigits $ cosh n)
-op_cosh (FlowNumeral n) = FlowNumeral (funcOnScientific cosh n)
+op_cosh :: FlowValue -> Either DiffFlowError FlowValue
+op_cosh (FlowInt n)     = Right $ FlowNumeral (fromFloatDigits $ (cosh :: Double -> Double) (fromIntegral n))
+op_cosh (FlowFloat n)   = Right $ FlowNumeral (fromFloatDigits $ cosh n)
+op_cosh (FlowNumeral n) = Right $ FlowNumeral (funcOnScientific (cosh :: Double -> Double) n)
+op_cosh FlowNull        = Right FlowNull
+op_cosh v = Left . RunShardError $ "Unsupported operator <cosh> on value <" <> T.pack (show v) <> ">"
 
-op_acos :: HasCallStack => FlowValue -> FlowValue
+op_acos :: FlowValue -> Either DiffFlowError FlowValue
 op_acos (FlowInt n)
-  | n >= (-1) && n <= 1 = FlowNumeral (fromFloatDigits $ acos (fromIntegral n))
-  | otherwise = throwRuntimeException "Function <acos>: mathematical error"
+  | n >= (-1) && n <= 1 = Right $ FlowNumeral (fromFloatDigits $ (acos :: Double -> Double) (fromIntegral n))
+  | otherwise = Left . RunShardError $ "Function <acos>: mathematical error"
 op_acos (FlowFloat n)
-  | n >= (-1) && n <= 1 = FlowNumeral (fromFloatDigits $ acos n)
-  | otherwise = throwRuntimeException "Function <acos>: mathematical error"
+  | n >= (-1) && n <= 1 = Right $ FlowNumeral (fromFloatDigits $ acos n)
+  | otherwise = Left . RunShardError $ "Function <acos>: mathematical error"
 op_acos (FlowNumeral n)
-  | n >= (-1) && n <= 1 = FlowNumeral (funcOnScientific acos n)
-  | otherwise = throwRuntimeException "Function <acos>: mathematical error"
+  | n >= (-1) && n <= 1 = Right $ FlowNumeral (funcOnScientific (acos :: Double -> Double) n)
+  | otherwise = Left . RunShardError $ "Function <acos>: mathematical error"
+op_acos FlowNull = Right FlowNull
+op_acos v = Left . RunShardError $ "Unsupported operator <acos> on value <" <> T.pack (show v) <> ">"
 
-op_acosh :: HasCallStack => FlowValue -> FlowValue
+op_acosh :: FlowValue -> Either DiffFlowError FlowValue
 op_acosh (FlowInt n)
-  | n >= 1 = FlowNumeral (fromFloatDigits $ acosh (fromIntegral n))
-  | otherwise = throwRuntimeException "Function <acosh>: mathematical error"
+  | n >= 1 = Right $ FlowNumeral (fromFloatDigits $ (acosh :: Double -> Double) (fromIntegral n))
+  | otherwise = Left . RunShardError $ "Function <acosh>: mathematical error"
 op_acosh (FlowFloat n)
-  | n >= 1 = FlowNumeral (fromFloatDigits $ acosh n)
-  | otherwise = throwRuntimeException "Function <acosh>: mathematical error"
+  | n >= 1 = Right $ FlowNumeral (fromFloatDigits $ acosh n)
+  | otherwise = Left . RunShardError $ "Function <acosh>: mathematical error"
 op_acosh (FlowNumeral n)
-  | n >= 1 = FlowNumeral (funcOnScientific acosh n)
-  | otherwise = throwRuntimeException "Function <acosh>: mathematical error"
+  | n >= 1 = Right $ FlowNumeral (funcOnScientific (acosh :: Double -> Double) n)
+  | otherwise = Left . RunShardError $ "Function <acosh>: mathematical error"
+op_acosh FlowNull = Right FlowNull
+op_acosh v = Left . RunShardError $ "Unsupported operator <acosh> on value <" <> T.pack (show v) <> ">"
 
-op_tan :: HasCallStack => FlowValue -> FlowValue
-op_tan (FlowInt n)     = FlowNumeral (fromFloatDigits $ tan (fromIntegral n))
-op_tan (FlowFloat n)   = FlowNumeral (fromFloatDigits $ tan n)
-op_tan (FlowNumeral n) = FlowNumeral (funcOnScientific tan n)
+op_tan :: FlowValue -> Either DiffFlowError FlowValue
+op_tan (FlowInt n)     = Right $ FlowNumeral (fromFloatDigits $ (tan :: Double -> Double) (fromIntegral n))
+op_tan (FlowFloat n)   = Right $ FlowNumeral (fromFloatDigits $ tan n)
+op_tan (FlowNumeral n) = Right $ FlowNumeral (funcOnScientific (tan :: Double -> Double) n)
+op_tan FlowNull        = Right FlowNull
+op_tan v = Left . RunShardError $ "Unsupported operator <tan> on value <" <> T.pack (show v) <> ">"
 
-op_tanh :: HasCallStack => FlowValue -> FlowValue
-op_tanh (FlowInt n)     = FlowNumeral (fromFloatDigits $ tanh (fromIntegral n))
-op_tanh (FlowFloat n)   = FlowNumeral (fromFloatDigits $ tanh n)
-op_tanh (FlowNumeral n) = FlowNumeral (funcOnScientific tanh n)
+op_tanh :: FlowValue -> Either DiffFlowError FlowValue
+op_tanh (FlowInt n)     = Right $ FlowNumeral (fromFloatDigits $ (tanh :: Double -> Double) (fromIntegral n))
+op_tanh (FlowFloat n)   = Right $ FlowNumeral (fromFloatDigits $ tanh n)
+op_tanh (FlowNumeral n) = Right $ FlowNumeral (funcOnScientific (tanh :: Double -> Double) n)
+op_tanh FlowNull        = Right FlowNull
+op_tanh v = Left . RunShardError $ "Unsupported operator <tanh> on value <" <> T.pack (show v) <> ">"
 
-op_atan :: HasCallStack => FlowValue -> FlowValue
-op_atan (FlowInt n)     = FlowNumeral (fromFloatDigits $ atan (fromIntegral n))
-op_atan (FlowFloat n)   = FlowNumeral (fromFloatDigits $ atan n)
-op_atan (FlowNumeral n) = FlowNumeral (funcOnScientific atan n)
+op_atan :: FlowValue -> Either DiffFlowError FlowValue
+op_atan (FlowInt n)     = Right $ FlowNumeral (fromFloatDigits $ (atan :: Double -> Double) (fromIntegral n))
+op_atan (FlowFloat n)   = Right $ FlowNumeral (fromFloatDigits $ atan n)
+op_atan (FlowNumeral n) = Right $ FlowNumeral (funcOnScientific (atan :: Double -> Double) n)
+op_atan FlowNull        = Right FlowNull
+op_atan v = Left . RunShardError $ "Unsupported operator <atan> on value <" <> T.pack (show v) <> ">"
 
-op_atanh :: HasCallStack => FlowValue -> FlowValue
+op_atanh :: FlowValue -> Either DiffFlowError FlowValue
 op_atanh (FlowInt n)
-  | n > (-1) && n < 1 = FlowNumeral (fromFloatDigits $ atanh (fromIntegral n))
-  | otherwise = throwRuntimeException "Function <atanh>: mathematical error"
+  | n > (-1) && n < 1 = Right $ FlowNumeral (fromFloatDigits $ (atanh :: Double -> Double) (fromIntegral n))
+  | otherwise = Left . RunShardError $ "Function <atanh>: mathematical error"
 op_atanh (FlowFloat n)
-  | n > (-1) && n < 1 = FlowNumeral (fromFloatDigits $ atanh n)
-  | otherwise = throwRuntimeException "Function <atanh>: mathematical error"
+  | n > (-1) && n < 1 = Right $ FlowNumeral (fromFloatDigits $ atanh n)
+  | otherwise = Left . RunShardError $ "Function <atanh>: mathematical error"
 op_atanh (FlowNumeral n)
-  | n > (-1) && n < 1 = FlowNumeral (funcOnScientific atanh n)
-  | otherwise = throwRuntimeException "Function <atanh>: mathematical error"
+  | n > (-1) && n < 1 = Right $ FlowNumeral (funcOnScientific (atanh :: Double -> Double) n)
+  | otherwise = Left . RunShardError $ "Function <atanh>: mathematical error"
+op_atanh FlowNull = Right FlowNull
+op_atanh v = Left . RunShardError $ "Unsupported operator <atanh> on value <" <> T.pack (show v) <> ">"
 
-op_abs :: HasCallStack => FlowValue -> FlowValue
-op_abs (FlowInt n)     = FlowInt (abs n)
-op_abs (FlowFloat n)   = FlowFloat (abs n)
-op_abs (FlowNumeral n) = FlowNumeral (funcOnScientific abs n)
+op_abs :: FlowValue -> Either DiffFlowError FlowValue
+op_abs (FlowInt n)     = Right $ FlowInt (abs n)
+op_abs (FlowFloat n)   = Right $ FlowFloat (abs n)
+op_abs (FlowNumeral n) = Right $ FlowNumeral (funcOnScientific (abs :: Double -> Double) n)
+op_abs FlowNull        = Right FlowNull
+op_abs v = Left . RunShardError $ "Unsupported operator <abs> on value <" <> T.pack (show v) <> ">"
 
-op_ceil :: HasCallStack => FlowValue -> FlowValue
-op_ceil (FlowInt n)     = FlowInt (ceiling $ fromIntegral n)
-op_ceil (FlowFloat n)   = FlowInt (ceiling n)
-op_ceil (FlowNumeral n) = FlowInt (ceiling $ toRealFloat n)
+op_ceil :: FlowValue -> Either DiffFlowError FlowValue
+op_ceil (FlowInt n)     = Right $ FlowInt n
+op_ceil (FlowFloat n)   = Right $ FlowInt (ceiling n)
+op_ceil (FlowNumeral n) = Right $ FlowInt (ceiling (toRealFloat n :: Double))
+op_ceil FlowNull        = Right FlowNull
+op_ceil v = Left . RunShardError $ "Unsupported operator <ceil> on value <" <> T.pack (show v) <> ">"
 
-op_floor :: HasCallStack => FlowValue -> FlowValue
-op_floor (FlowInt n)     = FlowInt (floor $ fromIntegral n)
-op_floor (FlowFloat n)   = FlowInt (floor n)
-op_floor (FlowNumeral n) = FlowInt (floor $ toRealFloat n)
+op_floor :: FlowValue -> Either DiffFlowError FlowValue
+op_floor (FlowInt n)     = Right $ FlowInt n
+op_floor (FlowFloat n)   = Right $ FlowInt (floor n)
+op_floor (FlowNumeral n) = Right $ FlowInt (floor (toRealFloat n :: Double))
+op_floor FlowNull        = Right FlowNull
+op_floor v = Left . RunShardError $ "Unsupported operator <floor> on value <" <> T.pack (show v) <> ">"
 
-op_round :: HasCallStack => FlowValue -> FlowValue
-op_round (FlowInt n)     = FlowInt (round $ fromIntegral n)
-op_round (FlowFloat n)   = FlowInt (round n)
-op_round (FlowNumeral n) = FlowInt (round $ toRealFloat n)
+op_round :: FlowValue -> Either DiffFlowError FlowValue
+op_round (FlowInt n)     = Right $ FlowInt n
+op_round (FlowFloat n)   = Right $ FlowInt (round n)
+op_round (FlowNumeral n) = Right $ FlowInt (round (toRealFloat n :: Double))
+op_round FlowNull        = Right FlowNull
+op_round v = Left . RunShardError $ "Unsupported operator <round> on value <" <> T.pack (show v) <> ">"
 
-op_sqrt :: HasCallStack => FlowValue -> FlowValue
-op_sqrt (FlowInt n)     = FlowNumeral (fromFloatDigits $ sqrt (fromIntegral n))
-op_sqrt (FlowFloat n)   = FlowNumeral (fromFloatDigits $ sqrt n)
-op_sqrt (FlowNumeral n) = FlowNumeral (funcOnScientific sqrt n)
+op_sqrt :: FlowValue -> Either DiffFlowError FlowValue
+op_sqrt (FlowInt n)     = Right $ FlowNumeral (fromFloatDigits $ sqrt (fromIntegral n :: Double))
+op_sqrt (FlowFloat n)   = Right $ FlowNumeral (fromFloatDigits $ sqrt n)
+op_sqrt (FlowNumeral n) = Right $ FlowNumeral (funcOnScientific (sqrt :: Double -> Double) n)
+op_sqrt FlowNull        = Right FlowNull
+op_sqrt v = Left . RunShardError $ "Unsupported operator <sqrt> on value <" <> T.pack (show v) <> ">"
 
-op_sign :: HasCallStack => FlowValue -> FlowValue
+op_sign :: FlowValue -> Either DiffFlowError FlowValue
 op_sign (FlowInt n)
-  | n > 0  = FlowInt 1
-  | n == 0 = FlowInt 0
-  | n < 0  = FlowInt (-1)
+  | n > 0  = Right $ FlowInt 1
+  | n == 0 = Right $ FlowInt 0
+  | n < 0  = Right $ FlowInt (-1)
 op_sign (FlowFloat n)
-  | n > 0  = FlowInt 1
-  | n == 0 = FlowInt 0
-  | n < 0  = FlowInt (-1)
+  | n > 0  = Right $ FlowInt 1
+  | n == 0 = Right $ FlowInt 0
+  | n < 0  = Right $ FlowInt (-1)
 op_sign (FlowNumeral n)
-  | n > 0  = FlowInt 1
-  | n == 0 = FlowInt 0
-  | n < 0  = FlowInt (-1)
+  | n > 0  = Right $ FlowInt 1
+  | n == 0 = Right $ FlowInt 0
+  | n < 0  = Right $ FlowInt (-1)
+op_sign FlowNull = Right FlowNull
+op_sign v = Left . RunShardError $ "Unsupported operator <sign> on value <" <> T.pack (show v) <> ">"
 
-op_log :: HasCallStack => FlowValue -> FlowValue
+op_log :: FlowValue -> Either DiffFlowError FlowValue
 op_log (FlowInt n)
-  | n > 0 = FlowNumeral (fromFloatDigits $ log (fromIntegral n))
-  | otherwise = throwRuntimeException "Function <log>: mathematical error"
+  | n > 0 = Right $ FlowNumeral (fromFloatDigits $ log (fromIntegral n :: Double))
+  | otherwise = Left . RunShardError $ "Function <log>: mathematical error"
 op_log (FlowFloat n)
-  | n > 0 = FlowNumeral (fromFloatDigits $ log n)
-  | otherwise = throwRuntimeException "Function <log>: mathematical error"
+  | n > 0 = Right $ FlowNumeral (fromFloatDigits $ log n)
+  | otherwise = Left . RunShardError $ "Function <log>: mathematical error"
 op_log (FlowNumeral n)
-  | n > 0 = FlowNumeral (funcOnScientific log n)
-  | otherwise = throwRuntimeException "Function <log>: mathematical error"
+  | n > 0 = Right $ FlowNumeral (funcOnScientific (log :: Double -> Double) n)
+  | otherwise = Left . RunShardError $ "Function <log>: mathematical error"
+op_log FlowNull = Right FlowNull
+op_log v = Left . RunShardError $ "Unsupported operator <log> on value <" <> T.pack (show v) <> ">"
 
-op_log2 :: HasCallStack => FlowValue -> FlowValue
+op_log2 :: FlowValue -> Either DiffFlowError FlowValue
 op_log2 (FlowInt n)
-  | n > 0 = FlowNumeral (fromFloatDigits $ log (fromIntegral n) / log 2)
-  | otherwise = throwRuntimeException "Function <log2>: mathematical error"
+  | n > 0 = Right $ FlowNumeral (fromFloatDigits $ log (fromIntegral n :: Double) / log 2)
+  | otherwise = Left . RunShardError $ "Function <log2>: mathematical error"
 op_log2 (FlowFloat n)
-  | n > 0 = FlowNumeral (fromFloatDigits $ log n / log 2)
-  | otherwise = throwRuntimeException "Function <log2>: mathematical error"
+  | n > 0 = Right $ FlowNumeral (fromFloatDigits $ log n / log 2)
+  | otherwise = Left . RunShardError $ "Function <log2>: mathematical error"
 op_log2 (FlowNumeral n)
-  | n > 0 = FlowNumeral (fromFloatDigits $ log (toRealFloat n) / log 2)
-  | otherwise = throwRuntimeException "Function <log2>: mathematical error"
+  | n > 0 = Right $ FlowNumeral (fromFloatDigits $ log (toRealFloat n :: Double) / log 2)
+  | otherwise = Left . RunShardError $ "Function <log2>: mathematical error"
+op_log2 FlowNull = Right FlowNull
+op_log2 v = Left . RunShardError $ "Unsupported operator <log2> on value <" <> T.pack (show v) <> ">"
 
-op_log10 :: HasCallStack => FlowValue -> FlowValue
+op_log10 :: FlowValue -> Either DiffFlowError FlowValue
 op_log10 (FlowInt n)
-  | n > 0 = FlowNumeral (fromFloatDigits $ log (fromIntegral n) / log 10)
-  | otherwise = throwRuntimeException "Function <log10>: mathematical error"
+  | n > 0 = Right $ FlowNumeral (fromFloatDigits $ log (fromIntegral n :: Double) / log 10)
+  | otherwise = Left . RunShardError $ "Function <log10>: mathematical error"
 op_log10 (FlowFloat n)
-  | n > 0 = FlowNumeral (fromFloatDigits $ log n / log 10)
-  | otherwise = throwRuntimeException "Function <log10>: mathematical error"
+  | n > 0 = Right $ FlowNumeral (fromFloatDigits $ log n / log 10)
+  | otherwise = Left . RunShardError $ "Function <log10>: mathematical error"
 op_log10 (FlowNumeral n)
-  | n > 0 = FlowNumeral (fromFloatDigits $ log (toRealFloat n) / log 10)
-  | otherwise = throwRuntimeException "Function <log10>: mathematical error"
+  | n > 0 = Right $ FlowNumeral (fromFloatDigits $ log (toRealFloat n :: Double) / log 10)
+  | otherwise = Left . RunShardError $ "Function <log10>: mathematical error"
+op_log10 FlowNull = Right FlowNull
+op_log10 v = Left . RunShardError $ "Unsupported operator <log10> on value <" <> T.pack (show v) <> ">"
 
-op_exp :: HasCallStack => FlowValue -> FlowValue
-op_exp (FlowInt n)     = FlowNumeral (fromFloatDigits $ exp (fromIntegral n))
-op_exp (FlowFloat n)   = FlowNumeral (fromFloatDigits $ exp n)
-op_exp (FlowNumeral n) = FlowNumeral (funcOnScientific exp n)
+op_exp :: FlowValue -> Either DiffFlowError FlowValue
+op_exp (FlowInt n)     = Right $ FlowNumeral (fromFloatDigits $ exp (fromIntegral n :: Double))
+op_exp (FlowFloat n)   = Right $ FlowNumeral (fromFloatDigits $ exp n)
+op_exp (FlowNumeral n) = Right $ FlowNumeral (funcOnScientific (exp :: Double -> Double) n)
+op_exp FlowNull        = Right FlowNull
+op_exp v = Left . RunShardError $ "Unsupported operator <exp> on value <" <> T.pack (show v) <> ">"
 
-op_isInt :: HasCallStack => FlowValue -> FlowValue
-op_isInt (FlowInt _) = FlowBoolean True
-op_isInt _           = FlowBoolean False
+op_isInt :: FlowValue -> Either DiffFlowError FlowValue
+op_isInt (FlowInt _) = Right $ FlowBoolean True
+op_isInt _           = Right $ FlowBoolean False
 
-op_isFloat :: HasCallStack => FlowValue -> FlowValue
-op_isFloat (FlowFloat _) = FlowBoolean True
-op_isFloat _             = FlowBoolean False
+op_isFloat :: FlowValue -> Either DiffFlowError FlowValue
+op_isFloat (FlowFloat _) = Right $ FlowBoolean True
+op_isFloat _             = Right $ FlowBoolean False
 
-op_isNum :: HasCallStack => FlowValue -> FlowValue
-op_isNum (FlowNumeral _) = FlowBoolean True
-op_isNum _               = FlowBoolean False
+op_isNum :: FlowValue -> Either DiffFlowError FlowValue
+op_isNum (FlowNumeral _) = Right $ FlowBoolean True
+op_isNum _               = Right $ FlowBoolean False
 
-op_isBool :: HasCallStack => FlowValue -> FlowValue
-op_isBool (FlowBoolean _) = FlowBoolean True
-op_isBool _               = FlowBoolean False
+op_isBool :: FlowValue -> Either DiffFlowError FlowValue
+op_isBool (FlowBoolean _) = Right $ FlowBoolean True
+op_isBool _               = Right $ FlowBoolean False
 
-op_isStr :: HasCallStack => FlowValue -> FlowValue
-op_isStr (FlowText _) = FlowBoolean True
-op_isStr _            = FlowBoolean False
+op_isStr :: FlowValue -> Either DiffFlowError FlowValue
+op_isStr (FlowText _) = Right $ FlowBoolean True
+op_isStr _            = Right $ FlowBoolean False
 
-op_isMap :: HasCallStack => FlowValue -> FlowValue
-op_isMap (FlowMap _) = FlowBoolean True
-op_isMap _           = FlowBoolean False
+op_isMap :: FlowValue -> Either DiffFlowError FlowValue
+op_isMap (FlowMap _) = Right $ FlowBoolean True
+op_isMap _           = Right $ FlowBoolean False
 
-op_isArr :: HasCallStack => FlowValue -> FlowValue
-op_isArr (FlowArray _) = FlowBoolean True
-op_isArr _             = FlowBoolean False
+op_isArr :: FlowValue -> Either DiffFlowError FlowValue
+op_isArr (FlowArray _) = Right $ FlowBoolean True
+op_isArr _             = Right $ FlowBoolean False
 
-op_isDate :: HasCallStack => FlowValue -> FlowValue
-op_isDate (FlowDate _) = FlowBoolean True
-op_isDate _            = FlowBoolean False
+op_isDate :: FlowValue -> Either DiffFlowError FlowValue
+op_isDate (FlowDate _) = Right $ FlowBoolean True
+op_isDate _            = Right $ FlowBoolean False
 
-op_isTime :: HasCallStack => FlowValue -> FlowValue
-op_isTime (FlowTime _) = FlowBoolean True
-op_isTime _            = FlowBoolean False
+op_isTime :: FlowValue -> Either DiffFlowError FlowValue
+op_isTime (FlowTime _) = Right $ FlowBoolean True
+op_isTime _            = Right $ FlowBoolean False
 
-op_toStr :: HasCallStack => FlowValue -> FlowValue
-op_toStr v = FlowText (T.pack $ show v)
+op_toStr :: FlowValue -> Either DiffFlowError FlowValue
+op_toStr v = Right $ FlowText (T.pack $ show v)
 
-op_toLower :: HasCallStack => FlowValue -> FlowValue
-op_toLower (FlowText t) = FlowText (T.toLower t)
+op_toLower :: FlowValue -> Either DiffFlowError FlowValue
+op_toLower (FlowText t) = Right $ FlowText (T.toLower t)
+op_toLower FlowNull     = Right FlowNull
+op_toLower v = Left . RunShardError $ "Unsupported operator <toLower> on value <" <> T.pack (show v) <> ">"
 
-op_toUpper :: HasCallStack => FlowValue -> FlowValue
-op_toUpper (FlowText t) = FlowText (T.toUpper t)
+op_toUpper :: FlowValue -> Either DiffFlowError FlowValue
+op_toUpper (FlowText t) = Right $ FlowText (T.toUpper t)
+op_toUpper FlowNull     = Right FlowNull
+op_toUpper v = Left . RunShardError $ "Unsupported operator <toUpper> on value <" <> T.pack (show v) <> ">"
 
-op_trim :: HasCallStack => FlowValue -> FlowValue
-op_trim (FlowText t) = FlowText (T.strip t)
+op_trim :: FlowValue -> Either DiffFlowError FlowValue
+op_trim (FlowText t) = Right $ FlowText (T.strip t)
+op_trim FlowNull     = Right FlowNull
+op_trim v = Left . RunShardError $ "Unsupported operator <trim> on value <" <> T.pack (show v) <> ">"
 
-op_ltrim :: HasCallStack => FlowValue -> FlowValue
-op_ltrim (FlowText t) = FlowText (T.stripStart t)
+op_ltrim :: FlowValue -> Either DiffFlowError FlowValue
+op_ltrim (FlowText t) = Right $ FlowText (T.stripStart t)
+op_ltrim FlowNull     = Right FlowNull
+op_ltrim v = Left . RunShardError $ "Unsupported operator <ltrim> on value <" <> T.pack (show v) <> ">"
 
-op_rtrim :: HasCallStack => FlowValue -> FlowValue
-op_rtrim (FlowText t) = FlowText (T.stripEnd t)
+op_rtrim :: FlowValue -> Either DiffFlowError FlowValue
+op_rtrim (FlowText t) = Right $ FlowText (T.stripEnd t)
+op_rtrim FlowNull     = Right FlowNull
+op_rtrim v = Left . RunShardError $ "Unsupported operator <rtrim> on value <" <> T.pack (show v) <> ">"
 
-op_reverse :: HasCallStack => FlowValue -> FlowValue
-op_reverse (FlowText t) = FlowText (T.reverse t)
+op_reverse :: FlowValue -> Either DiffFlowError FlowValue
+op_reverse (FlowText t) = Right $ FlowText (T.reverse t)
+op_reverse FlowNull     = Right FlowNull
+op_reverse v = Left . RunShardError $ "Unsupported operator <reverse> on value <" <> T.pack (show v) <> ">"
 
-op_strlen :: HasCallStack => FlowValue -> FlowValue
-op_strlen (FlowText t) = FlowInt (T.length t)
+op_strlen :: FlowValue -> Either DiffFlowError FlowValue
+op_strlen (FlowText t) = Right $ FlowInt (T.length t)
+op_strlen FlowNull     = Right FlowNull
+op_strlen v = Left . RunShardError $ "Unsupported operator <strlen> on value <" <> T.pack (show v) <> ">"
 
-op_distinct :: HasCallStack => FlowValue -> FlowValue
-op_distinct (FlowArray arr) = FlowArray (L.nub arr)
+op_distinct :: FlowValue -> Either DiffFlowError FlowValue
+op_distinct (FlowArray arr) = Right $ FlowArray (L.nub arr)
+op_distinct FlowNull        = Right FlowNull
+op_distinct v = Left . RunShardError $ "Unsupported operator <distinct> on value <" <> T.pack (show v) <> ">"
 
-op_length :: HasCallStack => FlowValue -> FlowValue
-op_length (FlowArray arr) = FlowInt (L.length arr)
+op_length :: FlowValue -> Either DiffFlowError FlowValue
+op_length (FlowArray arr) = Right $ FlowInt (L.length arr)
+op_length FlowNull        = Right FlowNull
+op_length v = Left . RunShardError $ "Unsupported operator <length> on value <" <> T.pack (show v) <> ">"
 
-op_arrJoin :: HasCallStack => FlowValue -> FlowValue
-op_arrJoin (FlowArray arr) = FlowText (arrJoinPrim arr Nothing)
+op_arrJoin :: FlowValue -> Either DiffFlowError FlowValue
+op_arrJoin (FlowArray arr) = Right $ FlowText (arrJoinPrim arr Nothing)
+op_arrJoin FlowNull        = Right FlowNull
+op_arrJoin v = Left . RunShardError $ "Unsupported operator <arrJoin> on value <" <> T.pack (show v) <> ">"
 
-op_arrMax :: HasCallStack => FlowValue -> FlowValue
-op_arrMax (FlowArray arr) = L.maximum arr
+op_arrMax :: FlowValue -> Either DiffFlowError FlowValue
+op_arrMax (FlowArray arr)
+  | L.null arr = Left . RunShardError $ "Function <arrMax>: empty array"
+  | otherwise  = Right $ L.maximum arr
+op_arrMax FlowNull = Right FlowNull
+op_arrMax v = Left . RunShardError $ "Unsupported operator <arrMax> on value <" <> T.pack (show v) <> ">"
 
-op_arrMin :: HasCallStack => FlowValue -> FlowValue
-op_arrMin (FlowArray arr) = L.minimum arr
+op_arrMin :: FlowValue -> Either DiffFlowError FlowValue
+op_arrMin (FlowArray arr)
+  | L.null arr = Left . RunShardError $ "Function <arrMin>: empty array"
+  | otherwise  = Right $ L.minimum arr
+op_arrMin FlowNull = Right FlowNull
+op_arrMin v = Left . RunShardError $ "Unsupported operator <arrMin> on value <" <> T.pack (show v) <> ">"
 
-op_sort :: HasCallStack => FlowValue -> FlowValue
-op_sort (FlowArray arr) = FlowArray (L.sort arr)
+op_sort :: FlowValue -> Either DiffFlowError FlowValue
+op_sort (FlowArray arr) = Right $ FlowArray (L.sort arr)
+op_sort FlowNull        = Right FlowNull
+op_sort v = Left . RunShardError $ "Unsupported operator <sort> on value <" <> T.pack (show v) <> ">"

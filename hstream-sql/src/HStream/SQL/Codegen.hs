@@ -16,14 +16,12 @@ import qualified Data.Aeson                  as Aeson
 import           Data.Bifunctor
 import           Data.ByteString             (ByteString)
 import qualified Data.ByteString.Lazy        as BL
-import           Data.Function
-import           Data.Functor
+import           Data.Either                 (lefts, rights)
 import qualified Data.HashMap.Strict         as HM
 import           Data.Int                    (Int64)
 import qualified Data.List                   as L
 import qualified Data.Map.Strict             as Map
 import           Data.Maybe
-import           Data.Scientific             (toRealFloat)
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import           GHC.Stack                   (HasCallStack)
@@ -37,11 +35,14 @@ import           HStream.SQL.Codegen.Cast
 import           HStream.SQL.Codegen.JsonOp
 import           HStream.SQL.Codegen.SKey
 import           HStream.SQL.Codegen.UnaryOp
+import           HStream.SQL.Codegen.Utils   (destructSingletonFlowObject)
 import           HStream.SQL.Exception       (SomeSQLException (..),
                                               throwSQLException)
 import           HStream.SQL.Parse           (parseAndRefine)
 import           HStream.Utils               (cBytesToText, jsonObjectToStruct)
 import qualified HStream.Utils.Aeson         as HsAeson
+
+import           DiffFlow.Error
 
 --------------------------------------------------------------------------------
 type Row = FlowObject
@@ -180,8 +181,12 @@ elabRValueExpr expr grp startBuilder subgraph startNode = case expr of
                 return (curBuilder, L.nub (accIns++curIns), curOut:accOuts)
             ) (startBuilder, [], []) (L.reverse es)
     let composer = Composer $ \os ->
-                     let vs = L.map (snd . L.head . HM.toList) os
-                      in HM.fromList [(SKey (T.pack name) Nothing Nothing, FlowArray vs)]
+                     let ts' = L.map destructSingletonFlowObject os
+                         es = lefts ts'
+                         vs = snd <$> rights ts'
+                      in case es of
+                           []    -> Right $ HM.fromList [(SKey (T.pack name) Nothing Nothing, FlowArray vs)]
+                           (e:_) -> Left (e, HM.fromList [(SKey (T.pack name) Nothing Nothing, FlowNull)])
     let (builder_acc, outs') = L.foldl (\(acc_builder, acc_outs) this_outNode ->
                                            let (tmp_builder, tmp_node) = addNode acc_builder subgraph (IndexSpec this_outNode)
                                             in (tmp_builder, acc_outs ++ [tmp_node])
@@ -201,8 +206,12 @@ elabRValueExpr expr grp startBuilder subgraph startNode = case expr of
                         (kOut,vOut):accOuts)
             ) (startBuilder, [], []) (L.reverse $ Map.assocs emap)
     let composer = Composer $ \os ->
-                     let vs = L.map (snd . L.head . HM.toList ) os
-                      in HM.fromList [(SKey (T.pack name) Nothing Nothing, FlowMap (mkMap vs))]
+                     let ts' = L.map destructSingletonFlowObject os
+                         es = lefts ts'
+                         vs = snd <$> rights ts'
+                      in case es of
+                           []    -> Right $ HM.fromList [(SKey (T.pack name) Nothing Nothing, FlowMap (mkMap vs))]
+                           (e:_) -> Left (e, HM.fromList [(SKey (T.pack name) Nothing Nothing, FlowNull)])
     let (kOuts,vOuts) = L.unzip outTups
 
     let (builder_acc, outs') = L.foldl (\(acc_builder, acc_outs) this_outNode ->
@@ -226,31 +235,54 @@ elabRValueExpr expr grp startBuilder subgraph startNode = case expr of
     let (builder_2_1, out1_indexed) = addNode builder2    subgraph (IndexSpec (outNode out1))
         (builder_2_2, out2_indexed) = addNode builder_2_1 subgraph (IndexSpec (outNode out2))
 
-    let composer = Composer $ \[omap,okey] ->
-                     let (FlowMap theMap) = L.head (HM.elems omap)
-                         theKey = L.head (HM.elems okey)
-                      in HM.fromList [(SKey (T.pack name) Nothing Nothing, theMap Map.! theKey)]
+    let composer = Composer $ \os ->
+                     let errObject = HM.fromList [(SKey (T.pack name) Nothing Nothing, FlowNull)]
+                      in case os of
+                           [omap,okey] -> case (destructSingletonFlowObject omap, destructSingletonFlowObject okey) of
+                                            (Right (_,FlowMap theMap),Right (_,theKey)) ->
+                                              case Map.lookup theKey theMap of
+                                                Nothing -> let e = RunShardError $ "Can not find key " <> T.pack (show theKey) <> " in map " <> T.pack (show theMap)
+                                                            in Left (e,errObject)
+                                                Just v  -> Right $ HM.fromList [(SKey (T.pack name) Nothing Nothing, v)]
+                                            ((Right v),_)                               ->
+                                              let e = RunShardError $ "Access map: expected map type but got " <> T.pack (show v)
+                                               in Left (e,errObject)
+                                            (Left e, _)                                 -> Left (e,errObject)
+                           _ -> let e = RunShardError $ "Compose node encountered incorrect number of inputs " <> T.pack (show os) <> ", which should be 2"
+                                 in Left (e, errObject)
     let (builder3, node) =
           addNode builder_2_2 subgraph (ComposeSpec [out1_indexed,out2_indexed] composer)
     return (builder3, L.nub (ins1++ins2), Out node)
   RExprAccessArray name earr rhs -> do
     (builder1, ins, Out out) <-
       elabRValueExpr earr grp startBuilder subgraph startNode
-    let mapper = Mapper $ \o -> let (FlowArray arr) = L.head (HM.elems o)
-                                 in case rhs of
-                   RArrayAccessRhsIndex n -> HM.fromList [(SKey (T.pack name) Nothing Nothing, arr L.!! n)]
-                   RArrayAccessRhsRange start_m end_m ->
-                     let start = fromMaybe 0 start_m
-                         end   = fromMaybe (maxBound :: Int) end_m
-                      in HM.fromList [(SKey (T.pack name) Nothing Nothing, FlowArray (L.drop start (L.take end arr)))]
+    let mapper = Mapper $ \o ->
+          let errObject = HM.fromList [(SKey (T.pack name) Nothing Nothing, FlowNull)]
+           in case destructSingletonFlowObject o of
+                Left e -> Left (e, errObject)
+                Right (_,FlowArray arr) ->
+                  case rhs of
+                    RArrayAccessRhsIndex n ->
+                      if n >= 0 && n < L.length arr then
+                        Right $ HM.fromList [(SKey (T.pack name) Nothing Nothing, arr L.!! n)] else
+                        let e = RunShardError "Access array operator: out of bound"
+                         in Left (e, errObject)
+                    RArrayAccessRhsRange start_m end_m ->
+                      let start = fromMaybe 0 start_m
+                          end   = fromMaybe (maxBound :: Int) end_m
+                      in if start >= 0 && end < L.length arr then
+                           Right $ HM.fromList [(SKey (T.pack name) Nothing Nothing, FlowArray (L.drop start (L.take (end+1) arr)))] else
+                           let e = RunShardError "Access array operator: out of bound"
+                            in Left (e, errObject)
     let (builder2, node) =
           addNode builder1 subgraph (MapSpec out mapper)
     return (builder2, ins, Out node)
   RExprCol name stream_m field -> do
     let mapper = Mapper $
           \o -> case getField field stream_m Nothing o of
-                  Nothing       -> HM.fromList [(SKey field stream_m Nothing, FlowNull)]
-                  Just (skey,v) -> HM.fromList [(skey, v)]
+                  Nothing       -> let e = RunShardError $ "ExprCol: can not find field " <> T.pack name
+                                    in Left (e, HM.fromList [(SKey field stream_m Nothing, FlowNull)])
+                  Just (skey,v) -> Right $ HM.fromList [(skey, v)]
     let (builder1, node) =
           addNode startBuilder subgraph (MapSpec startNode mapper)
     return (builder1, [], Out node)
@@ -272,8 +304,12 @@ elabRValueExpr expr grp startBuilder subgraph startNode = case expr of
     let (builder_2_1, out1_indexed) = addNode builder2    subgraph (IndexSpec (outNode out1))
         (builder_2_2, out2_indexed) = addNode builder_2_1 subgraph (IndexSpec (outNode out2))
 
-    let composer = Composer $ \[o1,o2] ->
-                     makeExtra "__op1__" o1 `HM.union` makeExtra "__op2__" o2
+    let composer = Composer $ \os ->
+                     let errObject = HM.fromList [(SKey (T.pack name) Nothing Nothing, FlowNull)]
+                      in case os of
+                           [o1,o2] -> Right $ makeExtra "__op1__" o1 `HM.union` makeExtra "__op2__" o2
+                           _       -> let e = RunShardError $ "Compose node encountered incorrect number of inputs " <> T.pack (show os) <> ", which should be 2"
+                                       in Left (e, errObject)
     let mapper = mkBinaryOpMapper op (T.pack name)
     let (builder3, composed) = addNode builder_2_2 subgraph (ComposeSpec [out1_indexed,out2_indexed] composer)
     let (builder4, node) = addNode builder3 subgraph (MapSpec composed mapper)
@@ -287,8 +323,14 @@ elabRValueExpr expr grp startBuilder subgraph startNode = case expr of
     let (builder_2_1, out1_indexed) = addNode builder2    subgraph (IndexSpec (outNode out1))
         (builder_2_2, out2_indexed) = addNode builder_2_1 subgraph (IndexSpec (outNode out2))
 
-    let composer = Composer $ \[o1,o2] ->
-                     jsonOpOnObject jop o1 o2 (T.pack name)
+    let composer = Composer $ \os ->
+                     let errObject = HM.fromList [(SKey (T.pack name) Nothing Nothing, FlowNull)]
+                      in case os of
+                           [o1,o2] -> case jsonOpOnObject jop o1 o2 (T.pack name) of
+                                        Left e  -> Left (e,errObject)
+                                        Right v -> Right v
+                           _       -> let e = RunShardError $ "Compose node encountered incorrect number of inputs " <> T.pack (show os) <> ", which should be 2"
+                                       in Left (e, errObject)
     let (builder3, node) =
           addNode builder_2_2 subgraph (ComposeSpec [out1_indexed,out2_indexed] composer)
     return (builder3, L.nub (ins1++ins2), Out node)
@@ -298,39 +340,51 @@ elabRValueExpr expr grp startBuilder subgraph startNode = case expr of
 
 mkCastMapper :: RDataType -> Text -> Mapper Row
 mkCastMapper typ field =
-  Mapper $ \o -> let [(_,v)] = HM.toList o
-                     v' = castOnValue typ v
-                  in HM.fromList [(SKey field Nothing Nothing, v')]
+  Mapper $ \o -> let errObject = HM.fromList [(SKey field Nothing Nothing, FlowNull)]
+                  in case destructSingletonFlowObject o of
+                       Left e      -> Left (e, errObject)
+                       Right (_,v) -> case castOnValue typ v of
+                                        Left e   -> Left (e, errObject)
+                                        Right v' -> Right $ HM.fromList [(SKey field Nothing Nothing, v')]
 
 mkConstantMapper :: Constant -> Mapper Row
 mkConstantMapper constant =
   let v = constantToFlowValue constant
    in case constant of
-        ConstantNull -> Mapper $ \_ -> HM.fromList [(SKey "null" Nothing Nothing, v)]
-        ConstantInt n -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show n)) Nothing Nothing, v)]
-        ConstantFloat n -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show n)) Nothing Nothing, v)]
-        ConstantNumeric n -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show n)) Nothing Nothing, v)]
-        ConstantText t -> Mapper $ \_ -> HM.fromList [(SKey t Nothing Nothing, v)]
-        ConstantBoolean b -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show b)) Nothing Nothing, v)]
-        ConstantDate d -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show d)) Nothing Nothing, v)]
-        ConstantTime t -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show t)) Nothing Nothing, v)]
-        ConstantTimestamp ts -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show ts)) Nothing Nothing, v)]
-        ConstantInterval i -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show i)) Nothing Nothing, v)]
-        ConstantBytea bs -> Mapper $ \_ -> HM.fromList [(SKey (cBytesToText bs) Nothing Nothing, v)]
-        ConstantJsonb json -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show json)) Nothing Nothing, v)]
-        ConstantArray arr -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show arr)) Nothing Nothing, v)]
-        ConstantMap m -> Mapper $ \_ -> HM.fromList [(SKey (T.pack (show m)) Nothing Nothing, v)]
+        ConstantNull         -> Mapper $ \_ -> Right $ HM.fromList [(SKey "null" Nothing Nothing, v)]
+        ConstantInt n        -> Mapper $ \_ -> Right $ HM.fromList [(SKey (T.pack (show n)) Nothing Nothing, v)]
+        ConstantFloat n      -> Mapper $ \_ -> Right $ HM.fromList [(SKey (T.pack (show n)) Nothing Nothing, v)]
+        ConstantNumeric n    -> Mapper $ \_ -> Right $ HM.fromList [(SKey (T.pack (show n)) Nothing Nothing, v)]
+        ConstantText t       -> Mapper $ \_ -> Right $ HM.fromList [(SKey t Nothing Nothing, v)]
+        ConstantBoolean b    -> Mapper $ \_ -> Right $ HM.fromList [(SKey (T.pack (show b)) Nothing Nothing, v)]
+        ConstantDate d       -> Mapper $ \_ -> Right $ HM.fromList [(SKey (T.pack (show d)) Nothing Nothing, v)]
+        ConstantTime t       -> Mapper $ \_ -> Right $ HM.fromList [(SKey (T.pack (show t)) Nothing Nothing, v)]
+        ConstantTimestamp ts -> Mapper $ \_ -> Right $ HM.fromList [(SKey (T.pack (show ts)) Nothing Nothing, v)]
+        ConstantInterval i   -> Mapper $ \_ -> Right $ HM.fromList [(SKey (T.pack (show i)) Nothing Nothing, v)]
+        ConstantBytea bs     -> Mapper $ \_ -> Right $ HM.fromList [(SKey (cBytesToText bs) Nothing Nothing, v)]
+        ConstantJsonb json   -> Mapper $ \_ -> Right $ HM.fromList [(SKey (T.pack (show json)) Nothing Nothing, v)]
+        ConstantArray arr    -> Mapper $ \_ -> Right $ HM.fromList [(SKey (T.pack (show arr)) Nothing Nothing, v)]
+        ConstantMap m        -> Mapper $ \_ -> Right $ HM.fromList [(SKey (T.pack (show m)) Nothing Nothing, v)]
 
 mkUnaryOpMapper :: UnaryOp -> Text -> Mapper Row
 mkUnaryOpMapper op field =
-  Mapper $ \o -> let [(_,v)] = HM.toList o
-                  in HM.fromList [(SKey field Nothing Nothing, unaryOpOnValue op v)]
+  Mapper $ \o -> let errObject = HM.fromList [(SKey field Nothing Nothing, FlowNull)]
+                  in case destructSingletonFlowObject o of
+                       Left e      -> Left (e, errObject)
+                       Right (_,v) -> case unaryOpOnValue op v of
+                                        Left e   -> Left (e, errObject)
+                                        Right v' -> Right $ HM.fromList [(SKey field Nothing Nothing, v')]
 
 mkBinaryOpMapper :: BinaryOp -> Text -> Mapper Row
 mkBinaryOpMapper op field =
-  Mapper $ \o -> let [(_,v1)] = HM.toList $ getExtra "__op1__" o
-                     [(_,v2)] = HM.toList $ getExtra "__op2__" o
-                  in HM.fromList [(SKey field Nothing Nothing, binOpOnValue op v1 v2)]
+  Mapper $ \o -> let errObject = HM.fromList [(SKey field Nothing Nothing, FlowNull)]
+                  in case destructSingletonFlowObject (getExtra "__op1__" o) of
+                       Left e       -> Left (e, errObject)
+                       Right (_,v1) -> case destructSingletonFlowObject (getExtra "__op2__" o) of
+                         Left e       -> Left (e, errObject)
+                         Right (_,v2) -> case binOpOnValue op v1 v2 of
+                           Left e   -> Left (e, errObject)
+                           Right v' -> Right $ HM.fromList [(SKey field Nothing Nothing, v')]
 
 -- For alias test:
 -- SELECT res.r1 AS mm, res.r2 AS nn FROM (SELECT s01.a AS r1, SUM(s02.c) AS r2 FROM s01 JOIN s02 ON TRUE GROUP BY s02.a) AS res;
@@ -345,7 +399,7 @@ elabRTableRef ref grp startBuilder subgraph =
           let out = Out { outNode = node }
           return (builder, [inner], out)
         Just s  -> do
-          let mapper = Mapper $ \o -> makeSKeyStream s o
+          let mapper = Mapper $ \o -> Right $ makeSKeyStream s o
               (builder', node') = addNode builder subgraph (MapSpec node mapper)
           let out = Out { outNode = node' }
           return (builder', [inner], out)
@@ -354,7 +408,7 @@ elabRTableRef ref grp startBuilder subgraph =
       case alias_m of
         Nothing -> return (builder, ins, out)
         Just s  -> do
-          let mapper = Mapper $ \o -> makeSKeyStream s o
+          let mapper = Mapper $ \o -> Right $ makeSKeyStream s o
               (builder', node') = addNode builder subgraph (MapSpec (outNode out) mapper)
           let out = Out { outNode = node' }
           return (builder', ins, out)
@@ -372,7 +426,7 @@ elabRTableRef ref grp startBuilder subgraph =
       case alias_m of
         Nothing -> return (builder, L.nub (ins1++ins2), Out node)
         Just s  -> do
-          let mapper = Mapper $ \o -> makeSKeyStream s o
+          let mapper = Mapper $ \o -> Right $ makeSKeyStream s o
               (builder', node') = addNode builder subgraph (MapSpec node mapper)
           let out = Out { outNode = node' }
           return (builder', L.nub (ins1++ins2), out)
@@ -397,7 +451,7 @@ elabRTableRef ref grp startBuilder subgraph =
       case alias_m of
         Nothing -> return (builder, L.nub (ins1++ins2), Out node)
         Just s  -> do
-          let mapper = Mapper $ \o -> makeSKeyStream s o
+          let mapper = Mapper $ \o -> Right $ makeSKeyStream s o
               (builder', node') = addNode builder subgraph (MapSpec node mapper)
           let out = Out { outNode = node' }
           return (builder', L.nub (ins1++ins2), out)
@@ -408,20 +462,30 @@ elabRTableRef ref grp startBuilder subgraph =
       let (builder_2_1, out1_indexed) = addNode builder2    subgraph (IndexSpec (outNode out1))
           (builder_2_2, out2_indexed) = addNode builder_2_1 subgraph (IndexSpec (outNode out2))
 
-      let composer_init = Composer $ \[o1,o2] -> o1 <> o2
+      let composer_init = Composer $ \os ->
+                            let errObject = HM.fromList [(SKey "???" Nothing Nothing, FlowNull)]
+                             in case os of
+                              [o1,o2] -> Right $ o1 <> o2
+                              _       -> let e = RunShardError $ "Compose node encountered incorrect number of inputs " <> T.pack (show os) <> ", which should be 2"
+                                          in Left (e, errObject)
           (builder3, node_tmp) = addNode builder_2_2 subgraph (ComposeSpec [out1_indexed,out2_indexed] composer_init)
 
       (builder4, ins4, out4) <- elabRValueExpr expr grp builder3 subgraph node_tmp
       let (builder_4_1, out4_indexed) = addNode builder4 subgraph (IndexSpec (outNode out4))
 
-      let composer = Composer $ \[os1, oexpr] ->
-                 makeExtra "__s1__" os1 `HM.union` makeExtra "__expr__" oexpr
+      let composer = Composer $ \os ->
+                       let errObject = HM.fromList [(SKey "???" Nothing Nothing, FlowNull)]
+                        in case os of
+                             [os1,oexpr] -> Right $ makeExtra "__s1__" os1 `HM.union` makeExtra "__expr__" oexpr
+                             _           ->
+                               let e = RunShardError $ "Compose node encountered incorrect number of inputs " <> T.pack (show os) <> ", which should be 2"
+                                in Left (e, errObject)
           (builder5, node1_with_expr) = addNode builder_4_1 subgraph (ComposeSpec [out1_indexed,out4_indexed] composer)
 
       let (builder6, node1_indexed) = addNode builder5 subgraph (IndexSpec node1_with_expr)
 
       let joinCond = \o1 o2 ->
-            let [(_,v)] = HM.toList (getExtra "__expr__" o1)
+            let [(_,v)] = HM.toList (getExtra "__expr__" o1) -- FIXME: non-exhaustive
              in v == FlowBoolean True
           joinType = case typ of
                        InnerJoin -> MergeJoinInner
@@ -436,7 +500,7 @@ elabRTableRef ref grp startBuilder subgraph =
       case alias_m of
         Nothing -> return (builder8, L.nub (ins1++ins2++ins4), Out node)
         Just s  -> do
-          let mapper = Mapper $ \o -> makeSKeyStream s o
+          let mapper = Mapper $ \o -> Right $ makeSKeyStream s o
               (builder', node') = addNode builder8 subgraph (MapSpec node mapper)
           let out = Out { outNode = node' }
           return (builder',  L.nub (ins1++ins2++ins4), out)
@@ -460,7 +524,7 @@ elabRTableRef ref grp startBuilder subgraph =
       case alias_m of
         Nothing -> return (builder5, L.nub (ins1++ins2), Out node)
         Just s  -> do
-          let mapper = Mapper $ \o -> makeSKeyStream s o
+          let mapper = Mapper $ \o -> Right $ makeSKeyStream s o
               (builder', node') = addNode builder5 subgraph (MapSpec node mapper)
           let out = Out { outNode = node' }
           return (builder', L.nub (ins1++ins2), out)
@@ -470,7 +534,7 @@ elabRTableRef ref grp startBuilder subgraph =
       case alias_m of
         Nothing -> return (builder1, ins', out)
         Just s  -> do
-          let mapper = Mapper $ \o -> makeSKeyStream s o
+          let mapper = Mapper $ \o -> Right $ makeSKeyStream s o
               (builder', node') = addNode builder1 subgraph (MapSpec (outNode out) mapper)
           let out = Out { outNode = node' }
           return (builder', ins', out)
@@ -495,7 +559,7 @@ elabFrom (RFrom refs) grp baseBuilder subgraph = do
 ----
 data AggregateComponents = AggregateComponents
   { aggregateInit :: FlowObject
-  , aggregateF    :: FlowObject -> FlowObject -> FlowObject
+  , aggregateF    :: FlowObject -> FlowObject -> Either (DiffFlowError,FlowObject) FlowObject
   }
 
 elabAggregate :: Aggregate
@@ -513,7 +577,7 @@ elabAggregate agg grp startBuilder subgraph startNode exprName =
       let reducer = Reducer aggregateF
           keygen = elabGroupBy grp
       let (builder_2, reduced) = addNode builder_1 subgraph (ReduceSpec indexed aggregateInit keygen reducer)
-      let mapper = Mapper $ \o -> discardExtra "__reduce_key__" o
+      let mapper = Mapper $ \o -> Right $ discardExtra "__reduce_key__" o
           (builder_3, node) = addNode builder_2 subgraph (MapSpec reduced mapper)
       return (builder_3, [], Out node)
     Unary _ expr -> do
@@ -523,8 +587,13 @@ elabAggregate agg grp startBuilder subgraph startNode exprName =
       let (builder_1_1, node_expr_indexed) = addNode builder_1   subgraph (IndexSpec node_expr)
           (builder_1_2, startNode_indexed) = addNode builder_1_1 subgraph (IndexSpec startNode)
 
-      let composer = Composer $ \[oexpr,ofrom] ->
-            makeExtra "__expr__" oexpr `HM.union` makeExtra "__from__" ofrom
+      let composer = Composer $ \os ->
+                       let errObject = HM.fromList [(SKey "???" Nothing Nothing, FlowNull)]
+                        in case os of
+                             [oexpr,ofrom] -> Right $ makeExtra "__expr__" oexpr `HM.union` makeExtra "__from__" ofrom
+                             _             ->
+                               let e = RunShardError $ "Compose node encountered incorrect number of inputs " <> T.pack (show os) <> ", which should be 2"
+                                in Left (e, errObject)
       let (builder_2, composed) =
             addNode builder_1_2 subgraph (ComposeSpec [node_expr_indexed,startNode_indexed] composer)
       let AggregateComponents{..} = genAggregateComponents agg exprName
@@ -533,7 +602,7 @@ elabAggregate agg grp startBuilder subgraph startNode exprName =
       let reducer = Reducer aggregateF
           keygen = elabGroupBy grp
       let (builder_4, reduced) = addNode builder_3 subgraph (ReduceSpec indexed aggregateInit keygen reducer)
-      let mapper = Mapper $ \o -> discardExtra "__reduce_key__" o
+      let mapper = Mapper $ \o -> Right $ discardExtra "__reduce_key__" o
           (builder_5, node) = addNode builder_4 subgraph (MapSpec reduced mapper)
       return (builder_5, ins, Out node)
     Binary _ expr1 expr2 -> do
@@ -546,10 +615,15 @@ elabAggregate agg grp startBuilder subgraph startNode exprName =
           (builder_2_2, node_expr2_indexed) = addNode builder_2_1 subgraph (IndexSpec node_expr2)
           (builder_2_3, startNode_indexed) = addNode builder_2_2 subgraph (IndexSpec startNode)
 
-      let composer = Composer $ \[oexpr1,oexpr2,ofrom] ->
-            makeExtra "__expr1__" oexpr1 `HM.union`
-            makeExtra "__expr2__" oexpr2 `HM.union`
-            makeExtra "__from__"  ofrom
+      let composer = Composer $ \os ->
+            let errObject = HM.fromList [(SKey "???" Nothing Nothing, FlowNull)]
+             in case os of
+                  [oexpr1,oexpr2,ofrom] -> Right $ makeExtra "__expr1__" oexpr1 `HM.union`
+                                                   makeExtra "__expr2__" oexpr2 `HM.union`
+                                                   makeExtra "__from__"  ofrom
+                  _                     ->
+                    let e = RunShardError $ "Compose node encountered incorrect number of inputs " <> T.pack (show os) <> ", which should be 3"
+                     in Left (e, errObject)
       let (builder_3, composed) =
             addNode builder_2_3 subgraph (ComposeSpec [node_expr1_indexed,node_expr2_indexed,startNode_indexed] composer)
       let AggregateComponents{..} = genAggregateComponents agg exprName
@@ -558,7 +632,7 @@ elabAggregate agg grp startBuilder subgraph startNode exprName =
       let reducer = Reducer aggregateF
           keygen = elabGroupBy grp
       let (builder_5, reduced) = addNode builder_4 subgraph (ReduceSpec indexed aggregateInit keygen reducer)
-      let mapper = Mapper $ \o -> discardExtra "__reduce_key__" o
+      let mapper = Mapper $ \o -> Right $ discardExtra "__reduce_key__" o
           (builder_6, node) = addNode builder_5 subgraph (MapSpec reduced mapper)
       return (builder_6, L.nub (ins1++ins2), Out node)
 
@@ -576,71 +650,86 @@ genAggregateComponents agg exprName =
          AggregateComponents
          { aggregateInit = HM.singleton (SKey exprName Nothing (Just "__reduced__")) (FlowInt 0)
          , aggregateF    = \acc row ->
-             let [(k, FlowInt acc_x)] = HM.toList $ getExtra "__reduced__" acc
-              in HM.fromList [(k, FlowInt (acc_x + 1))]
+             case HM.toList $ getExtra "__reduced__" acc of
+               [(k, FlowInt acc_x)] -> Right $ HM.fromList [(k, FlowInt (acc_x + 1))]
+               _                    -> let e = RunShardError "CountAll: type mismatch (expect a int value)"
+                                        in Left (e, HM.fromList [(SKey "???" Nothing Nothing, FlowNull)])
          }
 
        Unary AggCount expr ->
          AggregateComponents
          { aggregateInit = HM.singleton (SKey exprName Nothing (Just "__reduced__")) (FlowInt 0)
          , aggregateF = \acc row ->
-             let [(k, FlowInt acc_x)] = HM.toList $ getExtra "__reduced__" acc
-              in if HM.null (getExtra "__expr__" row) then
-                   HM.fromList [(k, FlowInt acc_x)] else
-                   HM.fromList [(k, FlowInt (acc_x + 1))]
+             case HM.toList $ getExtra "__reduced__" acc of
+               [(k, FlowInt acc_x)] -> if HM.null (getExtra "__expr__" row) then
+                                         Right $ HM.fromList [(k, FlowInt acc_x)] else
+                                         Right $ HM.fromList [(k, FlowInt (acc_x + 1))]
+               _                    -> let e = RunShardError "Count: type mismatch (expect a int value)"
+                                        in Left (e, HM.fromList [(SKey "???" Nothing Nothing, FlowNull)])
          }
 
        Unary AggSum expr ->
          AggregateComponents
          { aggregateInit = HM.singleton (SKey exprName Nothing (Just "__reduced__")) (FlowNumeral 0)
          , aggregateF = \acc row ->
-             let [(k, FlowNumeral acc_x)] = HM.toList $ getExtra "__reduced__" acc
-                 [(_, FlowNumeral row_x)] = HM.toList $ getExtra "__expr__" row
-              in HM.fromList [(k, FlowNumeral (acc_x + row_x))]
+             case (HM.toList $ getExtra "__reduced__" acc, HM.toList $ getExtra "__expr__" row) of
+               ([(k, FlowNumeral acc_x)], [(_, FlowNumeral row_x)]) -> Right $ HM.fromList [(k, FlowNumeral (acc_x + row_x))]
+               _ -> let e = RunShardError "Sum: type mismatch (expect a numeral value)"
+                     in Left (e, HM.fromList [(SKey "???" Nothing Nothing, FlowNull)])
          }
 
        Unary AggMax expr ->
          AggregateComponents
          { aggregateInit = HM.singleton (SKey exprName Nothing (Just "__reduced__")) (FlowNumeral 0)
          , aggregateF = \acc row ->
-             let [(k, FlowNumeral acc_x)] = HM.toList $ getExtra "__reduced__" acc
-                 [(_, FlowNumeral row_x)] = HM.toList $ getExtra "__expr__" row
-              in HM.fromList [(k, FlowNumeral (max acc_x row_x))]
+             case (HM.toList $ getExtra "__reduced__" acc, HM.toList $ getExtra "__expr__" row) of
+               ([(k, FlowNumeral acc_x)], [(_, FlowNumeral row_x)]) -> Right $ HM.fromList [(k, FlowNumeral (max acc_x row_x))]
+               _ -> let e = RunShardError "Max: type mismatch (expect a numeral value)"
+                     in Left (e, HM.fromList [(SKey "???" Nothing Nothing, FlowNull)])
          }
 
        Unary AggMin expr ->
          AggregateComponents
          { aggregateInit = HM.singleton (SKey exprName Nothing (Just "__reduced__")) (FlowNumeral 0)
          , aggregateF = \acc row ->
-             let [(k, FlowNumeral acc_x)] = HM.toList $ getExtra "__reduced__" acc
-                 [(_, FlowNumeral row_x)] = HM.toList $ getExtra "__expr__" row
-              in HM.fromList [(k, FlowNumeral (min acc_x row_x))]
+             case (HM.toList $ getExtra "__reduced__" acc, HM.toList $ getExtra "__expr__" row) of
+               ([(k, FlowNumeral acc_x)], [(_, FlowNumeral row_x)]) -> Right $ HM.fromList [(k, FlowNumeral (min acc_x row_x))]
+               _ -> let e = RunShardError "Min: type mismatch (expect a numeral value)"
+                     in Left (e, HM.fromList [(SKey "???" Nothing Nothing, FlowNull)])
          }
        Binary AggTopK expr1 expr2 ->
          AggregateComponents
          { aggregateInit = HM.singleton (SKey exprName Nothing (Just "__reduced__")) FlowNull
          , aggregateF = \acc row ->
-             let [(k,v)] = HM.toList $ getExtra "__reduced__" acc
-                 [(_,v1)] = HM.toList $ getExtra "__expr1__" row
-                 [(_,FlowInt n)] = HM.toList $ getExtra "__expr2__" row
-              in case v of
-                   FlowNull -> HM.fromList [(k, FlowArray [v1])]
+             case (HM.toList $ getExtra "__reduced__" acc,
+                   HM.toList $ getExtra "__expr1__" row,
+                   HM.toList $ getExtra "__expr2__" row) of
+               ([(k,v)], [(_,v1)], [(_,FlowInt n)]) -> case v of
+                   FlowNull -> Right $ HM.fromList [(k, FlowArray [v1])]
                    FlowArray vs ->
                      let vs' = L.take n (L.sortBy (flip compare) (v1:vs))
-                      in HM.fromList [(k, FlowArray vs')]
+                      in Right $ HM.fromList [(k, FlowArray vs')]
+                   _ -> let e = RunShardError "TopK: type mismatch (expect an array value)"
+                         in Left (e, HM.fromList [(SKey "???" Nothing Nothing, FlowNull)])
+               _ -> let e = RunShardError "TopK: type mismatch (expect a int value)"
+                     in Left (e, HM.fromList [(SKey "???" Nothing Nothing, FlowNull)])
          }
        Binary AggTopKDistinct expr1 expr2 ->
          AggregateComponents
          { aggregateInit = HM.singleton (SKey exprName Nothing (Just "__reduced__")) FlowNull
          , aggregateF = \acc row ->
-             let [(k,v)] = HM.toList $ getExtra "__reduced__" acc
-                 [(_,v1)] = HM.toList $ getExtra "__expr1__" row
-                 [(_,FlowInt n)] = HM.toList $ getExtra "__expr2__" row
-              in case v of
-                   FlowNull -> HM.fromList [(k, FlowArray [v1])]
+             case (HM.toList $ getExtra "__reduced__" acc,
+                   HM.toList $ getExtra "__expr1__" row,
+                   HM.toList $ getExtra "__expr2__" row) of
+               ([(k,v)], [(_,v1)], [(_,FlowInt n)]) -> case v of
+                   FlowNull -> Right $ HM.fromList [(k, FlowArray [v1])]
                    FlowArray vs ->
                      let vs' = L.take n (L.sortBy (flip compare) (L.nub (v1:vs)))
-                      in HM.fromList [(k, FlowArray vs')]
+                      in Right $ HM.fromList [(k, FlowArray vs')]
+                   _ -> let e = RunShardError "TopKDistinct: type mismatch (expect an array value)"
+                         in Left (e, HM.fromList [(SKey "???" Nothing Nothing, FlowNull)])
+               _ -> let e = RunShardError "TopKDistinct: type mismatch (expect a int value)"
+                     in Left (e, HM.fromList [(SKey "???" Nothing Nothing, FlowNull)])
          }
        _ -> throwSQLException CodegenException Nothing ("Unsupported aggregate function: " <> show agg)
 
@@ -659,15 +748,20 @@ elabRWhere whr grp startBuilder subgraph startNode = case whr of
     let (builder_1_1, node_expr_indexed) = addNode builder_1   subgraph (IndexSpec node_expr)
         (builder_1_2, startNode_indexed) = addNode builder_1_1 subgraph (IndexSpec startNode)
 
-    let composer = Composer $ \[oexpr,ofrom] ->
-          makeExtra "__expr__" oexpr `HM.union` makeExtra "__from__" ofrom
+    let composer = Composer $ \os ->
+          let errObject = HM.fromList [(SKey "???" Nothing Nothing, FlowNull)]
+           in case os of
+                [oexpr,ofrom] -> Right $ makeExtra "__expr__" oexpr `HM.union` makeExtra "__from__" ofrom
+                _             ->
+                  let e = RunShardError $ "Compose node encountered incorrect number of inputs " <> T.pack (show os) <> ", which should be 2"
+                  in Left (e, errObject)
     let (builder_2, composed) = addNode builder_1_2 subgraph (ComposeSpec [node_expr_indexed,startNode_indexed] composer)
     let filter = Filter $ \o ->
           let oexpr = getExtra "__expr__" o
            in case HM.toList oexpr of
                 [(_, FlowBoolean True)] -> True
                 _                       -> False
-    let mapper = Mapper $ \o -> getExtraAndReset "__from__" o
+    let mapper = Mapper $ \o -> Right $ getExtraAndReset "__from__" o
     let (builder_3, filtered) = addNode builder_2 subgraph (FilterSpec composed filter)
     let (builder_4, mapped) = addNode builder_3 subgraph (MapSpec filtered mapper)
     return (builder_4, ins, Out mapped)
@@ -696,7 +790,7 @@ elabRSelectItem item grp startBuilder subgraph startNode =
         Nothing -> return (builder_1, ins, Out node_expr)
         Just alias -> do
           let mapper = Mapper $ \o ->
-                HM.mapKeys (\(SKey f s_m extra_m) -> SKey alias s_m extra_m) o
+                Right $ HM.mapKeys (\(SKey f s_m extra_m) -> SKey alias s_m extra_m) o
           let (builder_2, node) = addNode builder_1 subgraph (MapSpec node_expr mapper)
           return (builder_2, ins, Out node)
     RSelectItemAggregate agg alias_m -> do
@@ -705,12 +799,12 @@ elabRSelectItem item grp startBuilder subgraph startNode =
         Nothing -> return (builder_1, ins, Out node_agg)
         Just alias -> do
           let mapper = Mapper $ \o ->
-                HM.mapKeys (\(SKey f s_m extra_m) -> SKey alias s_m extra_m) o
+                Right $ HM.mapKeys (\(SKey f s_m extra_m) -> SKey alias s_m extra_m) o
           let (builder_2, node) = addNode builder_1 subgraph (MapSpec node_agg mapper)
           return (builder_2, ins, Out node)
     RSelectProjectQualifiedAll s -> do
       let mapper = Mapper $ \o ->
-            HM.filterWithKey (\(SKey f s_m extra_m) v -> s_m == Just s) o
+            Right $ HM.filterWithKey (\(SKey f s_m extra_m) v -> s_m == Just s) o
       let (builder_1, node) = addNode startBuilder subgraph (MapSpec startNode mapper)
       return (builder_1, [], Out node)
     RSelectProjectAll -> return (startBuilder, [], Out startNode)
@@ -736,7 +830,7 @@ elabRSel (RSel items) grp startBuilder subgraph startNode = do
                                      ) (builder_1, []) (outNode <$> outs)
 
 
-  let composer = Composer $ \os -> L.foldl1 HM.union os
+  let composer = Composer $ \os -> Right $ L.foldl1 HM.union os
   let (builder_2, node) = addNode builder_acc subgraph (ComposeSpec outs' composer)
   return (builder_2, ins, Out node)
 

@@ -18,7 +18,7 @@ reducingGraph =
   let mapper o = A.adjust (\(Number n) -> (Number (n+1))) "a" o
       keygen o = A.fromList $ [("b", (A.!) o "b")]
       reducer value row = let (Number x) = (A.!) row "a"
-                           in A.adjust (\(Number n) -> (Number (n+x))) "sum" value
+                           in Right $ A.adjust (\(Number n) -> (Number (n+x))) "sum" value
       initValue = A.fromList [("sum", Number 0)] in
 
   let (builder_3, node_2) = addNode builder_2 subgraph_0 (IndexSpec node_1)

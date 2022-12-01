@@ -317,7 +317,7 @@ updateDataChangeBatch :: (Hashable a, Ord a, Show a,
                           Hashable row, Ord row, Show row)
                       => DataChangeBatch row a
                       -> ([DataChange row a] -> [DataChange row a])
-                      -> DataChangeBatch row  a
+                      -> DataChangeBatch row a
 updateDataChangeBatch oldBatch f =
   mkDataChangeBatch $ f (dcbChanges oldBatch)
 
@@ -383,7 +383,7 @@ composeDataChange :: (Hashable a, Ord a, Show a,
                   => [(DataChangeBatch row a, Frontier a)]
                   -> DataChange row a
                   -> Int
-                  -> ([row] -> row)
+                  -> ([row] -> Either (DiffFlowError,row) row)
                   -> DataChangeBatch row a
 composeDataChange basesWithFt that ix rowgen =
   let sameIdChanges =
@@ -393,7 +393,9 @@ composeDataChange basesWithFt that ix rowgen =
       ixAltered = setAt sameIdChanges ix [that]
       eachCompose = Helpers.choices ixAltered
       eachNewChange = L.map (\changes -> DataChange
-                                         { dcRow = rowgen (dcRow <$> changes)
+                                         { dcRow = case rowgen (dcRow <$> changes) of
+                                                     Right row_       -> row_
+                                                     Left (_,errRow_) -> errRow_
                                          , dcTimestamp = L.foldl1 leastUpperBound (dcTimestamp <$> changes)
                                          , dcDiff = product (dcDiff <$> changes)
                                          , dcExtra = dcExtra (L.head changes)
@@ -406,7 +408,7 @@ composeDataChangeBatch :: (Hashable a, Ord a, Show a,
                        => [(DataChangeBatch row a, Frontier a)]
                        -> DataChangeBatch row a
                        -> Int
-                       -> ([row] -> row)
+                       -> ([row] -> Either (DiffFlowError,row) row)
                        -> DataChangeBatch row a
 composeDataChangeBatch basesWithFt thatBatch ix rowgen =
   L.foldl (\acc that ->
@@ -494,7 +496,7 @@ composeIndex :: (Hashable a, Ord a, Show a,
              => [(Index row a, Frontier a)]
              -> DataChangeBatch row a
              -> Int
-             -> ([row] -> row)
+             -> ([row] -> Either (DiffFlowError,row) row)
              -> DataChangeBatch row a
 composeIndex basesWithFt thatBatch ix rowgen =
   let basesWithFt' = L.map (\(index_, ft) -> (indexToDataChangeBatch index_, ft)) basesWithFt
