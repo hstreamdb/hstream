@@ -7,7 +7,6 @@ import           Test.Hspec
 
 import           Control.Monad
 import qualified Data.Aeson                       as A
-import qualified Data.HashMap.Internal            as HM
 import qualified Data.Map.Strict                  as Map
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
@@ -20,6 +19,7 @@ import           HStream.Server.HStreamApi
 import           HStream.SpecUtils
 import           HStream.Store.Logger
 import           HStream.Utils
+import qualified HStream.Utils.Aeson              as Aeson
 
 spec :: Spec
 spec = describe "HStream.AdminCommnadSpec" $ do
@@ -40,8 +40,8 @@ adminCommandStatsSpec = aroundAll provideHstreamApi $ describe "adminCommandStat
       resp <- adminCommandStatsReq api
       let Just (Just resultObj) =
             A.decode @(Maybe A.Object) . TL.encodeUtf8 . TL.fromStrict . adminCommandResponseResult $ resp
-          Just (A.Object content) = HM.lookup "content" resultObj
-      let Just (A.Array rows) = HM.lookup "rows" content
+          Just (A.Object content) = Aeson.lookup "content" resultObj
+      let Just (A.Array rows) = Aeson.lookup "rows" content
 
       forM_ rows $ \(A.Array row) -> do
         let (A.String name) = row V.! 0

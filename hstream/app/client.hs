@@ -14,7 +14,6 @@ import           Control.Concurrent               (newMVar, threadDelay)
 import           Control.Monad                    (void, when)
 import           Data.Aeson                       as Aeson
 import qualified Data.Char                        as Char
-import qualified Data.HashMap.Strict              as HM
 import qualified Data.List                        as L
 import           Data.Maybe                       (isNothing, mapMaybe,
                                                    maybeToList)
@@ -68,6 +67,7 @@ import           HStream.Utils                    (SocketAddr (..),
                                                    mkGRPCClientConfWithSSL,
                                                    pattern EnumPB,
                                                    setupSigsegvHandler)
+import qualified HStream.Utils.Aeson              as AesonComp
 
 main :: IO ()
 main = runCommand =<<
@@ -186,7 +186,7 @@ hstreamInit RefinedCliConnOpts{..} HStreamInitOpts{..} = do
       case Aeson.eitherDecodeStrict (T.encodeUtf8 resp) of
         Left errmsg              -> pure $ "Decode json error: " <> errmsg
         Right (Aeson.Object obj) -> do
-          let m_type = HM.lookup "type" obj
+          let m_type = AesonComp.lookup "type" obj
           case m_type of
             Just (Aeson.String "plain") -> pure $ fillWithJsonString' "content" obj
             _                           -> loop api
