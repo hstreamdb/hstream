@@ -25,29 +25,8 @@ import qualified HStream.Server.MetaData          as P
 import           HStream.Server.Types
 import           HStream.SQL.Codegen
 import qualified HStream.Store                    as HS
-import           HStream.Utils                    (decodeByteStringBatch)
-
--- deleteStoreStream
---   :: ServerContext
---   -> HS.StreamId
---   -> Bool
---   -> IO Empty
--- deleteStoreStream sc@ServerContext{..} s checkIfExist = do
---   streamExists <- HS.doesStreamExist scLDClient s
---   if streamExists then clean >> return Empty else ignore checkIfExist
---   where
---     streamNameText = cBytesToText $ HS.streamName s
---     clean = do
---       terminateQueryAndRemove sc streamNameText
---       terminateRelatedQueries sc streamNameText
---       HS.removeStream scLDClient s
---     ignore True  = return Empty
---     ignore False = do
---       Log.warning $ "Drop: tried to remove a nonexistent object: "
---                  <> Log.buildCBytes (HS.streamName s)
---       throwIO $ HE.StreamNotFound $ "Stream " <> streamNameText <> " not found."
-
---------------------------------------------------------------------------------
+import           HStream.Utils                    (decodeByteStringBatch,
+                                                   textToCBytes)
 
 insertAckedRecordId
   :: ShardRecordId                        -- ^ recordId need to insert
@@ -162,24 +141,6 @@ decodeRecordBatch dataRecord = do
 --------------------------------------------------------------------------------
 -- Query
 
--- terminateQueryAndRemove :: ServerContext -> T.Text -> IO ()
--- terminateQueryAndRemove sc@ServerContext{..} stream = do
---   queries <- M.listMeta metaHandle
---   let queryExists = L.find (\query -> P.getQuerySink query == stream) queries
---   case queryExists of
---     Just query -> do
---       Log.debug . Log.buildString
---          $ "TERMINATE: found a query " <> show query
---         <> " which writes to the stream being removed " <> show stream
---       void $ handleQueryTerminate sc (OneQuery $ P.queryId query)
---       M.deleteMeta @P.QueryInfo (P.queryId query) Nothing metaHandle
---       -- TODO: delete status
---       Log.debug . Log.buildString
---         $ "TERMINATE: query " <> show query <> " has been removed"
---     Nothing    -> do
---       Log.debug . Log.buildString
---         $ "TERMINATE: found no query writes to the stream being dropped " <> show stream
-
 terminateRelatedQueries :: ServerContext -> T.Text -> IO ()
 terminateRelatedQueries sc@ServerContext{..} name = do
   queries <- M.listMeta metaHandle
@@ -263,3 +224,18 @@ getResNode hashRing hashKey listenerKey = do
   theNodes <- fromInternalServerNodeWithKey listenerKey serverNode
   if V.null theNodes then throwIO $ HE.NodesNotFound "Got empty nodes"
                      else pure $ V.head theNodes
+
+--------------------------------------------------------------------------------
+
+listSubscriptions :: ServerContext ->  Maybe T.Text -> IO (V.Vector Subscription)
+listSubscriptions ServerContext{..} sName = do
+  subs <- M.listMeta metaHandle
+  mapM update $ V.fromList [ sub | sub <- originSub <$> subs,
+                                   case sName of
+                                     Nothing -> True
+                                     Just x  -> subscriptionStreamName sub == x]
+ where
+   update sub@Subscription{..} = do
+     archived <- HS.isArchiveStreamName (textToCBytes subscriptionStreamName)
+     if archived then return sub {subscriptionStreamName = "__deleted_stream__"}
+                 else return sub

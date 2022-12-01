@@ -10,6 +10,7 @@ module HStream.Server.Handler.Stream
   ( -- * For grpc-haskell
     createStreamHandler
   , deleteStreamHandler
+  , getStreamHandler
   , listStreamsHandler
   , listShardsHandler
   , appendHandler
@@ -19,6 +20,7 @@ module HStream.Server.Handler.Stream
     -- * For hs-grpc-server
   , handleCreateStream
   , handleDeleteStream
+  , handleGetStream
   , handleListStreams
   , handleAppend
   , handleListShard
@@ -85,6 +87,21 @@ handleDeleteStream :: ServerContext -> G.UnaryHandler DeleteStreamRequest Empty
 handleDeleteStream sc _ req = catchDefaultEx $ do
   validateNameAndThrow $ deleteStreamRequestStreamName req
   C.deleteStream sc req >> pure Empty
+
+getStreamHandler
+  :: ServerContext
+  -> ServerRequest 'Normal GetStreamRequest GetStreamResponse
+  -> IO (ServerResponse 'Normal GetStreamResponse)
+getStreamHandler sc (ServerNormalRequest _metadata request) = defaultExceptionHandle $ do
+  Log.debug $ "Receive Get Stream Request: " <> Log.buildString' request
+  validateNameAndThrow $ getStreamRequestName request
+  C.getStream sc request >>= returnResp
+
+handleGetStream :: ServerContext -> G.UnaryHandler GetStreamRequest GetStreamResponse
+handleGetStream sc _ req = catchDefaultEx $ do
+  validateNameAndThrow $ getStreamRequestName req
+  C.getStream sc req
+
 
 listStreamsHandler
   :: ServerContext

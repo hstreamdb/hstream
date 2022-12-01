@@ -5,6 +5,7 @@
 module HStream.Server.Core.Stream
   ( createStream
   , deleteStream
+  , getStream
   , listStreams
   , listStreamNames
   , append
@@ -15,40 +16,44 @@ module HStream.Server.Core.Stream
   , readShard
   ) where
 
-import           Control.Concurrent         (modifyMVar_, newEmptyMVar, putMVar,
-                                             readMVar, takeMVar, withMVar)
-import           Control.Exception          (bracket, catch, throw, throwIO)
-import           Control.Monad              (forM, unless, when)
-import qualified Data.ByteString            as BS
-import qualified Data.ByteString.Lazy       as BSL
-import           Data.Foldable              (foldl')
-import qualified Data.HashMap.Strict        as HM
-import qualified Data.Map.Strict            as M
-import           Data.Maybe                 (fromJust, fromMaybe)
-import qualified Data.Text                  as T
-import qualified Data.Vector                as V
-import           GHC.Stack                  (HasCallStack)
-import           Google.Protobuf.Timestamp  (Timestamp)
-import           Proto3.Suite               (Enumerated (Enumerated))
-import qualified Proto3.Suite               as PT
-import qualified Z.Data.CBytes              as CB
-import           ZooKeeper.Exception        (ZNONODE (..))
+import           Control.Concurrent               (modifyMVar_, newEmptyMVar,
+                                                   putMVar, readMVar, takeMVar,
+                                                   withMVar)
+import           Control.Exception                (bracket, catch, throw,
+                                                   throwIO)
+import           Control.Monad                    (forM, unless, when)
+import qualified Data.ByteString                  as BS
+import qualified Data.ByteString.Lazy             as BSL
+import           Data.Foldable                    (foldl')
+import qualified Data.HashMap.Strict              as HM
+import qualified Data.Map.Strict                  as M
+import           Data.Maybe                       (fromJust, fromMaybe)
+import qualified Data.Text                        as T
+import qualified Data.Vector                      as V
+import           GHC.Stack                        (HasCallStack)
+import           Google.Protobuf.Timestamp        (Timestamp)
+import           Proto3.Suite                     (Enumerated (Enumerated))
+import qualified Proto3.Suite                     as PT
+import qualified Z.Data.CBytes                    as CB
+import           ZooKeeper.Exception              (ZNONODE (..))
 
-import qualified HStream.Exception          as HE
-import qualified HStream.Logger             as Log
-import qualified HStream.MetaStore.Types    as M
-import           HStream.Server.Core.Common (decodeRecordBatch)
-import           HStream.Server.HStreamApi  (CreateShardReaderRequest (..))
-import qualified HStream.Server.HStreamApi  as API
-import qualified HStream.Server.MetaData    as P
-import           HStream.Server.Shard       (Shard (..), createShard,
-                                             devideKeySpace,
-                                             mkShardWithDefaultId,
-                                             mkSharedShardMapWithShards)
-import           HStream.Server.Types       (ServerContext (..),
-                                             transToStreamName)
-import qualified HStream.Stats              as Stats
-import qualified HStream.Store              as S
+import           HStream.Common.ConsistentHashing (getAllocatedNodeId)
+import qualified HStream.Exception                as HE
+import qualified HStream.Logger                   as Log
+import qualified HStream.MetaStore.Types          as M
+import           HStream.Server.Core.Common       (decodeRecordBatch,
+                                                   listSubscriptions)
+import           HStream.Server.HStreamApi        (CreateShardReaderRequest (..))
+import qualified HStream.Server.HStreamApi        as API
+import qualified HStream.Server.MetaData          as P
+import           HStream.Server.Shard             (Shard (..), createShard,
+                                                   devideKeySpace,
+                                                   mkShardWithDefaultId,
+                                                   mkSharedShardMapWithShards)
+import           HStream.Server.Types             (ServerContext (..),
+                                                   transToStreamName)
+import qualified HStream.Stats                    as Stats
+import qualified HStream.Store                    as S
 import           HStream.Utils
 
 -------------------------------------------------------------------------------
@@ -105,6 +110,26 @@ deleteStream ServerContext{..} API.DeleteStreamRequest{deleteStreamRequestForce 
              P.updateSubscription metaHandle sName (cBytesToText $ S.getArchivedStreamName _archivedStream)
            else
              throwIO $ HE.FoundSubscription "Stream still has subscription"
+
+getStream :: ServerContext -> API.GetStreamRequest -> IO API.GetStreamResponse
+getStream sc@ServerContext{..} API.GetStreamRequest{ getStreamRequestName = sName} = do
+  let streamId = transToStreamName sName
+  storeExists <- S.doesStreamExist scLDClient streamId
+  unless storeExists $ throwIO $ HE.StreamNotFound sName
+  attrs <- S.getStreamLogAttrs scLDClient streamId
+  let reFac = fromMaybe 0 . S.attrValue . S.logReplicationFactor $ attrs
+      backlogSec = fromMaybe 0 . fromMaybe Nothing . S.attrValue . S.logBacklogDuration $ attrs
+      createdAt = PT.fromByteString . BSL.toStrict . cBytesToLazyByteString $ S.logAttrsExtras attrs M.! "createTime"
+  shardsCount <- fromIntegral . M.size <$> S.listStreamPartitions scLDClient streamId
+  return API.GetStreamResponse {
+      getStreamResponseStream = Just API.Stream{
+          streamStreamName = sName
+        , streamReplicationFactor = fromIntegral reFac
+        , streamBacklogDuration = fromIntegral backlogSec
+        , streamCreationTime = either (const Nothing) Just createdAt
+        , streamShardCount =  shardsCount
+        }
+      }
 
 listStreams
   :: HasCallStack
