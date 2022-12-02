@@ -3,16 +3,21 @@ module HStream.Client.Types where
 import           Control.Concurrent            (MVar)
 import           Data.ByteString               (ByteString)
 import           Data.Word                     (Word32)
-import           Network.GRPC.HighLevel.Client (ClientSSLConfig)
+import           Network.GRPC.HighLevel.Client (ClientConfig (..),
+                                                ClientSSLConfig (..),
+                                                ClientSSLKeyCertPair (..))
 import qualified Options.Applicative           as O
+import           System.Exit                   (exitFailure)
 
+import           Data.Maybe                    (isNothing)
 import           Data.Text                     (Text)
 import           HStream.Admin.Server.Types    (StreamCommand,
                                                 SubscriptionCommand,
                                                 streamCmdParser,
                                                 subscriptionCmdParser)
 import           HStream.Server.Types          (ServerID)
-import           HStream.Utils                 (ResourceType, SocketAddr)
+import           HStream.Utils                 (ResourceType, SocketAddr (..),
+                                                mkGRPCClientConfWithSSL)
 
 data HStreamCommand = HStreamCommand
   { cliConnOpts :: CliConnOpts
@@ -39,16 +44,19 @@ commandParser = HStreamCommand
     <> O.command "subscription"  (O.info (HStreamSubscription <$> subscriptionCmdParser) (O.progDesc "Manage Subscriptions in HStreamDB"))
     )
 
-data HStreamSqlContext = HStreamSqlContext
+data HStreamCliContext = HStreamCliContext
   { availableServers :: MVar [SocketAddr]
   , currentServer    :: MVar SocketAddr
-  , updateInterval   :: Int
   , sslConfig        :: Maybe ClientSSLConfig
+  }
+
+data HStreamSqlContext = HStreamSqlContext
+  { hstreamCliContext :: HStreamCliContext
+  , updateInterval    :: Int
   }
 
 data HStreamSqlOpts = HStreamSqlOpts
   { _updateInterval :: Int
-  , _retryTimeout   :: Int
   , _execute        :: Maybe String
   , _historyFile    :: Maybe FilePath
   }
@@ -56,7 +64,6 @@ data HStreamSqlOpts = HStreamSqlOpts
 hstreamSqlOptsParser :: O.Parser HStreamSqlOpts
 hstreamSqlOptsParser = HStreamSqlOpts
   <$> O.option O.auto (O.long "update-interval" <> O.metavar "INT" <> O.showDefault <> O.value 30 <> O.help "interval to update available servers in seconds")
-  <*> O.option O.auto (O.long "retry-timeout"   <> O.metavar "INT" <> O.showDefault <> O.value 60 <> O.help "timeout to retry connecting to a server in seconds")
 
   <*> (O.optional . O.option O.str) (O.long "execute" <> O.short 'e' <> O.metavar "STRING" <> O.help "execute the statement and quit")
   <*> (O.optional . O.option O.str) (O.long "history-file" <> O.metavar "STRING" <> O.help "history file path to write interactively executed statements")
@@ -82,11 +89,12 @@ hstreamInitOptsParser = HStreamInitOpts
  <$> O.option O.auto (O.long "timeout" <> O.metavar "INT" <> O.showDefault <> O.value 5 <> O.help "timeout for the wait of cluster ready")
 
 data CliConnOpts = CliConnOpts
-  { _serverHost :: ByteString
-  , _serverPort :: Int
-  , _tlsCa      :: Maybe FilePath
-  , _tlsKey     :: Maybe FilePath
-  , _tlsCert    :: Maybe FilePath
+  { _serverHost   :: ByteString
+  , _serverPort   :: Int
+  , _tlsCa        :: Maybe FilePath
+  , _tlsKey       :: Maybe FilePath
+  , _tlsCert      :: Maybe FilePath
+  , _retryTimeout :: Int
   } deriving (Show, Eq)
 
 serverHost :: O.Parser ByteString
@@ -110,3 +118,33 @@ connOptsParser = CliConnOpts
   <*> (O.optional . O.option O.str) (O.long "tls-ca"   <> O.metavar "STRING" <> O.help "path name of the file that contains list of trusted TLS Certificate Authorities")
   <*> (O.optional . O.option O.str) (O.long "tls-key"  <> O.metavar "STRING" <> O.help "path name of the client TLS private key file")
   <*> (O.optional . O.option O.str) (O.long "tls-cert" <> O.metavar "STRING" <> O.help "path name of the client TLS public key certificate file")
+  <*> O.option O.auto (O.long "retry-timeout"   <> O.metavar "INT" <> O.showDefault <> O.value 60 <> O.help "timeout to retry connecting to a server in seconds")
+
+data RefinedCliConnOpts = RefinedCliConnOpts {
+    addr         :: SocketAddr
+  , clientConfig :: ClientConfig
+  }
+
+refineCliConnOpts :: CliConnOpts -> IO RefinedCliConnOpts
+refineCliConnOpts CliConnOpts {..} = do
+  let addr = SocketAddr _serverHost _serverPort
+  clientSSLKeyCertPair <- do
+    case _tlsKey of
+      Nothing -> case _tlsCert of
+        Nothing -> pure Nothing
+        Just _  -> putStrLn "got `tls-cert`, but `tls-key` is missing" >> exitFailure
+      Just tlsKey -> case _tlsCert of
+        Nothing      -> putStrLn "got `tls-key`, but `tls-cert` is missing" >> exitFailure
+        Just tlsCert -> pure . Just $ ClientSSLKeyCertPair {
+          clientPrivateKey = tlsKey
+        , clientCert       = tlsCert
+        }
+  let sslConfig = if isNothing _tlsCa && isNothing clientSSLKeyCertPair
+        then Nothing
+        else Just $ ClientSSLConfig {
+          serverRootCert       = _tlsCa
+        , clientSSLKeyCertPair = clientSSLKeyCertPair
+        , clientMetadataPlugin = Nothing
+        }
+  let clientConfig = mkGRPCClientConfWithSSL addr sslConfig
+  pure $ RefinedCliConnOpts addr clientConfig

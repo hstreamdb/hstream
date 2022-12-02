@@ -8,36 +8,42 @@ module HStream.Client.Execute
   , execute_
   , execute
   , executeWithAddr
-  -- , executeInsert
   , executeWithAddr_
   , executeWithLookupResource_
   , updateClusterInfo
   , lookupWithAddr
   , simpleExecuteWithAddr
+  , initCliContext
+  , simpleExecute
   ) where
 
 import           Control.Concurrent
 import           Control.Monad
 import qualified Data.List                        as L
+import           Data.Maybe                       (isNothing)
+import qualified Data.Text                        as T
 import qualified Data.Text.Encoding               as BS
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel           (GRPCIOError (..))
 import           Network.GRPC.HighLevel.Client
 import           Network.GRPC.HighLevel.Generated (withGRPCClient)
+import           System.Exit                      (exitFailure)
 
-import qualified Data.Text                        as T
 import           HStream.Client.Action
-import           HStream.Client.Types             (HStreamSqlContext (..),
+import           HStream.Client.Types             (CliConnOpts (..),
+                                                   HStreamCliContext (..),
                                                    Resource)
 import           HStream.Client.Utils
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.SQL
 import           HStream.Utils                    (Format, HStreamClientApi,
-                                                   SocketAddr, getServerResp,
+                                                   SocketAddr (..),
+                                                   getServerResp,
                                                    mkGRPCClientConfWithSSL,
-                                                   serverNodeToSocketAddr)
+                                                   serverNodeToSocketAddr,
+                                                   setupSigsegvHandler)
 
-executeShowPlan :: HStreamSqlContext -> ShowObject -> IO ()
+executeShowPlan :: HStreamCliContext -> ShowObject -> IO ()
 executeShowPlan ctx showObject =
   case showObject of
     SStreams    -> execute_ ctx listStreams
@@ -45,27 +51,27 @@ executeShowPlan ctx showObject =
     SQueries    -> execute_ ctx listQueries
     SConnectors -> execute_ ctx listConnectors
 
-execute_ :: Format a => HStreamSqlContext
+execute_ :: Format a => HStreamCliContext
   -> Action a -> IO ()
-execute_ ctx@HStreamSqlContext{..} action = do
+execute_ ctx@HStreamCliContext{..} action = do
   addr <- readMVar currentServer
   void $ executeWithAddr_ ctx addr action printResult
 
-executeWithLookupResource_ :: Format a => HStreamSqlContext
+executeWithLookupResource_ :: Format a => HStreamCliContext
   -> Resource -> (HStreamClientApi -> IO a)  -> IO ()
-executeWithLookupResource_ ctx@HStreamSqlContext{..} rtype action = do
+executeWithLookupResource_ ctx@HStreamCliContext{..} rtype action = do
   addr <- readMVar currentServer
   lookupWithAddr ctx addr rtype
   >>= \sn -> simpleExecuteWithAddr (serverNodeToSocketAddr sn) sslConfig action
   >>= printResult
 
-execute :: HStreamSqlContext -> Action a -> IO (Maybe a)
-execute ctx@HStreamSqlContext{..} action = do
+execute :: HStreamCliContext -> Action a -> IO (Maybe a)
+execute ctx@HStreamCliContext{..} action = do
   addr <- readMVar currentServer
   executeWithAddr ctx addr action ((Just <$>) . getServerResp)
 
 executeWithAddr
-  :: HStreamSqlContext -> SocketAddr
+  :: HStreamCliContext -> SocketAddr
   -> Action a
   -> (ClientResult 'Normal a -> IO (Maybe a))
   -> IO (Maybe a)
@@ -73,15 +79,15 @@ executeWithAddr ctx addr action handleOKResp = do
   getInfoWithAddr ctx addr action handleOKResp
 
 executeWithAddr_
-  :: HStreamSqlContext -> SocketAddr
+  :: HStreamCliContext -> SocketAddr
   -> Action a
   -> (ClientResult 'Normal a -> IO ())
   -> IO ()
 executeWithAddr_ ctx addr action handleOKResp = do
   void $ getInfoWithAddr ctx addr action (\x -> handleOKResp x >> return Nothing)
 
-updateClusterInfo :: HStreamSqlContext -> SocketAddr -> IO (Maybe API.DescribeClusterResponse)
-updateClusterInfo ctx@HStreamSqlContext{..} addr = do
+updateClusterInfo :: HStreamCliContext -> SocketAddr -> IO (Maybe API.DescribeClusterResponse)
+updateClusterInfo ctx@HStreamCliContext{..} addr = do
   getInfoWithAddr ctx addr describeCluster handleRespApp
   where
     handleRespApp :: ClientResult 'Normal API.DescribeClusterResponse -> IO (Maybe API.DescribeClusterResponse)
@@ -93,20 +99,20 @@ updateClusterInfo ctx@HStreamSqlContext{..} addr = do
       return $ Just resp
     handleRespApp _ = return Nothing
 
-lookupWithAddr :: HStreamSqlContext -> SocketAddr -> Resource
+lookupWithAddr :: HStreamCliContext -> SocketAddr -> Resource
   -> IO API.ServerNode
 lookupWithAddr ctx addr rType = getInfoWithAddr ctx addr (lookupResource rType) getServerResp
 
 --------------------------------------------------------------------------------
 
 -- | Try the best to execute an GRPC request until all possible choices failed,
--- with the given address instead of which from HStreamSqlContext.
+-- with the given address instead of which from HStreamCliContext.
 getInfoWithAddr
-  :: HStreamSqlContext -> SocketAddr
+  :: HStreamCliContext -> SocketAddr
   -> Action a
   -> (ClientResult 'Normal a -> IO b)
   -> IO b
-getInfoWithAddr ctx@HStreamSqlContext{..} addr action cont = do
+getInfoWithAddr ctx@HStreamCliContext{..} addr action cont = do
   resp <- simpleExecuteWithAddr addr sslConfig action
   case resp of
     ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode _ details)) -> do
@@ -125,3 +131,38 @@ getInfoWithAddr ctx@HStreamSqlContext{..} addr action cont = do
 simpleExecuteWithAddr :: SocketAddr -> Maybe ClientSSLConfig -> (HStreamClientApi -> IO a) -> IO a
 simpleExecuteWithAddr addr sslConfig action =
   withGRPCClient (mkGRPCClientConfWithSSL addr sslConfig) (API.hstreamApiClient >=> action)
+
+simpleExecute :: ClientConfig -> (HStreamClientApi -> IO a) -> IO a
+simpleExecute conf action = withGRPCClient conf (API.hstreamApiClient >=> action)
+
+initCliContext :: CliConnOpts -> IO HStreamCliContext
+initCliContext CliConnOpts {..} = do
+  let addr = SocketAddr _serverHost _serverPort
+  clientSSLKeyCertPair <- do
+    case _tlsKey of
+      Nothing -> case _tlsCert of
+        Nothing -> pure Nothing
+        Just _  -> putStrLn "got `tls-cert`, but `tls-key` is missing" >> exitFailure
+      Just tlsKey -> case _tlsCert of
+        Nothing      -> putStrLn "got `tls-key`, but `tls-cert` is missing" >> exitFailure
+        Just tlsCert -> pure . Just $ ClientSSLKeyCertPair {
+          clientPrivateKey = tlsKey
+        , clientCert       = tlsCert
+        }
+  let sslConfig = if isNothing _tlsCa && isNothing clientSSLKeyCertPair
+        then Nothing
+        else Just $ ClientSSLConfig {
+          serverRootCert       = _tlsCa
+        , clientSSLKeyCertPair = clientSSLKeyCertPair
+        , clientMetadataPlugin = Nothing
+        }
+  availableServers <- newMVar []
+  currentServer    <- newMVar addr
+  let ctx = HStreamCliContext {..}
+  setupSigsegvHandler
+  connected <- waitForServerToStart (_retryTimeout * 1000000) addr sslConfig
+  case connected of
+    Nothing -> errorWithoutStackTrace "Connection timed out. Please check the server URI and try again."
+    Just _  -> pure ()
+  void $ updateClusterInfo ctx addr
+  return ctx
