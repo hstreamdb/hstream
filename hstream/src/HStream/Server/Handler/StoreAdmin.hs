@@ -139,4 +139,4 @@ toString (String s) = s
 toString _          = ""
 
 statusOpts :: StatusOpts
-statusOpts = StatusOpts TabularFormat True (StatusNodeIdx []) "ID"
+statusOpts = StatusOpts TabularFormat True False (StatusNodeIdx []) "ID"

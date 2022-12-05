@@ -117,6 +117,7 @@ runSimpleNodesFilter s f = do
 data StatusOpts = StatusOpts
   { statusFormat    :: StatusFormat
   , statusForce     :: Bool
+  , statusVerbose   :: Bool
   , statusFilter    :: SimpleNodesFilter
   , statusSortField :: Text
   } deriving (Show)
@@ -132,6 +133,12 @@ statusParser = StatusOpts
                   )
   <*> switch ( long "force"
             <> help "Sets the force flag in the Admin API call"
+             )
+  <*> switch ( long "verbose"
+            <> short 'v'
+            <> help ( "Sets verbosity to true, this will also show "
+                   <> "PACKAGE and UPTIME in the status result."
+                    )
              )
   <*> simpleNodesFilterParser
   <*> strOption ( long "sort"
