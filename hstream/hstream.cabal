@@ -253,7 +253,6 @@ test-suite hstream-test
     HStream.RegressionSpec
     HStream.RunQuerySpec
     HStream.RunSQLSpec
-    HStream.RunStoreAdminSpec
     HStream.ShardSpec
     HStream.SpecUtils
     HStream.StatsIntegrationSpec
