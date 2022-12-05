@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP               #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module DiffFlow.TypesSpec where
@@ -254,6 +255,20 @@ dataChangeBatch = describe "DataChangeBatch" $ do
       , DataChange (A.fromList [("b", Number 2)]) (Timestamp (0 :: Int) []) 1 0
       , DataChange (A.fromList [("c", Number 3)]) (Timestamp (3 :: Int) []) 1 0]
       `shouldBe`
+-- Note: (Ord Object) of aeson<2 and aeson>2 has different implementations
+--------------------------------------------------------------------------------
+#if MIN_VERSION_aeson(2,0,0)
+--------------------------------------------------------------------------------
+      DataChangeBatch
+      { dcbLowerBound = Set.singleton (Timestamp 0 [])
+      , dcbChanges = [ DataChange (A.fromList [("a", Number 1)]) (Timestamp 0 []) 1 0
+                     , DataChange (A.fromList [("b", Number 2)]) (Timestamp 0 []) 1 0
+                     , DataChange (A.fromList [("c", Number 3)]) (Timestamp 3 []) 1 0
+                     ]
+      }
+--------------------------------------------------------------------------------
+#else
+--------------------------------------------------------------------------------
       DataChangeBatch
       { dcbLowerBound = Set.singleton (Timestamp 0 [])
       , dcbChanges = [ DataChange (A.fromList [("b", Number 2)]) (Timestamp 0 []) 1 0
@@ -261,7 +276,9 @@ dataChangeBatch = describe "DataChangeBatch" $ do
                      , DataChange (A.fromList [("c", Number 3)]) (Timestamp 3 []) 1 0
                      ]
       }
-
+--------------------------------------------------------------------------------
+#endif
+--------------------------------------------------------------------------------
 
 frontierMove :: Spec
 frontierMove = describe "FrontierMove" $ do

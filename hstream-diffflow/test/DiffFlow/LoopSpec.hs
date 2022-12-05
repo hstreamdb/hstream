@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP               #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module DiffFlow.LoopSpec where
@@ -151,7 +152,79 @@ checkStep2 isDone reach_m reachSummary_m = describe "check reach summary out" $ 
     takeMVar isDone
     ((takeMVar reachSummary_m) >>= (return .  (L.map dcbChanges))) `shouldReturn` dcbs4
 
+-- Note: (Ord Object) of aeson<2 and aeson>2 has different implementations
+--------------------------------------------------------------------------------
+#if MIN_VERSION_aeson(2,0,0)
+--------------------------------------------------------------------------------
 
+dcbs1 :: [[DataChange Object Word32]]
+dcbs1 = [ [DataChange (A.fromList [("v1", "c"), ("v2", "a")]) (Timestamp 0 []) 1 0]
+        , [DataChange (A.fromList [("v1", "a"), ("v2", "b")]) (Timestamp 0 []) 1 0]
+        , [DataChange (A.fromList [("v1", "b"), ("v2", "c")]) (Timestamp 0 []) 1 0]
+        , [DataChange (A.fromList [("v1", "b"), ("v2", "d")]) (Timestamp 0 []) 1 0]
+
+        , [DataChange (A.fromList [("v1", "a"), ("v2", "d")]) (Timestamp 0 []) 1 0]
+        , [DataChange (A.fromList [("v1", "b"), ("v2", "a")]) (Timestamp 0 []) 1 0]
+        , [DataChange (A.fromList [("v1", "a"), ("v2", "c")]) (Timestamp 0 []) 1 0]
+        , [DataChange (A.fromList [("v1", "c"), ("v2", "b")]) (Timestamp 0 []) 1 0]
+
+        , [DataChange (A.fromList [("v1", "a"), ("v2", "a")]) (Timestamp 0 []) 1 0]
+        , [DataChange (A.fromList [("v1", "c"), ("v2", "c")]) (Timestamp 0 []) 1 0]
+        , [DataChange (A.fromList [("v1", "c"), ("v2", "d")]) (Timestamp 0 []) 1 0]
+        , [DataChange (A.fromList [("v1", "b"), ("v2", "b")]) (Timestamp 0 []) 1 0]
+        ]
+
+dcbs2 :: [[DataChange Object Word32]]
+dcbs2 = [ [DataChange (A.fromList [("v1", "c"), ("reduced", "a" )]) (Timestamp 0 [1]) 1 0]
+        , [DataChange (A.fromList [("v1", "a"), ("reduced", "b" )]) (Timestamp 0 [1]) 1 0]
+        , [DataChange (A.fromList [("v1", "b"), ("reduced", "cd")]) (Timestamp 0 [1]) 1 0]
+
+        , [DataChange (A.fromList [("v1", "c"), ("reduced", "a"  )]) (Timestamp 0 [2]) (-1) 0
+        ,  DataChange (A.fromList [("v1", "c"), ("reduced", "ab" )]) (Timestamp 0 [2]) 1 0]
+        , [DataChange (A.fromList [("v1", "a"), ("reduced", "b"  )]) (Timestamp 0 [2]) (-1) 0
+        ,  DataChange (A.fromList [("v1", "a"), ("reduced", "bcd")]) (Timestamp 0 [2]) 1 0]
+        , [DataChange (A.fromList [("v1", "b"), ("reduced", "cd" )]) (Timestamp 0 [2]) (-1) 0
+        ,  DataChange (A.fromList [("v1", "b"), ("reduced", "cda")]) (Timestamp 0 [2]) 1 0]
+
+        , [DataChange (A.fromList [("v1", "c"), ("reduced", "ab"  )]) (Timestamp 0 [3]) (-1) 0
+        ,  DataChange (A.fromList [("v1", "c"), ("reduced", "abcd")]) (Timestamp 0 [3]) 1 0]
+        , [DataChange (A.fromList [("v1", "a"), ("reduced", "bcd" )]) (Timestamp 0 [3]) (-1) 0
+        ,  DataChange (A.fromList [("v1", "a"), ("reduced", "bcda")]) (Timestamp 0 [3]) 1 0]
+        , [DataChange (A.fromList [("v1", "b"), ("reduced", "cda" )]) (Timestamp 0 [3]) (-1) 0
+        ,  DataChange (A.fromList [("v1", "b"), ("reduced", "cdab")]) (Timestamp 0 [3]) 1 0]
+        ]
+
+dcbs3 :: [[DataChange Object Word32]]
+dcbs3 = [ [DataChange (A.fromList [("v1", "b"), ("v2", "c")]) (Timestamp 1 []) (-1) 0]
+
+        , [DataChange (A.fromList [("v1", "b"), ("v2", "a")]) (Timestamp 1 []) (-1) 0]
+        , [DataChange (A.fromList [("v1", "a"), ("v2", "c")]) (Timestamp 1 []) (-1) 0]
+
+        , [DataChange (A.fromList [("v1", "a"), ("v2", "a")]) (Timestamp 1 []) (-1) 0]
+        , [DataChange (A.fromList [("v1", "c"), ("v2", "c")]) (Timestamp 1 []) (-1) 0]
+        , [DataChange (A.fromList [("v1", "b"), ("v2", "b")]) (Timestamp 1 []) (-1) 0]
+        ]
+
+dcbs4 :: [[DataChange Object Word32]]
+dcbs4 = [ [DataChange (A.fromList [("v1", "b"), ("reduced", "cd")]) (Timestamp 1 [1]) (-1) 0
+        ,  DataChange (A.fromList [("v1", "b"), ("reduced", "d" )]) (Timestamp 1 [1]) 1 0]
+
+        , [DataChange (A.fromList [("v1", "a"), ("reduced", "bcd")]) (Timestamp 1 [2]) (-1) 0
+        ,  DataChange (A.fromList [("v1", "a"), ("reduced", "bd" )]) (Timestamp 1 [2]) 1 0]
+        , [DataChange (A.fromList [("v1", "b"), ("reduced", "cd" )]) (Timestamp 1 [2]) 1 0
+        ,  DataChange (A.fromList [("v1", "b"), ("reduced", "cda")]) (Timestamp 1 [2]) (-1) 0]
+
+        , [DataChange (A.fromList [("v1", "c"), ("reduced", "abcd")]) (Timestamp 1 [3]) (-1) 0
+        ,  DataChange (A.fromList [("v1", "c"), ("reduced", "abd" )]) (Timestamp 1 [3]) 1 0]
+        , [DataChange (A.fromList [("v1", "a"), ("reduced", "bcd" )]) (Timestamp 1 [3]) 1 0
+        ,  DataChange (A.fromList [("v1", "a"), ("reduced", "bcda")]) (Timestamp 1 [3]) (-1) 0]
+        , [DataChange (A.fromList [("v1", "b"), ("reduced", "cda" )]) (Timestamp 1 [3]) 1 0
+        ,  DataChange (A.fromList [("v1", "b"), ("reduced", "cdab")]) (Timestamp 1 [3]) (-1) 0]
+        ]
+
+--------------------------------------------------------------------------------
+#else
+--------------------------------------------------------------------------------
 
 dcbs1 :: [[DataChange Object Word32]]
 dcbs1 = [ [DataChange (A.fromList [("v1", "b"), ("v2", "c")]) (Timestamp 0 []) 1 0]
@@ -217,3 +290,7 @@ dcbs4 = [ [DataChange (A.fromList [("v1", "b"), ("reduced", "cd")]) (Timestamp 1
         , [DataChange (A.fromList [("v1", "c"), ("reduced", "abcd")]) (Timestamp 1 [3]) (-1) 0
         ,  DataChange (A.fromList [("v1", "c"), ("reduced", "abd" )]) (Timestamp 1 [3]) 1 0]
         ]
+
+--------------------------------------------------------------------------------
+#endif
+--------------------------------------------------------------------------------
