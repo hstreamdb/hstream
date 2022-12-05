@@ -10,6 +10,8 @@ module HStream.Server.Config
   , TlsConfig (..)
   , AdvertisedListeners
   , advertisedListenersToPB
+  , ListenersSecurityProtocolMap
+  , SecurityProtocolMap
   , getConfig
   , MetaStoreAddr(..)
   , parseJSONToOptions
@@ -83,6 +85,11 @@ data TlsConfig = TlsConfig
   } deriving (Show, Eq)
 
 type AdvertisedListeners = Map Text (Vector SAI.Listener)
+type ListenersSecurityProtocolMap = Map Text Text
+type SecurityProtocolMap = Map Text (Maybe TlsConfig)
+
+defaultProtocolMap :: Maybe TlsConfig -> SecurityProtocolMap
+defaultProtocolMap tlsConfig = Map.fromList [("plaintext", Nothing), ("tls", tlsConfig)]
 
 advertisedListenersToPB :: AdvertisedListeners -> Map Text (Maybe SAI.ListOfListener)
 advertisedListenersToPB = Map.map $ Just . SAI.ListOfListener
@@ -94,35 +101,37 @@ data MetaStoreAddr
   deriving (Eq)
 
 data ServerOpts = ServerOpts
-  { _serverHost                :: !ByteString
-  , _serverPort                :: !Word16
-  , _serverInternalPort        :: !Word16
-  , _serverGossipAddress       :: !String
-  , _serverAddress             :: !String
-  , _serverAdvertisedListeners :: !AdvertisedListeners
-  , _serverID                  :: !Word32
-  , _metaStore                 :: !MetaStoreAddr
-  , _ldConfigPath              :: !CBytes
-  , _topicRepFactor            :: !Int
-  , _ckpRepFactor              :: !Int
-  , _compression               :: !Compression
-  , _maxRecordSize             :: !Int
-  , _tlsConfig                 :: !(Maybe TlsConfig)
-  , _serverLogLevel            :: !Log.Level
-  , _serverLogWithColor        :: !Bool
-  , _seedNodes                 :: ![(ByteString, Int)]
-  , _ldAdminHost               :: !ByteString
-  , _ldAdminPort               :: !Int
+  { _serverHost                   :: !ByteString
+  , _serverPort                   :: !Word16
+  , _serverInternalPort           :: !Word16
+  , _serverGossipAddress          :: !String
+  , _serverAddress                :: !String
+  , _serverAdvertisedListeners    :: !AdvertisedListeners
+  , _serverID                     :: !Word32
+  , _listenersSecurityProtocolMap :: !ListenersSecurityProtocolMap
+  , _securityProtocolMap          :: !SecurityProtocolMap
+  , _metaStore                    :: !MetaStoreAddr
+  , _ldConfigPath                 :: !CBytes
+  , _topicRepFactor               :: !Int
+  , _ckpRepFactor                 :: !Int
+  , _compression                  :: !Compression
+  , _maxRecordSize                :: !Int
+  , _tlsConfig                    :: !(Maybe TlsConfig)
+  , _serverLogLevel               :: !Log.Level
+  , _serverLogWithColor           :: !Bool
+  , _seedNodes                    :: ![(ByteString, Int)]
+  , _ldAdminHost                  :: !ByteString
+  , _ldAdminPort                  :: !Int
 #if __GLASGOW_HASKELL__ < 902
-  , _ldAdminProtocolId         :: !AA.ProtocolId
+  , _ldAdminProtocolId            :: !AA.ProtocolId
 #endif
-  , _ldAdminConnTimeout        :: !Int
-  , _ldAdminSendTimeout        :: !Int
-  , _ldAdminRecvTimeout        :: !Int
-  , _ldLogLevel                :: !Log.LDLogLevel
+  , _ldAdminConnTimeout           :: !Int
+  , _ldAdminSendTimeout           :: !Int
+  , _ldAdminRecvTimeout           :: !Int
+  , _ldLogLevel                   :: !Log.LDLogLevel
 
-  , _gossipOpts                :: !GossipOpts
-  , _ioOptions                 :: !IO.IOOptions
+  , _gossipOpts                   :: !GossipOpts
+  , _ioOptions                    :: !IO.IOOptions
   } deriving (Show, Eq)
 
 getConfig :: IO ServerOpts
@@ -151,33 +160,34 @@ getConfig = do
 -------------------------------------------------------------------------------
 
 data CliOptions = CliOptions
-  { _configPath                 :: !String
-  , _serverPort_                :: !(Maybe Word16)
-  , _serverBindAddress_         :: !(Maybe ByteString)
-  , _serverAdvertisedAddress_   :: !(Maybe String)
-  , _serverGossipAddress_       :: !(Maybe String)
-  , _serverAdvertisedListeners_ :: !AdvertisedListeners
-  , _serverInternalPort_        :: !(Maybe Word16)
-  , _serverID_                  :: !(Maybe Word32)
-  , _serverLogLevel_            :: !(Maybe Log.Level)
-  , _serverLogWithColor_        :: !Bool
-  , _compression_               :: !(Maybe Compression)
-  , _metaStore_                 :: !(Maybe MetaStoreAddr)
-  , _seedNodes_                 :: !(Maybe Text)
+  { _configPath                    :: !String
+  , _serverPort_                   :: !(Maybe Word16)
+  , _serverBindAddress_            :: !(Maybe ByteString)
+  , _serverAdvertisedAddress_      :: !(Maybe String)
+  , _serverGossipAddress_          :: !(Maybe String)
+  , _serverAdvertisedListeners_    :: !AdvertisedListeners
+  , _listenersSecurityProtocolMap_ :: !ListenersSecurityProtocolMap
+  , _serverInternalPort_           :: !(Maybe Word16)
+  , _serverID_                     :: !(Maybe Word32)
+  , _serverLogLevel_               :: !(Maybe Log.Level)
+  , _serverLogWithColor_           :: !Bool
+  , _compression_                  :: !(Maybe Compression)
+  , _metaStore_                    :: !(Maybe MetaStoreAddr)
+  , _seedNodes_                    :: !(Maybe Text)
 
-  , _enableTls_                 :: !Bool
-  , _tlsKeyPath_                :: !(Maybe String)
-  , _tlsCertPath_               :: !(Maybe String)
-  , _tlsCaPath_                 :: !(Maybe String)
+  , _enableTls_                    :: !Bool
+  , _tlsKeyPath_                   :: !(Maybe String)
+  , _tlsCertPath_                  :: !(Maybe String)
+  , _tlsCaPath_                    :: !(Maybe String)
 
-  , _ldAdminHost_               :: !(Maybe ByteString)
-  , _ldAdminPort_               :: !(Maybe Int)
-  , _ldLogLevel_                :: !(Maybe Log.LDLogLevel)
-  , _storeConfigPath            :: !CBytes
+  , _ldAdminHost_                  :: !(Maybe ByteString)
+  , _ldAdminPort_                  :: !(Maybe Int)
+  , _ldLogLevel_                   :: !(Maybe Log.LDLogLevel)
+  , _storeConfigPath               :: !CBytes
 
-  , _ioTasksPath_               :: !(Maybe Text)
-  , _ioTasksNetwork_            :: !(Maybe Text)
-  , _ioConnectorImages_         :: ![Text]
+  , _ioTasksPath_                  :: !(Maybe Text)
+  , _ioTasksNetwork_               :: !(Maybe Text)
+  , _ioConnectorImages_            :: ![Text]
   } deriving Show
 
 parseCliOptions :: [String] -> ParserResult CliOptions
@@ -190,6 +200,7 @@ cliOptionsParser = do
   _serverGossipAddress_       <- optional serverGossipAddress
   _serverAdvertisedAddress_   <- optional advertisedAddress
   _serverAdvertisedListeners_ <- Map.fromList <$> many advertisedListeners
+  _listenersSecurityProtocolMap_ <- listenerSecuritys
   _serverBindAddress_  <- optional bindAddress
   _serverPort_         <- optional serverPort
   _serverInternalPort_ <- optional serverInternalPort
@@ -222,7 +233,7 @@ parseJSONToOptions CliOptions {..} obj = do
   nodeInternalPort    <- nodeCfgObj .:? "internal-port" .!= 6571
   nodeAdvertisedListeners <- nodeCfgObj .:? "advertised-listeners" .!= mempty
   nodeAddress         <- nodeCfgObj .:  "advertised-address"
-
+  nodeListenersSecurityProtocolMap <- nodeCfgObj .:? "listeners-security-protocol-map" .!= mempty
   nodeMetaStore     <- parseMetaStoreAddr <$> nodeCfgObj .:  "metastore-uri" :: Y.Parser MetaStoreAddr
   nodeLogLevel      <- nodeCfgObj .:? "log-level" .!= "info"
   nodeLogWithColor  <- nodeCfgObj .:? "log-with-color" .!= True
@@ -318,6 +329,9 @@ parseJSONToOptions CliOptions {..} obj = do
   let optTasksPath = fromMaybe nodeIOTasksPath _ioTasksPath_
       optTasksNetwork = fromMaybe nodeIOTasksNetwork _ioTasksNetwork_
       !_ioOptions = IO.IOOptions {..}
+  -- FIXME: This should be more flexible
+  let !_listenersSecurityProtocolMap = Map.union _listenersSecurityProtocolMap_ nodeListenersSecurityProtocolMap
+  let !_securityProtocolMap = defaultProtocolMap _tlsConfig
   return ServerOpts {..}
 
 -------------------------------------------------------------------------------
@@ -373,6 +387,13 @@ advertisedListeners = option (maybeReader (either (const Nothing) Just . AP.pars
   $  long "advertised-listeners"
   <> metavar "LISTENER"
   <> help "advertised listener, in format <listener_key>:hstream://<address>:<port>. e.g. private:hstream://127.0.0.1:6580"
+
+listenerSecuritys :: O.Parser (Map Text Text)
+listenerSecuritys = option (maybeReader (either (const Nothing) Just . parseListenerSecuritys . T.pack))
+  $ long "listeners-security-protocol-map"
+  <> value mempty
+  <> metavar "LISTENER_KEY:SECURITY_KEY"
+  <> help "listener security, in format <listener_key>:<security_key>. e.g. private:tls"
 
 seedNodes :: O.Parser Text
 seedNodes = strOption
@@ -484,6 +505,15 @@ parseHostPorts = AP.parseOnly (hostPortParser `AP.sepBy` AP.char ',')
       AP.skipSpace
       host <- encodeUtf8 <$> AP.takeTill (`elem` [':', ','])
       port <- optional (AP.char ':' *> AP.decimal)
+      return (host, port)
+
+parseListenerSecuritys :: Text -> Either String (Map Text Text)
+parseListenerSecuritys = (Map.fromList <$>) . AP.parseOnly (keyValue `AP.sepBy` AP.char ',')
+  where
+    keyValue = do
+      AP.skipSpace
+      host <- AP.takeTill (`elem` [':'])
+      port <- AP.char ':' *> AP.takeTill (== ',')
       return (host, port)
 
 parseMetaStoreAddr :: Text -> MetaStoreAddr
