@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                 #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -26,7 +27,9 @@ import           Network.GRPC.HighLevel           (AuthProcessorResult (..),
 import           Text.Printf                      (printf)
 import qualified Z.Data.CBytes                    as CB
 
+#if __GLASGOW_HASKELL__ < 902
 import qualified HStream.Admin.Store.API          as AA
+#endif
 import           HStream.Common.ConsistentHashing (HashRing, constructServerMap,
                                                    getAllocatedNodeId)
 import           HStream.Gossip                   (GossipContext, getMemberList)
@@ -52,7 +55,9 @@ initializeServer opts@ServerOpts{..} gossipContext hh serverState = do
   let attrs = S.def{S.logReplicationFactor = S.defAttr1 _ckpRepFactor}
   _ <- catch (void $ S.initCheckpointStoreLogID ldclient attrs)
              (\(_ :: S.EXISTS) -> return ())
+#if __GLASGOW_HASKELL__ < 902
   let headerConfig = AA.HeaderConfig _ldAdminHost _ldAdminPort _ldAdminProtocolId _ldAdminConnTimeout _ldAdminSendTimeout _ldAdminRecvTimeout
+#endif
 
   statsHolder <- newServerStatsHolder
 
@@ -86,7 +91,9 @@ initializeServer opts@ServerOpts{..} gossipContext hh serverState = do
       , runningQueries           = runningQs
       , scSubscribeContexts      = subCtxs
       , cmpStrategy              = _compression
+#if __GLASGOW_HASKELL__ < 902
       , headerConfig             = headerConfig
+#endif
       , scStatsHolder            = statsHolder
       , loadBalanceHashRing      = hashRing
       , scServerState            = serverState

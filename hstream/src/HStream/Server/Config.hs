@@ -1,5 +1,6 @@
 {-# LANGUAGE ApplicativeDo     #-}
 {-# LANGUAGE BangPatterns      #-}
+{-# LANGUAGE CPP               #-}
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE FlexibleInstances #-}
 
@@ -12,7 +13,9 @@ module HStream.Server.Config
   , getConfig
   , MetaStoreAddr(..)
   , parseJSONToOptions
+#if __GLASGOW_HASKELL__ < 902
   , readProtocol
+#endif
   , parseHostPorts
   ) where
 
@@ -58,7 +61,6 @@ import           Text.Read                      (readEither)
 import qualified Z.Data.CBytes                  as CB
 import           Z.Data.CBytes                  (CBytes)
 
-import qualified HStream.Admin.Store.API        as AA
 import           HStream.Gossip                 (GossipOpts (..),
                                                  defaultGossipOpts)
 import qualified HStream.IO.Types               as IO
@@ -66,6 +68,11 @@ import qualified HStream.Logger                 as Log
 import qualified HStream.Server.HStreamInternal as SAI
 import           HStream.Store                  (Compression (..))
 import qualified HStream.Store.Logger           as Log
+
+-- FIXME: hsthrift only support ghc < 9.x
+#if __GLASGOW_HASKELL__ < 902
+import qualified HStream.Admin.Store.API        as AA
+#endif
 
 -------------------------------------------------------------------------------
 
@@ -106,7 +113,9 @@ data ServerOpts = ServerOpts
   , _seedNodes                 :: ![(ByteString, Int)]
   , _ldAdminHost               :: !ByteString
   , _ldAdminPort               :: !Int
+#if __GLASGOW_HASKELL__ < 902
   , _ldAdminProtocolId         :: !AA.ProtocolId
+#endif
   , _ldAdminConnTimeout        :: !Int
   , _ldAdminSendTimeout        :: !Int
   , _ldAdminRecvTimeout        :: !Int
@@ -257,7 +266,9 @@ parseJSONToOptions CliOptions {..} obj = do
   sAdminCfgObj        <- storeCfgObj .:? "store-admin" .!= mempty
   storeAdminHost      <- BSC.pack <$> sAdminCfgObj .:? "host" .!= "127.0.0.1"
   storeAdminPort      <- sAdminCfgObj .:? "port" .!= 6440
+#if __GLASGOW_HASKELL__ < 902
   _ldAdminProtocolId  <- readProtocol <$> sAdminCfgObj .:? "protocol-id" .!= "binary"
+#endif
   _ldAdminConnTimeout <- sAdminCfgObj .:? "conn-timeout" .!= 5000
   _ldAdminSendTimeout <- sAdminCfgObj .:? "send-timeout" .!= 5000
   _ldAdminRecvTimeout <- sAdminCfgObj .:? "recv-timeout" .!= 5000
@@ -458,11 +469,13 @@ ioConnectorImage = many . strOption $
   <> metavar "<source | sink> <target connector> <docker image>"
   <> help "update connector image, e.g. \"source mysql hsteramdb/source-mysql:latest\""
 
+#if __GLASGOW_HASKELL__ < 902
 readProtocol :: Text.Text -> AA.ProtocolId
 readProtocol x = case (Text.strip . Text.toUpper) x of
   "binary"  -> AA.binaryProtocolId
   "compact" -> AA.compactProtocolId
   _         -> AA.binaryProtocolId
+#endif
 
 parseHostPorts :: Text -> Either String [(ByteString, Maybe Int)]
 parseHostPorts = AP.parseOnly (hostPortParser `AP.sepBy` AP.char ',')

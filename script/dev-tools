@@ -919,6 +919,8 @@ class QuickBuildDevImageCommand:
             "--enable-debug-info", default=False, action="store_true"
         )
         p.add_argument("--fast", default=False, action="store_true")
+        p.add_argument("--only-hstream", default=False, action="store_true")
+        p.add_argument("--project-file", default="cabal.project")
         # p.add_argument("--force-rebuild", "-f", action="store_true")  # TODO
         p.add_argument("--no-clean-installdir", action="store_true")
 
@@ -929,10 +931,10 @@ class QuickBuildDevImageCommand:
         use_hs_grpc=False,
         enable_debug_info=False,
         fast=False,
+        only_hstream=False,
+        project_file="cabal.project",
         **kargs,
     ):
-        hs_targets = "hstream hstream-admin"
-
         debug_arg = "--enable-debug-info" if enable_debug_info else ""
         hsgrpc_arg = (
             " ".join(
@@ -944,89 +946,157 @@ class QuickBuildDevImageCommand:
             if use_hs_grpc
             else ""
         )
-        cabal_args = f"{debug_arg} {hsgrpc_arg}"
-        tmp_name = "tmp_build_dev_image_" + gen_randoms(20)
-        base_image = IMAGES["DB_IMAGE"]
+        cabal_args = f"{debug_arg} {hsgrpc_arg} --project-file={project_file}"
+
+        if use_hs_grpc:
+            exe_renames = {"hstream-server": "hstream-server-sid"}
+        else:
+            exe_renames = {}
+
+        build_targets = ["hstream", "hstream-admin"]
+        exe_targets = ["hstream-server", "hstream", "hadmin"]
+        if only_hstream:
+            build_targets = ["hstream"]
+            exe_targets = ["hstream-server", "hstream"]
 
         if fast:
+            self._fast_build(
+                tag,
+                cabal_args,
+                builder_image,
+                build_targets=build_targets,
+                exe_targets=exe_targets,
+                exe_renames=exe_renames,
+            )
+        else:
+            self._build(
+                tag,
+                cabal_args,
+                builder_image,
+                build_targets=build_targets,
+                exe_targets=exe_targets,
+                exe_renames=exe_renames,
+                clean_installdir=not kargs.pop("no_clean_installdir", False),
+            )
+
+    def _fast_build(
+        self,
+        tag,
+        cabal_args,
+        builder_image,
+        build_targets,
+        exe_targets,
+        exe_renames,
+        tmp_container_name=f"tmp_build_dev_image_{gen_randoms(20)}",
+        base_image=IMAGES["DB_IMAGE"],
+    ):
+        run_sh(
+            f"python3 {__file__} cabal --check --no-interactive "
+            f"--no-services-required --image {builder_image} --no-services-required "
+            f"-- build {cabal_args} {' '.join(build_targets)}"
+        )
+        out = (
             run_sh(
                 f"python3 {__file__} cabal --check --no-interactive "
                 f"--no-services-required --image {builder_image} --no-services-required "
-                f"-- build {cabal_args} {hs_targets}"
+                f"-- exec {cabal_args} which {' '.join(exe_targets)}",
+                stdout=subprocess.PIPE,
             )
-            out = (
-                run_sh(
-                    f"python3 {__file__} cabal --check --no-interactive "
-                    f"--no-services-required --image {builder_image} --no-services-required "
-                    f"-- exec which hstream-server hstream hadmin",
-                    stdout=subprocess.PIPE,
+            .stdout.decode()
+            .strip()
+        )
+        print(out)
+        results = [
+            x
+            for x in out.split()
+            if "dist-newstyle" in x and os.access(x, os.X_OK)
+        ]
+        loginfo(f"Found executables: {' '.join(results)}")
+        # Copy
+        run_sh(
+            f"docker run -td --rm --name {tmp_container_name} {base_image} bash"
+        )
+        copy_files = [
+            *[
+                (
+                    x,
+                    f"/usr/local/bin/{self._get_target_exe_name(x, exe_renames)}",
                 )
-                .stdout.decode()
-                .strip()
-            )
-            print(out)
-            results = [
-                x
-                for x in out.split()
-                if "dist-newstyle" in x and os.access(x, os.X_OK)
-            ]
-            loginfo(f"Found executables: {' '.join(results)}")
-            # Copy
-            run_sh(f"docker run -td --rm --name {tmp_name} {base_image} bash")
-            copy_execs = " && ".join(
-                f"docker cp -L {x} {tmp_name}:/usr/local/bin/hstream-server-sid"
-                if os.path.basename(x) == "hstream-server" and use_hs_grpc
-                else f"docker cp -L {x} {tmp_name}:/usr/local/bin/"
                 for x in results
-            )
-            copy_config = f"docker cp -L {DEFAULT_HSTREAM_CONF} {tmp_name}:/etc/hstream/config.yaml"
-            run_sh(copy_execs + " && " + copy_config)
-            run_sh(f"docker commit {tmp_name} {tag}")
-            return
+            ],
+            (DEFAULT_HSTREAM_CONF, "/etc/hstream/config.yaml"),
+        ]
+        for x, y in copy_files:
+            loginfo(f"-> Copy file from {x} to image://{y}")
+        copy_files_cmd = " && ".join([
+            f"docker cp -L {x} {tmp_container_name}:{y}"
+            for x, y in copy_files
+        ])
+        run_sh(copy_files_cmd)
+        run_sh(f"docker commit {tmp_container_name} {tag}")
 
-        # fast else
+    def _build(
+        self,
+        tag,
+        cabal_args,
+        builder_image,
+        build_targets,
+        exe_targets,
+        exe_renames,
+        clean_installdir=True,
+        tmp_container_name=f"tmp_build_dev_image_{gen_randoms(20)}",
+        base_image=IMAGES["DB_IMAGE"],
+    ):
         tmpdir = tempfile.TemporaryDirectory()
         installdir = tmpdir.name
-        clean_installdir = not kargs.pop("no_clean_installdir", False)
         loginfo(
             f"Temp install dir: {installdir}, autoclean: {clean_installdir}"
         )
         try:
-            files = [
-                (
-                    f"{installdir}/hstream-server",
-                    "/usr/local/bin/hstream-server-sid"
-                    if use_hs_grpc
-                    else "/usr/local/bin/hstream-server",
-                ),
-                (
-                    f"{installdir}/hstream",
-                    "/usr/local/bin/hstream",
-                ),
-                (f"{installdir}/hadmin", "/usr/local/bin/hadmin"),
-                (f"{DEFAULT_HSTREAM_CONF}", "/etc/hstream/config.yaml"),
-            ]
-
             # Install
             run_sh(
                 f"python3 {__file__} cabal --check --no-interactive "
                 f"--no-services-required --image {builder_image} --no-services-required "
-                f"-- install {cabal_args} --installdir={installdir} {hs_targets}"
+                f"-- install {cabal_args} --installdir={installdir} "
+                f"{' '.join(build_targets)}"
             )
             # Copy
-            run_sh(f"docker run -td --rm --name {tmp_name} {base_image} bash")
+            exe_files = [
+                (
+                    f"{installdir}/{x}",
+                    f"/usr/local/bin/{self._get_target_exe_name(x, exe_renames)}",
+                )
+                for x in exe_targets
+            ]
+            files = [
+                *exe_files,
+                (f"{DEFAULT_HSTREAM_CONF}", "/etc/hstream/config.yaml"),
+            ]
+            for x, y in files:
+                loginfo(f"-> Copy file from {x} to image://{y}")
+            run_sh(
+                f"docker run -td --rm --name {tmp_container_name} {base_image} bash"
+            )
             run_sh(
                 " && ".join(
-                    f"docker cp -L {x} {tmp_name}:{y}" for x, y in files
+                    f"docker cp -L {x} {tmp_container_name}:{y}"
+                    for x, y in files
                 )
             )
-            run_sh(f"docker commit {tmp_name} {tag}")
+            run_sh(f"docker commit {tmp_container_name} {tag}")
         except Exception as e:
             raise e
         finally:
             if clean_installdir:
                 tmpdir.cleanup()
-            run_sh(f"docker kill {tmp_name}")
+            run_sh(f"docker kill {tmp_container_name}")
+
+    def _get_target_exe_name(self, x, exe_renames):
+        return (
+            exe_renames[os.path.basename(x)]
+            if os.path.basename(x) in exe_renames
+            else ""
+        )
 
 
 if __name__ == "__main__":

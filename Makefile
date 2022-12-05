@@ -1,7 +1,13 @@
 CABAL ?= cabal
-CABAL_PROJECT_FILE ?= cabal.project
+GHC_MAJOR_VERSION := $(shell ghc --numeric-version | cut -d'.' -f1)
 
+ifeq ($(GHC_MAJOR_VERSION), 9)
+CABAL_PROJECT_FILE ?= cabal.project.ghc9
+all:: grpc sql
+else
+CABAL_PROJECT_FILE ?= cabal.project
 all:: thrift grpc sql
+endif
 
 THRIFT_COMPILE = thrift-compiler
 BNFC = bnfc
@@ -16,7 +22,8 @@ thrift::
 grpc:: grpc-cpp grpc-hs
 
 grpc-hs-deps::
-	(cd ~ && command -v proto-lens-protoc || cabal install proto-lens-protoc)
+	# Always install proto-lens-protoc to avoid inconsistency
+	(cd ~ && cabal install --overwrite-policy=always proto-lens-protoc)
 	($(CABAL) build --project-file $(CABAL_PROJECT_FILE) proto3-suite && \
 		mkdir -p ~/.cabal/bin && \
 		$(CABAL) exec --project-file $(CABAL_PROJECT_FILE) \

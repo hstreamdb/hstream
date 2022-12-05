@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
+{-# LANGUAGE CPP #-}
 
 module HStream.ConfigSpec where
 
@@ -28,8 +29,6 @@ import           Test.QuickCheck.Arbitrary      (Arbitrary (arbitrary))
 import           Test.QuickCheck.Gen            (oneof, resize)
 import qualified Z.Data.CBytes                  as CB
 
-import           HStream.Admin.Store.API        (ProtocolId, binaryProtocolId,
-                                                 compactProtocolId)
 import           HStream.Gossip                 (GossipOpts (..),
                                                  defaultGossipOpts)
 import           HStream.IO.Types               (IOOptions (..))
@@ -37,10 +36,15 @@ import           HStream.Server.Config          (CliOptions (..),
                                                  MetaStoreAddr (..),
                                                  ServerOpts (..),
                                                  TlsConfig (..), parseHostPorts,
-                                                 parseJSONToOptions,
-                                                 readProtocol)
+                                                 parseJSONToOptions)
 import           HStream.Server.HStreamInternal
 import           HStream.Store                  (Compression (..))
+
+#if __GLASGOW_HASKELL__ < 902
+import           HStream.Admin.Store.API        (ProtocolId, binaryProtocolId,
+                                                 compactProtocolId)
+import           HStream.Server.Config          (readProtocol)
+#endif
 
 spec :: Spec
 spec = describe "HStream.ConfigSpec" $ do
@@ -93,7 +97,9 @@ defaultConfig = ServerOpts
   , _seedNodes                 = [("127.0.0.1", 6571)]
   , _ldAdminHost               = "127.0.0.1"
   , _ldAdminPort               = 6440
+#if __GLASGOW_HASKELL__ < 902
   , _ldAdminProtocolId         = binaryProtocolId
+#endif
   , _ldAdminConnTimeout        = 5000
   , _ldAdminSendTimeout        = 5000
   , _ldAdminRecvTimeout        = 5000
@@ -141,7 +147,9 @@ instance ToJSON ServerOpts where
         , "store-admin" .= object [
               "host" .= decodeUtf8 _ldAdminHost
             , "port" .= _ldAdminPort
+#if __GLASGOW_HASKELL__ < 902
             , "protocol-id"  .= showProtocol _ldAdminProtocolId --TODO
+#endif
             , "conn-timeout" .= _ldAdminConnTimeout
             , "send-timeout" .= _ldAdminSendTimeout
             , "recv-timeout" .= _ldAdminRecvTimeout
@@ -174,10 +182,12 @@ showCompression (CompressionZSTD x) = "zstd" <> ":" <> T.pack (show x)
 showSeedNodes :: [(ByteString, Int)] -> Text
 showSeedNodes = T.intercalate "," . map (\(h,p) -> decodeUtf8 h <> ":" <> T.pack (show p))
 
+#if __GLASGOW_HASKELL__ < 902
 showProtocol :: ProtocolId -> Text
 showProtocol pid | pid == binaryProtocolId  = "binary"
                  | pid == compactProtocolId = "compact"
                  | otherwise                = "binary"
+#endif
 
 emptyCliOptions :: CliOptions
 emptyCliOptions = CliOptions {
@@ -235,7 +245,9 @@ instance Arbitrary ServerOpts where
     _seedNodes                 <- listOf5' ((,) <$> (encodeUtf8 . T.pack <$> addressGen) <*> portGen)
     _ldAdminHost               <- encodeUtf8 . T.pack <$> addressGen
     _ldAdminPort               <- portGen
+#if __GLASGOW_HASKELL__ < 902
     _ldAdminProtocolId         <- readProtocol <$> elements ["binary", "compact"]
+#endif
     _ldAdminConnTimeout        <- arbitrary
     _ldAdminSendTimeout        <- arbitrary
     _ldAdminRecvTimeout        <- arbitrary

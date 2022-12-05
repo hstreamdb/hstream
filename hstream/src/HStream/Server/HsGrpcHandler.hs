@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP       #-}
 {-# LANGUAGE DataKinds #-}
 
 module HStream.Server.HsGrpcHandler (handlers) where
@@ -9,13 +10,16 @@ import qualified HStream.Server.Handler.Cluster      as H
 import qualified HStream.Server.Handler.Connector    as H
 import qualified HStream.Server.Handler.Query        as H
 import qualified HStream.Server.Handler.Stats        as H
-import qualified HStream.Server.Handler.StoreAdmin   as H
 import qualified HStream.Server.Handler.Stream       as H
 import qualified HStream.Server.Handler.Subscription as H
 import qualified HStream.Server.Handler.View         as H
 import qualified HStream.Server.HStreamApi           as A
 import           HStream.Server.Types                (ServerContext (..))
 import qualified Proto.HStream.Server.HStreamApi     as P
+
+#if __GLASGOW_HASKELL__ < 902
+import qualified HStream.Server.Handler.StoreAdmin   as H
+#endif
 
 -------------------------------------------------------------------------------
 
@@ -76,8 +80,10 @@ handlers sc =
   , unary (GRPC :: GRPC P.HStreamApi "deleteQuery") (H.handleDeleteQuery sc)
   , unary (GRPC :: GRPC P.HStreamApi "restartQuery") (H.handleRestartQuery sc)
     -- XXX: StoreAdmin
+#if __GLASGOW_HASKELL__ < 902
   , unary (GRPC :: GRPC P.HStreamApi "getNode") (H.handleGetStoreNode sc)
   , unary (GRPC :: GRPC P.HStreamApi "listNodes") (H.handleListStoreNodes sc)
+#endif
   ]
 
 handleEcho :: UnaryHandler A.EchoRequest A.EchoResponse
