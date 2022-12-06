@@ -47,6 +47,7 @@ handlers sc =
   , unary (GRPC :: GRPC P.HStreamApi "getSubscription") (H.handleGetSubscription sc)
   , handlerUseThreadPool $ unary (GRPC :: GRPC P.HStreamApi "deleteSubscription") (H.handleDeleteSubscription sc)
   , unary (GRPC :: GRPC P.HStreamApi "listSubscriptions") (H.handleListSubscriptions sc)
+  , unary (GRPC :: GRPC P.HStreamApi "listConsumers") (H.handleListConsumers sc)
   , unary (GRPC :: GRPC P.HStreamApi "checkSubscriptionExist") (H.handleCheckSubscriptionExist sc)
     -- Append
   , unary (GRPC :: GRPC P.HStreamApi "append") (H.handleAppend sc)
