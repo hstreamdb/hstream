@@ -28,6 +28,8 @@ hserver:
   #  private:
   #    - address: "127.0.0.1"
   #      port: 6580
+  #
+  #listeners-security-protocol-map: private:plaintext
 
   # The address used for internal communications between server nodes,
   # if not given, it will use the value of `advertised-listeners`

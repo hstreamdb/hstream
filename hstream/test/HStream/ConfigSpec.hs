@@ -84,6 +84,7 @@ defaultConfig = ServerOpts
   , _serverAddress             = "127.0.0.1"
   , _serverGossipAddress       = "127.0.0.1"
   , _serverAdvertisedListeners = mempty
+  , _listenersSecurityProtocolMap = mempty
   , _serverID                  = 1
   , _metaStore                 = ZkAddr "127.0.0.1:2181"
   , _ldConfigPath              = "/data/store/logdevice.conf"
@@ -104,6 +105,7 @@ defaultConfig = ServerOpts
   , _ldAdminSendTimeout        = 5000
   , _ldAdminRecvTimeout        = 5000
   , _ldLogLevel                = read "info"
+  , _securityProtocolMap = M.fromList [("plaintext", Nothing), ("tls", Nothing)]
 
   , _gossipOpts                = defaultGossipOpts
   , _ioOptions                 = defaultIOOptions
@@ -133,6 +135,7 @@ instance ToJSON ServerOpts where
         , "max-record-size" .= _maxRecordSize
         , "gossip"          .= _gossipOpts
         , "hstream-io"      .= _ioOptions      --TODO
+        , "listeners-security-protocol-map" .= _listenersSecurityProtocolMap
         ]
       ++ ["advertised-listeners" .= _serverAdvertisedListeners       --TODO
          | not $ null _serverAdvertisedListeners]
@@ -197,6 +200,7 @@ emptyCliOptions = CliOptions {
   , _serverGossipAddress_      = Nothing
   , _serverAdvertisedAddress_   = Nothing
   , _serverAdvertisedListeners_ = mempty
+  , _listenersSecurityProtocolMap_ = mempty
   , _serverInternalPort_ = Nothing
   , _serverID_           = Nothing
   , _serverLogLevel_     = Nothing
@@ -232,7 +236,8 @@ instance Arbitrary ServerOpts where
     _serverAddress             <- addressGen
     _serverGossipAddress       <- addressGen
     _serverInternalPort        <- fromIntegral <$> portGen
-    _serverAdvertisedListeners <- M.fromList <$> listOf5' ((,) <$> (T.pack <$> nameGen) <*> arbitrary)
+    listenersKeys <- listOf5' (T.pack <$> nameGen)
+    _serverAdvertisedListeners <- M.fromList . zip listenersKeys <$> arbitrary
     _metaStore                 <- arbitrary
     let _ldConfigPath   = "/data/store/logdevice.conf"
     let _topicRepFactor = 1
@@ -254,6 +259,8 @@ instance Arbitrary ServerOpts where
     _ldLogLevel                <- read <$> ldLogLevelGen
     _gossipOpts                <- arbitrary
     _ioOptions                 <- arbitrary
+    _listenersSecurityProtocolMap <- M.fromList . zip listenersKeys . repeat <$> elements ["plaintext", "tls"]
+    let _securityProtocolMap = M.fromList [("plaintext", Nothing), ("tls", _tlsConfig)]
     pure ServerOpts{..}
 
 instance Arbitrary CliOptions where
@@ -264,6 +271,7 @@ instance Arbitrary CliOptions where
     _serverGossipAddress_     <- genMaybe addressGen
     _serverAdvertisedAddress_ <- genMaybe addressGen
     _serverAdvertisedListeners_ <- arbitrary
+    _listenersSecurityProtocolMap_ <- M.fromList . zip (Map.keys _serverAdvertisedListeners_) . repeat <$> elements ["plaintext", "tls"]
     _serverInternalPort_ <- genMaybe $ fromIntegral <$> portGen
     _serverID_           <- arbitrary
     _serverLogLevel_     <- genMaybe $ read <$> logLevelGen
@@ -401,6 +409,7 @@ updateServerOptsWithCliOpts CliOptions {..} x@ServerOpts{..} = x {
   , _serverAddress = fromMaybe _serverAddress _serverAdvertisedAddress_
   , _serverGossipAddress = fromMaybe _serverGossipAddress _serverGossipAddress_
   , _serverAdvertisedListeners = Map.union _serverAdvertisedListeners_ _serverAdvertisedListeners
+  , _listenersSecurityProtocolMap = Map.union _listenersSecurityProtocolMap_ _listenersSecurityProtocolMap
   , _serverID = fromMaybe _serverID _serverID_
   , _metaStore = fromMaybe _metaStore _metaStore_
   , _ldConfigPath = _storeConfigPath
@@ -412,7 +421,8 @@ updateServerOptsWithCliOpts CliOptions {..} x@ServerOpts{..} = x {
   , _ldAdminHost = fromMaybe _ldAdminHost _ldAdminHost_
   , _ldAdminPort = fromMaybe _ldAdminPort _ldAdminPort_
   , _ldLogLevel = fromMaybe _ldLogLevel _ldLogLevel_
-  , _ioOptions = _ioOptions_}
+  , _ioOptions = _ioOptions_
+  , _securityProtocolMap = Map.insert "tls" _tlsConfig_ _securityProtocolMap}
   where
     port = fromMaybe _serverPort _serverPort_
     updateSeedsPort = second $ fromMaybe (fromIntegral port)
