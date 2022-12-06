@@ -274,9 +274,8 @@ def _service_rqlite_(container_bin="docker", port=None, **kw):
     cmd = " ".join(
         [
             f"{container_bin} run -td -p {port}:4001 --name {container_name} --rm",
-            f"-v {DEFAULT_ZK_PERSISTENT_DIR}/data:/data",
+            f"-v {DEFAULT_RQL_PERSISTENT_DIR}:/rqlite/file",
             docker_passuser(container_bin),
-            f"-v {DEFAULT_ZK_PERSISTENT_DIR}/datalog:/datalog",
             IMAGES["RQLITE_IMAGE"],
         ]
     )
