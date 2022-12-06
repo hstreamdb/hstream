@@ -124,6 +124,14 @@ def run_sh(sh, stderr=subprocess.STDOUT, stdout=None, check=True):
 # -----------------------------------------------------------------------------
 
 
+def docker_passuser(container_bin):
+    return (
+        "-u " + str(CUID) + ":" + str(CGID)
+        if container_bin.strip() in ["docker"]
+        else ""
+    )
+
+
 def is_service_started(container_bin, service_key):
     if not container_bin:
         return logerr("No such container_bin")
@@ -245,6 +253,8 @@ def _service_zookeeper_(container_bin="docker", port=None, **kw):
     cmd = " ".join(
         [
             f"{container_bin} run -td -p {port}:2181 --name {container_name} --rm",
+            # FIXME: https://github.com/31z4/zookeeper-docker/issues/125
+            # docker_passuser(container_bin),
             f"-v {DEFAULT_ZK_PERSISTENT_DIR}/data:/data",
             f"-v {DEFAULT_ZK_PERSISTENT_DIR}/datalog:/datalog",
             IMAGES["ZOOKEEPER_IMAGE"],
@@ -265,6 +275,7 @@ def _service_rqlite_(container_bin="docker", port=None, **kw):
         [
             f"{container_bin} run -td -p {port}:4001 --name {container_name} --rm",
             f"-v {DEFAULT_ZK_PERSISTENT_DIR}/data:/data",
+            docker_passuser(container_bin),
             f"-v {DEFAULT_ZK_PERSISTENT_DIR}/datalog:/datalog",
             IMAGES["RQLITE_IMAGE"],
         ]
@@ -288,9 +299,7 @@ def _service_store_(
         [
             f"{container_bin} run -td --name {container_name} --rm",
             "--network host",
-            "-u " + str(CUID) + ":" + str(CGID)
-            if container_bin.strip() in ["docker"]
-            else "",
+            docker_passuser(container_bin),
             f"-v {data_dir}:/data/store {image}",
             "/usr/local/bin/ld-dev-cluster --root /data/store --use-tcp",
         ]
@@ -1028,10 +1037,12 @@ class QuickBuildDevImageCommand:
         ]
         for x, y in copy_files:
             loginfo(f"-> Copy file from {x} to image://{y}")
-        copy_files_cmd = " && ".join([
-            f"docker cp -L {x} {tmp_container_name}:{y}"
-            for x, y in copy_files
-        ])
+        copy_files_cmd = " && ".join(
+            [
+                f"docker cp -L {x} {tmp_container_name}:{y}"
+                for x, y in copy_files
+            ]
+        )
         run_sh(copy_files_cmd)
         run_sh(f"docker commit {tmp_container_name} {tag}")
 
