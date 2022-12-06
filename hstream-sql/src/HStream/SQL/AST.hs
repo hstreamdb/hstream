@@ -392,11 +392,11 @@ data JsonOp
   | JOpHashLongArrow -- json #>> array[text/int] = text
   deriving (Eq, Show)
 
-data Aggregate = Nullary NullaryAggregate
-               | Unary   UnaryAggregate  RValueExpr
-               | Binary  BinaryAggregate RValueExpr RValueExpr
-               deriving (Eq)
-instance Show Aggregate where
+data Aggregate expr = Nullary NullaryAggregate
+                    | Unary   UnaryAggregate  expr
+                    | Binary  BinaryAggregate expr expr
+                    deriving (Eq)
+instance (HasName expr) => Show (Aggregate expr) where
   show agg = case agg of
     Nullary nullary     -> show nullary
     Unary unary expr    -> show unary  <> "(" <> getName expr <> ")"
@@ -453,7 +453,7 @@ data RValueExpr = RExprCast        ExprName RValueExpr RDataType
                 | RExprAccessArray ExprName RValueExpr RArrayAccessRhs
                 | RExprCol         ExprName (Maybe StreamName) FieldName
                 | RExprConst       ExprName Constant
-                | RExprAggregate   ExprName Aggregate
+                | RExprAggregate   ExprName (Aggregate RValueExpr)
                 | RExprAccessJson  ExprName JsonOp RValueExpr RValueExpr
                 | RExprBinOp       ExprName BinaryOp RValueExpr RValueExpr
                 | RExprUnaryOp     ExprName UnaryOp  RValueExpr
