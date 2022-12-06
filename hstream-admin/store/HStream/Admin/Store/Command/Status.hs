@@ -18,8 +18,8 @@ import           HStream.Utils             (approxNaturalTime,
 
 data NodeState' = NodeState'
   { stateState      :: AA.NodeState
-  , stateVersion    :: Text.Text
-  , stateAliveSince :: Int64
+  , stateVersion    :: Maybe Text.Text
+  , stateAliveSince :: Maybe Int64
   }
 
 showID :: NodeState' -> String
@@ -57,11 +57,13 @@ showHealthState :: NodeState' -> String
 showHealthState = takeTail' "_" . show . AA.nodeState_daemon_health_status . stateState
 
 showVersion :: NodeState' -> String
-showVersion = Text.unpack . stateVersion
+showVersion = maybe "?!" Text.unpack . stateVersion
 
 showUptime :: POSIXTime -> NodeState' -> String
-showUptime time state =
-  approxNaturalTime (time - fromIntegral (stateAliveSince state)) ++ " ago"
+showUptime time state = fromMaybe "?!" (f $ stateAliveSince state)
+  where
+    f (Just x) = Just $ approxNaturalTime (time - fromIntegral x) ++ " ago"
+    f Nothing  = Nothing
 
 showSeqState :: NodeState' -> String
 showSeqState = takeTail' "_" . maybe " " (show . AA.sequencerState_state) . AA.nodeState_sequencer_state . stateState
@@ -91,27 +93,44 @@ runStatus conf StatusOpts{..} = do
           , AA.headerSendTimeout = 5000
           , AA.headerRecvTimeout = 5000
           }
-  additionStates <- forM states $ \state -> do
-    let hc = getNodeHeaderConfig . AA.getNodeAdminAddr $ AA.nodeState_config state
-    AA.sendAdminApiRequest hc $ do
-      version <- AA.getVersion
-      aliveSince <- AA.aliveSince
-      return (version, aliveSince)
+  -- If non-verbose is set, all additionStates will be Nothing
+  additionStates <- forM states $ \state ->
+    if statusVerbose
+       then do let hc = getNodeHeaderConfig . AA.getNodeAdminAddr $ AA.nodeState_config state
+               AA.sendAdminApiRequest hc $ do
+                 version <- AA.getVersion
+                 aliveSince <- AA.aliveSince
+                 return (Just version, Just aliveSince)
+       else pure (Nothing, Nothing)
   let allStates = zipWith (\state (version, alive) -> NodeState' state version alive) states additionStates
   currentTime <- getPOSIXTime
 
-  let cons = [ ("ID", showID)
-             , ("NAME", showName)
-             , ("PACKAGE", showVersion)
-             , ("STATE", showDaemonState)
-             , ("UPTIME", showUptime currentTime)
-             , ("LOCATION", showLocation)
-             , ("SEQ.", showSeqState)
-             , ("DATA HEALTH", showDataHealth)
-             , ("STORAGE STATE", showStorageState)
-             , ("SHARD OP.", showShardOp)
-             , ("HEALTH STATUS", showHealthState)
-             ]
+  -- Make sure we do not show "PACKAGE" and "UPTIME" if non-verbose is set, since
+  -- it's Nothing.
+  let cons =
+        if statusVerbose
+           then [ ("ID", showID)
+                , ("NAME", showName)
+                , ("PACKAGE", showVersion)
+                , ("STATE", showDaemonState)
+                , ("UPTIME", showUptime currentTime)
+                , ("LOCATION", showLocation)
+                , ("SEQ.", showSeqState)
+                , ("DATA HEALTH", showDataHealth)
+                , ("STORAGE STATE", showStorageState)
+                , ("SHARD OP.", showShardOp)
+                , ("HEALTH STATUS", showHealthState)
+                ]
+           else [ ("ID", showID)
+                , ("NAME", showName)
+                , ("STATE", showDaemonState)
+                , ("LOCATION", showLocation)
+                , ("SEQ.", showSeqState)
+                , ("DATA HEALTH", showDataHealth)
+                , ("STORAGE STATE", showStorageState)
+                , ("SHARD OP.", showShardOp)
+                , ("HEALTH STATUS", showHealthState)
+                ]
   let titles = map fst cons
       collectedState = map (\s -> map (($ s) . snd) cons) allStates
 
