@@ -155,7 +155,7 @@ serve host port securityMap sc@ServerContext{..} listeners listenerSecurityMap =
               handle (\(_ :: RQLiteRowNotFound) -> return ()) $ deleteAllMeta @TaskAllocation metaHandle
 
 #ifdef HStreamUseHsGrpc
-  sslOpts <- mapM readTlsPemFile tlsConfig
+  sslOpts <- mapM readTlsPemFile $ join (Map.lookup "tls" securityMap)
 #else
   let sslOpts = initializeTlsConfig <$> join (Map.lookup "tls" securityMap)
 #endif
@@ -184,17 +184,18 @@ serve host port securityMap sc@ServerContext{..} listeners listenerSecurityMap =
                <> "address: " <> Log.buildText listenerAddress <> ", "
                <> "port: " <> Log.buildInt listenerPort
       forkIO $ do
-        let newSslOpts = initializeTlsConfig <$> join ((`Map.lookup` securityMap) =<< Map.lookup key listenerSecurityMap )
         let listenerOnStarted = Log.info $ "Extra listener is started on port "
                                         <> Log.buildInt listenerPort
         let sc' = sc{scAdvertisedListenersKey = Just key}
 #ifdef HStreamUseHsGrpc
+        newSslOpts <- mapM readTlsPemFile $ join ((`Map.lookup` securityMap) =<< Map.lookup key listenerSecurityMap )
         let grpcOpts' = grpcOpts { HsGrpc.serverPort = fromIntegral listenerPort
                                  , HsGrpc.serverOnStarted = Just listenerOnStarted
                                  , HsGrpc.serverSslOptions = newSslOpts
                                  }
         HsGrpc.runServer grpcOpts' (HsGrpc.handlers sc')
 #else
+        let newSslOpts = initializeTlsConfig <$> join ((`Map.lookup` securityMap) =<< Map.lookup key listenerSecurityMap )
         let grpcOpts' = grpcOpts { GRPC.serverPort = GRPC.Port $ fromIntegral listenerPort
                                  , GRPC.serverOnStarted = Just listenerOnStarted
                                  , GRPC.sslConfig = newSslOpts
