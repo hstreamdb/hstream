@@ -30,6 +30,7 @@ import           Z.IO.Time                        (SystemTime (MkSystemTime),
                                                    formatSystemTimeGMT,
                                                    iso8061DateFormat)
 
+import           Data.Maybe                       (maybeToList)
 import qualified HStream.Server.HStreamApi        as API
 import qualified HStream.Utils.Aeson              as A
 import           HStream.Utils.Converter          (structToJsonObject,
@@ -48,16 +49,16 @@ instance Format () where
   formatResult = const ""
 
 instance Format API.Stream where
-  formatResult = (<> "\n") . T.unpack . API.streamStreamName
+  formatResult = renderStreamsToTable . (:[])
 
 instance Format API.View where
   formatResult = show . API.viewViewId
 
 instance Format [API.Stream] where
-  formatResult = emptyNotice . renderStreamsToTable
+  formatResult = renderStreamsToTable
 
 instance Format [API.View] where
-  formatResult = emptyNotice . renderViewsToTable
+  formatResult = renderViewsToTable
 
 instance Format API.Query where
   formatResult = renderQueriesToTable . (:[])
@@ -67,20 +68,21 @@ instance Format API.Connector where
 
 instance Format API.Subscription where
   formatResult = renderSubscriptionsToTable . (:[])
+
 instance Format [API.Query] where
-  formatResult = emptyNotice . renderQueriesToTable
+  formatResult = renderQueriesToTable
 
 instance Format [API.Connector] where
-  formatResult = emptyNotice . renderConnectorsToTable
+  formatResult = renderConnectorsToTable
 
 instance Format [API.Subscription] where
-  formatResult = emptyNotice . renderSubscriptionsToTable
+  formatResult = renderSubscriptionsToTable
 
 instance Format [API.ServerNode] where
-  formatResult = emptyNotice . renderServerNodesToTable
+  formatResult = renderServerNodesToTable
 
 instance Format [API.ServerNodeStatus] where
-  formatResult = emptyNotice . renderServerNodesStatusToTable
+  formatResult = renderServerNodesStatusToTable
 
 instance Format a => Format (ClientResult 'Normal a) where
   formatResult (ClientNormalResponse response _ _ _ _) = formatResult response
@@ -98,6 +100,11 @@ instance Format API.ListConnectorsResponse where
   formatResult = formatResult . V.toList . API.listConnectorsResponseConnectors
 instance Format API.ListSubscriptionsResponse where
   formatResult = formatResult . V.toList . API.listSubscriptionsResponseSubscription
+
+instance Format API.GetStreamResponse where
+  formatResult = formatResult . maybeToList . API.getStreamResponseStream
+instance Format API.GetSubscriptionResponse where
+  formatResult = formatResult . maybeToList . API.getSubscriptionResponseSubscription
 
 instance Format API.AppendResponse where
   formatResult = const "Done.\n"
@@ -121,8 +128,6 @@ instance Format API.CommandQueryResponse where
   formatResult = formatCommandQueryResponse
 
 --------------------------------------------------------------------------------
-emptyNotice :: String -> String
-emptyNotice xs = if null (words xs) then "Done. No results.\n" else xs
 
 formatCommandQueryResponse :: API.CommandQueryResponse -> String
 formatCommandQueryResponse (API.CommandQueryResponse x) = case V.toList x of
@@ -131,7 +136,6 @@ formatCommandQueryResponse (API.CommandQueryResponse x) = case V.toList x of
   ys  -> L.concatMap formatResult ys
 
 renderQueriesToTable :: [API.Query] -> String
-renderQueriesToTable [] = ""
 renderQueriesToTable queries = showTable titles rows
   where
     titles = ["Query ID", "Status", "Created Time", "SQL Text"]
@@ -144,7 +148,6 @@ renderQueriesToTable queries = showTable titles rows
     rows = map formatRow queries
 
 renderSubscriptionsToTable :: [API.Subscription] -> String
-renderSubscriptionsToTable [] = ""
 renderSubscriptionsToTable subscriptions = showTable titles rows
   where
     titles = [ "Subscription ID"
@@ -155,13 +158,12 @@ renderSubscriptionsToTable subscriptions = showTable titles rows
     formatRow API.Subscription {..} =
       [ [T.unpack subscriptionSubscriptionId]
       , [T.unpack subscriptionStreamName]
-      , [show subscriptionAckTimeoutSeconds <> "s"]
+      , [show subscriptionAckTimeoutSeconds <> " seconds"]
       , [show subscriptionMaxUnackedRecords]
       ]
     rows = map formatRow subscriptions
 
 renderConnectorsToTable :: [API.Connector] -> String
-renderConnectorsToTable [] = ""
 renderConnectorsToTable connectors = showTable titles rows
   where
     titles = ["Name", "Status"]
@@ -174,7 +176,6 @@ renderConnectorsToTable connectors = showTable titles rows
     rows = map formatRow connectors
 
 renderStreamsToTable :: [API.Stream] -> String
-renderStreamsToTable [] = ""
 renderStreamsToTable streams = showTable titles rows
   where
     titles = [ "Stream Name"
@@ -184,13 +185,12 @@ renderStreamsToTable streams = showTable titles rows
     formatRow API.Stream {..} =
       [ [T.unpack streamStreamName]
       , [show streamReplicationFactor]
-      , [show streamBacklogDuration <> "sec"]
+      , [show streamBacklogDuration <> " seconds"]
       , [show streamShardCount]
       ]
     rows = map formatRow streams
 
 renderViewsToTable :: [API.View] -> String
-renderViewsToTable [] = ""
 renderViewsToTable views = showTable titles rows
   where
     titles = [ "View Name"
@@ -224,7 +224,10 @@ renderServerNodesStatusToTable values = showTable titles rows
 showTable :: [String] -> [[[String]]] -> String
 showTable titles rows = Table.tableString t ++ "\n"
   where
-    t = Table.columnHeaderTableS
+    t =
+      case rows of
+        [] -> Table.headerlessTableS colSpec Table.asciiS (Table.colsAllG Table.center <$> [map (:[]) titles])
+        _ -> Table.columnHeaderTableS
           colSpec
           Table.asciiS
           (Table.fullH (repeat $ Table.headerColumn Table.left Nothing) titles)
@@ -234,10 +237,10 @@ showTable titles rows = Table.tableString t ++ "\n"
 approxNaturalTime :: NominalDiffTime -> String
 approxNaturalTime n
   | n < 0 = ""
-  | n == 0 = "0s"
-  | n < 1 = show @Int (floor $ n * 1000) ++ "ms"
-  | n < 60 = show @Int (floor n) ++ "s"
-  | n < fromIntegral hour = show @Int (floor n `div` 60) ++ " min"
+  | n == 0 = "0 second"
+  | n < 1 = show @Int (floor $ n * 1000) ++ " milliseconds"
+  | n < 60 = show @Int (floor n) ++ " seconds"
+  | n < fromIntegral hour = show @Int (floor n `div` 60) ++ " minutes"
   | n < fromIntegral day  = show @Int (floor n `div` hour) ++ " hours"
   | n < fromIntegral year = show @Int (floor n `div` day) ++ " days"
   | otherwise = show @Int (floor n `div` year) ++ " years"

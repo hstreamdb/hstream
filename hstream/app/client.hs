@@ -7,6 +7,8 @@
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
+{-# OPTIONS_GHC -Werror=incomplete-patterns #-}
+
 
 module Main where
 
@@ -34,6 +36,7 @@ import           HStream.Admin.Server.Types       (StreamCommand (..),
 import           HStream.Client.Action            (createSubscription',
                                                    deleteStream,
                                                    deleteSubscription,
+                                                   getStream, getSubscription,
                                                    listStreams,
                                                    listSubscriptions)
 import           HStream.Client.Execute           (executeWithLookupResource_,
@@ -162,12 +165,17 @@ hstreamStream connOpts cmd = do
       simpleExecute clientConfig (\HStreamApi{..} -> hstreamApiCreateStream (mkClientNormalRequest' stream)) >>= printResult
     StreamCmdDelete sName force ->
       simpleExecute clientConfig (deleteStream sName force) >>= printResult
+    StreamCmdDescribe sName ->
+      simpleExecute clientConfig (getStream sName) >>= printResult
 
 hstreamSubscription :: CliConnOpts -> SubscriptionCommand -> IO ()
 hstreamSubscription connOpts = \case
   SubscriptionCmdList -> do
     RefinedCliConnOpts{..} <- refineCliConnOpts connOpts
     simpleExecute clientConfig listSubscriptions >>= printResult
+  SubscriptionCmdDescribe sid -> do
+    ctx <- initCliContext connOpts
+    executeWithLookupResource_ ctx (Resource ResSubscription sid) (getSubscription sid) >>= printResult
   SubscriptionCmdCreate subscription -> do
     ctx <- initCliContext connOpts
     executeWithLookupResource_ ctx (Resource ResSubscription (API.subscriptionSubscriptionId subscription)) (createSubscription' subscription) >>= printResult
