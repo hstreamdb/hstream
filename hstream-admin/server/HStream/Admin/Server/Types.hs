@@ -83,7 +83,7 @@ logLevelParser :: O.Parser Log.Level
 logLevelParser =
   O.option O.auto ( O.long "log-level" <> O.metavar "[critical|fatal|warning|info|debug]"
                  <> O.showDefault <> O.value (Log.Level Log.INFO)
-                 <> O.help "log level"
+                 <> O.help "Log level"
                   )
 
 -------------------------------------------------------------------------------
@@ -127,46 +127,50 @@ data StreamCommand
   = StreamCmdList
   | StreamCmdCreate API.Stream
   | StreamCmdDelete Text Bool
+  | StreamCmdDescribe Text
   deriving (Show)
 
 streamCmdParser :: O.Parser StreamCommand
 streamCmdParser = O.hsubparser
   ( O.command "list" (O.info (pure StreamCmdList) (O.progDesc "Get all streams"))
  <> O.command "create" (O.info (StreamCmdCreate <$> streamParser) (O.progDesc "Create a stream"))
- <> O.command "delete" (O.info (StreamCmdDelete <$> O.strOption ( O.long "name" <> O.metavar "STRING"
-                                                               <> O.help "stream name")
+ <> O.command "describe" (O.info (StreamCmdDescribe <$> O.strArgument ( O.metavar "STREAM_NAME"
+                                                                      <> O.help "The name of the stream"))
+                               (O.progDesc "Get the details of a stream"))
+ <> O.command "delete" (O.info (StreamCmdDelete <$> O.strArgument ( O.metavar "STREAM_NAME"
+                                                               <> O.help "The name of the stream to delete")
                                                 <*> O.switch ( O.long "force"
-                                                            <> O.short 'f' ))
-                               (O.progDesc "delete a stream (Warning: incomplete implementation)")
+                                                            <> O.short 'f'
+                                                            <> O.help "Whether to enable force deletion" ))
+                               (O.progDesc "Delete a stream")
                         )
   )
 
 streamParser :: O.Parser API.Stream
 streamParser = API.Stream
-  <$> O.strOption ( O.long "name"
-                 <> O.metavar "STRING"
-                 <> O.help "stream name"
+  <$> O.strArgument (O.metavar "STREAM_NAME"
+                 <> O.help "The name of the stream"
                   )
   <*> O.option O.auto ( O.long "replication-factor"
                      <> O.short 'r'
                      <> O.metavar "INT"
                      <> O.showDefault
-                     <> O.value 3
-                     <> O.help "replication-factor"
+                     <> O.value 1
+                     <> O.help "The replication factor for the stream"
                       )
   <*> O.option O.auto ( O.long "backlog-duration"
                      <> O.short 'b'
                      <> O.metavar "INT"
                      <> O.showDefault
                      <> O.value 0
-                     <> O.help "Backlog duration in seconds"
+                     <> O.help "The backlog duration of records in stream in seconds"
                       )
   <*> O.option O.auto ( O.long "shards"
                      <> O.short 's'
                      <> O.metavar "INT"
                      <> O.showDefault
                      <> O.value 1
-                     <> O.help "shard numbers of the stream"
+                     <> O.help "The number of shards the stream should have"
                       )
   <*> pure Nothing
 
@@ -178,18 +182,22 @@ data SubscriptionCommand
   = SubscriptionCmdList
   | SubscriptionCmdCreate API.Subscription
   | SubscriptionCmdDelete Text Bool
+  | SubscriptionCmdDescribe Text
   deriving (Show)
 
 subscriptionCmdParser :: O.Parser SubscriptionCommand
 subscriptionCmdParser = O.hsubparser
-  ( O.command "list" (O.info (pure SubscriptionCmdList) (O.progDesc "get all subscriptions"))
+  ( O.command "list" (O.info (pure SubscriptionCmdList) (O.progDesc "Get all subscriptions"))
  <> O.command "create" (O.info (SubscriptionCmdCreate <$> subscriptionParser)
-                               (O.progDesc "create a subscription"))
- <> O.command "delete" (O.info (SubscriptionCmdDelete <$> O.strOption ( O.long "id" <> O.metavar "SubID"
-                                                                      <> O.help "subscription id")
+                               (O.progDesc "Create a subscription"))
+ <> O.command "describe" (O.info (SubscriptionCmdDescribe <$> O.strArgument ( O.metavar "SUB_ID"
+                                                                           <> O.help "The ID of the subscription"))
+                                 (O.progDesc "Get the details of a subscription"))
+ <> O.command "delete" (O.info (SubscriptionCmdDelete <$> O.strArgument ( O.metavar "SUB_ID"
+                                                                      <> O.help "The ID of the subscription")
                                                       <*> O.switch ( O.long "force"
                                                                   <> O.short 'f' ))
-                               (O.progDesc "delete a subscription")
+                               (O.progDesc "Delete a subscription")
                        )
   )
 
@@ -203,19 +211,18 @@ instance Read API.SpecialOffset where
 
 subscriptionParser :: O.Parser API.Subscription
 subscriptionParser = API.Subscription
-  <$> O.strOption ( O.long "id" <> O.metavar "SubID"
-                 <> O.help "subscription id" )
-  <*> O.strOption ( O.long "stream" <> O.metavar "StreamName"
-                 <> O.help "the stream associated with the subscription" )
+  <$> O.strArgument ( O.help "Subscription ID" <> O.metavar "SUB_ID" <> O.help "The ID of the subscription")
+  <*> O.strOption ( O.long "stream" <> O.metavar "STREAM_NAME"
+                 <> O.help "The stream associated with the subscription" )
   <*> O.option O.auto ( O.long "ack-timeout" <> O.metavar "INT" <> O.value 60
-                     <> O.help "subscription timeout in seconds")
+                     <> O.help "Timeout for acknowledgements in seconds")
   <*> O.option O.auto ( O.long "max-unacked-records" <> O.metavar "INT"
                      <> O.value 10000
-                     <> O.help "maximum count of unacked records")
-  <*> (Enumerated <$> O.option O.auto ( O.long "subscription offset"
+                     <> O.help "Maximum number of unacked records allowed per subscription")
+  <*> (Enumerated <$> O.option O.auto ( O.long "offset"
                                      <> O.metavar "[earlist|lastest]"
                                      <> O.value (Right API.SpecialOffsetLATEST)
-                                     <> O.help "maximum count of unacked records"
+                                     <> O.help "The offset of the subscription to start from"
                                       )
     )
   <*> pure Nothing
