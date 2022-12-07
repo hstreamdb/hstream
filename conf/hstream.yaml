@@ -126,6 +126,18 @@ hserver:
       postgresql: hstreamdb/sink-postgresql:v0.2.1
       mongodb: hstreamdb/sink-mongodb:v0.2.1
 
+  # If set, the server will automatically set the missing setting in the request when creating the corresponding resource.
+  #
+  #resource-settings:
+  #  stream:
+  #    replication-factor : 1
+  #    backlog-retention-seconds: 86400
+  #    shards-count: 1
+  #  subscription:
+  #    max-unacked-records: 100
+  #    ack-timeout-seconds: 10
+
+
 # Configuration for HStream Store
 # The configuration for hstore is **Optional**. When the values are not provided,
 # hstreamdb will use the following configuration as the default configuration.

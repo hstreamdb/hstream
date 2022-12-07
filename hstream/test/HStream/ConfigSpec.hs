@@ -33,6 +33,7 @@ import           HStream.Gossip                 (GossipOpts (..),
                                                  defaultGossipOpts)
 import           HStream.IO.Types               (IOOptions (..))
 import           HStream.Server.Config          (CliOptions (..),
+                                                 DefaultResourceSettings (..),
                                                  MetaStoreAddr (..),
                                                  ServerOpts (..),
                                                  TlsConfig (..), parseHostPorts,
@@ -109,6 +110,15 @@ defaultConfig = ServerOpts
 
   , _gossipOpts                = defaultGossipOpts
   , _ioOptions                 = defaultIOOptions
+  , _defaultResourceSettings   = defaultDefaultResourceSettings
+  }
+
+defaultDefaultResourceSettings = DefaultResourceSettings {
+    streamRepFactor  = Nothing
+  , streamRetention  = Nothing
+  , streamShardCount = Nothing
+  , subMaxUnack      = Nothing
+  , subAckTimeout    = Nothing
   }
 
 defaultIOOptions :: IOOptions
@@ -136,6 +146,7 @@ instance ToJSON ServerOpts where
         , "gossip"          .= _gossipOpts
         , "hstream-io"      .= _ioOptions      --TODO
         , "listeners-security-protocol-map" .= _listenersSecurityProtocolMap
+        , "resource-settings" .= _defaultResourceSettings
         ]
       ++ ["advertised-listeners" .= _serverAdvertisedListeners       --TODO
          | not $ null _serverAdvertisedListeners]
@@ -175,6 +186,20 @@ instance ToJSON IOOptions where
     , "tasks-network" .= optTasksNetwork]
     ++ ["source-images" .= toJSON optSourceImages | not (HM.null optSourceImages)]
     ++ ["sink-images"   .= toJSON optSinkImages   | not (HM.null optSinkImages)]
+
+instance ToJSON DefaultResourceSettings where
+  toJSON DefaultResourceSettings{..} = object [
+      "stream" .= object
+        [ "replication-factor" .= streamRepFactor
+        , "backlog-retention-seconds" .= streamRetention
+        , "shards-count" .= streamShardCount
+        ]
+    , "subscription" .= object
+        [ "max-unacked-records"  .= subMaxUnack
+        , "ack-timeout-seconds"  .= subAckTimeout
+        ]
+    ]
+
 
 showCompression ::Compression -> Text
 showCompression CompressionNone     = "none"
@@ -261,6 +286,7 @@ instance Arbitrary ServerOpts where
     _ioOptions                 <- arbitrary
     _listenersSecurityProtocolMap <- M.fromList . zip listenersKeys . repeat <$> elements ["plaintext", "tls"]
     let _securityProtocolMap = M.fromList [("plaintext", Nothing), ("tls", _tlsConfig)]
+    _defaultResourceSettings <- arbitrary
     pure ServerOpts{..}
 
 instance Arbitrary CliOptions where
@@ -297,6 +323,15 @@ instance Arbitrary Listener where
     listenerAddress <- T.pack <$> addressGen
     listenerPort   <- fromIntegral <$> portGen
     pure Listener{..}
+
+instance Arbitrary DefaultResourceSettings where
+  arbitrary = do
+    streamRepFactor  <- arbitrary
+    streamRetention  <- arbitrary
+    streamShardCount <- arbitrary
+    subMaxUnack      <- arbitrary
+    subAckTimeout    <- arbitrary
+    return DefaultResourceSettings {..}
 
 instance Arbitrary IOOptions where
   arbitrary = do

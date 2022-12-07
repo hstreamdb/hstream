@@ -9,6 +9,7 @@ module HStream.Server.Config
   , CliOptions (..)
   , TlsConfig (..)
   , AdvertisedListeners
+  , DefaultResourceSettings (..)
   , advertisedListenersToPB
   , ListenersSecurityProtocolMap
   , SecurityProtocolMap
@@ -84,6 +85,14 @@ data TlsConfig = TlsConfig
   , caPath   :: Maybe String
   } deriving (Show, Eq)
 
+data DefaultResourceSettings = DefaultResourceSettings {
+    streamRepFactor  :: Maybe Word32
+  , streamRetention  :: Maybe Word32
+  , streamShardCount :: Maybe Word32
+  , subMaxUnack      :: Maybe Word32
+  , subAckTimeout    :: Maybe Word32
+  } deriving (Eq, Show)
+
 type AdvertisedListeners = Map Text (Vector SAI.Listener)
 type ListenersSecurityProtocolMap = Map Text Text
 type SecurityProtocolMap = Map Text (Maybe TlsConfig)
@@ -132,6 +141,7 @@ data ServerOpts = ServerOpts
 
   , _gossipOpts                   :: !GossipOpts
   , _ioOptions                    :: !IO.IOOptions
+  , _defaultResourceSettings      :: !DefaultResourceSettings
   } deriving (Show, Eq)
 
 getConfig :: IO ServerOpts
@@ -332,6 +342,18 @@ parseJSONToOptions CliOptions {..} obj = do
   -- FIXME: This should be more flexible
   let !_listenersSecurityProtocolMap = Map.union _listenersSecurityProtocolMap_ nodeListenersSecurityProtocolMap
   let !_securityProtocolMap = defaultProtocolMap _tlsConfig
+
+
+  -- hstream resource default settings
+  nodeResourceSettings <- nodeCfgObj .:? "resource-settings" .!= mempty
+  streamSettings <- nodeResourceSettings  .:? "stream" .!= mempty
+  streamRepFactor <- streamSettings .:? "replication-factor"
+  streamRetention <- streamSettings .:? "backlog-retention-seconds"
+  streamShardCount <- streamSettings .:? "shards-count"
+  subscriptionSettings <- nodeResourceSettings  .:? "subscription" .!= mempty
+  subMaxUnack <- subscriptionSettings .:? "max-unacked-records"
+  subAckTimeout <- subscriptionSettings .:? "ack-timeout-seconds"
+  let _defaultResourceSettings = DefaultResourceSettings {..}
   return ServerOpts {..}
 
 -------------------------------------------------------------------------------

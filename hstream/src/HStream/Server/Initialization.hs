@@ -103,6 +103,7 @@ initializeServer opts@ServerOpts{..} gossipContext hh serverState = do
       , shardInfo                = shardInfo
       , shardTable               = shardTable
       , shardReaderMap           = shardReaderMap
+      , defaultResourceSettings  = _defaultResourceSettings
       }
 
 --------------------------------------------------------------------------------
