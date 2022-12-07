@@ -196,6 +196,13 @@ runStream ctx (AT.StreamCmdDelete stream force) = do
                                  , API.deleteStreamRequestForce = force
                                  }
   return $ plainResponse "OK"
+runStream ctx (AT.StreamCmdDescribe sName) = do
+  API.GetStreamResponse { getStreamResponseStream = Just stream}
+    <- HC.getStream ctx (def {API.getStreamRequestName = sName})
+  let headers = ["name" :: Text, "replication_property"]
+      rows = [[API.streamStreamName stream, Text.pack (show $ API.streamReplicationFactor stream)]]
+      content = Aeson.object ["headers" .= headers, "rows" .= rows]
+  return $ tableResponse content
 
 -------------------------------------------------------------------------------
 -- Subscription Command
@@ -221,6 +228,13 @@ runSubscription ctx (AT.SubscriptionCmdDelete sid force) = do
 runSubscription ctx (AT.SubscriptionCmdCreate sub) = do
   HC.createSubscription ctx sub
   return $ plainResponse "OK"
+runSubscription ctx (AT.SubscriptionCmdDescribe sid) = do
+  API.GetSubscriptionResponse { getSubscriptionResponseSubscription = Just subscription}
+    <- HC.getSubscription ctx (def { API.getSubscriptionRequestId = sid})
+  let headers = ["id" :: Text, "stream_name", "timeout"]
+      rows = [[API.subscriptionSubscriptionId subscription, API.subscriptionStreamName subscription, Text.pack (show $ API.subscriptionAckTimeoutSeconds subscription)]]
+      content = Aeson.object ["headers" .= headers, "rows" .= rows]
+  return $ tableResponse content
 
 -------------------------------------------------------------------------------
 -- Admin View Command
