@@ -27,8 +27,12 @@ where
 import           Control.Exception                (throwIO)
 import           Control.Monad
 import           Data.Bifunctor                   (first)
+import qualified Data.Text                        as T
+import qualified Data.Text.Encoding               as T
 import qualified HsGrpc.Server                    as G
+import qualified HsGrpc.Server.Context            as G
 import           Network.GRPC.HighLevel.Generated
+import           Network.GRPC.Unsafe
 
 import qualified HStream.Exception                as HE
 import qualified HStream.Logger                   as Log
@@ -146,17 +150,19 @@ streamingFetchHandler
   :: ServerContext
   -> ServerRequest 'BiDiStreaming StreamingFetchRequest StreamingFetchResponse
   -> IO (ServerResponse 'BiDiStreaming StreamingFetchResponse)
-streamingFetchHandler ctx (ServerBiDiRequest _ streamRecv streamSend) =
+streamingFetchHandler ctx (ServerBiDiRequest meta streamRecv streamSend) =
   defaultBiDiStreamExceptionHandle $ do
+    uri <- grpcCallGetPeer $ unsafeSC meta
     Log.debug "recv server call: streamingFetch"
-    Core.streamingFetchCore ctx Core.SFetchCoreInteractive (streamSend, streamRecv)
+    Core.streamingFetchCore ctx Core.SFetchCoreInteractive (streamSend, streamRecv, T.pack uri)
     return $ ServerBiDiResponse mempty StatusUnknown "should not reach here"
 
 -- TODO: imporvements for read or write error
 handleStreamingFetch
   :: ServerContext
   -> G.BidiStreamHandler StreamingFetchRequest StreamingFetchResponse ()
-handleStreamingFetch sc _ stream =
+handleStreamingFetch sc gCtx stream = do
+  uri <- G.serverContextPeer gCtx
   let streamSend x = first (const GRPCIOShutdown) <$> G.streamWrite stream (Just x)
       streamRecv = do Right <$> G.streamRead stream
-   in catchDefaultEx $ Core.streamingFetchCore sc Core.SFetchCoreInteractive (streamSend, streamRecv)
+  catchDefaultEx $ Core.streamingFetchCore sc Core.SFetchCoreInteractive (streamSend, streamRecv, T.decodeUtf8 uri)

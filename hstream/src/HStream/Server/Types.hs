@@ -131,6 +131,7 @@ data CheckedRecordIdsKey = CheckedRecordIdsKey {
 
 data ConsumerContext = ConsumerContext
   { ccConsumerName :: ConsumerName,
+    ccConsumerUri  :: Maybe Text,
     ccIsValid      :: TVar Bool,
     -- use MVar for streamSend because only on thread can use streamSend at the
     -- same time
