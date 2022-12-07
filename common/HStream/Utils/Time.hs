@@ -28,10 +28,10 @@ data Interval
   deriving (Eq)
 
 instance Show Interval where
-  show (Seconds x)      = showInInt x <> "s"
-  show (Minutes x)      = showInInt x <> "min"
-  show (Hours x)        = showInInt x <> "hr"
-  show (Milliseconds x) = showInInt x <> "ms"
+  show (Seconds x)      = showInInt x <> " seconds"
+  show (Minutes x)      = showInInt x <> " minutes"
+  show (Hours x)        = showInInt x <> " hours"
+  show (Milliseconds x) = showInInt x <> " milliseconds"
 
 showInInt :: Double -> String
 showInInt x | fromIntegral x' == x = show x'

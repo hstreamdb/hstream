@@ -10,24 +10,32 @@ module HStream.Client.Action
 
   , createStream
   , createStreamBySelect
-  , createConnector
+  , deleteStream
+  , getStream
+  , listStreams
+  , listShards
+  , insertIntoStream
+
   , createSubscription
   , createSubscription'
-  , describeCluster
-  , dropAction
   , deleteSubscription
-  , insertIntoStream
+  , getSubscription
+  , listSubscriptions
+
+  , createConnector
   , listConnectors
-  , listStreams
-  , listQueries
-  , listShards
-  , lookupResource
   , pauseConnector
   , resumeConnector
-  , listSubscriptions
+
+  , listQueries
   , listViews
   , terminateQueries
-  , deleteStream) where
+
+  , dropAction
+  , lookupResource
+  , describeCluster
+
+  ) where
 
 import qualified Data.ByteString                  as BS
 import qualified Data.Map                         as Map
@@ -168,6 +176,12 @@ deleteStream :: T.Text -> Bool -> Action Empty
 deleteStream sName force HStreamApi{..} = hstreamApiDeleteStream $
   mkClientNormalRequest' def { deleteStreamRequestStreamName = sName
                              , deleteStreamRequestForce = force}
+
+getStream :: T.Text -> Action GetStreamResponse
+getStream sName HStreamApi{..} = hstreamApiGetStream $ mkClientNormalRequest' def { getStreamRequestName = sName }
+
+getSubscription :: T.Text -> Action GetSubscriptionResponse
+getSubscription sid HStreamApi{..} = hstreamApiGetSubscription $ mkClientNormalRequest' def { getSubscriptionRequestId = sid }
 
 --------------------------------------------------------------------------------
 
