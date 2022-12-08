@@ -2,17 +2,18 @@ module HStream.MetaStoreSpec where
 
 import           Control.Monad                    (void)
 import qualified Data.Aeson                       as A
-import           Data.ByteString                  (writeFile)
-import qualified Data.ByteString.Lazy             as BS
+import qualified Data.ByteString.Lazy             as BSL
 import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (fromMaybe)
 import qualified Data.Text                        as T
 import           Network.HTTP.Client              (defaultManagerSettings,
                                                    newManager)
-import           Prelude                          hiding (writeFile)
-import           System.Directory                 (createDirectoryIfMissing)
+import           System.Directory                 (createDirectoryIfMissing,
+                                                   getTemporaryDirectory,
+                                                   removeFile)
 import           System.Environment               (lookupEnv)
+import           System.IO                        (hClose, openTempFile)
 import           Test.Hspec                       (HasCallStack, Spec,
                                                    afterAll_, anyException,
                                                    describe, hspec, it, runIO,
@@ -21,7 +22,6 @@ import           Test.QuickCheck                  (generate)
 import           ZooKeeper                        (withResource,
                                                    zookeeperResInit)
 import           ZooKeeper.Types                  (ZHandle)
-
 
 import qualified HStream.Logger                   as Log
 import qualified HStream.MetaStore.FileUtils      as File
@@ -38,22 +38,30 @@ spec :: Spec
 spec = do
   runIO $ Log.setLogLevel (Log.Level Log.DEBUG) True
   m <- runIO $ newManager defaultManagerSettings
-  portRq <- runIO $ fromMaybe "4001" <$> lookupEnv "RQLITE_LOCAL_PORT"
-  portZk <- runIO $ fromMaybe "2181" <$> lookupEnv "ZOOKEEPER_LOCAL_PORT"
   let host = "127.0.0.1"
-  let localMetaFilepath = "local-data/metastore"
-  runIO $ createDirectoryIfMissing True "local-data"
+
+  -- rqlite
+  portRq <- runIO $ fromMaybe "4001" <$> lookupEnv "RQLITE_LOCAL_PORT"
   let urlRq = T.pack $ host <> ":" <> portRq
-  let urlZk = textToCBytes $ T.pack $ host <> ":" <> portZk
   let mHandle1 = RLHandle $ RHandle m urlRq
-  let res = zookeeperResInit urlZk Nothing 5000 Nothing 0
   afterAll_ (void $ deleteTable m urlRq (myRootPath @MetaExample @RHandle)) (smokeTest mHandle1)
+
+  -- zookeeper
+  portZk <- runIO $ fromMaybe "2181" <$> lookupEnv "ZOOKEEPER_LOCAL_PORT"
+  let urlZk = textToCBytes $ T.pack $ host <> ":" <> portZk
+  let res = zookeeperResInit urlZk Nothing 5000 Nothing 0
   runIO $ withResource res $ \zk -> do
     let mHandle2 = ZkHandle zk
     hspec $ smokeTest mHandle2
-  runIO $ writeFile localMetaFilepath (BS.toStrict $  A.encode (mempty :: File.Contents))
-  let mHandle3 = FileHandle localMetaFilepath
-  afterAll_ (void $ File.deleteTable (myRootPath @MetaExample @FHandle) localMetaFilepath) (smokeTest mHandle3)
+
+  -- local file
+  tmpfile <- runIO $ do
+    tmpdir <- getTemporaryDirectory
+    (file, tmphandle) <- openTempFile tmpdir "metastore"
+    BSL.hPut tmphandle $ A.encode (mempty :: File.Contents)
+    hClose tmphandle
+    pure file
+  afterAll_ (removeFile tmpfile) (smokeTest $ FileHandle tmpfile)
 
 smokeTest :: HasCallStack => MetaHandle -> Spec
 smokeTest h = do
