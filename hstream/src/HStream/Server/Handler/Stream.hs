@@ -102,7 +102,6 @@ handleGetStream sc _ req = catchDefaultEx $ do
   validateNameAndThrow $ getStreamRequestName req
   C.getStream sc req
 
-
 listStreamsHandler
   :: ServerContext
   -> ServerRequest 'Normal ListStreamsRequest ListStreamsResponse
