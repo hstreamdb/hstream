@@ -122,6 +122,8 @@ instance Format PB.Struct where
       [("view_query_id", Just x)]   -> let (A.String qid) = valueToJsonValue x
                                         in "Done. Query ID: " <> T.unpack qid <> "\n"
       [("Error Message:", Just v)] -> "Error Message: " ++ show v ++ "\n"
+      [("explain", Just plan)] -> let (A.String text) = valueToJsonValue plan
+                                   in "-------- RAW PLAN --------\n" <> T.unpack text <> "\n"
       _ -> (<> "\n") . TL.unpack . A.encodeToLazyText . structToJsonObject $ s
 
 instance Format API.CommandQueryResponse where

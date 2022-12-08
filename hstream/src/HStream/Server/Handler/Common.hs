@@ -75,7 +75,7 @@ applyTempFilter shard In{..} dataChange = do
           end_ms    = interval_ms * (1 + insert_ms `div` interval_ms)
       let negatedDataChange = dataChange
                               { DiffFlow.dcTimestamp = DiffFlow.Timestamp end_ms []
-                              , DiffFlow.dcDiff = -1
+                              , DiffFlow.dcDiff = - (DiffFlow.dcDiff dataChange)
                               }
       DiffFlow.pushInput shard inNode negatedDataChange -- negated update
     Just (Hopping interval hop) -> do
@@ -86,7 +86,7 @@ applyTempFilter shard In{..} dataChange = do
           end_ms = interval_ms + hop_ms * (insert_ms `div` hop_ms)
       let negatedDataChange = dataChange
                               { DiffFlow.dcTimestamp = DiffFlow.Timestamp end_ms []
-                              , DiffFlow.dcDiff = -1
+                              , DiffFlow.dcDiff = - (DiffFlow.dcDiff dataChange)
                               }
       DiffFlow.pushInput shard inNode negatedDataChange -- negated update
     Just (Sliding interval) -> do
@@ -95,12 +95,10 @@ applyTempFilter shard In{..} dataChange = do
           end_ms    = insert_ms + interval_ms
       let negatedDataChange = dataChange
                               { DiffFlow.dcTimestamp = DiffFlow.Timestamp end_ms []
-                              , DiffFlow.dcDiff = -1
+                              , DiffFlow.dcDiff = - (DiffFlow.dcDiff dataChange)
                               }
       DiffFlow.pushInput shard inNode negatedDataChange -- negated update
     _ -> return ()
-
-
 
 --------------------------------------------------------------------------------
 runTask :: ServerContext
@@ -198,6 +196,10 @@ runTask ctx@ServerContext{..} taskName sink insWithRole outWithRole graphBuilder
           ) `onException` (do
     let childrenThreads = tid1 : (catMaybes tids2_m) ++ [tid3]
     mapM_ killThread childrenThreads
+    forM (insWithRole `zip` srcConnectors_m) $ \((in_@In{..}, role), srcConnector_m) -> do
+      case srcConnector_m of
+        Just sc -> unSubscribeToStreamWithoutCkp sc inStream
+        Nothing -> return ()
                           )
 
 runImmTask :: ServerContext
