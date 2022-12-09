@@ -32,7 +32,7 @@ import           HStream.Client.Action            (createConnector,
                                                    createStreamBySelect,
                                                    dropAction, insertIntoStream,
                                                    listShards, pauseConnector,
-                                                   resumeConnector,
+                                                   resumeConnector, retry,
                                                    terminateQueries)
 import           HStream.Client.Execute           (execute, executeShowPlan,
                                                    executeWithLookupResource_,
@@ -66,7 +66,7 @@ import           HStream.Utils                    (HStreamClientApi,
 
 -- and this needs to be optimized. This could be done with a grpc client pool.
 interactiveSQLApp :: HStreamSqlContext -> Maybe FilePath -> IO ()
-interactiveSQLApp HStreamSqlContext{hstreamCliContext = ctx@HStreamCliContext{..},..} historyFile = do
+interactiveSQLApp sqlCtx@HStreamSqlContext{hstreamCliContext = cliCtx@HStreamCliContext{..}, ..} historyFile = do
   putStrLn helpInfo
   tid <- myThreadId
   void $ forkFinally maintainAvailableNodes (\case Left err -> throwTo tid err; _ -> return ())
@@ -78,7 +78,7 @@ interactiveSQLApp HStreamSqlContext{hstreamCliContext = ctx@HStreamCliContext{..
     maintainAvailableNodes = forever $ do
       readMVar availableServers >>= \case
         []     -> return ()
-        node:_ -> void $ updateClusterInfo ctx node
+        node:_ -> void $ updateClusterInfo cliCtx node
       threadDelay $ updateInterval * 1000 * 1000
 
     loop :: RL.InputT IO ()
@@ -88,27 +88,27 @@ interactiveSQLApp HStreamSqlContext{hstreamCliContext = ctx@HStreamCliContext{..
         Just str
           | null . take 1 . words $ str                  -> loop
           | take 1 (words str)                 == [":q"] -> pure ()
-          | (head . head . take 1 . words) str == ':'    -> liftIO (commandExec ctx str) >> loop
+          | (head . head . take 1 . words) str == ':'    -> liftIO (commandExec sqlCtx str) >> loop
           | otherwise -> do
               str' <- readToSQL $ T.pack str
               case str' of
                 Nothing  -> loop
                 Just str'' -> do
                   RL.getHistory >>= RL.putHistory . RL.addHistoryUnlessConsecutiveDupe str
-                  liftIO (handle (\(e :: SomeException) -> print e) $ commandExec ctx str'')
+                  liftIO (handle (\(e :: SomeException) -> print e) $ commandExec sqlCtx str'')
                   loop
 
-commandExec :: HStreamCliContext -> String -> IO ()
-commandExec ctx@HStreamCliContext{..} xs = case words xs of
+commandExec :: HStreamSqlContext -> String -> IO ()
+commandExec HStreamSqlContext{hstreamCliContext = cliCtx@HStreamCliContext{..},..} xs = case words xs of
   [] -> return ()
 
   -- -- The Following commands are for testing only
   -- -- {
-  -- ":sub":subId:stream:_ -> callSubscription ctx (T.pack subId) (T.pack stream)
-  -- ":delSub":subId:_     -> callDeleteSubscription ctx (T.pack subId)
-  -- ":delAllSubs":_       -> callDeleteSubscriptionAll ctx
-  -- ":fetch":subId:_      -> genClientId >>= callStreamingFetch ctx V.empty (T.pack subId)
-  -- ":listSubs":_         -> callListSubscriptions ctx
+  -- ":sub":subId:stream:_ -> callSubscription cliCtx (T.pack subId) (T.pack stream)
+  -- ":delSub":subId:_     -> callDeleteSubscription cliCtx (T.pack subId)
+  -- ":delAllSubs":_       -> callDeleteSubscriptionAll cliCtx
+  -- ":fetch":subId:_      -> genClientId >>= callStreamingFetch cliCtx V.empty (T.pack subId)
+  -- ":listSubs":_         -> callListSubscriptions cliCtx
   -- -- }
 
   ":h": _     -> putStrLn helpInfo
@@ -118,29 +118,29 @@ commandExec ctx@HStreamCliContext{..} xs = case words xs of
   (_:_)       -> liftIO $ handle (\(e :: SomeSQLException) -> putStrLn . formatSomeSQLException $ e) $ do
     rSQL <- parseAndRefine $ T.pack xs
     case rSQL of
-      RQPushSelect{} -> cliFetch ctx xs
+      RQPushSelect{} -> cliFetch cliCtx xs
       RQCreate RCreateAs {} ->
-        execute_ ctx $ createStreamBySelect xs
+        execute_ cliCtx $ createStreamBySelect xs
       rSql' -> hstreamCodegen rSql' >>= \case
-        ShowPlan showObj      -> executeShowPlan ctx showObj
+        ShowPlan showObj      -> executeShowPlan cliCtx showObj
         -- FIXME: add lookup after supporting lookup stream and lookup view
-        DropPlan checkIfExists dropObj@DStream{} -> execute_ ctx $ dropAction checkIfExists dropObj
-        DropPlan checkIfExists dropObj@DView{} -> execute_ ctx $ dropAction checkIfExists dropObj
-        DropPlan checkIfExists dropObj -> executeWithLookupResource_ ctx (dropPlanToResType dropObj) $ dropAction checkIfExists dropObj
-        CreatePlan sName rFac -> execute_ ctx $ createStream sName rFac
+        DropPlan checkIfExists dropObj@DStream{} -> execute_ cliCtx $ dropAction checkIfExists dropObj
+        DropPlan checkIfExists dropObj@DView{} -> execute_ cliCtx $ dropAction checkIfExists dropObj
+        DropPlan checkIfExists dropObj -> executeWithLookupResource_ cliCtx (dropPlanToResType dropObj) $ dropAction checkIfExists dropObj
+        CreatePlan sName rFac -> execute_ cliCtx $ createStream sName rFac
         -- FIXME: requires lookup
-        TerminatePlan termSel -> execute_ ctx $ terminateQueries termSel
+        TerminatePlan termSel -> execute_ cliCtx $ terminateQueries termSel
         InsertPlan sName insertType payload -> do
-            result <- execute ctx $ listShards sName
+            result <- execute cliCtx $ listShards sName
             case result of
               Just (API.ListShardsResponse shards) -> do
                 case calculateShardId "" (V.toList shards) of
                   Nothing  -> putStrLn "Failed to calculate shard id"
-                  Just sid -> executeWithLookupResource_ ctx (Resource ResShard (T.pack $ show sid)) (insertIntoStream sName sid insertType payload)
+                  Just sid -> executeWithLookupResource_ cliCtx (Resource ResShard (T.pack $ show sid)) (retry retryLimit retryInterval $ insertIntoStream sName sid insertType payload)
               Nothing -> putStrLn "No shards found"
-        CreateConnectorPlan _ cName _ _ _  -> executeWithLookupResource_ ctx (Resource ResConnector cName) (createConnector xs)
-        PausePlan  (PauseObjectConnector cName) -> executeWithLookupResource_ ctx (Resource ResConnector cName) (pauseConnector cName)
-        ResumePlan (ResumeObjectConnector cName) -> executeWithLookupResource_ ctx (Resource ResConnector cName) (resumeConnector cName)
+        CreateConnectorPlan _ cName _ _ _  -> executeWithLookupResource_ cliCtx (Resource ResConnector cName) (createConnector xs)
+        PausePlan  (PauseObjectConnector cName) -> executeWithLookupResource_ cliCtx (Resource ResConnector cName) (pauseConnector cName)
+        ResumePlan (ResumeObjectConnector cName) -> executeWithLookupResource_ cliCtx (Resource ResConnector cName) (resumeConnector cName)
         _ -> do
           addr <- readMVar currentServer
           withGRPCClient (HStream.Utils.mkGRPCClientConfWithSSL addr sslConfig)
