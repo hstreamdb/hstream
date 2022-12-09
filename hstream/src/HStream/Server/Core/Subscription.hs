@@ -61,7 +61,7 @@ listConsumers sc@ServerContext{..} ListConsumersRequest{listConsumersRequestSubs
       return . ListConsumersResponse . V.fromList $ makeRpcConsumer <$> HM.elems consumerMap
   where
     -- FIXME: Set "" to Server uri, because these are consumers created by queries
-    makeRpcConsumer ConsumerContext{..} = def {consumerName = ccConsumerName, consumerUri = fromMaybe "" ccConsumerUri}
+    makeRpcConsumer ConsumerContext{..} = def {consumerName = ccConsumerName, consumerUri = fromMaybe "" ccConsumerUri, consumerUserAgent = fromMaybe "" ccConsumerAgent}
 
 getSubscription :: ServerContext -> GetSubscriptionRequest -> IO GetSubscriptionResponse
 getSubscription ServerContext{..} GetSubscriptionRequest{ getSubscriptionRequestId = subId} = do
@@ -185,7 +185,8 @@ data SFetchCoreMode (mode :: FetchCoreMode) where
 
 type family FetchCoreType (mode :: FetchCoreMode) (sendTyp :: Type) (recvTyp :: Type)
 type instance FetchCoreType 'FetchCoreInteractive a b
-  = (StreamSend a, StreamRecv b, Text) -> IO ()
+-- TODO: use a datatype instead of tuple
+  = (StreamSend a, StreamRecv b, Text, Text) -> IO ()
 type instance FetchCoreType 'FetchCoreDirect a b
   = StreamingFetchRequest -> (Maybe ReceivedRecord -> IO ()) -> IO ()
 
@@ -207,7 +208,7 @@ streamingFetchCore ctx SFetchCoreDirect = \initReq callback -> do
         atomically $ writeTChan mockAckPool req
         callback (streamingFetchResponseReceivedRecords resp)
         return $ Right ()
-  consumerCtx <- initConsumer scwContext (streamingFetchRequestConsumerName initReq) Nothing streamSend
+  consumerCtx <- initConsumer scwContext (streamingFetchRequestConsumerName initReq) Nothing Nothing streamSend
   Log.debug "pass initConsumer"
   let streamRecv = do
         req <- atomically $ readTChan mockAckPool
@@ -217,12 +218,12 @@ streamingFetchCore ctx SFetchCoreDirect = \initReq callback -> do
       Just tid -> killThread tid
       Nothing  -> return ()
   Log.debug "pass recvAcks"
-streamingFetchCore ctx SFetchCoreInteractive = \(streamSend, streamRecv, requestUri) -> do
+streamingFetchCore ctx SFetchCoreInteractive = \(streamSend, streamRecv, requestUri, userAgent) -> do
   StreamingFetchRequest {..} <- firstRecv streamRecv
   Log.debug "pass first recv"
   (SubscribeContextWrapper {..}, _) <- initSub ctx streamingFetchRequestSubscriptionId
   Log.debug "pass initSub"
-  consumerCtx <- initConsumer scwContext streamingFetchRequestConsumerName (Just requestUri) streamSend
+  consumerCtx <- initConsumer scwContext streamingFetchRequestConsumerName (Just requestUri) (Just userAgent) streamSend
   Log.debug "pass initConsumer"
   async (recvAcks ctx scwState scwContext consumerCtx streamRecv) >>= wait
   Log.debug "pass recvAcks"
@@ -384,9 +385,9 @@ addNewShardsToSubCtx SubscribeContext {subAssignment = Assignment{..}, ..} shard
 
 -- Add consumer and sender to the waitlist and consumerCtx
 initConsumer
-  :: SubscribeContext -> ConsumerName -> Maybe Text -> StreamSend StreamingFetchResponse
+  :: SubscribeContext -> ConsumerName -> Maybe Text -> Maybe Text -> StreamSend StreamingFetchResponse
   -> IO ConsumerContext
-initConsumer SubscribeContext {subAssignment = Assignment{..}, ..} consumerName uri streamSend = do
+initConsumer SubscribeContext {subAssignment = Assignment{..}, ..} consumerName uri agent streamSend = do
   sender <- newMVar streamSend
   atomically $ do
     modifyTVar' waitingConsumers (\consumers -> consumers ++ [consumerName])
@@ -395,6 +396,7 @@ initConsumer SubscribeContext {subAssignment = Assignment{..}, ..} consumerName 
     let cc = ConsumerContext
               { ccConsumerName = consumerName,
                 ccConsumerUri = uri,
+                ccConsumerAgent = agent,
                 ccIsValid = isValid,
                 ccStreamSend = sender
               }

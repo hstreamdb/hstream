@@ -29,6 +29,7 @@ where
 import           Control.Exception                (throwIO)
 import           Control.Monad
 import           Data.Bifunctor                   (first)
+import qualified Data.Map.Strict                  as Map
 import qualified Data.Text                        as T
 import qualified Data.Text.Encoding               as T
 import qualified HsGrpc.Server                    as G
@@ -85,6 +86,7 @@ handleGetSubscription sc _ req = catchDefaultEx $ do
 listConsumersHandler :: ServerContext -> ServerRequest 'Normal ListConsumersRequest ListConsumersResponse -> IO (ServerResponse 'Normal ListConsumersResponse)
 listConsumersHandler ctx@ServerContext{..} (ServerNormalRequest _metadata req) = defaultExceptionHandle $ do
   let subId = listConsumersRequestSubscriptionId req
+  validateNameAndThrow subId
   ServerNode{..} <- lookupResource' ctx ResSubscription subId
   unless (serverNodeId == serverID) $
     throwIO $ HE.SubscriptionOnDifferentNode "Subscription is bound to a different node"
@@ -174,16 +176,21 @@ streamingFetchHandler
 streamingFetchHandler ctx (ServerBiDiRequest meta streamRecv streamSend) =
   defaultBiDiStreamExceptionHandle $ do
     uri <- grpcCallGetPeer $ unsafeSC meta
+    let agent = case Map.lookup "user-agent" . unMap $ metadata meta of
+          Nothing     -> ""
+          Just []     -> ""
+          Just (x:xs) -> T.decodeUtf8 x
     Log.debug "recv server call: streamingFetch"
-    Core.streamingFetchCore ctx Core.SFetchCoreInteractive (streamSend, streamRecv, T.pack uri)
+    Core.streamingFetchCore ctx Core.SFetchCoreInteractive (streamSend, streamRecv, T.pack uri, agent)
     return $ ServerBiDiResponse mempty StatusUnknown "should not reach here"
 
--- TODO: imporvements for read or write error
+-- TODO: improvements for read or write error
 handleStreamingFetch
   :: ServerContext
   -> G.BidiStreamHandler StreamingFetchRequest StreamingFetchResponse ()
 handleStreamingFetch sc gCtx stream = do
   uri <- G.serverContextPeer gCtx
+  agent <- maybe "" T.decodeUtf8 <$> G.findClientMetadata gCtx "user-agent"
   let streamSend x = first (const GRPCIOShutdown) <$> G.streamWrite stream (Just x)
       streamRecv = do Right <$> G.streamRead stream
-  catchDefaultEx $ Core.streamingFetchCore sc Core.SFetchCoreInteractive (streamSend, streamRecv, T.decodeUtf8 uri)
+  catchDefaultEx $ Core.streamingFetchCore sc Core.SFetchCoreInteractive (streamSend, streamRecv, T.decodeUtf8 uri, agent)
