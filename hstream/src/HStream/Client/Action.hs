@@ -35,15 +35,20 @@ module HStream.Client.Action
   , lookupResource
   , describeCluster
 
+  ,retry
   ) where
 
+import           Control.Concurrent               (threadDelay)
 import qualified Data.ByteString                  as BS
 import qualified Data.Map                         as Map
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
-import           Data.Word                        (Word64)
-import           Network.GRPC.HighLevel.Generated (ClientResult (..),
-                                                   GRPCMethodType (Normal))
+import           Data.Word                        (Word32, Word64)
+import           Network.GRPC.HighLevel.Generated (ClientError (..),
+                                                   ClientResult (..),
+                                                   GRPCIOError (..),
+                                                   GRPCMethodType (Normal),
+                                                   StatusCode (..))
 import qualified Proto3.Suite                     as PT
 import           Proto3.Suite.Class               (def)
 
@@ -189,3 +194,12 @@ fakeMap :: (a -> b) -> ClientResult 'Normal a -> ClientResult 'Normal b
 fakeMap f (ClientNormalResponse x _meta1 _meta2 _status _details) =
   ClientNormalResponse (f x) _meta1 _meta2 _status _details
 fakeMap _ (ClientErrorResponse err) = ClientErrorResponse err
+
+retry :: Word32 -> Word32 -> Action a -> Action a
+retry n i action api = do
+  res <- action api
+  case res of
+    ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode StatusUnavailable details)) -> do
+      threadDelay $ fromIntegral (i * 1000 * 1000)
+      if n > 0 then retry (n - 1) i action api else return res
+    _ -> return res

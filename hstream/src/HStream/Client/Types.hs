@@ -53,10 +53,14 @@ data HStreamCliContext = HStreamCliContext
 data HStreamSqlContext = HStreamSqlContext
   { hstreamCliContext :: HStreamCliContext
   , updateInterval    :: Int
+  , retryLimit        :: Word32
+  , retryInterval     :: Word32
   }
 
 data HStreamSqlOpts = HStreamSqlOpts
   { _updateInterval :: Int
+  , _retryInterval  :: Word32
+  , _retryLimit     :: Word32
   , _execute        :: Maybe String
   , _historyFile    :: Maybe FilePath
   }
@@ -64,6 +68,8 @@ data HStreamSqlOpts = HStreamSqlOpts
 hstreamSqlOptsParser :: O.Parser HStreamSqlOpts
 hstreamSqlOptsParser = HStreamSqlOpts
   <$> O.option O.auto (O.long "update-interval" <> O.metavar "INT" <> O.showDefault <> O.value 30 <> O.help "interval to update available servers in seconds")
+  <*> O.option O.auto (O.long "retry-interval" <> O.metavar "INT" <> O.showDefault <> O.value 5 <> O.help "interval to retry request to server")
+  <*> O.option O.auto (O.long "retry-limit" <> O.metavar "INT" <> O.showDefault <> O.value 3 <> O.help "maximum number of retries allowed")
 
   <*> (O.optional . O.option O.str) (O.long "execute" <> O.short 'e' <> O.metavar "STRING" <> O.help "execute the statement and quit")
   <*> (O.optional . O.option O.str) (O.long "history-file" <> O.metavar "STRING" <> O.help "history file path to write interactively executed statements")

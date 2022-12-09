@@ -87,13 +87,14 @@ runCommand HStreamCommand {..} = do
     HStreamSubscription opts -> hstreamSubscription cliConnOpts opts
 
 hstreamSQL :: CliConnOpts -> HStreamSqlOpts -> IO ()
-hstreamSQL connOpt HStreamSqlOpts{_updateInterval = updateInterval, .. } = do
+hstreamSQL connOpt HStreamSqlOpts{_updateInterval = updateInterval,
+  _retryInterval = retryInterval, _retryLimit = retryLimit, .. } = do
   hstreamCliContext <- initCliContext connOpt
   case _execute of
-    Nothing        -> showHStream *> interactiveSQLApp HStreamSqlContext {..}  _historyFile
+    Nothing        -> showHStream *> interactiveSQLApp HStreamSqlContext{..}  _historyFile
     Just statement -> do
       when (Char.isSpace `all` statement) $ do putStrLn "Empty statement" *> exitFailure
-      commandExec hstreamCliContext statement
+      commandExec HStreamSqlContext{..} statement
   where
     showHStream = putStrLn [r|
       __  _________________  _________    __  ___
