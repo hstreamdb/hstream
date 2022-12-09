@@ -12,10 +12,12 @@ module HStream.Server.Handler.Subscription
   , deleteSubscriptionHandler
   , getSubscriptionHandler
   , listSubscriptionsHandler
+  , listConsumersHandler
   , checkSubscriptionExistHandler
   , streamingFetchHandler
     -- * For hs-grpc-server
   , handleCreateSubscription
+  , handleListConsumers
   , handleDeleteSubscription
   , handleGetSubscription
   , handleCheckSubscriptionExist
@@ -79,6 +81,25 @@ handleGetSubscription sc _ req = catchDefaultEx $ do
   Core.getSubscription sc req
 
 -------------------------------------------------------------------------------
+
+listConsumersHandler :: ServerContext -> ServerRequest 'Normal ListConsumersRequest ListConsumersResponse -> IO (ServerResponse 'Normal ListConsumersResponse)
+listConsumersHandler ctx@ServerContext{..} (ServerNormalRequest _metadata req) = defaultExceptionHandle $ do
+  let subId = listConsumersRequestSubscriptionId req
+  ServerNode{..} <- lookupResource' ctx ResSubscription subId
+  unless (serverNodeId == serverID) $
+    throwIO $ HE.SubscriptionOnDifferentNode "Subscription is bound to a different node"
+  Core.listConsumers ctx req >>= returnResp
+
+handleListConsumers :: ServerContext -> G.UnaryHandler ListConsumersRequest ListConsumersResponse
+handleListConsumers ctx@ServerContext{..} _ req = catchDefaultEx $ do
+  let subId = listConsumersRequestSubscriptionId req
+  validateNameAndThrow subId
+  ServerNode{..} <- lookupResource' ctx ResSubscription subId
+  unless (serverNodeId == serverID) $
+    throwIO $ HE.SubscriptionOnDifferentNode "Subscription is bound to a different node"
+  Core.listConsumers ctx req
+
+--------------------------------------------------------------------------------
 
 deleteSubscriptionHandler
   :: ServerContext

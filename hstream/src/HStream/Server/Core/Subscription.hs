@@ -19,16 +19,16 @@ import           Data.IORef                 (newIORef, readIORef, writeIORef)
 import           Data.Kind                  (Type)
 import qualified Data.List                  as L
 import qualified Data.Map.Strict            as Map
-import           Data.Maybe                 (fromJust, isNothing)
+import           Data.Maybe                 (fromJust, fromMaybe, isNothing)
 import qualified Data.Set                   as Set
 import           Data.Text                  (Text)
 import qualified Data.Text                  as T
 import qualified Data.Vector                as V
 import           Data.Word                  (Word32, Word64)
-import           Network.GRPC.HighLevel     (StreamRecv, StreamSend)
-import           Proto3.Suite               (Enumerated (Enumerated))
-
 import           GHC.Stack                  (HasCallStack)
+import           Network.GRPC.HighLevel     (StreamRecv, StreamSend)
+import           Proto3.Suite               (Enumerated (Enumerated), def)
+
 import qualified HStream.Exception          as HE
 import qualified HStream.Logger             as Log
 import qualified HStream.MetaStore.Types    as M
@@ -49,6 +49,19 @@ import           HStream.Utils              (decompressBatchedRecord,
 
 listSubscriptions :: ServerContext -> IO (V.Vector Subscription)
 listSubscriptions sc = CC.listSubscriptions sc Nothing
+
+listConsumers :: ServerContext -> ListConsumersRequest -> IO ListConsumersResponse
+listConsumers sc@ServerContext{..} ListConsumersRequest{listConsumersRequestSubscriptionId = sid} = do
+  subCtxMap <- readTVarIO scSubscribeContexts
+  case HM.lookup sid subCtxMap of
+    Nothing -> throwIO $ HE.SubscriptionNotFound $ "No active subscription " <> sid <> " found on current server."
+    Just subCtx@SubscribeContextNewWrapper{..} -> atomically $ do
+      ctx@SubscribeContext{..} <- readTMVar scnwContext
+      consumerMap <- readTVar subConsumerContexts
+      return . ListConsumersResponse . V.fromList $ makeRpcConsumer <$> HM.elems consumerMap
+  where
+    -- FIXME: Set "" to Server uri, because these are consumers created by queries
+    makeRpcConsumer ConsumerContext{..} = def {consumerName = ccConsumerName, consumerUri = fromMaybe "" ccConsumerUri}
 
 getSubscription :: ServerContext -> GetSubscriptionRequest -> IO GetSubscriptionResponse
 getSubscription ServerContext{..} GetSubscriptionRequest{ getSubscriptionRequestId = subId} = do
