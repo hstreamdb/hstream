@@ -19,7 +19,7 @@ import           Data.IORef                 (newIORef, readIORef, writeIORef)
 import           Data.Kind                  (Type)
 import qualified Data.List                  as L
 import qualified Data.Map.Strict            as Map
-import           Data.Maybe                 (fromJust, isNothing)
+import           Data.Maybe                 (fromJust, fromMaybe, isNothing)
 import qualified Data.Set                   as Set
 import           Data.Text                  (Text)
 import qualified Data.Text                  as T
@@ -50,7 +50,7 @@ import           HStream.Utils              (decompressBatchedRecord,
 listSubscriptions :: ServerContext -> IO (V.Vector Subscription)
 listSubscriptions sc = CC.listSubscriptions sc Nothing
 
-listConsumers :: ServerContext -> ListConsumersRequest ->  IO ListConsumersResponse
+listConsumers :: ServerContext -> ListConsumersRequest -> IO ListConsumersResponse
 listConsumers sc@ServerContext{..} ListConsumersRequest{listConsumersRequestSubscriptionId = sid} = do
   subCtxMap <- readTVarIO scSubscribeContexts
   case HM.lookup sid subCtxMap of
@@ -58,9 +58,10 @@ listConsumers sc@ServerContext{..} ListConsumersRequest{listConsumersRequestSubs
     Just subCtx@SubscribeContextNewWrapper{..} -> atomically $ do
       ctx@SubscribeContext{..} <- readTMVar scnwContext
       consumerMap <- readTVar subConsumerContexts
-      return . ListConsumersResponse . V.fromList $ makeRpcConsumer <$> HM.keys consumerMap
+      return . ListConsumersResponse . V.fromList $ makeRpcConsumer <$> HM.elems consumerMap
   where
-    makeRpcConsumer name = def {consumerName = name}
+    -- FIXME: Set "" to Server uri, because these are consumers created by queries
+    makeRpcConsumer ConsumerContext{..} = def {consumerName = ccConsumerName, consumerUri = fromMaybe "" ccConsumerUri}
 
 getSubscription :: ServerContext -> GetSubscriptionRequest -> IO GetSubscriptionResponse
 getSubscription ServerContext{..} GetSubscriptionRequest{ getSubscriptionRequestId = subId} = do
