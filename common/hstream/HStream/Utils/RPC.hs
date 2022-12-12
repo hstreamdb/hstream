@@ -48,7 +48,7 @@ import           Z.IO.Time                        (SystemTime (..),
                                                    getSystemTime')
 
 import           HStream.Server.HStreamApi
-import           HStream.ThirdParty.Protobuf      (Struct, Timestamp (..))
+import           HStream.ThirdParty.Protobuf      (Struct (..), Timestamp (..))
 
 type HStreamClientApi = HStreamApi ClientRequest ClientResult
 data SocketAddr = SocketAddr ByteString Int

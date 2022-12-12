@@ -42,33 +42,33 @@ module HStream.Utils.Converter
   , serverNodeToSocketAddr
   ) where
 
-import qualified Data.Aeson                as Aeson
-import           Data.Bifunctor            (bimap)
-import qualified Data.ByteString           as BS
-import qualified Data.ByteString.Lazy      as BL
-import qualified Data.Map                  as M
-import qualified Data.Map.Strict           as Map
-import           Data.Scientific           (toRealFloat)
-import           Data.Text                 (Text)
-import qualified Data.Text                 as Text
-import qualified Data.Text.Encoding        as BSC
-import qualified Data.Text.Encoding        as Text
-import qualified Data.Text.Lazy            as TL
-import qualified Data.Vector               as V
-import qualified Google.Protobuf.Struct    as PB
-import           Proto3.Suite              (Enumerated (Enumerated))
-import qualified Z.Data.Builder            as Build
-import qualified Z.Data.Builder            as Builder
-import qualified Z.Data.CBytes             as ZCB
-import qualified Z.Data.JSON               as Z
-import qualified Z.Data.Parser             as Parser
-import qualified Z.Data.Text               as ZT
-import qualified Z.Data.Vector             as ZV
-import qualified Z.Foreign                 as ZF
+import qualified Data.Aeson                  as Aeson
+import           Data.Bifunctor              (bimap)
+import qualified Data.ByteString             as BS
+import qualified Data.ByteString.Lazy        as BL
+import qualified Data.Map                    as M
+import qualified Data.Map.Strict             as Map
+import           Data.Scientific             (toRealFloat)
+import           Data.Text                   (Text)
+import qualified Data.Text                   as Text
+import qualified Data.Text.Encoding          as BSC
+import qualified Data.Text.Encoding          as Text
+import qualified Data.Text.Lazy              as TL
+import qualified Data.Vector                 as V
+import           Proto3.Suite                (Enumerated (Enumerated))
+import qualified Z.Data.Builder              as Build
+import qualified Z.Data.Builder              as Builder
+import qualified Z.Data.CBytes               as ZCB
+import qualified Z.Data.JSON                 as Z
+import qualified Z.Data.Parser               as Parser
+import qualified Z.Data.Text                 as ZT
+import qualified Z.Data.Vector               as ZV
+import qualified Z.Foreign                   as ZF
 
-import           HStream.Server.HStreamApi (ServerNode (..))
-import qualified HStream.Utils.Aeson       as A
-import           HStream.Utils.RPC         (SocketAddr (SocketAddr))
+import           HStream.Server.HStreamApi   (ServerNode (..))
+import qualified HStream.ThirdParty.Protobuf as PB
+import qualified HStream.Utils.Aeson         as A
+import           HStream.Utils.RPC           (SocketAddr (SocketAddr))
 
 pattern V :: PB.ValueKind -> PB.Value
 pattern V x = PB.Value (Just x)

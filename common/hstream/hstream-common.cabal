@@ -19,7 +19,6 @@ homepage:           https://github.com/hstreamdb/hstream
 bug-reports:        https://github.com/hstreamdb/hstream/issues
 build-type:         Custom
 extra-source-files:
-  api/gen-cpp/**/*.h
   cbits/**/*.h
   clients/**/*.h
   include/**/*.h
@@ -58,22 +57,16 @@ library
     HStream.Common.Types
     HStream.Exception
     HStream.Foreign
-    HStream.Gossip.HStreamGossip
     HStream.Logger
     HStream.MetaStore.FileUtils
     HStream.MetaStore.RqliteUtils
     HStream.MetaStore.Types
     HStream.MetaStore.ZookeeperUtils
-    HStream.Server.HStreamApi
-    HStream.Server.HStreamInternal
-    HStream.ThirdParty.Protobuf
     HStream.Utils
     HStream.Utils.Aeson
     HStream.Utils.Validation
 
   other-modules:
-    Google.Protobuf.Empty
-    Google.Protobuf.Struct
     HStream.Utils.BuildRecord
     HStream.Utils.Codec
     HStream.Utils.Common
@@ -86,8 +79,8 @@ library
     HStream.Utils.Table
     HStream.Utils.Time
 
-  hs-source-dirs:     . api/gen-hs
-  include-dirs:       . include api/gen-cpp /usr/local/include
+  hs-source-dirs:     .
+  include-dirs:       . include /usr/local/include
   includes:
     hs_common.h
     hs_cpp_lib.h
@@ -98,12 +91,8 @@ library
     clients/cpp/AdminClient.h
     hs_common.h
     hs_cpp_lib.h
-    HStream/Server/HStreamApi.grpc.pb.h
-    HStream/Server/HStreamApi.pb.h
 
   cxx-sources:
-    api/gen-cpp/HStream/Server/HStreamApi.grpc.pb.cc
-    api/gen-cpp/HStream/Server/HStreamApi.pb.cc
     cbits/hash.cpp
     cbits/hs_struct.cpp
     cbits/hs_utils.cpp
@@ -132,6 +121,7 @@ library
     , grpc-haskell-core
     , hashable
     , hs-grpc-server
+    , hstream-common-api
     , http-client
     , http-types
     , primitive             ^>=0.7
@@ -203,6 +193,7 @@ test-suite hstream-common-test
     , directory
     , hspec
     , hstream-common
+    , hstream-common-api
     , http-client
     , proto3-suite
     , QuickCheck
@@ -241,12 +232,13 @@ benchmark codec-bench
     Util
 
   build-depends:
-    , base            >=4.11 && <5
+    , base                >=4.11 && <5
     , bytestring
     , criterion
     , hstream-common
+    , hstream-common-api
     , proto3-suite
-    , random          ^>=1.2
+    , random              ^>=1.2
     , vector
 
   default-extensions:

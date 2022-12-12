@@ -56,14 +56,14 @@ library
     , deepseq
     , grpc-haskell
     , hs-grpc-server
-    , hstream-api-protolens
     , hstream-common
+    , hstream-common-api
     , optparse-applicative
     , proto3-suite
     , proto3-wire
     , random
     , random-shuffle
-    , slave-thread           ^>=1.1
+    , slave-thread          ^>=1.1
     , stm
     , table-layout
     , text

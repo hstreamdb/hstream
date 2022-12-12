@@ -1,5 +1,5 @@
 cabal-version:      2.4
-name:               hstream-api-protolens
+name:               hstream-common-api
 version:            0.1.0.0
 synopsis:
   High performance stream processing platform for IoT data written in Haskell.
@@ -17,12 +17,14 @@ category:           Database
 homepage:           https://github.com/hstreamdb/hstream
 bug-reports:        https://github.com/hstreamdb/hstream/issues
 build-type:         Custom
-extra-source-files: protos/**/*.proto
+extra-source-files:
+  gen-cpp/**/*.h
+  protos/**/*.proto
 
 custom-setup
   setup-depends:
-    , base              >=4.5 && <5
-    , Cabal             >=2.4 && <4
+    , base              >=4.5  && <5
+    , Cabal             >=2.4  && <4
     , proto-lens-setup  ^>=0.4
 
 source-repository head
@@ -47,13 +49,27 @@ common shared-properties
 
 library
   import:           shared-properties
+  hs-source-dirs:   . gen-hs
+  include-dirs:     gen-cpp /usr/local/include
   exposed-modules:
+    HStream.Gossip.HStreamGossip
+    HStream.Server.HStreamApi
+    HStream.Server.HStreamInternal
+    HStream.ThirdParty.Protobuf
+    Proto.HStream.Gossip.HStreamGossip
+    Proto.HStream.Gossip.HStreamGossip_Fields
     Proto.HStream.Server.HStreamApi
     Proto.HStream.Server.HStreamApi_Fields
     Proto.HStream.Server.HStreamInternal
     Proto.HStream.Server.HStreamInternal_Fields
-    Proto.HStream.Gossip.HStreamGossip
-    Proto.HStream.Gossip.HStreamGossip_Fields
+
+  install-includes:
+    HStream/Server/HStreamApi.grpc.pb.h
+    HStream/Server/HStreamApi.pb.h
+
+  other-modules:
+    Google.Protobuf.Empty
+    Google.Protobuf.Struct
 
   autogen-modules:
     Proto.HStream.Server.HStreamApi
@@ -63,11 +79,31 @@ library
     Proto.HStream.Gossip.HStreamGossip
     Proto.HStream.Gossip.HStreamGossip_Fields
 
+  cxx-sources:
+    gen-cpp/HStream/Server/HStreamApi.grpc.pb.cc
+    gen-cpp/HStream/Server/HStreamApi.pb.cc
+
   build-depends:
-    , base                       >=4.13    && <5
+    , base                       >=4.13     && <5
     , bytestring
+    , containers
+    , deepseq
+    , grpc-haskell
     , microlens
     , proto-lens-protobuf-types  ^>=0.7.1.2
     , proto-lens-runtime
+    , proto3-suite
+    , proto3-wire
+    , text
+    , vector
+
+  extra-lib-dirs:   /usr/local/lib
+  extra-libraries:
+    stdc++
+    atomic
+    grpc++
+    gpr
+    grpc++_reflection
+    protobuf
 
   default-language: Haskell2010
