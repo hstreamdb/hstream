@@ -10,6 +10,7 @@ module HStream.Client.Execute
   , executeWithAddr
   , executeWithAddr_
   , executeWithLookupResource_
+  , executeWithLookupResource
   , updateClusterInfo
   , lookupWithAddr
   , simpleExecuteWithAddr
@@ -59,11 +60,15 @@ execute_ ctx@HStreamCliContext{..} action = do
 
 executeWithLookupResource_ :: Format a => HStreamCliContext
   -> Resource -> (HStreamClientApi -> IO a)  -> IO ()
-executeWithLookupResource_ ctx@HStreamCliContext{..} rtype action = do
+executeWithLookupResource_ ctx@HStreamCliContext{..} rtype action =
+  executeWithLookupResource ctx rtype action >>= printResult
+
+executeWithLookupResource :: Format a => HStreamCliContext
+  -> Resource -> (HStreamClientApi -> IO a)  -> IO a
+executeWithLookupResource ctx@HStreamCliContext{..} rtype action = do
   addr <- readMVar currentServer
   lookupWithAddr ctx addr rtype
   >>= \sn -> simpleExecuteWithAddr (serverNodeToSocketAddr sn) sslConfig action
-  >>= printResult
 
 execute :: HStreamCliContext -> Action a -> IO (Maybe a)
 execute ctx@HStreamCliContext{..} action = do
