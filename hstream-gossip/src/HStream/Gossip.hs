@@ -19,6 +19,7 @@ module HStream.Gossip
   , getSeenEvents
   , getMemberList
   , getMemberListSTM
+  , getMemberListWithEpochSTM
   , getClusterStatus
   , getEpoch
   , getEpochSTM
@@ -35,4 +36,5 @@ import           HStream.Gossip.Utils (broadcastEvent, createEventHandlers,
                                        getClusterStatus, getEpoch, getEpochSTM,
                                        getFailedNodes, getFailedNodesSTM,
                                        getMemberList, getMemberListSTM,
-                                       getSeenEvents, initCluster)
+                                       getMemberListWithEpochSTM, getSeenEvents,
+                                       initCluster)

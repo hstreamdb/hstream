@@ -27,7 +27,7 @@ import qualified Proto3.Suite                     as PB
 import qualified HStream.Admin.Store.API          as AA
 #endif
 import           HStream.Common.ConsistentHashing (HashRing)
-import           HStream.Gossip.Types             (GossipContext)
+import           HStream.Gossip.Types             (Epoch, GossipContext)
 import qualified HStream.IO.Types                 as IO
 import           HStream.MetaStore.Types          (MetaHandle)
 import           HStream.Server.Config
@@ -71,7 +71,7 @@ data ServerContext = ServerContext
   , headerConfig             :: AA.HeaderConfig AA.AdminAPI
 #endif
   , scStatsHolder            :: Stats.StatsHolder
-  , loadBalanceHashRing      :: TVar HashRing
+  , loadBalanceHashRing      :: TVar (Epoch, HashRing)
   , scServerState            :: MVar ServerState
   , scIOWorker               :: IO.Worker
   , gossipContext            :: GossipContext

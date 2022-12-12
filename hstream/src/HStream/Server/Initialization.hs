@@ -10,12 +10,14 @@ module HStream.Server.Initialization
   ) where
 
 import           Control.Concurrent               (MVar, newMVar)
-import           Control.Concurrent.STM           (TVar, newTVarIO, readTVarIO)
+import           Control.Concurrent.STM           (TVar, atomically, newTVar,
+                                                   newTVarIO, readTVarIO)
 import           Control.Exception                (catch)
 import           Control.Monad                    (void)
 import qualified Data.ByteString                  as BS
 import qualified Data.HashMap.Strict              as HM
 import           Data.List                        (find, sort)
+import           Data.Word                        (Word32)
 import qualified HsGrpc.Server.Types              as G
 import           Network.GRPC.HighLevel           (AuthProcessorResult (..),
                                                    AuthProperty (..),
@@ -32,7 +34,8 @@ import qualified HStream.Admin.Store.API          as AA
 #endif
 import           HStream.Common.ConsistentHashing (HashRing, constructServerMap,
                                                    getAllocatedNodeId)
-import           HStream.Gossip                   (GossipContext, getMemberList)
+import           HStream.Gossip                   (GossipContext,
+                                                   getMemberListWithEpochSTM)
 import qualified HStream.IO.Types                 as IO
 import qualified HStream.IO.Worker                as IO
 import qualified HStream.Logger                   as Log
@@ -64,7 +67,7 @@ initializeServer opts@ServerOpts{..} gossipContext hh serverState = do
   runningQs <- newMVar HM.empty
   subCtxs <- newTVarIO HM.empty
 
-  hashRing <- initializeHashRing gossipContext
+  epochHashRing <- initializeHashRing gossipContext
 
   ioWorker <-
     IO.newWorker
@@ -72,7 +75,7 @@ initializeServer opts@ServerOpts{..} gossipContext hh serverState = do
       (IO.HStreamConfig (cBytesToText (CB.pack _serverAddress <> ":" <> CB.pack (show _serverPort))))
       _ioOptions
       (\k -> do
-        hr <- readTVarIO hashRing
+        (_e, hr) <- readTVarIO epochHashRing
         return $ getAllocatedNodeId hr k == _serverID
        )
 
@@ -95,7 +98,7 @@ initializeServer opts@ServerOpts{..} gossipContext hh serverState = do
       , headerConfig             = headerConfig
 #endif
       , scStatsHolder            = statsHolder
-      , loadBalanceHashRing      = hashRing
+      , loadBalanceHashRing      = epochHashRing
       , scServerState            = serverState
       , scIOWorker               = ioWorker
       , gossipContext            = gossipContext
@@ -107,10 +110,10 @@ initializeServer opts@ServerOpts{..} gossipContext hh serverState = do
 
 --------------------------------------------------------------------------------
 
-initializeHashRing :: GossipContext -> IO (TVar HashRing)
-initializeHashRing gc = do
-  serverNodes <- getMemberList gc
-  newTVarIO . constructServerMap . sort $ serverNodes
+initializeHashRing :: GossipContext -> IO (TVar (Word32, HashRing))
+initializeHashRing gc = atomically $ do
+  (epoch, serverNodes) <- getMemberListWithEpochSTM gc
+  newTVar (epoch, constructServerMap . sort $ serverNodes)
 
 initializeTlsConfig :: TlsConfig -> ServerSSLConfig
 initializeTlsConfig TlsConfig {..} = ServerSSLConfig caPath keyPath certPath authType authHandler

@@ -72,7 +72,7 @@ lookupResource sc LookupResourceRequest{..} = do
 lookupShard :: ServerContext -> LookupShardRequest -> IO LookupShardResponse
 lookupShard ServerContext{..} req@LookupShardRequest {
   lookupShardRequestShardId = shardId} = do
-  hashRing <- readTVarIO loadBalanceHashRing
+  (_, hashRing) <- readTVarIO loadBalanceHashRing
   theNode <- getResNode hashRing (T.pack $ show shardId) scAdvertisedListenersKey
   Log.info $ "receive lookupShard request: " <> Log.buildString' req <> ", should send to " <> Log.buildString' (show theNode)
   return $ LookupShardResponse

@@ -40,10 +40,10 @@ import           HStream.Common.ConsistentHashing (HashRing, constructServerMap)
 import           HStream.Exception
 import           HStream.Gossip                   (GossipContext (..),
                                                    defaultGossipOpts,
-                                                   getMemberListSTM,
                                                    initGossipContext,
                                                    startGossip, waitGossipBoot)
-import           HStream.Gossip.Types             (InitType (Gossip))
+import           HStream.Gossip.Types             (Epoch, InitType (Gossip))
+import           HStream.Gossip.Utils             (getMemberListWithEpochSTM)
 import qualified HStream.Logger                   as Log
 import           HStream.MetaStore.Types          (MetaHandle (..),
                                                    MetaStore (..), RHandle (..))
@@ -228,13 +228,13 @@ globalWatcherFn _ _ event stateZ _ = Log.debug $ "Event " <> Log.buildString' ev
 
 -- However, reconstruct hashRing every time can be expensive
 -- when we have a large number of nodes in the cluster.
-updateHashRing :: GossipContext -> TVar HashRing -> IO ()
+updateHashRing :: GossipContext -> TVar (Epoch, HashRing) -> IO ()
 updateHashRing gc hashRing = loop []
   where
     loop list =
       loop =<< atomically
-        ( do list' <- getMemberListSTM gc
+        ( do (epoch, list') <- getMemberListWithEpochSTM gc
              when (list == list') retry
-             writeTVar hashRing $ constructServerMap list'
+             writeTVar hashRing (epoch, constructServerMap list')
              return list'
         )

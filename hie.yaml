@@ -252,14 +252,14 @@ cradle:
     - path: "hstream/test"
       component: "hstream:test:hstream-test"
 
-    - path: "hstream-admin/."
-      component: "lib:hstream-admin"
-
-    - path: "hstream-admin/gen-hs2"
-      component: "lib:hstream-admin"
-
     - path: "hstream-admin/app/admin.hs"
       component: "hstream-admin:exe:hadmin"
+
+    - path: "hstream-admin/server"
+      component: "lib:hstream-admin-server"
+
+    - path: "hstream-admin/store"
+      component: "lib:hstream-admin-store"
 
     - path: "hstream-io/./"
       component: "lib:hstream-io"
