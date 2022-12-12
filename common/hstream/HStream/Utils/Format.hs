@@ -20,8 +20,6 @@ import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
 import           Data.Time.Clock                  (NominalDiffTime)
 import qualified Data.Vector                      as V
-import qualified Google.Protobuf.Empty            as Protobuf
-import qualified Google.Protobuf.Struct           as P
 import           Network.GRPC.HighLevel.Generated
 import qualified Proto3.Suite                     as PB
 import qualified Text.Layout.Table                as Table
@@ -31,7 +29,9 @@ import           Z.IO.Time                        (SystemTime (MkSystemTime),
                                                    iso8061DateFormat)
 
 import           Data.Maybe                       (maybeToList)
+
 import qualified HStream.Server.HStreamApi        as API
+import qualified HStream.ThirdParty.Protobuf      as PB
 import qualified HStream.Utils.Aeson              as A
 import           HStream.Utils.Converter          (structToJsonObject,
                                                    valueToJsonValue)
@@ -42,7 +42,7 @@ import           HStream.Utils.RPC                (showNodeStatus)
 class Format a where
   formatResult ::a -> String
 
-instance Format Protobuf.Empty where
+instance Format PB.Empty where
   formatResult = const "Done.\n"
 
 instance Format () where
@@ -112,8 +112,8 @@ instance Format API.AppendResponse where
 instance Format API.TerminateQueriesResponse where
   formatResult = const "Done.\n"
 
-instance Format P.Struct where
-  formatResult s@(P.Struct kv) =
+instance Format PB.Struct where
+  formatResult s@(PB.Struct kv) =
     case M.toList kv of
       [("SELECT",      Just x)] -> (<> "\n") . TL.unpack . A.encodeToLazyText . valueToJsonValue $ x
       [("SELECTVIEW",  Just x)] -> (<> "\n") . TL.unpack . A.encodeToLazyText . valueToJsonValue $ x

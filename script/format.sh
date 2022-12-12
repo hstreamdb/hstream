@@ -26,3 +26,13 @@ elif [ "$1" == "processing" ]; then
         | grep "\.l\?hs$" | xargs $FORMATER_BIN -c ./hstream-processing/.stylish-haskell.yaml -i
     cabal-fmt --inplace ./hstream-processing/hstream-processing.cabal
 fi
+
+# Optional
+CABAL_FORMATER_BIN="cabal-fmt"
+
+command -v $CABAL_FORMATER_BIN > /dev/null && \
+    find -type f -name "*.cabal" \
+        -not -path "*/external/*" \
+        -not -path "*/local*/*" \
+        | xargs $CABAL_FORMATER_BIN -i \
+    || true

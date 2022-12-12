@@ -9,9 +9,9 @@ packages:
   external/gRPC-haskell/core/grpc-haskell-core.cabal
 
   -- * HStream common
-  common/hstream-common.cabal
+  common/api/hstream-common-api.cabal
+  common/hstream/hstream-common.cabal
   common/stats/hstream-common-stats.cabal
-  common/api/hstream-api-protolens.cabal
 
   -- * HStream
   hstream-store

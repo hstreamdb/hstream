@@ -9,8 +9,7 @@ import           Data.Maybe                       (fromMaybe)
 import qualified Data.Text                        as T
 import           Network.HTTP.Client              (defaultManagerSettings,
                                                    newManager)
-import           System.Directory                 (createDirectoryIfMissing,
-                                                   getTemporaryDirectory,
+import           System.Directory                 (getTemporaryDirectory,
                                                    removeFile)
 import           System.Environment               (lookupEnv)
 import           System.IO                        (hClose, openTempFile)

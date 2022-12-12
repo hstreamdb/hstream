@@ -6,29 +6,29 @@
 
 module HStream.Utils.BuildRecord where
 
-import           Control.Exception         (displayException, throw)
-import qualified Data.ByteString           as BS
-import qualified Data.ByteString.Lazy      as BSL
-import           Data.Int                  (Int64)
-import           Data.Map.Strict           (Map)
-import           Data.Maybe                (fromJust, fromMaybe)
-import           Data.Text                 (Text)
-import qualified Data.Vector               as V
-import qualified Proto3.Suite              as PT
-import           Z.Data.CBytes             (CBytes)
-import           Z.Data.Vector             (Bytes)
-import           Z.Foreign                 (fromByteString, toByteString)
+import           Control.Exception           (displayException, throw)
+import qualified Data.ByteString             as BS
+import qualified Data.ByteString.Lazy        as BSL
+import           Data.Int                    (Int64)
+import           Data.Map.Strict             (Map)
+import           Data.Maybe                  (fromJust, fromMaybe)
+import           Data.Text                   (Text)
+import qualified Data.Vector                 as V
+import qualified Proto3.Suite                as PT
+import           Z.Data.CBytes               (CBytes)
+import           Z.Data.Vector               (Bytes)
+import           Z.Foreign                   (fromByteString, toByteString)
 
-import           Data.Word                 (Word32)
-import           Google.Protobuf.Timestamp
+import           Data.Word                   (Word32)
 
 import           HStream.Exception
 import           HStream.Server.HStreamApi
-import           HStream.Utils.Codec       (Encoder, EncoderType (..),
-                                            deserializeHStreamRecords,
-                                            serializeHStreamRecords)
-import           HStream.Utils.Compression (compress, decompress)
-import           HStream.Utils.Converter   (textToCBytes)
+import           HStream.ThirdParty.Protobuf (Timestamp (..))
+import           HStream.Utils.Codec         (Encoder, EncoderType (..),
+                                              deserializeHStreamRecords,
+                                              serializeHStreamRecords)
+import           HStream.Utils.Compression   (compress, decompress)
+import           HStream.Utils.Converter     (textToCBytes)
 
 ------------------------------------------------------------------------------------------------
 -- HStreamRecord

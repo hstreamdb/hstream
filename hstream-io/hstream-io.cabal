@@ -57,6 +57,7 @@ library
     , grpc-haskell
     , grpc-haskell-core
     , hstream-common
+    , hstream-common-api
     , hstream-sql
     , scientific
     , stm
