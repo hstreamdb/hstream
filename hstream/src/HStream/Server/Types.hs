@@ -130,12 +130,13 @@ data CheckedRecordIdsKey = CheckedRecordIdsKey {
 } deriving (Eq, Ord)
 
 data ConsumerContext = ConsumerContext
-  { ccConsumerName :: ConsumerName,
-    ccConsumerUri  :: Maybe Text,
-    ccIsValid      :: TVar Bool,
+  { ccConsumerName  :: ConsumerName,
+    ccConsumerUri   :: Maybe Text,
+    ccConsumerAgent :: Maybe Text,
+    ccIsValid       :: TVar Bool,
     -- use MVar for streamSend because only on thread can use streamSend at the
     -- same time
-    ccStreamSend   :: MVar (StreamSend StreamingFetchResponse)
+    ccStreamSend    :: MVar (StreamSend StreamingFetchResponse)
   }
 
 data SubscribeShardContext = SubscribeShardContext
