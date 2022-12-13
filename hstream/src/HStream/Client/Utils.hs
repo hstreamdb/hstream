@@ -67,7 +67,7 @@ subscriptionWithDefaultSetting :: T.Text -> T.Text -> API.Subscription
 subscriptionWithDefaultSetting subscriptionSubscriptionId subscriptionStreamName =
   API.Subscription { subscriptionAckTimeoutSeconds = subAckTimeout
                    , subscriptionMaxUnackedRecords = subMaxUnack
-                   , subscriptionOffset = Enumerated (Right API.SpecialOffsetLATEST)
+                   , subscriptionOffset = Enumerated (Right API.SpecialOffsetEARLIEST)
                    , subscriptionCreationTime = Nothing
                    , ..}
 
