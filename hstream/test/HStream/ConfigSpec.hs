@@ -4,12 +4,9 @@
 module HStream.ConfigSpec where
 
 import           Control.Applicative            ((<|>))
-import           Control.Exception              (SomeException (SomeException),
-                                                 evaluate, try)
-import           Data.Aeson.Encode.Pretty       (encodePretty)
+import           Control.Exception              (SomeException, evaluate, try)
 import           Data.Bifunctor                 (second)
 import           Data.ByteString                (ByteString)
-import qualified Data.ByteString.Lazy           as BSL
 import qualified Data.HashMap.Strict            as HM
 import qualified Data.Map.Strict                as M
 import qualified Data.Map.Strict                as Map
@@ -218,6 +215,7 @@ emptyCliOptions = CliOptions {
   , _ldAdminPort_        = Nothing
   , _ldLogLevel_         = Nothing
   , _storeConfigPath     = "/data/store/logdevice.conf"
+  , _ckpRepFactor_       = Nothing
 
   , _ioTasksPath_        = Nothing
   , _ioTasksNetwork_     = Nothing
@@ -236,7 +234,7 @@ instance Arbitrary ServerOpts where
     _serverAddress             <- addressGen
     _serverGossipAddress       <- addressGen
     _serverInternalPort        <- fromIntegral <$> portGen
-    listenersKeys <- listOf5' (T.pack <$> nameGen)
+    listenersKeys              <- listOf5' (T.pack <$> nameGen)
     _serverAdvertisedListeners <- M.fromList . zip listenersKeys <$> arbitrary
     _metaStore                 <- arbitrary
     let _ldConfigPath   = "/data/store/logdevice.conf"
@@ -266,6 +264,7 @@ instance Arbitrary ServerOpts where
 instance Arbitrary CliOptions where
   arbitrary = do
     let _configPath = ""
+    let _ckpRepFactor_ = Nothing
     _serverPort_         <- genMaybe $ fromIntegral <$> portGen
     _serverBindAddress_  <- genMaybe $ encodeUtf8 . T.pack <$> addressGen
     _serverGossipAddress_     <- genMaybe addressGen
@@ -421,6 +420,7 @@ updateServerOptsWithCliOpts CliOptions {..} x@ServerOpts{..} = x {
   , _ldAdminHost = fromMaybe _ldAdminHost _ldAdminHost_
   , _ldAdminPort = fromMaybe _ldAdminPort _ldAdminPort_
   , _ldLogLevel = fromMaybe _ldLogLevel _ldLogLevel_
+  , _ckpRepFactor = fromMaybe _ckpRepFactor _ckpRepFactor_
   , _ioOptions = _ioOptions_
   , _securityProtocolMap = Map.insert "tls" _tlsConfig_ _securityProtocolMap}
   where
