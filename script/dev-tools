@@ -293,7 +293,7 @@ def _service_store_(
     if is_service_started(container_bin, "store"):
         return logerr("Already started!")
 
-    extra_store_args = kw.get("extra_store_args", "")
+    extra_store_args = kw.get("extra_store_args") or ""
     container_name = SERVICES["store"]
     cmd = " ".join(
         [
