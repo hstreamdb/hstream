@@ -21,7 +21,7 @@ import qualified Data.HashMap.Strict              as HM
 import           Data.Int                         (Int32, Int64)
 import qualified Data.Map.Strict                  as M
 import qualified Data.Map.Strict                  as Map
-import           Data.Maybe                       (fromJust)
+import           Data.Maybe                       (catMaybes, fromJust)
 import           Data.Text                        (Text)
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
@@ -135,16 +135,38 @@ receivedRecordToSourceRecord streamName = maybe [] convert
       Just batchRecord ->
         let hRecords = decompressBatchedRecord batchRecord
             timestamp = getTimeStamp batchRecord
-         in V.toList $ V.zipWith (mkSourceRecord timestamp) receivedRecordRecordIds hRecords
+            -- Note: this contains two types of messages:
+            -- I. the flag of the HStreamRecord is JSON, then decode the payload (as Struct) and convert it to SourceRecord
+            -- II. the flag of the HStreamRecord is RAW, then try decoding the payload (as Aeson) first and convert it to
+            --     SourceRecord if succeeded. Otherwise omit the message.
+            -- Warning: ByteStrings start with character 'p' and 'x' will be successfully parsed to an empty Struct!
+         in catMaybes . V.toList $ V.zipWith (mkSourceRecord timestamp) receivedRecordRecordIds hRecords
 
-   mkSourceRecord timestamp API.RecordId{..} API.HStreamRecord{..} = SourceRecord
-     { srcStream = streamName
-     , srcOffset = recordIdBatchId
-     , srcTimestamp = timestamp
-     , srcKey = Just "{}"
-     , srcValue = let Right struct = PB.fromByteString hstreamRecordPayload
-                   in Aeson.encode . structToJsonObject $ struct
-     }
+   mkSourceRecord :: Int64 -> API.RecordId -> API.HStreamRecord -> Maybe SourceRecord
+   mkSourceRecord timestamp API.RecordId{..} hsr@API.HStreamRecord{..} =
+     if getPayloadFlag hsr == Enumerated (Right API.HStreamRecordHeader_FlagJSON) then
+       case PB.fromByteString hstreamRecordPayload of
+         Left _       -> Nothing
+         Right struct ->
+           Just $ SourceRecord
+           { srcStream = streamName
+           , srcOffset = recordIdBatchId
+           , srcTimestamp = timestamp
+           , srcKey = Just "{}"
+           , srcValue = Aeson.encode . structToJsonObject $ struct
+           }
+     else
+       let lazyPayload = BL.fromStrict hstreamRecordPayload
+        in case Aeson.decode lazyPayload of
+             Nothing                  -> Nothing
+             Just (_ :: Aeson.Object) ->
+               Just $ SourceRecord
+               { srcStream = streamName
+               , srcOffset = recordIdBatchId
+               , srcTimestamp = timestamp
+               , srcKey = Just "{}"
+               , srcValue = lazyPayload
+               }
 
 readRecordsFromHStore :: S.LDClient -> S.LDSyncCkpReader -> Int -> IO [SourceRecord]
 readRecordsFromHStore ldclient reader maxlen = do
