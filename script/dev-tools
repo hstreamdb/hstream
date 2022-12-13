@@ -293,6 +293,7 @@ def _service_store_(
     if is_service_started(container_bin, "store"):
         return logerr("Already started!")
 
+    extra_store_args = kw.get("extra_store_args", "")
     container_name = SERVICES["store"]
     cmd = " ".join(
         [
@@ -301,6 +302,7 @@ def _service_store_(
             docker_passuser(container_bin),
             f"-v {data_dir}:/data/store {image}",
             "/usr/local/bin/ld-dev-cluster --root /data/store --use-tcp",
+            extra_store_args,
         ]
     )
     run_sh(cmd)
@@ -600,6 +602,15 @@ class StartServicesCommand:
             choices=SERVICES.keys(),
             nargs="*",
             help="Start services, none means all valid services",
+        )
+        p.add_argument(
+            "--extra-store-args",
+            default=None,
+            help=(
+                "Extra args passed to ld-dev-cluster, only meaningful for store "
+                "service. Note: you can not set '--root' and '--use-tcp' by "
+                "this option."
+            ),
         )
 
     def run(self, **args):
