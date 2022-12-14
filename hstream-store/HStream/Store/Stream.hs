@@ -32,6 +32,7 @@ module HStream.Store.Stream
   , doesStreamPartitionExist
   , getStreamExtraAttrs
   , updateStreamExtraAttrs
+  , updateStreamPartitionExtraAttrs
     -- ** helpers
   , getUnderlyingLogId
   , getStreamIdFromLogId
@@ -512,6 +513,23 @@ updateStreamExtraAttrs client streamid new_attrs = do
   attrs' <- LD.updateLogAttrsExtrasPtr attrs new_attrs
   withForeignPtr attrs' $
     LD.syncLogsConfigVersion client <=< LD.ldWriteAttributes client dir_path
+  LD.getAttrsExtrasFromPtr attrs
+
+-- | Update a bunch of extra attrs in the stream partition, return the old attrs.
+--
+-- If the key does exist, the function will insert the new one.
+updateStreamPartitionExtraAttrs
+  :: FFI.LDClient
+  -> FFI.C_LogID
+  -> Map CBytes CBytes
+  -> IO (Map CBytes CBytes)
+updateStreamPartitionExtraAttrs client log_id new_attrs = do
+  log_grp <- LD.getLogGroupByID client log_id
+  log_path <- LD.logGroupGetFullName log_grp
+  attrs <- LD.logGroupGetAttrsPtr log_grp
+  attrs' <- LD.updateLogAttrsExtrasPtr attrs new_attrs
+  withForeignPtr attrs' $
+    LD.syncLogsConfigVersion client <=< LD.ldWriteAttributes client log_path
   LD.getAttrsExtrasFromPtr attrs
 
 -- | Approximate milliseconds timestamp of the next record after trim point.

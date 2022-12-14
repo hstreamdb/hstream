@@ -36,7 +36,10 @@ module HStream.Server.Shard(
   cBytesToKey,
   shardStartKey,
   shardEndKey,
-  shardEpoch
+  shardEpoch,
+  shardStartLSN,
+  createShardWithStartPoint
+
 ) where
 
 import           Control.Concurrent.STM (STM, TMVar, atomically, newTMVarIO,
@@ -104,7 +107,7 @@ data Shard = Shard
   } deriving(Show)
 
 mkShard :: S.C_LogID -> S.StreamId -> ShardKey -> ShardKey -> Word64 -> Shard
-mkShard shardId streamId startKey endKey epoch = Shard {shardId, streamId, startKey, endKey, epoch}
+mkShard shardId streamId startKey endKey epoch = Shard {..}
 
 mkShardWithDefaultId :: S.StreamId -> ShardKey -> ShardKey -> Word64 -> Shard
 mkShardWithDefaultId = mkShard defaultShardId
@@ -340,11 +343,22 @@ shardEndKey = "endKey"
 shardEpoch :: CB.CBytes
 shardEpoch = "epoch"
 
+shardStartLSN :: CB.CBytes
+shardStartLSN = "start_lsn"
+
 createShard :: S.LDClient -> Shard -> IO Shard
 createShard client shard@Shard{..} = do
   let attr = M.fromList [(shardStartKey, keyToCBytes startKey), (shardEndKey, keyToCBytes endKey), (shardEpoch, CB.pack . show $ epoch)]
   newShardId <- S.createStreamPartition client streamId (Just $ getShardName startKey endKey) attr
-  return $ shard {shardId = newShardId}
+  return shard {shardId = newShardId}
+
+createShardWithStartPoint :: S.LDClient -> Shard -> IO (Shard, S.LSN)
+createShardWithStartPoint client shard@Shard{..} = do
+  let attr = M.fromList [(shardStartKey, keyToCBytes startKey), (shardEndKey, keyToCBytes endKey), (shardEpoch, CB.pack . show $ epoch)]
+  newShardId <- S.createStreamPartition client streamId (Just $ getShardName startKey endKey) attr
+  lsn <- (+1) <$> S.getTailLSN client newShardId
+  S.updateStreamPartitionExtraAttrs client newShardId $ M.fromList [(shardStartLSN,  CB.pack . show $ lsn)]
+  return (shard {shardId = newShardId}, lsn)
 
 getShardName :: ShardKey -> ShardKey -> CB.CBytes
 getShardName startKey endKey = "shard-" <> keyToCBytes startKey <> "-" <> keyToCBytes endKey

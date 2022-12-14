@@ -14,6 +14,7 @@ import           Data.Text                        (Text)
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import           Data.Word                        (Word32, Word64)
+import           Z.Data.CBytes                    as CB
 
 import           HStream.Common.ConsistentHashing
 import           HStream.Common.Types             (fromInternalServerNodeWithKey)
@@ -23,10 +24,13 @@ import qualified HStream.Logger                   as Log
 import qualified HStream.MetaStore.Types          as M
 import           HStream.Server.HStreamApi
 import qualified HStream.Server.MetaData          as P
+import           HStream.Server.Shard             (shardEndKey, shardEpoch,
+                                                   shardStartKey, shardStartLSN)
 import           HStream.Server.Types
 import           HStream.SQL.Codegen
 import qualified HStream.Store                    as HS
-import           HStream.Utils                    (decodeByteStringBatch,
+import           HStream.Utils                    (cBytesToText,
+                                                   decodeByteStringBatch,
                                                    textToCBytes)
 
 insertAckedRecordId

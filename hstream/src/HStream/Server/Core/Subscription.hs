@@ -28,6 +28,7 @@ import           Data.Word                  (Word32, Word64)
 import           GHC.Stack                  (HasCallStack)
 import           Network.GRPC.HighLevel     (StreamRecv, StreamSend)
 import           Proto3.Suite               (Enumerated (Enumerated), def)
+import qualified Z.Data.CBytes              as CB
 
 import qualified HStream.Exception          as HE
 import qualified HStream.Logger             as Log
@@ -38,6 +39,7 @@ import           HStream.Server.Core.Common as CC (decodeRecordBatch,
                                                    insertAckedRecordId,
                                                    listSubscriptions)
 import           HStream.Server.HStreamApi
+import qualified HStream.Server.Shard       as Shard
 import           HStream.Server.Types
 import qualified HStream.Stats              as Stats
 import qualified HStream.Store              as S
@@ -78,7 +80,7 @@ createSubscription ServerContext {..} sub@Subscription{..} = do
     Log.debug $ "Try to create a subscription to a nonexistent stream. Stream Name: "
               <> Log.buildString' streamName
     throwIO $ HE.EmptyStream $ "Stream " <> T.unpack subscriptionStreamName <> " not found."
-  shards <- getShards scLDClient subscriptionStreamName
+  shards <- map fst <$> getShards scLDClient subscriptionStreamName
   startOffsets <- case subscriptionOffset of
     (Enumerated (Right SpecialOffsetEARLIEST)) -> return $ foldl' (\acc logId -> HM.insert logId S.LSN_MIN acc) HM.empty shards
     (Enumerated (Right SpecialOffsetLATEST))   -> foldM gatherTailLSN HM.empty shards
@@ -350,27 +352,31 @@ doSubInit ServerContext{..} subId = do
             consumerWorkloads = cws
           }
 
-
 -- get all partitions of the specified stream
-getShards :: S.LDClient -> T.Text -> IO [S.C_LogID]
+getShards :: S.LDClient -> T.Text -> IO [(S.C_LogID, S.LSN)]
 getShards client streamName = do
-  Map.elems <$> S.listStreamPartitions client (transToStreamName streamName)
+  log_ids <- Map.elems <$> S.listStreamPartitions client (transToStreamName streamName)
+  forM log_ids $ \x -> do
+    attr <- S.getStreamPartitionExtraAttrs client x
+    let startLSN = maybe S.LSN_MIN (read . CB.unpack) $ Map.lookup Shard.shardStartLSN attr
+    return (x, startLSN)
 
-addNewShardsToSubCtx :: SubscribeContext -> [S.C_LogID] -> IO ()
-addNewShardsToSubCtx SubscribeContext {subAssignment = Assignment{..}, ..} shards = atomically $ do
-  oldTotal <- readTVar totalShards
-  oldUnassign <- readTVar unassignedShards
-  oldShardCtxs <- readTVar subShardContexts
-  (newTotal, newUnassign, newShardCtxs)
-    <- foldM addShards (oldTotal, oldUnassign, oldShardCtxs) shards
-  writeTVar totalShards newTotal
-  writeTVar unassignedShards newUnassign
-  writeTVar subShardContexts newShardCtxs
+addNewShardsToSubCtx :: SubscribeContext -> [(S.C_LogID, S.LSN)] -> IO ()
+addNewShardsToSubCtx SubscribeContext {subAssignment = Assignment{..}, ..} shards = do
+  atomically $ do
+    oldTotal <- readTVar totalShards
+    oldUnassign <- readTVar unassignedShards
+    oldShardCtxs <- readTVar subShardContexts
+    (newTotal, newUnassign, newShardCtxs)
+      <- foldM addShards (oldTotal, oldUnassign, oldShardCtxs) shards
+    writeTVar totalShards newTotal
+    writeTVar unassignedShards newUnassign
+    writeTVar subShardContexts newShardCtxs
   where
-    addShards old@(total, unassign, ctx) logId
+    addShards old@(total, unassign, ctx) (logId, startLSN)
       | Set.member logId total = return old
       | otherwise = do
-          lowerBound <- newTVar $ ShardRecordId S.LSN_MIN 0
+          lowerBound <- newTVar $ ShardRecordId startLSN 0
           upperBound <- newTVar maxBound
           range <- newTVar Map.empty
           batchMp <- newTVar Map.empty
@@ -488,7 +494,7 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
         retry
       else pure ()
 
-    getNewShards :: IO [S.C_LogID]
+    getNewShards :: IO [(S.C_LogID, S.LSN)]
     getNewShards = do
       shards <- catch (getShards scLDClient subStreamName) (\(_::S.NOTFOUND)-> pure mempty)
       if L.null shards
@@ -499,7 +505,7 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
             shardSet <- readTVar totalShards
             foldM
               (\a b ->
-                if Set.member b shardSet
+                if Set.member (fst b) shardSet
                 then return a
                 else return $ a ++ [b]
               )
@@ -935,6 +941,8 @@ doAck ldclient subCtx@SubscribeContext {..} logId recordIds= do
     let (newAckedRanges, updated :: Word32) = V.foldl' (\(a, n) b -> maybe (a, n) (, n + 1) $ insertAckedRecordId b lb a bnm) (ars, 0) shardRecordIds
     when (updated > 0) $ modifyTVar subUnackedRecords (subtract updated)
     let commitShardRecordId = getCommitRecordId newAckedRanges bnm
+
+
     case tryUpdateWindowLowerBound newAckedRanges lb bnm commitShardRecordId of
       Just (ranges, newLowerBound) -> do
         -- traceM $ "[stream " <> show logId <> "] update window lower bound, from {"

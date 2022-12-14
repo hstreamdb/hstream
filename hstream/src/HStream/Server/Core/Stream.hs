@@ -16,45 +16,44 @@ module HStream.Server.Core.Stream
   , readShard
   ) where
 
-import           Control.Concurrent               (modifyMVar_, newEmptyMVar,
-                                                   putMVar, readMVar, takeMVar,
-                                                   withMVar)
-import           Control.Exception                (bracket, catch, throw,
-                                                   throwIO)
-import           Control.Monad                    (forM, unless, when)
-import qualified Data.ByteString                  as BS
-import qualified Data.ByteString.Lazy             as BSL
-import           Data.Foldable                    (foldl')
-import qualified Data.HashMap.Strict              as HM
-import qualified Data.Map.Strict                  as M
-import           Data.Maybe                       (fromJust, fromMaybe)
-import qualified Data.Text                        as T
-import qualified Data.Vector                      as V
-import           GHC.Stack                        (HasCallStack)
-import           Google.Protobuf.Timestamp        (Timestamp)
-import           Proto3.Suite                     (Enumerated (Enumerated))
-import qualified Proto3.Suite                     as PT
-import qualified Z.Data.CBytes                    as CB
-import           ZooKeeper.Exception              (ZNONODE (..))
+import           Control.Concurrent         (modifyMVar_, newEmptyMVar, putMVar,
+                                             readMVar, takeMVar, withMVar)
+import           Control.Concurrent.Async   (forConcurrently)
+import           Control.Exception          (bracket, catch, throw, throwIO)
+import           Control.Monad              (forM, unless, when)
+import qualified Data.ByteString            as BS
+import qualified Data.ByteString.Lazy       as BSL
+import           Data.Foldable              (foldl')
+import qualified Data.HashMap.Strict        as HM
+import qualified Data.Map.Strict            as M
+import           Data.Maybe                 (fromJust, fromMaybe)
+import qualified Data.Text                  as T
+import qualified Data.Vector                as V
+import           GHC.Stack                  (HasCallStack)
+import           Google.Protobuf.Timestamp  (Timestamp)
+import           Proto3.Suite               (Enumerated (Enumerated))
+import qualified Proto3.Suite               as PT
+import qualified Z.Data.CBytes              as CB
+import           ZooKeeper.Exception        (ZNONODE (..))
 
-import           HStream.Common.ConsistentHashing (getAllocatedNodeId)
-import qualified HStream.Exception                as HE
-import qualified HStream.Logger                   as Log
-import qualified HStream.MetaStore.Types          as M
-import           HStream.Server.Core.Common       (decodeRecordBatch,
-                                                   listSubscriptions)
-import           HStream.Server.HStreamApi        (CreateShardReaderRequest (..))
-import qualified HStream.Server.HStreamApi        as API
-import qualified HStream.Server.MetaData          as P
-import           HStream.Server.Shard             (Shard (..), createShard,
-                                                   devideKeySpace,
-                                                   mkShardWithDefaultId,
-                                                   mkSharedShardMapWithShards)
-import           HStream.Server.Types             (ServerContext (..),
-                                                   transToStreamName)
-import qualified HStream.Stats                    as Stats
-import qualified HStream.Store                    as S
+import qualified HStream.Exception          as HE
+import qualified HStream.Logger             as Log
+import qualified HStream.MetaStore.Types    as M
+import           HStream.Server.Core.Common (decodeRecordBatch)
+import           HStream.Server.HStreamApi  (CreateShardReaderRequest (..))
+import qualified HStream.Server.HStreamApi  as API
+import qualified HStream.Server.MetaData    as P
+import           HStream.Server.Shard       (Shard (..),
+                                             createShardWithStartPoint,
+                                             devideKeySpace,
+                                             mkShardWithDefaultId,
+                                             mkSharedShardMapWithShards)
+import           HStream.Server.Types       (ServerContext (..),
+                                             transToStreamName)
+import qualified HStream.Stats              as Stats
+import qualified HStream.Store              as S
 import           HStream.Utils
+
 
 -------------------------------------------------------------------------------
 
@@ -77,14 +76,14 @@ createStream ServerContext{..} stream@API.Stream{
     throwIO $ HE.StreamExists $ "Stream (" <> show streamId <> ") has been created"
 
   let partitions = devideKeySpace (fromIntegral shardCount)
-  shards <- forM partitions $ \(startKey, endKey) -> do
+  shards <- forConcurrently partitions $ \(startKey, endKey) -> do
     let shard = mkShardWithDefaultId streamId startKey endKey (fromIntegral shardCount)
-    createShard scLDClient shard
+    createShardWithStartPoint scLDClient shard
   Log.debug $ "create shards for stream " <> Log.buildText streamStreamName <> ": " <> Log.buildString' (show shards)
 
-  shardMp <- mkSharedShardMapWithShards shards
+  shardMp <- mkSharedShardMapWithShards (fst <$> shards)
   modifyMVar_ shardInfo $ return . HM.insert streamStreamName shardMp
-  let shardDict = foldl' (\acc Shard{startKey=key, shardId=sId} -> M.insert key sId acc) M.empty shards
+  let shardDict = foldl' (\acc Shard{startKey=key, shardId=sId} -> M.insert key sId acc) M.empty (fst <$> shards)
   modifyMVar_ shardTable $ return . HM.insert streamStreamName shardDict
   return stream{API.streamCreationTime = Just timeStamp}
 
@@ -268,7 +267,6 @@ listShards ServerContext{..} API.ListShardsRequest{..} = do
    startKey = CB.pack "startKey"
    endKey   = CB.pack "endKey"
    epoch    = CB.pack "epoch"
-
    getShardInfo shards logId = do
      attr <- S.getStreamPartitionExtraAttrs scLDClient logId
      case getInfo attr of

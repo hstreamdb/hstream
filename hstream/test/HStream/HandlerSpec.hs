@@ -114,4 +114,4 @@ deleteStreamRequest HStreamApi{..} streamName =
   in getServerResp =<< hstreamApiDeleteStream req
 
 requestTimeout :: Int
-requestTimeout = 10
+requestTimeout = 100
