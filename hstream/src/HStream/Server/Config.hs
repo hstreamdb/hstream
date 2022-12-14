@@ -23,6 +23,12 @@ module HStream.Server.Config
 
 import           Control.Exception              (throwIO)
 import           Control.Monad                  (when)
+import           Data.Aeson                     (Options (..), ToJSON (..),
+                                                 camelTo2, defaultOptions,
+                                                 genericParseJSON,
+                                                 genericToEncoding,
+                                                 genericToJSON)
+import           Data.Aeson.Types               (FromJSON (..))
 import qualified Data.Attoparsec.Text           as AP
 import           Data.Bifunctor                 (second)
 import           Data.ByteString                (ByteString)
@@ -45,6 +51,7 @@ import           Data.Yaml                      as Y (Object,
                                                       Parser, decodeFileThrow,
                                                       parseEither, (.!=), (.:),
                                                       (.:?))
+
 import           Options.Applicative            as O (Alternative (many, (<|>)),
                                                       CompletionResult (execCompletion),
                                                       Parser, ParserResult (..),
@@ -54,8 +61,8 @@ import           Options.Applicative            as O (Alternative (many, (<|>)),
                                                       info, long, maybeReader,
                                                       metavar, option, optional,
                                                       progDesc, renderFailure,
-                                                      short, showDefault,
-                                                      strOption, value, (<**>))
+                                                      short, strOption, value,
+                                                      (<**>))
 import           System.Directory               (makeAbsolute)
 import           System.Environment             (getArgs, getProgName)
 import           System.Exit                    (exitSuccess)
@@ -73,8 +80,10 @@ import qualified HStream.Store.Logger           as Log
 
 -- FIXME: hsthrift only support ghc < 9.x
 #if __GLASGOW_HASKELL__ < 902
+import           GHC.Generics                   (Generic)
 import qualified HStream.Admin.Store.API        as AA
 #endif
+
 
 -------------------------------------------------------------------------------
 
@@ -82,14 +91,17 @@ data TlsConfig = TlsConfig
   { keyPath  :: String
   , certPath :: String
   , caPath   :: Maybe String
-  } deriving (Show, Eq)
+  } deriving (Show, Eq, Generic)
+
+instance ToJSON TlsConfig where
+  toEncoding = genericToEncoding defaultOptions {constructorTagModifier  = camelTo2 '-', fieldLabelModifier = camelTo2 '-'}
+  toJSON = genericToJSON defaultOptions {constructorTagModifier  = camelTo2 '-', fieldLabelModifier = camelTo2 '-'}
+instance FromJSON TlsConfig where
+  parseJSON = genericParseJSON defaultOptions {constructorTagModifier  = camelTo2 '-', fieldLabelModifier = camelTo2 '-'}
 
 type AdvertisedListeners = Map Text (Vector SAI.Listener)
 type ListenersSecurityProtocolMap = Map Text Text
 type SecurityProtocolMap = Map Text (Maybe TlsConfig)
-
-defaultProtocolMap :: Maybe TlsConfig -> SecurityProtocolMap
-defaultProtocolMap tlsConfig = Map.fromList [("plaintext", Nothing), ("tls", tlsConfig)]
 
 advertisedListenersToPB :: AdvertisedListeners -> Map Text (Maybe SAI.ListOfListener)
 advertisedListenersToPB = Map.map $ Just . SAI.ListOfListener
@@ -110,13 +122,13 @@ data ServerOpts = ServerOpts
   , _serverID                     :: !Word32
   , _listenersSecurityProtocolMap :: !ListenersSecurityProtocolMap
   , _securityProtocolMap          :: !SecurityProtocolMap
+  , _serverSecurityProtocol       :: !Text
   , _metaStore                    :: !MetaStoreAddr
   , _ldConfigPath                 :: !CBytes
   , _topicRepFactor               :: !Int
   , _ckpRepFactor                 :: !Int
   , _compression                  :: !Compression
   , _maxRecordSize                :: !Int
-  , _tlsConfig                    :: !(Maybe TlsConfig)
   , _serverLogLevel               :: !Log.Level
   , _serverLogWithColor           :: !Bool
   , _seedNodes                    :: ![(ByteString, Int)]
@@ -167,6 +179,7 @@ data CliOptions = CliOptions
   , _serverGossipAddress_          :: !(Maybe String)
   , _serverAdvertisedListeners_    :: !AdvertisedListeners
   , _listenersSecurityProtocolMap_ :: !ListenersSecurityProtocolMap
+  , _serverSecurityProtocol_       :: !(Maybe Text)
   , _serverInternalPort_           :: !(Maybe Word16)
   , _serverID_                     :: !(Maybe Word32)
   , _serverLogLevel_               :: !(Maybe Log.Level)
@@ -174,11 +187,6 @@ data CliOptions = CliOptions
   , _compression_                  :: !(Maybe Compression)
   , _metaStore_                    :: !(Maybe MetaStoreAddr)
   , _seedNodes_                    :: !(Maybe Text)
-
-  , _enableTls_                    :: !Bool
-  , _tlsKeyPath_                   :: !(Maybe String)
-  , _tlsCertPath_                  :: !(Maybe String)
-  , _tlsCaPath_                    :: !(Maybe String)
 
   , _ldAdminHost_                  :: !(Maybe ByteString)
   , _ldAdminPort_                  :: !(Maybe Int)
@@ -216,10 +224,7 @@ cliOptionsParser = do
   _serverLogWithColor_ <- logWithColor
   _storeConfigPath     <- storeConfigPath
   _ckpRepFactor_       <- optional ckpReplica
-  _enableTls_          <- enableTls
-  _tlsKeyPath_         <- optional tlsKeyPath
-  _tlsCertPath_        <- optional tlsCertPath
-  _tlsCaPath_          <- optional tlsCaPath
+  _serverSecurityProtocol_ <- optional securityProtocol
   _ioTasksPath_        <- optional ioTasksPath
   _ioTasksNetwork_     <- optional ioTasksNetwork
   _ioConnectorImages_  <- ioConnectorImage
@@ -295,20 +300,8 @@ parseJSONToOptions CliOptions {..} obj = do
   let !_ckpRepFactor   = fromMaybe storeCkpReplica _ckpRepFactor_
 
   -- TLS config
-  nodeEnableTls   <- nodeCfgObj .:? "enable-tls" .!= False
-  nodeTlsKeyPath  <- nodeCfgObj .:? "tls-key-path"
-  nodeTlsCertPath <- nodeCfgObj .:? "tls-cert-path"
-  nodeTlsCaPath   <- nodeCfgObj .:? "tls-ca-path"
-  let !_enableTls   = _enableTls_ || nodeEnableTls
-      !_tlsKeyPath  = _tlsKeyPath_  <|> nodeTlsKeyPath
-      !_tlsCertPath = _tlsCertPath_ <|> nodeTlsCertPath
-      !_tlsCaPath   = _tlsCaPath_   <|> nodeTlsCaPath
-      !_tlsConfig  = case (_enableTls, _tlsKeyPath, _tlsCertPath) of
-        (False, _, _) -> Nothing
-        (_, Nothing, _) -> errorWithoutStackTrace "enable-tls=true, but tls-key-path is empty"
-        (_, _, Nothing) -> errorWithoutStackTrace "enable-tls=true, but tls-cert-path is empty"
-        (_, Just kp, Just cp) -> Just $ TlsConfig kp cp _tlsCaPath
-
+  nodeSecurityProtocols <- nodeCfgObj .:? "security-protocols" .!= mempty :: Y.Parser (Map Text (Maybe TlsConfig))
+  nodeSecurityProtocol   <- nodeCfgObj .:? "security-protocol" .!= "plaintext"
 
   -- hstream io config
   nodeIOCfg <- nodeCfgObj .:? "hstream-io" .!= mempty
@@ -334,7 +327,8 @@ parseJSONToOptions CliOptions {..} obj = do
       !_ioOptions = IO.IOOptions {..}
   -- FIXME: This should be more flexible
   let !_listenersSecurityProtocolMap = Map.union _listenersSecurityProtocolMap_ nodeListenersSecurityProtocolMap
-  let !_securityProtocolMap = defaultProtocolMap _tlsConfig
+  let !_securityProtocolMap = nodeSecurityProtocols
+  let !_serverSecurityProtocol = fromMaybe nodeSecurityProtocol _serverSecurityProtocol_
   return ServerOpts {..}
 
 -------------------------------------------------------------------------------
@@ -458,28 +452,10 @@ storeConfigPath = strOption
   <> metavar "PATH" <> value "/data/store/logdevice.conf"
   <> help "Storage config path"
 
-enableTls :: O.Parser Bool
-enableTls = flag False True
-  $  long "enable-tls"
-  <> help "Enable tls, require tls-key-path, tls-cert-path options"
-
-tlsKeyPath :: O.Parser String
-tlsKeyPath = strOption
-  $  long "tls-key-path"
-  <> metavar "PATH"
-  <> help "TLS key path"
-
-tlsCertPath :: O.Parser String
-tlsCertPath = strOption
-  $  long "tls-cert-path"
-  <> metavar "PATH"
-  <> help "Signed certificate path"
-
-tlsCaPath :: O.Parser String
-tlsCaPath = strOption
-  $  long "tls-ca-path"
-  <> metavar "PATH"
-  <> help "Trusted CA(Certificate Authority) path"
+securityProtocol :: O.Parser Text
+securityProtocol = strOption
+  $  long "security-protocol"
+  <> help "Specify which security protocol the node should use"
 
 ioTasksPath :: O.Parser Text
 ioTasksPath = strOption
@@ -565,6 +541,7 @@ listenerP = do
 instance Show MetaStoreAddr where
   show (ZkAddr addr) = "zk://" <> CB.unpack addr
   show (RqAddr addr) = "rq://" <> T.unpack addr
+  show (FileAddr fp) = "file://" <> fp
 
 readWithErrLog :: Read a => String -> String -> a
 readWithErrLog opt v = case readEither v of

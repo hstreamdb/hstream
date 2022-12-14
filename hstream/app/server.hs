@@ -9,6 +9,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
 
+import           Control.Applicative              ((<|>))
 import           Control.Concurrent               (MVar, forkIO, newMVar,
                                                    readMVar, swapMVar)
 import qualified Control.Concurrent.Async         as Async
@@ -51,7 +52,7 @@ import           HStream.Server.Config            (AdvertisedListeners,
                                                    ListenersSecurityProtocolMap,
                                                    MetaStoreAddr (..),
                                                    SecurityProtocolMap,
-                                                   ServerOpts (..), TlsConfig,
+                                                   ServerOpts (..),
                                                    advertisedListenersToPB,
                                                    getConfig)
 import           HStream.Server.Handler           (handlers)
@@ -119,7 +120,7 @@ app config@ServerOpts{..} = do
       void . forkIO $ updateHashRing gossipContext (loadBalanceHashRing serverContext)
 
       Async.withAsync
-        (serve _serverHost _serverPort _securityProtocolMap serverContext
+        (serve _serverHost _serverPort _securityProtocolMap _serverSecurityProtocol serverContext
                _serverAdvertisedListeners _listenersSecurityProtocolMap) $ \a -> do
         a1 <- startGossip _serverHost gossipContext
         Async.link2Only (const True) a a1
@@ -129,11 +130,12 @@ app config@ServerOpts{..} = do
 serve :: ByteString
       -> Word16
       -> SecurityProtocolMap
+      -> T.Text
       -> ServerContext
       -> AdvertisedListeners
       -> ListenersSecurityProtocolMap
       -> IO ()
-serve host port securityMap sc@ServerContext{..} listeners listenerSecurityMap = do
+serve host port securityMap securityKey sc@ServerContext{..} listeners listenerSecurityMap = do
   Log.i "************************"
   putStrLn [r|
    _  _   __ _____ ___ ___  __  __ __
@@ -155,9 +157,9 @@ serve host port securityMap sc@ServerContext{..} listeners listenerSecurityMap =
               handle (\(_ :: RQLiteRowNotFound) -> return ()) $ deleteAllMeta @TaskAllocation metaHandle
 
 #ifdef HStreamUseHsGrpc
-  sslOpts <- mapM readTlsPemFile $ join (Map.lookup "tls" securityMap)
+  sslOpts <- mapM readTlsPemFile $ join (Map.lookup securityKey securityMap)
 #else
-  let sslOpts = initializeTlsConfig <$> join (Map.lookup "tls" securityMap)
+  let sslOpts = initializeTlsConfig <$> join (Map.lookup securityKey securityMap)
 #endif
 
   let grpcOpts =
@@ -188,14 +190,14 @@ serve host port securityMap sc@ServerContext{..} listeners listenerSecurityMap =
                                         <> Log.buildInt listenerPort
         let sc' = sc{scAdvertisedListenersKey = Just key}
 #ifdef HStreamUseHsGrpc
-        newSslOpts <- mapM readTlsPemFile $ join ((`Map.lookup` securityMap) =<< Map.lookup key listenerSecurityMap )
+        newSslOpts <- mapM readTlsPemFile $ join ((`Map.lookup` securityMap) =<< (Map.lookup key listenerSecurityMap <|> Just securityKey))
         let grpcOpts' = grpcOpts { HsGrpc.serverPort = fromIntegral listenerPort
                                  , HsGrpc.serverOnStarted = Just listenerOnStarted
                                  , HsGrpc.serverSslOptions = newSslOpts
                                  }
         HsGrpc.runServer grpcOpts' (HsGrpc.handlers sc')
 #else
-        let newSslOpts = initializeTlsConfig <$> join ((`Map.lookup` securityMap) =<< Map.lookup key listenerSecurityMap )
+        let newSslOpts = initializeTlsConfig <$> join ((`Map.lookup` securityMap) =<< (Map.lookup key listenerSecurityMap <|> Just securityKey))
         let grpcOpts' = grpcOpts { GRPC.serverPort = GRPC.Port $ fromIntegral listenerPort
                                  , GRPC.serverOnStarted = Just listenerOnStarted
                                  , GRPC.sslConfig = newSslOpts

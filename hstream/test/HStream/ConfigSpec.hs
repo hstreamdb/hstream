@@ -4,13 +4,14 @@
 module HStream.ConfigSpec where
 
 import           Control.Applicative            ((<|>))
-import           Control.Exception              (SomeException, evaluate, try)
+import           Control.Exception              (SomeException (..), evaluate,
+                                                 try)
 import           Data.Bifunctor                 (second)
 import           Data.ByteString                (ByteString)
 import qualified Data.HashMap.Strict            as HM
 import qualified Data.Map.Strict                as M
 import qualified Data.Map.Strict                as Map
-import           Data.Maybe                     (fromMaybe, isJust)
+import           Data.Maybe                     (fromMaybe)
 import           Data.Text                      (Text)
 import qualified Data.Text                      as T
 import           Data.Text.Encoding             (decodeUtf8, encodeUtf8)
@@ -26,11 +27,13 @@ import           Test.QuickCheck.Arbitrary      (Arbitrary (arbitrary))
 import           Test.QuickCheck.Gen            (oneof, resize)
 import qualified Z.Data.CBytes                  as CB
 
+
 import           HStream.Gossip                 (GossipOpts (..),
                                                  defaultGossipOpts)
 import           HStream.IO.Types               (IOOptions (..))
 import           HStream.Server.Config          (CliOptions (..),
                                                  MetaStoreAddr (..),
+                                                 SecurityProtocolMap (..),
                                                  ServerOpts (..),
                                                  TlsConfig (..), parseHostPorts,
                                                  parseJSONToOptions)
@@ -38,6 +41,8 @@ import           HStream.Server.HStreamInternal
 import           HStream.Store                  (Compression (..))
 
 #if __GLASGOW_HASKELL__ < 902
+import           Data.Aeson.Encode.Pretty
+import qualified Data.ByteString.Lazy           as BSL
 import           HStream.Admin.Store.API        (ProtocolId, binaryProtocolId,
                                                  compactProtocolId)
 import           HStream.Server.Config          (readProtocol)
@@ -54,11 +59,11 @@ spec = describe "HStream.ConfigSpec" $ do
       parseEither (parseJSONToOptions emptyCliOptions) obj `shouldBe` Right defaultConfig
 
     prop "prop test" $ \x -> do
-      -- putStrLn $ T.unpack $ decodeUtf8 $ BSL.toStrict $ encodePretty x
+      putStrLn $ T.unpack $ decodeUtf8 $ BSL.toStrict $ encodePretty x
       let yaml = encode $ toJSON x
-      -- putStrLn $ T.unpack $ decodeUtf8 yaml
+      putStrLn $ T.unpack $ decodeUtf8 yaml
       obj <- decodeThrow yaml
-      -- putStrLn $ T.unpack $ decodeUtf8 $ BSL.toStrict $ encodePretty obj
+      putStrLn $ T.unpack $ decodeUtf8 $ BSL.toStrict $ encodePretty obj
       parseEither (parseJSONToOptions emptyCliOptions) obj `shouldBe` Right x
 
     prop "Cli options override configuration files" $ \(serverOpts, cliOptions) -> do
@@ -89,7 +94,6 @@ defaultConfig = ServerOpts
   , _ckpRepFactor              = 3
   , _compression               = CompressionNone
   , _maxRecordSize             = 1024 * 1024 * 1024
-  , _tlsConfig                 = Nothing
   , _serverLogLevel            = read "info"
   , _serverLogWithColor        = True
   , _seedNodes                 = [("127.0.0.1", 6571)]
@@ -102,7 +106,8 @@ defaultConfig = ServerOpts
   , _ldAdminSendTimeout        = 5000
   , _ldAdminRecvTimeout        = 5000
   , _ldLogLevel                = read "info"
-  , _securityProtocolMap = M.fromList [("plaintext", Nothing), ("tls", Nothing)]
+  , _serverSecurityProtocol    = "plaintext"
+  , _securityProtocolMap       = mempty
 
   , _gossipOpts                = defaultGossipOpts
   , _ioOptions                 = defaultIOOptions
@@ -133,14 +138,12 @@ instance ToJSON ServerOpts where
         , "gossip"          .= _gossipOpts
         , "hstream-io"      .= _ioOptions      --TODO
         , "listeners-security-protocol-map" .= _listenersSecurityProtocolMap
+        , "security-protocol" .= _serverSecurityProtocol
         ]
       ++ ["advertised-listeners" .= _serverAdvertisedListeners       --TODO
          | not $ null _serverAdvertisedListeners]
-      ++ case _tlsConfig of
-        Nothing -> []
-        Just TlsConfig {..} ->
-          [ "enable-tls" .= True , "tls-cert-path" .= certPath , "tls-key-path"  .= keyPath ]
-          ++ maybe [] (\x -> ["tls-ca-path" .= x]) caPath
+      ++ ["security-protocols" .= _securityProtocolMap
+         | not $ null _securityProtocolMap]
       )
     , "hstore" .= object [
           "log-level"   .= show _ldLogLevel --TODO
@@ -206,10 +209,7 @@ emptyCliOptions = CliOptions {
   , _metaStore_          = Nothing
   , _seedNodes_          = Nothing
 
-  , _enableTls_          = False
-  , _tlsKeyPath_         = Nothing
-  , _tlsCertPath_        = Nothing
-  , _tlsCaPath_          = Nothing
+  , _serverSecurityProtocol_          = Nothing
 
   , _ldAdminHost_        = Nothing
   , _ldAdminPort_        = Nothing
@@ -242,7 +242,6 @@ instance Arbitrary ServerOpts where
     let _ckpRepFactor   = 3
     let _compression = CompressionNone
     _maxRecordSize             <- arbitrary
-    _tlsConfig                 <- arbitrary
     _serverLogLevel            <- read <$> logLevelGen
     _serverLogWithColor        <- arbitrary
     _seedNodes                 <- listOf5' ((,) <$> (encodeUtf8 . T.pack <$> addressGen) <*> portGen)
@@ -257,8 +256,10 @@ instance Arbitrary ServerOpts where
     _ldLogLevel                <- read <$> ldLogLevelGen
     _gossipOpts                <- arbitrary
     _ioOptions                 <- arbitrary
-    _listenersSecurityProtocolMap <- M.fromList . zip listenersKeys . repeat <$> elements ["plaintext", "tls"]
-    let _securityProtocolMap = M.fromList [("plaintext", Nothing), ("tls", _tlsConfig)]
+    _serverSecurityProtocol <- T.pack <$> nameGen
+    securityKeys <- listOf5' (T.pack <$> nameGen)
+    _securityProtocolMap <- M.fromList . zip securityKeys <$> arbitrary
+    _listenersSecurityProtocolMap <- if null _securityProtocolMap then return mempty else Map.fromList . zip listenersKeys . repeat <$> elements (M.keys _securityProtocolMap)
     pure ServerOpts{..}
 
 instance Arbitrary CliOptions where
@@ -270,7 +271,7 @@ instance Arbitrary CliOptions where
     _serverGossipAddress_     <- genMaybe addressGen
     _serverAdvertisedAddress_ <- genMaybe addressGen
     _serverAdvertisedListeners_ <- arbitrary
-    _listenersSecurityProtocolMap_ <- M.fromList . zip (Map.keys _serverAdvertisedListeners_) . repeat <$> elements ["plaintext", "tls"]
+    _listenersSecurityProtocolMap_ <- arbitrary
     _serverInternalPort_ <- genMaybe $ fromIntegral <$> portGen
     _serverID_           <- arbitrary
     _serverLogLevel_     <- genMaybe $ read <$> logLevelGen
@@ -278,10 +279,6 @@ instance Arbitrary CliOptions where
     _compression_        <- arbitrary
     _metaStore_          <- arbitrary
     _seedNodes_          <- genMaybe seedNodesStringGen
-    _enableTls_          <- arbitrary
-    _tlsKeyPath_         <- genMaybe pathGen
-    _tlsCertPath_        <- genMaybe pathGen
-    _tlsCaPath_          <- genMaybe pathGen
     _ldAdminHost_        <- genMaybe $ encodeUtf8 . T.pack <$> addressGen
     _ldAdminPort_        <- genMaybe portGen
     _ldLogLevel_         <- genMaybe $ read <$> ldLogLevelGen
@@ -289,6 +286,7 @@ instance Arbitrary CliOptions where
     _ioTasksPath_        <- genMaybe $ T.pack <$> pathGen
     _ioTasksNetwork_     <- genMaybe $ T.pack <$> nameGen
     _ioConnectorImages_  <- listOf5' $ T.pack <$> connectorImageCliOptGen
+    _serverSecurityProtocol_ <- genMaybe $ T.pack <$> nameGen
     pure CliOptions{..}
 
 instance Arbitrary Listener where
@@ -413,7 +411,6 @@ updateServerOptsWithCliOpts CliOptions {..} x@ServerOpts{..} = x {
   , _metaStore = fromMaybe _metaStore _metaStore_
   , _ldConfigPath = _storeConfigPath
   , _compression = fromMaybe _compression _compression_
-  , _tlsConfig = _tlsConfig_
   , _serverLogLevel = fromMaybe _serverLogLevel _serverLogLevel_
   , _serverLogWithColor = _serverLogWithColor || _serverLogWithColor_
   , _seedNodes = fromMaybe _seedNodes $ parseCliSeeds =<< _seedNodes_
@@ -422,17 +419,18 @@ updateServerOptsWithCliOpts CliOptions {..} x@ServerOpts{..} = x {
   , _ldLogLevel = fromMaybe _ldLogLevel _ldLogLevel_
   , _ckpRepFactor = fromMaybe _ckpRepFactor _ckpRepFactor_
   , _ioOptions = _ioOptions_
-  , _securityProtocolMap = Map.insert "tls" _tlsConfig_ _securityProtocolMap}
+  , _securityProtocolMap = _securityProtocolMap
+  , _serverSecurityProtocol = fromMaybe _serverSecurityProtocol _serverSecurityProtocol_}
   where
     port = fromMaybe _serverPort _serverPort_
     updateSeedsPort = second $ fromMaybe (fromIntegral port)
     parseCliSeeds = either (const Nothing) (Just . (updateSeedsPort <$>)) . parseHostPorts
 
-    _tlsConfig_  = case (_enableTls_ || isJust _tlsConfig, _tlsKeyPath_ <|> keyPath <$> _tlsConfig,  _tlsCertPath_ <|> certPath <$> _tlsConfig ) of
-        (False, _, _) -> Nothing
-        (_, Nothing, _) -> errorWithoutStackTrace "enable-tls=true, but tls-key-path is empty"
-        (_, _, Nothing) -> errorWithoutStackTrace "enable-tls=true, but tls-cert-path is empty"
-        (_, Just kp, Just cp) -> Just $ TlsConfig kp cp (_tlsCaPath_ <|> (caPath =<< _tlsConfig) )
+    -- _tlsConfig_  = case (_enableTls_ || isJust _tlsConfig, _tlsKeyPath_ <|> keyPath <$> _tlsConfig,  _tlsCertPath_ <|> certPath <$> _tlsConfig ) of
+    --     (False, _, _) -> Nothing
+    --     (_, Nothing, _) -> errorWithoutStackTrace "enable-tls=true, but tls-key-path is empty"
+    --     (_, _, Nothing) -> errorWithoutStackTrace "enable-tls=true, but tls-cert-path is empty"
+    --     (_, Just kp, Just cp) -> Just $ TlsConfig kp cp (_tlsCaPath_ <|> (caPath =<< _tlsConfig) )
 
     (ssi,ski) = foldr
         (\img (ss, sk) -> do
