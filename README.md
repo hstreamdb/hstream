@@ -10,7 +10,7 @@
 
 HStreamDB is an open-source, cloud-native streaming database for IoT and beyond. Modernize your data stack for real-time applications.
 
-![hstream-db](https://cdn.jsdelivr.net/gh/hstreamdb/hstreamio-cdn@1.0.2/images/hstream-db.png)
+![hstream-db](https://assets.emqx.com/images/hstreamdb-hstream-github-readme-2022121402.png)
 
 ## Main Features
 
