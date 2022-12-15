@@ -8,9 +8,10 @@
 
 # HStreamDB
 
-![hstream-db](https://cdn.jsdelivr.net/gh/hstreamdb/hstreamio-cdn@1.0.2/images/hstream-db.png)
-
 HStreamDB is an open-source, cloud-native streaming database for IoT and beyond. Modernize your data stack for real-time applications.
+
+![hstream-db](https://assets.emqx.com/images/hstreamdb-hstream-github-readme-2022121402.png)
+
 ## Main Features
 
 - **Push real-time data to your apps**
@@ -24,7 +25,7 @@ HStreamDB is an open-source, cloud-native streaming database for IoT and beyond.
 
 - **Stream processing with familiar SQL**
 
-  HStreamDB provides built-in support for event-time based stream processing.
+  HStreamDB provides built-in support for event time-based stream processing.
   You can use your familiar SQL to perform basic filtering and transformation
   operations, statistics and aggregation based on multiple kinds of time windows
   and even joining between multiple streams.
@@ -35,10 +36,10 @@ HStreamDB is an open-source, cloud-native streaming database for IoT and beyond.
   external systems, such as MQTT Broker, MySQL, Redis and ElasticSearch. More
   connectors will be added.
 
-- **Real-time query based on live materailze views**
+- **Real-time query based on live materialized views**
 
   With maintaining materialized views incrementally, HStreamDB enables you to
-  gain ahead-of-the-curve data insights that response to your business quickly.
+  gain ahead-of-the-curve data insights that respond to your business quickly.
 
 - **Reliable persistent storage with low latency**
 
@@ -51,7 +52,7 @@ HStreamDB is an open-source, cloud-native streaming database for IoT and beyond.
   With the architecture that separates compute from storage, both compute and
   storage layers of HStreamDB can be independently scaled seamlessly. And with
   the consensus algorithm based on the optimized Paxos, data is securely
-  replicated to multiple nodes which ensures high availability of our system.
+  replicated to multiple nodes which ensures the high availability of our system.
 
 For more information, please visit [HStreamDB homepage](https://hstream.io).
 

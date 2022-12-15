@@ -31,7 +31,7 @@ import           Data.Foldable                  (foldrM)
 import qualified Data.HashMap.Strict            as HM
 import           Data.Map.Strict                (Map)
 import qualified Data.Map.Strict                as Map
-import           Data.Maybe                     (fromMaybe, isJust)
+import           Data.Maybe                     (fromMaybe)
 import           Data.String                    (IsString (..))
 import           Data.Text                      (Text)
 import qualified Data.Text                      as T
@@ -184,6 +184,7 @@ data CliOptions = CliOptions
   , _ldAdminPort_                  :: !(Maybe Int)
   , _ldLogLevel_                   :: !(Maybe Log.LDLogLevel)
   , _storeConfigPath               :: !CBytes
+  , _ckpRepFactor_                 :: !(Maybe Int)
 
   , _ioTasksPath_                  :: !(Maybe Text)
   , _ioTasksNetwork_               :: !(Maybe Text)
@@ -214,6 +215,7 @@ cliOptionsParser = do
   _compression_        <- optional compression
   _serverLogWithColor_ <- logWithColor
   _storeConfigPath     <- storeConfigPath
+  _ckpRepFactor_       <- optional ckpReplica
   _enableTls_          <- enableTls
   _tlsKeyPath_         <- optional tlsKeyPath
   _tlsCertPath_        <- optional tlsCertPath
@@ -274,6 +276,7 @@ parseJSONToOptions CliOptions {..} obj = do
   -- Store Config
   storeCfgObj         <- obj .:? "hstore" .!= mempty
   storeLogLevel       <- readWithErrLog "store log-level" <$> storeCfgObj .:? "log-level" .!= "info"
+  storeCkpReplica     <- storeCfgObj .:? "checkpoint-replication-factor" .!= 3
   sAdminCfgObj        <- storeCfgObj .:? "store-admin" .!= mempty
   storeAdminHost      <- BSC.pack <$> sAdminCfgObj .:? "host" .!= "127.0.0.1"
   storeAdminPort      <- sAdminCfgObj .:? "port" .!= 6440
@@ -289,7 +292,7 @@ parseJSONToOptions CliOptions {..} obj = do
   let !_ldConfigPath   = _storeConfigPath
   let !_ldLogLevel     = fromMaybe storeLogLevel  _ldLogLevel_
   let !_topicRepFactor = 1
-  let !_ckpRepFactor   = 3
+  let !_ckpRepFactor   = fromMaybe storeCkpReplica _ckpRepFactor_
 
   -- TLS config
   nodeEnableTls   <- nodeCfgObj .:? "enable-tls" .!= False
@@ -434,6 +437,12 @@ ldLogLevel = option auto
   $  long "store-log-level"
   <> metavar "[critical|error|warning|notify|info|debug|spew]"
   <> help "Store log level"
+
+ckpReplica :: O.Parser Int
+ckpReplica = option auto
+  $ long "checkpoint-replica"
+  <> metavar "INT"
+  <> help "check point replication factor"
 
 metaStore :: O.Parser MetaStoreAddr
 metaStore = option (O.maybeReader (Just . parseMetaStoreAddr . T.pack))
