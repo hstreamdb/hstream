@@ -56,6 +56,7 @@ initializeServer
 initializeServer opts@ServerOpts{..} gossipContext hh serverState = do
   ldclient <- S.newLDClient _ldConfigPath
   let attrs = S.def{S.logReplicationFactor = S.defAttr1 _ckpRepFactor}
+  Log.debug $ "checkpoint replication factor: " <> Log.buildInt _ckpRepFactor
   _ <- catch (void $ S.initCheckpointStoreLogID ldclient attrs)
              (\(_ :: S.EXISTS) -> return ())
 #if __GLASGOW_HASKELL__ < 902
