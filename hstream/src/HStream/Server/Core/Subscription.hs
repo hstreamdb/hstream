@@ -65,11 +65,24 @@ listConsumers sc@ServerContext{..} ListConsumersRequest{listConsumersRequestSubs
     makeRpcConsumer ConsumerContext{..} = def {consumerName = ccConsumerName, consumerUri = fromMaybe "" ccConsumerUri, consumerUserAgent = fromMaybe "" ccConsumerAgent}
 
 getSubscription :: ServerContext -> GetSubscriptionRequest -> IO GetSubscriptionResponse
-getSubscription ServerContext{..} GetSubscriptionRequest{ getSubscriptionRequestId = subId} = do
+getSubscription ServerContext{ ..} GetSubscriptionRequest{ getSubscriptionRequestId = subId} = do
+  shardIds <- fmap HM.keys $ atomically $
+    readTVar scSubscribeContexts
+    >>= maybe (return mempty) (readTMVar . scnwContext
+                           >=> readTVar . subShardContexts)
+     .  HM.lookup subId
+  offsets <- forM shardIds (\x -> do
+    lsn <- S.ckpStoreGetLSN scCkpStore (textToCBytes subId) x
+    return $ SubscriptionOffset {
+      subscriptionOffsetShardId = x,
+      subscriptionOffsetBatchId = lsn
+      })
   mMeta <- M.getMeta subId metaHandle
   case mMeta of
    Nothing  -> throwIO $ HE.SubscriptionNotFound subId
-   Just sub -> pure $ GetSubscriptionResponse { getSubscriptionResponseSubscription = Just $ originSub sub}
+   Just sub -> pure $ GetSubscriptionResponse {
+    getSubscriptionResponseSubscription = Just $ originSub sub,
+    getSubscriptionResponseOffsets = V.fromList offsets}
 
 createSubscription :: HasCallStack => ServerContext -> Subscription -> IO Subscription
 createSubscription ServerContext {..} sub@Subscription{..} = do

@@ -71,15 +71,23 @@ getSubscriptionHandler
   :: ServerContext
   -> ServerRequest 'Normal GetSubscriptionRequest GetSubscriptionResponse
   -> IO (ServerResponse 'Normal GetSubscriptionResponse)
-getSubscriptionHandler ctx (ServerNormalRequest _metadata req) = defaultExceptionHandle $ do
+getSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata req) = defaultExceptionHandle $ do
   Log.debug $ "Receive getSubscription request: " <> Log.buildString' req
+  let subId = getSubscriptionRequestId req
+  ServerNode{..} <- lookupResource' ctx ResSubscription subId
+  unless (serverNodeId == serverID) $
+    throwIO $ HE.SubscriptionOnDifferentNode "Subscription is bound to a different node"
   validateNameAndThrow $ getSubscriptionRequestId req
   Core.getSubscription ctx req >>= returnResp
 
 handleGetSubscription :: ServerContext -> G.UnaryHandler GetSubscriptionRequest GetSubscriptionResponse
-handleGetSubscription sc _ req = catchDefaultEx $ do
+handleGetSubscription ctx@ServerContext{..} _ req = catchDefaultEx $ do
+  let subId = getSubscriptionRequestId req
   validateNameAndThrow $ getSubscriptionRequestId req
-  Core.getSubscription sc req
+  ServerNode{..} <- lookupResource' ctx ResSubscription subId
+  unless (serverNodeId == serverID) $
+    throwIO $ HE.SubscriptionOnDifferentNode "Subscription is bound to a different node"
+  Core.getSubscription ctx req
 
 -------------------------------------------------------------------------------
 

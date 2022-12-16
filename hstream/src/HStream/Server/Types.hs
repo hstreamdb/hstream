@@ -66,6 +66,7 @@ data ServerContext = ServerContext
   , metaHandle               :: MetaHandle
   , runningQueries           :: MVar (HM.HashMap Text ThreadId)
   , scSubscribeContexts      :: TVar (HM.HashMap SubscriptionId SubscribeContextNewWrapper)
+  , scCkpStore               :: HS.LDCheckpointStore
   , cmpStrategy              :: HS.Compression
 #if __GLASGOW_HASKELL__ < 902
   , headerConfig             :: AA.HeaderConfig AA.AdminAPI
