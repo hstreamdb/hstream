@@ -14,6 +14,7 @@ import           Control.Exception          (catch, onException, throwIO)
 import           Control.Monad
 import qualified Data.ByteString            as BS
 import           Data.Foldable              (foldl')
+import           Data.Functor               ((<&>))
 import qualified Data.HashMap.Strict        as HM
 import           Data.IORef                 (newIORef, readIORef, writeIORef)
 import           Data.Kind                  (Type)
@@ -320,11 +321,10 @@ doSubInit ServerContext{..} subId = do
                 subCurrentTime = curTime,
                 subWaitingCheckedRecordIds = checkList,
                 subWaitingCheckedRecordIdsIndex = checkListIndex,
-                subStartOffset = subOffsets
+                subStartOffsets = subOffsets,
+                subStartOffset = subscriptionOffset
               }
-      shards <- getShards scLDClient subscriptionStreamName
-      Log.debug $ "get shards for stream " <> Log.buildString' (show subscriptionStreamName) <> ": " <> Log.buildString (show shards)
-      addNewShardsToSubCtx emptySubCtx shards
+      addNewShardsToSubCtx emptySubCtx (HM.toList subOffsets)
       return emptySubCtx
   where
     mkEmptyAssignment :: IO Assignment
@@ -356,7 +356,7 @@ getShards :: S.LDClient -> T.Text -> IO [S.C_LogID]
 getShards client streamName = do
   Map.elems <$> S.listStreamPartitions client (transToStreamName streamName)
 
-addNewShardsToSubCtx :: SubscribeContext -> [S.C_LogID] -> IO ()
+addNewShardsToSubCtx :: SubscribeContext -> [(S.C_LogID, S.LSN)] -> IO ()
 addNewShardsToSubCtx SubscribeContext {subAssignment = Assignment{..}, ..} shards = atomically $ do
   oldTotal <- readTVar totalShards
   oldUnassign <- readTVar unassignedShards
@@ -367,10 +367,10 @@ addNewShardsToSubCtx SubscribeContext {subAssignment = Assignment{..}, ..} shard
   writeTVar unassignedShards newUnassign
   writeTVar subShardContexts newShardCtxs
   where
-    addShards old@(total, unassign, ctx) logId
+    addShards old@(total, unassign, ctx) (logId, lsn)
       | Set.member logId total = return old
       | otherwise = do
-          lowerBound <- newTVar $ ShardRecordId S.LSN_MIN 0
+          lowerBound <- newTVar $ ShardRecordId lsn 0
           upperBound <- newTVar maxBound
           range <- newTVar Map.empty
           batchMp <- newTVar Map.empty
@@ -425,7 +425,7 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
           atomically $ do
             assignShards subAssignment
             assignWaitingConsumers subAssignment
-          addRead subLdCkpReader subAssignment subStartOffset
+          addRead subLdCkpReader subAssignment subStartOffsets
           atomically checkUnackedRecords
           recordBatches <- readRecordBatches
           receivedRecordsVecs <- forM recordBatches decodeRecordBatch
@@ -488,23 +488,19 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
         retry
       else pure ()
 
-    getNewShards :: IO [S.C_LogID]
+    getNewShards :: IO [(S.C_LogID, S.LSN)]
     getNewShards = do
       shards <- catch (getShards scLDClient subStreamName) (\(_::S.NOTFOUND)-> pure mempty)
-      if L.null shards
-        then return []
-        else do
-          atomically $ do
-            let Assignment {..} = subAssignment
-            shardSet <- readTVar totalShards
-            foldM
-              (\a b ->
-                if Set.member b shardSet
-                then return a
-                else return $ a ++ [b]
-              )
-              []
-              shards
+      if L.null shards then return [] else do
+        shardSet <- readTVarIO (totalShards subAssignment)
+        let newShards = filter (not . flip Set.member shardSet) shards
+        case subStartOffset of
+          Enumerated (Right SpecialOffsetEARLIEST) ->
+            return $ (, S.LSN_MIN) <$> newShards
+          Enumerated (Right SpecialOffsetLATEST)   ->
+            mapM (\x -> S.getTailLSN scLDClient x <&> (x,) . (+1)) newShards
+          _                                        ->
+            throwIO $ HE.InvalidSubscriptionOffset "subscriptionOffset is invalid."
 
     addRead :: S.LDSyncCkpReader -> Assignment -> HM.HashMap S.C_LogID S.LSN -> IO ()
     addRead ldCkpReader Assignment {..} startOffsets = do
