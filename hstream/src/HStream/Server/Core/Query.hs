@@ -47,6 +47,7 @@ import           HStream.Server.Core.Common
 import qualified HStream.Server.Core.Stream       as Core
 import qualified HStream.Server.Core.View         as Core
 import           HStream.Server.Handler.Common
+import           HStream.Server.Handler.Connector
 import qualified HStream.Server.HStore            as HStore
 import           HStream.Server.HStreamApi
 import qualified HStream.Server.HStreamApi        as API
@@ -127,7 +128,7 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
       pure $ API.CommandQueryResponse (mkVectorStruct s "created_stream")
     CreateConnectorPlan _ cName _ _ _ -> do
       validateNameAndThrow cName
-      void $ IO.createIOTaskFromSql scIOWorker commandQueryStmtText
+      void $ createIOTaskFromSql sc commandQueryStmtText
       pure $ CommandQueryResponse V.empty
     InsertPlan {} -> discard "Append"
     DropPlan checkIfExist dropObject ->

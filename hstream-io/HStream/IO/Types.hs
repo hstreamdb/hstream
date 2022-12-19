@@ -87,7 +87,6 @@ data HStreamConfig = HStreamConfig
 data Worker = Worker
   { hsConfig     :: HStreamConfig
   , options      :: IOOptions
-  , checkNode    :: T.Text -> IO Bool
   , ioTasksM     :: C.MVar (HM.HashMap T.Text IOTask)
   , monitorTid   :: IORef C.ThreadId
   , workerHandle :: MetaHandle

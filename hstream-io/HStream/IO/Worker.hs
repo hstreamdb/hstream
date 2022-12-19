@@ -14,8 +14,6 @@ import           Data.IORef                (newIORef, readIORef)
 import qualified Data.IORef                as C
 import           Data.Maybe                (fromMaybe)
 import qualified Data.Text                 as T
-import qualified Data.UUID                 as UUID
-import qualified Data.UUID.V4              as UUID
 import           GHC.Stack                 (HasCallStack)
 
 import qualified HStream.IO.IOTask         as IOTask
@@ -27,8 +25,8 @@ import qualified HStream.Server.HStreamApi as API
 import qualified HStream.SQL.Codegen       as CG
 import           HStream.Utils.Validation  (validateNameAndThrow)
 
-newWorker :: MetaHandle -> HStreamConfig -> IOOptions -> (T.Text -> IO Bool) -> IO Worker
-newWorker mHandle hsConfig options checkNode = do
+newWorker :: MetaHandle -> HStreamConfig -> IOOptions -> IO Worker
+newWorker mHandle hsConfig options = do
   Log.info $ "new Worker with hsConfig:" <> Log.buildString (show hsConfig)
   ioTasksM <- C.newMVar HM.empty
   monitorTid <- newIORef undefined
@@ -54,34 +52,6 @@ monitor worker@Worker{..} = do
       ioTasks <- C.readMVar ioTasksM
       forM_ ioTasks IOTask.checkProcess
 
-createIOTaskFromSql :: Worker -> T.Text -> IO API.Connector
-createIOTaskFromSql worker@Worker{..} sql = do
-  (CG.CreateConnectorPlan cType cName cTarget ifNotExist cfg) <- CG.streamCodegen sql
-  validateNameAndThrow cName
-  Log.info $ "CreateConnector CodeGen"
-           <> ", connector type: " <> Log.buildText cType
-           <> ", connector name: " <> Log.buildText cName
-           <> ", config: "         <> Log.buildString (show cfg)
-  checkNode_ worker cName
-  taskId <- UUID.toText <$> UUID.nextRandom
-  let IOOptions {..} = options
-      taskType = if cType == "SOURCE" then SOURCE else SINK
-      image = makeImage taskType cTarget options
-      connectorConfig =
-        J.object
-          [ "hstream" J..= toTaskJson hsConfig taskId
-          , "connector" J..= cfg
-          ]
-      taskInfo = TaskInfo
-        { taskName = cName
-        , taskType = if cType == "SOURCE" then SOURCE else SINK
-        , taskConfig = TaskConfig image optTasksNetwork
-        , connectorConfig = connectorConfig
-        , originSql = sql
-        }
-  createIOTask worker taskId taskInfo
-  return $ mkConnector cName (ioTaskStatusToText NEW)
-
 createIOTask :: HasCallStack =>  Worker -> T.Text -> TaskInfo -> IO ()
 createIOTask Worker{..} taskId taskInfo@TaskInfo {..} = do
   let taskPath = optTasksPath options <> "/" <> taskId
@@ -105,13 +75,11 @@ listIOTasks Worker{..} = M.listIOTaskMeta workerHandle
 
 stopIOTask :: Worker -> T.Text -> Bool -> Bool-> IO ()
 stopIOTask worker name ifIsRunning force = do
-  checkNode_ worker name
   ioTask <- getIOTask worker name
   IOTask.stopIOTask ioTask ifIsRunning force
 
 startIOTask :: Worker -> T.Text -> IO ()
 startIOTask worker name = do
-  checkNode_ worker name
   getIOTask worker name >>= IOTask.startIOTask
 
 getIOTask :: Worker -> T.Text -> IO IOTask
@@ -123,15 +91,9 @@ getIOTask Worker{..} name = do
 
 deleteIOTask :: Worker -> T.Text -> IO ()
 deleteIOTask worker@Worker{..} taskName = do
-  checkNode_ worker taskName
   stopIOTask worker taskName True False
   M.deleteIOTaskMeta workerHandle taskName
   C.modifyMVar_ ioTasksM $ return . HM.delete taskName
-
-checkNode_ :: Worker -> T.Text -> IO ()
-checkNode_ Worker{..} name = do
-  res <- checkNode name
-  unless res . throwIO $ WrongNodeException "send HStream IO request to wrong node"
 
 makeImage :: IOTaskType -> T.Text -> IOOptions -> T.Text
 makeImage typ name IOOptions{..} =

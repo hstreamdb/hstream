@@ -76,10 +76,6 @@ initializeServer opts@ServerOpts{..} gossipContext hh serverState = do
       hh
       (IO.HStreamConfig (cBytesToText (CB.pack _serverAddress <> ":" <> CB.pack (show _serverPort))))
       _ioOptions
-      (\k -> do
-        (_e, hr) <- readTVarIO epochHashRing
-        return $ getAllocatedNodeId hr k == _serverID
-       )
 
   shardInfo  <- newMVar HM.empty
   shardTable <- newMVar HM.empty
