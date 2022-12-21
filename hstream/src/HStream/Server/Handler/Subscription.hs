@@ -12,6 +12,7 @@ module HStream.Server.Handler.Subscription
   , deleteSubscriptionHandler
   , getSubscriptionHandler
   , listSubscriptionsHandler
+  , listSubscriptionsWithPrefixHandler
   , listConsumersHandler
   , checkSubscriptionExistHandler
   , streamingFetchHandler
@@ -22,6 +23,7 @@ module HStream.Server.Handler.Subscription
   , handleGetSubscription
   , handleCheckSubscriptionExist
   , handleListSubscriptions
+  , handleListSubscriptionsWithPrefix
   , handleStreamingFetch
   )
 where
@@ -174,6 +176,22 @@ handleListSubscriptions
   -> G.UnaryHandler ListSubscriptionsRequest ListSubscriptionsResponse
 handleListSubscriptions sc _ ListSubscriptionsRequest = catchDefaultEx $ do
   ListSubscriptionsResponse <$> Core.listSubscriptions sc
+
+listSubscriptionsWithPrefixHandler
+  :: ServerContext
+  -> ServerRequest 'Normal ListSubscriptionsWithPrefixRequest ListSubscriptionsResponse
+  -> IO (ServerResponse 'Normal ListSubscriptionsResponse)
+listSubscriptionsWithPrefixHandler sc (ServerNormalRequest _metadata ListSubscriptionsWithPrefixRequest{..}) = defaultExceptionHandle $ do
+  Log.debug "Receive listSubscriptions request"
+  res <- ListSubscriptionsResponse <$> Core.listSubscriptionsWithPrefix sc listSubscriptionsWithPrefixRequestPrefix
+  Log.debug $ Log.buildString "Result of listSubscriptions: " <> Log.buildString (show res)
+  returnResp res
+
+handleListSubscriptionsWithPrefix
+  :: ServerContext
+  -> G.UnaryHandler ListSubscriptionsWithPrefixRequest ListSubscriptionsResponse
+handleListSubscriptionsWithPrefix sc _ ListSubscriptionsWithPrefixRequest{..} = catchDefaultEx $ do
+  ListSubscriptionsResponse <$> Core.listSubscriptionsWithPrefix sc listSubscriptionsWithPrefixRequestPrefix
 
 -------------------------------------------------------------------------------
 

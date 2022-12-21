@@ -51,6 +51,9 @@ import           HStream.Utils              (decompressBatchedRecord,
 listSubscriptions :: ServerContext -> IO (V.Vector Subscription)
 listSubscriptions sc = CC.listSubscriptions sc Nothing
 
+listSubscriptionsWithPrefix :: ServerContext -> Text -> IO (V.Vector Subscription)
+listSubscriptionsWithPrefix sc prefix = V.filter (T.isPrefixOf prefix . subscriptionSubscriptionId) <$> CC.listSubscriptions sc Nothing
+
 listConsumers :: ServerContext -> ListConsumersRequest -> IO ListConsumersResponse
 listConsumers sc@ServerContext{..} ListConsumersRequest{listConsumersRequestSubscriptionId = sid} = do
   subCtxMap <- readTVarIO scSubscribeContexts

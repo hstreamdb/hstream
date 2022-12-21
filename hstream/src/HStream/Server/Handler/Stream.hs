@@ -12,6 +12,7 @@ module HStream.Server.Handler.Stream
   , deleteStreamHandler
   , getStreamHandler
   , listStreamsHandler
+  , listStreamsWithPrefixHandler
   , listShardsHandler
   , listShardReadersHandler
   , appendHandler
@@ -23,6 +24,7 @@ module HStream.Server.Handler.Stream
   , handleDeleteStream
   , handleGetStream
   , handleListStreams
+  , handleListStreamsWithPrefix
   , handleAppend
   , handleListShard
   , handleListShardReaders
@@ -114,6 +116,18 @@ listStreamsHandler sc (ServerNormalRequest _metadata request) = defaultException
 handleListStreams :: ServerContext -> G.UnaryHandler ListStreamsRequest ListStreamsResponse
 handleListStreams sc _ req = catchDefaultEx $
   ListStreamsResponse <$> C.listStreams sc req
+
+listStreamsWithPrefixHandler
+  :: ServerContext
+  -> ServerRequest 'Normal ListStreamsWithPrefixRequest ListStreamsResponse
+  -> IO (ServerResponse 'Normal ListStreamsResponse)
+listStreamsWithPrefixHandler sc (ServerNormalRequest _metadata request) = defaultExceptionHandle $ do
+  Log.debug "Receive List Stream Request"
+  C.listStreamsWithPrefix sc request >>= returnResp . ListStreamsResponse
+
+handleListStreamsWithPrefix :: ServerContext -> G.UnaryHandler ListStreamsWithPrefixRequest ListStreamsResponse
+handleListStreamsWithPrefix sc _ req = catchDefaultEx $
+  ListStreamsResponse <$> C.listStreamsWithPrefix sc req
 
 appendHandler
   :: ServerContext
