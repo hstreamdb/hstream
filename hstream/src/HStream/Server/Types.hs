@@ -32,7 +32,7 @@ import qualified HStream.IO.Types                 as IO
 import           HStream.MetaStore.Types          (MetaHandle)
 import           HStream.Server.Config
 import           HStream.Server.ConnectorTypes    as HCT
-import           HStream.Server.HStreamApi        (NodeState,
+import           HStream.Server.HStreamApi        (NodeState, SpecialOffset,
                                                    StreamingFetchResponse,
                                                    Subscription)
 import           HStream.Server.Shard             (ShardKey, SharedShardMap)
@@ -66,6 +66,7 @@ data ServerContext = ServerContext
   , metaHandle               :: MetaHandle
   , runningQueries           :: MVar (HM.HashMap Text ThreadId)
   , scSubscribeContexts      :: TVar (HM.HashMap SubscriptionId SubscribeContextNewWrapper)
+  , scCkpStore               :: HS.LDCheckpointStore
   , cmpStrategy              :: HS.Compression
 #if __GLASGOW_HASKELL__ < 902
   , headerConfig             :: AA.HeaderConfig AA.AdminAPI
@@ -105,6 +106,7 @@ data SubscribeContext = SubscribeContext
     subStreamName        :: T.Text,
     subAckTimeoutSeconds :: Int32,
     subMaxUnackedRecords :: Word32,
+    subStartOffset       :: PB.Enumerated SpecialOffset,
     subLdCkpReader       :: HS.LDSyncCkpReader,
     subLdReader          :: MVar HS.LDReader,
     subUnackedRecords    :: TVar Word32,
@@ -114,7 +116,7 @@ data SubscribeContext = SubscribeContext
     subCurrentTime ::  TVar Word64,
     subWaitingCheckedRecordIds :: TVar [CheckedRecordIds],
     subWaitingCheckedRecordIdsIndex :: TVar (Map.Map CheckedRecordIdsKey CheckedRecordIds),
-    subStartOffset       :: HM.HashMap S.C_LogID S.LSN
+    subStartOffsets       :: HM.HashMap S.C_LogID S.LSN
   }
 
 data CheckedRecordIds = CheckedRecordIds {

@@ -62,6 +62,7 @@ initializeServer opts@ServerOpts{..} gossipContext hh serverState = do
 #if __GLASGOW_HASKELL__ < 902
   let headerConfig = AA.HeaderConfig _ldAdminHost _ldAdminPort _ldAdminProtocolId _ldAdminConnTimeout _ldAdminSendTimeout _ldAdminRecvTimeout
 #endif
+  ckpStore <- S.newRSMBasedCheckpointStore ldclient S.checkpointStoreLogID 5000
 
   statsHolder <- newServerStatsHolder
 
@@ -94,6 +95,7 @@ initializeServer opts@ServerOpts{..} gossipContext hh serverState = do
       , scMaxRecordSize          = _maxRecordSize
       , runningQueries           = runningQs
       , scSubscribeContexts      = subCtxs
+      , scCkpStore               = ckpStore
       , cmpStrategy              = _compression
 #if __GLASGOW_HASKELL__ < 902
       , headerConfig             = headerConfig

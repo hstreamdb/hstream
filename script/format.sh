@@ -31,7 +31,7 @@ fi
 CABAL_FORMATER_BIN="cabal-fmt"
 
 command -v $CABAL_FORMATER_BIN > /dev/null && \
-    find -type f -name "*.cabal" \
+    find . -type f -name "*.cabal" \
         -not -path "*/external/*" \
         -not -path "*/local*/*" \
         | xargs $CABAL_FORMATER_BIN -i \
