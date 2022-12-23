@@ -210,6 +210,7 @@ streamingFetchCore :: ServerContext
 streamingFetchCore ctx SFetchCoreDirect = \initReq callback -> do
   mockAckPool <- newTChanIO
   Stats.subscription_time_series_add_request_messages (scStatsHolder ctx) (textToCBytes (streamingFetchRequestSubscriptionId initReq)) 1
+  Stats.subscription_stat_add_request_messages_counter (scStatsHolder ctx) (textToCBytes (streamingFetchRequestSubscriptionId initReq)) 1
   Log.debug "pass first recv"
   (SubscribeContextWrapper {..}, tid_m) <- initSub ctx (streamingFetchRequestSubscriptionId initReq)
   Log.debug "pass initSub"
@@ -247,6 +248,7 @@ streamingFetchCore ctx SFetchCoreInteractive = \(streamSend, streamRecv, request
       streamRecv >>= \case
         Right (Just firstReq) -> do
           Stats.subscription_time_series_add_request_messages (scStatsHolder ctx) (textToCBytes (streamingFetchRequestSubscriptionId firstReq)) 1
+          Stats.subscription_stat_add_request_messages_counter (scStatsHolder ctx) (textToCBytes (streamingFetchRequestSubscriptionId firstReq)) 1
           return firstReq
         Left _        -> throwIO $ HE.StreamReadError "Consumer recv error"
         Right Nothing -> throwIO $ HE.StreamReadClose "Consumer is closed"
@@ -455,6 +457,8 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
             let cSubscriptionId = textToCBytes subSubscriptionId
                 byteSize = fromIntegral $ sum $ map (BS.length . S.recordPayload) recordBatches
                 recordSize = fromIntegral $ length recordBatches
+            Stats.subscription_stat_add_delivery_in_bytes scStatsHolder cSubscriptionId byteSize
+            Stats.subscription_stat_add_delivery_in_records scStatsHolder cSubscriptionId recordSize
             Stats.subscription_time_series_add_send_out_bytes scStatsHolder cSubscriptionId byteSize
             Stats.subscription_time_series_add_send_out_records scStatsHolder cSubscriptionId recordSize
             atomically $ addUnackedRecords subCtx successSendRecords
@@ -465,6 +469,8 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
             let cSubscriptionId = textToCBytes subSubscriptionId
                 byteSize = fromIntegral $ sum $ map (BS.length . S.recordPayload) recordBatches
                 recordSize = fromIntegral $ length recordBatches
+            Stats.subscription_stat_add_delivery_in_bytes scStatsHolder cSubscriptionId byteSize
+            Stats.subscription_stat_add_delivery_in_records scStatsHolder cSubscriptionId recordSize
             Stats.subscription_time_series_add_send_out_bytes scStatsHolder cSubscriptionId byteSize
             Stats.subscription_time_series_add_send_out_records scStatsHolder cSubscriptionId recordSize
             atomically $ addUnackedRecords subCtx successSendRecords
@@ -606,6 +612,7 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
         Just (consumerName, streamSend) ->
           withMVar streamSend (\ss -> do
             Stats.subscription_time_series_add_response_messages scStatsHolder (textToCBytes subSubscriptionId) 1
+            Stats.subscription_stat_add_response_messages_counter scStatsHolder (textToCBytes subSubscriptionId) 1
             ss (StreamingFetchResponse $ Just records)
             ) >>= \case
             Left err -> do
@@ -846,7 +853,9 @@ recvAcks ServerContext {..} subState subCtx ConsumerContext {..} streamRecv = lo
             <> " from consumer:" <> Log.buildText ccConsumerName
           let cSubscriptionId = textToCBytes (subSubscriptionId subCtx)
           Stats.subscription_time_series_add_request_messages scStatsHolder cSubscriptionId 1
+          Stats.subscription_stat_add_request_messages_counter scStatsHolder cSubscriptionId 1
           unless (V.null streamingFetchRequestAckIds) $ do
+            Stats.subscription_stat_add_received_acks scStatsHolder cSubscriptionId (fromIntegral $ V.length streamingFetchRequestAckIds)
             Stats.subscription_time_series_add_acks scStatsHolder cSubscriptionId (fromIntegral $ V.length streamingFetchRequestAckIds)
             doAcks scLDClient subCtx streamingFetchRequestAckIds
           loop

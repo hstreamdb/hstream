@@ -46,7 +46,6 @@ import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as Store
 import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils
-import           HStream.Utils.Validation         (validateNameAndThrow)
 
 --------------------------------------------------------------------------------
 

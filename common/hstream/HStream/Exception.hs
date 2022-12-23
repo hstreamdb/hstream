@@ -43,6 +43,7 @@ module HStream.Exception
   , DecodeHStreamRecordErr (..)
   , NoRecordHeader (..)
   , UnknownCompressionType (..)
+  , InvalidStatsType (..)
   , InvalidStatsInterval (..)
   , InvalidSqlStatement (..)
 
@@ -326,6 +327,7 @@ MAKE_PARTICULAR_EX_1(SomeInvalidArgument, InvalidSubscriptionOffset, String, )
 MAKE_PARTICULAR_EX_1(SomeInvalidArgument, DecodeHStreamRecordErr, String, )
 MAKE_PARTICULAR_EX_0(SomeInvalidArgument, NoRecordHeader, "HStreamRecord doesn't have a header.")
 MAKE_PARTICULAR_EX_0(SomeInvalidArgument, UnknownCompressionType, "UnknownCompressionType")
+MAKE_PARTICULAR_EX_1(SomeInvalidArgument, InvalidStatsType, String, )
 MAKE_PARTICULAR_EX_1(SomeInvalidArgument, InvalidStatsInterval, String, )
 MAKE_PARTICULAR_EX_1(SomeInvalidArgument, InvalidSqlStatement, String, )
 
