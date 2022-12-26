@@ -105,3 +105,24 @@ spec = aroundAll provideHstreamApi $
       ClientIOError (GRPCIOBadStatusCode StatusNotFound _) -> True
       _                                                    -> False
     runDropSql api "DROP VIEW v7 IF EXISTS;"
+
+  it "#1200_BINARY" $ \api -> do
+    runDropSql api "DROP STREAM stream_binary IF EXISTS;"
+    runCreateStreamSql api "CREATE STREAM stream_binary;"
+    _ <- forkIO $ do
+      threadDelay 5000000 -- FIXME: requires a notification mechanism to ensure that the task starts successfully before inserting data
+      runInsertSql api "INSERT INTO stream_binary VALUES \"aaaaaaaaa\";"
+      threadDelay 500000
+      runInsertSql api "INSERT INTO stream_binary VALUES \"xxxxxxxxx\";"
+      threadDelay 500000
+      runInsertSql api "INSERT INTO stream_binary VALUES \"{ \\\"a\\\": 1}\";"
+      threadDelay 500000
+      runInsertSql api "INSERT INTO stream_binary (b, c) VALUES (1, 2);"
+    executeCommandPushQuery "SELECT * FROM stream_binary EMIT CHANGES;"
+      `shouldReturn` [ mkStruct [ ("a", Aeson.Number 1) ]
+                     , mkStruct
+                       [ ("b", Aeson.Number 1)
+                       , ("c", Aeson.Number 2)
+                       ]
+                     ]
+    runDropSql api "DROP STREAM stream_binary IF EXISTS;"
