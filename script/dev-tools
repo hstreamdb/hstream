@@ -937,6 +937,7 @@ class QuickBuildDevImageCommand:
         p.add_argument(
             "--enable-debug-info", default=False, action="store_true"
         )
+        p.add_argument("--ghc-options", required=False, default="")
         p.add_argument("--fast", default=False, action="store_true")
         p.add_argument("--only-hstream", default=False, action="store_true")
         p.add_argument("--project-file", default="cabal.project")
@@ -952,6 +953,7 @@ class QuickBuildDevImageCommand:
         fast=False,
         only_hstream=False,
         project_file="cabal.project",
+        ghc_options="",
         **kargs,
     ):
         debug_arg = "--enable-debug-info" if enable_debug_info else ""
@@ -965,7 +967,14 @@ class QuickBuildDevImageCommand:
             if use_hs_grpc
             else ""
         )
-        cabal_args = f"{debug_arg} {hsgrpc_arg} --project-file={project_file}"
+        cabal_args = " ".join(
+            [
+                debug_arg,
+                hsgrpc_arg,
+                f"--ghc-options='{ghc_options}'" if ghc_options else "",
+                f"--project-file={project_file}",
+            ]
+        )
 
         if use_hs_grpc:
             exe_renames = {"hstream-server": "hstream-server-sid"}
@@ -1055,6 +1064,7 @@ class QuickBuildDevImageCommand:
         )
         run_sh(copy_files_cmd)
         run_sh(f"docker commit {tmp_container_name} {tag}")
+        run_sh(f"docker kill {tmp_container_name}")
 
     def _build(
         self,
