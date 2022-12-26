@@ -47,9 +47,24 @@ module HStream.Stats
     -- * PerSubscriptionStats
     -- ** Counters
   , subscription_stat_add_resend_records
+  , subscription_stat_add_delivery_in_bytes
+  , subscription_stat_add_delivery_in_records
+  , subscription_stat_add_received_acks
+  , subscription_stat_add_request_messages_counter
+  , subscription_stat_add_response_messages_counter
   , subscription_stat_get_resend_records
+  , subscription_stat_get_delivery_in_bytes
+  , subscription_stat_get_delivery_in_records
+  , subscription_stat_get_received_acks
+  , subscription_stat_get_request_messages_counter
+  , subscription_stat_get_response_messages_counter
   , subscription_stat_getall
   , subscription_stat_getall_resend_records
+  , subscription_stat_getall_delivery_in_bytes
+  , subscription_stat_getall_delivery_in_records
+  , subscription_stat_getall_received_acks
+  , subscription_stat_getall_request_messages_counter
+  , subscription_stat_getall_response_messages_counter
     -- ** Time series
   , subscription_time_series_add_send_out_bytes
   , subscription_time_series_add_send_out_records
