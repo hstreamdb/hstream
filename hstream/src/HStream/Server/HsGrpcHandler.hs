@@ -40,6 +40,7 @@ handlers sc =
   , unary (GRPC :: GRPC P.HStreamApi "listStreams") (H.handleListStreams sc)
   , unary (GRPC :: GRPC P.HStreamApi "listShards") (H.handleListShard sc)
     -- Reader
+  , unary (GRPC :: GRPC P.HStreamApi "listShardReaders") (H.handleListShardReaders sc)
   , unary (GRPC :: GRPC P.HStreamApi "createShardReader") (H.handleCreateShardReader sc)
   , unary (GRPC :: GRPC P.HStreamApi "deleteShardReader") (H.handleDeleteShardReader sc)
     -- Subscription

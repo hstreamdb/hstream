@@ -57,6 +57,7 @@ handlers serverContext@ServerContext{..} =
         -- Shards
         hstreamApiListShards = listShardsHandler serverContext,
         -- Reader
+        hstreamApiListShardReaders = listShardReadersHandler serverContext,
         hstreamApiCreateShardReader = createShardReaderHandler serverContext,
         hstreamApiDeleteShardReader = deleteShardReaderHandler serverContext,
         hstreamApiReadShard         = readShardHandler serverContext,
