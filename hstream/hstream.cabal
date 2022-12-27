@@ -68,7 +68,6 @@ library
     HStream.Server.HsGrpcHandler
     HStream.Server.HStore
     HStream.Server.Initialization
-    HStream.Server.InternalHandler
     HStream.Server.MetaData
     HStream.Server.Shard
     HStream.Server.Types
