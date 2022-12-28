@@ -40,7 +40,7 @@ baseSpecAround = provideRunTest setup clean
 
 baseSpec :: Spec
 baseSpec = aroundAll provideHstreamApi $ aroundWith baseSpecAround $
-  describe "SQL.BaseSpec" $ parallel $ do
+  describe "SQL.BaseSpec" $ do
 
   it "insert data and select" $ \(api, source) -> do
     _ <- forkIO $ do
