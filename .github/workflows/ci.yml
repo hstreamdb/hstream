@@ -202,7 +202,7 @@ jobs:
           submodules: "recursive"
           path: integration-tests
 
-      - uses: actions/setup-java@v2
+      - uses: actions/setup-java@v3
         with:
           distribution: "adopt"
           java-version: 11
@@ -227,7 +227,7 @@ jobs:
         uses: actions/upload-artifact@v3
         if: ${{ success() }} || ${{ failure() }}
         with:
-          name: integration-tests-reports
+          name: integration-tests-reports-${{ matrix.ghc }}
           path: ci_artifact
           retention-days: 7
 
@@ -259,7 +259,7 @@ jobs:
           submodules: "recursive"
           path: integration-tests
 
-      - uses: actions/setup-java@v2
+      - uses: actions/setup-java@v3
         with:
           distribution: "adopt"
           java-version: 11
@@ -285,7 +285,7 @@ jobs:
         uses: actions/upload-artifact@v3
         if: ${{ success() }} || ${{ failure() }}
         with:
-          name: integration-tests-rqlite-reports
+          name: integration-tests-rqlite-reports-${{ matrix.ghc }}
           path: ci_artifact
           retention-days: 7
 
@@ -343,7 +343,7 @@ jobs:
         uses: actions/upload-artifact@v3
         if: ${{ success() }} || ${{ failure() }}
         with:
-          name: distributed-tests-reports
+          name: distributed-tests-reports-${{ matrix.ghc }}
           path: ci_artifact
           retention-days: 7
 
@@ -416,7 +416,7 @@ jobs:
         uses: actions/upload-artifact@v3
         if: ${{ success() }} || ${{ failure() }}
         with:
-          name: hstream-io-logs
+          name: hstream-io-logs-${{ matrix.ghc }}
           path: ci_artifact
           retention-days: 7
 
