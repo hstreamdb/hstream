@@ -219,9 +219,9 @@ subscriptionParser = API.Subscription
   <*> O.option O.auto ( O.long "max-unacked-records" <> O.metavar "INT"
                      <> O.value 10000
                      <> O.help "Maximum number of unacked records allowed per subscription")
-  <*> (Enumerated <$> O.option O.auto ( O.long "offset"
-                                     <> O.metavar "[earlist|lastest]"
-                                     <> O.value (Right API.SpecialOffsetLATEST)
+  <*> (Enumerated . Right <$> O.option O.auto ( O.long "offset"
+                                     <> O.metavar "[earliest|latest]"
+                                     <> O.value (API.SpecialOffsetLATEST)
                                      <> O.help "The offset of the subscription to start from"
                                       )
     )
