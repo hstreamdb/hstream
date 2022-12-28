@@ -56,7 +56,7 @@ import qualified HStream.Server.MetaData          as P
 import qualified HStream.Server.Shard             as Shard
 import           HStream.Server.Types
 import           HStream.SQL.AST
-import           HStream.SQL.Codegen              hiding (StreamName)
+import           HStream.SQL.Codegen
 import qualified HStream.SQL.Codegen              as HSC
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      as PB
@@ -180,7 +180,7 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
           object = AesonComp.fromList [("terminated", value)]
           result = V.singleton (jsonObjectToStruct object)
       pure $ API.CommandQueryResponse result
-    ExplainPlan _ -> throwIO $ HE.ExecPlanUnimplemented "ExplainPlan Unimplemented"
+    ExplainPlan plan -> pure $ API.CommandQueryResponse (mkVectorStruct plan "explain")
     PausePlan (PauseObjectConnector name) -> do
       IO.stopIOTask scIOWorker name False False
       pure (CommandQueryResponse V.empty)

@@ -40,6 +40,7 @@ handlers sc =
   , unary (GRPC :: GRPC P.HStreamApi "listStreams") (H.handleListStreams sc)
   , unary (GRPC :: GRPC P.HStreamApi "listShards") (H.handleListShard sc)
     -- Reader
+  , unary (GRPC :: GRPC P.HStreamApi "listShardReaders") (H.handleListShardReaders sc)
   , unary (GRPC :: GRPC P.HStreamApi "createShardReader") (H.handleCreateShardReader sc)
   , unary (GRPC :: GRPC P.HStreamApi "deleteShardReader") (H.handleDeleteShardReader sc)
     -- Subscription
@@ -58,6 +59,8 @@ handlers sc =
     -- Stats
   , unary (GRPC :: GRPC P.HStreamApi "perStreamTimeSeriesStats") (H.handlePerStreamTimeSeriesStats $ scStatsHolder sc)
   , unary (GRPC :: GRPC P.HStreamApi "perStreamTimeSeriesStatsAll") (H.handlePerStreamTimeSeriesStatsAll $ scStatsHolder sc)
+  , unary (GRPC :: GRPC P.HStreamApi "getStreamStats") (H.handleGetStreamStats $ scStatsHolder sc)
+  , unary (GRPC :: GRPC P.HStreamApi "getSubscriptionStats") (H.handleGetSubscriptionStats $ scStatsHolder sc)
     -- Admin
   , unary (GRPC :: GRPC P.HStreamApi "sendAdminCommand") (H.handleAdminCommand sc)
     -- Connector

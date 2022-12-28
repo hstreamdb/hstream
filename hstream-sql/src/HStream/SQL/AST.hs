@@ -23,7 +23,7 @@ import qualified Data.Map.Strict       as Map
 import qualified Data.Scientific       as Scientific
 import           Data.Text             (Text)
 import qualified Data.Text             as Text
-import           Data.Text.Encoding    (decodeUtf8, encodeUtf8)
+import           Data.Text.Encoding    (encodeUtf8)
 import qualified Data.Time             as Time
 import           Data.Time.Compat      ()
 import qualified Data.Vector           as V
@@ -48,13 +48,17 @@ class Refine a where
   refine :: HasCallStack => a -> RefinedType a
 
 --------------------------- Processing runtime types ---------------------------
-type FlowObject = HM.HashMap SKey FlowValue
+data ColumnCatalog = ColumnCatalog
+  { columnName   :: Text
+  , columnStream :: Maybe Text
+  } deriving (Eq, Ord, Generic, Hashable)
 
-data SKey = SKey
-  { keyField    :: Text
-  , keyStream_m :: Maybe Text
-  , keyExtra_m  :: Maybe Text
-  } deriving (Show, Eq, Ord, Generic, Hashable)
+instance Show ColumnCatalog where
+  show ColumnCatalog{..} = case columnStream of
+                             Nothing -> Text.unpack columnName
+                             Just s  -> Text.unpack s <> "." <> Text.unpack columnName
+
+type FlowObject = HM.HashMap ColumnCatalog FlowValue
 
 data FlowValue
   = FlowNull
@@ -121,13 +125,13 @@ jsonValueToFlowValue v = case v of
   Aeson.Array v -> FlowArray (jsonValueToFlowValue <$> (V.toList v))
   Aeson.Object o ->
     let list = HsAeson.toList o
-        list' = L.map (\(k,v) -> (SKey (HsAeson.toText k) Nothing Nothing, jsonValueToFlowValue v)) list
+        list' = L.map (\(k,v) -> (ColumnCatalog (HsAeson.toText k) Nothing, jsonValueToFlowValue v)) list
      in FlowSubObject (HM.fromList list')
 
 flowObjectToJsonObject :: FlowObject -> Aeson.Object
 flowObjectToJsonObject hm =
-  let anySameFields = anySame $ L.map (\(SKey k _ _) -> k) (HM.keys hm)
-      list = L.map (\(SKey k s_m _, v) ->
+  let anySameFields = anySame $ L.map (\(ColumnCatalog k _) -> k) (HM.keys hm)
+      list = L.map (\(ColumnCatalog k s_m, v) ->
                       let key = case s_m of
                                   Nothing -> k
                                   Just s  -> if anySameFields then s <> "." <> k else k
@@ -137,7 +141,7 @@ flowObjectToJsonObject hm =
 
 jsonObjectToFlowObject :: Text -> Aeson.Object -> FlowObject
 jsonObjectToFlowObject streamName object =
-  HM.mapKeys (\k -> SKey (HsAeson.toText k) (Just streamName) Nothing)
+  HM.mapKeys (\k -> ColumnCatalog (HsAeson.toText k) (Just streamName))
              (HM.map jsonValueToFlowValue $ HsAeson.toHashMap object)
 
 --------------------------------------------------------------------------------
@@ -166,7 +170,7 @@ data RDataType
   | RTypeBytea | RTypeText | RTypeDate | RTypeTime | RTypeTimestamp
   | RTypeInterval | RTypeJsonb
   | RTypeArray RDataType | RTypeMap RDataType RDataType
-  deriving (Show, Eq)
+  deriving (Show, Eq, Ord)
 
 type instance RefinedType DataType = RDataType
 instance Refine DataType where
@@ -371,7 +375,7 @@ data BinaryOp = OpAnd | OpOr
               | OpIfNull  | OpNullIf  | OpDateStr   | OpStrDate
               | OpSplit   | OpChunksOf
               | OpTake    | OpTakeEnd | OpDrop      | OpDropEnd
-              deriving (Eq, Show)
+              deriving (Eq, Show, Ord)
 
 data UnaryOp  = OpSin      | OpSinh    | OpAsin   | OpAsinh  | OpCos   | OpCosh
               | OpAcos     | OpAcosh   | OpTan    | OpTanh   | OpAtan  | OpAtanh
@@ -383,20 +387,20 @@ data UnaryOp  = OpSin      | OpSinh    | OpAsin   | OpAsinh  | OpCos   | OpCosh
               | OpToLower  | OpToUpper | OpTrim   | OpLTrim  | OpRTrim
               | OpReverse  | OpStrLen
               | OpDistinct | OpArrJoin | OpLength | OpArrMax | OpArrMin | OpSort
-              deriving (Eq, Show)
+              deriving (Eq, Show, Ord)
 
 data JsonOp
   = JOpArrow -- json -> text = value
   | JOpLongArrow -- json ->> text = text
   | JOpHashArrow -- json #> array[text/int] = value
   | JOpHashLongArrow -- json #>> array[text/int] = text
-  deriving (Eq, Show)
+  deriving (Eq, Show, Ord)
 
-data Aggregate = Nullary NullaryAggregate
-               | Unary   UnaryAggregate  RValueExpr
-               | Binary  BinaryAggregate RValueExpr RValueExpr
-               deriving (Eq)
-instance Show Aggregate where
+data Aggregate expr = Nullary NullaryAggregate
+                    | Unary   UnaryAggregate  expr
+                    | Binary  BinaryAggregate expr expr
+                    deriving (Eq)
+instance (HasName expr) => Show (Aggregate expr) where
   show agg = case agg of
     Nullary nullary     -> show nullary
     Unary unary expr    -> show unary  <> "(" <> getName expr <> ")"
@@ -429,7 +433,18 @@ instance Show BinaryAggregate where
 data RArrayAccessRhs
   = RArrayAccessRhsIndex Int
   | RArrayAccessRhsRange (Maybe Int) (Maybe Int)
-  deriving (Show, Eq)
+  deriving (Eq, Ord)
+instance Show RArrayAccessRhs where
+  show (RArrayAccessRhsIndex n) = "[" <> show n <> "]"
+  show (RArrayAccessRhsRange l_m r_m) =
+    let l = case l_m of
+              Nothing -> ""
+              Just l  -> show l
+        r = case r_m of
+              Nothing -> ""
+              Just r  -> show r
+     in "[" <> l <> ":" <> r <> "]"
+
 type instance RefinedType ArrayAccessRhs = RArrayAccessRhs
 instance Refine ArrayAccessRhs where
   refine rhs = case rhs of
@@ -453,7 +468,7 @@ data RValueExpr = RExprCast        ExprName RValueExpr RDataType
                 | RExprAccessArray ExprName RValueExpr RArrayAccessRhs
                 | RExprCol         ExprName (Maybe StreamName) FieldName
                 | RExprConst       ExprName Constant
-                | RExprAggregate   ExprName Aggregate
+                | RExprAggregate   ExprName (Aggregate RValueExpr)
                 | RExprAccessJson  ExprName JsonOp RValueExpr RValueExpr
                 | RExprBinOp       ExprName BinaryOp RValueExpr RValueExpr
                 | RExprUnaryOp     ExprName UnaryOp  RValueExpr
@@ -600,8 +615,7 @@ instance Refine ColName where
 ---- Sel
 type SelectItemAlias = Text
 data RSelectItem
-  = RSelectItemProject   RValueExpr (Maybe SelectItemAlias)
-  | RSelectItemAggregate Aggregate (Maybe SelectItemAlias)
+  = RSelectItemProject RValueExpr (Maybe SelectItemAlias)
   | RSelectProjectQualifiedAll StreamName
   | RSelectProjectAll
   deriving (Show, Eq)
@@ -611,16 +625,9 @@ instance Refine SelectItem where
   refine item = case item of
     SelectItemQualifiedWildcard _ hIdent -> RSelectProjectQualifiedAll (refine hIdent)
     SelectItemWildcard _ -> RSelectProjectAll
-    SelectItemUnnamedExpr _ expr ->
-      let rexpr = refine expr
-       in case rexpr of
-            RExprAggregate _ agg -> RSelectItemAggregate agg Nothing
-            _                    -> RSelectItemProject rexpr Nothing
+    SelectItemUnnamedExpr _ expr -> RSelectItemProject (refine expr) Nothing
     SelectItemExprWithAlias _ expr colIdent ->
-      let rexpr = refine expr
-       in case rexpr of
-            RExprAggregate _ agg -> RSelectItemAggregate agg (Just $ refine colIdent)
-            _                    -> RSelectItemProject rexpr (Just $ refine colIdent)
+      RSelectItemProject (refine expr) (Just $ refine colIdent)
 
 newtype RSel = RSel [RSelectItem] deriving (Show, Eq)
 type instance RefinedType Sel = RSel
@@ -728,14 +735,14 @@ instance Refine Select where
     RSelect (refine sel) (refine frm) (refine whr) (refine grp) (refine hav)
 
 ---- EXPLAIN
-type RExplain = Text
+type RExplain = RSelect
 type instance RefinedType Explain = RExplain
 instance Refine Explain where
-  refine (ExplainSelect _ select)                = Text.pack (printTree select) <> ";"
-  refine (ExplainCreate _ create@(CreateAs{}))   = Text.pack (printTree create) <> ";"
-  refine (ExplainCreate _ create@(CreateAsOp{})) = Text.pack (printTree create) <> ";"
-  refine (ExplainCreate _ create@(CreateView{})) = Text.pack (printTree create) <> ";"
-  refine (ExplainCreate pos _)                   = throwImpossible
+  refine (ExplainSelect _ select)                    = refine select
+  refine (ExplainCreate _ (CreateAs _ _ select))     = refine select
+  refine (ExplainCreate _ (CreateAsOp _ _ select _)) = refine select
+  refine (ExplainCreate _ (CreateView _ _ select))   = refine select
+  refine (ExplainCreate pos _)                       = throwImpossible
 
 ---- CREATE
 data RStreamOptions = RStreamOptions

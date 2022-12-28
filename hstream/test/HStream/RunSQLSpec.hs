@@ -78,9 +78,9 @@ baseSpec = aroundAll provideHstreamApi $ aroundWith baseSpecAround $
             (\l -> not (L.null l) &&
                    L.last l == (mkStruct [("result", Aeson.Number 4)]) &&
                    L.init l `L.isSubsequenceOf` [ mkStruct [("result", Aeson.Number 1)]
-                                              , mkStruct [("result", Aeson.Number 3)]
-                                              , mkStruct [("result", Aeson.Number 6)]
-                                              ]
+                                                , mkStruct [("result", Aeson.Number 3)]
+                                                , mkStruct [("result", Aeson.Number 6)]
+                                                ]
             )
           )
 

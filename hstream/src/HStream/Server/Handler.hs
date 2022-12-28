@@ -57,6 +57,7 @@ handlers serverContext@ServerContext{..} =
         -- Shards
         hstreamApiListShards = listShardsHandler serverContext,
         -- Reader
+        hstreamApiListShardReaders = listShardReadersHandler serverContext,
         hstreamApiCreateShardReader = createShardReaderHandler serverContext,
         hstreamApiDeleteShardReader = deleteShardReaderHandler serverContext,
         hstreamApiReadShard         = readShardHandler serverContext,
@@ -64,6 +65,8 @@ handlers serverContext@ServerContext{..} =
         -- Stats
         hstreamApiPerStreamTimeSeriesStats = H.perStreamTimeSeriesStats scStatsHolder,
         hstreamApiPerStreamTimeSeriesStatsAll = H.perStreamTimeSeriesStatsAll scStatsHolder,
+        hstreamApiGetStreamStats = H.getStreamStatsHandler scStatsHolder,
+        hstreamApiGetSubscriptionStats = H.getSubscriptionStatsHandler scStatsHolder,
 
         -- Query
         hstreamApiTerminateQueries = terminateQueriesHandler serverContext,

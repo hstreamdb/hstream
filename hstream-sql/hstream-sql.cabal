@@ -48,11 +48,13 @@ library
     HStream.SQL
     HStream.SQL.Abs
     HStream.SQL.AST
+    HStream.SQL.Planner
+    HStream.SQL.Planner.Pretty
     HStream.SQL.Codegen
     HStream.SQL.Codegen.BinOp
     HStream.SQL.Codegen.Cast
     HStream.SQL.Codegen.JsonOp
-    HStream.SQL.Codegen.SKey
+    HStream.SQL.Codegen.ColumnCatalog
     HStream.SQL.Codegen.UnaryOp
     HStream.SQL.Codegen.Utils
     HStream.SQL.Exception
@@ -80,6 +82,7 @@ library
     , extra
     , hashable
     , hstream-common
+    , prettyprinter        ^>=1.6
     , proto3-suite
     , scientific
     , string-random

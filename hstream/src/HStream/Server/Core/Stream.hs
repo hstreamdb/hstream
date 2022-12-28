@@ -11,49 +11,47 @@ module HStream.Server.Core.Stream
   , append
   , appendStream
   , listShards
+  , listShardReaders
   , createShardReader
   , deleteShardReader
   , readShard
   ) where
 
-import           Control.Concurrent               (modifyMVar_, newEmptyMVar,
-                                                   putMVar, readMVar, takeMVar,
-                                                   withMVar)
-import           Control.Exception                (bracket, catch, throw,
-                                                   throwIO)
-import           Control.Monad                    (forM, unless, when)
-import qualified Data.ByteString                  as BS
-import qualified Data.ByteString.Lazy             as BSL
-import           Data.Foldable                    (foldl')
-import qualified Data.HashMap.Strict              as HM
-import qualified Data.Map.Strict                  as M
-import           Data.Maybe                       (fromJust, fromMaybe)
-import qualified Data.Text                        as T
-import qualified Data.Vector                      as V
-import           GHC.Stack                        (HasCallStack)
-import           Google.Protobuf.Timestamp        (Timestamp)
-import           Proto3.Suite                     (Enumerated (Enumerated))
-import qualified Proto3.Suite                     as PT
-import qualified Z.Data.CBytes                    as CB
-import           ZooKeeper.Exception              (ZNONODE (..))
+import           Control.Concurrent         (modifyMVar_, newEmptyMVar, putMVar,
+                                             readMVar, takeMVar, withMVar)
+import           Control.Exception          (bracket, catch, throw, throwIO)
+import           Control.Monad              (forM, unless, when)
+import qualified Data.ByteString            as BS
+import qualified Data.ByteString.Lazy       as BSL
+import           Data.Foldable              (foldl')
+import           Data.Functor               ((<&>))
+import qualified Data.HashMap.Strict        as HM
+import qualified Data.Map.Strict            as M
+import           Data.Maybe                 (fromJust, fromMaybe)
+import qualified Data.Text                  as T
+import qualified Data.Vector                as V
+import           GHC.Stack                  (HasCallStack)
+import           Google.Protobuf.Timestamp  (Timestamp)
+import           Proto3.Suite               (Enumerated (Enumerated))
+import qualified Proto3.Suite               as PT
+import qualified Z.Data.CBytes              as CB
+import           ZooKeeper.Exception        (ZNONODE (..))
 
-import           HStream.Common.ConsistentHashing (getAllocatedNodeId)
-import qualified HStream.Exception                as HE
-import qualified HStream.Logger                   as Log
-import qualified HStream.MetaStore.Types          as M
-import           HStream.Server.Core.Common       (decodeRecordBatch,
-                                                   listSubscriptions)
-import           HStream.Server.HStreamApi        (CreateShardReaderRequest (..))
-import qualified HStream.Server.HStreamApi        as API
-import qualified HStream.Server.MetaData          as P
-import           HStream.Server.Shard             (Shard (..), createShard,
-                                                   devideKeySpace,
-                                                   mkShardWithDefaultId,
-                                                   mkSharedShardMapWithShards)
-import           HStream.Server.Types             (ServerContext (..),
-                                                   transToStreamName)
-import qualified HStream.Stats                    as Stats
-import qualified HStream.Store                    as S
+import qualified HStream.Exception          as HE
+import qualified HStream.Logger             as Log
+import qualified HStream.MetaStore.Types    as M
+import           HStream.Server.Core.Common (decodeRecordBatch)
+import           HStream.Server.HStreamApi  (CreateShardReaderRequest (..))
+import qualified HStream.Server.HStreamApi  as API
+import qualified HStream.Server.MetaData    as P
+import           HStream.Server.Shard       (Shard (..), createShard,
+                                             devideKeySpace,
+                                             mkShardWithDefaultId,
+                                             mkSharedShardMapWithShards)
+import           HStream.Server.Types       (ServerContext (..),
+                                             transToStreamName)
+import qualified HStream.Stats              as Stats
+import qualified HStream.Store              as S
 import           HStream.Utils
 
 -------------------------------------------------------------------------------
@@ -193,6 +191,8 @@ appendStream ServerContext{..} API.AppendRequest {appendRequestShardId = shardId
   when (payloadSize > scMaxRecordSize) $ throwIO $ HE.InvalidRecord "Record size exceeds the maximum size limit"
   S.AppendCompletion {..} <- S.appendCompressedBS scLDClient shardId payload cmpStrategy Nothing
   -- XXX: Should we add a server option to toggle Stats?
+  Stats.stream_stat_add_append_payload_bytes scStatsHolder cStreamName (fromIntegral payloadSize)
+  Stats.stream_stat_add_record_payload_bytes scStatsHolder cStreamName (fromIntegral recordSize)
   Stats.stream_time_series_add_append_in_bytes scStatsHolder cStreamName (fromIntegral payloadSize)
   Stats.stream_time_series_add_append_in_records scStatsHolder cStreamName (fromIntegral recordSize)
   let rids = V.zipWith (API.RecordId shardId) (V.replicate (fromIntegral recordSize) appendCompLSN) (V.fromList [0..])
@@ -254,6 +254,9 @@ deleteShardReader ctx@ServerContext{..} API.DeleteShardReaderRequest{..} = do
       Nothing -> return mp
       Just _  -> return (HM.delete deleteShardReaderRequestReaderId mp)
   unless isSuccess $ throwIO $ HE.EmptyShardReader "ShardReaderNotExists"
+
+listShardReaders :: HasCallStack => ServerContext -> API.ListShardReadersRequest -> IO (V.Vector T.Text)
+listShardReaders ctx@ServerContext{..} _req = M.listMeta @P.ShardReader metaHandle <&> V.fromList . map P.readerReaderId
 
 listShards
   :: HasCallStack
