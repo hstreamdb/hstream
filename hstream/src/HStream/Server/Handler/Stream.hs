@@ -13,6 +13,7 @@ module HStream.Server.Handler.Stream
   , getStreamHandler
   , listStreamsHandler
   , listShardsHandler
+  , listShardReadersHandler
   , appendHandler
   , createShardReaderHandler
   , deleteShardReaderHandler
@@ -24,6 +25,7 @@ module HStream.Server.Handler.Stream
   , handleListStreams
   , handleAppend
   , handleListShard
+  , handleListShardReaders
   , handleCreateShardReader
   , handleDeleteShardReader
   , handleReadShard
@@ -148,6 +150,16 @@ listShardsHandler sc (ServerNormalRequest _metadata request) = listShardsExcepti
 handleListShard :: ServerContext -> G.UnaryHandler ListShardsRequest ListShardsResponse
 handleListShard sc _ req = listShardsExHandle $
   ListShardsResponse <$> C.listShards sc req
+
+listShardReadersHandler :: ServerContext
+  -> ServerRequest 'Normal ListShardReadersRequest ListShardReadersResponse
+  -> IO (ServerResponse 'Normal ListShardReadersResponse)
+listShardReadersHandler sc (ServerNormalRequest _metadata request) = defaultExceptionHandle $
+  C.listShardReaders sc request >>= returnResp . ListShardReadersResponse
+
+handleListShardReaders :: ServerContext -> G.UnaryHandler ListShardReadersRequest ListShardReadersResponse
+handleListShardReaders sc _ req = catchDefaultEx $
+  ListShardReadersResponse <$> C.listShardReaders sc req
 
 createShardReaderHandler
   :: ServerContext

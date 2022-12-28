@@ -11,6 +11,7 @@ module HStream.Server.Core.Stream
   , append
   , appendStream
   , listShards
+  , listShardReaders
   , createShardReader
   , deleteShardReader
   , readShard
@@ -23,6 +24,7 @@ import           Control.Monad              (forM, unless, when)
 import qualified Data.ByteString            as BS
 import qualified Data.ByteString.Lazy       as BSL
 import           Data.Foldable              (foldl')
+import           Data.Functor               ((<&>))
 import qualified Data.HashMap.Strict        as HM
 import qualified Data.Map.Strict            as M
 import           Data.Maybe                 (fromJust, fromMaybe)
@@ -252,6 +254,9 @@ deleteShardReader ctx@ServerContext{..} API.DeleteShardReaderRequest{..} = do
       Nothing -> return mp
       Just _  -> return (HM.delete deleteShardReaderRequestReaderId mp)
   unless isSuccess $ throwIO $ HE.EmptyShardReader "ShardReaderNotExists"
+
+listShardReaders :: HasCallStack => ServerContext -> API.ListShardReadersRequest -> IO (V.Vector T.Text)
+listShardReaders ctx@ServerContext{..} _req = M.listMeta @P.ShardReader metaHandle <&> V.fromList . map P.readerReaderId
 
 listShards
   :: HasCallStack
