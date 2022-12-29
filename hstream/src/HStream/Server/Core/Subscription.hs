@@ -10,7 +10,8 @@ module HStream.Server.Core.Subscription where
 import           Control.Concurrent
 import           Control.Concurrent.Async   (async, wait, withAsync)
 import           Control.Concurrent.STM
-import           Control.Exception          (catch, onException, throwIO)
+import           Control.Exception          (catch, handle, onException,
+                                             throwIO)
 import           Control.Monad
 import qualified Data.ByteString            as BS
 import           Data.Foldable              (foldl')
@@ -51,6 +52,9 @@ import           HStream.Utils              (decompressBatchedRecord,
 listSubscriptions :: ServerContext -> IO (V.Vector Subscription)
 listSubscriptions sc = CC.listSubscriptions sc Nothing
 
+listSubscriptionsWithPrefix :: ServerContext -> Text -> IO (V.Vector Subscription)
+listSubscriptionsWithPrefix sc prefix = V.filter (T.isPrefixOf prefix . subscriptionSubscriptionId) <$> CC.listSubscriptions sc Nothing
+
 listConsumers :: ServerContext -> ListConsumersRequest -> IO ListConsumersResponse
 listConsumers sc@ServerContext{..} ListConsumersRequest{listConsumersRequestSubscriptionId = sid} = do
   subCtxMap <- readTVarIO scSubscribeContexts
@@ -72,7 +76,8 @@ getSubscription ServerContext{ ..} GetSubscriptionRequest{ getSubscriptionReques
                            >=> readTVar . subShardContexts)
      .  HM.lookup subId
   offsets <- forM shardIds (\x -> do
-    lsn <- S.ckpStoreGetLSN scCkpStore (textToCBytes subId) x
+    lsn <- handle (\(e::S.SomeHStoreException) -> return 0) $
+      S.ckpStoreGetLSN scCkpStore (textToCBytes subId) x
     return $ SubscriptionOffset {
       subscriptionOffsetShardId = x,
       subscriptionOffsetBatchId = lsn

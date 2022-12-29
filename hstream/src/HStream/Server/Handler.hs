@@ -42,6 +42,7 @@ handlers serverContext@ServerContext{..} =
         hstreamApiDeleteStream = deleteStreamHandler serverContext,
         hstreamApiGetStream = getStreamHandler serverContext,
         hstreamApiListStreams = listStreamsHandler serverContext,
+        hstreamApiListStreamsWithPrefix = listStreamsWithPrefixHandler serverContext,
         hstreamApiAppend = appendHandler serverContext,
 
         -- Subscribe
@@ -49,6 +50,7 @@ handlers serverContext@ServerContext{..} =
         hstreamApiDeleteSubscription = deleteSubscriptionHandler serverContext,
         hstreamApiGetSubscription = getSubscriptionHandler serverContext,
         hstreamApiListSubscriptions = listSubscriptionsHandler serverContext,
+        hstreamApiListSubscriptionsWithPrefix = listSubscriptionsWithPrefixHandler serverContext,
         hstreamApiListConsumers = listConsumersHandler serverContext,
         hstreamApiCheckSubscriptionExist = checkSubscriptionExistHandler serverContext,
 

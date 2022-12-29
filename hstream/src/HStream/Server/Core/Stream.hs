@@ -7,7 +7,7 @@ module HStream.Server.Core.Stream
   , deleteStream
   , getStream
   , listStreams
-  , listStreamNames
+  , listStreamsWithPrefix
   , append
   , appendStream
   , listShards
@@ -134,9 +134,21 @@ listStreams
   => ServerContext
   -> API.ListStreamsRequest
   -> IO (V.Vector API.Stream)
-listStreams ServerContext{..} API.ListStreamsRequest = do
+listStreams sc@ServerContext{..} API.ListStreamsRequest = do
   streams <- S.findStreams scLDClient S.StreamTypeStream
-  V.forM (V.fromList streams) $ \stream -> do
+  V.forM (V.fromList streams) (getStreamInfo sc)
+
+listStreamsWithPrefix
+  :: HasCallStack
+  => ServerContext
+  -> API.ListStreamsWithPrefixRequest
+  -> IO (V.Vector API.Stream)
+listStreamsWithPrefix sc@ServerContext{..} API.ListStreamsWithPrefixRequest{..} = do
+  streams <- filter (T.isPrefixOf listStreamsWithPrefixRequestPrefix . T.pack . S.showStreamName) <$> S.findStreams scLDClient S.StreamTypeStream
+  V.forM (V.fromList streams) (getStreamInfo sc)
+
+getStreamInfo :: ServerContext -> S.StreamId -> IO API.Stream
+getStreamInfo ServerContext{..} stream = do
     attrs <- S.getStreamLogAttrs scLDClient stream
     -- FIXME: should the default value be 0?
     let r = fromMaybe 0 . S.attrValue . S.logReplicationFactor $ attrs
@@ -150,11 +162,6 @@ listStreams ServerContext{..} API.ListStreamsRequest = do
      case PT.fromByteString . BSL.toStrict . cBytesToLazyByteString $ tmp of
        Left _          -> Nothing
        Right timestamp -> Just timestamp
-
-listStreamNames :: ServerContext -> IO (V.Vector T.Text)
-listStreamNames ServerContext{..} = do
-  streams <- S.findStreams scLDClient S.StreamTypeStream
-  pure $ V.map (T.pack . S.showStreamName) (V.fromList streams)
 
 append :: HasCallStack
        => ServerContext -> API.AppendRequest -> IO API.AppendResponse
