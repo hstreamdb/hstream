@@ -1,6 +1,7 @@
 {-# LANGUAGE BlockArguments      #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
+{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -20,23 +21,34 @@ module HStream.Server.Handler.Connector
   , handleDeleteConnector
   , handleResumeConnector
   , handlePauseConnector
+
+  , createIOTaskFromSql
   ) where
 
 import           Control.Exception                (throwIO)
+import           Control.Monad                    (unless)
+import qualified Data.Aeson                       as A
 import qualified Data.Text                        as T
+import qualified Data.UUID                        as UUID
+import qualified Data.UUID.V4                     as UUID
 import qualified Data.Vector                      as V
 import qualified HsGrpc.Server                    as G
 import           Network.GRPC.HighLevel.Generated
 
 import qualified HStream.Exception                as HE
+import qualified HStream.IO.Types                 as IO
 import qualified HStream.IO.Worker                as IO
 import qualified HStream.Logger                   as Log
+import           HStream.Server.Core.Common       (lookupResource')
 import           HStream.Server.Exception         (catchDefaultEx,
                                                    defaultExceptionHandle)
 import           HStream.Server.HStreamApi
 import           HStream.Server.Types
+import qualified HStream.SQL.Codegen              as CG
 import           HStream.ThirdParty.Protobuf      (Empty (..))
-import           HStream.Utils                    (returnResp)
+import           HStream.Utils                    (ResourceType (..),
+                                                   returnResp,
+                                                   validateNameAndThrow)
 
 createConnectorHandler
   :: ServerContext
@@ -45,11 +57,11 @@ createConnectorHandler
 createConnectorHandler sc
   (ServerNormalRequest _ CreateConnectorRequest{..}) = defaultExceptionHandle $ do
     Log.debug "Receive Create Sink Connector Request"
-    IO.createIOTaskFromSql (scIOWorker sc) createConnectorRequestSql >>= returnResp
+    createIOTaskFromSql sc createConnectorRequestSql >>= returnResp
 
 handleCreateConnector :: ServerContext -> G.UnaryHandler CreateConnectorRequest Connector
 handleCreateConnector sc _ CreateConnectorRequest{..} = catchDefaultEx $
-  IO.createIOTaskFromSql (scIOWorker sc) createConnectorRequestSql
+  createIOTaskFromSql sc createConnectorRequestSql
 
 listConnectorsHandler
   :: ServerContext
@@ -87,43 +99,91 @@ deleteConnectorHandler
   :: ServerContext
   -> ServerRequest 'Normal DeleteConnectorRequest Empty
   -> IO (ServerResponse 'Normal Empty)
-deleteConnectorHandler ServerContext{..}
+deleteConnectorHandler sc@ServerContext{..}
   (ServerNormalRequest _metadata DeleteConnectorRequest{..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive Delete Connector Request. "
     <> "Connector Name: " <> Log.buildText deleteConnectorRequestName
+  ServerNode{..} <- lookupResource' sc ResConnector deleteConnectorRequestName
+  unless (serverNodeId == serverID) $
+    throwIO $ HE.WrongServer "Connector is bound to a different node"
   IO.deleteIOTask scIOWorker deleteConnectorRequestName
   returnResp Empty
 
 handleDeleteConnector :: ServerContext -> G.UnaryHandler DeleteConnectorRequest Empty
-handleDeleteConnector ServerContext{..} _ DeleteConnectorRequest{..} = catchDefaultEx $
-    IO.deleteIOTask scIOWorker deleteConnectorRequestName >> pure Empty
+handleDeleteConnector sc@ServerContext{..} _ DeleteConnectorRequest{..} = catchDefaultEx $ do
+  ServerNode{..} <- lookupResource' sc ResConnector deleteConnectorRequestName
+  unless (serverNodeId == serverID) $
+    throwIO $ HE.WrongServer "Connector is bound to a different node"
+  IO.deleteIOTask scIOWorker deleteConnectorRequestName >> pure Empty
 
 resumeConnectorHandler
   :: ServerContext
   -> ServerRequest 'Normal ResumeConnectorRequest Empty
   -> IO (ServerResponse 'Normal Empty)
-resumeConnectorHandler ServerContext{..}
+resumeConnectorHandler sc@ServerContext{..}
   (ServerNormalRequest _metadata ResumeConnectorRequest{..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive ResumeConnectorRequest. "
     <> "Connector Name: " <> Log.buildText resumeConnectorRequestName
+  ServerNode{..} <- lookupResource' sc ResConnector resumeConnectorRequestName
+  unless (serverNodeId == serverID) $
+    throwIO $ HE.WrongServer "Connector is bound to a different node"
   IO.startIOTask scIOWorker resumeConnectorRequestName
   returnResp Empty
 
 handleResumeConnector :: ServerContext -> G.UnaryHandler ResumeConnectorRequest Empty
-handleResumeConnector ServerContext{..} _ ResumeConnectorRequest{..} = catchDefaultEx $
+handleResumeConnector sc@ServerContext{..} _ ResumeConnectorRequest{..} = catchDefaultEx $ do
+  ServerNode{..} <- lookupResource' sc ResConnector resumeConnectorRequestName
+  unless (serverNodeId == serverID) $
+    throwIO $ HE.WrongServer "Connector is bound to a different node"
   IO.startIOTask scIOWorker resumeConnectorRequestName >> pure Empty
 
 pauseConnectorHandler
   :: ServerContext
   -> ServerRequest 'Normal PauseConnectorRequest Empty
   -> IO (ServerResponse 'Normal Empty)
-pauseConnectorHandler ServerContext{..}
+pauseConnectorHandler sc@ServerContext{..}
   (ServerNormalRequest _metadata PauseConnectorRequest{..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive Terminate Connector Request. "
     <> "Connector ID: " <> Log.buildText pauseConnectorRequestName
+  ServerNode{..} <- lookupResource' sc ResConnector pauseConnectorRequestName
+  unless (serverNodeId == serverID) $
+    throwIO $ HE.WrongServer "Connector is bound to a different node"
   IO.stopIOTask scIOWorker pauseConnectorRequestName False False
   returnResp Empty
 
 handlePauseConnector :: ServerContext -> G.UnaryHandler PauseConnectorRequest Empty
-handlePauseConnector ServerContext{..} _ PauseConnectorRequest{..} = catchDefaultEx $
+handlePauseConnector sc@ServerContext{..} _ PauseConnectorRequest{..} = catchDefaultEx $ do
+  ServerNode{..} <- lookupResource' sc ResConnector pauseConnectorRequestName
+  unless (serverNodeId == serverID) $
+    throwIO $ HE.WrongServer "Connector is bound to a different node"
   IO.stopIOTask scIOWorker pauseConnectorRequestName False False >> pure Empty
+
+createIOTaskFromSql :: ServerContext -> T.Text -> IO Connector
+createIOTaskFromSql sc@ServerContext{scIOWorker = worker@IO.Worker{..}, ..} sql = do
+  (CG.CreateConnectorPlan cType cName cTarget ifNotExist cfg) <- CG.streamCodegen sql
+  validateNameAndThrow cName
+  ServerNode{..} <- lookupResource' sc ResConnector cName
+  unless (serverNodeId == serverID) $
+    throwIO $ HE.WrongServer "Connector is bound to a different node"
+  Log.info $ "CreateConnector CodeGen"
+           <> ", connector type: " <> Log.buildText cType
+           <> ", connector name: " <> Log.buildText cName
+           <> ", config: "         <> Log.buildString (show cfg)
+  taskId <- UUID.toText <$> UUID.nextRandom
+  let IO.IOOptions {..} = options
+      taskType = if cType == "SOURCE" then IO.SOURCE else IO.SINK
+      image = IO.makeImage taskType cTarget options
+      connectorConfig =
+        A.object
+          [ "hstream" A..= IO.toTaskJson hsConfig taskId
+          , "connector" A..= cfg
+          ]
+      taskInfo = IO.TaskInfo
+        { taskName = cName
+        , taskType = if cType == "SOURCE" then IO.SOURCE else IO.SINK
+        , taskConfig = IO.TaskConfig image optTasksNetwork
+        , connectorConfig = connectorConfig
+        , originSql = sql
+        }
+  IO.createIOTask worker taskId taskInfo
+  return $ IO.mkConnector cName (IO.ioTaskStatusToText IO.NEW)
