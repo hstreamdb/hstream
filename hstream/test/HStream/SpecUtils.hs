@@ -241,8 +241,8 @@ executeCommandPushQuery sql = withGRPCClient clientConfig $ \client -> do
   ref <- newIORef []
   ClientReaderResponse _meta _status _details <-
     hstreamApiExecutePushQuery $
-      ClientReaderRequest commandPushQuery 15
-                          (MetadataMap Map.empty) (action (15.0 :: Double) ref)
+      ClientReaderRequest commandPushQuery 30
+                          (MetadataMap Map.empty) (action (30.0 :: Double) ref)
   readIORef ref
   where
     action timeout ref call _meta recv

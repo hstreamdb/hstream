@@ -32,7 +32,7 @@ spec = aroundAll provideHstreamApi $
     runCreateStreamSql api "CREATE STREAM s1;"
     runCreateStreamSql api "CREATE STREAM s2;"
     _ <- forkIO $ do
-      threadDelay 5000000 -- FIXME: requires a notification mechanism to ensure that the task starts successfully before inserting data
+      threadDelay 10000000 -- FIXME: requires a notification mechanism to ensure that the task starts successfully before inserting data
       runInsertSql api "INSERT INTO s1 (a, b) VALUES (1, 3);"
       runInsertSql api "INSERT INTO s2 (a, b) VALUES (2, 3);"
     executeCommandPushQuery "SELECT b, SUM(s1.a), SUM(s2.a) FROM s1 INNER JOIN s2 ON s1.b = s2.b GROUP BY s1.b EMIT CHANGES;"
@@ -49,7 +49,7 @@ spec = aroundAll provideHstreamApi $
     runCreateStreamSql api "CREATE STREAM s4;"
     runCreateWithSelectSql api "CREATE STREAM s5 AS SELECT SUM(a), COUNT(*) AS result, b FROM s4 GROUP BY b;"
     _ <- forkIO $ do
-      threadDelay 5000000 -- FIXME: requires a notification mechanism to ensure that the task starts successfully before inserting data
+      threadDelay 10000000 -- FIXME: requires a notification mechanism to ensure that the task starts successfully before inserting data
       runInsertSql api "INSERT INTO s4 (a, b) VALUES (1, 4);"
       threadDelay 500000
       runInsertSql api "INSERT INTO s4 (a, b) VALUES (1, 4);"
@@ -75,7 +75,7 @@ spec = aroundAll provideHstreamApi $
     runCreateStreamSql api "CREATE STREAM s6;"
     runQuerySimple_ api "CREATE VIEW v6 as SELECT key2, key3, SUM(key1) FROM s6 GROUP BY key2, key3;"
     _ <- forkIO $ do
-      threadDelay 5000000 -- FIXME: requires a notification mechanism to ensure that the task starts successfully before inserting data
+      threadDelay 10000000 -- FIXME: requires a notification mechanism to ensure that the task starts successfully before inserting data
       runInsertSql api "INSERT INTO s6 (key1, key2, key3) VALUES (0, \"hello_00000000000000000000\", true);"
       threadDelay 500000
       runInsertSql api "INSERT INTO s6 (key1, key2, key3) VALUES (1, \"hello_00000000000000000001\", false);"
@@ -85,7 +85,7 @@ spec = aroundAll provideHstreamApi $
       runInsertSql api "INSERT INTO s6 (key1, key2, key3) VALUES (3, \"hello_00000000000000000001\", false);"
       threadDelay 500000
       runInsertSql api "INSERT INTO s6 (key1, key2, key3) VALUES (4, \"hello_00000000000000000000\", true);"
-    threadDelay 10000000
+    threadDelay 20000000
     runQuerySimple api "SELECT * FROM v6 WHERE key3 = FALSE;"
       `grpcShouldReturn` mkViewResponse (mkStruct [ ("SUM(key1)", Aeson.Number 4)
                                                   , ("key2", Aeson.String "hello_00000000000000000001")
@@ -106,7 +106,7 @@ spec = aroundAll provideHstreamApi $
     runDropSql api "DROP STREAM stream_binary IF EXISTS;"
     runCreateStreamSql api "CREATE STREAM stream_binary;"
     _ <- forkIO $ do
-      threadDelay 5000000 -- FIXME: requires a notification mechanism to ensure that the task starts successfully before inserting data
+      threadDelay 10000000 -- FIXME: requires a notification mechanism to ensure that the task starts successfully before inserting data
       runInsertSql api "INSERT INTO stream_binary VALUES \"aaaaaaaaa\";"
       threadDelay 500000
       runInsertSql api "INSERT INTO stream_binary VALUES \"xxxxxxxxx\";"

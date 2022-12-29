@@ -40,13 +40,13 @@ baseSpecAround = provideRunTest setup clean
 
 baseSpec :: Spec
 baseSpec = aroundAll provideHstreamApi $ aroundWith baseSpecAround $
-  describe "SQL.BaseSpec" $ parallel $ do
+  describe "SQL.BaseSpec" $ do
 
   it "insert data and select" $ \(api, source) -> do
     _ <- forkIO $ do
       -- FIXME: requires a notification mechanism to ensure that the task
       -- starts successfully before inserting data
-      threadDelay 5000000
+      threadDelay 10000000
       Log.d $ "Insert into " <> Log.buildText source <> " ..."
       runInsertSql api ("INSERT INTO " <> source <> " (temperature, humidity) VALUES (22, 80);")
       threadDelay 1000000
@@ -58,18 +58,18 @@ baseSpec = aroundAll provideHstreamApi $ aroundWith baseSpecAround $
                      , mkStruct [("temperature", Aeson.Number 15), ("humidity", Aeson.Number 10)]
                      ]
 
-  xit "GROUP BY without timewindow" $ \(api, source) -> do
+  it "GROUP BY without timewindow" $ \(api, source) -> do
     _ <- forkIO $ do
       -- FIXME: requires a notification mechanism to ensure that the task
       -- starts successfully before inserting data
-      threadDelay 5000000
+      threadDelay 10000000
       Log.d $ "Insert into " <> Log.buildText source <> " ..."
       runInsertSql api ("INSERT INTO " <> source <> " (a, b) VALUES (1, 2);")
-      threadDelay 500000
+      threadDelay 1000000
       runInsertSql api ("INSERT INTO " <> source <> " (a, b) VALUES (2, 2);")
-      threadDelay 500000
+      threadDelay 1000000
       runInsertSql api ("INSERT INTO " <> source <> " (a, b) VALUES (3, 2);")
-      threadDelay 500000
+      threadDelay 1000000
       runInsertSql api ("INSERT INTO " <> source <> " (a, b) VALUES (4, 3);")
 
     -- TODO
@@ -106,7 +106,7 @@ viewSpecAround = provideRunTest setup clean
                          <> " AS SELECT SUM(a), b FROM " <> source2
                          <> " GROUP BY b;"
       -- FIXME: wait the SELECT task to be initialized.
-      threadDelay 5000000
+      threadDelay 10000000
       return (source1, source2, viewName)
     clean api (source1, source2, viewName) = do
       runDropSql api $ "DROP VIEW " <> viewName <> " IF EXISTS;"
@@ -135,11 +135,11 @@ viewSpec =
   -- Current CI node is too slow so it occasionally fails. It is because
   -- we stop waiting before the records reach the output node. See
   -- HStream.Server.Handler.Common.runImmTask for more information.
-  xit "select from view" $ \(api, (source1, _source2, viewName)) -> do
+  it "select from view" $ \(api, (source1, _source2, viewName)) -> do
     runInsertSql api $ "INSERT INTO " <> source1 <> " (a) VALUES (1);"
     threadDelay 500000
     runInsertSql api $ "INSERT INTO " <> source1 <> " (a) VALUES (2);"
-    threadDelay 5000000
+    threadDelay 10000000
     runQuerySimple api ("SELECT * FROM " <> viewName <> " WHERE b = 1;")
       `grpcShouldReturn` mkViewResponse (mkStruct [ ("SUM(a)", Aeson.Number 3)
                                                   , ("b", Aeson.Number 1)
@@ -149,7 +149,7 @@ viewSpec =
     runInsertSql api $ "INSERT INTO " <> source1 <> " (a) VALUES (3);"
     threadDelay 500000
     runInsertSql api $ "INSERT INTO " <> source1 <> " (a) VALUES (4);"
-    threadDelay 5000000
+    threadDelay 10000000
     runQuerySimple api ("SELECT * FROM " <> viewName <> " WHERE b = 1;")
       `grpcShouldReturn` mkViewResponse (mkStruct [ ("SUM(a)", Aeson.Number 10)
                                                   , ("b", Aeson.Number 1)
