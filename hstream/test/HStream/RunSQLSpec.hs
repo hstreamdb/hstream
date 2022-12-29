@@ -58,7 +58,7 @@ baseSpec = aroundAll provideHstreamApi $ aroundWith baseSpecAround $
                      , mkStruct [("temperature", Aeson.Number 15), ("humidity", Aeson.Number 10)]
                      ]
 
-  it "GROUP BY without timewindow" $ \(api, source) -> do
+  xit "GROUP BY without timewindow" $ \(api, source) -> do
     _ <- forkIO $ do
       -- FIXME: requires a notification mechanism to ensure that the task
       -- starts successfully before inserting data

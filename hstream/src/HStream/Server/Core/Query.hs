@@ -218,8 +218,17 @@ executePushQuery ctx@ServerContext{..} API.CommandPushQuery{..} meta streamSend 
             throwIO $ HE.StreamNotFound $ "At least one of the streams do not exist: " <> T.pack (show sources)
           True  -> do
             createStreamWithShard scLDClient (transToStreamName sink) "query" scDefaultStreamRepFactor
-            let relatedStreams = (sources, sink)
+
+            -- !!! Note: the order matters!
+            -- `run task` should not be executed until `sub` finishes
+
+            -- sub from sink stream and push to client
+            consumerName <- newRandomText 20
+            let sc = HStore.hstoreSourceConnectorWithoutCkp ctx consumerName
+            subscribeToStreamWithoutCkp sc sink API.SpecialOffsetLATEST
+
             -- run task
+            let relatedStreams = (sources, sink)
             P.QueryInfo{..} <- handleCreateAsSelect
                        ctx
                        sink
@@ -228,15 +237,11 @@ executePushQuery ctx@ServerContext{..} API.CommandPushQuery{..} meta streamSend 
                        builder
                        commandPushQueryQueryText
                        relatedStreams
-            tid <- readMVar runningQueries >>= \hm -> return $ (HM.!) hm queryId
-
-            -- sub from sink stream and push to client
-            consumerName <- newRandomText 20
-            let sc = HStore.hstoreSourceConnectorWithoutCkp ctx consumerName
-            subscribeToStreamWithoutCkp sc sink API.SpecialOffsetLATEST
-
+            -- send to client
             sending <- async (sendToClient metaHandle queryId sink sc streamSend)
 
+            -- cleaning when cancelled
+            tid <- readMVar runningQueries >>= \hm -> return $ (HM.!) hm queryId
             void . forkIO $ handlePushQueryCanceled meta $ do
               killThread tid
               cancel sending
