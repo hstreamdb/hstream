@@ -169,7 +169,7 @@ runTask ctx@ServerContext{..} taskName sink insWithRole outWithRole graphBuilder
       ts <- HCT.getCurrentTimestamp
       -- Log.debug . Log.buildString $ "### Advance time to " <> show ts
       DiffFlow.advanceInput shard inNode (DiffFlow.Timestamp ts [])
-    threadDelay 100000
+    threadDelay 1000000
 
   -- third loop: push output from OUTPUT node to output stream
   let (out, outRole) = outWithRole
