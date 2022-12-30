@@ -74,6 +74,7 @@ jobs:
                 -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- " >> $GITHUB_ENV
           echo "SHELL=python3 script/dev-tools shell --check --no-interactive \
                 -i docker.io/hstreamdb/haskell:${{ matrix.ghc }}" >> $GITHUB_ENV
+          echo "TEST_CONTAINER_NAME=test-hstream-server" >> $GITHUB_ENV
 
       - name: start required services
         run: python3 script/dev-tools start-services
@@ -111,18 +112,32 @@ jobs:
 
       - name: start hstream server
         run: |
-          export CONTAINER_NAME="test-hstream-server"
+          export CONTAINER_NAME=$TEST_CONTAINER_NAME
           export IMAGE="docker.io/hstreamdb/haskell:${{ matrix.ghc }}"
           export EXTRA_OPTS="--check --no-interactive --detach"
           export COMMAND=" "
           export EXE=$(find dist-newstyle -name "hstream-server" -type f)
           ./script/start-server.sh
           sleep 5
-          docker logs --tail 100 $CONTAINER_NAME
+          docker logs --tail 100 $TEST_CONTAINER_NAME
 
       - name: test
         run: |
           ${{ env.CABAL }} ${{ env.EXTRA_CABAL_ARGS }} test --test-show-details=direct all
+
+      - name: collect hserver logs
+        if: ${{ success() }} || ${{ failure() }}
+        run: |
+          rm -rf hserver.log
+          docker logs $TEST_CONTAINER_NAME &> hserver.log
+
+      - name: upload hserver logs
+        uses: actions/upload-artifact@v3
+        if: ${{ success() }} || ${{ failure() }}
+        with:
+          name: hserver-logs-${{ matrix.ghc }}
+          path: hserver.log
+          retention-days: 7
 
       # Due to an [cabal bug](https://github.com/haskell/cabal/issues/7423),
       # `cabal check` will emit a warning even if the `-O2` option is just
