@@ -201,13 +201,16 @@ streamingFetchHandler
   -> IO (ServerResponse 'BiDiStreaming StreamingFetchResponse)
 streamingFetchHandler ctx (ServerBiDiRequest meta streamRecv streamSend) =
   defaultBiDiStreamExceptionHandle $ do
-    uri <- grpcCallGetPeer $ unsafeSC meta
+    uri <- case Map.lookup "X-Forwarded-For" . unMap $ metadata meta of
+          Nothing     -> T.pack <$> grpcCallGetPeer (unsafeSC meta)
+          Just []     -> T.pack <$> grpcCallGetPeer (unsafeSC meta)
+          Just (x:xs) -> return $ T.decodeUtf8 x
     let agent = case Map.lookup "user-agent" . unMap $ metadata meta of
           Nothing     -> ""
           Just []     -> ""
           Just (x:xs) -> T.decodeUtf8 x
     Log.debug "recv server call: streamingFetch"
-    Core.streamingFetchCore ctx Core.SFetchCoreInteractive (streamSend, streamRecv, T.pack uri, agent)
+    Core.streamingFetchCore ctx Core.SFetchCoreInteractive (streamSend, streamRecv, uri, agent)
     return $ ServerBiDiResponse mempty StatusUnknown "should not reach here"
 
 -- TODO: improvements for read or write error
@@ -215,7 +218,9 @@ handleStreamingFetch
   :: ServerContext
   -> G.BidiStreamHandler StreamingFetchRequest StreamingFetchResponse ()
 handleStreamingFetch sc gCtx stream = do
-  uri <- G.serverContextPeer gCtx
+  uri <- G.findClientMetadata gCtx "X-Forwarded-For" >>= \case
+    Nothing -> G.serverContextPeer gCtx
+    Just x  -> return x
   agent <- maybe "" T.decodeUtf8 <$> G.findClientMetadata gCtx "user-agent"
   let streamSend x = first (const GRPCIOShutdown) <$> G.streamWrite stream (Just x)
       streamRecv = do Right <$> G.streamRead stream
