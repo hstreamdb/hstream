@@ -43,24 +43,24 @@ main = do
   forkIO . forever $ popOutput shard node_4 (threadDelay 1000000) (\dcb -> print $ "---> Output DataChangeBatch: " <> show dcb)
 
   pushInput shard node_2
-    (DataChange (A.fromList [("b", Number 2), ("c", Number 3)]) (Timestamp (1 :: Word32) []) 1 0)
+    (DataChange (A.fromList [("b", Number 2), ("c", Number 3)]) (Timestamp (1 :: Word32) []) 1)
 
   flushInput shard node_2
   advanceInput shard node_2 (Timestamp 6 [])
 
   pushInput shard node_1
-    (DataChange (A.fromList [("a", Number 1), ("b", Number 2)]) (Timestamp (1 :: Word32) []) 1 1)
+    (DataChange (A.fromList [("a", Number 1), ("b", Number 2)]) (Timestamp (1 :: Word32) []) 1)
   pushInput shard node_1
-    (DataChange (A.fromList [("a", Number 1), ("b", Number 2)]) (Timestamp (2 :: Word32) []) 1 2)
+    (DataChange (A.fromList [("a", Number 1), ("b", Number 2)]) (Timestamp (2 :: Word32) []) 1)
   flushInput shard node_1
   advanceInput shard node_1 (Timestamp 3 [])
 
   threadDelay 1000000
 
   pushInput shard node_1
-    (DataChange (A.fromList [("a", Number 1), ("b", Number 2)]) (Timestamp (4 :: Word32) []) 1 3)
+    (DataChange (A.fromList [("a", Number 1), ("b", Number 2)]) (Timestamp (4 :: Word32) []) 1)
   pushInput shard node_1
-    (DataChange (A.fromList [("a", Number 1), ("b", Number 2)]) (Timestamp (5 :: Word32) []) 1 4)
+    (DataChange (A.fromList [("a", Number 1), ("b", Number 2)]) (Timestamp (5 :: Word32) []) 1)
   advanceInput shard node_1 (Timestamp 6 [])
 
   threadDelay 10000000

@@ -43,8 +43,6 @@ type KeyGenerator row = row -> row
 type RowGenerator row = row -> row
 type JoinCondition row = row -> row -> Bool
 
-newtype Composer row = Composer { composer :: [row] -> Either (DiffFlowError,row) row } deriving (Generic, NFData)
-
 {-
 class HasIndex a where
   hasIndex :: Proxy a
@@ -63,7 +61,6 @@ data NodeSpec row
   = InputSpec
   | MapSpec           Node (Mapper row)               -- input, mapper
   | FilterSpec        Node (Filter row)               -- input, filter
-  | ComposeSpec       [Node] (Composer row)
   | IndexSpec         Node                      -- input
   | JoinSpec          Node Node MergeJoinType (JoinCondition row) (Joiner row) (RowGenerator row) -- input1, input2, joinType, joinCond, rowgen, nullRowgen
   | OutputSpec        Node                      -- input
@@ -79,7 +76,6 @@ instance Show (NodeSpec row) where
   show InputSpec              = "InputSpec"
   show (MapSpec _ _)          = "MapSpec"
   show (FilterSpec _ _)       = "FilterSpec"
-  show (ComposeSpec _ _)      = "ComposeSpec"
   show (IndexSpec _)          = "IndexSpec"
   show (JoinSpec _ _ _ _ _ _) = "JoinSpec"
   show (OutputSpec _)         = "OutputSpec"
@@ -105,7 +101,6 @@ getInputsFromSpec :: NodeSpec row -> Vector Node
 getInputsFromSpec InputSpec = V.empty
 getInputsFromSpec (MapSpec node _) = V.singleton node
 getInputsFromSpec (FilterSpec node _) = V.singleton node
-getInputsFromSpec (ComposeSpec nodes _) = V.fromList nodes
 getInputsFromSpec (IndexSpec node) = V.singleton node
 getInputsFromSpec (JoinSpec node1 node2 _ _ _ _) = V.fromList [node1, node2]
 getInputsFromSpec (OutputSpec node) = V.singleton node
@@ -121,7 +116,6 @@ getInputsFromSpec (ReduceSpec node _ _ _) = V.singleton node
 
 data NodeState row a
   = InputState (TVar (Frontier a)) (TVar (DataChangeBatch row a))
-  | ComposeState Int [TVar (Frontier a)]
   | IndexState (TVar (Index row a)) (TVar [DataChange row a])
   | JoinState (TVar (Frontier a)) (TVar (Frontier a))
   | OutputState (TVar [DataChangeBatch row a])
@@ -131,7 +125,6 @@ data NodeState row a
 
 instance Show (NodeState row a) where
   show (InputState _ _)    = "InputState"
-  show (ComposeState _ _)  = "ComposeState"
   show (IndexState _ _)    = "IndexState"
   show (JoinState _ _)     = "JoinState"
   show (OutputState _)     = "OutputState"
@@ -151,10 +144,6 @@ specToState InputSpec = do
   frontier <- newTVarIO Set.empty
   unflushedChanges <- newTVarIO $ mkDataChangeBatch []
   return $ InputState frontier unflushedChanges
-specToState spec@(ComposeSpec _ _) = do
-  let inputsCnt = V.length (getInputsFromSpec spec)
-  fts <- replicateM inputsCnt (newTVarIO Set.empty)
-  return $ ComposeState inputsCnt fts
 specToState (IndexSpec _) = do
   index <- newTVarIO $ Index []
   pendingChanges <- newTVarIO []
@@ -175,7 +164,6 @@ specToState (ReduceSpec _ _ _ _) = do
   pendingCorrections <- newTVarIO HM.empty
   return $ ReduceState index pendingCorrections
 specToState _ = return NoState
-
 
 ----
 

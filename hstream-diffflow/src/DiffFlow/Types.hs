@@ -256,7 +256,6 @@ data DataChange row a = DataChange
   { dcRow       :: row
   , dcTimestamp :: Timestamp a
   , dcDiff      :: Int
-  , dcExtra     :: Int
   }
 instance (Eq row, Eq a) => Eq (DataChange row a) where
   dc1 == dc2 = dcRow dc1 == dcRow dc2
@@ -346,21 +345,18 @@ mergeJoinDataChangeBatch self selfFt other joinType joinCond rowgen nullRowgen =
                      { dcRow = rowgen (dcRow this) (dcRow that)
                      , dcTimestamp = leastUpperBound (dcTimestamp this) (dcTimestamp that)
                      , dcDiff = dcDiff this * dcDiff that
-                     , dcExtra = dcExtra that
                      }
                    newDataChange_left =
                      DataChange
                      { dcRow = rowgen (nullRowgen $ dcRow this) (dcRow that)
                      , dcTimestamp = leastUpperBound (dcTimestamp this) (dcTimestamp that)
                      , dcDiff = dcDiff this * dcDiff that
-                     , dcExtra = dcExtra that
                      }
                    newDataChange_right =
                      DataChange
                      { dcRow = rowgen (dcRow this) (nullRowgen $ dcRow that)
                      , dcTimestamp = leastUpperBound (dcTimestamp this) (dcTimestamp that)
                      , dcDiff = dcDiff this * dcDiff that
-                     , dcExtra = dcExtra that
                      }
                 in case joinCond (dcRow this) (dcRow that) of
                      True  -> updateDataChangeBatch acc (\xs -> xs ++ [newDataChange_inner])
@@ -376,45 +372,6 @@ mergeJoinDataChangeBatch self selfFt other joinType joinCond rowgen nullRowgen =
 
 setAt :: [a] -> Int -> a -> [a]
 setAt xs i x = take i xs ++ [x] ++ drop (i + 1) xs
-
-
-composeDataChange :: (Hashable a, Ord a, Show a,
-                      Hashable row, Ord row, Show row)
-                  => [(DataChangeBatch row a, Frontier a)]
-                  -> DataChange row a
-                  -> Int
-                  -> ([row] -> Either (DiffFlowError,row) row)
-                  -> DataChangeBatch row a
-composeDataChange basesWithFt that ix rowgen =
-  let sameIdChanges =
-        L.map (\(base, ft) ->
-                 L.filter (\this -> ft `causalCompare` dcTimestamp this == PGT && dcExtra this == dcExtra that) (dcbChanges base) -- [change]
-              ) basesWithFt
-      ixAltered = setAt sameIdChanges ix [that]
-      eachCompose = Helpers.choices ixAltered
-      eachNewChange = L.map (\changes -> DataChange
-                                         { dcRow = case rowgen (dcRow <$> changes) of
-                                                     Right row_       -> row_
-                                                     Left (_,errRow_) -> errRow_
-                                         , dcTimestamp = L.foldl1 leastUpperBound (dcTimestamp <$> changes)
-                                         , dcDiff = product (dcDiff <$> changes)
-                                         , dcExtra = dcExtra (L.head changes)
-                                         }
-                            ) eachCompose
-   in mkDataChangeBatch eachNewChange
-
-composeDataChangeBatch :: (Hashable a, Ord a, Show a,
-                           Hashable row, Ord row, Show row)
-                       => [(DataChangeBatch row a, Frontier a)]
-                       -> DataChangeBatch row a
-                       -> Int
-                       -> ([row] -> Either (DiffFlowError,row) row)
-                       -> DataChangeBatch row a
-composeDataChangeBatch basesWithFt thatBatch ix rowgen =
-  L.foldl (\acc that ->
-             let thisRes = composeDataChange basesWithFt that ix rowgen
-              in updateDataChangeBatch acc (\changes -> changes ++ dcbChanges thisRes)
-          ) emptyDataChangeBatch (dcbChanges thatBatch)
 
 ----
 
@@ -490,14 +447,3 @@ indexToDataChangeBatch Index{..} =
   L.foldl (\acc thisBatch ->
              updateDataChangeBatch acc (\changes -> changes ++ dcbChanges thisBatch)
           ) emptyDataChangeBatch indexChangeBatches
-
-composeIndex :: (Hashable a, Ord a, Show a,
-                 Hashable row, Ord row, Show row)
-             => [(Index row a, Frontier a)]
-             -> DataChangeBatch row a
-             -> Int
-             -> ([row] -> Either (DiffFlowError,row) row)
-             -> DataChangeBatch row a
-composeIndex basesWithFt thatBatch ix rowgen =
-  let basesWithFt' = L.map (\(index_, ft) -> (indexToDataChangeBatch index_, ft)) basesWithFt
-   in composeDataChangeBatch basesWithFt' thatBatch ix rowgen

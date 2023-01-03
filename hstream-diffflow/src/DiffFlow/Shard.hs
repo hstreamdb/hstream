@@ -242,7 +242,6 @@ processChangeBatch shard@Shard{..} = do
                           { dcRow = outputRow
                           , dcTimestamp = dcTimestamp change
                           , dcDiff = dcDiff change
-                          , dcExtra = dcExtra change
                           }
                     return $ updateDataChangeBatch acc (\xs -> xs ++ [newChange])
                 ) emptyDataChangeBatch (dcbChanges changeBatch)
@@ -256,19 +255,6 @@ processChangeBatch shard@Shard{..} = do
                 ) emptyDataChangeBatch (dcbChanges changeBatch)
           unless (L.null $ dcbChanges outputChangeBatch) $
             emitChangeBatch shard node outputChangeBatch
-        ComposeSpec nodes (Composer composer) -> do
-          let (ComposeState totalIns fts_m) = shardNodeStates' HM.! nodeId node
-          let ix = nodeInputIndex nodeInput
-          if ix < 0 || ix >= totalIns then
-            throw . RunShardError $ "Entry index out of bound: " <> T.pack (show ix) <> " (expected 0 <= ix < " <> T.pack (show totalIns) <> ")" else do
-            indexes <- forM nodes (\node_ -> readTVarIO $ getIndexFromState (shardNodeStates' HM.! nodeId node_))
-            fts <- forM fts_m readTVarIO
-            let outputChangeBatch =
-                  composeIndex (indexes `zip` fts) changeBatch ix composer
-            unless (L.null $ dcbChanges outputChangeBatch) $
-              emitChangeBatch shard node outputChangeBatch
-            let inputFt = fromJust $ cbiInputFrontier cbi -- FIXME: unsafe
-            atomically $ writeTVar (fts_m L.!! ix) inputFt
         IndexSpec _ -> do
           mapM_ (\change -> do
                     shardNodeFrontiers' <- readMVar shardNodeFrontiers
@@ -315,7 +301,6 @@ processChangeBatch shard@Shard{..} = do
                           { dcRow = dcRow change
                           , dcTimestamp = outputTs
                           , dcDiff = dcDiff change
-                          , dcExtra = dcExtra change
                           }
                     updateDataChangeBatch acc (\xs -> xs ++ [newChange])
                 ) emptyDataChangeBatch (dcbChanges changeBatch)
@@ -329,7 +314,6 @@ processChangeBatch shard@Shard{..} = do
                           { dcRow = dcRow change
                           , dcTimestamp = outputTs
                           , dcDiff = dcDiff change
-                          , dcExtra = dcExtra change
                           }
                     updateDataChangeBatch acc (\xs -> xs ++ [newChange])
                 ) emptyDataChangeBatch (dcbChanges changeBatch)
@@ -343,7 +327,6 @@ processChangeBatch shard@Shard{..} = do
                           { dcRow = dcRow change
                           , dcTimestamp = outputTs
                           , dcDiff = dcDiff change
-                          , dcExtra = dcExtra change
                           }
                     updateDataChangeBatch acc (\xs -> xs ++ [newChange])
                 ) emptyDataChangeBatch (dcbChanges changeBatch)
@@ -573,7 +556,6 @@ processFrontierUpdates shard@Shard{..} = do
                                         { dcRow = key <> inputValue
                                         , dcTimestamp = tsToCheck
                                         , dcDiff = 1
-                                        , dcExtra = if L.null inputChanges then 0 else dcExtra (L.last inputChanges) -- FIXME: correct value?
                                         }
                         let outputChanges'' = outputChanges' ++ [newOutput]
                         let thisChangeBatch = mkDataChangeBatch outputChanges''
@@ -591,7 +573,6 @@ processFrontierUpdates shard@Shard{..} = do
                                        { dcRow = key
                                        , dcTimestamp = tsToCheck
                                        , dcDiff = diffOutputCount
-                                       , dcExtra = if L.null inputChanges then 0 else dcExtra (L.last inputChanges) -- FIXME: correct value?
                                        }
                           let thisChangeBatch = mkDataChangeBatch [change]
                           atomically $
