@@ -1,5 +1,5 @@
 [![GitHub top language](https://img.shields.io/github/languages/top/hstreamdb/hstream)](https://www.haskell.org/)
-[![GitHub Workflow Status](https://img.shields.io/github/workflow/status/hstreamdb/hstream/CI)](https://github.com/hstreamdb/hstream/actions?query=workflow%3ACI)
+[![ci](https://github.com/hstreamdb/hstream/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/hstreamdb/hstream/actions/workflows/ci.yml)
 [![Docker Pulls](https://img.shields.io/docker/pulls/hstreamdb/hstream)](https://hub.docker.com/r/hstreamdb/hstream)
 [![Slack](https://img.shields.io/badge/Slack-HStreamDB-39AE85?logo=slack)](https://slack-invite.hstream.io/)
 [![Twitter](https://img.shields.io/badge/Follow-HStreamDB-1DA1F2?logo=twitter)](https://twitter.com/HStreamDB)
