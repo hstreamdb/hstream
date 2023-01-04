@@ -28,6 +28,7 @@ module HStream.Server.Handler.Subscription
   )
 where
 
+import           Control.Applicative              ((<|>))
 import           Control.Exception                (throwIO)
 import           Control.Monad
 import           Data.Bifunctor                   (first)
@@ -201,17 +202,18 @@ streamingFetchHandler
   -> IO (ServerResponse 'BiDiStreaming StreamingFetchResponse)
 streamingFetchHandler ctx (ServerBiDiRequest meta streamRecv streamSend) =
   defaultBiDiStreamExceptionHandle $ do
-    uri <- case Map.lookup "x-forwarded-for" . unMap $ metadata meta of
+    let metaMap = unMap $ metadata meta
+    uri <- case Map.lookup "x-forwarded-for" metaMap of
           Nothing     -> T.pack <$> grpcCallGetPeer (unsafeSC meta)
           Just []     -> T.pack <$> grpcCallGetPeer (unsafeSC meta)
           Just (x:xs) -> return $ T.decodeUtf8 x
-    let agent = case Map.lookup "user-agent" . unMap $ metadata meta of
-          Nothing     -> ""
-          Just []     -> ""
-          Just (x:xs) -> T.decodeUtf8 x
+    let agent = getMeta $ Map.lookup "proxy-agent" metaMap
+                      <|> Map.lookup "user-agent"  metaMap
     Log.debug "recv server call: streamingFetch"
     Core.streamingFetchCore ctx Core.SFetchCoreInteractive (streamSend, streamRecv, uri, agent)
     return $ ServerBiDiResponse mempty StatusUnknown "should not reach here"
+  where
+    getMeta = \case Nothing -> ""; Just [] -> ""; Just (x:xs) -> T.decodeUtf8 x
 
 -- TODO: improvements for read or write error
 handleStreamingFetch
@@ -221,7 +223,8 @@ handleStreamingFetch sc gCtx stream = do
   uri <- G.findClientMetadata gCtx "x-forwarded-for" >>= \case
     Nothing -> G.serverContextPeer gCtx
     Just x  -> return x
-  agent <- maybe "" T.decodeUtf8 <$> G.findClientMetadata gCtx "user-agent"
+  agent <- maybe "" T.decodeUtf8 <$> (G.findClientMetadata gCtx "proxy-agent"
+                                  <|> G.findClientMetadata gCtx "user-agent")
   let streamSend x = first (const GRPCIOShutdown) <$> G.streamWrite stream (Just x)
       streamRecv = do Right <$> G.streamRead stream
   catchDefaultEx $ Core.streamingFetchCore sc Core.SFetchCoreInteractive (streamSend, streamRecv, T.decodeUtf8 uri, agent)
