@@ -201,7 +201,7 @@ streamingFetchHandler
   -> IO (ServerResponse 'BiDiStreaming StreamingFetchResponse)
 streamingFetchHandler ctx (ServerBiDiRequest meta streamRecv streamSend) =
   defaultBiDiStreamExceptionHandle $ do
-    uri <- case Map.lookup "X-Forwarded-For" . unMap $ metadata meta of
+    uri <- case Map.lookup "x-forwarded-for" . unMap $ metadata meta of
           Nothing     -> T.pack <$> grpcCallGetPeer (unsafeSC meta)
           Just []     -> T.pack <$> grpcCallGetPeer (unsafeSC meta)
           Just (x:xs) -> return $ T.decodeUtf8 x
@@ -218,7 +218,7 @@ handleStreamingFetch
   :: ServerContext
   -> G.BidiStreamHandler StreamingFetchRequest StreamingFetchResponse ()
 handleStreamingFetch sc gCtx stream = do
-  uri <- G.findClientMetadata gCtx "X-Forwarded-For" >>= \case
+  uri <- G.findClientMetadata gCtx "x-forwarded-for" >>= \case
     Nothing -> G.serverContextPeer gCtx
     Just x  -> return x
   agent <- maybe "" T.decodeUtf8 <$> G.findClientMetadata gCtx "user-agent"
