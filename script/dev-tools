@@ -934,6 +934,7 @@ class QuickBuildDevImageCommand:
         )
         p.add_argument("--tag", "-t", required=True, help="target image tag")
         p.add_argument("--use-hs-grpc", default=False, action="store_true")
+        p.add_argument("--donot-rename-exe", default=False, action="store_true")
         p.add_argument(
             "--enable-debug-info", default=False, action="store_true"
         )
@@ -949,6 +950,7 @@ class QuickBuildDevImageCommand:
         tag,
         builder_image,
         use_hs_grpc=False,
+        donot_rename_exe=False,
         enable_debug_info=False,
         fast=False,
         only_hstream=False,
@@ -976,7 +978,7 @@ class QuickBuildDevImageCommand:
             ]
         )
 
-        if use_hs_grpc:
+        if not donot_rename_exe and use_hs_grpc:
             exe_renames = {"hstream-server": "hstream-server-sid"}
         else:
             exe_renames = {}
