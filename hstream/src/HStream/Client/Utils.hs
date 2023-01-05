@@ -88,7 +88,7 @@ waitForServerToStart t addr clientSSLConfig = withGRPCClient (mkGRPCClientConfWi
   where
     interval = 1000000
     loop timeout api@API.HStreamApi{..} = do
-     resp <- hstreamApiEcho (mkClientNormalRequest' $ API.EchoRequest "")
+     resp <- hstreamApiDescribeCluster (mkClientNormalRequest' def)
      case resp of
        ClientNormalResponse {} -> return $ Just ()
        _                       -> do

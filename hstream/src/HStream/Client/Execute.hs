@@ -33,6 +33,7 @@ import           System.Exit                      (exitFailure)
 import           HStream.Client.Action
 import           HStream.Client.Types             (CliConnOpts (..),
                                                    HStreamCliContext (..),
+                                                   RefinedCliConnOpts (..),
                                                    Resource)
 import           HStream.Client.Utils
 import qualified HStream.Server.HStreamApi        as API
@@ -140,32 +141,14 @@ simpleExecuteWithAddr addr sslConfig action =
 simpleExecute :: ClientConfig -> (HStreamClientApi -> IO a) -> IO a
 simpleExecute conf action = withGRPCClient conf (API.hstreamApiClient >=> action)
 
-initCliContext :: CliConnOpts -> IO HStreamCliContext
-initCliContext CliConnOpts {..} = do
-  let addr = SocketAddr _serverHost _serverPort
-  clientSSLKeyCertPair <- do
-    case _tlsKey of
-      Nothing -> case _tlsCert of
-        Nothing -> pure Nothing
-        Just _  -> putStrLn "got `tls-cert`, but `tls-key` is missing" >> exitFailure
-      Just tlsKey -> case _tlsCert of
-        Nothing      -> putStrLn "got `tls-key`, but `tls-cert` is missing" >> exitFailure
-        Just tlsCert -> pure . Just $ ClientSSLKeyCertPair {
-          clientPrivateKey = tlsKey
-        , clientCert       = tlsCert
-        }
-  let sslConfig = if isNothing _tlsCa && isNothing clientSSLKeyCertPair
-        then Nothing
-        else Just $ ClientSSLConfig {
-          serverRootCert       = _tlsCa
-        , clientSSLKeyCertPair = clientSSLKeyCertPair
-        , clientMetadataPlugin = Nothing
-        }
+initCliContext :: RefinedCliConnOpts -> IO HStreamCliContext
+initCliContext RefinedCliConnOpts{..} = do
   availableServers <- newMVar []
   currentServer    <- newMVar addr
+  let sslConfig = clientSSLConfig clientConfig
   let ctx = HStreamCliContext {..}
   setupSigsegvHandler
-  connected <- waitForServerToStart (_retryTimeout * 1000000) addr sslConfig
+  connected <- waitForServerToStart (retryTimeout * 1000000) addr sslConfig
   case connected of
     Nothing -> errorWithoutStackTrace "Connection timed out. Please check the server URI and try again."
     Just _  -> pure ()
