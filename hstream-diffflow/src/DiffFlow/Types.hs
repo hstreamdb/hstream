@@ -388,17 +388,17 @@ addChangeBatchToIndex :: (Hashable a, Ord a, Show a,
                       -> DataChangeBatch row a
                       -> Index row a
 addChangeBatchToIndex Index{..} changeBatch =
-  Index (adjustBatches $ indexChangeBatches ++ [changeBatch])
+  Index (adjustBatches $ changeBatch:indexChangeBatches)
   where
     adjustBatches [] = []
     adjustBatches [x] = [x]
     adjustBatches l@(x:y:xs)
-      | dataChangeBatchLen lastBatch * 2 <= dataChangeBatchLen secondLastBatch = l
+      | dataChangeBatchLen x * 2 <= dataChangeBatchLen y = l
       | otherwise =
-        let newBatch = mkDataChangeBatch (dcbChanges lastBatch ++ dcbChanges secondLastBatch)
-         in adjustBatches ((L.init . L.init $ l) ++ [newBatch])
-      where lastBatch = L.last l
-            secondLastBatch = L.last . L.init $ l
+        let newBatch = mkDataChangeBatch (dcbChanges x ++ dcbChanges y)
+         in if (L.null $ dcbChanges newBatch) then
+              adjustBatches xs else
+              adjustBatches (newBatch:xs)
 
 -- FIXME: very low performance. Should take advantage of properties of DataChangeBatch
 -- WARNING: result is backwards
