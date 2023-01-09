@@ -163,8 +163,8 @@ refineCliConnOpts CliConnOpts {..} = do
         Nothing -> SocketAddr _serverHost _serverPort
         Just URI{..}
           | uriScheme == "hstreams:" -> case sslConfig of
-            Nothing -> errorWithoutStackTrace "Tls certificates are not provided"
-            _       -> uriAuthToSocketAddress uriAuthority
+              Nothing -> errorWithoutStackTrace "Tls certificates are not provided"
+              _       -> uriAuthToSocketAddress uriAuthority
           | uriScheme == "hstream:"  -> uriAuthToSocketAddress uriAuthority
           | otherwise -> errorWithoutStackTrace "Unsupported URI scheme"
   let clientConfig = mkGRPCClientConfWithSSL addr sslConfig
