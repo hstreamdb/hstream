@@ -474,20 +474,23 @@ processFrontierUpdates shard@Shard{..} = do
           pendingChanges <- readTVarIO pendingChanges_m
           let (IndexSpec inputNode) = nodeSpec
           let inputTsf = shardNodeFrontiers' HM.! nodeId inputNode
-          newDataChangeBatch <-
-            foldM (\curDataChangeBatch change -> do
+          (tssToRemove, newDataChangeBatch, newPendingChanges) <-
+            foldM (\(curTssToRemove, curDataChangeBatch, curPendingChanges) change -> do
                       case tsfFrontier inputTsf `causalCompare` dcTimestamp change of
                         PGT -> do
-                          applyFrontierChange shard node (dcTimestamp change) (-1)
-                          atomically $
-                            modifyTVar pendingChanges_m (L.delete change)
-                          return $ updateDataChangeBatch curDataChangeBatch (++ [change])
-                        _   -> return curDataChangeBatch
-                  ) emptyDataChangeBatch pendingChanges
-          atomically $ modifyTVar index_m
-            (\oldIndex -> addChangeBatchToIndex oldIndex newDataChangeBatch)
-          unless (L.null $ dcbChanges newDataChangeBatch) $
+                          let tssToRemove' = curTssToRemove ++ [dcTimestamp change]
+                              dataChangeBatch' = updateDataChangeBatch curDataChangeBatch (++ [change])
+                          return (tssToRemove', dataChangeBatch', curPendingChanges)
+                        _   -> do
+                          let pendingChanges' = curPendingChanges ++ [change]
+                          return (curTssToRemove, curDataChangeBatch, pendingChanges')
+                  ) ([], emptyDataChangeBatch, []) pendingChanges
+          atomically $ writeTVar pendingChanges_m newPendingChanges
+          unless (L.null $ dcbChanges newDataChangeBatch) $ do
+            atomically $ modifyTVar index_m
+              (\oldIndex -> addChangeBatchToIndex oldIndex newDataChangeBatch)
             emitChangeBatch shard node newDataChangeBatch
+          mapM_ (\tsToRemove -> applyFrontierChange shard node tsToRemove (-1)) tssToRemove
         DistinctState index_m pendingCorrections_m -> do
           let inputNode = V.head $ getInputsFromSpec nodeSpec
           shardNodeFrontiers' <- readMVar shardNodeFrontiers
