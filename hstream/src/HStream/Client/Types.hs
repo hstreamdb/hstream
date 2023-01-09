@@ -2,15 +2,20 @@ module HStream.Client.Types where
 
 import           Control.Concurrent            (MVar)
 import           Data.ByteString               (ByteString)
+import qualified Data.ByteString               as BS
+import           Data.Maybe                    (isNothing)
+import           Data.Text                     (Text)
+import qualified Data.Text                     as T
+import qualified Data.Text.Encoding            as T
 import           Data.Word                     (Word32)
 import           Network.GRPC.HighLevel.Client (ClientConfig (..),
                                                 ClientSSLConfig (..),
                                                 ClientSSLKeyCertPair (..))
+import           Network.URI
 import qualified Options.Applicative           as O
 import           System.Exit                   (exitFailure)
+import           Text.Read                     (readMaybe)
 
-import           Data.Maybe                    (isNothing)
-import           Data.Text                     (Text)
 import           HStream.Admin.Server.Types    (StreamCommand,
                                                 SubscriptionCommand,
                                                 streamCmdParser,
@@ -101,6 +106,7 @@ data CliConnOpts = CliConnOpts
   , _tlsKey       :: Maybe FilePath
   , _tlsCert      :: Maybe FilePath
   , _retryTimeout :: Int
+  , _serviceUri   :: Maybe URI
   } deriving (Show, Eq)
 
 serverHost :: O.Parser ByteString
@@ -125,22 +131,23 @@ connOptsParser = CliConnOpts
   <*> (O.optional . O.option O.str) (O.long "tls-key"  <> O.metavar "STRING" <> O.help "path name of the client TLS private key file")
   <*> (O.optional . O.option O.str) (O.long "tls-cert" <> O.metavar "STRING" <> O.help "path name of the client TLS public key certificate file")
   <*> O.option O.auto (O.long "retry-timeout"   <> O.metavar "INT" <> O.showDefault <> O.value 60 <> O.help "timeout to retry connecting to a server in seconds")
+  <*> (O.optional . O.option (O.maybeReader parseURI)) (O.long "service-url"  <> O.help "The endpoint to connect to")
 
 data RefinedCliConnOpts = RefinedCliConnOpts {
     addr         :: SocketAddr
   , clientConfig :: ClientConfig
+  , retryTimeout :: Int
   }
 
 refineCliConnOpts :: CliConnOpts -> IO RefinedCliConnOpts
 refineCliConnOpts CliConnOpts {..} = do
-  let addr = SocketAddr _serverHost _serverPort
   clientSSLKeyCertPair <- do
     case _tlsKey of
       Nothing -> case _tlsCert of
         Nothing -> pure Nothing
-        Just _  -> putStrLn "got `tls-cert`, but `tls-key` is missing" >> exitFailure
+        Just _  -> errorWithoutStackTrace "got `tls-cert`, but `tls-key` is missing"
       Just tlsKey -> case _tlsCert of
-        Nothing      -> putStrLn "got `tls-key`, but `tls-cert` is missing" >> exitFailure
+        Nothing      -> errorWithoutStackTrace "got `tls-key`, but `tls-cert` is missing"
         Just tlsCert -> pure . Just $ ClientSSLKeyCertPair {
           clientPrivateKey = tlsKey
         , clientCert       = tlsCert
@@ -152,5 +159,23 @@ refineCliConnOpts CliConnOpts {..} = do
         , clientSSLKeyCertPair = clientSSLKeyCertPair
         , clientMetadataPlugin = Nothing
         }
+  let addr = case _serviceUri of
+        Nothing -> SocketAddr _serverHost _serverPort
+        Just URI{..}
+          | uriScheme == "hstreams:" -> case sslConfig of
+              Nothing -> errorWithoutStackTrace "Tls certificates are not provided"
+              _       -> uriAuthToSocketAddress uriAuthority
+          | uriScheme == "hstream:"  -> uriAuthToSocketAddress uriAuthority
+          | otherwise -> errorWithoutStackTrace "Unsupported URI scheme"
   let clientConfig = mkGRPCClientConfWithSSL addr sslConfig
-  pure $ RefinedCliConnOpts addr clientConfig
+  pure $ RefinedCliConnOpts addr clientConfig _retryTimeout
+  where
+    uriAuthToSocketAddress (Just URIAuth{..}) =
+      let host = T.encodeUtf8 . T.pack $ uriUserInfo <> uriRegName in
+      if BS.null host then errorWithoutStackTrace "Incomplete URI"
+      else case uriPort of
+        []     -> SocketAddr host _serverPort
+        (x:xs) -> case readMaybe xs of
+          Nothing   -> SocketAddr host _serverPort
+          Just port -> SocketAddr host port
+    uriAuthToSocketAddress Nothing = errorWithoutStackTrace "Incomplete URI"

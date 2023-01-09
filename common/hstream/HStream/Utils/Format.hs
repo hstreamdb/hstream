@@ -87,7 +87,7 @@ instance Format [API.ServerNodeStatus] where
 instance Format a => Format (ClientResult 'Normal a) where
   formatResult (ClientNormalResponse response _ _ _ _) = formatResult response
   formatResult (ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode _code details)))
-    = "Client Error: " <> BS.unpack (unStatusDetails details) <> "\n"
+    = "Server Error: " <> BS.unpack (unStatusDetails details) <> "\n"
   formatResult (ClientErrorResponse err) = "Error: " <> show err <> "\n"
 
 instance Format API.ListStreamsResponse where

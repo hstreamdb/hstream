@@ -36,11 +36,13 @@ module HStream.Utils.RPC
 import           Control.Monad
 import           Data.Aeson                       (FromJSON, ToJSON)
 import           Data.ByteString                  (ByteString)
+import qualified Data.ByteString.Char8            as BSC
 import           Data.String                      (IsString)
 import qualified Data.Vector                      as V
 import           GHC.Generics                     (Generic)
 import           Network.GRPC.HighLevel.Client
-import           Network.GRPC.HighLevel.Generated (withGRPCClient)
+import           Network.GRPC.HighLevel.Generated (GRPCIOError (..),
+                                                   withGRPCClient)
 import           Network.GRPC.HighLevel.Server
 import qualified Proto3.Suite                     as PB
 import           Z.Data.JSON                      (JSON)
@@ -116,7 +118,9 @@ getServerResp result = do
     ClientNormalResponse x _meta1 _meta2 StatusOk _details -> return x
     ClientNormalResponse _resp _meta1 _meta2 _status _details -> do
       error $ "Impossible happened..." <> show _status
-    ClientErrorResponse err -> ioError . userError $ "Server error: " <> show err
+    ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode x details))
+        -> errorWithoutStackTrace ("Server Error: "  <> BSC.unpack (unStatusDetails details))
+    ClientErrorResponse err -> errorWithoutStackTrace ("Error: " <> show err )
 {-# INLINE getServerResp #-}
 
 getServerRespPure :: ClientResult 'Normal a -> Either String a
