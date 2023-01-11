@@ -79,14 +79,15 @@ main = runCommand =<<
 
 runCommand :: HStreamCommand -> IO ()
 runCommand HStreamCommand {..} = do
+  rConnOpts <- refineCliConnOpts cliConnOpts
   case cliCommand of
-    HStreamNodes  opts       -> hstreamNodes cliConnOpts opts
-    HStreamInit   opts       -> hstreamInit  cliConnOpts opts
-    HStreamSql    opts       -> hstreamSQL cliConnOpts opts
-    HStreamStream opts       -> hstreamStream cliConnOpts opts
-    HStreamSubscription opts -> hstreamSubscription cliConnOpts opts
+    HStreamNodes  opts       -> hstreamNodes  rConnOpts opts
+    HStreamInit   opts       -> hstreamInit   rConnOpts opts
+    HStreamSql    opts       -> hstreamSQL    rConnOpts opts
+    HStreamStream opts       -> hstreamStream rConnOpts opts
+    HStreamSubscription opts -> hstreamSubscription rConnOpts opts
 
-hstreamSQL :: CliConnOpts -> HStreamSqlOpts -> IO ()
+hstreamSQL :: RefinedCliConnOpts -> HStreamSqlOpts -> IO ()
 hstreamSQL connOpt HStreamSqlOpts{_updateInterval = updateInterval,
   _retryInterval = retryInterval, _retryLimit = retryLimit, .. } = do
   hstreamCliContext <- initCliContext connOpt
@@ -104,11 +105,11 @@ hstreamSQL connOpt HStreamSqlOpts{_updateInterval = updateInterval,
   /_/ /_//____//_/ /_/ |_/_____/_/  |_/_/  /_/
   |]
 
-hstreamNodes :: CliConnOpts -> HStreamNodes -> IO ()
+hstreamNodes :: RefinedCliConnOpts -> HStreamNodes -> IO ()
 hstreamNodes connOpts HStreamNodesList =
-  refineCliConnOpts connOpts >>= getNodes >>= putStrLn . formatResult . L.sort . V.toList . API.describeClusterResponseServerNodes
+  getNodes connOpts >>= putStrLn . formatResult . L.sort . V.toList . API.describeClusterResponseServerNodes
 hstreamNodes connOpts (HStreamNodesStatus mid) = do
-  nodes <- refineCliConnOpts connOpts >>= getNodes
+  nodes <- getNodes connOpts
   let target = case mid of
         Nothing  -> V.toList . API.describeClusterResponseServerNodesStatus $ nodes
         Just sid -> maybeToList . L.find (compareServerId sid) . V.toList . API.describeClusterResponseServerNodesStatus $ nodes
@@ -120,7 +121,7 @@ hstreamNodes connOpts (HStreamNodesStatus mid) = do
         Just API.ServerNode{..} -> serverNodeId == x
         Nothing                 -> False
 hstreamNodes connOpts (HStreamNodesCheck nMaybe) = do
-  nodes <- describeClusterResponseServerNodesStatus <$> (refineCliConnOpts connOpts >>= getNodes)
+  nodes <- describeClusterResponseServerNodesStatus <$> getNodes connOpts
   let n' = length nodes
   case nMaybe of
     Just n -> when (n' < fromIntegral n) $ errorWithoutStackTrace "No enough nodes in the cluster"
@@ -132,9 +133,8 @@ hstreamNodes connOpts (HStreamNodesCheck nMaybe) = do
                                 <> show (mapMaybe ((API.serverNodeId <$>) . API.serverNodeStatusNode) (V.toList nodesNotRunning))
 
 -- TODO: Init should have it's own rpc call
-hstreamInit :: CliConnOpts -> HStreamInitOpts -> IO ()
-hstreamInit connOpts HStreamInitOpts{..} = do
-  RefinedCliConnOpts{..} <- refineCliConnOpts connOpts
+hstreamInit :: RefinedCliConnOpts -> HStreamInitOpts -> IO ()
+hstreamInit RefinedCliConnOpts{..} HStreamInitOpts{..} = do
   ready <- timeout (_timeoutSec * 1000000) $
     withGRPCClient clientConfig $ \client -> do
       api <- hstreamApiClient client
@@ -156,9 +156,8 @@ hstreamInit connOpts HStreamInitOpts{..} = do
             _                           -> loop api
         _ -> loop api
 
-hstreamStream :: CliConnOpts -> StreamCommand -> IO ()
-hstreamStream connOpts cmd = do
-  RefinedCliConnOpts{..} <- refineCliConnOpts connOpts
+hstreamStream :: RefinedCliConnOpts -> StreamCommand -> IO ()
+hstreamStream RefinedCliConnOpts{..} cmd = do
   case cmd of
     StreamCmdList ->
       simpleExecute clientConfig listStreams >>= printResult
@@ -169,11 +168,9 @@ hstreamStream connOpts cmd = do
     StreamCmdDescribe sName ->
       simpleExecute clientConfig (getStream sName) >>= printResult
 
-hstreamSubscription :: CliConnOpts -> SubscriptionCommand -> IO ()
-hstreamSubscription connOpts = \case
-  SubscriptionCmdList -> do
-    RefinedCliConnOpts{..} <- refineCliConnOpts connOpts
-    simpleExecute clientConfig listSubscriptions >>= printResult
+hstreamSubscription :: RefinedCliConnOpts -> SubscriptionCommand -> IO ()
+hstreamSubscription connOpts@RefinedCliConnOpts{..} = \case
+  SubscriptionCmdList -> simpleExecute clientConfig listSubscriptions >>= printResult
   SubscriptionCmdDescribe sid -> do
     ctx <- initCliContext connOpts
     executeWithLookupResource_ ctx (Resource ResSubscription sid) (getSubscription sid) >>= printResult
