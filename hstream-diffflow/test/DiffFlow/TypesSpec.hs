@@ -355,10 +355,10 @@ index = describe "Index" $ do
                           ]
       , mkDataChangeBatch [ DataChange (A.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1]
       ]
-      (Index [ mkDataChangeBatch [ DataChange (A.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1
+      (Index [ mkDataChangeBatch [ DataChange (A.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1]
+             , mkDataChangeBatch [ DataChange (A.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1
                                  , DataChange (A.fromList [("b", Null)]) (Timestamp (0 :: Int) []) 1
                                  ]
-             , mkDataChangeBatch [ DataChange (A.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1]
              ]
       )
       `shouldBe` True
@@ -383,15 +383,15 @@ index = describe "Index" $ do
       , mkDataChangeBatch [ DataChange (A.fromList [("f", Null)]) (Timestamp (0 :: Int) []) 1 ]
       , mkDataChangeBatch [ DataChange (A.fromList [("g", Null)]) (Timestamp (0 :: Int) []) 1 ]
       ]
-      (Index [ mkDataChangeBatch [ DataChange (A.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1
+      (Index [ mkDataChangeBatch [ DataChange (A.fromList [("g", Null)]) (Timestamp (0 :: Int) []) 1 ]
+             , mkDataChangeBatch [ DataChange (A.fromList [("e", Null)]) (Timestamp (0 :: Int) []) 1
+                                 , DataChange (A.fromList [("f", Null)]) (Timestamp (0 :: Int) []) 1
+                                 ]
+             , mkDataChangeBatch [ DataChange (A.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1
                                  , DataChange (A.fromList [("b", Null)]) (Timestamp (0 :: Int) []) 1
                                  , DataChange (A.fromList [("c", Null)]) (Timestamp (0 :: Int) []) 1
                                  , DataChange (A.fromList [("d", Null)]) (Timestamp (0 :: Int) []) 1
                                  ]
-             , mkDataChangeBatch [ DataChange (A.fromList [("e", Null)]) (Timestamp (0 :: Int) []) 1
-                                 , DataChange (A.fromList [("f", Null)]) (Timestamp (0 :: Int) []) 1
-                                 ]
-             , mkDataChangeBatch [ DataChange (A.fromList [("g", Null)]) (Timestamp (0 :: Int) []) 1 ]
              ]
       )
       `shouldBe` True
