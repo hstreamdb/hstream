@@ -65,8 +65,8 @@ jobs:
           docker pull docker.io/hstreamdb/haskell:${{ matrix.ghc }}
           GHC_MAJOR_VER="$(echo ${{ matrix.ghc }} | cut -d'.' -f1)"
           echo "GHC_MAJOR_VER=$GHC_MAJOR_VER" >> $GITHUB_ENV
-          if [ "$GHC_MAJOR_VER" = "9" ]; then
-            echo "EXTRA_CABAL_ARGS='--project-file=cabal.project.ghc9'" >> $GITHUB_ENV
+          if [ "$GHC_MAJOR_VER" = "8" ]; then
+            echo "EXTRA_CABAL_ARGS='--project-file=cabal.project.ghc810'" >> $GITHUB_ENV
           else
             echo "EXTRA_CABAL_ARGS=''" >> $GITHUB_ENV
           fi
@@ -169,15 +169,16 @@ jobs:
       - name: quick build new hstream image
         run: |
           mkdir -p ~/data
-          if [ "${{ env.GHC_MAJOR_VER }}" = "9" ]; then
+          if [ "${{ env.GHC_MAJOR_VER }}" = "8" ]; then
             python3 script/dev-tools quick-build-dev-image \
               --builder-image docker.io/hstreamdb/haskell:${{ matrix.ghc }} \
-              --project-file cabal.project.ghc9 \
+              --project-file cabal.project.ghc810 \
               --only-hstream \
               -t $NEW_HSTREAM_IMAGE
           else
             python3 script/dev-tools quick-build-dev-image \
               --builder-image docker.io/hstreamdb/haskell:${{ matrix.ghc }} \
+              --only-hstream \
               -t $NEW_HSTREAM_IMAGE
           fi
 

@@ -44,20 +44,21 @@ executable hadmin
   hs-source-dirs:     app
   build-depends:
     , base                  >=4.13   && <5
-    , bytestring            ^>=0.10
+    , bytestring
     , containers            ^>=0.6
+    , deepseq
     , ghc-prim              >=0.5    && <1.0
     , grpc-haskell
     , grpc-haskell-core
     , haskeline
     , hstream-admin-server
-    , hstream-admin-store
     , hstream-common
     , hstream-common-api
     , hstream-store
     , network               ^>=3.1.2
     , optparse-applicative
     , primitive             ^>=0.7
+    , process
     , proto3-suite
     , random                ^>=1.2
     , text
