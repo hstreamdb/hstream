@@ -1,4 +1,4 @@
-FROM hstreamdb/haskell
+FROM hstreamdb/haskell:9.2
 
 ARG CABAL_MIRROR_NAME="hackage.haskell.org"
 ARG CABAL_MIRROR_URL="http://hackage.haskell.org/"
