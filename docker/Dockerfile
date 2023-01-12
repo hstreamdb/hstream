@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------------
-# Global args (should be on the top of dockerifle)
+# Global args (should be on the top of dockerfile)
 
 ARG BUILDER_IMAGE="hstreamdb/haskell:latest"
 ARG LD_IMAGE="hstreamdb/logdevice:latest"
@@ -85,6 +85,9 @@ COPY --from=builder /root/.cabal/bin/hstream-server \
                     /usr/local/bin/
 COPY --from=ghcr.io/hstreamdb/http-services:latest \
   /usr/local/bin/hstream-http-server \
+  /usr/local/bin/
+COPY --from=ghcr.io/hstreamdb/hadmin-store:latest \
+  /usr/local/bin/hadmin-store \
   /usr/local/bin/
 
 COPY ./script/wait-for-storage.sh /usr/local/script/wait-for-storage.sh

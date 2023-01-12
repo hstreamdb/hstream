@@ -1,20 +1,20 @@
 CABAL ?= cabal
 GHC_MAJOR_VERSION := $(shell ghc --numeric-version | cut -d'.' -f1)
 
-ifeq ($(GHC_MAJOR_VERSION), 9)
-CABAL_PROJECT_FILE ?= cabal.project.ghc9
-all:: grpc sql
+ifeq ($(GHC_MAJOR_VERSION), 8)
+CABAL_PROJECT_FILE ?= cabal.project.ghc810
+all:: thrift grpc sql
 else
 CABAL_PROJECT_FILE ?= cabal.project
-all:: thrift grpc sql
+all:: grpc sql
 endif
 
-THRIFT_COMPILE = thrift-compiler
 BNFC = bnfc
 PROTO_COMPILE = protoc
 PROTO_COMPILE_HS = ~/.cabal/bin/compile-proto-file_hstream
 PROTO_CPP_PLUGIN ?= /usr/local/bin/grpc_cpp_plugin
 
+THRIFT_COMPILE = thrift-compiler
 thrift::
 	(cd external/hsthrift && THRIFT_COMPILE=$(THRIFT_COMPILE) make thrift)
 	(cd hstream-admin/store/if && $(THRIFT_COMPILE) logdevice/admin/if/admin.thrift --hs -r -o ..)

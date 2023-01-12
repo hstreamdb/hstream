@@ -32,13 +32,6 @@ flag hstream_use_hs_grpc
   default:     False
   description: Use hs-grpc-server instead
 
--- NOTE: cabal may auto enable this flag under ghc-9.2
--- For detalis: https://cabal.readthedocs.io/en/3.6/cabal-package.html#resolution-of-conditions-and-flags
-flag with_ghc_902
-  default:     False
-  description:
-    Build with ghc 9.2, warning: there is no store-admin in this builds
-
 common shared-properties
   ghc-options:
     -Wall -Wcompat -Widentities -Wincomplete-record-updates
@@ -90,7 +83,7 @@ library
     HStream.Server.MetaData.Utils
     HStream.Server.MetaData.Value
 
-  if !flag(with_ghc_902)
+  if impl(ghc < 9.2.0)
     other-modules: HStream.Server.Handler.StoreAdmin
 
   hs-source-dirs:     src
@@ -149,7 +142,7 @@ library
     , Z-IO
     , zoovisitor
 
-  if !flag(with_ghc_902)
+  if impl(ghc < 9.2.0)
     build-depends: hstream-admin-store
 
   default-language:   Haskell2010
@@ -289,7 +282,7 @@ test-suite hstream-test
     , Z-IO
     , zoovisitor
 
-  if !flag(with_ghc_902)
+  if impl(ghc < 9.2.0)
     build-depends: hstream-admin-store
 
   default-language:   Haskell2010
