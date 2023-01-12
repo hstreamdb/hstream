@@ -14,10 +14,10 @@ jobs:
     strategy:
       matrix:
         include:
-          - builder_image: "hstreamdb/haskell:8.10.7"
+          - builder_image: "hstreamdb/haskell:9.2"
             ld_image: "hstreamdb/logdevice:latest"
             tag: "${GITHUB_REF#refs/*/}"
-          - builder_image: "hstreamdb/haskell:rqlite_8.10.7"
+          - builder_image: "hstreamdb/haskell:rqlite_9.2"
             ld_image: "hstreamdb/logdevice:rqlite"
             tag: "rqlite_${GITHUB_REF#refs/*/}"
     steps:
