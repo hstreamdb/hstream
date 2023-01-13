@@ -83,9 +83,6 @@ library
     HStream.Server.MetaData.Utils
     HStream.Server.MetaData.Value
 
-  if impl(ghc < 9.2.0)
-    other-modules: HStream.Server.Handler.StoreAdmin
-
   hs-source-dirs:     src
   build-depends:
     , aeson

@@ -19,9 +19,6 @@ import           HStream.Server.Handler.Cluster
 import           HStream.Server.Handler.Connector
 import           HStream.Server.Handler.Query
 import qualified HStream.Server.Handler.Stats        as H
-#if __GLASGOW_HASKELL__ < 902
-import           HStream.Server.Handler.StoreAdmin
-#endif
 import           HStream.Server.Handler.Stream
 import           HStream.Server.Handler.Subscription
 import           HStream.Server.Handler.View
@@ -93,11 +90,6 @@ handlers serverContext@ServerContext{..} =
         hstreamApiGetView = getViewHandler serverContext,
         hstreamApiListViews = listViewsHandler serverContext,
         hstreamApiDeleteView = deleteViewHandler serverContext,
-
-#if __GLASGOW_HASKELL__ < 902
-        hstreamApiGetNode = getStoreNodeHandler serverContext,
-        hstreamApiListNodes = listStoreNodesHandler serverContext,
-#endif
 
         -- Cluster
         hstreamApiDescribeCluster    = describeClusterHandler serverContext,
