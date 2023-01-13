@@ -17,10 +17,6 @@ import qualified HStream.Server.HStreamApi           as A
 import           HStream.Server.Types                (ServerContext (..))
 import qualified Proto.HStream.Server.HStreamApi     as P
 
-#if __GLASGOW_HASKELL__ < 902
-import qualified HStream.Server.Handler.StoreAdmin   as H
-#endif
-
 -------------------------------------------------------------------------------
 
 handlers :: ServerContext -> [ServiceHandler]
@@ -85,11 +81,6 @@ handlers sc =
   , unary (GRPC :: GRPC P.HStreamApi "listQueries") (H.handleListQueries sc)
   , unary (GRPC :: GRPC P.HStreamApi "deleteQuery") (H.handleDeleteQuery sc)
   , unary (GRPC :: GRPC P.HStreamApi "restartQuery") (H.handleRestartQuery sc)
-    -- XXX: StoreAdmin
-#if __GLASGOW_HASKELL__ < 902
-  , unary (GRPC :: GRPC P.HStreamApi "getNode") (H.handleGetStoreNode sc)
-  , unary (GRPC :: GRPC P.HStreamApi "listNodes") (H.handleListStoreNodes sc)
-#endif
   ]
 
 handleEcho :: UnaryHandler A.EchoRequest A.EchoResponse
