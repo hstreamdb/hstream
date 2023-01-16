@@ -49,20 +49,20 @@ module HStream.Logger
   , pattern Log.NOTSET
   ) where
 
-import           Data.ByteString         (ByteString)
-import qualified Data.ByteString.Char8   as BSC
-import qualified Data.Text               as Text
-import qualified Data.Text.Lazy          as TL
-import           Foreign.C.Types         (CInt (..))
-import           GHC.Conc.Sync           (ThreadId (..))
-import           GHC.Exts                (ThreadId#)
-import           GHC.Stack               (HasCallStack)
-import qualified Text.Read               as Read
-import qualified Z.Data.Builder          as B
-import           Z.Data.Builder          (Builder)
-import qualified Z.Data.CBytes           as CBytes
-import qualified Z.IO.Logger             as Log
-import           Z.IO.StdStream.Ansi     (AnsiColor (..), color)
+import           Data.ByteString       (ByteString)
+import qualified Data.ByteString.Char8 as BSC
+import qualified Data.Text             as Text
+import qualified Data.Text.Lazy        as TL
+import           Foreign.C.Types       (CInt (..))
+import           GHC.Conc.Sync         (ThreadId (..))
+import           GHC.Exts              (ThreadId#)
+import           GHC.Stack             (HasCallStack)
+import qualified Text.Read             as Read
+import qualified Z.Data.Builder        as B
+import           Z.Data.Builder        (Builder)
+import qualified Z.Data.CBytes         as CBytes
+import qualified Z.IO.Logger           as Log
+import           Z.IO.StdStream.Ansi   (AnsiColor (..), color)
 
 -------------------------------------------------------------------------------
 -- Example:

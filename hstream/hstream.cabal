@@ -139,7 +139,7 @@ library
     , Z-IO
     , zoovisitor
 
-  if impl(ghc < 9.2.0)
+  if impl(ghc <9.2.0)
     build-depends: hstream-admin-store
 
   default-language:   Haskell2010
@@ -279,7 +279,7 @@ test-suite hstream-test
     , Z-IO
     , zoovisitor
 
-  if impl(ghc < 9.2.0)
+  if impl(ghc <9.2.0)
     build-depends: hstream-admin-store
 
   default-language:   Haskell2010
