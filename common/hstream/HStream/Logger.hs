@@ -64,8 +64,6 @@ import qualified Z.Data.CBytes           as CBytes
 import qualified Z.IO.Logger             as Log
 import           Z.IO.StdStream.Ansi     (AnsiColor (..), color)
 
-import qualified HStream.Utils.Converter as U
-
 -------------------------------------------------------------------------------
 -- Example:
 --
@@ -120,11 +118,11 @@ buildString' = B.stringUTF8 . show
 {-# INLINE buildString' #-}
 
 buildText :: Text.Text -> Builder ()
-buildText = U.textToZBuilder
+buildText = B.stringUTF8 . Text.unpack
 {-# INLINE buildText #-}
 
 buildLazyText :: TL.Text -> Builder ()
-buildLazyText = U.lazyTextToZBuilder
+buildLazyText = B.stringUTF8 . Text.unpack . TL.toStrict
 {-# INLINE buildLazyText #-}
 
 buildByteString :: ByteString -> Builder ()
