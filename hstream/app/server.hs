@@ -27,6 +27,7 @@ import qualified Network.GRPC.HighLevel.Client    as GRPC
 import qualified Network.GRPC.HighLevel.Generated as GRPC
 import           Network.HTTP.Client              (defaultManagerSettings,
                                                    newManager)
+import           System.IO                        (hPutStrLn, stderr)
 import           Text.RawString.QQ                (r)
 import           Z.Data.CBytes                    (CBytes)
 import           ZooKeeper                        (withResource,
@@ -135,14 +136,14 @@ serve :: ByteString
       -> IO ()
 serve host port securityMap sc@ServerContext{..} listeners listenerSecurityMap = do
   Log.i "************************"
-  putStrLn [r|
+  hPutStrLn stderr $ [r|
    _  _   __ _____ ___ ___  __  __ __
   | || |/' _/_   _| _ \ __|/  \|  V  |
   | >< |`._`. | | | v / _|| /\ | \_/ |
   |_||_||___/ |_| |_|_\___|_||_|_| |_|
 
   |]
-  Log.i "*************************"
+  Log.i "************************"
 
   let serverOnStarted = do
         Log.info $ "Server is started on port " <> Log.buildInt port <> ", waiting for cluster to get ready"
