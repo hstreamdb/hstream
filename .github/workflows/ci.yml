@@ -397,20 +397,13 @@ jobs:
           java-version: 11
           cache: "gradle"
 
-      - uses: gradle/wrapper-validation-action@v1
+      - uses: gradle/gradle-build-action@v2
 
-      - name: publish local java-toolkit
-        working-directory: ./hstream-connectors/java-toolkit
-        run: ./gradlew publishToMavenLocal -PdisableSigning --info
-
-      - name: build images
+      - name: build and pull images
         run: |
-          cd hstream-connectors/source-debezium
-          ./gradlew buildImages
-          cd ../sink-jdbc
-          ./gradlew buildImages
-          cd ../sink-mongodb
-          ./gradlew buildImages
+          cd hstream-connectors
+          make pull_images
+          make build_images
 
       - name: run hstream io tests
         run: |
