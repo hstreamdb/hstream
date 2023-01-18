@@ -615,11 +615,7 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
           else resetReadingOffset logId batchId
           return False
         Just (consumerName, streamSend) ->
-          withMVar streamSend (\ss -> do
-            Stats.subscription_time_series_add_response_messages scStatsHolder (textToCBytes subSubscriptionId) 1
-            Stats.subscription_stat_add_response_messages_counter scStatsHolder (textToCBytes subSubscriptionId) 1
-            ss (StreamingFetchResponse $ Just records)
-            ) >>= \case
+          withMVar streamSend (\ss -> ss (StreamingFetchResponse $ Just records)) >>= \case
             Left err -> do
               Log.fatal $ "sendReceivedRecords failed: logId=" <> Log.buildInt logId <> ", batchId=" <> Log.buildInt batchId
                        <> ", num of records=" <> Log.buildInt (V.length shardRecordIds) <> "\n"
@@ -632,6 +628,13 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
             Right _ -> do
               Log.debug $ "send records from " <> Log.buildInt logId <> " to consumer " <> Log.buildText consumerName
                        <> ", batchId=" <> Log.buildInt batchId <> ", num of records=" <> Log.buildInt (V.length shardRecordIds)
+              -- Note: (server response stats) update stats only when sending records successfully to the consumer
+              Stats.subscription_time_series_add_response_messages scStatsHolder (textToCBytes subSubscriptionId) 1
+              Stats.subscription_stat_add_response_messages_counter scStatsHolder (textToCBytes subSubscriptionId) 1
+              -- Note: (resend stats) update stats only when sending records successfully to the consumer
+              when isResent $ Stats.subscription_stat_add_resend_records scStatsHolder
+                                                                        (textToCBytes subSubscriptionId)
+                                                                        (fromIntegral $ V.length shardRecordIds)
               registerResend logId batchId shardRecordIds
               return True
 
@@ -674,9 +677,6 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
       unless (V.null resendRecordIds) $ do
         Log.debug $ "There are " <> Log.buildInt (V.length resendRecordIds) <> " records need to resent"
                  <> ", batchId=" <> Log.buildInt batchId
-        Stats.subscription_stat_add_resend_records scStatsHolder
-                                                   (textToCBytes subSubscriptionId)
-                                                   (fromIntegral $ V.length resendRecordIds)
         dataRecord <- withMVar subLdReader $ \reader -> do
           S.readerStartReading reader logId batchId batchId
           S.readerRead reader 1
