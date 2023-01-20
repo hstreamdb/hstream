@@ -24,16 +24,16 @@ module HStream.Stats
   , stream_stat_add_append_payload_bytes
   , stream_stat_add_append_total
   , stream_stat_add_append_failed
-  , stream_stat_add_record_payload_bytes
+  , stream_stat_add_append_record_count
   , stream_stat_get_append_payload_bytes
   , stream_stat_get_append_total
   , stream_stat_get_append_failed
-  , stream_stat_get_record_payload_bytes
+  , stream_stat_get_append_record_count
   , stream_stat_getall
   , stream_stat_getall_append_payload_bytes
   , stream_stat_getall_append_total
   , stream_stat_getall_append_failed
-  , stream_stat_getall_record_payload_bytes
+  , stream_stat_getall_append_record_count
     -- ** Time series
   , stream_time_series_add_append_in_bytes
   , stream_time_series_add_append_in_records

@@ -138,7 +138,7 @@ getStreamStatsInternal statsHolder (PS.Enumerated stats) = do
     Right API.StreamStatsAppendInBytes ->
       Stats.stream_stat_getall_append_payload_bytes s
     Right API.StreamStatsAppendInRecords ->
-      Stats.stream_stat_getall_record_payload_bytes s
+      Stats.stream_stat_getall_append_record_count s
     Right API.StreamStatsTotalAppend ->
       Stats.stream_stat_getall_append_total s
     Right API.StreamStatsFailedAppend ->
