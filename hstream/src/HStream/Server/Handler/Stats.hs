@@ -161,7 +161,7 @@ getSubscriptionStatsInternal statsHolder (PS.Enumerated stats) = do
     Right API.SubscriptionStatsAckReceived ->
       Stats.subscription_stat_getall_received_acks s
     Right API.SubscriptionStatsResendRecords ->
-      Stats.subscription_stat_getall_resend_records s
+      Stats.subscription_stat_getall_resend_in_records s
     Right API.SubscriptionStatsMessageRequestCount ->
       Stats.subscription_stat_getall_request_messages_counter s
     Right API.SubscriptionStatsMessageResponseCount ->
