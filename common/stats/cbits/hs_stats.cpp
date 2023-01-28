@@ -25,7 +25,7 @@ void setPerStreamStatsMember(const char* stat_name,
                              StatsCounter PerStreamStats::*& member_ptr) {
 #define STAT_DEFINE(name, _)                                                   \
   if (#name == std::string(stat_name)) {                                       \
-    member_ptr = &PerStreamStats::name;                                        \
+    member_ptr = &PerStreamStats::name##_counter;                              \
   }
 #include "per_stream_stats.inc"
 }
@@ -47,7 +47,7 @@ void setPerSubscriptionStatsMember(
     const char* stat_name, StatsCounter PerSubscriptionStats::*& member_ptr) {
 #define STAT_DEFINE(name, _)                                                   \
   if (#name == std::string(stat_name)) {                                       \
-    member_ptr = &PerSubscriptionStats::name;                                  \
+    member_ptr = &PerSubscriptionStats::name##_counter;                        \
   }
 #include "per_subscription_stats.inc"
 }
