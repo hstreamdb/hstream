@@ -39,7 +39,11 @@ statsSpec = describe "HStream.Stats" $ do
     stream_stat_get_append_in_bytes s "topic_2" `shouldReturn` 100
 
     m <- stream_stat_getall_append_in_bytes s
+    m' <- stream_stat_getall h "append_in_bytes"
+
+    Map.lookup "topic_1" m `shouldBe` Map.lookup "topic_1" m'
     Map.lookup "topic_1" m `shouldBe` Just 200
+    Map.lookup "topic_2" m `shouldBe` Map.lookup "topic_2" m'
     Map.lookup "topic_2" m `shouldBe` Just 100
 
     stream_stat_get_append_total s "/topic_1" `shouldReturn` 2
