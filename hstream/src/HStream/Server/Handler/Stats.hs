@@ -136,9 +136,9 @@ getStreamStatsInternal statsHolder (PS.Enumerated stats) = do
   s <- Stats.newAggregateStats statsHolder
   res <- case stats of
     Right API.StreamStatsAppendInBytes ->
-      Stats.stream_stat_getall_append_payload_bytes s
+      Stats.stream_stat_getall_append_in_bytes s
     Right API.StreamStatsAppendInRecords ->
-      Stats.stream_stat_getall_append_record_count s
+      Stats.stream_stat_getall_append_in_records s
     Right API.StreamStatsTotalAppend ->
       Stats.stream_stat_getall_append_total s
     Right API.StreamStatsFailedAppend ->
@@ -155,16 +155,16 @@ getSubscriptionStatsInternal statsHolder (PS.Enumerated stats) = do
   s <- Stats.newAggregateStats statsHolder
   res <- case stats of
     Right API.SubscriptionStatsDeliveryInBytes ->
-      Stats.subscription_stat_getall_delivery_in_bytes s
+      Stats.subscription_stat_getall_send_out_bytes s
     Right API.SubscriptionStatsDeliveryInRecords ->
-      Stats.subscription_stat_getall_delivery_in_records s
+      Stats.subscription_stat_getall_send_out_records s
     Right API.SubscriptionStatsAckReceived ->
       Stats.subscription_stat_getall_received_acks s
     Right API.SubscriptionStatsResendRecords ->
-      Stats.subscription_stat_getall_resend_in_records s
+      Stats.subscription_stat_getall_resend_records s
     Right API.SubscriptionStatsMessageRequestCount ->
-      Stats.subscription_stat_getall_request_messages_counter s
+      Stats.subscription_stat_getall_request_messages s
     Right API.SubscriptionStatsMessageResponseCount ->
-      Stats.subscription_stat_getall_response_messages_counter s
+      Stats.subscription_stat_getall_response_messages s
     Left _ -> throwIO . HE.InvalidStatsType $ show stats
   return $ Map.mapKeys U.cBytesToText res

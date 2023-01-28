@@ -26,19 +26,19 @@ statsSpec :: Spec
 statsSpec = describe "HStream.Stats" $ do
   it "pre stream stats counter" $ do
     h <- newStatsHolder True
-    stream_stat_add_append_payload_bytes h "topic_1" 100
-    stream_stat_add_append_payload_bytes h "topic_1" 100
-    stream_stat_add_append_payload_bytes h "topic_2" 100
+    stream_stat_add_append_in_bytes h "topic_1" 100
+    stream_stat_add_append_in_bytes h "topic_1" 100
+    stream_stat_add_append_in_bytes h "topic_2" 100
 
     stream_stat_add_append_total h "/topic_1" 1
     stream_stat_add_append_total h "/topic_1" 1
     stream_stat_add_append_total h "/topic_2" 1
 
     s <- newAggregateStats h
-    stream_stat_get_append_payload_bytes s "topic_1" `shouldReturn` 200
-    stream_stat_get_append_payload_bytes s "topic_2" `shouldReturn` 100
+    stream_stat_get_append_in_bytes s "topic_1" `shouldReturn` 200
+    stream_stat_get_append_in_bytes s "topic_2" `shouldReturn` 100
 
-    m <- stream_stat_getall_append_payload_bytes s
+    m <- stream_stat_getall_append_in_bytes s
     Map.lookup "topic_1" m `shouldBe` Just 200
     Map.lookup "topic_2" m `shouldBe` Just 100
 
@@ -54,15 +54,15 @@ statsSpec = describe "HStream.Stats" $ do
 
   it "pre subscription stats counter" $ do
     h <- newStatsHolder True
-    subscription_stat_add_resend_in_records h "subid_1" 1
-    subscription_stat_add_resend_in_records h "subid_1" 2
-    subscription_stat_add_resend_in_records h "subid_2" 1
+    subscription_stat_add_resend_records h "subid_1" 1
+    subscription_stat_add_resend_records h "subid_1" 2
+    subscription_stat_add_resend_records h "subid_2" 1
 
     s <- newAggregateStats h
-    subscription_stat_get_resend_in_records s "subid_1" `shouldReturn` 3
-    subscription_stat_get_resend_in_records s "subid_2" `shouldReturn` 1
+    subscription_stat_get_resend_records s "subid_1" `shouldReturn` 3
+    subscription_stat_get_resend_records s "subid_2" `shouldReturn` 1
 
-    m <- subscription_stat_getall_resend_in_records s
+    m <- subscription_stat_getall_resend_records s
     Map.lookup "subid_1" m `shouldBe` Just 3
     Map.lookup "subid_2" m `shouldBe` Just 1
 
@@ -116,20 +116,20 @@ threadedStatsSpec = describe "HStream.Stats (threaded)" $ do
 
   it "pre stream stats counter (threaded)" $ do
     runConc 10 $ runConc 1000 $ do
-      stream_stat_add_append_payload_bytes h "a_stream" 1
-      stream_stat_add_append_payload_bytes h "b_stream" 1
+      stream_stat_add_append_in_bytes h "a_stream" 1
+      stream_stat_add_append_in_bytes h "b_stream" 1
 
       stream_stat_add_append_total h "a_stream" 1
       stream_stat_add_append_total h "b_stream" 1
 
     s <- newAggregateStats h
-    stream_stat_get_append_payload_bytes s "a_stream" `shouldReturn` 10000
-    stream_stat_get_append_payload_bytes s "b_stream" `shouldReturn` 10000
+    stream_stat_get_append_in_bytes s "a_stream" `shouldReturn` 10000
+    stream_stat_get_append_in_bytes s "b_stream" `shouldReturn` 10000
 
     stream_stat_get_append_total s "a_stream" `shouldReturn` 10000
     stream_stat_get_append_total s "b_stream" `shouldReturn` 10000
 
-    m <- stream_stat_getall_append_payload_bytes s
+    m <- stream_stat_getall_append_in_bytes s
     Map.lookup "a_stream" m `shouldBe` Just 10000
     Map.lookup "b_stream" m `shouldBe` Just 10000
 
@@ -156,14 +156,14 @@ threadedStatsSpec = describe "HStream.Stats (threaded)" $ do
 
   it "pre subscription stats counter (threaded)" $ do
     runConc 10 $ runConc 1000 $ do
-      subscription_stat_add_resend_in_records h "a_stream" 1
-      subscription_stat_add_resend_in_records h "b_stream" 1
+      subscription_stat_add_resend_records h "a_stream" 1
+      subscription_stat_add_resend_records h "b_stream" 1
 
     s <- newAggregateStats h
-    subscription_stat_get_resend_in_records s "a_stream" `shouldReturn` 10000
-    subscription_stat_get_resend_in_records s "b_stream" `shouldReturn` 10000
+    subscription_stat_get_resend_records s "a_stream" `shouldReturn` 10000
+    subscription_stat_get_resend_records s "b_stream" `shouldReturn` 10000
 
-    m <- subscription_stat_getall_resend_in_records s
+    m <- subscription_stat_getall_resend_records s
     Map.lookup "a_stream" m `shouldBe` Just 10000
     Map.lookup "b_stream" m `shouldBe` Just 10000
 

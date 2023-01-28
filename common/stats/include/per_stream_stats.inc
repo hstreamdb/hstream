@@ -3,15 +3,14 @@
 #define STAT_DEFINE(...)
 #endif
 
-// Payload bytes sent by clients in APPENDs
-STAT_DEFINE(append_payload_bytes, SUM)
-
-// Record count sent by clients in APPENDs
-STAT_DEFINE(append_record_count, SUM)
-
 // Total number of append requests
 STAT_DEFINE(append_total, SUM)
 // Failed append requests
 STAT_DEFINE(append_failed, SUM)
+
+// Total payload bytes successfully written to the stream
+STAT_DEFINE(append_in_bytes, SUM)
+// Total payload records successfully written to the stream
+STAT_DEFINE(append_in_records, SUM)
 
 #undef STAT_DEFINE
