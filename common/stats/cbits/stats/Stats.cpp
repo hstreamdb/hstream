@@ -58,7 +58,8 @@ static void aggregateHistogram(StatsAggOptional agg, H& out, const H& in) {
 void PerStreamStats::aggregate(PerStreamStats const& other,
                                StatsAggOptional agg_override) {
 #define STAT_DEFINE(name, agg)                                                 \
-  aggregateStat(StatsAgg::agg, agg_override, name, other.name);
+  aggregateStat(StatsAgg::agg, agg_override, name##_counter,                   \
+                other.name##_counter);
 #include "per_stream_stats.inc"
 }
 
@@ -66,7 +67,7 @@ folly::dynamic PerStreamStats::toJsonObj() {
   folly::dynamic map = folly::dynamic::object;
 #define STAT_DEFINE(name, _)                                                   \
   /* we know that all names are unique */                                      \
-  map[#name] = name.load();
+  map[#name] = name##_counter.load();
 #include "per_stream_stats.inc"
   return map;
 }
@@ -78,7 +79,8 @@ std::string PerStreamStats::toJson() {
 void PerSubscriptionStats::aggregate(PerSubscriptionStats const& other,
                                      StatsAggOptional agg_override) {
 #define STAT_DEFINE(name, agg)                                                 \
-  aggregateStat(StatsAgg::agg, agg_override, name, other.name);
+  aggregateStat(StatsAgg::agg, agg_override, name##_counter,                   \
+                other.name##_counter);
 #include "per_subscription_stats.inc"
 }
 
@@ -86,7 +88,7 @@ folly::dynamic PerSubscriptionStats::toJsonObj() {
   folly::dynamic map = folly::dynamic::object;
 #define STAT_DEFINE(name, _)                                                   \
   /* we know that all names are unique */                                      \
-  map[#name] = name.load();
+  map[#name] = name##_counter.load();
 #include "per_subscription_stats.inc"
   return map;
 }
