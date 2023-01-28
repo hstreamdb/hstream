@@ -221,7 +221,9 @@ createShardReader ServerContext{..} API.CreateShardReaderRequest{createShardRead
     createShardReaderRequestShardId=rShardId, createShardReaderRequestShardOffset=rOffset, createShardReaderRequestTimeout=rTimeout,
     createShardReaderRequestReaderId=rId} = do
   exist <- M.checkMetaExists @P.ShardReader rId metaHandle
-  when exist $ throwIO $ HE.ShardReaderExists "ShardReaderExists"
+  when exist $ throwIO $ HE.ShardReaderExists $ "ShardReader with id " <> rId <> " already exists."
+  shardExists <- S.logIdHasGroup scLDClient rShardId
+  unless shardExists $ throwIO $ HE.ShardNotFound $ "Shard with id " <> T.pack (show rShardId) <> " is not found."
   startLSN <- getStartLSN rShardId
   let shardReader = mkShardReader startLSN
   Log.info $ "create shardReader " <> Log.buildString' (show shardReader)
