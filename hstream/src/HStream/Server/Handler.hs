@@ -64,8 +64,7 @@ handlers serverContext@ServerContext{..} =
         -- Stats
         hstreamApiPerStreamTimeSeriesStats = H.perStreamTimeSeriesStats scStatsHolder,
         hstreamApiPerStreamTimeSeriesStatsAll = H.perStreamTimeSeriesStatsAll scStatsHolder,
-        hstreamApiGetStreamStats = H.getStreamStatsHandler scStatsHolder,
-        hstreamApiGetSubscriptionStats = H.getSubscriptionStatsHandler scStatsHolder,
+        hstreamApiGetStats = H.getStatsHandler scStatsHolder,
 
         -- Query
         hstreamApiTerminateQueries = terminateQueriesHandler serverContext,

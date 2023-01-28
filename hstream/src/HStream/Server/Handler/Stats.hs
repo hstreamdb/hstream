@@ -6,13 +6,11 @@ module HStream.Server.Handler.Stats
   ( -- * For grpc-haskell
     perStreamTimeSeriesStatsAll
   , perStreamTimeSeriesStats
-  , getStreamStatsHandler
-  , getSubscriptionStatsHandler
+  , getStatsHandler
     -- * For hs-grpc-server
   , handlePerStreamTimeSeriesStatsAll
   , handlePerStreamTimeSeriesStats
-  , handleGetStreamStats
-  , handleGetSubscriptionStats
+  , handleGetStats
   ) where
 
 import           Control.Exception                (throwIO)
@@ -25,6 +23,8 @@ import qualified HsGrpc.Server                    as G
 import           Network.GRPC.HighLevel.Generated
 import qualified Proto3.Suite                     as PS
 
+import           Control.Monad                    (when)
+import           Data.Maybe                       (fromJust, isNothing)
 import qualified HStream.Exception                as HE
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Exception
@@ -65,37 +65,24 @@ handlePerStreamTimeSeriesStats holder _ req = catchDefaultEx $ do
   r <- getPerStreamTimeSeriesStats holder req
   pure $ PerStreamTimeSeriesStatsResponse r
 
-getStreamStatsHandler
+getStatsHandler
   :: StatsHolder
-  -> ServerRequest 'Normal API.GetStreamStatsRequest API.GetStreamStatsResponse
-  -> IO (ServerResponse 'Normal API.GetStreamStatsResponse)
-getStreamStatsHandler holder req = defaultExceptionHandle $ do
-  let (ServerNormalRequest _ (API.GetStreamStatsRequest stats)) = req
-  res <- getStreamStatsInternal holder stats
-  U.returnResp $ API.GetStreamStatsResponse {getStreamStatsResponseStatValues = res}
+  -> ServerRequest 'Normal API.GetStatsRequest API.GetStatsResponse
+  -> IO (ServerResponse 'Normal API.GetStatsResponse)
+getStatsHandler holder (ServerNormalRequest _ (API.GetStatsRequest mstats)) = defaultExceptionHandle $ do
+  let stat = getStats mstats
+  when (isNothing stat) $ throwIO . HE.InvalidStatsType $ show mstats
+  res <- getStatsInternal holder (fromJust stat)
+  U.returnResp $ API.GetStatsResponse {getStatsResponseStatsType = mstats, getStatsResponseStatValues = res}
 
-handleGetStreamStats
+handleGetStats
   :: StatsHolder
-  -> G.UnaryHandler API.GetStreamStatsRequest API.GetStreamStatsResponse
-handleGetStreamStats holder _ (API.GetStreamStatsRequest stats) = do
-  res <- getStreamStatsInternal holder stats
-  pure $ API.GetStreamStatsResponse {getStreamStatsResponseStatValues = res}
-
-getSubscriptionStatsHandler
-  :: StatsHolder
-  -> ServerRequest 'Normal API.GetSubscriptionStatsRequest API.GetSubscriptionStatsResponse
-  -> IO (ServerResponse 'Normal API.GetSubscriptionStatsResponse)
-getSubscriptionStatsHandler holder req = defaultExceptionHandle $ do
-  let (ServerNormalRequest _ (API.GetSubscriptionStatsRequest stats)) = req
-  res <- getSubscriptionStatsInternal holder stats
-  U.returnResp $ API.GetSubscriptionStatsResponse {getSubscriptionStatsResponseStatValues = res}
-
-handleGetSubscriptionStats
-  :: StatsHolder
-  -> G.UnaryHandler API.GetSubscriptionStatsRequest API.GetSubscriptionStatsResponse
-handleGetSubscriptionStats holder _ (API.GetSubscriptionStatsRequest stats) = do
-  res <- getSubscriptionStatsInternal holder stats
-  pure $ API.GetSubscriptionStatsResponse {getSubscriptionStatsResponseStatValues = res}
+  -> G.UnaryHandler API.GetStatsRequest API.GetStatsResponse
+handleGetStats holder _ (API.GetStatsRequest mstats) = do
+  let stat = getStats mstats
+  when (isNothing stat) $ throwIO . HE.InvalidStatsType $ show mstats
+  res <- getStatsInternal holder (fromJust stat)
+  pure $ API.GetStatsResponse {getStatsResponseStatsType = mstats, getStatsResponseStatValues = res}
 
 -------------------------------------------------------------------------------
 
@@ -128,6 +115,12 @@ getPerStreamTimeSeriesStatsAll holder req = do
       case m of
         Left errmsg -> throwIO $ HE.InvalidStatsInterval errmsg
         Right m' -> pure $ Map.map (Just . StatsDoubleVals . V.fromList) . Map.mapKeys U.cBytesToText $ m'
+
+getStatsInternal :: StatsHolder -> StatsTypeStat -> IO (Map Text Int64)
+getStatsInternal holder (StatsTypeStatStreamStat stats) = do
+  getStreamStatsInternal holder stats
+getStatsInternal holder (StatsTypeStatSubStat stats) = do
+  getSubscriptionStatsInternal holder stats
 
 getStreamStatsInternal
   :: Stats.StatsHolder -> PS.Enumerated API.StreamStats -> IO (Map Text Int64)
@@ -168,3 +161,9 @@ getSubscriptionStatsInternal statsHolder (PS.Enumerated stats) = do
       Stats.subscription_stat_getall_response_messages s
     Left _ -> throwIO . HE.InvalidStatsType $ show stats
   return $ Map.mapKeys U.cBytesToText res
+
+getStats :: Maybe StatsType -> Maybe StatsTypeStat
+getStats mstats = do
+  StatsType{..} <- mstats
+  statsTypeStat
+
