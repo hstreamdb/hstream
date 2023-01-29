@@ -410,6 +410,8 @@ initConsumer
 initConsumer SubscribeContext {subAssignment = Assignment{..}, ..} consumerName uri agent streamSend = do
   sender <- newMVar streamSend
   atomically $ do
+    cMap <- readTVar subConsumerContexts
+    when (HM.member consumerName cMap) $ throwSTM (HE.ConsumerExists $ T.unpack consumerName)
     modifyTVar' waitingConsumers (\consumers -> consumers ++ [consumerName])
 
     isValid <- newTVar True
@@ -420,7 +422,7 @@ initConsumer SubscribeContext {subAssignment = Assignment{..}, ..} consumerName 
                 ccIsValid = isValid,
                 ccStreamSend = sender
               }
-    modifyTVar' subConsumerContexts (HM.insert consumerName cc)
+    writeTVar subConsumerContexts (HM.insert consumerName cc cMap)
     return cc
 
 sendRecords :: ServerContext -> TVar SubscribeState -> SubscribeContext -> IO ()
