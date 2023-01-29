@@ -9,6 +9,9 @@
 --
 -- And then you can @cat common/stats/HStream/Stats.hspp@
 
+#define CounterExports(cat, name) \
+    cat##_stat_add_##name, cat##_stat_get_##name, cat##_stat_getall_##name
+
 module HStream.Stats
   ( -- * StatsHolder
     Stats
@@ -21,50 +24,31 @@ module HStream.Stats
 
     -- * PerStreamStats
     -- ** Counters
-  , stream_stat_add_append_payload_bytes
-  , stream_stat_add_append_total
-  , stream_stat_add_append_failed
-  , stream_stat_add_record_payload_bytes
-  , stream_stat_get_append_payload_bytes
-  , stream_stat_get_append_total
-  , stream_stat_get_append_failed
-  , stream_stat_get_record_payload_bytes
+  , CounterExports(stream, append_total)
+  , CounterExports(stream, append_failed)
+  , CounterExports(stream, append_in_bytes)
+  , CounterExports(stream, append_in_records)
   , stream_stat_getall
-  , stream_stat_getall_append_payload_bytes
-  , stream_stat_getall_append_total
-  , stream_stat_getall_append_failed
-  , stream_stat_getall_record_payload_bytes
     -- ** Time series
   , stream_time_series_add_append_in_bytes
   , stream_time_series_add_append_in_records
   , stream_time_series_add_append_in_requests
   , stream_time_series_add_append_failed_requests
-  , stream_time_series_add_record_bytes
   , stream_time_series_get
   , stream_time_series_getall
   , stream_time_series_getall_by_name
 
     -- * PerSubscriptionStats
     -- ** Counters
-  , subscription_stat_add_resend_records
-  , subscription_stat_add_delivery_in_bytes
-  , subscription_stat_add_delivery_in_records
-  , subscription_stat_add_received_acks
-  , subscription_stat_add_request_messages_counter
-  , subscription_stat_add_response_messages_counter
-  , subscription_stat_get_resend_records
-  , subscription_stat_get_delivery_in_bytes
-  , subscription_stat_get_delivery_in_records
-  , subscription_stat_get_received_acks
-  , subscription_stat_get_request_messages_counter
-  , subscription_stat_get_response_messages_counter
+  , CounterExports(subscription, send_out_bytes)
+  , CounterExports(subscription, send_out_records)
+  , CounterExports(subscription, send_out_records_failed)
+  , CounterExports(subscription, resend_records)
+  , CounterExports(subscription, resend_records_failed)
+  , CounterExports(subscription, received_acks)
+  , CounterExports(subscription, request_messages)
+  , CounterExports(subscription, response_messages)
   , subscription_stat_getall
-  , subscription_stat_getall_resend_records
-  , subscription_stat_getall_delivery_in_bytes
-  , subscription_stat_getall_delivery_in_records
-  , subscription_stat_getall_received_acks
-  , subscription_stat_getall_request_messages_counter
-  , subscription_stat_getall_response_messages_counter
     -- ** Time series
   , subscription_time_series_add_send_out_bytes
   , subscription_time_series_add_send_out_records

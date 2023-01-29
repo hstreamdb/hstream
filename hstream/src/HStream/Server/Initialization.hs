@@ -64,6 +64,7 @@ initializeServer opts@ServerOpts{..} gossipContext hh serverState = do
 #endif
   ckpStore <- S.newRSMBasedCheckpointStore ldclient S.checkpointStoreLogID 5000
 
+  -- XXX: Should we add a server option to toggle Stats?
   statsHolder <- newServerStatsHolder
 
   runningQs <- newMVar HM.empty
