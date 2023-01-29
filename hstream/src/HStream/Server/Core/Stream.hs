@@ -197,9 +197,8 @@ appendStream ServerContext{..} API.AppendRequest {appendRequestShardId = shardId
       payloadSize = BS.length payload
   when (payloadSize > scMaxRecordSize) $ throwIO $ HE.InvalidRecord "Record size exceeds the maximum size limit"
   S.AppendCompletion {..} <- S.appendCompressedBS scLDClient shardId payload cmpStrategy Nothing
-  -- XXX: Should we add a server option to toggle Stats?
-  Stats.stream_stat_add_append_payload_bytes scStatsHolder cStreamName (fromIntegral payloadSize)
-  Stats.stream_stat_add_record_payload_bytes scStatsHolder cStreamName (fromIntegral recordSize)
+  Stats.stream_stat_add_append_in_bytes scStatsHolder cStreamName (fromIntegral payloadSize)
+  Stats.stream_stat_add_append_in_records scStatsHolder cStreamName (fromIntegral recordSize)
   Stats.stream_time_series_add_append_in_bytes scStatsHolder cStreamName (fromIntegral payloadSize)
   Stats.stream_time_series_add_append_in_records scStatsHolder cStreamName (fromIntegral recordSize)
   let rids = V.zipWith (API.RecordId shardId) (V.replicate (fromIntegral recordSize) appendCompLSN) (V.fromList [0..])

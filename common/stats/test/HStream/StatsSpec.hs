@@ -26,20 +26,24 @@ statsSpec :: Spec
 statsSpec = describe "HStream.Stats" $ do
   it "pre stream stats counter" $ do
     h <- newStatsHolder True
-    stream_stat_add_append_payload_bytes h "topic_1" 100
-    stream_stat_add_append_payload_bytes h "topic_1" 100
-    stream_stat_add_append_payload_bytes h "topic_2" 100
+    stream_stat_add_append_in_bytes h "topic_1" 100
+    stream_stat_add_append_in_bytes h "topic_1" 100
+    stream_stat_add_append_in_bytes h "topic_2" 100
 
     stream_stat_add_append_total h "/topic_1" 1
     stream_stat_add_append_total h "/topic_1" 1
     stream_stat_add_append_total h "/topic_2" 1
 
     s <- newAggregateStats h
-    stream_stat_get_append_payload_bytes s "topic_1" `shouldReturn` 200
-    stream_stat_get_append_payload_bytes s "topic_2" `shouldReturn` 100
+    stream_stat_get_append_in_bytes s "topic_1" `shouldReturn` 200
+    stream_stat_get_append_in_bytes s "topic_2" `shouldReturn` 100
 
-    m <- stream_stat_getall_append_payload_bytes s
+    m <- stream_stat_getall_append_in_bytes s
+    m' <- stream_stat_getall h "append_in_bytes"
+
+    Map.lookup "topic_1" m `shouldBe` Map.lookup "topic_1" m'
     Map.lookup "topic_1" m `shouldBe` Just 200
+    Map.lookup "topic_2" m `shouldBe` Map.lookup "topic_2" m'
     Map.lookup "topic_2" m `shouldBe` Just 100
 
     stream_stat_get_append_total s "/topic_1" `shouldReturn` 2
@@ -116,20 +120,20 @@ threadedStatsSpec = describe "HStream.Stats (threaded)" $ do
 
   it "pre stream stats counter (threaded)" $ do
     runConc 10 $ runConc 1000 $ do
-      stream_stat_add_append_payload_bytes h "a_stream" 1
-      stream_stat_add_append_payload_bytes h "b_stream" 1
+      stream_stat_add_append_in_bytes h "a_stream" 1
+      stream_stat_add_append_in_bytes h "b_stream" 1
 
       stream_stat_add_append_total h "a_stream" 1
       stream_stat_add_append_total h "b_stream" 1
 
     s <- newAggregateStats h
-    stream_stat_get_append_payload_bytes s "a_stream" `shouldReturn` 10000
-    stream_stat_get_append_payload_bytes s "b_stream" `shouldReturn` 10000
+    stream_stat_get_append_in_bytes s "a_stream" `shouldReturn` 10000
+    stream_stat_get_append_in_bytes s "b_stream" `shouldReturn` 10000
 
     stream_stat_get_append_total s "a_stream" `shouldReturn` 10000
     stream_stat_get_append_total s "b_stream" `shouldReturn` 10000
 
-    m <- stream_stat_getall_append_payload_bytes s
+    m <- stream_stat_getall_append_in_bytes s
     Map.lookup "a_stream" m `shouldBe` Just 10000
     Map.lookup "b_stream" m `shouldBe` Just 10000
 
