@@ -76,6 +76,7 @@ module HStream.Exception
   , SomeAlreadyExists
   , AlreadyExists (..)
   , StreamExists (..)
+  , ConsumerExists (..)
   , ShardReaderExists (..)
   , RQLiteTableAlreadyExists (..)
   , RQLiteRowAlreadyExists (..)
@@ -379,6 +380,7 @@ MAKE_SUB_EX(SomeHServerException, SomeAlreadyExists)
 
 MAKE_PARTICULAR_EX_1(SomeAlreadyExists, AlreadyExists, (ExInfo String), exDescription)
 MAKE_PARTICULAR_EX_1(SomeAlreadyExists, StreamExists, String, )
+MAKE_PARTICULAR_EX_1(SomeAlreadyExists, ConsumerExists, String, )
 MAKE_PARTICULAR_EX_1(SomeAlreadyExists, ShardReaderExists, Text, Text.unpack)
 MAKE_PARTICULAR_EX_1(SomeAlreadyExists, RQLiteTableAlreadyExists, String, )
 MAKE_PARTICULAR_EX_1(SomeAlreadyExists, RQLiteRowAlreadyExists, String, )
