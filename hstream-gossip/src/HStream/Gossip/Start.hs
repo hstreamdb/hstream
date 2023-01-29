@@ -19,7 +19,9 @@ import           Control.Concurrent.STM           (TVar, atomically,
                                                    newBroadcastTChanIO,
                                                    newTQueueIO, newTVarIO,
                                                    stateTVar)
-import           Control.Exception                (handle, throwIO, try)
+import           Control.Exception                (Handler (..), SomeException,
+                                                   catches, handle, throwIO,
+                                                   try)
 import           Control.Monad                    (void, when)
 import           Data.ByteString                  (ByteString)
 import qualified Data.ByteString.Lazy             as BL
@@ -160,19 +162,24 @@ amIASeed self@I.ServerNode{..} seeds = do
   where
     current = (serverNodeGossipAddress, fromIntegral serverNodeGossipPort)
     pingToFindOut old@(isSeed, oldSeeds, wasDead) (join@(joinHost, joinPort):rest) = do
-      new <- GRPC.withGRPCClient (mkGRPCClientConf' joinHost joinPort) $ \client -> do
-        started <- try (bootstrapPing join client)
+      new <- GRPC.withGRPCClient (mkGRPCClientConf' joinHost joinPort) $ \client -> flip catches
+        [ Handler (\( _ :: ClusterInitedErr) -> return old)
+        , Handler (\( _ :: ClusterReadyErr ) -> do
+            Log.info . Log.buildString $ "The cluster has been bootstrapped and is running"
+            return (isSeed, oldSeeds, True))
+        , Handler (\(err :: SomeException) -> do
+          Log.fatal $ "Unexpecte exception: " <> Log.buildString' err <> ", you may need to re-bootstrap"
+          throwIO err)
+        ] $ do
+        started <- bootstrapPing join client
         case started of
-            Right Nothing     -> do
-              Log.debug . Log.buildString $ "I am not " <> show join
-              return old
-            Right (Just node) -> if node == self then do
-              Log.debug ("I am a seed: " <> Log.buildString' join)
-              return (True, L.delete join oldSeeds, wasDead)
-                                                 else return old
-            Left (_ :: ClusterReadyErr) -> do
-              Log.debug . Log.buildString $ "The cluster has been bootstrapped and is running"
-              return (isSeed, oldSeeds, True)
+          Nothing     -> do
+            Log.debug . Log.buildString $ "I am not node " <> show join
+            return old
+          Just node -> if node == self then do
+            Log.debug ("I am a seed: " <> Log.buildString' join)
+            return (True, L.delete join oldSeeds, wasDead)
+                                       else return old
       pingToFindOut new rest
     pingToFindOut old _ = return old
 
