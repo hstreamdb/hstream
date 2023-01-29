@@ -68,7 +68,7 @@ void MultiLevelTimeSeriesWrapper<VT, CT>::addValue(const ValueType& n) {
 using PerStreamTimeSeries = MultiLevelTimeSeriesWrapper<int64_t>;
 
 struct PerStreamStats {
-#define STAT_DEFINE(name, _) StatsCounter name{};
+#define STAT_DEFINE(name, _) StatsCounter name##_counter{};
 #include "per_stream_stats.inc"
   void aggregate(PerStreamStats const& other, StatsAggOptional agg_override);
   // Show all per_stream_stats to a json formatted string.
@@ -90,7 +90,7 @@ struct PerStreamStats {
 using PerSubscriptionTimeSeries = MultiLevelTimeSeriesWrapper<int64_t>;
 
 struct PerSubscriptionStats {
-#define STAT_DEFINE(name, _) StatsCounter name{};
+#define STAT_DEFINE(name, _) StatsCounter name##_counter{};
 #include "per_subscription_stats.inc"
   void aggregate(PerSubscriptionStats const& other,
                  StatsAggOptional agg_override);
@@ -387,13 +387,13 @@ template <typename Func> void StatsHolder::runForEach(const Func& func) {
       if (stats_it != stats_ulock->end()) {                                    \
         /* x_ty for key already exist (common case). */                        \
         /* Just atomically increment the value.  */                            \
-        stats_it->second->stat_name += (val);                                  \
+        stats_it->second->stat_name##_counter += (val);                        \
       } else {                                                                 \
         /* x_ty for key do not exist yet (rare case). */                       \
         /* Upgrade ulock to wlock and emplace new x_ty. */                     \
         /* No risk of deadlock because we are the only writer thread. */       \
         auto stats_ptr = std::make_shared<x_ty>();                             \
-        stats_ptr->stat_name += (val);                                         \
+        stats_ptr->stat_name##_counter += (val);                               \
         stats_ulock.moveFromUpgradeToWrite()->emplace_hint(                    \
             stats_it, (key), std::move(stats_ptr));                            \
       }                                                                        \
@@ -406,7 +406,7 @@ template <typename Func> void StatsHolder::runForEach(const Func& func) {
       auto stats_rlock = stats_agg->x.rlock();                                 \
       auto stats_it = stats_rlock->find(std::string(key));                     \
       if (stats_it != stats_rlock->end()) {                                    \
-        auto r = stats_it->second->stat_name.load();                           \
+        auto r = stats_it->second->stat_name##_counter.load();                 \
         if (UNLIKELY(r < 0)) {                                                 \
           ld_error("PerStreamStats overflowed!");                              \
         } else {                                                               \
@@ -622,8 +622,8 @@ int perXTimeSeriesGetall(
                  std::string, int64_t, std::nullptr_t,                         \
                  std::function<int64_t(std::shared_ptr<x_ty>)>&&>(             \
           stats_rlock, nullptr,                                                \
-          [](auto&& val) { return val->stat_name.load(); }, len, keys_ptr,     \
-          values_ptr, keys_, values_);                                         \
+          [](auto&& val) { return val->stat_name##_counter.load(); }, len,     \
+          keys_ptr, values_ptr, keys_, values_);                               \
     }                                                                          \
   }
 

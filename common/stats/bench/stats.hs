@@ -30,7 +30,7 @@ runIORef n = do
 runStatsHolder :: Int -> IO ()
 runStatsHolder n = do
   h <- newStatsHolder True
-  runConc n $ stream_stat_add_append_payload_bytes h "name" 1
+  runConc n $ stream_stat_add_append_in_bytes h "name" 1
   s <- newAggregateStats h
-  r <- fromIntegral <$> stream_stat_get_append_payload_bytes s "name"
+  r <- fromIntegral <$> stream_stat_get_append_in_bytes s "name"
   when (r /= n) $ error "Error: wrong result!"

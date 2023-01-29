@@ -58,13 +58,4 @@ TIME_SERIES_DEFINE(append_failed_requests,
                        std::chrono::seconds(600)}),
                    2)
 
-// Payload bytes sent out in records
-TIME_SERIES_DEFINE(record_bytes,
-                   std::set<std::string>({"record_bytes", "reads"}),
-                   std::vector<std::chrono::milliseconds>({
-                       std::chrono::seconds(900),
-                       std::chrono::seconds(1800),
-                       std::chrono::seconds(3600)}),
-                   2)
-
 #undef TIME_SERIES_DEFINE

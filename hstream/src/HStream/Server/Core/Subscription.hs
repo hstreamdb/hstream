@@ -215,7 +215,7 @@ streamingFetchCore :: ServerContext
 streamingFetchCore ctx SFetchCoreDirect = \initReq callback -> do
   mockAckPool <- newTChanIO
   Stats.subscription_time_series_add_request_messages (scStatsHolder ctx) (textToCBytes (streamingFetchRequestSubscriptionId initReq)) 1
-  Stats.subscription_stat_add_request_messages_counter (scStatsHolder ctx) (textToCBytes (streamingFetchRequestSubscriptionId initReq)) 1
+  Stats.subscription_stat_add_request_messages (scStatsHolder ctx) (textToCBytes (streamingFetchRequestSubscriptionId initReq)) 1
   Log.debug "pass first recv"
   (SubscribeContextWrapper {..}, tid_m) <- initSub ctx (streamingFetchRequestSubscriptionId initReq)
   Log.debug "pass initSub"
@@ -253,7 +253,7 @@ streamingFetchCore ctx SFetchCoreInteractive = \(streamSend, streamRecv, request
       streamRecv >>= \case
         Right (Just firstReq) -> do
           Stats.subscription_time_series_add_request_messages (scStatsHolder ctx) (textToCBytes (streamingFetchRequestSubscriptionId firstReq)) 1
-          Stats.subscription_stat_add_request_messages_counter (scStatsHolder ctx) (textToCBytes (streamingFetchRequestSubscriptionId firstReq)) 1
+          Stats.subscription_stat_add_request_messages (scStatsHolder ctx) (textToCBytes (streamingFetchRequestSubscriptionId firstReq)) 1
           return firstReq
         Left _        -> throwIO $ HE.StreamReadError "Consumer recv error"
         Right Nothing -> throwIO $ HE.StreamReadClose "Consumer is closed"
@@ -461,25 +461,11 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
                      updateClockAndDoResend
             -- FIXME: the same code
             successSendRecords <- sendReceivedRecordsVecs receivedRecordsVecs
-            let cSubscriptionId = textToCBytes subSubscriptionId
-                byteSize = fromIntegral $ sum $ map (BS.length . S.recordPayload) recordBatches
-                recordSize = fromIntegral $ length recordBatches
-            Stats.subscription_stat_add_delivery_in_bytes scStatsHolder cSubscriptionId byteSize
-            Stats.subscription_stat_add_delivery_in_records scStatsHolder cSubscriptionId recordSize
-            Stats.subscription_time_series_add_send_out_bytes scStatsHolder cSubscriptionId byteSize
-            Stats.subscription_time_series_add_send_out_records scStatsHolder cSubscriptionId recordSize
             atomically $ addUnackedRecords subCtx successSendRecords
             loop isFirstSendRef `onException` killThread tid
           else do
             -- FIXME: the same code
             successSendRecords <- sendReceivedRecordsVecs receivedRecordsVecs
-            let cSubscriptionId = textToCBytes subSubscriptionId
-                byteSize = fromIntegral $ sum $ map (BS.length . S.recordPayload) recordBatches
-                recordSize = fromIntegral $ length recordBatches
-            Stats.subscription_stat_add_delivery_in_bytes scStatsHolder cSubscriptionId byteSize
-            Stats.subscription_stat_add_delivery_in_records scStatsHolder cSubscriptionId recordSize
-            Stats.subscription_time_series_add_send_out_bytes scStatsHolder cSubscriptionId byteSize
-            Stats.subscription_time_series_add_send_out_records scStatsHolder cSubscriptionId recordSize
             atomically $ addUnackedRecords subCtx successSendRecords
             loop isFirstSendRef
         else
@@ -585,7 +571,7 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
       pure successRecords
 
     sendReceivedRecords :: S.C_LogID -> Word64 -> V.Vector ShardRecordId -> ReceivedRecord -> Bool -> IO Bool
-    sendReceivedRecords logId batchId shardRecordIds records isResent = do
+    sendReceivedRecords logId batchId shardRecordIds records@ReceivedRecord{..} isResent = do
       let Assignment {..} = subAssignment
       -- if current send is not a resent, insert record related info into AckWindow
       mres <- atomically $ do
@@ -610,35 +596,52 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
                 if iv
                 then return $ Just (ccConsumerName, ccStreamSend)
                 else return Nothing
-      case mres of
-        Nothing -> do
+
+      deliveryRes <- recordsDelivery mres
+      let subId = textToCBytes subSubscriptionId
+          recordSize = fromIntegral . V.length $ shardRecordIds
+          byteSize = fromIntegral $ maybe 0 (BS.length . batchedRecordPayload) receivedRecordRecord
+      if deliveryRes
+        then do
+          Stats.subscription_time_series_add_response_messages scStatsHolder subId 1
+          Stats.subscription_stat_add_response_messages scStatsHolder subId 1
           if isResent
-          then registerResend logId batchId shardRecordIds
-          else resetReadingOffset logId batchId
-          return False
-        Just (consumerName, streamSend) ->
-          withMVar streamSend (\ss -> ss (StreamingFetchResponse $ Just records)) >>= \case
-            Left err -> do
-              Log.fatal $ "sendReceivedRecords failed: logId=" <> Log.buildInt logId <> ", batchId=" <> Log.buildInt batchId
-                       <> ", num of records=" <> Log.buildInt (V.length shardRecordIds) <> "\n"
-                       <> "will remove the consumer " <> Log.buildText consumerName <> ": " <> Log.buildString (show err)
-              atomically $ invalidConsumer subCtx consumerName
-              if isResent
-              then registerResend logId batchId shardRecordIds
-              else resetReadingOffset logId batchId
-              return False
-            Right _ -> do
-              Log.debug $ "send records from " <> Log.buildInt logId <> " to consumer " <> Log.buildText consumerName
-                       <> ", batchId=" <> Log.buildInt batchId <> ", num of records=" <> Log.buildInt (V.length shardRecordIds)
-              -- Note: (server response stats) update stats only when sending records successfully to the consumer
-              Stats.subscription_time_series_add_response_messages scStatsHolder (textToCBytes subSubscriptionId) 1
-              Stats.subscription_stat_add_response_messages_counter scStatsHolder (textToCBytes subSubscriptionId) 1
-              -- Note: (resend stats) update stats only when sending records successfully to the consumer
-              when isResent $ Stats.subscription_stat_add_resend_records scStatsHolder
-                                                                        (textToCBytes subSubscriptionId)
-                                                                        (fromIntegral $ V.length shardRecordIds)
-              registerResend logId batchId shardRecordIds
-              return True
+             then do
+               Stats.subscription_stat_add_resend_records scStatsHolder subId (fromIntegral $ V.length shardRecordIds)
+             else do
+               Stats.subscription_stat_add_send_out_bytes scStatsHolder subId byteSize
+               Stats.subscription_stat_add_send_out_records scStatsHolder subId recordSize
+               Stats.subscription_time_series_add_send_out_bytes scStatsHolder subId byteSize
+               Stats.subscription_time_series_add_send_out_records scStatsHolder subId recordSize
+        else do
+          if isResent
+            then Stats.subscription_stat_add_resend_records_failed scStatsHolder subId recordSize
+            else Stats.subscription_stat_add_send_out_records_failed scStatsHolder subId recordSize
+
+      return deliveryRes
+     where
+       recordsDelivery :: Maybe (ConsumerName, MVar (StreamSend StreamingFetchResponse)) -> IO Bool
+       recordsDelivery Nothing = do
+         if isResent
+         then registerResend logId batchId shardRecordIds
+         else resetReadingOffset logId batchId
+         return False
+       recordsDelivery (Just(consumerName, streamSend)) = do
+         withMVar streamSend (\ss -> ss (StreamingFetchResponse $ Just records)) >>= \case
+           Left err -> do
+             Log.fatal $ "sendReceivedRecords failed: logId=" <> Log.buildInt logId <> ", batchId=" <> Log.buildInt batchId
+                      <> ", num of records=" <> Log.buildInt (V.length shardRecordIds) <> "\n"
+                      <> "will remove the consumer " <> Log.buildText consumerName <> ": " <> Log.buildString (show err)
+             atomically $ invalidConsumer subCtx consumerName
+             if isResent
+             then registerResend logId batchId shardRecordIds
+             else resetReadingOffset logId batchId
+             return False
+           Right _ -> do
+             Log.debug $ "send records from " <> Log.buildInt logId <> " to consumer " <> Log.buildText consumerName
+                      <> ", batchId=" <> Log.buildInt batchId <> ", num of records=" <> Log.buildInt (V.length shardRecordIds)
+             registerResend logId batchId shardRecordIds
+             return True
 
     registerResend logId batchId recordIds = atomically $ do
       batchIndexes <- newTVar $ Set.fromList $ fmap sriBatchIndex (V.toList recordIds)
@@ -860,7 +863,7 @@ recvAcks ServerContext {..} subState subCtx ConsumerContext {..} streamRecv = lo
             <> " from consumer:" <> Log.buildText ccConsumerName
           let cSubscriptionId = textToCBytes (subSubscriptionId subCtx)
           Stats.subscription_time_series_add_request_messages scStatsHolder cSubscriptionId 1
-          Stats.subscription_stat_add_request_messages_counter scStatsHolder cSubscriptionId 1
+          Stats.subscription_stat_add_request_messages scStatsHolder cSubscriptionId 1
           unless (V.null streamingFetchRequestAckIds) $ do
             Stats.subscription_stat_add_received_acks scStatsHolder cSubscriptionId (fromIntegral $ V.length streamingFetchRequestAckIds)
             Stats.subscription_time_series_add_acks scStatsHolder cSubscriptionId (fromIntegral $ V.length streamingFetchRequestAckIds)
