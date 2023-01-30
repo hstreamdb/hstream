@@ -113,7 +113,7 @@ data SubscribeContext = SubscribeContext
     subConsumerContexts  :: TVar (HM.HashMap ConsumerName ConsumerContext),
     subShardContexts     :: TVar (HM.HashMap HS.C_LogID SubscribeShardContext),
     subAssignment        :: Assignment,
-    subCurrentTime ::  TVar Word64,
+    subCurrentTime ::  TVar Word64, -- unit: ms
     subWaitingCheckedRecordIds :: TVar [CheckedRecordIds],
     subWaitingCheckedRecordIdsIndex :: TVar (Map.Map CheckedRecordIdsKey CheckedRecordIds),
     subStartOffsets       :: HM.HashMap S.C_LogID S.LSN
