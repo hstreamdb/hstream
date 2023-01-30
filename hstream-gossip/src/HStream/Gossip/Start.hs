@@ -29,6 +29,7 @@ import qualified Data.ByteString.Short            as BSS
 import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as Map
 import qualified Data.Vector                      as V
+import qualified HsGrpc.Server                    as HsGrpc
 import qualified Network.GRPC.HighLevel.Generated as GRPC
 import           Proto3.Suite                     (def)
 import qualified Proto3.Suite                     as PT
@@ -57,9 +58,6 @@ import           HStream.Gossip.Utils             (ClusterInitedErr (..),
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.HStreamInternal   as I
 import qualified HStream.Utils                    as U
-#ifdef HStreamUseHsGrpc
-import qualified HsGrpc.Server                    as HsGrpc
-#endif
 
 initGossipContext :: GossipOpts -> EventHandlers -> I.ServerNode -> [(ByteString, Int)] -> IO GossipContext
 initGossipContext gossipOpts _eventHandlers serverSelf seeds = do
@@ -89,7 +87,13 @@ startGossip grpcHost gc@GossipContext{..} = do
         void . forkIO $ amIASeed serverSelf seeds >>= putMVar seedsInfo
         Log.debug . Log.buildString $ "Internal gossiping server " <> show serverSelf <> " started"
   let grpcOpts =
-#ifdef HStreamUseHsGrpc
+#ifdef HStreamUseGrpcHaskell
+        GRPC.defaultServiceOptions
+          { GRPC.serverHost = GRPC.Host grpcHost
+          , GRPC.serverPort = GRPC.Port $ fromIntegral port
+          , GRPC.serverOnStarted = Just serverOnStarted
+          }
+#else
         HsGrpc.ServerOptions
           { HsGrpc.serverHost = BSS.toShort grpcHost
           , HsGrpc.serverPort = fromIntegral port
@@ -97,21 +101,17 @@ startGossip grpcHost gc@GossipContext{..} = do
           , HsGrpc.serverSslOptions = Nothing
           , HsGrpc.serverOnStarted = Just serverOnStarted
           }
-#else
-        GRPC.defaultServiceOptions
-          { GRPC.serverHost = GRPC.Host grpcHost
-          , GRPC.serverPort = GRPC.Port $ fromIntegral port
-          , GRPC.serverOnStarted = Just serverOnStarted
-          }
 #endif
 
   asyncs@(a1:_) <- mapM async (
-#ifdef HStreamUseHsGrpc
+#ifdef HStreamUseGrpcHaskell
     (do
-      Log.warning "Starting gossip server with a still in development lib hs-grpc-server!"
-      HsGrpc.runServer grpcOpts (handlersNew gc))
+      Log.info "Starting gossip server with grpc-haskell..."
+      API.hstreamGossipServer (handlers gc) grpcOpts)
 #else
-    API.hstreamGossipServer (handlers gc) grpcOpts
+    (do
+      Log.info "Starting gossip server with hs-grpc-server..."
+      HsGrpc.runServer grpcOpts (handlersNew gc))
 #endif
                               : map ($ gc) [ runStateHandler
                                            , runEventHandler

@@ -933,7 +933,7 @@ class QuickBuildDevImageCommand:
             help="Your haskell development image",
         )
         p.add_argument("--tag", "-t", required=True, help="target image tag")
-        p.add_argument("--use-hs-grpc", default=False, action="store_true")
+        p.add_argument("--use-grpc-haskell", default=False, action="store_true")
         p.add_argument("--donot-rename-exe", default=False, action="store_true")
         p.add_argument(
             "--enable-debug-info", default=False, action="store_true"
@@ -949,7 +949,7 @@ class QuickBuildDevImageCommand:
         self,
         tag,
         builder_image,
-        use_hs_grpc=False,
+        use_grpc_haskell=False,
         donot_rename_exe=False,
         enable_debug_info=False,
         fast=False,
@@ -962,11 +962,11 @@ class QuickBuildDevImageCommand:
         hsgrpc_arg = (
             " ".join(
                 [
-                    "--constraint=hstream+hstream_use_hs_grpc",
-                    "--constraint=hstream-gossip+hstream_use_hs_grpc",
+                    "--constraint=hstream+hstream_use_grpc_haskell",
+                    "--constraint=hstream-gossip+hstream_use_grpc_haskell",
                 ]
             )
-            if use_hs_grpc
+            if use_grpc_haskell
             else ""
         )
         cabal_args = " ".join(
@@ -978,8 +978,8 @@ class QuickBuildDevImageCommand:
             ]
         )
 
-        if not donot_rename_exe and use_hs_grpc:
-            exe_renames = {"hstream-server": "hstream-server-sid"}
+        if not donot_rename_exe and use_grpc_haskell:
+            exe_renames = {"hstream-server": "hstream-server-old"}
         else:
             exe_renames = {}
 
