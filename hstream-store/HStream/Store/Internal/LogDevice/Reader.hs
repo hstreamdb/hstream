@@ -209,6 +209,8 @@ checkpointedReaderIsReadingAny reader = withForeignPtr reader $
 -- become available.  A timeout of -1 means no limit (infinite timeout).
 -- A timeout of 0 means no waiting (nonblocking reads).
 --
+-- Default is no limit.
+--
 -- The maximum timeout is 2^31-1 milliseconds (about 24 days).  If a timeout
 -- larger than that is passed in, it will be capped.
 readerSetTimeout :: HasCallStack => LDReader -> Int32 -> IO ()
