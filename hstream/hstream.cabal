@@ -134,6 +134,7 @@ library
     , unordered-containers
     , uuid
     , vector
+    , vector-algorithms
     , yaml
     , Z-Data
     , Z-IO

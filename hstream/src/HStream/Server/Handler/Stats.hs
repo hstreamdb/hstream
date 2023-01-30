@@ -21,6 +21,7 @@ import           Data.Map.Strict                  (Map)
 import qualified Data.Map.Strict                  as Map
 import           Data.Text                        (Text)
 import qualified Data.Vector                      as V
+import qualified Data.Vector.Algorithms           as V
 import qualified HsGrpc.Server                    as G
 import           Network.GRPC.HighLevel.Generated
 import qualified Proto3.Suite                     as PS
@@ -119,9 +120,9 @@ getPerStreamTimeSeriesStatsAll holder req = do
 
 getStats :: V.Vector StatType -> StatsHolder -> IO ([StatError], [StatValue])
 getStats mstats holder = do
-  let stat = mapMaybe statTypeStat . V.toList $ mstats
-  when (null stat) $ throwIO . HE.InvalidStatsType $ show mstats
-  partitionEithers <$> forM stat (getStatsInternal holder)
+  let stats = mapMaybe statTypeStat . V.toList $ V.nub mstats
+  when (null stats) $ throwIO . HE.InvalidStatsType $ show mstats
+  partitionEithers <$> forM stats (getStatsInternal holder)
 
 getStatsInternal :: StatsHolder -> StatTypeStat -> IO (Either StatError StatValue)
 getStatsInternal holder s@(StatTypeStatStreamStat stats) = do
@@ -185,4 +186,3 @@ mkStatValue stat values =
 mkStatError :: StatTypeStat -> T.Text -> StatError
 mkStatError stat msg =
   StatError {statErrorStatType = Just . mkStatType $ stat, statErrorMessage = msg}
-
