@@ -1022,13 +1022,13 @@ class QuickBuildDevImageCommand:
     ):
         run_sh(
             f"python3 {__file__} cabal --check --no-interactive "
-            f"--no-services-required --image {builder_image} --no-services-required "
+            f"--no-services-required --image {builder_image} "
             f"-- build {cabal_args} {' '.join(build_targets)}"
         )
         out = (
             run_sh(
                 f"python3 {__file__} cabal --check --no-interactive "
-                f"--no-services-required --image {builder_image} --no-services-required "
+                f"--no-services-required --image {builder_image} "
                 f"-- exec {cabal_args} which {' '.join(exe_targets)}",
                 stdout=subprocess.PIPE,
             )
@@ -1081,7 +1081,7 @@ class QuickBuildDevImageCommand:
         base_image=IMAGES["DB_IMAGE"],
     ):
         tmpdir = tempfile.TemporaryDirectory()
-        installdir = tmpdir.name
+        installdir = os.path.realpath(tmpdir.name)
         loginfo(
             f"Temp install dir: {installdir}, autoclean: {clean_installdir}"
         )
@@ -1089,7 +1089,8 @@ class QuickBuildDevImageCommand:
             # Install
             run_sh(
                 f"python3 {__file__} cabal --check --no-interactive "
-                f"--no-services-required --image {builder_image} --no-services-required "
+                f"--image {builder_image} --no-services-required "
+                f"--extra-container-options '-v {installdir}:{installdir}' "
                 f"-- install {cabal_args} --installdir={installdir} "
                 f"{' '.join(build_targets)}"
             )
