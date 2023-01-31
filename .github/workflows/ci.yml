@@ -47,6 +47,54 @@ jobs:
           echo "Run script/format.sh with latest stylish-haskell..."
           FORMATER_BIN=$TEMP/$PACKAGE-$VERSION/$PACKAGE bash script/format.sh ci && git diff-index --exit-code HEAD
 
+  # NOTE: hstream-admin-store requires ghc8.10 to build.
+  # Also there is a WIP ghc9 support for hsthrift:
+  # https://github.com/facebookincubator/hsthrift/pull/107
+  build-hstream-admin-store:
+    needs: pre-build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: "recursive"
+
+      - name: set env
+        run: |
+          docker pull docker.io/hstreamdb/haskell:8.10
+          echo "CABAL=python3 script/dev-tools cabal --no-interactive --no-services-required \
+                --check -i docker.io/hstreamdb/haskell:8.10 -- \
+                --project-file=cabal.project.ghc810" >> $GITHUB_ENV
+          echo "SHELL=python3 script/dev-tools shell --no-interactive --no-services-required \
+                --check -i docker.io/hstreamdb/haskell:8.10" >> $GITHUB_ENV
+
+      - name: cabal freeze
+        run: |
+          ${{ env.CABAL }} update
+          ${{ env.CABAL }} freeze
+
+      - name: cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cabal/packages
+            ~/.cabal/store
+            dist-newstyle
+          key: ${{ runner.os }}-8.10-v1-${{ hashFiles('**/*.cabal') }}-${{ hashFiles('**/cabal.project*') }}
+          restore-keys: |
+            ${{ runner.os }}-8.10-v1
+
+      - name: build
+        run: |
+          ${{ env.CABAL }} update
+          ${{ env.SHELL }} "'make clean'"
+          ${{ env.SHELL }} make
+          ${{ env.CABAL }} build hadmin-store
+
+      - name: run hadmin-store
+        run: ${{ env.CABAL }} run -- hadmin-store --help
+
   build-and-test:
     needs: pre-build
     runs-on: ubuntu-latest
@@ -79,11 +127,10 @@ jobs:
       - name: start required services
         run: python3 script/dev-tools start-services
 
-      - name: cabal update
-        run: ${{ env.CABAL }} update
-
       - name: cabal freeze
-        run: ${{ env.CABAL }} ${{ env.EXTRA_CABAL_ARGS }} freeze
+        run: |
+          ${{ env.CABAL }} update
+          ${{ env.CABAL }} ${{ env.EXTRA_CABAL_ARGS }} freeze
 
       - name: cache
         uses: actions/cache@v3
@@ -92,9 +139,9 @@ jobs:
             ~/.cabal/packages
             ~/.cabal/store
             dist-newstyle
-          key: ${{ runner.os }}-${{ matrix.ghc }}-v2-${{ hashFiles('**/*.cabal') }}-${{ hashFiles('**/cabal.project*') }}
+          key: ${{ runner.os }}-${{ matrix.ghc }}-v1-${{ hashFiles('**/*.cabal') }}-${{ hashFiles('**/cabal.project*') }}
           restore-keys: |
-            ${{ runner.os }}-${{ matrix.ghc }}-v2
+            ${{ runner.os }}-${{ matrix.ghc }}-v1
 
       # Since we use the upgraded version of z-data and z-io, this should resolve the problem.
       #
