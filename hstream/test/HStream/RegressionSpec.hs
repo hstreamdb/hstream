@@ -35,7 +35,7 @@ spec = aroundAll provideHstreamApi $
       threadDelay 10000000 -- FIXME: requires a notification mechanism to ensure that the task starts successfully before inserting data
       runInsertSql api "INSERT INTO s1 (a, b) VALUES (1, 3);"
       runInsertSql api "INSERT INTO s2 (a, b) VALUES (2, 3);"
-    executeCommandPushQuery "SELECT b, SUM(s1.a), SUM(s2.a) FROM s1 INNER JOIN s2 ON s1.b = s2.b GROUP BY s1.b EMIT CHANGES;"
+    runFetchSql "SELECT b, SUM(s1.a), SUM(s2.a) FROM s1 INNER JOIN s2 ON s1.b = s2.b GROUP BY s1.b EMIT CHANGES;"
       `shouldReturn` [ mkStruct
         [ ("SUM(s1.a)", Aeson.Number 1)
         , ("SUM(s2.a)", Aeson.Number 2)
@@ -57,7 +57,7 @@ spec = aroundAll provideHstreamApi $
       runInsertSql api "INSERT INTO s4 (a, b) VALUES (1, 4);"
       threadDelay 500000
       runInsertSql api "INSERT INTO s4 (a, b) VALUES (1, 4);"
-    executeCommandPushQuery "SELECT `SUM(a)`, `result` AS cnt, b FROM s5 EMIT CHANGES;"
+    runFetchSql "SELECT `SUM(a)`, `result` AS cnt, b FROM s5 EMIT CHANGES;"
       >>= (`shouldSatisfy`
            (\l -> not (L.null l) &&
                   L.isSubsequenceOf l
@@ -114,7 +114,7 @@ spec = aroundAll provideHstreamApi $
       runInsertSql api "INSERT INTO stream_binary VALUES \"{ \\\"a\\\": 1}\";"
       threadDelay 500000
       runInsertSql api "INSERT INTO stream_binary (b, c) VALUES (1, 2);"
-    executeCommandPushQuery "SELECT * FROM stream_binary EMIT CHANGES;"
+    runFetchSql "SELECT * FROM stream_binary EMIT CHANGES;"
       `shouldReturn` [ mkStruct [ ("a", Aeson.Number 1) ]
                      , mkStruct
                        [ ("b", Aeson.Number 1)

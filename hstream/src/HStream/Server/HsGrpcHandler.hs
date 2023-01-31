@@ -72,7 +72,6 @@ handlers sc =
   , unary (GRPC :: GRPC P.HStreamApi "listViews") (H.handleListView sc)
   , unary (GRPC :: GRPC P.HStreamApi "deleteView") (H.handleDeleteView sc)
     -- Query
-    -- TODO: ExecutePushQuery
   , unary (GRPC :: GRPC P.HStreamApi "terminateQueries") (H.handleTerminateQueries sc)
   , unary (GRPC :: GRPC P.HStreamApi "executeQuery") (H.handleExecuteQuery sc)
   , unary (GRPC :: GRPC P.HStreamApi "getQuery") (H.handleGetQuery sc)

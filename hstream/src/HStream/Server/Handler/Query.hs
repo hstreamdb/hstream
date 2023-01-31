@@ -11,7 +11,6 @@
 module HStream.Server.Handler.Query
   ( -- * For grpc-haskell
     executeQueryHandler
-  , executePushQueryHandler
   , terminateQueriesHandler
   , getQueryHandler
   , listQueriesHandler
@@ -20,7 +19,6 @@ module HStream.Server.Handler.Query
   , createQueryHandler
     -- * For hs-grpc-server
   , handleExecuteQuery
-  -- TODO: handleExecutePushQuery
   , handleCreateQuery
   , handleListQueries
   , handleGetQuery
@@ -65,18 +63,6 @@ executeQueryHandler sc (ServerNormalRequest _metadata req) =
 
 handleExecuteQuery :: ServerContext -> G.UnaryHandler API.CommandQuery API.CommandQueryResponse
 handleExecuteQuery sc _ req = catchQueryEx $ Core.executeQuery sc req
-
-executePushQueryHandler
-  :: ServerContext
-  -> ServerRequest 'ServerStreaming API.CommandPushQuery Struct
-  -> IO (ServerResponse 'ServerStreaming Struct)
-executePushQueryHandler ctx (ServerWriterRequest meta req streamSend) =
-  defaultServerStreamExceptionHandle $ do
-    Core.executePushQuery ctx req meta streamSend
-    returnServerStreamingResp StatusOk ""
-
--- TODO
--- handleExecutePushQuery
 
 createQueryHandler
   :: ServerContext

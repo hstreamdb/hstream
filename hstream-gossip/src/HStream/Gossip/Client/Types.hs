@@ -1,4 +1,4 @@
-module HStream.Client.Types where
+module HStream.Gossip.Client.Types where
 
 import           Data.ByteString     (ByteString)
 import           Data.Text           (Text)

@@ -53,7 +53,7 @@ baseSpec = aroundAll provideHstreamApi $ aroundWith baseSpecAround $
       runInsertSql api ("INSERT INTO " <> source <> " (temperature, humidity) VALUES (15, 10);")
 
     -- TODO
-    executeCommandPushQuery ("SELECT * FROM " <> source <> " EMIT CHANGES;")
+    runFetchSql ("SELECT * FROM " <> source <> " EMIT CHANGES;")
       `shouldReturn` [ mkStruct [("temperature", Aeson.Number 22), ("humidity", Aeson.Number 80)]
                      , mkStruct [("temperature", Aeson.Number 15), ("humidity", Aeson.Number 10)]
                      ]
@@ -73,7 +73,7 @@ baseSpec = aroundAll provideHstreamApi $ aroundWith baseSpecAround $
       runInsertSql api ("INSERT INTO " <> source <> " (a, b) VALUES (4, 3);")
 
     -- TODO
-    executeCommandPushQuery ("SELECT SUM(a) AS result FROM " <> source <> " GROUP BY b EMIT CHANGES;")
+    runFetchSql ("SELECT SUM(a) AS result FROM " <> source <> " GROUP BY b EMIT CHANGES;")
       >>= (`shouldSatisfy`
             (\l -> not (L.null l) &&
                    L.last l == (mkStruct [("result", Aeson.Number 4)]) &&

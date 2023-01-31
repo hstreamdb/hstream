@@ -5,6 +5,7 @@
 module HStream.Client.Internal
   ( streamingFetch
   , cliFetch
+  , cliFetch'
   ) where
 
 import           Control.Monad                    (void)
@@ -27,10 +28,14 @@ import           HStream.Utils                    (ResourceType (..),
                                                    decompressBatchedRecord,
                                                    formatResult, getServerResp)
 
+
 streamingFetch :: T.Text -> API.HStreamApi ClientRequest response -> IO ()
-streamingFetch subId API.HStreamApi{..} = do
-    clientId <- genClientId
-    void $ hstreamApiStreamingFetch (ClientBiDiRequest 10000 mempty (action clientId))
+streamingFetch = streamingFetch' (putStr . formatResult @PB.Struct)
+
+streamingFetch' :: (PB.Struct -> IO ()) -> T.Text -> API.HStreamApi ClientRequest response -> IO ()
+streamingFetch' handleResult subId API.HStreamApi{..} = do
+  clientId <- genClientId
+  void $ hstreamApiStreamingFetch (ClientBiDiRequest 10000 mempty (action clientId))
   where
     action clientId _clientCall _meta streamRecv streamSend writesDone = do
       _ <- streamSend initReq
@@ -48,20 +53,25 @@ streamingFetch subId API.HStreamApi{..} = do
             let hRecords = maybe V.empty decompressBatchedRecord (API.receivedRecordRecord =<< rs)
             let ackReq = initReq { API.streamingFetchRequestAckIds
                                  = maybe V.empty API.receivedRecordRecordIds rs }
-            let results = (formatResult @PB.Struct <$>) . PB.fromByteString . API.hstreamRecordPayload <$> hRecords
-            mapM_ (\case Right x -> putStr x; Left x -> print x) results
+            let results = PB.fromByteString . API.hstreamRecordPayload <$> hRecords
+            mapM_ (\case Right x -> handleResult x; Left x -> print x) results
             _ <- streamSend ackReq
             receiving
           Right Nothing -> putStrLn terminateMsg
 
--- TODO: should exit if any of the following action failed
 cliFetch :: HStreamCliContext -> String -> IO ()
-cliFetch ctx sql = do
+cliFetch = cliFetch' Nothing
+
+-- TODO: should exit if any of the following action failed
+cliFetch' :: Maybe (PB.Struct -> IO ()) -> HStreamCliContext -> String -> IO ()
+cliFetch' handleResult ctx sql = do
   (sName, newSql) <- genRandomSinkStreamSQL (T.pack . removeEmitChanges . words $ sql)
   subId <- genRandomSubscriptionId
   API.Query {..} <- getServerResp =<< executeWithLookupResource ctx (Resource ResStream sName) (createStreamBySelect (T.unpack newSql))
   void . execute ctx $ createSubscription subId sName
-  executeWithLookupResource_ ctx (Resource ResSubscription subId) (streamingFetch subId)
+  executeWithLookupResource_ ctx (Resource ResSubscription subId)
+    (case handleResult of Nothing -> streamingFetch subId
+                          Just h  -> streamingFetch' h subId)
   executeWithLookupResource_ ctx (Resource ResSubscription subId) (void . deleteSubscription subId True)
   executeWithLookupResource_ ctx (Resource ResStream sName) (terminateQueries (OneQuery queryId))
   executeWithLookupResource_ ctx (Resource ResStream sName) (void . dropAction False (DStream sName))

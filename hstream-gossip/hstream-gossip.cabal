@@ -31,8 +31,8 @@ common shared-properties
 library
   import:           shared-properties
   exposed-modules:
-    HStream.Client.Types
     HStream.Gossip
+    HStream.Gossip.Client.Types
     HStream.Gossip.Core
     HStream.Gossip.Gossip
     HStream.Gossip.Handlers

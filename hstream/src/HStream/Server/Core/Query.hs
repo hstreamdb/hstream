@@ -4,7 +4,6 @@
 
 module HStream.Server.Core.Query
   ( executeQuery
-  , executePushQuery
   , terminateQueries
 
   , createQuery
@@ -195,63 +194,6 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
     mkVectorStruct a label =
       let object = AesonComp.fromList [(label, PB.toAesonValue a)]
        in V.singleton (jsonObjectToStruct object)
-
-executePushQuery
-  :: ServerContext
-  -> API.CommandPushQuery
-  -> ServerCallMetadata
-  -> StreamSend Struct
-  -> IO ()
-executePushQuery ctx@ServerContext{..} API.CommandPushQuery{..} meta streamSend = do
-    Log.debug $ "Receive Push Query Request: " <> Log.buildText commandPushQueryQueryText
-    plan <- streamCodegen commandPushQueryQueryText
-    case plan of
-      PushSelectPlan ins out builder -> do
-        let sources = inStream <$> ins
-        sink <- newRandomText 20
-
-        roles_m <- mapM (findIdentifierRole ctx) sources
-        case all isJust roles_m of
-          False -> do
-            Log.warning $ "At least one of the streams do not exist: "
-              <> Log.buildString (show sources)
-            throwIO $ HE.StreamNotFound $ "At least one of the streams do not exist: " <> T.pack (show sources)
-          True  -> do
-            createStreamWithShard scLDClient (transToStreamName sink) "query" scDefaultStreamRepFactor
-
-            -- !!! Note: the order matters!
-            -- `run task` should not be executed until `sub` finishes
-
-            -- sub from sink stream and push to client
-            consumerName <- newRandomText 20
-            let sc = HStore.hstoreSourceConnectorWithoutCkp ctx consumerName
-            subscribeToStreamWithoutCkp sc sink API.SpecialOffsetLATEST
-
-            -- run task
-            let relatedStreams = (sources, sink)
-            P.QueryInfo{..} <- handleCreateAsSelect
-                       ctx
-                       sink
-                       (ins `zip` L.map fromJust roles_m)
-                       (out, RoleStream)
-                       builder
-                       commandPushQueryQueryText
-                       relatedStreams
-            -- send to client
-            sending <- async (sendToClient metaHandle queryId sink sc streamSend)
-
-            -- cleaning when cancelled
-            tid <- readMVar runningQueries >>= \hm -> return $ (HM.!) hm queryId
-            void . forkIO $ handlePushQueryCanceled meta $ do
-              killThread tid
-              cancel sending
-              M.updateMeta queryId P.QueryTerminated Nothing metaHandle
-              unSubscribeToStreamWithoutCkp sc sink
-
-            wait sending
-      _ -> do
-        Log.warning "Push Query: Inconsistent Method Called"
-        throwIO $ HE.InvalidSqlStatement "inconsistent method called"
 
 sendToClient
   :: MetaHandle
