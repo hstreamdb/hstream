@@ -32,10 +32,13 @@ import           Network.GRPC.LowLevel.Call       (clientCallCancel)
 import           Proto3.Suite                     (Enumerated (..), def)
 import           System.Environment               (lookupEnv)
 import           System.IO.Unsafe                 (unsafePerformIO)
+import           System.Posix                     (keyboardSignal, raiseSignal)
 import           System.Random
 import           Test.Hspec
 
 import           HStream.Client.Action
+import           HStream.Client.Internal
+import qualified HStream.Client.Types             as CT
 import           HStream.Client.Utils
 import           HStream.Server.HStreamApi
 import           HStream.SQL
@@ -177,7 +180,6 @@ mkStream name repFac shardCnt = def { streamStreamName = name, streamReplication
 mkStreamWithDefaultShards :: T.Text -> Word32 -> Stream
 mkStreamWithDefaultShards name repFac = mkStream name repFac 1
 
-
 createStreamReq :: HStreamClientApi -> Stream -> IO Stream
 createStreamReq HStreamApi{..} stream =
   let req = ClientNormalRequest stream requestTimeout $ MetadataMap Map.empty
@@ -211,59 +213,20 @@ mkStruct = jsonObjectToStruct . AesonComp.fromList . (map $ first AesonComp.from
 mkViewResponse :: Struct -> CommandQueryResponse
 mkViewResponse = CommandQueryResponse . V.singleton . structToStruct "SELECTVIEW"
 
-executeCommandQuery :: T.Text -> IO (Maybe CommandQueryResponse)
-executeCommandQuery sql = withGRPCClient clientConfig $ \client -> do
-  HStreamApi{..} <- hstreamApiClient client
-  let commandQuery = CommandQuery{ commandQueryStmtText = sql }
-  resp <- hstreamApiExecuteQuery (ClientNormalRequest commandQuery 100 (MetadataMap Map.empty))
-  case resp of
-    ClientNormalResponse x@CommandQueryResponse{} _meta1 _meta2 _status _details ->
-      return $ Just x
-    ClientErrorResponse clientError -> do
-      putStrLn $ formatResult resp
-      return Nothing
-
-executeCommandQuery' :: T.Text -> IO CommandQueryResponse
-executeCommandQuery' sql = withGRPCClient clientConfig $ \client -> do
-  HStreamApi{..} <- hstreamApiClient client
-  let commandQuery = CommandQuery{ commandQueryStmtText = sql }
-  resp <- hstreamApiExecuteQuery (ClientNormalRequest commandQuery 100 (MetadataMap Map.empty))
-  case resp of
-    ClientNormalResponse x _meta1 _meta2 StatusOk _details -> return x
-    ClientNormalResponse _resp _meta1 _meta2 _status _details -> do
-      error $ "Impossible happened..." <> show _status
-    ClientErrorResponse err -> error $ "Server error happened: " <> show err
-
-executeCommandPushQuery :: T.Text -> IO [Struct]
-executeCommandPushQuery sql = withGRPCClient clientConfig $ \client -> do
-  HStreamApi{..} <- hstreamApiClient client
-  let commandPushQuery = CommandPushQuery{ commandPushQueryQueryText = sql }
+runFetchSql :: T.Text -> IO [Struct]
+runFetchSql sql = withGRPCClient clientConfig $ \client -> do
+  let ClientConfig {
+        clientServerHost = Host host
+      , clientServerPort = Port port
+      , clientSSLConfig = sslConfig, ..} = clientConfig
+  let addr = SocketAddr host port
+  availableServers <- newMVar [addr]
+  currentServer  <- newMVar addr
+  let cliCxt = CT.HStreamCliContext {..}
   ref <- newIORef []
-  ClientReaderResponse _meta _status _details <-
-    hstreamApiExecutePushQuery $
-      ClientReaderRequest commandPushQuery 30
-                          (MetadataMap Map.empty) (action (30.0 :: Double) ref)
+  _ <- forkIO $ threadDelay (20*1000*1000) >>  raiseSignal keyboardSignal
+  cliFetch' (Just (\resp -> modifyIORef ref (\xs -> xs ++ [resp]))) cliCxt (T.unpack sql)
   readIORef ref
-  where
-    action timeout ref call _meta recv
-      | timeout <= 0 = clientCallCancel call
-      | otherwise = do
-          msg <- recv
-          case msg of
-            Right Nothing     -> do
-              threadDelay 500000
-              action (timeout - 0.5) ref call _meta recv
-              return ()
-            Right (Just (Struct kvmap)) -> do
-              threadDelay 500000
-              -- Note: remove "SELECT" tag in returned result
-              case snd $ head (Map.toList kvmap) of
-                (Just (Value (Just (ValueKindStructValue resp)))) -> do
-                  modifyIORef ref (\xs -> xs ++ [resp])
-                  action (timeout - 0.5) ref call _meta recv
-                  return ()
-                _ -> error "unknown data encountered"
-            _ -> return ()
 
 -- readBatchPayload :: T.Text -> IO (V.Vector BS.ByteString)
 -- readBatchPayload name = do

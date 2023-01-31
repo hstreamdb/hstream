@@ -273,6 +273,7 @@ test-suite hstream-test
     , random                ^>=1.2
     , scientific
     , text
+    , unix
     , unordered-containers
     , vector
     , yaml
