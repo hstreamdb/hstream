@@ -13,7 +13,7 @@ license-file:  LICENSE
 copyright:     Copyright (c) 2020 EMQ Technologies Co., Ltd.
 author:        Feng Lee <feng@emqx.io>
 maintainer:    lambda@emqx.io, wangbin@emqx.io
-tested-with:   GHC ==8.10.7 || ==9.2.5
+tested-with:   GHC ==9.2.5
 category:      Database
 homepage:      https://github.com/hstreamdb/hstream
 bug-reports:   https://github.com/hstreamdb/hstream/issues
