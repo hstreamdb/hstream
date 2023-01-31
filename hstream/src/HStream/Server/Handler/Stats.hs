@@ -160,6 +160,8 @@ getSubscriptionStatsInternal statsHolder (PS.Enumerated stats) = do
       Stats.subscription_stat_getall_send_out_bytes s <&> Right
     Right API.SubscriptionStatsSendOutRecords ->
       Stats.subscription_stat_getall_send_out_records s <&> Right
+    Right API.SubscriptionStatsSendOutRecordsFailed ->
+      Stats.subscription_stat_getall_send_out_records_failed s <&> Right
     Right API.SubscriptionStatsReceivedAcks ->
       Stats.subscription_stat_getall_received_acks s <&> Right
     Right API.SubscriptionStatsResendRecords ->
