@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns     #-}
 {-# LANGUAGE DataKinds        #-}
 {-# LANGUAGE GADTs            #-}
 {-# LANGUAGE MultiWayIf       #-}
@@ -474,11 +475,13 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
 
     updateClockAndDoResend :: IO ()
     updateClockAndDoResend = do
+      -- Note: non-strict behaviour in STM!
+      --       Please refer to https://github.com/haskell/stm/issues/30
       doneList <- atomically $ do
         ct <- readTVar subCurrentTime
-        let newTime = ct + 1
+        let !newTime = ct + 1
         checkList <- readTVar subWaitingCheckedRecordIds
-        let (doneList, leftList) = span ( \CheckedRecordIds {..} -> crDeadline <= newTime) checkList
+        let (!doneList, !leftList) = span ( \CheckedRecordIds {..} -> crDeadline <= newTime) checkList
         writeTVar subCurrentTime newTime
         writeTVar subWaitingCheckedRecordIds leftList
         return doneList
