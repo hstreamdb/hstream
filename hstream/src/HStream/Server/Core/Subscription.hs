@@ -9,44 +9,45 @@
 module HStream.Server.Core.Subscription where
 
 import           Control.Concurrent
-import           Control.Concurrent.Async   (async, wait, withAsync)
+import           Control.Concurrent.Async      (async, wait, withAsync)
 import           Control.Concurrent.STM
-import           Control.Exception          (catch, handle, onException,
-                                             throwIO)
+import           Control.Exception             (catch, handle, onException,
+                                                throwIO)
 import           Control.Monad
-import qualified Data.ByteString            as BS
-import           Data.Foldable              (foldl')
-import           Data.Functor               ((<&>))
-import qualified Data.HashMap.Strict        as HM
-import           Data.IORef                 (newIORef, readIORef, writeIORef)
-import           Data.Kind                  (Type)
-import qualified Data.List                  as L
-import qualified Data.Map.Strict            as Map
-import           Data.Maybe                 (fromJust, fromMaybe, isNothing)
-import qualified Data.Set                   as Set
-import           Data.Text                  (Text)
-import qualified Data.Text                  as T
-import qualified Data.Vector                as V
-import           Data.Word                  (Word32, Word64)
-import           GHC.Stack                  (HasCallStack)
-import           Network.GRPC.HighLevel     (StreamRecv, StreamSend)
-import           Proto3.Suite               (Enumerated (Enumerated), def)
+import qualified Data.ByteString               as BS
+import           Data.Foldable                 (foldl')
+import           Data.Functor                  ((<&>))
+import qualified Data.HashMap.Strict           as HM
+import           Data.IORef                    (newIORef, readIORef, writeIORef)
+import           Data.Kind                     (Type)
+import qualified Data.List                     as L
+import qualified Data.Map.Strict               as Map
+import           Data.Maybe                    (fromJust, fromMaybe, isNothing)
+import qualified Data.Set                      as Set
+import           Data.Text                     (Text)
+import qualified Data.Text                     as T
+import qualified Data.Vector                   as V
+import           Data.Word                     (Word32, Word64)
+import           GHC.Stack                     (HasCallStack)
+import           Network.GRPC.HighLevel        (StreamRecv, StreamSend)
+import           Proto3.Suite                  (Enumerated (Enumerated), def)
 
-import qualified HStream.Exception          as HE
-import qualified HStream.Logger             as Log
-import qualified HStream.MetaStore.Types    as M
-import           HStream.Server.Core.Common as CC (decodeRecordBatch,
-                                                   getCommitRecordId,
-                                                   getSuccessor,
-                                                   insertAckedRecordId,
-                                                   listSubscriptions)
+import qualified HStream.Exception             as HE
+import qualified HStream.Logger                as Log
+import qualified HStream.MetaStore.Types       as M
+import           HStream.Server.ConnectorTypes (getCurrentTimestamp)
+import           HStream.Server.Core.Common    as CC (decodeRecordBatch,
+                                                      getCommitRecordId,
+                                                      getSuccessor,
+                                                      insertAckedRecordId,
+                                                      listSubscriptions)
 import           HStream.Server.HStreamApi
 import           HStream.Server.Types
-import qualified HStream.Stats              as Stats
-import qualified HStream.Store              as S
-import           HStream.Utils              (decompressBatchedRecord,
-                                             getProtoTimestamp, mkBatchedRecord,
-                                             textToCBytes)
+import qualified HStream.Stats                 as Stats
+import qualified HStream.Store                 as S
+import           HStream.Utils                 (decompressBatchedRecord,
+                                                getProtoTimestamp,
+                                                mkBatchedRecord, textToCBytes)
 
 --------------------------------------------------------------------------------
 
@@ -324,7 +325,7 @@ doSubInit ServerContext{..} subId = do
       consumerContexts <- newTVarIO HM.empty
       shardContexts <- newTVarIO HM.empty
       assignment <- mkEmptyAssignment
-      curTime <- newTVarIO 0
+      curTime <- getCurrentTimestamp >>= (newTVarIO . fromIntegral)
       checkList <- newTVarIO []
       checkListIndex <- newTVarIO Map.empty
       let emptySubCtx =
@@ -477,9 +478,9 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
     updateClockAndDoResend = do
       -- Note: non-strict behaviour in STM!
       --       Please refer to https://github.com/haskell/stm/issues/30
+      newTime <- getCurrentTimestamp <&> fromIntegral
       doneList <- atomically $ do
         ct <- readTVar subCurrentTime
-        let !newTime = ct + 1
         checkList <- readTVar subWaitingCheckedRecordIds
         let (!doneList, !leftList) = span ( \CheckedRecordIds {..} -> crDeadline <= newTime) checkList
         writeTVar subCurrentTime newTime
@@ -652,7 +653,7 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
       checkList <- readTVar subWaitingCheckedRecordIds
       checkListIndex <- readTVar subWaitingCheckedRecordIdsIndex
       let checkedRecordIds = CheckedRecordIds {
-                              crDeadline =  currentTime + fromIntegral (subAckTimeoutSeconds * 10),
+                              crDeadline =  currentTime + fromIntegral (subAckTimeoutSeconds * 1000),
                               crLogId = logId,
                               crBatchId = batchId,
                               crBatchIndexes = batchIndexes
