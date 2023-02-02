@@ -1,4 +1,5 @@
 CABAL ?= cabal
+CABAL_BUILD_PARALLEL ?= $(shell nproc)
 GHC_MAJOR_VERSION := $(shell ghc --numeric-version | cut -d'.' -f1)
 
 ifeq ($(GHC_MAJOR_VERSION), 8)
@@ -23,8 +24,8 @@ grpc:: grpc-cpp grpc-hs
 
 grpc-hs-deps::
 	# Always install proto-lens-protoc to avoid inconsistency
-	(cd ~ && cabal install --overwrite-policy=always proto-lens-protoc)
-	($(CABAL) build --project-file $(CABAL_PROJECT_FILE) proto3-suite && \
+	(cd ~ && cabal install -j$(CABAL_BUILD_PARALLEL) --overwrite-policy=always proto-lens-protoc)
+	($(CABAL) build -j$(CABAL_BUILD_PARALLEL) --project-file $(CABAL_PROJECT_FILE) proto3-suite && \
 		mkdir -p ~/.cabal/bin && \
 		$(CABAL) exec --project-file $(CABAL_PROJECT_FILE) \
 			which compile-proto-file_hstream | tail -1 | xargs -I{} cp {} $(PROTO_COMPILE_HS)\
