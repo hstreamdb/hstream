@@ -28,9 +28,9 @@ flag ReleaseBuild
   description:
     Enables all optimisations, leads to slower build time and better performance
 
-flag hstream_use_hs_grpc
+flag hstream_use_grpc_haskell
   default:     False
-  description: Use hs-grpc-server instead
+  description: Use grpc_haskell instead
 
 common shared-properties
   ghc-options:
@@ -192,8 +192,8 @@ executable hstream-server
     , Z-IO
     , zoovisitor
 
-  if flag(hstream_use_hs_grpc)
-    cpp-options: -DHStreamUseHsGrpc
+  if flag(hstream_use_grpc_haskell)
+    cpp-options: -DHStreamUseGrpcHaskell
 
   default-language: Haskell2010
   ghc-options:

@@ -22,6 +22,7 @@ import qualified Data.Map                         as Map
 import qualified Data.Text                        as T
 import           Data.Text.Encoding               (encodeUtf8)
 import           Data.Word                        (Word16)
+import qualified HsGrpc.Server                    as HsGrpc
 import qualified Network.GRPC.HighLevel           as GRPC
 import qualified Network.GRPC.HighLevel.Client    as GRPC
 import qualified Network.GRPC.HighLevel.Generated as GRPC
@@ -56,6 +57,7 @@ import           HStream.Server.Config            (AdvertisedListeners,
                                                    advertisedListenersToPB,
                                                    getConfig)
 import           HStream.Server.Handler           (handlers)
+import qualified HStream.Server.HsGrpcHandler     as HsGrpc
 import           HStream.Server.HStreamApi        (NodeState (..),
                                                    hstreamApiServer)
 import qualified HStream.Server.HStreamInternal   as I
@@ -74,11 +76,6 @@ import qualified HStream.ThirdParty.Protobuf      as Proto
 import           HStream.Utils                    (getProtoTimestamp,
                                                    pattern EnumPB,
                                                    setupSigsegvHandler)
-
-#ifdef HStreamUseHsGrpc
-import qualified HsGrpc.Server                    as HsGrpc
-import qualified HStream.Server.HsGrpcHandler     as HsGrpc
-#endif
 
 main :: IO ()
 main = getConfig >>= app
@@ -155,14 +152,21 @@ serve host port securityMap sc@ServerContext{..} listeners listenerSecurityMap =
               getProtoTimestamp >>= \x -> upsertMeta @Proto.Timestamp clusterStartTimeId x metaHandle
               handle (\(_ :: RQLiteRowNotFound) -> return ()) $ deleteAllMeta @TaskAllocation metaHandle
 
-#ifdef HStreamUseHsGrpc
-  sslOpts <- mapM readTlsPemFile $ join (Map.lookup "tls" securityMap)
-#else
+#ifdef HStreamUseGrpcHaskell
   let sslOpts = initializeTlsConfig <$> join (Map.lookup "tls" securityMap)
+#else
+  sslOpts <- mapM readTlsPemFile $ join (Map.lookup "tls" securityMap)
 #endif
 
   let grpcOpts =
-#ifdef HStreamUseHsGrpc
+#ifdef HStreamUseGrpcHaskell
+        GRPC.defaultServiceOptions
+        { GRPC.serverHost = GRPC.Host host
+        , GRPC.serverPort = GRPC.Port $ fromIntegral port
+        , GRPC.serverOnStarted = Just serverOnStarted
+        , GRPC.sslConfig = sslOpts
+        }
+#else
         HsGrpc.ServerOptions
           { HsGrpc.serverHost = BS.toShort host
           , HsGrpc.serverPort = fromIntegral port
@@ -170,13 +174,6 @@ serve host port securityMap sc@ServerContext{..} listeners listenerSecurityMap =
           , HsGrpc.serverSslOptions = sslOpts
           , HsGrpc.serverOnStarted = Just serverOnStarted
           }
-#else
-        GRPC.defaultServiceOptions
-        { GRPC.serverHost = GRPC.Host host
-        , GRPC.serverPort = GRPC.Port $ fromIntegral port
-        , GRPC.serverOnStarted = Just serverOnStarted
-        , GRPC.sslConfig = sslOpts
-        }
 #endif
   forM_ (Map.toList listeners) $ \(key, vs) ->
     forM_ vs $ \I.Listener{..} -> do
@@ -188,14 +185,7 @@ serve host port securityMap sc@ServerContext{..} listeners listenerSecurityMap =
         let listenerOnStarted = Log.info $ "Extra listener is started on port "
                                         <> Log.buildInt listenerPort
         let sc' = sc{scAdvertisedListenersKey = Just key}
-#ifdef HStreamUseHsGrpc
-        newSslOpts <- mapM readTlsPemFile $ join ((`Map.lookup` securityMap) =<< Map.lookup key listenerSecurityMap )
-        let grpcOpts' = grpcOpts { HsGrpc.serverPort = fromIntegral listenerPort
-                                 , HsGrpc.serverOnStarted = Just listenerOnStarted
-                                 , HsGrpc.serverSslOptions = newSslOpts
-                                 }
-        HsGrpc.runServer grpcOpts' (HsGrpc.handlers sc')
-#else
+#ifdef HStreamUseGrpcHaskell
         let newSslOpts = initializeTlsConfig <$> join ((`Map.lookup` securityMap) =<< Map.lookup key listenerSecurityMap )
         let grpcOpts' = grpcOpts { GRPC.serverPort = GRPC.Port $ fromIntegral listenerPort
                                  , GRPC.serverOnStarted = Just listenerOnStarted
@@ -203,14 +193,22 @@ serve host port securityMap sc@ServerContext{..} listeners listenerSecurityMap =
                                  }
         api <- handlers sc'
         hstreamApiServer api grpcOpts'
+#else
+        newSslOpts <- mapM readTlsPemFile $ join ((`Map.lookup` securityMap) =<< Map.lookup key listenerSecurityMap )
+        let grpcOpts' = grpcOpts { HsGrpc.serverPort = fromIntegral listenerPort
+                                 , HsGrpc.serverOnStarted = Just listenerOnStarted
+                                 , HsGrpc.serverSslOptions = newSslOpts
+                                 }
+        HsGrpc.runServer grpcOpts' (HsGrpc.handlers sc')
 #endif
 
-#ifdef HStreamUseHsGrpc
-  Log.warning "Starting server with a still in development lib hs-grpc-server!"
-  HsGrpc.runServer grpcOpts (HsGrpc.handlers sc)
-#else
+#ifdef HStreamUseGrpcHaskell
+  Log.info "Starting server with grpc-haskell..."
   api <- handlers sc
   hstreamApiServer api grpcOpts
+#else
+  Log.info "Starting server with hs-grpc-server..."
+  HsGrpc.runServer grpcOpts (HsGrpc.handlers sc)
 #endif
 
 --------------------------------------------------------------------------------
