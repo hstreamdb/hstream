@@ -75,9 +75,9 @@ package thrift-cpp-channel
   tests: false
 
 constraints:
-    Z-IO          == 0.8.1.1
-  , Z-Data        == 0.8.8.0
-  , zoovisitor    == 0.2.1.0
+    Z-IO          == 1.0.1.0
+  , Z-Data        == 1.1.0.0
+  , zoovisitor    == 0.2.1.2
   , blaze-textual == 0.2.1.0
   , entropy       == 0.4.1.7
   , criterion    ^>= 1.6
