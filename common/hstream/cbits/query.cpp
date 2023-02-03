@@ -1,7 +1,7 @@
 #include "hs_common.h"
 
+#include "AdminClient.h" // installed by hstream-client-cpp
 #include "cbits/checks.h"
-#include "clients/cpp/AdminClient.h"
 
 #include <logdevice/ops/ldquery/Errors.h>
 #include <logdevice/ops/ldquery/QueryBase.h>

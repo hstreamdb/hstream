@@ -20,7 +20,6 @@ bug-reports:        https://github.com/hstreamdb/hstream/issues
 build-type:         Custom
 extra-source-files:
   cbits/**/*.h
-  clients/**/*.h
   include/**/*.h
 
 custom-setup
@@ -88,7 +87,6 @@ library
   install-includes:
     cbits/query/Table.h
     cbits/query/tables/AdminCommandTable.h
-    clients/cpp/AdminClient.h
     hs_common.h
     hs_cpp_lib.h
 
@@ -98,7 +96,6 @@ library
     cbits/hs_utils.cpp
     cbits/query/tables/AdminCommandTable.cpp
     cbits/query.cpp
-    clients/cpp/AdminClient.cpp
 
   build-tool-depends:
     , cpphs:cpphs    ^>=1.20
@@ -121,7 +118,8 @@ library
     , grpc-haskell-core
     , hashable
     , hs-grpc-server
-    , hstream-common-api
+    , hstream-api-hs
+    , hstream-client-cpp
     , http-client
     , http-types
     , primitive             ^>=0.7
@@ -192,8 +190,8 @@ test-suite hstream-common-test
     , containers            ^>=0.6
     , directory
     , hspec
+    , hstream-api-hs
     , hstream-common
-    , hstream-common-api
     , http-client
     , proto3-suite
     , QuickCheck
@@ -232,13 +230,13 @@ benchmark codec-bench
     Util
 
   build-depends:
-    , base                >=4.11 && <5
+    , base            >=4.11 && <5
     , bytestring
     , criterion
+    , hstream-api-hs
     , hstream-common
-    , hstream-common-api
     , proto3-suite
-    , random              ^>=1.2
+    , random          ^>=1.2
     , vector
 
   default-extensions:

@@ -53,7 +53,7 @@ executable hadmin
     , haskeline
     , hstream-admin-server
     , hstream-common
-    , hstream-common-api
+    , hstream-api-hs
     , hstream-store
     , network               ^>=3.1.2
     , optparse-applicative

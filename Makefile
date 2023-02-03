@@ -31,7 +31,7 @@ grpc-hs-deps::
 			which compile-proto-file_hstream | tail -1 | xargs -I{} cp {} $(PROTO_COMPILE_HS)\
 	)
 
-grpc-hs: grpc-hs-deps grpc-cpp
+grpc-hs: grpc-hs-deps
 	($(PROTO_COMPILE_HS) \
 		--includeDir /usr/local/include \
 		--proto google/protobuf/struct.proto \
@@ -56,8 +56,8 @@ grpc-hs: grpc-hs-deps grpc-cpp
 		--out ../gen-hs)
 
 grpc-cpp:
-	(cd common/api && mkdir -p gen-cpp && \
-		$(PROTO_COMPILE) --cpp_out gen-cpp --grpc_out gen-cpp -I protos --plugin=protoc-gen-grpc=$(PROTO_CPP_PLUGIN) \
+	(cd common/api && mkdir -p cpp/gen && \
+		$(PROTO_COMPILE) --cpp_out cpp/gen --grpc_out cpp/gen -I protos --plugin=protoc-gen-grpc=$(PROTO_CPP_PLUGIN) \
 			protos/HStream/Server/HStreamApi.proto \
 	)
 
@@ -75,7 +75,8 @@ sql-deps::
 
 clean:
 	find ./common -maxdepth 10 -type d \
-		-name "gen-hs2" \
+		-name "gen" \
+		-o -name "gen-hs2" \
 		-o -name "gen-hs" \
 		-o -name "gen-cpp" \
 		-o -name "gen-go" \

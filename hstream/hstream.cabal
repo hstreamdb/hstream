@@ -106,7 +106,7 @@ library
     , hs-grpc-server
     , hstream-admin-server
     , hstream-common
-    , hstream-common-api
+    , hstream-api-hs
     , hstream-common-stats
     , hstream-gossip
     , hstream-io
@@ -173,7 +173,7 @@ executable hstream-server
     , hstream
     , hstream-admin-server
     , hstream-common
-    , hstream-common-api
+    , hstream-api-hs
     , hstream-common-stats
     , hstream-gossip
     , hstream-store
@@ -214,7 +214,7 @@ executable hstream
     , hstream
     , hstream-admin-server
     , hstream-common
-    , hstream-common-api
+    , hstream-api-hs
     , hstream-common-stats
     , hstream-sql
     , hstream-store
@@ -261,7 +261,7 @@ test-suite hstream-test
     , hspec
     , hstream
     , hstream-common
-    , hstream-common-api
+    , hstream-api-hs
     , hstream-common-stats
     , hstream-gossip
     , hstream-io

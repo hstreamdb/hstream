@@ -3,7 +3,7 @@
 #include <logdevice/ops/ldquery/Context.h>
 #include <logdevice/ops/ldquery/Table.h>
 
-#include "clients/cpp/AdminClient.h"
+#include "AdminClient.h" // installed by hstream-client-cpp
 
 namespace ldquery = facebook::logdevice::ldquery;
 

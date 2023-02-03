@@ -10,8 +10,12 @@ packages:
   external/gRPC-haskell/grpc-haskell.cabal
   external/gRPC-haskell/core/grpc-haskell-core.cabal
 
+  -- * Cpp library
+  common/api/cpp/hstream-api-cpp.cabal
+  clients/cpp/hstream-client-cpp.cabal
+
   -- * HStream common
-  common/api/hstream-common-api.cabal
+  common/api/hstream-api-hs.cabal
   common/hstream/hstream-common.cabal
   common/stats/hstream-common-stats.cabal
 
