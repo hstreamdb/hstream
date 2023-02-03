@@ -28,7 +28,7 @@ services:
       - |
         set -e
         /usr/local/script/wait-for-storage.sh hstore-admin-server 6440 zookeeper 2181 600 \
-        /usr/local/bin/hstream-server-sid \
+        /usr/local/bin/hstream-server \
         --bind-address 0.0.0.0 --port 6570 \
         --internal-port 6571 \
         --server-id 100 \
@@ -48,7 +48,7 @@ services:
       - |
         set -e
         /usr/local/script/wait-for-storage.sh hstore-admin-server 6440 zookeeper 2181 600 \
-        /usr/local/bin/hstream-server-sid \
+        /usr/local/bin/hstream-server \
         --bind-address 0.0.0.0 --port 6570 \
         --internal-port 6571 \
         --server-id 101 \
@@ -68,7 +68,7 @@ services:
       - |
         set -e
         /usr/local/script/wait-for-storage.sh hstore-admin-server 6440 zookeeper 2181 600 \
-        /usr/local/bin/hstream-server-sid \
+        /usr/local/bin/hstream-server \
         --bind-address 0.0.0.0 --port 6570 \
         --internal-port 6571 \
         --server-id 102 \
