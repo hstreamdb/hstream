@@ -76,7 +76,7 @@ library
     , ghc-prim              >=0.5   && <1.0
     , hashable
     , hstream-common
-    , hstream-common-api
+    , hstream-api-hs
     , primitive             ^>=0.7
     , random
     , scientific

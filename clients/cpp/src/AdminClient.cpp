@@ -1,6 +1,8 @@
 #include "AdminClient.h"
 
 #include <google/protobuf/empty.pb.h>
+// TODO: Replace logdevice's debug library with hstream client's. So that we can
+// remove the logdevice extra library in the cabal file.
 #include <logdevice/common/debug.h>
 
 using google::protobuf::Empty;

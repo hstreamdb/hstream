@@ -57,7 +57,7 @@ library
     , grpc-haskell
     , hs-grpc-server
     , hstream-common
-    , hstream-common-api
+    , hstream-api-hs
     , optparse-applicative
     , proto3-suite
     , proto3-wire

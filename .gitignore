@@ -28,6 +28,7 @@ Local*
 *.swp
 .idea/
 .vscode/
+gen/
 gen-hs/
 gen-hs2/
 gen-sql/
