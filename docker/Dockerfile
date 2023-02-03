@@ -78,7 +78,7 @@ COPY --from=ld_image /usr/local/bin/logdeviced \
 COPY --from=ld_image /logdevice/common/test/ssl_certs/ /logdevice/common/test/ssl_certs/
 
 COPY --from=builder /root/.cabal/bin/hstream-server \
-                    /root/.cabal/bin/hstream-server-sid \
+                    /root/.cabal/bin/hstream-server-old \
                     /root/.cabal/bin/hstream \
                     /root/.cabal/bin/hadmin \
                     /root/.cabal/bin/hstore-bench-writter \
