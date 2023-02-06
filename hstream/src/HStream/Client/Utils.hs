@@ -39,12 +39,13 @@ import           System.Posix                     (Handler (Catch),
                                                    keyboardSignal)
 
 
+import           HStream.Base                     (genUnique)
 import           HStream.Client.Types             (Resource (..))
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.SQL                      (DropObject (..))
 import           HStream.Utils                    (Format (formatResult),
                                                    ResourceType (..),
-                                                   SocketAddr (..), genUnique,
+                                                   SocketAddr (..),
                                                    mkClientNormalRequest,
                                                    mkGRPCClientConfWithSSL)
 

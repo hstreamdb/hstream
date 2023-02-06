@@ -8,12 +8,12 @@ import           Criterion                 (Benchmark, bench, bgroup, env, nf)
 import qualified Data.ByteString           as BS
 import qualified Data.ByteString.Lazy      as BSL
 import           Data.Word                 (Word64)
-import qualified HStream.Logger            as Log
+import           Numeric                   (showFFloat)
+import           Proto3.Suite
+
 import           HStream.Server.HStreamApi
 import           HStream.Utils             (Encoder, EncoderType (..), compress,
                                             decompress)
-import           Numeric                   (showFFloat)
-import           Proto3.Suite
 import           Util
 
 gzip :: Enumerated CompressionType
@@ -67,10 +67,9 @@ testCompressionSize = do
   res2 <- forM testPair $ \(size, _) -> getCompressSize @'ProtoEncoder gzip size
   let resultPairs = zipWith (\(origin1, c1) (origin2, c2) -> ((origin1, c1), (origin2, c2))) res1 res2
   forM_ resultPairs $ \((o1, c1), (o2, c2)) -> do
-    Log.info $ "[origin encoded]: origin size " <> Log.buildInt o1
-            <> ", compressed size " <> Log.buildInt c1
-            <> ", compression rate " <> Log.buildString' (showFFloat @Double (Just 3) (fromIntegral c1 / fromIntegral o1 * 100) "%")
-    Log.info $ "[proto encoded]: origin size " <> Log.buildInt o2
-            <> ", compressed size " <> Log.buildInt c2
-            <> ", compression rate " <> Log.buildString' (showFFloat @Double (Just 3) (fromIntegral c2 / fromIntegral o2 * 100) "%")
-
+    putStrLn $ "[origin encoded]: origin size " <> show o1
+            <> ", compressed size " <> show c1
+            <> ", compression rate " <> (showFFloat @Double (Just 3) (fromIntegral c1 / fromIntegral o1 * 100) "%")
+    putStrLn $ "[proto encoded]: origin size " <> show o2
+            <> ", compressed size " <> show c2
+            <> ", compression rate " <> (showFFloat @Double (Just 3) (fromIntegral c2 / fromIntegral o2 * 100) "%")

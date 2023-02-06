@@ -105,8 +105,9 @@ library
     , haskeline
     , hs-grpc-server
     , hstream-admin-server
-    , hstream-common
     , hstream-api-hs
+    , hstream-common
+    , hstream-common-base
     , hstream-common-stats
     , hstream-gossip
     , hstream-io
@@ -172,8 +173,9 @@ executable hstream-server
     , hs-grpc-server
     , hstream
     , hstream-admin-server
-    , hstream-common
     , hstream-api-hs
+    , hstream-common
+    , hstream-common-base
     , hstream-common-stats
     , hstream-gossip
     , hstream-store
@@ -213,8 +215,9 @@ executable hstream
     , haskeline
     , hstream
     , hstream-admin-server
-    , hstream-common
     , hstream-api-hs
+    , hstream-common
+    , hstream-common-base
     , hstream-common-stats
     , hstream-sql
     , hstream-store
@@ -260,8 +263,9 @@ test-suite hstream-test
     , grpc-haskell-core
     , hspec
     , hstream
-    , hstream-common
     , hstream-api-hs
+    , hstream-common
+    , hstream-common-base
     , hstream-common-stats
     , hstream-gossip
     , hstream-io

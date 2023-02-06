@@ -71,21 +71,20 @@ library
     HStream.Store.Stream
 
   build-depends:
-    , base            >=4.13   && <5
-    , bytestring      >=0.10   && <0.12
-    , cache           ^>=0.1
-    , containers      ^>=0.6
-    , data-default    ^>=0.7
-    , ghc-prim        >=0.5    && <1.0
-    , hashable        ^>=1.3.5
-    , hstream-common
-    , primitive       ^>=0.7
-    , random          ^>=1.2
-    , time            >=1.9    && <2.0
-    , vector          ^>=0.12
+    , base                 >=4.13   && <5
+    , bytestring           >=0.10   && <0.12
+    , cache                ^>=0.1
+    , containers           ^>=0.6
+    , data-default         ^>=0.7
+    , ghc-prim             >=0.5    && <1.0
+    , hashable             ^>=1.3.5
+    , hstream-common-base
+    , primitive            ^>=0.7
+    , random               ^>=1.2
+    , time                 >=1.9    && <2.0
+    , vector               ^>=0.12
     , Z-Data
     , Z-IO
-    , zoovisitor      >=0.1.2  && <1
 
   default-language:   Haskell2010
   default-extensions:
@@ -153,7 +152,6 @@ test-suite hstream-store-test
     , containers            ^>=0.6
     , data-default          ^>=0.7
     , hspec
-    , hstream-common
     , hstream-store
     , QuickCheck
     , quickcheck-instances  ^>=0.3.20

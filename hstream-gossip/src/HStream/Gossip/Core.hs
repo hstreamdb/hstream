@@ -30,6 +30,7 @@ import qualified Data.Vector                    as V
 import qualified Proto3.Suite                   as PT
 import qualified SlaveThread
 
+import           HStream.Base                   (throwIOError)
 import qualified HStream.Common.GrpcHaskell     as GRPC
 import           HStream.Gossip.Gossip          (gossip)
 import           HStream.Gossip.HStreamGossip   (ServerList (..))
@@ -53,7 +54,6 @@ import           HStream.Gossip.Utils           (broadcast, broadcastMessage,
                                                  updateStatus)
 import qualified HStream.Logger                 as Log
 import qualified HStream.Server.HStreamInternal as I
-import           HStream.Utils                  (throwIOError)
 
 --------------------------------------------------------------------------------
 -- Add a new member to the server list

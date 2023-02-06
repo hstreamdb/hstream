@@ -13,6 +13,7 @@ packages:
   clients/cpp/hstream-client-cpp.cabal
 
   -- * HStream common
+  common/base/hstream-common-base.cabal
   common/api/hstream-api-hs.cabal
   common/hstream/hstream-common.cabal
   common/stats/hstream-common-stats.cabal

@@ -32,8 +32,8 @@ import qualified Z.Data.CBytes         as CBytes
 import           Z.Data.CBytes         (CBytes)
 import qualified Z.Foreign             as Z
 
+import           HStream.Base.Table    (simpleShowTable)
 import           HStream.Foreign
-import           HStream.Utils         (simpleShowTable)
 
 -------------------------------------------------------------------------------
 -- QueryBase

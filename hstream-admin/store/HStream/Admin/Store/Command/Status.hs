@@ -13,8 +13,8 @@ import           Data.Time.Clock.POSIX     (POSIXTime, getPOSIXTime)
 
 import qualified HStream.Admin.Store.API   as AA
 import           HStream.Admin.Store.Types
-import           HStream.Utils             (approxNaturalTime,
-                                            defaultShowTableIO')
+import           HStream.Base              (approxNaturalTime)
+import           HStream.Base.Table        (defaultShowTableIO')
 
 data NodeState' = NodeState'
   { stateState      :: AA.NodeState

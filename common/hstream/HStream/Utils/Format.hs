@@ -6,7 +6,6 @@
 module HStream.Utils.Format
   ( Format (..)
   , formatCommandQueryResponse
-  , approxNaturalTime
   , formatStatus
   ) where
 
@@ -18,7 +17,6 @@ import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as M
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
-import           Data.Time.Clock                  (NominalDiffTime)
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 import qualified Proto3.Suite                     as PB
@@ -235,21 +233,6 @@ showTable titles rows = Table.tableString t ++ "\n"
           (Table.fullH (repeat $ Table.headerColumn Table.left Nothing) titles)
           (Table.colsAllG Table.center <$> rows)
     colSpec = map (const $ Table.column Table.expand Table.left def def) titles
-
-approxNaturalTime :: NominalDiffTime -> String
-approxNaturalTime n
-  | n < 0 = ""
-  | n == 0 = "0 second"
-  | n < 1 = show @Int (floor $ n * 1000) ++ " milliseconds"
-  | n < 60 = show @Int (floor n) ++ " seconds"
-  | n < fromIntegral hour = show @Int (floor n `div` 60) ++ " minutes"
-  | n < fromIntegral day  = show @Int (floor n `div` hour) ++ " hours"
-  | n < fromIntegral year = show @Int (floor n `div` day) ++ " days"
-  | otherwise = show @Int (floor n `div` year) ++ " years"
-  where
-    hour = 60 * 60
-    day = hour * 24
-    year = day * 365
 
 formatStatus ::  PB.Enumerated API.TaskStatusPB -> String
 formatStatus (PB.Enumerated (Right API.TaskStatusPBTASK_RUNNING)) = "RUNNING"

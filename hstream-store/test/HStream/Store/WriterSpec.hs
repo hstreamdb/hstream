@@ -3,12 +3,13 @@
 
 module HStream.Store.WriterSpec where
 
-import qualified Data.ByteString         as BS
+import qualified Data.ByteString                      as BS
 import           Test.Hspec
 import           Test.Hspec.QuickCheck
 import           Test.QuickCheck
+import           Test.QuickCheck.Instances.ByteString ()
 
-import qualified HStream.Store           as S
+import qualified HStream.Store                        as S
 import           HStream.Store.SpecUtils
 
 spec :: Spec

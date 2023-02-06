@@ -38,6 +38,7 @@ library
     , extra
     , hashable
     , hstream-common
+    , hstream-common-base
     , multiset
     , stm
     , text
