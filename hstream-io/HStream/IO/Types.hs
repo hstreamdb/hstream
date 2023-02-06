@@ -62,7 +62,7 @@ data IOOptions = IOOptions
   , optSinkImages   :: HM.HashMap T.Text T.Text
   } deriving (Show, Eq)
 
-type TaskProcess = TP.Process IO.Handle IO.Handle ()
+type TaskProcess = TP.Process IO.Handle IO.Handle IO.Handle
 
 data IOTask = IOTask
   { taskId     :: T.Text
@@ -200,3 +200,7 @@ instance Exception ConnectorNotExistException
 newtype InvalidStatusException = InvalidStatusException IOTaskStatus
   deriving Show
 instance Exception InvalidStatusException
+
+newtype RunProcessTimeoutException = RunProcessTimeoutException Int
+  deriving Show
+instance Exception RunProcessTimeoutException
