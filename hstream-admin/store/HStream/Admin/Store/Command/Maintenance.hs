@@ -23,7 +23,7 @@ import           Z.IO.Time                 (SystemTime (MkSystemTime),
 import           HStream.Admin.Store.API
 import qualified HStream.Admin.Store.API   as AA
 import           HStream.Admin.Store.Types
-import           HStream.Utils             (simpleShowTable)
+import           HStream.Base.Table        (simpleShowTable)
 
 
 runMaintenanceCmd :: HeaderConfig AdminAPI -> MaintenanceOpts -> IO ()

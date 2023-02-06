@@ -1,5 +1,5 @@
-cabal-version:      2.4
-name:               hstream-common-stats
+cabal-version:      3.6
+name:               hstream-common-base
 version:            0.1.0.0
 synopsis:
   High performance stream processing platform for IoT data written in Haskell.
@@ -11,22 +11,14 @@ description:
 license:            BSD-3-Clause
 license-file:       LICENSE
 copyright:          Copyright (c) 2020 EMQ Technologies Co., Ltd.
-author:             Feng Lee <feng@emqx.io>
+author:             Mu <lambda@emqx.io>
 maintainer:         lambda@emqx.io
-tested-with:        GHC ==8.10.7
+tested-with:        GHC ==9.2.5
 category:           Database
 homepage:           https://github.com/hstreamdb/hstream
 bug-reports:        https://github.com/hstreamdb/hstream/issues
-build-type:         Custom
-extra-source-files:
-  cbits/**/*.h
-  include/**/*.inc
-  include/*.h
-
-custom-setup
-  setup-depends:
-    , base   >=4.5 && <5
-    , Cabal  >=2.4 && <4
+build-type:         Simple
+extra-source-files: include/**/*.h
 
 source-repository head
   type:     git
@@ -50,37 +42,37 @@ common shared-properties
 
 library
   import:             shared-properties
-  exposed-modules:    HStream.Stats
-  other-modules:      HStream.Stats.Internal
+  exposed-modules:
+    HStream.Base
+    HStream.Base.Table
+    HStream.Foreign
+    HStream.Logger
+
   hs-source-dirs:     .
-  include-dirs:       . include /usr/local/include
+  include-dirs:       include /usr/local/include
+  install-includes:
+    hs_common.h
+    hs_cpp_lib.h
+
   cxx-sources:
-    cbits/hs_stats.cpp
-    cbits/stats/Stats.cpp
+    cbits/hs_struct.cpp
+    cbits/hs_utils.cpp
 
   build-tool-depends:
-    , cpphs:cpphs    >=1.20 && <1.21
+    , cpphs:cpphs    ^>=1.20
     , hsc2hs:hsc2hs
 
   build-depends:
-    , aeson
     , ansi-terminal
-    , attoparsec
-    , base                  >=4.11  && <5
+    , base                  >=4.11 && <5
     , bytestring
-    , casing                >=0.1.4
     , containers
     , data-default
     , deepseq
-    , digest
-    , ghc-prim              >=0.5   && <1.0
+    , ghc-prim              >=0.5  && <1.0
     , hashable
-    , hstream-api-hs
-    , hstream-common
-    , hstream-common-base
     , primitive             ^>=0.7
     , random
-    , scientific
     , table-layout
     , text
     , time
@@ -89,12 +81,15 @@ library
     , Z-Data
     , Z-IO
 
-  cxx-options:        -std=c++17
-  cpp-options:        -std=c++17
+  cxx-options:        -std=c++17 -Werror=switch
   extra-lib-dirs:     /usr/local/lib
   extra-libraries:
     stdc++
     atomic
+    grpc++
+    gpr
+    grpc++_reflection
+    protobuf
     folly
     logdevice
     ldquery
@@ -113,25 +108,25 @@ library
     UnliftedFFITypes
     UnliftedNewtypes
 
-test-suite hstream-common-stats-test
+test-suite hstream-common-base-test
   import:             shared-properties
   type:               exitcode-stdio-1.0
   main-is:            Spec.hs
   hs-source-dirs:     test
-  other-modules:
-    HStream.StatsSpec
-    HStream.StatsSpecUtils
-
+  other-modules:      HStream.BaseSpec
   build-depends:
+    , aeson
     , base                  >=4.11 && <5
+    , bytestring
     , containers            ^>=0.6
+    , directory
     , hspec
-    , hstream-common
-    , hstream-common-stats
+    , hstream-common-base
     , QuickCheck
     , random                ^>=1.2
     , text
     , unordered-containers
+    , vector
     , Z-Data
     , Z-IO
 
@@ -149,33 +144,4 @@ test-suite hstream-common-stats-test
 
   default-language:   Haskell2010
   build-tool-depends: hspec-discover:hspec-discover >=2 && <3
-  ghc-options:        -threaded -rtsopts -with-rtsopts=-N
-
-benchmark common-bench-stats
-  import:             shared-properties
-  type:               exitcode-stdio-1.0
-  main-is:            stats.hs
-  hs-source-dirs:     bench
-  build-depends:
-    , base                  >=4.11 && <5
-    , bytestring
-    , criterion
-    , hstream-common
-    , hstream-common-stats
-    , Z-Data
-
-  default-extensions:
-    DeriveGeneric
-    DerivingStrategies
-    EmptyDataDeriving
-    GADTSyntax
-    GeneralizedNewtypeDeriving
-    LambdaCase
-    OverloadedStrings
-    RecordWildCards
-    ScopedTypeVariables
-    TypeApplications
-    UnliftedFFITypes
-
-  default-language:   Haskell2010
   ghc-options:        -threaded -rtsopts -with-rtsopts=-N

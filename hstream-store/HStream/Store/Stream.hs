@@ -154,11 +154,11 @@ import qualified Z.Data.Text                      as ZT
 import qualified Z.Data.Vector                    as ZV
 import qualified Z.IO.FileSystem                  as FS
 
+import           HStream.Base                     (genUnique)
 import qualified HStream.Logger                   as Log
 import qualified HStream.Store.Exception          as E
 import qualified HStream.Store.Internal.LogDevice as LD
 import qualified HStream.Store.Internal.Types     as FFI
-import           HStream.Utils                    (genUnique)
 
 -- Comment this to disable local cache
 -- #define HSTREAM_USE_LOCAL_STREAM_CACHE

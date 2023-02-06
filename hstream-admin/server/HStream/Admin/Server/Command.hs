@@ -24,6 +24,7 @@ import qualified Z.Foreign                              as Z
 
 import           HStream.Admin.Server.Command.ServerSql
 import           HStream.Admin.Server.Types
+import           HStream.Base.Table                     (defaultShowTableIO')
 import qualified HStream.Server.HStreamApi              as API
 import qualified HStream.Utils                          as U
 import qualified HStream.Utils.Aeson                    as AesonComp
@@ -50,7 +51,7 @@ formatCommandResponse resp =
                      pure (hs, rs)
       case e_val of
         Left msg             -> pure msg
-        Right (header, rows) -> U.defaultShowTableIO' header rows
+        Right (header, rows) -> defaultShowTableIO' header rows
     extractJsonTable (Just x) = pure $ "Expecting obj value, but got " <> show x
     extractJsonTable Nothing = pure "No such \"content\" key"
 

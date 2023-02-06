@@ -26,10 +26,10 @@ import qualified Z.Data.Vector            as V
 import           Z.Data.Vector            (Bytes)
 
 import qualified HStream.Admin.Store.API  as AA
+import           HStream.Base             (withoutPrefix)
 import qualified HStream.Logger           as Log
 import           HStream.Store            (LogAttributes (..))
 import qualified HStream.Store            as S
-import           HStream.Utils            (withoutPrefix)
 
 -------------------------------------------------------------------------------
 

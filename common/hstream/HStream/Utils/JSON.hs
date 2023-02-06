@@ -18,6 +18,7 @@ import qualified Data.Text               as Text
 import           Text.Casing             (fromHumps, toQuietSnake)
 import           Z.Data.CBytes           (CBytes)
 
+import           HStream.Base
 import qualified HStream.Utils.Aeson     as A
 import           HStream.Utils.Common
 import           HStream.Utils.Converter

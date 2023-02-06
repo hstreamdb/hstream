@@ -1,6 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module HStream.Utils.Table
+module HStream.Base.Table
   ( splitTable
   , defaultShowTable
   , defaultShowTableIO

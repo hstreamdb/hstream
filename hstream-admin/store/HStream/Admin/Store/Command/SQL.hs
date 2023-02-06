@@ -15,8 +15,8 @@ import           Z.Data.CBytes                    (pack, unpack)
 
 import           HStream.Admin.Store.API
 import           HStream.Admin.Store.Types
+import           HStream.Base.Table               (simpleShowTable)
 import qualified HStream.Store.Internal.LogDevice as S
-import           HStream.Utils                    (simpleShowTable)
 
 
 runShowTables :: S.LDQuery -> IO String

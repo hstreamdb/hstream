@@ -56,8 +56,9 @@ library
     , deepseq
     , grpc-haskell
     , hs-grpc-server
-    , hstream-common
     , hstream-api-hs
+    , hstream-common
+    , hstream-common-base
     , optparse-applicative
     , proto3-suite
     , proto3-wire

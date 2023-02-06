@@ -89,7 +89,7 @@ jobs:
         run: |
           ${{ env.CABAL }} update
           ${{ env.SHELL }} "'make clean'"
-          ${{ env.SHELL }} make
+          ${{ env.SHELL }} "'make thrift'"
           ${{ env.CABAL }} build hadmin-store
 
       - name: run hadmin-store

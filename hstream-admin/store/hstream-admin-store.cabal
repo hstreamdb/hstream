@@ -95,7 +95,7 @@ library
     , grpc-haskell-core
     , hashable              >=1.2.7.0   && <1.4
     , haskeline             ^>=0.8.1
-    , hstream-common
+    , hstream-common-base
     , hstream-store
     , network               ^>=3.1.2
     , optparse-applicative  ^>=0.16
@@ -149,7 +149,7 @@ executable hadmin-store
     , ghc-prim              >=0.5   && <1.0
     , haskeline
     , hstream-admin-store
-    , hstream-common
+    , hstream-common-base
     , hstream-store
     , optparse-applicative
     , primitive             ^>=0.7

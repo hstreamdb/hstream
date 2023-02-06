@@ -55,8 +55,6 @@ library
     HStream.Common.Query
     HStream.Common.Types
     HStream.Exception
-    HStream.Foreign
-    HStream.Logger
     HStream.MetaStore.FileUtils
     HStream.MetaStore.RqliteUtils
     HStream.MetaStore.Types
@@ -75,25 +73,16 @@ library
     HStream.Utils.Format
     HStream.Utils.JSON
     HStream.Utils.RPC
-    HStream.Utils.Table
     HStream.Utils.Time
 
   hs-source-dirs:     .
   include-dirs:       . include /usr/local/include
-  includes:
-    hs_common.h
-    hs_cpp_lib.h
-
   install-includes:
     cbits/query/Table.h
     cbits/query/tables/AdminCommandTable.h
-    hs_common.h
-    hs_cpp_lib.h
 
   cxx-sources:
     cbits/hash.cpp
-    cbits/hs_struct.cpp
-    cbits/hs_utils.cpp
     cbits/query/tables/AdminCommandTable.cpp
     cbits/query.cpp
 
@@ -120,6 +109,7 @@ library
     , hs-grpc-server
     , hstream-api-hs
     , hstream-client-cpp
+    , hstream-common-base
     , http-client
     , http-types
     , primitive             ^>=0.7
@@ -192,6 +182,7 @@ test-suite hstream-common-test
     , hspec
     , hstream-api-hs
     , hstream-common
+    , hstream-common-base
     , http-client
     , proto3-suite
     , QuickCheck
