@@ -74,7 +74,7 @@ initializeServer opts@ServerOpts{..} gossipContext hh serverState = do
   ioWorker <-
     IO.newWorker
       hh
-      (IO.HStreamConfig (cBytesToText (CB.pack _serverAddress <> ":" <> CB.pack (show _serverPort))))
+      (IO.HStreamConfig (cBytesToText ("hstream://" <> CB.pack _serverAddress <> ":" <> CB.pack (show _serverPort))))
       _ioOptions
 
   shardInfo  <- newMVar HM.empty
