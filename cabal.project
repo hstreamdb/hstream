@@ -54,3 +54,5 @@ constraints:
   , entropy       == 0.4.1.7
   , criterion    ^>= 1.6
   , aeson        ^>= 2.0
+  -- https://github.com/snoyberg/yaml/issues/207
+  , yaml == 0.11.8.0
