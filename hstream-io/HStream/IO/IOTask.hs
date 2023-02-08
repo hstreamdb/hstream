@@ -221,5 +221,5 @@ checkIOTask IOTask{..} = do
         " check",
         " --config /data/config.json"
       ]
-    timeoutSec = 5
+    timeoutSec = 15
     delay = C.threadDelay $ timeoutSec * 1000000
