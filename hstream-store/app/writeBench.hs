@@ -29,7 +29,7 @@ import qualified HStream.Store.Logger     as Log
 type Timestamp = Int64
 
 zReplicateM :: (Applicative f, ZV.Vec v a) => Int -> f a -> f (v a)
-#if MIN_VERSION_Z_Data(2, 0, 0)
+#if MIN_VERSION_Z_Data(0, 9, 0)
 zReplicateM = ZV.replicateM
 #else
 zReplicateM = ZV.replicateMVec

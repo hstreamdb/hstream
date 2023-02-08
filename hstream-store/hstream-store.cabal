@@ -80,8 +80,6 @@ library
     , hashable             ^>=1.3.5
     , hstream-common-base
     , primitive            ^>=0.7
-    , random               ^>=1.2
-    , time                 >=1.9    && <2.0
     , vector               ^>=0.12
     , Z-Data
     , Z-IO

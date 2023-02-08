@@ -33,6 +33,7 @@ common shared-properties
   ghc-options:
     -Wall -Wcompat -Widentities -Wincomplete-record-updates
     -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+    -Wunused-packages
 
   if flag(releasebuild)
     ghc-options:
@@ -64,20 +65,16 @@ library
 
   build-depends:
     , ansi-terminal
-    , base                  >=4.11 && <5
+    , base           >=4.11 && <5
     , bytestring
     , containers
     , data-default
-    , deepseq
-    , ghc-prim              >=0.5  && <1.0
-    , hashable
-    , primitive             ^>=0.7
+    , ghc-prim       >=0.5  && <1.0
+    , primitive      ^>=0.7
     , random
     , table-layout
     , text
     , time
-    , unordered-containers
-    , vector
     , Z-Data
     , Z-IO
 

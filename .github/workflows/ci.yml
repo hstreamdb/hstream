@@ -65,7 +65,7 @@ jobs:
           docker pull docker.io/hstreamdb/haskell:8.10
           echo "CABAL=python3 script/dev-tools cabal --no-interactive --no-services-required \
                 --check -i docker.io/hstreamdb/haskell:8.10 -- \
-                --project-file=cabal.project.ghc810" >> $GITHUB_ENV
+                --project-file=cabal.project.hadmin.store" >> $GITHUB_ENV
           echo "SHELL=python3 script/dev-tools shell --no-interactive --no-services-required \
                 --check -i docker.io/hstreamdb/haskell:8.10" >> $GITHUB_ENV
 
@@ -85,15 +85,15 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-8.10-v1
 
-      - name: build
+      - name: install
         run: |
           ${{ env.CABAL }} update
           ${{ env.SHELL }} "'make clean'"
           ${{ env.SHELL }} "'make thrift'"
-          ${{ env.CABAL }} build hadmin-store
+          ${{ env.CABAL }} install hadmin-store
 
       - name: run hadmin-store
-        run: ${{ env.CABAL }} run -- hadmin-store --help
+        run: ${{ env.CABAL }} exec hadmin-store --help
 
   build-and-test:
     needs: pre-build

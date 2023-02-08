@@ -1,0 +1,44 @@
+with-compiler: ghc-8.10.7
+
+packages:
+  -- We need to add this table-layout since the hackage version is too old.
+  external/table-layout/table-layout.cabal
+  external/hsthrift/common/util/fb-util.cabal
+  external/hsthrift/common/github/fb-stubs.cabal
+  external/hsthrift/common/mangle/mangle.cabal
+  external/hsthrift/lib/thrift-lib.cabal
+  external/hsthrift/cpp-channel/thrift-cpp-channel.cabal
+
+  -- * HStream
+  common/base/hstream-common-base.cabal
+  hstream-store
+  hstream-admin/store/hstream-admin-store.cabal
+
+package table-layout
+  tests: false
+
+-- https://github.com/haskell/cabal/issues/4271
+package thrift-lib
+  flags: +use_sys_thrift_compiler
+  tests: false
+
+package fb-util
+  tests: false
+
+package fb-stubs
+  tests: false
+
+package mangle
+  tests: false
+
+package thrift-cpp-channel
+  tests: false
+
+constraints:
+    Z-IO          == 1.0.1.0
+  , Z-Data        == 1.1.0.0
+  , zoovisitor    == 0.2.1.2
+  , blaze-textual == 0.2.1.0
+  , entropy       == 0.4.1.7
+  , criterion    ^>= 1.6
+  , aeson >=1.5   && <2.0
