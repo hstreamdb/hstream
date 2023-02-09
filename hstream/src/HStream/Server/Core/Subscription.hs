@@ -691,8 +691,7 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
           S.readerRead reader 1
         if length dataRecord /= 1
         then do
-          -- TODO: handle error here
-          Log.fatal . Log.buildString $ "read error"
+          Log.fatal . Log.buildString $ "read error on `readerRead`. Expect 1 record but got " <> show (length dataRecord)
         else do
           (_, _, _, ReceivedRecord{..}) <- decodeRecordBatch $ head dataRecord
           let batchRecords@BatchedRecord{..} = fromJust receivedRecordRecord
