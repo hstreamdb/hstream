@@ -5,7 +5,6 @@
 module HStream.IO.IOTask where
 
 import qualified Control.Concurrent         as C
-import qualified Control.Concurrent.STM     as STM
 import           Control.Exception          (throwIO)
 import qualified Control.Exception          as E
 import           Control.Monad              (forever, msum, unless, void, when)
@@ -19,6 +18,10 @@ import qualified GHC.IO.Handle              as IO
 import           System.Directory           (createDirectoryIfMissing)
 import qualified System.Process.Typed       as TP
 
+import qualified Control.Concurrent.Async   as Async
+import           Data.Maybe                 (isNothing)
+import qualified GHC.IO.Handle.FD           as IO
+import qualified GHC.IO.IOMode              as IO
 import qualified HStream.IO.Messages        as MSG
 import qualified HStream.IO.Meta            as M
 import           HStream.IO.Types
@@ -67,7 +70,7 @@ runIOTask ioTask@IOTask{..} = do
       ]
     taskProcessConfig = TP.setStdin TP.createPipe
       . TP.setStdout TP.createPipe
-      . TP.setStderr TP.inherit
+      . TP.setStderr TP.createPipe
       $ TP.shell taskCmd
 
 handleStdout :: IOTask -> IO.Handle -> IO.Handle -> IO ()
@@ -142,12 +145,8 @@ stopIOTask task@IOTask{..} ifIsRunning force = do
         let stdin = TP.getStdin tp
         BSLC.hPutStrLn stdin (J.encode MSG.InputCommandStop <> "\n")
         IO.hFlush stdin
-        void $ TP.waitExitCode tp
-        -- FIXME: timeout
-        -- timeout <- delayTMVar
-        -- STM.atomically $ STM.orElse (void $ TP.waitExitCodeSTM tp) (STM.takeTMVar timeout)
-        -- kill task process
-        -- void $ TP.runProcess killProcessConfig
+        result <- tryWaitProcessWithTimeout tp 10
+        when (isNothing result) $ void $ TP.runProcess killProcessConfig
         TP.stopProcess tp
         writeIORef process' Nothing
       return STOPPED
@@ -157,13 +156,6 @@ stopIOTask task@IOTask{..} ifIsRunning force = do
   where
     killDockerCmd = "docker kill " ++ T.unpack (getDockerName taskId)
     killProcessConfig = TP.shell killDockerCmd
-    delayTMVar = do
-      tmvar <- STM.newEmptyTMVarIO
-      _ <- C.forkIO $ do
-        C.threadDelay 15000000
-        Log.info "exit process timeout, force to stop it"
-        STM.atomically $ STM.putTMVar tmvar ()
-      return tmvar
 
 updateStatus :: IOTask -> (IOTaskStatus -> IO IOTaskStatus) -> IO ()
 updateStatus IOTask{..} action = do
@@ -183,25 +175,41 @@ checkProcess ioTask@IOTask{..} = do
           Just _  -> return FAILED
       _ -> return status
 
+tryWaitProcessWithTimeout :: TP.Process IO.Handle IO.Handle IO.Handle -> Int -> IO (Maybe TP.ExitCode)
+tryWaitProcessWithTimeout tp timeoutSec = do
+  Async.race (C.threadDelay $ timeoutSec * 1000000) (TP.waitExitCode tp) >>= \case
+    Left _ -> return Nothing
+    Right code -> return $ Just code
+
 checkIOTask :: IOTask -> IO ()
 checkIOTask IOTask{..} = do
   Log.info $ "checkCmd:" <> Log.buildString checkCmd
-  (exitCode, output, err) <- TP.readProcess checkProcessConfig
-  when (exitCode /= TP.ExitSuccess) $ do
-    Log.info $ Log.buildString ("check process exited: " ++ show exitCode)
-    Log.info $ "stdout:" <> Log.buildString (BSLC.unpack output)
-    Log.info $ "stderr:" <> Log.buildString (BSLC.unpack err)
-    E.throwIO (CheckFailedException "check process exited unexpectedly")
-  let (result :: Maybe MSG.CheckResult) = msum . map J.decode $ BSLC.lines output
-  case result of
-    Nothing -> E.throwIO (CheckFailedException "check process didn't return correct result messsage")
-    Just MSG.CheckResult {result=False, message=msg} -> do
-      E.throwIO (CheckFailedException $ "check failed:" <> msg)
-    Just _ -> pure ()
+  IO.withFile (taskPath ++ "/check.log") IO.ReadWriteMode $ \checkLogHandle -> do
+    checkResult <- Async.race delay (TP.runProcess (checkProcessConfig checkLogHandle))
+    IO.hSeek checkLogHandle IO.AbsoluteSeek 0
+    checkOutput <- BSL.hGetContents checkLogHandle
+    case checkResult of
+      Left _ -> do
+        Log.warning $ Log.buildString "run process timeout"
+        Log.info $ "output:" <> Log.buildString (BSLC.unpack checkOutput)
+        throwIO (RunProcessTimeoutException timeoutSec)
+      Right TP.ExitSuccess -> do
+        let (result :: Maybe MSG.CheckResult) = msum . map J.decode $ BSLC.lines checkOutput
+        case result of
+          Nothing -> do
+            Log.info $ "output:" <> Log.buildString (BSLC.unpack checkOutput)
+            E.throwIO (CheckFailedException "check process didn't return correct result messsage")
+          Just MSG.CheckResult {result=False, message=msg} -> do
+            E.throwIO (CheckFailedException $ "check failed:" <> msg)
+          Just _ -> pure ()
+      Right exitCode -> do
+        Log.warning $ Log.buildString ("check process exited: " ++ show exitCode)
+        Log.info $ "output:" <> Log.buildString (BSLC.unpack checkOutput)
+        E.throwIO (CheckFailedException "check process exited unexpectedly")
   where
-    checkProcessConfig = TP.setStdin TP.closed
-      . TP.setStdout TP.createPipe
-      . TP.setStderr TP.closed
+    checkProcessConfig fileHandle = TP.setStdin TP.closed
+      . TP.setStdout (TP.useHandleOpen fileHandle)
+      . TP.setStderr (TP.useHandleOpen fileHandle)
       $ TP.shell checkCmd
     TaskConfig {..} = taskConfig taskInfo
     checkCmd = concat [
@@ -213,3 +221,5 @@ checkIOTask IOTask{..} = do
         " check",
         " --config /data/config.json"
       ]
+    timeoutSec = 15
+    delay = C.threadDelay $ timeoutSec * 1000000

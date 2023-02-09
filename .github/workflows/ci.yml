@@ -449,6 +449,7 @@ jobs:
       - name: build and pull images
         run: |
           cd hstream-connectors
+          export CONNECTOR_IMAGE_VERSION=v0.2.2
           make pull_images
           make build_images
 
