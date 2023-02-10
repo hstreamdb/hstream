@@ -447,8 +447,8 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
             checkAvailable subShardContexts
             checkAvailable subConsumerContexts
           atomically $ do
-            assignShards subAssignment
             assignWaitingConsumers subAssignment
+
           addRead subLdCkpReader subAssignment subStartOffsets
           atomically checkUnackedRecords
           recordBatches <- readRecordBatches
@@ -457,14 +457,19 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
           if isFirstSend
           then do
             writeIORef isFirstSendRef False
-            -- Note: automically kill child thread when the parent thread is killed
-            tid <- forkIO $ forever $ do
+            tid1 <- forkIO . forever $ do
                      threadDelay (100 * 1000)
                      updateClockAndDoResend
+
+            tid2 <- forkIO . forever $ do
+                      threadDelay (100 * 1000)
+                      atomically $ assignShards subAssignment
+
             -- FIXME: the same code
             successSendRecords <- sendReceivedRecordsVecs receivedRecordsVecs
             atomically $ addUnackedRecords subCtx successSendRecords
-            loop isFirstSendRef `onException` killThread tid
+            -- Note: automically kill child threads when the parent thread is killed
+            loop isFirstSendRef `onException` (killThread tid1 >> killThread tid2)
           else do
             -- FIXME: the same code
             successSendRecords <- sendReceivedRecordsVecs receivedRecordsVecs
