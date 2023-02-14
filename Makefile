@@ -23,8 +23,10 @@ thrift::
 grpc:: grpc-cpp grpc-hs
 
 grpc-hs-deps::
-	# Always install proto-lens-protoc to avoid inconsistency
-	(cd ~ && cabal install -j$(CABAL_BUILD_PARALLEL) --overwrite-policy=always proto-lens-protoc)
+	# 1. Always install proto-lens-protoc to avoid inconsistency
+	# 2. Change to a temporary dir to avoid create hstream dists.
+	(cd $(shell mktemp -d) && \
+		cabal install -j$(CABAL_BUILD_PARALLEL) --overwrite-policy=always proto-lens-protoc)
 	($(CABAL) build -j$(CABAL_BUILD_PARALLEL) --project-file $(CABAL_PROJECT_FILE) proto3-suite && \
 		mkdir -p ~/.cabal/bin && \
 		$(CABAL) exec --project-file $(CABAL_PROJECT_FILE) \
