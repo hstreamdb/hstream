@@ -1,3 +1,5 @@
+{-# LANGUAGE CPP #-}
+
 module HStream.SQL.Planner.Pretty where
 
 import qualified Data.List                               as L
@@ -15,6 +17,7 @@ instance Pretty RelationExpr where
                     pretty "StreamScan" <+> pretty s
                   StreamRename r s             ->
                     pretty "StreamRename" <+> pretty s <> line <> (indent 2 $ pretty r)
+#ifdef HStreamUseV2Engine
                   CrossJoin r1 r2              ->
                     pretty "CrossJoin" <> line <> (indent 2 $ pretty r1) <> line <> (indent 2 $ pretty r2)
                   LoopJoinOn r1 r2 e typ       ->
@@ -23,6 +26,16 @@ instance Pretty RelationExpr where
                     pretty "LoopJoinUsing" <+> viaShow cols <+> viaShow typ <> line <> (indent 2 $ pretty r1) <> line <> (indent 2 $ pretty r2)
                   LoopJoinNatural r1 r2 typ    ->
                     pretty "LoopJoinNatural" <+> viaShow typ <> line <> (indent 2 $ pretty r1) <> line <> (indent 2 $ pretty r2)
+#else
+                  CrossJoin r1 r2 t              ->
+                    pretty "CrossJoin" <+> pretty "(" <> viaShow t <> pretty "ms)" <> line <> (indent 2 $ pretty r1) <> line <> (indent 2 $ pretty r2)
+                  LoopJoinOn r1 r2 e typ t       ->
+                    pretty "LoopJoin" <+> pretty "(" <> viaShow t <> pretty "ms)" <+> viaShow e <+> viaShow typ <> line <> (indent 2 $ pretty r1) <> line <> (indent 2 $ pretty r2)
+                  LoopJoinUsing r1 r2 cols typ t ->
+                    pretty "LoopJoinUsing" <+> pretty "(" <> viaShow t <> pretty "ms)" <+> viaShow cols <+> viaShow typ <> line <> (indent 2 $ pretty r1) <> line <> (indent 2 $ pretty r2)
+                  LoopJoinNatural r1 r2 typ t    ->
+                    pretty "LoopJoinNatural" <+> pretty "(" <> viaShow t <> pretty "ms)" <+> viaShow typ <> line <> (indent 2 $ pretty r1) <> line <> (indent 2 $ pretty r2)
+#endif
                   Filter r e                   ->
                     pretty "Filter" <+> viaShow e <> line <> (indent 2 $ pretty r)
                   Project r cols streams       ->
@@ -33,14 +46,24 @@ instance Pretty RelationExpr where
                     pretty "Affiliate" <+>
                     hsep (L.map (\(cata,scalar) -> pretty "(name=" <> viaShow cata <> pretty ", expr=" <> viaShow scalar <> pretty ")") tups) <+>
                     line <> (indent 2 $ pretty r)
+#ifdef HStreamUseV2Engine
                   Reduce r tups aggs           ->
                     pretty "Reduce" <+>
                     hsep (L.map (\(cata,scalar) -> pretty "(key=" <> viaShow cata <> pretty ", expr=" <> viaShow scalar <> pretty ")") tups) <+>
                     pretty "aggs=" <> viaShow aggs <> line <> (indent 2 $ pretty r)
+#else
+                  Reduce r tups aggs win_m      ->
+                    pretty "Reduce" <+>
+                    hsep (L.map (\(cata,scalar) -> pretty "(key=" <> viaShow cata <> pretty ", expr=" <> viaShow scalar <> pretty ")") tups) <+>
+                    pretty "aggs=" <> viaShow aggs <+>
+                    pretty "window=" <> viaShow win_m <> line <> (indent 2 $ pretty r)
+#endif
                   Distinct r                   ->
                     pretty "Distinct" <> line <> (indent 2 $ pretty r)
+#ifdef HStreamUseV2Engine
                   TimeWindow r win             ->
                     pretty "TimeWindow" <+> viaShow win <> line <> (indent 2 $ pretty r)
+#endif
                   Union r1 r2                  ->
                     pretty "Union" <> line <> (indent 2 $ pretty r1) <> line <> (indent 2 $ pretty r2)
 

@@ -1,11 +1,13 @@
-{-# LANGUAGE DeriveAnyClass    #-}
-{-# LANGUAGE DeriveGeneric     #-}
-{-# LANGUAGE FlexibleContexts  #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE LambdaCase        #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
-{-# LANGUAGE TypeFamilies      #-}
+{-# LANGUAGE CPP                #-}
+{-# LANGUAGE DeriveAnyClass     #-}
+{-# LANGUAGE DeriveGeneric      #-}
+{-# LANGUAGE FlexibleContexts   #-}
+{-# LANGUAGE FlexibleInstances  #-}
+{-# LANGUAGE LambdaCase         #-}
+{-# LANGUAGE OverloadedStrings  #-}
+{-# LANGUAGE RecordWildCards    #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TypeFamilies       #-}
 
 module HStream.SQL.AST where
 
@@ -26,6 +28,7 @@ import qualified Data.Text             as Text
 import           Data.Text.Encoding    (encodeUtf8)
 import qualified Data.Time             as Time
 import           Data.Time.Compat      ()
+import           Data.Typeable         (Typeable)
 import qualified Data.Vector           as V
 import           GHC.Generics
 import           GHC.Stack             (HasCallStack)
@@ -51,14 +54,17 @@ class Refine a where
 data ColumnCatalog = ColumnCatalog
   { columnName   :: Text
   , columnStream :: Maybe Text
-  } deriving (Eq, Ord, Generic, Hashable)
-
+  } deriving ( Eq, Ord, Generic, Hashable, Typeable
+             , Aeson.FromJSON, Aeson.FromJSONKey
+             , Aeson.ToJSON, Aeson.ToJSONKey
+             )
 instance Show ColumnCatalog where
   show ColumnCatalog{..} = case columnStream of
                              Nothing -> Text.unpack columnName
                              Just s  -> Text.unpack s <> "." <> Text.unpack columnName
 
 type FlowObject = HM.HashMap ColumnCatalog FlowValue
+deriving instance Typeable FlowObject
 
 data FlowValue
   = FlowNull
@@ -76,7 +82,10 @@ data FlowValue
   | FlowArray [FlowValue]
   | FlowMap (Map.Map FlowValue FlowValue)
   | FlowSubObject FlowObject
-  deriving (Eq, Ord, Generic, Hashable)
+  deriving ( Eq, Ord, Generic, Hashable, Typeable
+           , Aeson.ToJSONKey, Aeson.ToJSON
+           , Aeson.FromJSONKey, Aeson.FromJSON
+           )
 
 instance Show FlowValue where
   show value = case value of
@@ -635,13 +644,17 @@ instance Refine Sel where
   refine (DSel _ items) = RSel (refine <$> items)
 
 ---- Frm
-
 data WindowType
   = Tumbling RInterval
-  | Hopping RInterval RInterval
+  | Hopping  RInterval RInterval
+#ifdef HStreamUseV2Engine
   | Sliding RInterval
+#else
+  | Session  RInterval
+#endif
   deriving (Eq, Show)
 
+#ifdef HStreamUseV2Engine
 data RTableRef = RTableRefSimple StreamName (Maybe StreamName)
                | RTableRefSubquery RSelect  (Maybe StreamName)
                | RTableRefCrossJoin RTableRef RTableRef (Maybe StreamName)
@@ -649,16 +662,31 @@ data RTableRef = RTableRefSimple StreamName (Maybe StreamName)
                | RTableRefJoinOn RTableRef RJoinType RTableRef RValueExpr (Maybe StreamName)
                | RTableRefJoinUsing RTableRef RJoinType RTableRef [Text] (Maybe StreamName)
                | RTableRefWindowed RTableRef WindowType (Maybe StreamName)
+#else
+data RTableRef = RTableRefSimple StreamName (Maybe StreamName)
+               | RTableRefSubquery RSelect  (Maybe StreamName)
+               | RTableRefCrossJoin RTableRef RTableRef RInterval (Maybe StreamName)
+               | RTableRefNaturalJoin RTableRef RJoinType RTableRef RInterval (Maybe StreamName)
+               | RTableRefJoinOn RTableRef RJoinType RTableRef RValueExpr RInterval (Maybe StreamName)
+               | RTableRefJoinUsing RTableRef RJoinType RTableRef [Text] RInterval (Maybe StreamName)
+#endif
                deriving (Show, Eq)
 setRTableRefAlias :: RTableRef -> StreamName -> RTableRef
 setRTableRefAlias ref alias = case ref of
   RTableRefSimple s _ -> RTableRefSimple s (Just alias)
   RTableRefSubquery sel _ -> RTableRefSubquery sel (Just alias)
+#ifdef HStreamUseV2Engine
   RTableRefCrossJoin r1 r2 _ -> RTableRefCrossJoin r1 r2 (Just alias)
   RTableRefNaturalJoin r1 typ r2 _ -> RTableRefNaturalJoin r1 typ r2 (Just alias)
   RTableRefJoinOn r1 typ r2 e _ -> RTableRefJoinOn r1 typ r2 e (Just alias)
   RTableRefJoinUsing r1 typ r2 cols _ -> RTableRefJoinUsing r1 typ r2 cols (Just alias)
   RTableRefWindowed r win _ -> RTableRefWindowed r win (Just alias)
+#else
+  RTableRefCrossJoin r1 r2 t _ -> RTableRefCrossJoin r1 r2 t (Just alias)
+  RTableRefNaturalJoin r1 typ r2 t _ -> RTableRefNaturalJoin r1 typ r2 t (Just alias)
+  RTableRefJoinOn r1 typ r2 e t _ -> RTableRefJoinOn r1 typ r2 e t (Just alias)
+  RTableRefJoinUsing r1 typ r2 cols t _ -> RTableRefJoinUsing r1 typ r2 cols t (Just alias)
+#endif
 
 data RJoinType = InnerJoin | LeftJoin | RightJoin | FullJoin
                deriving (Eq, Show)
@@ -676,6 +704,7 @@ instance Refine JoinTypeWithCond where
 
 type instance RefinedType TableRef = RTableRef
 instance Refine TableRef where
+#ifdef HStreamUseV2Engine
   refine (TableRefIdent _ hIdent) = RTableRefSimple (refine hIdent) Nothing
   refine (TableRefSubquery _ select) = RTableRefSubquery (refine select) Nothing
   refine (TableRefAs _ ref alias) =
@@ -691,11 +720,32 @@ instance Refine TableRef where
   refine (TableRefTumbling _ ref interval) = RTableRefWindowed (refine ref) (Tumbling (refine interval)) Nothing
   refine (TableRefHopping _ ref len hop) = RTableRefWindowed (refine ref) (Hopping (refine len) (refine hop)) Nothing
   refine (TableRefSliding _ ref interval) = RTableRefWindowed (refine ref) (Sliding (refine interval)) Nothing
+#else
+  refine (TableRefIdent _ hIdent) = RTableRefSimple (refine hIdent) Nothing
+  refine (TableRefSubquery _ select) = RTableRefSubquery (refine select) Nothing
+  refine (TableRefAs _ ref alias) =
+    let rRef = refine ref
+     in setRTableRefAlias rRef (refine alias)
+  refine (TableRefCrossJoin _ r1 _ r2 interval) = RTableRefCrossJoin (refine r1) (refine r2) (refine interval) Nothing
+  refine (TableRefNaturalJoin _ r1 typ r2 interval) = RTableRefNaturalJoin (refine r1) (refine typ) (refine r2) (refine interval) Nothing
+  refine (TableRefJoinOn _ r1 typ r2 e interval) = RTableRefJoinOn (refine r1) (refine typ) (refine r2) (refine e) (refine interval) Nothing
+  refine (TableRefJoinUsing _ r1 typ r2 cols interval) = RTableRefJoinUsing (refine r1) (refine typ) (refine r2) (extractStreamNameFromColName <$> cols) (refine interval) Nothing
+    where extractStreamNameFromColName col = case col of
+            ColNameSimple _ colIdent -> refine colIdent
+            ColNameStream pos _ _    -> throwImpossible
+#endif
 
+#ifdef HStreamUseV2Engine
 newtype RFrom = RFrom [RTableRef] deriving (Show, Eq)
 type instance RefinedType From = RFrom
 instance Refine From where
   refine (DFrom _ refs) = RFrom (refine <$> refs)
+#else
+newtype RFrom = RFrom RTableRef deriving (Show, Eq)
+type instance RefinedType From = RFrom
+instance Refine From where
+  refine (DFrom _ ref) = RFrom (refine ref)
+#endif
 
 ---- Whr
 data RWhere = RWhereEmpty
@@ -707,7 +757,7 @@ instance Refine Where where
   refine (DWhere _ expr) = RWhere (refine expr)
 
 ---- Grp
-
+#ifdef HStreamUseV2Engine
 data RGroupBy = RGroupByEmpty
               | RGroupBy [(Maybe StreamName, FieldName)]
               deriving (Eq, Show)
@@ -717,6 +767,27 @@ instance Refine GroupBy where
   refine (DGroupBy _ cols) = RGroupBy $
     L.map (\col -> let (RExprCol _ m_stream field) = refine col
                     in (m_stream, field)) cols
+#else
+type instance RefinedType TimeWindow = WindowType
+instance Refine TimeWindow where
+  refine (DTumbling _ i)    = Tumbling (refine i)
+  refine (DHopping _ i1 i2) = Hopping  (refine i1) (refine i2)
+  refine (DSession _ i)     = Session  (refine i)
+
+data RGroupBy = RGroupByEmpty
+              | RGroupBy [(Maybe StreamName, FieldName)] (Maybe WindowType)
+              deriving (Eq, Show)
+type instance RefinedType GroupBy = RGroupBy
+instance Refine GroupBy where
+  refine (DGroupByEmpty _) = RGroupByEmpty
+  refine (DGroupBy _ cols) = RGroupBy
+    (L.map (\col -> let (RExprCol _ m_stream field) = refine col
+                    in (m_stream, field)) cols
+    ) Nothing
+  refine (DGroupByWin pos cols win) =
+    let (RGroupBy tups Nothing) = refine (DGroupBy pos cols)
+     in RGroupBy tups (Just $ refine win)
+#endif
 
 ---- Hav
 data RHaving = RHavingEmpty

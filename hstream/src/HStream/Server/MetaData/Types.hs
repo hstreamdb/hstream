@@ -1,5 +1,6 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 {-# LANGUAGE AllowAmbiguousTypes   #-}
+{-# LANGUAGE CPP                   #-}
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE DeriveAnyClass        #-}
 {-# LANGUAGE DeriveGeneric         #-}
@@ -9,7 +10,6 @@
 {-# LANGUAGE PatternSynonyms       #-}
 {-# LANGUAGE PolyKinds             #-}
 {-# LANGUAGE TypeFamilies          #-}
-{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
 module HStream.Server.MetaData.Types
   ( RelatedStreams
@@ -35,7 +35,6 @@ import           Data.Maybe                    (fromJust)
 import           Data.Text                     (Text)
 import           Data.Time.Clock.System        (SystemTime (MkSystemTime))
 import           Data.Word                     (Word32, Word64)
-import           DiffFlow.Types
 import           GHC.Generics                  (Generic)
 import           GHC.IO                        (unsafePerformIO)
 import           Z.IO.Time                     (getSystemTime')
@@ -54,7 +53,12 @@ import qualified HStream.SQL.AST               as AST
 import qualified HStream.Store                 as S
 import qualified HStream.ThirdParty.Protobuf   as Proto
 import           HStream.Utils                 (TaskStatus (..), cBytesToText)
-
+#ifdef HStreamUseV2Engine
+import           DiffFlow.Types
+#else
+import qualified HStream.Processing.Stream     as HS
+import           HStream.SQL.Codegen.V1
+#endif
 --------------------------------------------------------------------------------
 
 data QueryInfo = QueryInfo
@@ -175,8 +179,13 @@ createInsertQueryInfo queryId querySql queryStreams h = do
   insertQuery qInfo h
   return qInfo
 
+#ifdef HStreamUseV2Engine
 groupbyStores :: IORef (HM.HashMap Text (MVar (DataChangeBatch AST.FlowObject HCT.Timestamp)))
 groupbyStores = unsafePerformIO $ newIORef HM.empty
 {-# NOINLINE groupbyStores #-}
-
+#else
+groupbyStores :: IORef (HM.HashMap Text (HS.Materialized K V V))
+groupbyStores = unsafePerformIO $ newIORef HM.empty
+{-# NOINLINE groupbyStores #-}
+#endif
 --------------------------------------------------------------------------------

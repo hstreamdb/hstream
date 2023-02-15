@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                 #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE LambdaCase          #-}
@@ -604,8 +605,13 @@ instance Validate SelectItem where
 
 -- From
 instance Validate From where
+#ifdef HStreamUseV2Engine
   validate from@(DFrom _ tableRefs) = mapM_ validate tableRefs >> return from
+#else
+  validate from@(DFrom _ tableRef)  = validate tableRef >> return from
+#endif
 
+#ifdef HStreamUseV2Engine
 instance Validate TableRef where
   validate r@(TableRefTumbling _ ref interval) = validate ref >> validate interval >> return r
   validate r@(TableRefHopping _ ref interval1 interval2) = validate ref >> validate interval1 >> validate interval2 >> return r
@@ -625,6 +631,25 @@ instance Validate TableRef where
     return r
   validate r@(TableRefIdent _ hIdent) = validate hIdent >> Right r
   validate r@(TableRefSubquery _ select) = validate select >> return r
+#else
+instance Validate TableRef where
+  validate r@(TableRefAs _ ref hIdent) = validate ref >> validate hIdent >> return r
+  validate r@(TableRefCrossJoin _ ref1 _ ref2 i) = validate ref1 >> validate ref2 >> validate i >> return r
+  validate r@(TableRefNaturalJoin _ ref1 _ ref2 i) = validate ref1 >> validate ref2 >> validate i >> return r
+  validate r@(TableRefJoinOn _ ref1 jointype ref2 expr i) = validate ref1 >> validate ref2 >> validate expr >> validate i >> return r
+  validate r@(TableRefJoinUsing _ ref1 jointype ref2 cols i) = do
+    validate ref1
+    validate ref2
+    mapM_ (\col -> case col of
+              ColNameSimple{} -> return col
+              ColNameStream pos _ _ ->
+                Left $ buildSQLException ParseException pos "JOIN USING can only use column names without stream name"
+          ) cols
+    validate i
+    return r
+  validate r@(TableRefIdent _ hIdent) = validate hIdent >> Right r
+  validate r@(TableRefSubquery _ select) = validate select >> return r
+#endif
 
 -- Where
 -- 1. ValueExpr in it should be legal
@@ -633,10 +658,24 @@ instance Validate Where where
   validate whr@(DWhere _ expr) = validate expr >> return whr
 
 -- GroupBy
+#ifdef HStreamUseV2Engine
 instance Validate GroupBy where
   validate grp = case grp of
     (DGroupByEmpty _) -> return grp
     (DGroupBy _ cols) -> mapM_ validate cols >> return grp
+#else
+instance Validate TimeWindow where
+  validate win = case win of
+    (DTumbling _ i)    -> validate i >> return win
+    (DHopping _ i1 i2) -> validate i1 >> validate i2 >> return win
+    (DSession _ i)     -> validate i >> return win
+
+instance Validate GroupBy where
+  validate grp = case grp of
+    (DGroupByEmpty _) -> return grp
+    (DGroupBy _ cols) -> mapM_ validate cols >> return grp
+    (DGroupByWin _ cols win) -> mapM_ validate cols >> validate win >> return grp
+#endif
 
 -- Having
 -- 1. ValueExpr in it should be legal
