@@ -932,28 +932,34 @@ class QuickBuildDevImageCommand:
             default=IMAGES["HS_IMAGE"],
             help="Your haskell development image",
         )
+        p.add_argument(
+            "--base-image", default=IMAGES["DB_IMAGE"], help="The base image."
+        )
         p.add_argument("--tag", "-t", required=True, help="target image tag")
         p.add_argument("--use-grpc-haskell", default=False, action="store_true")
         p.add_argument("--donot-rename-exe", default=False, action="store_true")
         p.add_argument("--debug", default=False, action="store_true")
-        p.add_argument("--ghc-options", required=False, default="")
         p.add_argument("--fast", default=False, action="store_true")
         p.add_argument("--only-hstream", default=False, action="store_true")
         p.add_argument("--project-file", default="cabal.project")
         # p.add_argument("--force-rebuild", "-f", action="store_true")  # TODO
         p.add_argument("--no-clean-installdir", action="store_true")
+        p.add_argument("--extra-ghc-options", default="")
+        p.add_argument("--extra-sys-deps", default="")
 
     def run(
         self,
         tag,
         builder_image,
+        base_image,
         use_grpc_haskell=False,
         donot_rename_exe=False,
         debug=False,
         fast=False,
         only_hstream=False,
         project_file="cabal.project",
-        ghc_options="",
+        extra_ghc_options="",
+        extra_sys_deps="",
         **kargs,
     ):
         debug_arg = "--enable-debug-info --ghc-options=-debug" if debug else ""
@@ -971,7 +977,7 @@ class QuickBuildDevImageCommand:
             [
                 debug_arg,
                 hsgrpc_arg,
-                f"--ghc-options='{ghc_options}'" if ghc_options else "",
+                extra_ghc_options if extra_ghc_options else "",
                 f"--project-file={project_file}",
             ]
         )
@@ -987,25 +993,43 @@ class QuickBuildDevImageCommand:
             build_targets = ["hstream"]
             exe_targets = ["hstream-server", "hstream"]
 
-        if fast:
-            self._fast_build(
-                tag,
-                cabal_args,
-                builder_image,
-                build_targets=build_targets,
-                exe_targets=exe_targets,
-                exe_renames=exe_renames,
+        tmp_container_name = f"tmp_build_dev_image_{gen_randoms(20)}"
+        try:
+            run_sh(
+                f"docker run -td --rm --name {tmp_container_name} {base_image} bash"
             )
-        else:
-            self._build(
-                tag,
-                cabal_args,
-                builder_image,
-                build_targets=build_targets,
-                exe_targets=exe_targets,
-                exe_renames=exe_renames,
-                clean_installdir=not kargs.pop("no_clean_installdir", False),
-            )
+            if extra_sys_deps:
+                run_sh(
+                    f"docker exec -t {tmp_container_name} bash -c 'apt update && "
+                    f"apt install -y --no-install-recommends {extra_sys_deps}'"
+                )
+            if fast:
+                self._fast_build(
+                    tag,
+                    cabal_args,
+                    builder_image,
+                    build_targets=build_targets,
+                    exe_targets=exe_targets,
+                    exe_renames=exe_renames,
+                    container_name=tmp_container_name,
+                )
+            else:
+                self._build(
+                    tag,
+                    cabal_args,
+                    builder_image,
+                    build_targets=build_targets,
+                    exe_targets=exe_targets,
+                    exe_renames=exe_renames,
+                    container_name=tmp_container_name,
+                    clean_installdir=not kargs.pop(
+                        "no_clean_installdir", False
+                    ),
+                )
+        except Exception as e:
+            raise e
+        finally:
+            run_sh(f"docker kill {tmp_container_name}")
 
     def _fast_build(
         self,
@@ -1015,8 +1039,7 @@ class QuickBuildDevImageCommand:
         build_targets,
         exe_targets,
         exe_renames,
-        tmp_container_name=f"tmp_build_dev_image_{gen_randoms(20)}",
-        base_image=IMAGES["DB_IMAGE"],
+        container_name,
     ):
         run_sh(
             f"python3 {__file__} cabal --check --no-interactive "
@@ -1041,9 +1064,6 @@ class QuickBuildDevImageCommand:
         ]
         loginfo(f"Found executables: {' '.join(results)}")
         # Copy
-        run_sh(
-            f"docker run -td --rm --name {tmp_container_name} {base_image} bash"
-        )
         copy_files = [
             *[
                 (
@@ -1057,14 +1077,10 @@ class QuickBuildDevImageCommand:
         for x, y in copy_files:
             loginfo(f"-> Copy file from {x} to image://{y}")
         copy_files_cmd = " && ".join(
-            [
-                f"docker cp -L {x} {tmp_container_name}:{y}"
-                for x, y in copy_files
-            ]
+            [f"docker cp -L {x} {container_name}:{y}" for x, y in copy_files]
         )
         run_sh(copy_files_cmd)
-        run_sh(f"docker commit {tmp_container_name} {tag}")
-        run_sh(f"docker kill {tmp_container_name}")
+        run_sh(f"docker commit {container_name} {tag}")
 
     def _build(
         self,
@@ -1074,9 +1090,8 @@ class QuickBuildDevImageCommand:
         build_targets,
         exe_targets,
         exe_renames,
+        container_name,
         clean_installdir=True,
-        tmp_container_name=f"tmp_build_dev_image_{gen_randoms(20)}",
-        base_image=IMAGES["DB_IMAGE"],
     ):
         tmpdir = tempfile.TemporaryDirectory()
         installdir = os.path.realpath(tmpdir.name)
@@ -1107,21 +1122,16 @@ class QuickBuildDevImageCommand:
             for x, y in files:
                 loginfo(f"-> Copy file from {x} to image://{y}")
             run_sh(
-                f"docker run -td --rm --name {tmp_container_name} {base_image} bash"
-            )
-            run_sh(
                 " && ".join(
-                    f"docker cp -L {x} {tmp_container_name}:{y}"
-                    for x, y in files
+                    f"docker cp -L {x} {container_name}:{y}" for x, y in files
                 )
             )
-            run_sh(f"docker commit {tmp_container_name} {tag}")
+            run_sh(f"docker commit {container_name} {tag}")
         except Exception as e:
             raise e
         finally:
             if clean_installdir:
                 tmpdir.cleanup()
-            run_sh(f"docker kill {tmp_container_name}")
 
     def _get_target_exe_name(self, x, exe_renames):
         return (
