@@ -69,6 +69,7 @@ library
     , stm
     , table-layout
     , text
+    , time
     , unordered-containers
     , vector
     , Z-Data

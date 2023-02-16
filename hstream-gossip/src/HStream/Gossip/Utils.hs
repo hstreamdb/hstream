@@ -14,7 +14,7 @@ import           Control.Concurrent.STM           (STM, TQueue, TVar,
                                                    writeTQueue, writeTVar)
 import           Control.Exception                (Handler (..))
 import           Control.Exception.Base
-import           Control.Monad                    (unless)
+import           Control.Monad                    (filterM, unless)
 import           Data.ByteString                  (ByteString)
 import           Data.Foldable                    (foldl')
 import           Data.Functor
@@ -24,14 +24,6 @@ import           Data.String                      (IsString (fromString))
 import           Data.Text                        (Text)
 import           Data.Word                        (Word32)
 import qualified HsGrpc.Server.Types              as HsGrpc
-import           Network.GRPC.HighLevel.Generated (ClientConfig (..),
-                                                   ClientRequest (..),
-                                                   GRPCMethodType (..),
-                                                   Host (..), Port (..),
-                                                   ServerResponse (..),
-                                                   StatusCode (..),
-                                                   StatusDetails (..))
-
 import           HStream.Common.Types             (fromInternalServerNode)
 import qualified HStream.Exception                as HE
 import           HStream.Gossip.Types             (BroadcastPool, EventHandler,
@@ -39,7 +31,7 @@ import           HStream.Gossip.Types             (BroadcastPool, EventHandler,
                                                    GossipContext (..),
                                                    InitType (..), Message (..),
                                                    Messages, SeenEvents,
-                                                   ServerState,
+                                                   ServerState (..),
                                                    ServerStatus (..),
                                                    StateDelta,
                                                    StateMessage (..),
@@ -50,7 +42,15 @@ import           HStream.Server.HStreamApi        (NodeState (..),
                                                    ServerNode (..),
                                                    ServerNodeStatus (..))
 import qualified HStream.Server.HStreamInternal   as I
+import           HStream.ThirdParty.Protobuf      (Timestamp (..))
 import           HStream.Utils                    (pattern EnumPB)
+import           Network.GRPC.HighLevel.Generated (ClientConfig (..),
+                                                   ClientRequest (..),
+                                                   GRPCMethodType (..),
+                                                   Host (..), Port (..),
+                                                   ServerResponse (..),
+                                                   StatusCode (..),
+                                                   StatusDetails (..))
 
 returnResp :: Monad m => a -> m (ServerResponse 'Normal a)
 returnResp resp = return (ServerNormalResponse (Just resp) mempty StatusOk "")
@@ -275,11 +275,13 @@ getSeenEvents GossipContext {..} = readTVarIO seenEvents
 
 getMemberList :: GossipContext -> IO [I.ServerNode]
 getMemberList GossipContext {..} =
-  readTVarIO serverList <&> ((:) serverSelf . map serverInfo . Map.elems . snd)
+  (readTVarIO serverList >>= filterM (\x -> readTVarIO (serverState x) <&> (== ServerAlive)) . Map.elems . snd)
+  <&> ((:) serverSelf . map serverInfo)
 
 getMemberListSTM :: GossipContext -> STM [I.ServerNode]
-getMemberListSTM GossipContext {..} =
-  readTVar serverList <&> ((:) serverSelf . map serverInfo . Map.elems . snd)
+getMemberListSTM GossipContext {..} = do
+  (readTVar serverList >>= filterM (\x -> readTVar (serverState x) <&> (== ServerAlive)) . Map.elems . snd)
+  <&> ((:) serverSelf . map serverInfo)
 
 getMemberListWithEpochSTM :: GossipContext -> STM (Word32, [I.ServerNode])
 getMemberListWithEpochSTM GossipContext {..} =

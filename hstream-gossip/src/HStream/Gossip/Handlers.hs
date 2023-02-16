@@ -18,14 +18,15 @@ import           Control.Concurrent.STM         (atomically, check, dupTChan,
                                                  writeTVar)
 import           Control.Concurrent.STM.TChan   (readTChan)
 import           Control.Exception              (finally)
-import           Control.Monad                  (forever, join, replicateM,
-                                                 unless, void, when)
+import           Control.Monad                  (forever, guard, join,
+                                                 replicateM, unless, void, when)
 import           Data.Bifunctor                 (bimap)
 import qualified Data.ByteString.Lazy           as BL
 import qualified Data.IntMap.Strict             as IM
 import           Data.IORef                     (newIORef, readIORef,
                                                  writeIORef)
 import qualified Data.Map.Strict                as Map
+import           Data.Time.Clock.System
 import qualified Data.Vector                    as V
 import qualified Proto3.Suite                   as PT
 import qualified SlaveThread
@@ -68,25 +69,32 @@ handleStateMessages :: GossipContext -> [StateMessage] -> IO ()
 handleStateMessages = mapM_ . handleStateMessage
 
 handleStateMessage :: GossipContext -> StateMessage -> IO ()
-handleStateMessage GossipContext{..} msg@(T.GConfirm _inc node@I.ServerNode{..} _node)= do
+handleStateMessage GossipContext{..} msg@(T.GConfirm inc node@I.ServerNode{..} _node)= do
+  Log.warning . Log.buildString' $ msg
   Log.debug . Log.buildString $ "[Server Node " <> show (I.serverNodeId serverSelf) <> "] Handling " <> show node <> " leaving cluster"
   sMap <- snd <$> readTVarIO serverList
   case Map.lookup serverNodeId sMap of
     Nothing               -> pure ()
     Just ServerStatus{..} -> do
-      mWorker <- atomically $ do
-        modifyTVar broadcastPool (broadcastMessage $ T.GState msg)
-        writeTVar latestMessage msg
-        stateTVar workers (Map.updateLookupWithKey (\_ _ -> Nothing) serverNodeId)
-      case mWorker of
-        Nothing -> pure ()
-        Just  a -> do
-          Log.info . Log.buildString $ "Stopping Worker" <> show serverNodeId
-          killThread a
-          Log.info . Log.buildString $ "[Server Node " <> show (I.serverNodeId serverSelf) <> "] " <> show node <> " left cluster"
-      atomically $ do
-        modifyTVar' serverList $ bimap succ (Map.delete serverNodeId)
-        modifyTVar' deadServers $ Map.insert serverNodeId serverInfo
+      inc' <- readTVarIO stateIncarnation
+      state <- readTVarIO serverState
+      when (inc >= inc' && state /= ServerDead) $ do
+        now <- getSystemTime
+        mWorker <- atomically $ do
+          modifyTVar broadcastPool (broadcastMessage $ T.GState msg)
+          writeTVar latestMessage msg
+          writeTVar serverState ServerDead
+          writeTVar stateChange now
+          writeTVar incarnation inc
+          modifyTVar' serverList $ bimap succ id
+          modifyTVar' deadServers $ Map.insert serverNodeId serverInfo
+          stateTVar workers (Map.updateLookupWithKey (\_ _ -> Nothing) serverNodeId)
+        case mWorker of
+          Nothing -> pure ()
+          Just  a -> do
+            Log.info . Log.buildString $ "Stopping Worker" <> show serverNodeId
+            killThread a
+            Log.info . Log.buildString $ "[Server Node " <> show (I.serverNodeId serverSelf) <> "] " <> show node <> " left cluster"
 handleStateMessage GossipContext{..} msg@(T.GSuspect inc node@I.ServerNode{..} _node) = do
   Log.debug . Log.buildString $ "[Server Node " <> show (I.serverNodeId serverSelf) <> "] Handling" <> show msg
   join . atomically $ if node == serverSelf

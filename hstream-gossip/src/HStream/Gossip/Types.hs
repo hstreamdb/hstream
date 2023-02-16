@@ -12,14 +12,13 @@ import qualified Data.IntMap.Strict             as IM
 import qualified Data.Map                       as Map
 import           Data.Map.Strict                (Map)
 import           Data.Text                      (Text)
+import           Data.Time.Clock.System
 import           Data.Word                      (Word32, Word64)
 import qualified Options.Applicative            as O
 import           Options.Applicative.Builder    (auto, help, long, metavar,
                                                  option, short, showDefault,
                                                  strOption)
 import           System.Random                  (StdGen)
-
-import           HStream.ThirdParty.Protobuf    (Timestamp (..))
 
 import           HStream.Gossip.HStreamGossip   as G (EventMessage (..),
                                                       Message (..),
@@ -44,6 +43,7 @@ data ServerStatus = ServerStatus
   , serverState      :: TVar ServerState
   , latestMessage    :: TVar G.StateMessage
   , stateIncarnation :: TVar Incarnation
+  , stateChange      :: TVar SystemTime
   }
 data ServerState = ServerAlive | ServerSuspicious | ServerDead | ServerLeft
   deriving (Show, Eq)

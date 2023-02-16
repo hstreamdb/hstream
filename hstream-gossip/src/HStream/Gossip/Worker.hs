@@ -26,6 +26,7 @@ import qualified Data.IntMap.Strict             as IM
 import           Data.IORef                     (newIORef, readIORef,
                                                  writeIORef)
 import qualified Data.Map.Strict                as Map
+import           Data.Time.Clock.System
 import qualified Data.Vector                    as V
 import qualified Proto3.Suite                   as PT
 import qualified SlaveThread
@@ -62,10 +63,14 @@ addToServerList :: GossipContext -> I.ServerNode -> StateMessage -> ServerState 
 addToServerList gc@GossipContext{..} node@I.ServerNode{..} msg state isJoin = unless (node == serverSelf) $ do
   initMsg <- newTVarIO msg
   initState <- newTVarIO state
+  incarnation <- newTVarIO 0
+  now <- newTVarIO =<< getSystemTime
   let status = ServerStatus {
     serverInfo    = node
   , latestMessage = initMsg
   , serverState   = initState
+  , stateIncarnation = incarnation
+  , stateChange = now
   }
   grpcClientRef <- newIORef Nothing
   let grpcClientFinalizer = do client <- readIORef grpcClientRef
