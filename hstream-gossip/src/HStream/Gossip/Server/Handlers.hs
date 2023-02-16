@@ -145,7 +145,7 @@ sendJoinCore GossipContext{..} JoinReq {..} = do
       (epoch, sMap') <- readTVarIO serverList
       case Map.lookup serverNodeId sMap' of
         Nothing | serverNodeId /= I.serverNodeId serverSelf -> do
-          atomically $ writeTQueue statePool $ T.GJoin node
+          atomically $ writeTQueue statePool $ T.GAlive 0 node node
           return JoinResp
             { joinRespEpoch   = epoch
             , joinRespMembers = V.fromList $ serverSelf : (serverInfo <$> Map.elems sMap')

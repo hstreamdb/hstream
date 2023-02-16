@@ -86,7 +86,6 @@ requestTimeout :: Int
 requestTimeout = 100
 
 getMsgInc :: StateMessage -> Word32
-getMsgInc (T.GJoin _)          = 0
 getMsgInc (T.GSuspect inc _ _) = inc
 getMsgInc (T.GAlive   inc _ _) = inc
 getMsgInc (T.GConfirm inc _ _) = inc

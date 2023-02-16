@@ -40,7 +40,7 @@ import           HStream.Gossip.Types           (EventMessage (EventMessage),
                                                  GossipContext (..),
                                                  InitType (Gossip),
                                                  RequestAction (..),
-                                                 ServerState (OK, Suspicious),
+                                                 ServerState (..),
                                                  ServerStatus (..),
                                                  StateMessage (..))
 import qualified HStream.Gossip.Types           as T
@@ -68,19 +68,6 @@ handleStateMessages :: GossipContext -> [StateMessage] -> IO ()
 handleStateMessages = mapM_ . handleStateMessage
 
 handleStateMessage :: GossipContext -> StateMessage -> IO ()
-handleStateMessage gc@GossipContext{..} msg@(T.GJoin node@I.ServerNode{..}) = unless (node == serverSelf) $ do
-  Log.debug . Log.buildString $ "[Server Node " <> show (I.serverNodeId serverSelf) <> "] Handling " <> show node <> " joining cluster"
-  sMap <- snd <$> readTVarIO serverList
-  case Map.lookup serverNodeId sMap of
-    Nothing -> do
-      addToServerList gc node msg OK False
-      atomically $ do
-        modifyTVar' deadServers $ Map.delete serverNodeId
-        modifyTVar broadcastPool (broadcastMessage $ T.GState msg)
-      Log.info . Log.buildString $ "[Server Node " <> show (I.serverNodeId serverSelf) <> "] " <> show node <> " has joined the cluster"
-    Just ServerStatus{..} -> unless (serverInfo == node) $
-      -- TODO: vote to resolve conflict
-      Log.warning . Log.buildString $ "Node won't be added to the list to conflict of server id"
 handleStateMessage GossipContext{..} msg@(T.GConfirm _inc node@I.ServerNode{..} _node)= do
   Log.debug . Log.buildString $ "[Server Node " <> show (I.serverNodeId serverSelf) <> "] Handling " <> show node <> " leaving cluster"
   sMap <- snd <$> readTVarIO serverList
@@ -108,7 +95,7 @@ handleStateMessage GossipContext{..} msg@(T.GSuspect inc node@I.ServerNode{..} _
       sMap <- snd <$> readTVar serverList
       case Map.lookup serverNodeId sMap of
         Just ss -> do
-          updated <- updateStatus ss msg Suspicious
+          updated <- updateStatus ss msg ServerSuspicious
           when updated $ modifyTVar broadcastPool (broadcastMessage $ T.GState msg)
           return (pure ())
         Nothing -> return $ Log.debug "Suspected node not found in the server list"
@@ -119,9 +106,9 @@ handleStateMessage gc@GossipContext{..} msg@(T.GAlive _inc node@I.ServerNode{..}
     sMap <- snd <$> readTVarIO serverList
     case Map.lookup serverNodeId sMap of
       Just ss -> atomically $ do
-        updated <- updateStatus ss msg OK
+        updated <- updateStatus ss msg ServerAlive
         when updated $ modifyTVar broadcastPool (broadcastMessage $ T.GState msg)
-      Nothing -> addToServerList gc node msg OK False
+      Nothing -> addToServerList gc node msg ServerAlive False
 handleStateMessage _ _ = throwIOError "illegal state message"
 
 runEventHandler :: GossipContext -> IO ()
@@ -186,4 +173,4 @@ broadCastUserEvent gc@GossipContext {..} userEventName userEventPayload= do
   handleEventMessage gc eventMessage
 
 initGossip :: GossipContext -> [I.ServerNode] -> IO ()
-initGossip gc = mapM_ (\x -> addToServerList gc x (T.GJoin x) OK True)
+initGossip gc = mapM_ (\x -> addToServerList gc x (T.GAlive 0 x x) ServerAlive True)

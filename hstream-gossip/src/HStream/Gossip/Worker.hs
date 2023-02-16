@@ -40,7 +40,7 @@ import           HStream.Gossip.Types           (EventMessage (EventMessage),
                                                  GossipContext (..),
                                                  InitType (Gossip),
                                                  RequestAction (..),
-                                                 ServerState (OK, Suspicious),
+                                                 ServerState (..),
                                                  ServerStatus (..),
                                                  StateMessage (..))
 import qualified HStream.Gossip.Types           as T
