@@ -11,7 +11,6 @@ import           Data.Time
 import           Data.Time.Clock.POSIX
 import           Data.Word               (Word64)
 import           System.IO.Unsafe        (unsafePerformIO)
-import           Z.IO.Logger
 
 import           DiffFlow.Graph
 import           DiffFlow.Shard
@@ -58,56 +57,54 @@ totalDataChangeCount_out = unsafePerformIO $ newIORef 0
 
 main :: IO ()
 main = do
-  newStdLogger (defaultLoggerConfig { loggerLevel = INFO }) >>= setDefaultLogger
-  withDefaultLogger $ do
-    (shard, inNode, outNode) <- reducingShard
+  (shard, inNode, outNode) <- reducingShard
 
-    stop_m <- newEmptyMVar
-    forkIO $ run shard stop_m
+  stop_m <- newEmptyMVar
+  forkIO $ run shard stop_m
 
-    startTime <- getCurrentTimestamp
+  startTime <- getCurrentTimestamp
 
-    forkIO . forever $ do
-      replicateM_ 1000 $ do
-        ts <- getCurrentTimestamp
-        let dc = DataChange
-               { dcRow = A.fromList [("a", Number 1), ("b", Number 2)]
-               , dcTimestamp = Timestamp ts []
-               , dcDiff = 1
-               }
-        pushInput shard inNode dc
-        atomicModifyIORef totalDataChangeCount_in (\x -> (x+1, ()))
-      threadDelay 2000000
-      n <- readIORef totalDataChangeCount_in
-      print $ "[In ] ---> " <> show n
-
-    forkIO . forever $ do
-      threadDelay 100000
-      flushInput shard inNode
-
-    forkIO . forever $ do
-      threadDelay 100000
+  forkIO . forever $ do
+    replicateM_ 1000 $ do
       ts <- getCurrentTimestamp
-      advanceInput shard inNode (Timestamp ts [])
+      let dc = DataChange
+             { dcRow = A.fromList [("a", Number 1), ("b", Number 2)]
+             , dcTimestamp = Timestamp ts []
+             , dcDiff = 1
+             }
+      pushInput shard inNode dc
+      atomicModifyIORef totalDataChangeCount_in (\x -> (x+1, ()))
+    threadDelay 2000000
+    n <- readIORef totalDataChangeCount_in
+    print $ "[In ] ---> " <> show n
 
-    forkIO . forever $ popOutput shard outNode (threadDelay 1000000)
-      (\dcb -> do
-          let lastChange = last $ dcbChanges dcb
-          let (Number x) = (dcRow lastChange) A.! "cnt"
-              n = fromIntegral (floor x)
-          when (dcDiff lastChange > 0) $ do
-            atomicModifyIORef totalDataChangeCount_out (\x -> (n, ()))
-            print $ "[Out] ---> " <> show n
-      )
+  forkIO . forever $ do
+    threadDelay 100000
+    flushInput shard inNode
 
-    forever $ do
-      threadDelay 1000000
-      curTime <- getCurrentTimestamp
-      curCount_in <- readIORef totalDataChangeCount_in
-      curCount_out <- readIORef totalDataChangeCount_out
-      let diffTimeSeconds = fromIntegral (curTime - startTime) / 1000
-          changesPerSec_in = fromIntegral curCount_in / diffTimeSeconds
-          changesPerSec_out = fromIntegral curCount_out / diffTimeSeconds
-      print "============= changes per second =============="
-      print $ "(In) "  <> show changesPerSec_in
-      print $ "(Out) " <> show changesPerSec_out
+  forkIO . forever $ do
+    threadDelay 100000
+    ts <- getCurrentTimestamp
+    advanceInput shard inNode (Timestamp ts [])
+
+  forkIO . forever $ popOutput shard outNode (threadDelay 1000000)
+    (\dcb -> do
+        let lastChange = last $ dcbChanges dcb
+        let (Number x) = (dcRow lastChange) A.! "cnt"
+            n = fromIntegral (floor x)
+        when (dcDiff lastChange > 0) $ do
+          atomicModifyIORef totalDataChangeCount_out (\x -> (n, ()))
+          print $ "[Out] ---> " <> show n
+    )
+
+  forever $ do
+    threadDelay 1000000
+    curTime <- getCurrentTimestamp
+    curCount_in <- readIORef totalDataChangeCount_in
+    curCount_out <- readIORef totalDataChangeCount_out
+    let diffTimeSeconds = fromIntegral (curTime - startTime) / 1000
+        changesPerSec_in = fromIntegral curCount_in / diffTimeSeconds
+        changesPerSec_out = fromIntegral curCount_out / diffTimeSeconds
+    print "============= changes per second =============="
+    print $ "(In) "  <> show changesPerSec_in
+    print $ "(Out) " <> show changesPerSec_out

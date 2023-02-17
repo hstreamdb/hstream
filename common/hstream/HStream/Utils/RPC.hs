@@ -38,6 +38,8 @@ import           Data.Aeson                       (FromJSON, ToJSON)
 import           Data.ByteString                  (ByteString)
 import qualified Data.ByteString.Char8            as BSC
 import           Data.String                      (IsString)
+import           Data.Time.Clock.System           (SystemTime (MkSystemTime),
+                                                   getSystemTime)
 import qualified Data.Vector                      as V
 import           GHC.Generics                     (Generic)
 import           Network.GRPC.HighLevel.Client
@@ -46,8 +48,6 @@ import           Network.GRPC.HighLevel.Generated (GRPCIOError (..),
 import           Network.GRPC.HighLevel.Server
 import qualified Proto3.Suite                     as PB
 import           Z.Data.JSON                      (JSON)
-import           Z.IO.Time                        (SystemTime (..),
-                                                   getSystemTime')
 
 import           HStream.Server.HStreamApi
 import           HStream.ThirdParty.Protobuf      (Struct (..), Timestamp (..))
@@ -134,7 +134,7 @@ getServerRespPure result = do
 
 getProtoTimestamp :: IO Timestamp
 getProtoTimestamp = do
-  MkSystemTime sec nano <- getSystemTime'
+  MkSystemTime sec nano <- getSystemTime
   return $ Timestamp sec (fromIntegral nano)
 
 isSuccessful :: ClientResult 'Normal a -> Bool

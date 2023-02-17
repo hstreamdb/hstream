@@ -29,14 +29,11 @@ import qualified Data.Text               as T
 import qualified Data.Tuple              as Tuple
 import qualified Data.Vector             as V
 import           GHC.Generics            (Generic)
-import           Z.Data.Builder.Base     (stringUTF8)
-import           Z.IO.Logger
 
 import           DiffFlow.Error
 import           DiffFlow.Graph
 import           DiffFlow.Types
 import qualified DiffFlow.Weird          as Weird
-
 import qualified HStream.Logger          as Log
 
 data ChangeBatchAtNodeInput row a = ChangeBatchAtNodeInput
@@ -139,7 +136,9 @@ pushInput Shard{..} Node{..} change = do
     Just (InputState frontier_m unflushedChanges_m) -> do
       frontier <- readTVarIO frontier_m
       case frontier <.= (dcTimestamp change) of
-        False -> fatal . stringUTF8 $ "!!! Can not push inputs whose ts < frontier of Input Node. Frontier = " <> show frontier <> ", ts = " <> show (dcTimestamp change)
+        False -> Log.fatal . Log.buildString $
+             "!!! Can not push inputs whose ts < frontier of Input Node. Frontier = "
+          <> show frontier <> ", ts = " <> show (dcTimestamp change)
         True  -> atomically $ modifyTVar unflushedChanges_m
                    (\batch -> updateDataChangeBatch batch (\xs -> xs ++ [change]))
     Just state -> throw . RunShardError $ "Incorrect type of node state found: " <> T.pack (show state)
@@ -204,7 +203,10 @@ emitChangeBatch shard@Shard{..} node dcb@DataChangeBatch{..} = do
         (\toNodeInput -> do
             let toNode = nodeInputNode toNodeInput
                 toSpec = graphNodeSpecs shardGraph HM.! nodeId toNode
-            debug . stringUTF8 $ "Emitting from node " <> show node <> "(" <> show spec <> ") to node " <> show toNode <> "(" <> show toSpec <>  ") with DataChangeBatch: " <> show dcb
+            Log.debug . Log.buildString $
+                "Emitting from node "
+             <> show node <> "(" <> show spec <> ") to node " <> show toNode
+             <> "(" <> show toSpec <>  ") with DataChangeBatch: " <> show dcb
             mapM_ (\ts -> queueFrontierChange shard toNodeInput ts 1) dcbLowerBound
             let newCbi = ChangeBatchAtNodeInput
                          { cbiChangeBatch = dcb
@@ -617,10 +619,10 @@ doWork shard@Shard{..} = do
   shardUnprocessedFrontierUpdates' <- readMVar shardUnprocessedFrontierUpdates
   shardNodeStates' <- readMVar shardNodeStates
   if not (L.null shardUnprocessedChangeBatches') then do
-    Log.trace . stringUTF8 $ "=== Working (processChangeBatch)..."
+    Log.trace . Log.buildString $ "=== Working (processChangeBatch)..."
     processChangeBatch shard else
     if not (L.null shardUnprocessedFrontierUpdates') then do
-      Log.trace . stringUTF8 $ "=== Working (processFrontierUpdates)..."
+      Log.trace . Log.buildString $ "=== Working (processFrontierUpdates)..."
       processFrontierUpdates shard else return ()
 
 popOutput :: (Show a, Show row) => Shard row a -> Node -> IO () -> (DataChangeBatch row a -> IO ()) -> IO ()
@@ -640,7 +642,7 @@ run :: (Hashable a, Ord a, Show a,
         Hashable row, Ord row, Show row, Semigroup row) => Shard row a -> MVar () -> IO ()
 run shard stop = do
   work <- hasWork shard
-  Log.trace . stringUTF8 $ "Loop: still has work?" <> show work
+  Log.trace . Log.buildString $ "Loop: still has work?" <> show work
   case work of
     True  -> do
       doWork shard

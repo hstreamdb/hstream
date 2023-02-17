@@ -45,7 +45,9 @@ library
   import:             shared-properties
   exposed-modules:
     HStream.Base
+    HStream.Base.Bytes
     HStream.Base.Table
+    HStream.Base.Time
     HStream.Foreign
     HStream.Logger
 
@@ -66,16 +68,17 @@ library
   build-depends:
     , ansi-terminal
     , async
-    , base           >=4.11 && <5
+    , base           >=4.11   && <5
     , bytestring
     , containers
     , data-default
-    , ghc-prim       >=0.5  && <1.0
-    , primitive      ^>=0.7
+    , ghc-prim       >=0.5    && <1.0
+    , primitive      ^>=0.7.2
     , random
     , table-layout
     , text
     , time
+    , unix-time
     , Z-Data
     , Z-IO
 
@@ -121,12 +124,12 @@ test-suite hstream-common-base-test
     , hspec
     , hstream-common-base
     , QuickCheck
+    , quickcheck-instances
     , random                ^>=1.2
     , text
     , unordered-containers
     , vector
     , Z-Data
-    , Z-IO
 
   default-extensions:
     DeriveGeneric

@@ -5,15 +5,15 @@ module HStream.Base
   , approxNaturalTime
   ) where
 
-import           Control.Monad   (unless)
-import           Data.Bits       (shiftL, shiftR, (.&.), (.|.))
-import           Data.Int        (Int64)
-import           Data.List       (stripPrefix)
-import           Data.Maybe      (fromMaybe)
-import           Data.Time.Clock (NominalDiffTime)
-import           Data.Word       (Word16, Word32, Word64)
-import           System.Random   (randomRIO)
-import           Z.IO.Time       (SystemTime (..), getSystemTime')
+import           Control.Monad          (unless)
+import           Data.Bits              (shiftL, shiftR, (.&.), (.|.))
+import           Data.Int               (Int64)
+import           Data.List              (stripPrefix)
+import           Data.Maybe             (fromMaybe)
+import           Data.Time.Clock        (NominalDiffTime)
+import           Data.Time.Clock.System (SystemTime (..), getSystemTime)
+import           Data.Word              (Word16, Word32, Word64)
+import           System.Random          (randomRIO)
 
 -- | Generate a "unique" number through a modified version of snowflake algorithm.
 --
@@ -23,7 +23,7 @@ import           Z.IO.Time       (SystemTime (..), getSystemTime')
 genUnique :: IO Word64
 genUnique = do
   let startTS = 1577808000  -- 2020-01-01
-  ts <- getSystemTime'
+  ts <- getSystemTime
   let sec = systemSeconds ts - startTS
   unless (sec > 0) $ error "Impossible happened, make sure your system time is synchronized."
   -- 32bit

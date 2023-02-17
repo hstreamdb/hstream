@@ -50,8 +50,9 @@ package grpc-haskell-core
 constraints:
     Z-IO          == 2.0.0.0
   , Z-Data        == 2.0.0.1
-  , zoovisitor    == 0.2.1.1
+  , zoovisitor    == 0.2.3.0
   , blaze-textual == 0.2.1.0
   , entropy       == 0.4.1.7
   , criterion    ^>= 1.6
   , aeson        ^>= 2.0
+  , filepath      >= 1.4.100

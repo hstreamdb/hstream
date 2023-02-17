@@ -12,7 +12,6 @@ import           Data.Time
 import           Data.Time.Clock.POSIX
 import           Data.Word               (Word64)
 import           System.IO.Unsafe        (unsafePerformIO)
-import           Z.IO.Logger
 
 import           DiffFlow.Graph
 import           DiffFlow.Shard
@@ -70,75 +69,73 @@ totalDataChangeCount_out = unsafePerformIO $ newIORef 0
 
 main :: IO ()
 main = do
-  newStdLogger (defaultLoggerConfig { loggerLevel = INFO }) >>= setDefaultLogger
-  withDefaultLogger $ do
-    (shard, (inNode_1,inNode_2), outNode) <- reducingShard
+  (shard, (inNode_1,inNode_2), outNode) <- reducingShard
 
-    stop_m <- newEmptyMVar
-    forkIO $ run shard stop_m
+  stop_m <- newEmptyMVar
+  forkIO $ run shard stop_m
 
-    startTime <- getCurrentTimestamp
+  startTime <- getCurrentTimestamp
 
-    -- Node_1 input
-    forkIO . forever $ do
-      replicateM_ 100 $ do
-        ts <- getCurrentTimestamp
-        let dc = DataChange
-               { dcRow = A.fromList [("a", Number 1), ("b", Number 2)]
-               , dcTimestamp = Timestamp ts []
-               , dcDiff = 1
-               }
-        pushInput shard inNode_1 dc
-        atomicModifyIORef totalDataChangeCount_1 (\x -> (x+1, ()))
-      threadDelay 2000000
-      n <- readIORef totalDataChangeCount_1
-      print $ "[In_1] ---> " <> show n
-
-    -- Node_2 input
-    forkIO . forever $ do
-      replicateM_ 100 $ do
-        ts <- getCurrentTimestamp
-        let dc = DataChange
-               { dcRow = A.fromList [("a", Number 1), ("c", Number 3)]
-               , dcTimestamp = Timestamp ts []
-               , dcDiff = 1
-               }
-        pushInput shard inNode_2 dc
-        atomicModifyIORef totalDataChangeCount_2 (\x -> (x+1, ()))
-      threadDelay 2000000
-      n <- readIORef totalDataChangeCount_2
-      print $ "[In_2] ---> " <> show n
-
-    forkIO . forever $ do
-      threadDelay 100000
-      flushInput shard inNode_1
-      flushInput shard inNode_2
-
-    forkIO . forever $ do
-      threadDelay 100000
+  -- Node_1 input
+  forkIO . forever $ do
+    replicateM_ 100 $ do
       ts <- getCurrentTimestamp
-      advanceInput shard inNode_1 (Timestamp ts [])
-      advanceInput shard inNode_2 (Timestamp ts [])
+      let dc = DataChange
+             { dcRow = A.fromList [("a", Number 1), ("b", Number 2)]
+             , dcTimestamp = Timestamp ts []
+             , dcDiff = 1
+             }
+      pushInput shard inNode_1 dc
+      atomicModifyIORef totalDataChangeCount_1 (\x -> (x+1, ()))
+    threadDelay 2000000
+    n <- readIORef totalDataChangeCount_1
+    print $ "[In_1] ---> " <> show n
 
-    forkIO . forever $ popOutput shard outNode (threadDelay 1000000)
-      (\dcb -> forM_ (dcbChanges dcb) $ \DataChange{..} -> do
-          let (Number x) = dcRow A.! "a"
-              n = if dcDiff > 0 then (fromIntegral . floor $ x) * (fromIntegral dcDiff) else 0
-          atomicModifyIORef totalDataChangeCount_out (\x -> (x+n, ()))
-          print $ "[Out] ---> " <> show n
-      )
+  -- Node_2 input
+  forkIO . forever $ do
+    replicateM_ 100 $ do
+      ts <- getCurrentTimestamp
+      let dc = DataChange
+             { dcRow = A.fromList [("a", Number 1), ("c", Number 3)]
+             , dcTimestamp = Timestamp ts []
+             , dcDiff = 1
+             }
+      pushInput shard inNode_2 dc
+      atomicModifyIORef totalDataChangeCount_2 (\x -> (x+1, ()))
+    threadDelay 2000000
+    n <- readIORef totalDataChangeCount_2
+    print $ "[In_2] ---> " <> show n
 
-    forever $ do
-      threadDelay 1000000
-      curTime <- getCurrentTimestamp
-      curCount_1 <- readIORef totalDataChangeCount_1
-      curCount_2 <- readIORef totalDataChangeCount_2
-      curCount_out <- readIORef totalDataChangeCount_out
-      let diffTimeSeconds = fromIntegral (curTime - startTime) / 1000
-          changesPerSec_1 = fromIntegral curCount_1 / diffTimeSeconds
-          changesPerSec_2 = fromIntegral curCount_2 / diffTimeSeconds
-          changesPerSec_out = fromIntegral curCount_out / diffTimeSeconds
-      print "============= changes per second =============="
-      print $ "(In_1)" <> show changesPerSec_1
-      print $ "(In_2)" <> show changesPerSec_2
-      print $ "(Out) " <> show changesPerSec_out
+  forkIO . forever $ do
+    threadDelay 100000
+    flushInput shard inNode_1
+    flushInput shard inNode_2
+
+  forkIO . forever $ do
+    threadDelay 100000
+    ts <- getCurrentTimestamp
+    advanceInput shard inNode_1 (Timestamp ts [])
+    advanceInput shard inNode_2 (Timestamp ts [])
+
+  forkIO . forever $ popOutput shard outNode (threadDelay 1000000)
+    (\dcb -> forM_ (dcbChanges dcb) $ \DataChange{..} -> do
+        let (Number x) = dcRow A.! "a"
+            n = if dcDiff > 0 then (fromIntegral . floor $ x) * (fromIntegral dcDiff) else 0
+        atomicModifyIORef totalDataChangeCount_out (\x -> (x+n, ()))
+        print $ "[Out] ---> " <> show n
+    )
+
+  forever $ do
+    threadDelay 1000000
+    curTime <- getCurrentTimestamp
+    curCount_1 <- readIORef totalDataChangeCount_1
+    curCount_2 <- readIORef totalDataChangeCount_2
+    curCount_out <- readIORef totalDataChangeCount_out
+    let diffTimeSeconds = fromIntegral (curTime - startTime) / 1000
+        changesPerSec_1 = fromIntegral curCount_1 / diffTimeSeconds
+        changesPerSec_2 = fromIntegral curCount_2 / diffTimeSeconds
+        changesPerSec_out = fromIntegral curCount_out / diffTimeSeconds
+    print "============= changes per second =============="
+    print $ "(In_1)" <> show changesPerSec_1
+    print $ "(In_2)" <> show changesPerSec_2
+    print $ "(Out) " <> show changesPerSec_out

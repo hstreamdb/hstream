@@ -7,7 +7,6 @@ import           Data.List                        (sort)
 import qualified Data.Map.Strict                  as Map
 import           Test.Hspec
 import           Z.Data.CBytes                    (CBytes)
-import qualified Z.IO.FileSystem                  as FS
 
 import qualified HStream.Store                    as S
 import qualified HStream.Store.Internal.LogDevice as I
@@ -22,7 +21,7 @@ logdirAround :: I.LogAttributes -> SpecWith CBytes -> Spec
 logdirAround attrs = aroundAll $ \runTest -> bracket setup clean runTest
   where
     setup = do
-      dirname <- ("/" `FS.join`) =<< newRandomName 10
+      dirname <- ("/" <>) <$> newRandomName 10
       lddir <- I.makeLogDirectory client dirname attrs False
       void $ I.syncLogsConfigVersion client =<< I.logDirectoryGetVersion lddir
       return dirname
@@ -37,7 +36,7 @@ logdirSpec = describe "LogDirectory" $ do
                   }
 
   it "get log directory children name" $ do
-    dirname <- ("/" `FS.join`) =<< newRandomName 10
+    dirname <- ("/" <>) <$> newRandomName 10
     _ <- I.makeLogDirectory client dirname attrs False
     _ <- I.makeLogDirectory client (dirname <> "/A") attrs False
     version <- I.logDirectoryGetVersion =<< I.makeLogDirectory client (dirname <> "/B") attrs False
@@ -52,7 +51,7 @@ logdirSpec = describe "LogDirectory" $ do
   it "get log directory logs name" $ do
     let logid1 = 101
         logid2 = 102
-    dirname <- ("/" `FS.join`) =<< newRandomName 10
+    dirname <- ("/" <>) <$> newRandomName 10
     _ <- I.makeLogDirectory client dirname attrs False
     _ <- I.makeLogGroup client (dirname <> "/A") logid1 logid1 attrs False
     version <- I.logGroupGetVersion =<<
@@ -67,7 +66,7 @@ logdirSpec = describe "LogDirectory" $ do
 
   it "get log group and child directory" $ do
     let logid = 103
-    dirname <- ("/" `FS.join`) =<< newRandomName 10
+    dirname <- ("/" <>) <$> newRandomName 10
     _ <- I.makeLogDirectory client dirname attrs False
     _ <- I.makeLogDirectory client (dirname <> "/A") attrs False
     version <- I.logGroupGetVersion =<<
@@ -88,7 +87,7 @@ logdirSpec = describe "LogDirectory" $ do
     S.logReplicateAcross attrs_got `shouldBe` I.defAttr1 [(S.NodeLocationScope_DATA_CENTER, 3)]
 
   it "Loggroup's attributes should be inherited by the parent directory" $ do
-    dirname <- ("/" `FS.join`) =<< newRandomName 10
+    dirname <- ("/" <>) <$> newRandomName 10
     let logid = 104
         lgname = dirname <> "/A"
     _ <- I.makeLogDirectory client dirname attrs False

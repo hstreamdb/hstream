@@ -125,7 +125,6 @@ library
     , unordered-containers
     , vector
     , Z-Data
-    , Z-IO
     , zlib
     , zoovisitor
     , zstd
@@ -191,7 +190,6 @@ test-suite hstream-common-test
     , unordered-containers
     , vector
     , Z-Data
-    , Z-IO
     , zoovisitor
 
   default-extensions:

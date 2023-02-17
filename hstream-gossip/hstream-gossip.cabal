@@ -74,6 +74,5 @@ library
     , unordered-containers
     , vector
     , Z-Data
-    , Z-IO
 
   hs-source-dirs:   src

@@ -13,6 +13,7 @@ import           Data.List                (sort)
 import           Data.Map.Strict          (Map)
 import qualified Data.Map.Strict          as Map
 import           Data.Maybe               (fromJust)
+import           Data.Time.Clock.System   (SystemTime (..), getSystemTime)
 import           GHC.Stack                (HasCallStack)
 import           Options.Applicative
 import           System.Random
@@ -21,7 +22,6 @@ import           Z.Data.ASCII             (c2w)
 import           Z.Data.CBytes            (CBytes)
 import qualified Z.Data.Vector            as ZV
 import qualified Z.Foreign                as ZF
-import           Z.IO.Time                (SystemTime (..), getSystemTime')
 
 import qualified HStream.Store            as HS
 import qualified HStream.Store.Logger     as Log
@@ -254,7 +254,7 @@ getPercentiles latencies percentiles =
 
 getCurrentTimestamp :: IO Timestamp
 getCurrentTimestamp = do
-  MkSystemTime sec nano <- getSystemTime'
+  MkSystemTime sec nano <- getSystemTime
   let !ts = floor @Double $ (fromIntegral sec * 1e3) + (fromIntegral nano / 1e6)
   return ts
 
