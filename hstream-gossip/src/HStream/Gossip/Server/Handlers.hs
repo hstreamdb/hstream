@@ -13,6 +13,7 @@ import           Control.Concurrent.STM             (atomically,
                                                      stateTVar, writeTChan,
                                                      writeTQueue)
 import           Control.Exception                  (catches, throwIO)
+import           Control.Monad                      (when)
 import qualified Data.Map.Strict                    as Map
 import qualified Data.Vector                        as V
 import           HsGrpc.Server
@@ -31,6 +32,7 @@ import           HStream.Gossip.HStreamGossip       (Ack (..), Empty (..),
 import           HStream.Gossip.Types               (GossipContext (..),
                                                      GossipOpts (..),
                                                      RequestAction (..),
+                                                     ServerState (..),
                                                      ServerStatus (..))
 import qualified HStream.Gossip.Types               as T
 import           HStream.Gossip.Utils               (ClusterInitedErr (..),
@@ -142,16 +144,21 @@ sendJoinCore GossipContext{..} JoinReq {..} = do
   case joinReqNew of
     Nothing -> throwIO EmptyJoinRequest
     Just node@I.ServerNode{..} -> do
+      when (serverNodeId == I.serverNodeId serverSelf) $ throwIO DuplicateNodeId
       (epoch, sMap') <- readTVarIO serverList
       case Map.lookup serverNodeId sMap' of
-        Nothing | serverNodeId /= I.serverNodeId serverSelf -> do
-          atomically $ writeTQueue statePool $ T.GAlive 1 node node
-          return JoinResp
-            { joinRespEpoch   = epoch
-            , joinRespMembers = V.fromList $ serverSelf : (serverInfo <$> Map.elems sMap')
-            }
-
-        _  -> throwIO DuplicateNodeId
+        Just ServerStatus{..} -> do
+          state <- readTVarIO serverState
+          inc <- readTVarIO stateIncarnation
+          when (state == ServerAlive) $ throwIO DuplicateNodeId
+          atomically $ do
+            inc <- readTVar stateIncarnation
+            writeTQueue statePool $ T.GAlive (inc + 1) node node
+        Nothing -> atomically $ writeTQueue statePool $ T.GAlive 1 node node
+      return JoinResp {
+        joinRespEpoch   = epoch
+      , joinRespMembers = V.fromList $ serverSelf : (serverInfo <$> Map.elems sMap')
+      }
 
 sendGossipHandler :: GossipContext -> ServerRequest 'Normal Gossip Empty -> IO (ServerResponse 'Normal Empty)
 sendGossipHandler gc (ServerNormalRequest _metadata gossip) = do

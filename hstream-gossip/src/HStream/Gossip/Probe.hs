@@ -45,6 +45,7 @@ import           HStream.Gossip.Utils           (ClusterInitedErr (..),
                                                  broadcast, clusterInitedErr,
                                                  clusterReadyErr,
                                                  getMessagesToSend, getMsgInc,
+                                                 getOtherMembersSTM,
                                                  mkClientNormalRequest,
                                                  mkClientNormalRequest')
 import qualified HStream.Logger                 as Log
@@ -158,8 +159,8 @@ scheduleProbe gc@GossipContext{..} = do
   _ <- readMVar clusterInited
   forever $ do
     memberMap <- atomically $ do
-      memberMap <- snd <$> readTVar serverList
-      check (not $ Map.null memberMap)
+      memberMap <- getOtherMembersSTM gc
+      check (not $ null memberMap)
       return memberMap
     let members = Map.keys memberMap
     let pingOrder = shuffle' members (length members) randomGen

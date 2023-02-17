@@ -214,6 +214,10 @@ exHandlers =
       Log.debug $ Log.buildString' err
       HsGrpc.throwGrpcError $ HsGrpc.GrpcStatus HsGrpc.StatusFailedPrecondition (Just $ unStatusDetails clusterReadyErr) Nothing
 
+  , Handler $ \(err :: DuplicateNodeId) -> do
+      Log.fatal $ Log.buildString' err
+      HsGrpc.throwGrpcError $ HsGrpc.GrpcStatus HsGrpc.StatusAlreadyExists (Just "Duplicate node id join not allowed") Nothing
+
   , Handler $ \(err :: FailedToStart) -> do
       Log.fatal $ Log.buildString' err
       HsGrpc.throwGrpcError $ HE.mkGrpcStatus err HsGrpc.StatusFailedPrecondition
@@ -249,6 +253,10 @@ exceptionHandlers =
   , Handler $ \(err :: FailedToStart) -> do
       Log.fatal $ Log.buildString' err
       returnErrResp StatusFailedPrecondition "Cluster failed to start"
+
+  , Handler $ \(err :: DuplicateNodeId) -> do
+      Log.fatal $ Log.buildString' err
+      returnErrResp StatusAlreadyExists "Duplicate node id join not allowed "
 
   , Handler $ \(err :: EmptyPingRequest) -> do
       Log.fatal $ Log.buildString' err
@@ -291,8 +299,13 @@ getMemberList GossipContext {..} =
 
 getMemberListSTM :: GossipContext -> STM [I.ServerNode]
 getMemberListSTM GossipContext {..} = do
-  (readTVar serverList >>= filterM (\x -> readTVar (serverState x) <&> (== ServerAlive)) . Map.elems . snd)
+  readTVar serverList >>= filterM (\x -> readTVar (serverState x) <&> (== ServerAlive)) . Map.elems . snd
   <&> ((:) serverSelf . map serverInfo)
+
+getOtherMembersSTM :: GossipContext -> STM [I.ServerNode]
+getOtherMembersSTM GossipContext {..} = do
+  readTVar serverList >>= filterM (\x -> readTVar (serverState x) <&> (== ServerAlive)) . Map.elems . snd
+  <&> map serverInfo
 
 getMemberListWithEpochSTM :: GossipContext -> STM (Word32, [I.ServerNode])
 getMemberListWithEpochSTM GossipContext {..} =

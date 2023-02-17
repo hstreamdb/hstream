@@ -64,7 +64,7 @@ runStateHandler gc@GossipContext{..} = forever $ do
     void $ peekTQueue statePool
     flushTQueue statePool
   unless (null newMsgs) $ do
-    handleStateMessages gc $ cleanStateMessages newMsgs
+    handleStateMessages gc newMsgs
 
 handleStateMessages :: GossipContext -> [StateMessage] -> IO ()
 handleStateMessages = mapM_ . handleStateMessage
@@ -80,6 +80,7 @@ handleStateMessage GossipContext{..} msg@(T.GConfirm inc node@I.ServerNode{..} _
       inc' <- readTVarIO stateIncarnation
       state <- readTVarIO serverState
       when (inc >= inc' && state /= ServerDead) $ do
+        Log.info . Log.buildString $ "HStream-Gossip: [Server Node " <> show (I.serverNodeId serverSelf) <> "] handling message " <> show (T.TC msg)
         now <- getSystemTime
         mWorker <- atomically $ do
           modifyTVar broadcastPool (broadcastMessage $ T.GState msg)
@@ -87,7 +88,7 @@ handleStateMessage GossipContext{..} msg@(T.GConfirm inc node@I.ServerNode{..} _
           writeTVar serverState ServerDead
           writeTVar stateChange now
           writeTVar incarnation inc
-          modifyTVar' serverList $ bimap succ id
+          modifyTVar' serverList $ first succ
           modifyTVar' deadServers $ Map.insert serverNodeId serverInfo
           stateTVar workers (Map.updateLookupWithKey (\_ _ -> Nothing) serverNodeId)
         case mWorker of
@@ -97,20 +98,27 @@ handleStateMessage GossipContext{..} msg@(T.GConfirm inc node@I.ServerNode{..} _
             killThread a
             Log.info . Log.buildString $ "[Server Node " <> show (I.serverNodeId serverSelf) <> "] " <> show node <> " left cluster"
 handleStateMessage GossipContext{..} msg@(T.GSuspect inc node@I.ServerNode{..} _node) = do
-  Log.debug . Log.buildString $ "[Server Node " <> show (I.serverNodeId serverSelf) <> "] Handling" <> show msg
+  Log.debug . Log.buildString $ "HStream-Gossip: [Server Node " <> show (I.serverNodeId serverSelf) <> "] received" <> show (T.TC msg)
+  now <- getSystemTime
   join . atomically $ if node == serverSelf
     then writeTQueue statePool (T.GAlive (succ inc) node serverSelf) >> return (pure ())
     else do
       sMap <- snd <$> readTVar serverList
       case Map.lookup serverNodeId sMap of
-        Just ss -> do
-          updated <- updateStatus ss msg ServerSuspicious
-          when updated $ modifyTVar broadcastPool (broadcastMessage $ T.GState msg)
-          return (pure ())
+        Just ServerStatus{..} -> do
+          inc' <- readTVar stateIncarnation
+          state <- readTVar serverState
+          when (inc > inc' && state == ServerSuspicious || inc >= inc' && state == ServerAlive) $ do
+            writeTVar latestMessage msg
+            writeTVar serverState ServerSuspicious
+            writeTVar stateChange now
+            writeTVar incarnation inc
+            modifyTVar broadcastPool (broadcastMessage $ T.GState msg)
+          return (Log.info . Log.buildString $ "HStream-Gossip: [Server Node " <> show (I.serverNodeId serverSelf) <> "] handled message " <> show (T.TC msg))
         Nothing -> return $ Log.debug "Suspected node not found in the server list"
           -- addToServerList gc node msg Suspicious
 handleStateMessage gc@GossipContext{..} msg@(T.GAlive i node@I.ServerNode{..} _node) = do
-  Log.debug . Log.buildString $ "[Server Node " <> show (I.serverNodeId serverSelf) <> "] Handling" <> show msg
+  Log.debug . Log.buildString $ "HStream-Gossip: [Server Node " <> show (I.serverNodeId serverSelf) <> "] received message " <> show (T.TC msg)
   when (node /= serverSelf) $ do -- TODO: Remove this condition
     now <- getSystemTime
     join . atomically $ do
@@ -118,19 +126,22 @@ handleStateMessage gc@GossipContext{..} msg@(T.GAlive i node@I.ServerNode{..} _n
       status@ServerStatus{..} <- case Map.lookup serverNodeId sMap of
         Just ss -> return ss -- TODO: 1.check address and port 2.check if the old node is dead long enough 3.update address
         Nothing -> do status <- initServerStatus node now
-                      modifyTVar serverList $ bimap id (Map.insert serverNodeId status)
+                      modifyTVar' serverList $ second (Map.insert serverNodeId status)
+                      modifyTVar' deadServers $ Map.insert serverNodeId node
                       return status
       inc <- readTVar stateIncarnation
       oldState <- readTVar serverState
       when (not (node /= serverSelf && i <= inc {- &&  !nodeUpdate -})
           && not (i < inc && node == serverSelf)) $ do
+        trace ("[INFO] HStream-Gossip: [Server Node " <> show (I.serverNodeId serverSelf) <> "] handling message " <> show (T.TC msg)) (pure ())
         -- cleanSuspicious
         -- TODO: May need to refute if node == serverSelf
         writeTVar serverState ServerAlive
         writeTVar stateIncarnation i
-        modifyTVar broadcastPool (broadcastMessage $ T.GState msg)
-        modifyTVar serverList $ bimap succ id
-      if (oldState == ServerDead && node /= serverSelf)
+        modifyTVar' broadcastPool (broadcastMessage $ T.GState msg)
+        modifyTVar' deadServers $ Map.delete serverNodeId
+        modifyTVar' serverList $ bimap succ id
+      if oldState == ServerDead && node /= serverSelf
         then return (addToServerList gc node status False)
         else return (pure ())
 handleStateMessage _ _ = throwIOError "illegal state message"

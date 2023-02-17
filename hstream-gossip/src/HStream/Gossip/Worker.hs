@@ -55,7 +55,7 @@ import qualified HStream.Server.HStreamInternal as I
 
 initGossip :: GossipContext -> [I.ServerNode] -> IO ()
 initGossip gc = mapM_ (\x -> do
-  if (x == serverSelf gc)
+  if x == serverSelf gc
     then return ()
     else do
       now <- getSystemTime
@@ -76,7 +76,8 @@ addToServerList gc@GossipContext{..} node@I.ServerNode{..} status isJoin = unles
     joinWorkers client gc status
   ((e1,old), (e2,new)) <- atomically $ do
     old <- getMemberListWithEpochSTM gc
-    modifyTVar' serverList $ bimap (if isJoin then id else succ) (Map.insert serverNodeId status)
+    if isJoin then modifyTVar' serverList $ second (Map.insert serverNodeId status)
+              else writeTVar (serverState status) ServerAlive >> modifyTVar' serverList (first succ)
     modifyTVar' workers (Map.insert serverNodeId workersThread)
     new <- getMemberListWithEpochSTM gc
     return (old, new)
