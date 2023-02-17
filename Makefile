@@ -71,9 +71,10 @@ sql:: sql-deps
 	(cd hstream-sql/gen-sql && mv HStream/SQL/Lex.x.new HStream/SQL/Lex.x && make)
 
 sql-deps::
-	(cd ~ && command -v bnfc || cabal install BNFC --constraint 'BNFC ^>= 2.9')
-	(cd ~ && command -v alex || cabal install alex --constraint 'alex ^>= 3.2.7.1')
-	(cd ~ && command -v happy || cabal install happy)
+	# Change to a temporary dir to avoid create hstream dists.
+	(cd $(shell mktemp -d) && command -v bnfc || cabal install BNFC --constraint 'BNFC ^>= 2.9')
+	(cd $(shell mktemp -d) && command -v alex || cabal install alex --constraint 'alex ^>= 3.2.7.1')
+	(cd $(shell mktemp -d) && command -v happy || cabal install happy)
 
 clean:
 	find ./common -maxdepth 10 -type d \
