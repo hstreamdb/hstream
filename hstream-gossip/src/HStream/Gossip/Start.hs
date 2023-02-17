@@ -37,7 +37,7 @@ import           System.Random                    (initStdGen)
 
 import           HStream.Gossip.Gossip            (scheduleGossip)
 import           HStream.Gossip.Handlers          (broadCastUserEvent,
-                                                   initGossip, runEventHandler,
+                                                   runEventHandler,
                                                    runStateHandler)
 import qualified HStream.Gossip.HStreamGossip     as API
 import           HStream.Gossip.Probe             (bootstrapPing, scheduleProbe)
@@ -55,6 +55,7 @@ import           HStream.Gossip.Utils             (ClusterInitedErr (..),
                                                    maxRetryTimeInterval,
                                                    mkClientNormalRequest,
                                                    mkGRPCClientConf')
+import           HStream.Gossip.Worker            (initGossip)
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.HStreamInternal   as I
 import qualified HStream.Utils                    as U

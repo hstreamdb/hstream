@@ -50,10 +50,11 @@ import           HStream.Gossip.Utils           (broadcast, broadcastMessage,
                                                  eventNameINIT, eventNameINITED,
                                                  getMemberListWithEpochSTM,
                                                  getMsgInc, incrementTVar,
+                                                 initServerStatus,
                                                  mkGRPCClientConf,
                                                  updateLamportTime,
                                                  updateStatus)
-import           HStream.Gossip.Worker          (addToServerList)
+import           HStream.Gossip.Worker          (addToServerList, initGossip)
 import qualified HStream.Logger                 as Log
 import qualified HStream.Server.HStreamInternal as I
 
@@ -108,15 +109,30 @@ handleStateMessage GossipContext{..} msg@(T.GSuspect inc node@I.ServerNode{..} _
           return (pure ())
         Nothing -> return $ Log.debug "Suspected node not found in the server list"
           -- addToServerList gc node msg Suspicious
-handleStateMessage gc@GossipContext{..} msg@(T.GAlive _inc node@I.ServerNode{..} _node) = do
+handleStateMessage gc@GossipContext{..} msg@(T.GAlive i node@I.ServerNode{..} _node) = do
   Log.debug . Log.buildString $ "[Server Node " <> show (I.serverNodeId serverSelf) <> "] Handling" <> show msg
-  unless (node == serverSelf) $ do
-    sMap <- snd <$> readTVarIO serverList
-    case Map.lookup serverNodeId sMap of
-      Just ss -> atomically $ do
-        updated <- updateStatus ss msg ServerAlive
-        when updated $ modifyTVar broadcastPool (broadcastMessage $ T.GState msg)
-      Nothing -> addToServerList gc node msg ServerAlive False
+  when (node /= serverSelf) $ do -- TODO: Remove this condition
+    now <- getSystemTime
+    join . atomically $ do
+      sMap <- snd <$> readTVar serverList
+      status@ServerStatus{..} <- case Map.lookup serverNodeId sMap of
+        Just ss -> return ss -- TODO: 1.check address and port 2.check if the old node is dead long enough 3.update address
+        Nothing -> do status <- initServerStatus node now
+                      modifyTVar serverList $ bimap id (Map.insert serverNodeId status)
+                      return status
+      inc <- readTVar stateIncarnation
+      oldState <- readTVar serverState
+      when (not (node /= serverSelf && i <= inc {- &&  !nodeUpdate -})
+          && not (i < inc && node == serverSelf)) $ do
+        -- cleanSuspicious
+        -- TODO: May need to refute if node == serverSelf
+        writeTVar serverState ServerAlive
+        writeTVar stateIncarnation i
+        modifyTVar broadcastPool (broadcastMessage $ T.GState msg)
+        modifyTVar serverList $ bimap succ id
+      if (oldState == ServerDead && node /= serverSelf)
+        then return (addToServerList gc node status False)
+        else return (pure ())
 handleStateMessage _ _ = throwIOError "illegal state message"
 
 runEventHandler :: GossipContext -> IO ()
@@ -179,6 +195,3 @@ broadCastUserEvent gc@GossipContext {..} userEventName userEventPayload= do
   lpTime <- atomically $ incrementTVar eventLpTime
   let eventMessage = EventMessage userEventName lpTime userEventPayload
   handleEventMessage gc eventMessage
-
-initGossip :: GossipContext -> [I.ServerNode] -> IO ()
-initGossip gc = mapM_ (\x -> addToServerList gc x (T.GAlive 0 x x) ServerAlive True)

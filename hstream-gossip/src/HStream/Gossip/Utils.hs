@@ -9,9 +9,10 @@ module HStream.Gossip.Utils where
 
 import           Control.Concurrent
 import           Control.Concurrent.STM           (STM, TQueue, TVar,
-                                                   atomically, readTVar,
-                                                   readTVarIO, stateTVar,
-                                                   writeTQueue, writeTVar)
+                                                   atomically, newTVar,
+                                                   readTVar, readTVarIO,
+                                                   stateTVar, writeTQueue,
+                                                   writeTVar)
 import           Control.Exception                (Handler (..))
 import           Control.Exception.Base
 import           Control.Monad                    (filterM, unless)
@@ -22,8 +23,17 @@ import qualified Data.HashMap.Strict              as HM
 import qualified Data.Map                         as Map
 import           Data.String                      (IsString (fromString))
 import           Data.Text                        (Text)
+import           Data.Time.Clock.System
 import           Data.Word                        (Word32)
 import qualified HsGrpc.Server.Types              as HsGrpc
+import           Network.GRPC.HighLevel.Generated (ClientConfig (..),
+                                                   ClientRequest (..),
+                                                   GRPCMethodType (..),
+                                                   Host (..), Port (..),
+                                                   ServerResponse (..),
+                                                   StatusCode (..),
+                                                   StatusDetails (..))
+
 import           HStream.Common.Types             (fromInternalServerNode)
 import qualified HStream.Exception                as HE
 import           HStream.Gossip.Types             (BroadcastPool, EventHandler,
@@ -44,13 +54,14 @@ import           HStream.Server.HStreamApi        (NodeState (..),
 import qualified HStream.Server.HStreamInternal   as I
 import           HStream.ThirdParty.Protobuf      (Timestamp (..))
 import           HStream.Utils                    (pattern EnumPB)
-import           Network.GRPC.HighLevel.Generated (ClientConfig (..),
-                                                   ClientRequest (..),
-                                                   GRPCMethodType (..),
-                                                   Host (..), Port (..),
-                                                   ServerResponse (..),
-                                                   StatusCode (..),
-                                                   StatusDetails (..))
+
+initServerStatus :: I.ServerNode -> SystemTime -> STM ServerStatus
+initServerStatus serverInfo now = do
+  latestMessage    <- newTVar (T.GAlive 0 serverInfo serverInfo)
+  serverState      <- newTVar ServerDead
+  stateIncarnation <- newTVar 0
+  stateChange      <- newTVar now
+  return $ ServerStatus {..}
 
 returnResp :: Monad m => a -> m (ServerResponse 'Normal a)
 returnResp resp = return (ServerNormalResponse (Just resp) mempty StatusOk "")

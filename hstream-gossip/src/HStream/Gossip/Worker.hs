@@ -45,33 +45,28 @@ import           HStream.Gossip.Types           (EventMessage (EventMessage),
                                                  ServerStatus (..),
                                                  StateMessage (..))
 import qualified HStream.Gossip.Types           as T
-import           HStream.Gossip.Utils           (broadcast, broadcastMessage,
-                                                 cleanStateMessages,
-                                                 eventNameINIT, eventNameINITED,
+import           HStream.Gossip.Utils           (broadcast, eventNameINIT,
+                                                 eventNameINITED,
                                                  getMemberListWithEpochSTM,
-                                                 getMsgInc, incrementTVar,
-                                                 mkGRPCClientConf,
-                                                 updateLamportTime,
-                                                 updateStatus)
+                                                 getMsgInc, initServerStatus,
+                                                 mkGRPCClientConf)
 import qualified HStream.Logger                 as Log
 import qualified HStream.Server.HStreamInternal as I
 
---------------------------------------------------------------------------------
--- Add a new member to the server list
+initGossip :: GossipContext -> [I.ServerNode] -> IO ()
+initGossip gc = mapM_ (\x -> do
+  if (x == serverSelf gc)
+    then return ()
+    else do
+      now <- getSystemTime
+      status <- atomically $ do
+        status@ServerStatus{..} <- initServerStatus x now
+        writeTVar serverState ServerAlive
+        return status
+      addToServerList gc x status True)
 
-addToServerList :: GossipContext -> I.ServerNode -> StateMessage -> ServerState -> Bool -> IO ()
-addToServerList gc@GossipContext{..} node@I.ServerNode{..} msg state isJoin = unless (node == serverSelf) $ do
-  initMsg <- newTVarIO msg
-  initState <- newTVarIO state
-  incarnation <- newTVarIO 0
-  now <- newTVarIO =<< getSystemTime
-  let status = ServerStatus {
-    serverInfo    = node
-  , latestMessage = initMsg
-  , serverState   = initState
-  , stateIncarnation = incarnation
-  , stateChange = now
-  }
+addToServerList :: GossipContext -> I.ServerNode -> ServerStatus -> Bool -> IO ()
+addToServerList gc@GossipContext{..} node@I.ServerNode{..} status isJoin = unless (node == serverSelf) $ do
   grpcClientRef <- newIORef Nothing
   let grpcClientFinalizer = do client <- readIORef grpcClientRef
                                maybe (pure ()) GRPC.deleteGrpcClient client
