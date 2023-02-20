@@ -20,7 +20,7 @@ import           Data.ByteString                  (ByteString)
 import           Data.Foldable                    (foldl')
 import           Data.Functor
 import qualified Data.HashMap.Strict              as HM
-import qualified Data.Map                         as Map
+import qualified Data.Map.Strict                  as Map
 import           Data.String                      (IsString (fromString))
 import           Data.Text                        (Text)
 import           Data.Time.Clock.System
@@ -56,7 +56,6 @@ import           HStream.Utils                    (pattern EnumPB)
 
 initServerStatus :: I.ServerNode -> SystemTime -> STM ServerStatus
 initServerStatus serverInfo now = do
-  latestMessage    <- newTVar (T.GAlive 0 serverInfo serverInfo)
   serverState      <- newTVar ServerDead
   stateIncarnation <- newTVar 0
   stateChange      <- newTVar now
@@ -139,17 +138,6 @@ cleanStateMessages = Map.elems . foldl' (flip insertMsg) mempty
 broadcastMessage :: Message -> BroadcastPool -> BroadcastPool
 broadcastMessage msg xs = (msg, 0) : xs
 
-updateLatestMsg :: ServerStatus -> StateMessage -> STM Bool
-updateLatestMsg ServerStatus{..} msg = do
-  msg' <- readTVar latestMessage
-  -- TODO: catch error
-  if TC msg > TC msg'
-    then do
-      writeTVar latestMessage msg
-      return True
-    else
-      return False
-
 updateLamportTime :: TVar Word32 -> Word32 -> STM Word32
 updateLamportTime localClock eventTime = do
   localTime <- readTVar localClock
@@ -178,6 +166,9 @@ clusterInitedErr = "Cluster is already initialized"
 clusterReadyErr  :: StatusDetails
 clusterReadyErr  = "Cluster is ready"
 
+clusterNotReadyErr  :: StatusDetails
+clusterNotReadyErr  = "Node / Cluster is not ready"
+
 data ClusterInitedErr = ClusterInitedErr
   deriving (Show, Eq)
 instance Exception ClusterInitedErr
@@ -185,6 +176,10 @@ instance Exception ClusterInitedErr
 data ClusterReadyErr = ClusterReadyErr
   deriving (Show, Eq)
 instance Exception ClusterReadyErr
+
+data ClusterNotReadyErr = ClusterNotReadyErr
+  deriving (Show, Eq)
+instance Exception ClusterNotReadyErr
 
 data FailedToStart = FailedToStart
   deriving (Show, Eq)
@@ -211,6 +206,10 @@ exHandlers =
   , Handler $ \(err :: ClusterReadyErr) -> do
       Log.debug $ Log.buildString' err
       HsGrpc.throwGrpcError $ HsGrpc.GrpcStatus HsGrpc.StatusFailedPrecondition (Just $ unStatusDetails clusterReadyErr) Nothing
+
+  , Handler $ \(err :: ClusterNotReadyErr) -> do
+      Log.debug $ Log.buildString' err
+      HsGrpc.throwGrpcError $ HsGrpc.GrpcStatus HsGrpc.StatusFailedPrecondition (Just $ unStatusDetails clusterNotReadyErr) Nothing
 
   , Handler $ \(err :: DuplicateNodeId) -> do
       Log.fatal $ Log.buildString' err
@@ -247,6 +246,10 @@ exceptionHandlers =
   , Handler $ \(err :: ClusterReadyErr) -> do
       Log.debug $ Log.buildString' err
       returnErrResp StatusFailedPrecondition clusterReadyErr
+
+  , Handler $ \(err :: ClusterNotReadyErr) -> do
+      Log.debug $ Log.buildString' err
+      returnErrResp StatusFailedPrecondition clusterNotReadyErr
 
   , Handler $ \(err :: FailedToStart) -> do
       Log.fatal $ Log.buildString' err

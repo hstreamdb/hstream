@@ -36,6 +36,7 @@ import           HStream.Gossip.Types               (GossipContext (..),
                                                      ServerStatus (..))
 import qualified HStream.Gossip.Types               as T
 import           HStream.Gossip.Utils               (ClusterInitedErr (..),
+                                                     ClusterNotReadyErr (..),
                                                      ClusterReadyErr (..),
                                                      DuplicateNodeId (..),
                                                      EmptyJoinRequest (..),
@@ -58,6 +59,7 @@ handlers gc = HStreamGossip {
   , hstreamGossipSendPingReq       = catchExceptions . sendPingReqHandler gc
   , hstreamGossipSendJoin          = catchExceptions . sendJoinHandler gc
   , hstreamGossipSendGossip        = catchExceptions . sendGossipHandler gc
+  , hstreamGossipSendReconnect     = catchExceptions . sendReconnectHandler gc
 
   , hstreamGossipCliJoin           = undefined
   , hstreamGossipCliCluster        = undefined
@@ -74,6 +76,7 @@ handlersNew gc = [
   , unary (GRPC :: GRPC P.HStreamGossip "sendPingReq"      ) (const $ catchExceptions . sendPingReqCore gc)
   , unary (GRPC :: GRPC P.HStreamGossip "sendJoin"         ) (const $ catchExceptions . sendJoinCore gc)
   , unary (GRPC :: GRPC P.HStreamGossip "sendGossip"       ) (const $ catchExceptions . sendGossipCore gc)
+  , unary (GRPC :: GRPC P.HStreamGossip "sendReconnect"    ) (const $ catchExceptions . sendReconnectCore gc)
   ]
   where
     catchExceptions action = action `catches` exHandlers
@@ -171,6 +174,16 @@ sendGossipCore :: GossipContext -> Gossip -> IO Empty
 sendGossipCore GossipContext{..} Gossip {..} = do
   atomically $ broadcast (V.toList gossipMsg) statePool eventPool
   return Empty
+
+sendReconnectHandler :: GossipContext -> ServerRequest 'Normal Empty Empty -> IO (ServerResponse 'Normal Empty)
+sendReconnectHandler gc ServerNormalRequest{} = do
+  sendReconnectCore gc Empty >>= returnResp
+
+sendReconnectCore :: GossipContext -> Empty ->  IO Empty
+sendReconnectCore GossipContext{..} _ = do
+  tryReadMVar clusterReady >>= \case
+    Nothing -> throwIO ClusterNotReadyErr
+    Just _  -> return Empty
 
 -- cliJoinHandler :: GossipContext -> ServerRequest 'Normal CliJoinReq JoinResp -> IO (ServerResponse 'Normal JoinResp)
 -- cliJoinHandler gc (ServerNormalRequest _metadata cliJoinReq) = cliJoinCore gc cliJoinReq >>= returnResp

@@ -10,6 +10,7 @@ service HStreamGossip {
   rpc SendPingReq(PingReq) returns (PingReqResp);
   rpc SendJoin(JoinReq) returns (JoinResp);
   rpc SendGossip(Gossip) returns (Empty);
+  rpc SendReconnect(Empty) returns (Empty);
 
   // For CLI use only
   rpc CliJoin(CliJoinReq) returns (JoinResp);
