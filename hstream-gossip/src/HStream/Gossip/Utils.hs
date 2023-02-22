@@ -309,7 +309,9 @@ getOtherMembersSTM GossipContext {..} = do
 
 getMemberListWithEpochSTM :: GossipContext -> STM (Word32, [I.ServerNode])
 getMemberListWithEpochSTM GossipContext {..} =
-  readTVar serverList >>= \(epoch, sList) -> return (epoch, ((:) serverSelf . map serverInfo . Map.elems) sList)
+  readTVar serverList >>= \(epoch, sList) ->
+    (,) epoch <$> (filterM (\x -> readTVar (serverState x) <&> (== ServerAlive)) (Map.elems sList)
+                <&> ((:) serverSelf . map serverInfo))
 
 getEpoch :: GossipContext -> IO Word32
 getEpoch GossipContext {..} =
