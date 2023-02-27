@@ -119,6 +119,11 @@ instance Eq TempCompare where
   TC (GConfirm i1 node1 _) == TC (GConfirm i2 node2 _) = i1 == i2 && node1 == node2
   _ == _                                     = False
 
+instance Show TempCompare where
+  show (TC (GAlive   i1 n1 n2)) = "[Node " <> show (I.serverNodeId n1) <> "] is claimed Alive     by [node " <> show (I.serverNodeId n2) <> "] with incarnation [" <> show i1 <> "]"
+  show (TC (GSuspect i1 n1 n2)) = "[Node " <> show (I.serverNodeId n1) <> "] is claimed Suspected by [node " <> show (I.serverNodeId n2) <> "] with incarnation [" <> show i1 <> "]"
+  show (TC (GConfirm i1 n1 n2)) = "[Node " <> show (I.serverNodeId n1) <> "] is claimed Confirmed by [node " <> show (I.serverNodeId n2) <> "] with incarnation [" <> show i1 <> "]"
+
 instance Ord TempCompare where
   compare (TC x) (TC y) =
     if getMsgNode x /= getMsgNode y

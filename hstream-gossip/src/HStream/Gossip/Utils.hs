@@ -52,7 +52,6 @@ import           HStream.Server.HStreamApi        (NodeState (..),
                                                    ServerNode (..),
                                                    ServerNodeStatus (..))
 import qualified HStream.Server.HStreamInternal   as I
-import           HStream.ThirdParty.Protobuf      (Timestamp (..))
 import           HStream.Utils                    (pattern EnumPB)
 
 initServerStatus :: I.ServerNode -> SystemTime -> STM ServerStatus
@@ -140,14 +139,13 @@ cleanStateMessages = Map.elems . foldl' (flip insertMsg) mempty
 broadcastMessage :: Message -> BroadcastPool -> BroadcastPool
 broadcastMessage msg xs = (msg, 0) : xs
 
-updateStatus :: ServerStatus -> StateMessage -> ServerState -> STM Bool
-updateStatus ServerStatus{..} msg state = do
+updateLatestMsg :: ServerStatus -> StateMessage -> STM Bool
+updateLatestMsg ServerStatus{..} msg = do
   msg' <- readTVar latestMessage
   -- TODO: catch error
   if TC msg > TC msg'
     then do
       writeTVar latestMessage msg
-      writeTVar serverState state
       return True
     else
       return False

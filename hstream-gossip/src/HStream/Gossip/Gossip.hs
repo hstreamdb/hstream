@@ -6,10 +6,9 @@
 module HStream.Gossip.Gossip where
 
 import           Control.Concurrent             (readMVar, threadDelay)
-import           Control.Concurrent.STM         (atomically, check, readTVar,
-                                                 stateTVar, writeTChan)
+import           Control.Concurrent.STM         (atomically, check, stateTVar,
+                                                 writeTChan)
 import           Control.Monad                  (forever)
-import qualified Data.Map.Strict                as Map
 import qualified Data.Vector                    as V
 import           Network.GRPC.HighLevel.Client  (ClientResult (..))
 import qualified Network.GRPC.HighLevel.Client  as GRPC

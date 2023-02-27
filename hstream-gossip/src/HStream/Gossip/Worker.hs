@@ -6,49 +6,34 @@
 
 module HStream.Gossip.Worker where
 
-import           Control.Concurrent             (killThread, newEmptyMVar,
-                                                 putMVar, readMVar, takeMVar,
-                                                 tryPutMVar)
-import           Control.Concurrent.STM         (atomically, check, dupTChan,
-                                                 flushTQueue, modifyTVar,
-                                                 modifyTVar', newTVarIO,
-                                                 peekTQueue, readTVar,
-                                                 readTVarIO, stateTVar,
+import           Control.Concurrent             (newEmptyMVar, putMVar,
+                                                 takeMVar)
+import           Control.Concurrent.STM         (atomically, dupTChan,
+                                                 modifyTVar', readTVar,
                                                  tryPutTMVar, writeTQueue,
                                                  writeTVar)
 import           Control.Concurrent.STM.TChan   (readTChan)
 import           Control.Exception              (finally)
-import           Control.Monad                  (forever, join, replicateM,
-                                                 unless, void, when)
-import           Data.Bifunctor                 (bimap)
-import qualified Data.ByteString.Lazy           as BL
-import qualified Data.IntMap.Strict             as IM
+import           Control.Monad                  (forever, replicateM, unless,
+                                                 void, when)
+import           Data.Bifunctor                 (first, second)
 import           Data.IORef                     (newIORef, readIORef,
                                                  writeIORef)
 import qualified Data.Map.Strict                as Map
 import           Data.Time.Clock.System
-import qualified Data.Vector                    as V
-import qualified Proto3.Suite                   as PT
 import qualified SlaveThread
 
-import           HStream.Base                   (throwIOError)
 import qualified HStream.Common.GrpcHaskell     as GRPC
 import           HStream.Gossip.Gossip          (gossip)
-import           HStream.Gossip.HStreamGossip   (ServerList (..))
 import           HStream.Gossip.Probe           (doPing, pingReq, pingReqPing)
-import           HStream.Gossip.Types           (EventMessage (EventMessage),
-                                                 EventName, EventPayload,
-                                                 GossipContext (..),
-                                                 InitType (Gossip),
+import           HStream.Gossip.Types           (GossipContext (..),
                                                  RequestAction (..),
                                                  ServerState (..),
-                                                 ServerStatus (..),
-                                                 StateMessage (..))
+                                                 ServerStatus (..))
 import qualified HStream.Gossip.Types           as T
-import           HStream.Gossip.Utils           (broadcast, eventNameINIT,
-                                                 eventNameINITED,
+import           HStream.Gossip.Utils           (broadcast,
                                                  getMemberListWithEpochSTM,
-                                                 getMsgInc, initServerStatus,
+                                                 initServerStatus,
                                                  mkGRPCClientConf)
 import qualified HStream.Logger                 as Log
 import qualified HStream.Server.HStreamInternal as I
@@ -108,7 +93,7 @@ joinWorkers client gc@GossipContext{..} ss@ServerStatus{serverInfo = sNode@I.Ser
         atomically $ case ack of
           Right msgs -> do
             broadcast msgs statePool eventPool
-            inc <- getMsgInc <$> readTVar latestMessage
+            inc <- readTVar stateIncarnation
             writeTQueue statePool $ T.GAlive inc sNode serverSelf
             void $ tryPutTMVar isAcked ()
           Left (Just msgs)   -> broadcast msgs statePool eventPool

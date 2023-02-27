@@ -20,8 +20,7 @@ import           Control.Concurrent.STM           (TVar, atomically,
                                                    newTQueueIO, newTVarIO,
                                                    stateTVar)
 import           Control.Exception                (Handler (..), SomeException,
-                                                   catches, handle, throwIO,
-                                                   try)
+                                                   catches, handle, throwIO)
 import           Control.Monad                    (void, when)
 import           Data.ByteString                  (ByteString)
 import qualified Data.ByteString.Lazy             as BL
@@ -41,7 +40,7 @@ import           HStream.Gossip.Handlers          (broadCastUserEvent,
                                                    runStateHandler)
 import qualified HStream.Gossip.HStreamGossip     as API
 import           HStream.Gossip.Probe             (bootstrapPing, scheduleProbe)
-import           HStream.Gossip.Server.Handlers   (handlers, handlersNew)
+import           HStream.Gossip.Server.Handlers   (handlersNew)
 import           HStream.Gossip.Types             (Epoch, EventHandlers,
                                                    EventPayload,
                                                    GossipContext (..),

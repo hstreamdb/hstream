@@ -149,7 +149,6 @@ sendJoinCore GossipContext{..} JoinReq {..} = do
       case Map.lookup serverNodeId sMap' of
         Just ServerStatus{..} -> do
           state <- readTVarIO serverState
-          inc <- readTVarIO stateIncarnation
           when (state == ServerAlive) $ throwIO DuplicateNodeId
           atomically $ do
             inc <- readTVar stateIncarnation
