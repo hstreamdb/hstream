@@ -51,9 +51,8 @@ initializeServer
   :: ServerOpts
   -> GossipContext
   -> MetaHandle
-  -> MVar ServerState
   -> IO ServerContext
-initializeServer opts@ServerOpts{..} gossipContext hh serverState = do
+initializeServer opts@ServerOpts{..} gossipContext hh = do
   ldclient <- S.newLDClient _ldConfigPath
   let attrs = S.def{S.logReplicationFactor = S.defAttr1 _ckpRepFactor}
   Log.debug $ "checkpoint replication factor: " <> Log.buildInt _ckpRepFactor
@@ -99,7 +98,6 @@ initializeServer opts@ServerOpts{..} gossipContext hh serverState = do
 #endif
       , scStatsHolder            = statsHolder
       , loadBalanceHashRing      = epochHashRing
-      , scServerState            = serverState
       , scIOWorker               = ioWorker
       , gossipContext            = gossipContext
       , serverOpts               = opts

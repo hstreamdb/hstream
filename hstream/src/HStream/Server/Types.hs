@@ -73,7 +73,6 @@ data ServerContext = ServerContext
 #endif
   , scStatsHolder            :: Stats.StatsHolder
   , loadBalanceHashRing      :: TVar (Epoch, HashRing)
-  , scServerState            :: MVar ServerState
   , scIOWorker               :: IO.Worker
   , gossipContext            :: GossipContext
   , serverOpts               :: ServerOpts

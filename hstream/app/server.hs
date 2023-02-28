@@ -86,23 +86,21 @@ app config@ServerOpts{..} = do
   Log.setLogLevel _serverLogLevel _serverLogWithColor
   Log.setLogDeviceDbgLevel' _ldLogLevel
 
-  -- FIXME: do we need this serverState?
-  serverState <- newMVar (EnumPB NodeStateStarting)
   case _metaStore of
     ZkAddr addr -> do
-      let zkRes = zookeeperResInit addr (Just $ globalWatcherFn serverState) 5000 Nothing 0
+      let zkRes = zookeeperResInit addr Nothing 5000 Nothing 0
       withResource zkRes $ \zk ->
-        initializeAncestors zk >> action serverState (ZkHandle zk)
+        initializeAncestors zk >> action (ZkHandle zk)
     RqAddr addr -> do
       m <- newManager defaultManagerSettings
       let rq = RHandle m addr
       initializeTables rq
-      action serverState $ RLHandle rq
+      action $ RLHandle rq
     FileAddr addr -> do
       initializeFile addr
-      action serverState $ FileHandle addr
+      action $ FileHandle addr
   where
-    action serverState h = do
+    action h = do
       let serverNode =
             I.ServerNode { serverNodeId = _serverID
                          , serverNodePort = fromIntegral _serverPort
@@ -113,7 +111,7 @@ app config@ServerOpts{..} = do
                          }
       gossipContext <- initGossipContext defaultGossipOpts mempty serverNode _seedNodes
 
-      serverContext <- initializeServer config gossipContext h serverState
+      serverContext <- initializeServer config gossipContext h
       void . forkIO $ updateHashRing gossipContext (loadBalanceHashRing serverContext)
 
       Async.withAsync
@@ -212,18 +210,6 @@ serve host port securityMap sc@ServerContext{..} listeners listenerSecurityMap =
 #endif
 
 --------------------------------------------------------------------------------
-
-globalWatcherFn :: MVar ServerState -> ZHandle -> ZooEvent -> ZooState -> CBytes -> IO ()
-globalWatcherFn mStateS _ ZooSessionEvent stateZ _ = do
-  let newServerState = case stateZ of
-        ZooConnectedState  -> EnumPB NodeStateRunning
-        ZooConnectingState -> EnumPB NodeStateUnavailable
-        _                  -> EnumPB NodeStateUnavailable
-  void $ swapMVar mStateS newServerState
-  Log.info $ "Status of Zookeeper connection has changed to " <> Log.buildString' stateZ
-  Log.info $ "Server currently has the state: " <> Log.buildString' newServerState
-globalWatcherFn _ _ event stateZ _ = Log.debug $ "Event " <> Log.buildString' event
-                                               <> "happened, current state is " <> Log.buildString' stateZ
 
 -- However, reconstruct hashRing every time can be expensive
 -- when we have a large number of nodes in the cluster.
