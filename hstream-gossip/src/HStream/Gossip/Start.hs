@@ -20,8 +20,7 @@ import           Control.Concurrent.STM           (TVar, atomically,
                                                    newTQueueIO, newTVarIO,
                                                    stateTVar)
 import           Control.Exception                (Handler (..), SomeException,
-                                                   catches, handle, throwIO,
-                                                   try)
+                                                   catches, handle, throwIO)
 import           Control.Monad                    (void, when)
 import           Data.ByteString                  (ByteString)
 import qualified Data.ByteString.Lazy             as BL
@@ -37,11 +36,11 @@ import           System.Random                    (initStdGen)
 
 import           HStream.Gossip.Gossip            (scheduleGossip)
 import           HStream.Gossip.Handlers          (broadCastUserEvent,
-                                                   initGossip, runEventHandler,
+                                                   runEventHandler,
                                                    runStateHandler)
 import qualified HStream.Gossip.HStreamGossip     as API
 import           HStream.Gossip.Probe             (bootstrapPing, scheduleProbe)
-import           HStream.Gossip.Server.Handlers   (handlers, handlersNew)
+import           HStream.Gossip.Server.Handlers   (handlersNew)
 import           HStream.Gossip.Types             (Epoch, EventHandlers,
                                                    EventPayload,
                                                    GossipContext (..),
@@ -55,6 +54,7 @@ import           HStream.Gossip.Utils             (ClusterInitedErr (..),
                                                    maxRetryTimeInterval,
                                                    mkClientNormalRequest,
                                                    mkGRPCClientConf')
+import           HStream.Gossip.Worker            (initGossip)
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.HStreamInternal   as I
 import qualified HStream.Utils                    as U

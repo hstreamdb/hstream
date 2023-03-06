@@ -13,6 +13,7 @@ module HStream.Server.Core.Cluster
 import           Control.Concurrent            (tryReadMVar)
 import           Control.Concurrent.STM        (readTVarIO)
 import           Control.Exception             (throwIO)
+import qualified Data.List                     as L
 import qualified Data.Map.Strict               as Map
 import qualified Data.Text                     as T
 import qualified Data.Vector                   as V
@@ -21,7 +22,7 @@ import           Proto3.Suite                  (Enumerated (..))
 import           HStream.Common.Types          (fromInternalServerNodeWithKey)
 import qualified HStream.Exception             as HE
 import           HStream.Gossip                (GossipContext (..),
-                                                getFailedNodes)
+                                                getFailedNodes, getMemberList)
 import           HStream.Gossip.Types          (ServerStatus (..))
 import qualified HStream.Logger                as Log
 import           HStream.MetaStore.Types       (MetaStore (..))
@@ -41,8 +42,8 @@ describeCluster ServerContext{gossipContext = gc@GossipContext{..}, ..} = do
       serverVer   = Types.serverVersion
   isReady <- tryReadMVar clusterReady
   self    <- getListeners serverSelf
-  alives  <- readTVarIO serverList >>= fmap V.concat . mapM (getListeners . serverInfo) . Map.elems . snd
-  deads   <- getFailedNodes gc     >>= fmap V.concat . mapM getListeners
+  alives  <- getMemberList gc >>= fmap V.concat . mapM getListeners . (L.delete serverSelf)
+  deads   <- getFailedNodes gc >>= fmap V.concat . mapM getListeners
   let self'   = helper (case isReady of Just _  -> NodeStateRunning; Nothing -> NodeStateStarting) <$> self
   let alives' = helper NodeStateRunning <$> alives
   let deads'  = helper NodeStateDead    <$> deads

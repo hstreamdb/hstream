@@ -9,12 +9,13 @@ module HStream.Gossip.Utils where
 
 import           Control.Concurrent
 import           Control.Concurrent.STM           (STM, TQueue, TVar,
-                                                   atomically, readTVar,
-                                                   readTVarIO, stateTVar,
-                                                   writeTQueue, writeTVar)
+                                                   atomically, newTVar,
+                                                   readTVar, readTVarIO,
+                                                   stateTVar, writeTQueue,
+                                                   writeTVar)
 import           Control.Exception                (Handler (..))
 import           Control.Exception.Base
-import           Control.Monad                    (unless)
+import           Control.Monad                    (filterM, unless)
 import           Data.ByteString                  (ByteString)
 import           Data.Foldable                    (foldl')
 import           Data.Functor
@@ -22,6 +23,7 @@ import qualified Data.HashMap.Strict              as HM
 import qualified Data.Map                         as Map
 import           Data.String                      (IsString (fromString))
 import           Data.Text                        (Text)
+import           Data.Time.Clock.System
 import           Data.Word                        (Word32)
 import qualified HsGrpc.Server.Types              as HsGrpc
 import           Network.GRPC.HighLevel.Generated (ClientConfig (..),
@@ -39,7 +41,7 @@ import           HStream.Gossip.Types             (BroadcastPool, EventHandler,
                                                    GossipContext (..),
                                                    InitType (..), Message (..),
                                                    Messages, SeenEvents,
-                                                   ServerState,
+                                                   ServerState (..),
                                                    ServerStatus (..),
                                                    StateDelta,
                                                    StateMessage (..),
@@ -51,6 +53,14 @@ import           HStream.Server.HStreamApi        (NodeState (..),
                                                    ServerNodeStatus (..))
 import qualified HStream.Server.HStreamInternal   as I
 import           HStream.Utils                    (pattern EnumPB)
+
+initServerStatus :: I.ServerNode -> SystemTime -> STM ServerStatus
+initServerStatus serverInfo now = do
+  latestMessage    <- newTVar (T.GAlive 0 serverInfo serverInfo)
+  serverState      <- newTVar ServerDead
+  stateIncarnation <- newTVar 0
+  stateChange      <- newTVar now
+  return $ ServerStatus {..}
 
 returnResp :: Monad m => a -> m (ServerResponse 'Normal a)
 returnResp resp = return (ServerNormalResponse (Just resp) mempty StatusOk "")
@@ -86,7 +96,6 @@ requestTimeout :: Int
 requestTimeout = 100
 
 getMsgInc :: StateMessage -> Word32
-getMsgInc (T.GJoin _)          = 0
 getMsgInc (T.GSuspect inc _ _) = inc
 getMsgInc (T.GAlive   inc _ _) = inc
 getMsgInc (T.GConfirm inc _ _) = inc
@@ -130,14 +139,13 @@ cleanStateMessages = Map.elems . foldl' (flip insertMsg) mempty
 broadcastMessage :: Message -> BroadcastPool -> BroadcastPool
 broadcastMessage msg xs = (msg, 0) : xs
 
-updateStatus :: ServerStatus -> StateMessage -> ServerState -> STM Bool
-updateStatus ServerStatus{..} msg state = do
+updateLatestMsg :: ServerStatus -> StateMessage -> STM Bool
+updateLatestMsg ServerStatus{..} msg = do
   msg' <- readTVar latestMessage
   -- TODO: catch error
   if TC msg > TC msg'
     then do
       writeTVar latestMessage msg
-      writeTVar serverState state
       return True
     else
       return False
@@ -204,6 +212,10 @@ exHandlers =
       Log.debug $ Log.buildString' err
       HsGrpc.throwGrpcError $ HsGrpc.GrpcStatus HsGrpc.StatusFailedPrecondition (Just $ unStatusDetails clusterReadyErr) Nothing
 
+  , Handler $ \(err :: DuplicateNodeId) -> do
+      Log.fatal $ Log.buildString' err
+      HsGrpc.throwGrpcError $ HsGrpc.GrpcStatus HsGrpc.StatusAlreadyExists (Just "Duplicate node id join not allowed") Nothing
+
   , Handler $ \(err :: FailedToStart) -> do
       Log.fatal $ Log.buildString' err
       HsGrpc.throwGrpcError $ HE.mkGrpcStatus err HsGrpc.StatusFailedPrecondition
@@ -239,6 +251,10 @@ exceptionHandlers =
   , Handler $ \(err :: FailedToStart) -> do
       Log.fatal $ Log.buildString' err
       returnErrResp StatusFailedPrecondition "Cluster failed to start"
+
+  , Handler $ \(err :: DuplicateNodeId) -> do
+      Log.fatal $ Log.buildString' err
+      returnErrResp StatusAlreadyExists "Duplicate node id join not allowed "
 
   , Handler $ \(err :: EmptyPingRequest) -> do
       Log.fatal $ Log.buildString' err
@@ -276,15 +292,24 @@ getSeenEvents GossipContext {..} = readTVarIO seenEvents
 
 getMemberList :: GossipContext -> IO [I.ServerNode]
 getMemberList GossipContext {..} =
-  readTVarIO serverList <&> ((:) serverSelf . map serverInfo . Map.elems . snd)
+  (readTVarIO serverList >>= filterM (\x -> readTVarIO (serverState x) <&> (== ServerAlive)) . Map.elems . snd)
+  <&> ((:) serverSelf . map serverInfo)
 
 getMemberListSTM :: GossipContext -> STM [I.ServerNode]
-getMemberListSTM GossipContext {..} =
-  readTVar serverList <&> ((:) serverSelf . map serverInfo . Map.elems . snd)
+getMemberListSTM GossipContext {..} = do
+  readTVar serverList >>= filterM (\x -> readTVar (serverState x) <&> (== ServerAlive)) . Map.elems . snd
+  <&> ((:) serverSelf . map serverInfo)
+
+getOtherMembersSTM :: GossipContext -> STM [I.ServerNode]
+getOtherMembersSTM GossipContext {..} = do
+  readTVar serverList >>= filterM (\x -> readTVar (serverState x) <&> (== ServerAlive)) . Map.elems . snd
+  <&> map serverInfo
 
 getMemberListWithEpochSTM :: GossipContext -> STM (Word32, [I.ServerNode])
 getMemberListWithEpochSTM GossipContext {..} =
-  readTVar serverList >>= \(epoch, sList) -> return (epoch, ((:) serverSelf . map serverInfo . Map.elems) sList)
+  readTVar serverList >>= \(epoch, sList) ->
+    (,) epoch <$> (filterM (\x -> readTVar (serverState x) <&> (== ServerAlive)) (Map.elems sList)
+                <&> ((:) serverSelf . map serverInfo))
 
 getEpoch :: GossipContext -> IO Word32
 getEpoch GossipContext {..} =
