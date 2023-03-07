@@ -40,7 +40,8 @@ import           HStream.Gossip.Handlers          (broadCastUserEvent,
                                                    runStateHandler)
 import qualified HStream.Gossip.HStreamGossip     as API
 import           HStream.Gossip.Probe             (bootstrapPing, scheduleProbe)
-import           HStream.Gossip.Server.Handlers   (handlersNew)
+-- NOTE: please keep both of the following import
+import           HStream.Gossip.Server.Handlers   (handlers, handlersNew)
 import           HStream.Gossip.Types             (Epoch, EventHandlers,
                                                    EventPayload,
                                                    GossipContext (..),
