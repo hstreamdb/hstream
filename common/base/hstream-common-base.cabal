@@ -65,6 +65,7 @@ library
 
   build-depends:
     , ansi-terminal
+    , async
     , base           >=4.11 && <5
     , bytestring
     , containers
