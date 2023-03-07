@@ -1,0 +1,19 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: hstore-bootstrap
+spec:
+  template:
+    spec:
+      containers:
+        - name: hstore-bootstrap
+          image: "hstreamdb/hstream"
+          command:
+            - bash
+            - -c
+            - |
+              hadmin store --host logdevice-admin-server-service \
+                nodes-config bootstrap --metadata-replicate-across "node:3"
+      restartPolicy: Never
+  backoffLimit: 10
+  ttlSecondsAfterFinished: 0
