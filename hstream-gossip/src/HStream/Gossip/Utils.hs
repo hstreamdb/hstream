@@ -327,7 +327,7 @@ getFailedNodesSTM GossipContext {..} = readTVar deadServers <&> Map.elems
 
 getClusterStatus :: GossipContext -> IO (HM.HashMap Word32 ServerNodeStatus)
 getClusterStatus gc@GossipContext {..} = do
-  alives <- readTVarIO serverList <&> (map serverInfo . Map.elems . snd)
+  alives <- getMemberList gc
   deads <- getFailedNodes gc
   isReady <- tryReadMVar clusterReady
   let self = helper (case isReady of Just _  -> NodeStateRunning; Nothing -> NodeStateStarting)
