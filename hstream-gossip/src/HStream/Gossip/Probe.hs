@@ -17,7 +17,6 @@ import           Control.Monad                  (forever, join, when)
 import           Data.ByteString                (ByteString)
 import           Data.List                      ((\\))
 import qualified Data.List                      as L
-import qualified Data.Map                       as Map
 import qualified Data.Vector                    as V
 import           Data.Word                      (Word32)
 import           Network.GRPC.HighLevel         (GRPCIOError (..),
@@ -110,7 +109,7 @@ doPing
   :: GRPC.Client -> GossipContext -> ServerStatus
   -> Word32 -> Messages
   -> IO ()
-doPing client GossipContext{gossipOpts = GossipOpts{..}, ..}
+doPing client gc@GossipContext{gossipOpts = GossipOpts{..}, ..}
   ss@ServerStatus{serverInfo = sNode@I.ServerNode{..}, ..} _sid msg = do
   cInc <- readTVarIO stateIncarnation
   maybeAck <- timeout probeInterval $ do
@@ -140,7 +139,7 @@ doPing client GossipContext{gossipOpts = GossipOpts{..}, ..}
       return $ pure True
     handleAck isAcked Nothing = do
       inc     <- readTVar stateIncarnation
-      members <- L.delete serverNodeId . Map.keys . snd <$> readTVar serverList
+      members <- L.delete serverNodeId . map I.serverNodeId <$> getOtherMembersSTM gc
       case members of
         [] -> return $ pure False
         _  -> do
@@ -173,7 +172,7 @@ runProbe gc@GossipContext{..} gen (x:xs) members = do
     msgs <- stateTVar broadcastPool $ getMessagesToSend (fromIntegral (length members))
     writeTChan actionChan (DoPing x msgs)
   threadDelay $ probeInterval gossipOpts
-  members' <- Map.keys . snd <$> readTVarIO serverList
+  members' <- atomically $ map I.serverNodeId <$> getOtherMembersSTM gc
   let xs' = if members' == members then xs else (xs \\ (members \\ members')) ++ (members' \\ members)
   runProbe gc gen xs' members'
 runProbe _sc _gen [] _ids = pure ()

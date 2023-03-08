@@ -42,7 +42,10 @@ import           HStream.Gossip.Utils               (ClusterInitedErr (..),
                                                      EmptyPingRequest (..),
                                                      broadcast, exHandlers,
                                                      exceptionHandlers,
+                                                     getMemberList,
+                                                     getMemberListSTM,
                                                      getMessagesToSend,
+                                                     getOtherMembersSTM,
                                                      returnResp)
 import qualified HStream.Server.HStreamInternal     as I
 import qualified Proto.HStream.Gossip.HStreamGossip as P
@@ -97,11 +100,11 @@ sendPingHandler gc (ServerNormalRequest _metadata ping) =
   sendPingCore gc ping >>= returnResp
 
 sendPingCore :: GossipContext -> Ping -> IO Ack
-sendPingCore GossipContext{..} Ping {..} = do
+sendPingCore gc@GossipContext{..} Ping {..} = do
   msgs <- atomically $ do
     broadcast (V.toList pingMsg) statePool eventPool
-    memberMap <- snd <$> readTVar serverList
-    stateTVar broadcastPool $ getMessagesToSend (fromIntegral (Map.size memberMap))
+    memberMap <- getOtherMembersSTM gc
+    stateTVar broadcastPool $ getMessagesToSend (fromIntegral (length memberMap))
   return (Ack $ V.fromList msgs)
 
 sendPingReqHandler :: GossipContext
@@ -111,11 +114,11 @@ sendPingReqHandler gc (ServerNormalRequest _metadata pingReq) = do
   sendPingReqCore gc pingReq >>= returnResp
 
 sendPingReqCore :: GossipContext -> PingReq -> IO PingReqResp
-sendPingReqCore GossipContext{..} PingReq {..} = do
+sendPingReqCore gc@GossipContext{..} PingReq {..} = do
   msgs <- atomically $ do
     broadcast (V.toList pingReqMsg) statePool eventPool
-    memberMap <- snd <$> readTVar serverList
-    stateTVar broadcastPool $ getMessagesToSend (fromIntegral (Map.size memberMap))
+    memberMap <- getOtherMembersSTM gc
+    stateTVar broadcastPool $ getMessagesToSend (fromIntegral (length memberMap))
   case pingReqTarget of
     Nothing -> throwIO EmptyPingRequest
     Just x  -> do
@@ -126,8 +129,8 @@ sendPingReqCore GossipContext{..} PingReq {..} = do
         Just msg -> do
           newMsgs <- atomically $ do
             broadcast msg statePool eventPool
-            memberMap <- snd <$> readTVar serverList
-            stateTVar broadcastPool $ getMessagesToSend (fromIntegral (Map.size memberMap))
+            memberNum <- length <$> getMemberListSTM gc
+            stateTVar broadcastPool $ getMessagesToSend (fromIntegral memberNum)
           return (PingReqResp True (V.fromList newMsgs))
         Nothing  -> return (PingReqResp False (V.fromList msgs))
 
@@ -140,7 +143,7 @@ sendJoinHandler gc (ServerNormalRequest _metadata joinReq) = do
 sendJoinCore :: GossipContext
   -> JoinReq
   -> IO JoinResp
-sendJoinCore GossipContext{..} JoinReq {..} = do
+sendJoinCore gc@GossipContext{..} JoinReq {..} = do
   case joinReqNew of
     Nothing -> throwIO EmptyJoinRequest
     Just node@I.ServerNode{..} -> do
@@ -154,9 +157,10 @@ sendJoinCore GossipContext{..} JoinReq {..} = do
             inc <- readTVar stateIncarnation
             writeTQueue statePool $ T.GAlive (inc + 1) node node
         Nothing -> atomically $ writeTQueue statePool $ T.GAlive 1 node node
+      members <- getMemberList gc
       return JoinResp {
         joinRespEpoch   = epoch
-      , joinRespMembers = V.fromList $ serverSelf : (serverInfo <$> Map.elems sMap')
+      , joinRespMembers = V.fromList $ members
       }
 
 sendGossipHandler :: GossipContext -> ServerRequest 'Normal Gossip Empty -> IO (ServerResponse 'Normal Empty)
