@@ -33,13 +33,14 @@ library
   exposed-modules:
     HStream.Gossip
     HStream.Gossip.Client.Types
-    HStream.Gossip.Core
     HStream.Gossip.Gossip
     HStream.Gossip.Handlers
     HStream.Gossip.Probe
+    HStream.Gossip.Server.Handlers
     HStream.Gossip.Start
     HStream.Gossip.Types
     HStream.Gossip.Utils
+    HStream.Gossip.Worker
 
   if flag(hstream_use_grpc_haskell)
     cpp-options: -DHStreamUseGrpcHaskell
@@ -68,6 +69,7 @@ library
     , stm
     , table-layout
     , text
+    , time
     , unordered-containers
     , vector
     , Z-Data

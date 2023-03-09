@@ -45,6 +45,7 @@ spec:
                 --server-id $((100 + $ordinal)) \
                 --metastore-uri zk://zookeeper-0.zookeeper-headless:2181,zookeeper-1.zookeeper-headless:2181,zookeeper-2.zookeeper-headless:2181 \
                 --store-config /etc/logdevice/config.json \
+                --store-log-level warning \
                 --store-admin-host logdevice-admin-server-service \
           ports:
             - containerPort: 6570

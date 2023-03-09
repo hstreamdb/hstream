@@ -1,192 +1,194 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
-{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module HStream.Gossip.Handlers where
 
-import           Control.Concurrent                 (tryReadMVar)
-import           Control.Concurrent.STM             (atomically,
-                                                     newEmptyTMVarIO, readTMVar,
-                                                     readTVar, readTVarIO,
-                                                     stateTVar, writeTChan,
-                                                     writeTQueue)
-import           Control.Exception                  (catches, throwIO)
-import qualified Data.Map.Strict                    as Map
-import qualified Data.Vector                        as V
-import           HsGrpc.Server
-import           Network.GRPC.HighLevel.Generated   (GRPCMethodType (..),
-                                                     ServerRequest (..),
-                                                     ServerResponse)
-import           System.Timeout                     (timeout)
+import           Control.Concurrent             (killThread, readMVar,
+                                                 tryPutMVar)
+import           Control.Concurrent.STM         (atomically, check, flushTQueue,
+                                                 modifyTVar, modifyTVar',
+                                                 peekTQueue, readTVar,
+                                                 readTVarIO, stateTVar,
+                                                 writeTQueue, writeTVar)
+import           Control.Monad                  (forever, join, unless, void,
+                                                 when)
+import           Data.Bifunctor                 (first, second)
+import qualified Data.ByteString.Lazy           as BL
+import qualified Data.IntMap.Strict             as IM
+import qualified Data.Map.Strict                as Map
+import           Data.Time.Clock.System
+import qualified Data.Vector                    as V
+import qualified Proto3.Suite                   as PT
 
-import           HStream.Gossip.HStreamGossip       (Ack (..), Empty (..),
-                                                     Gossip (..),
-                                                     HStreamGossip (..),
-                                                     JoinReq (..),
-                                                     JoinResp (..), Ping (..),
-                                                     PingReq (..),
-                                                     PingReqResp (PingReqResp))
-import           HStream.Gossip.Types               (GossipContext (..),
-                                                     GossipOpts (..),
-                                                     RequestAction (..),
-                                                     ServerStatus (..))
-import qualified HStream.Gossip.Types               as T
-import           HStream.Gossip.Utils               (ClusterInitedErr (..),
-                                                     ClusterReadyErr (..),
-                                                     DuplicateNodeId (..),
-                                                     EmptyJoinRequest (..),
-                                                     EmptyPingRequest (..),
-                                                     broadcast, exHandlers,
-                                                     exceptionHandlers,
-                                                     getMessagesToSend,
-                                                     returnResp)
-import qualified HStream.Server.HStreamInternal     as I
-import qualified Proto.HStream.Gossip.HStreamGossip as P
+import           HStream.Base                   (throwIOError)
+import           HStream.Gossip.HStreamGossip   (ServerList (..))
+import           HStream.Gossip.Types           (EventMessage (EventMessage),
+                                                 EventName, EventPayload,
+                                                 GossipContext (..),
+                                                 InitType (Gossip),
+                                                 ServerState (..),
+                                                 ServerStatus (..),
+                                                 StateMessage (..))
+import qualified HStream.Gossip.Types           as T
+import           HStream.Gossip.Utils           (broadcastMessage,
+                                                 eventNameINIT, eventNameINITED,
+                                                 incrementTVar,
+                                                 initServerStatus,
+                                                 updateLamportTime)
+import           HStream.Gossip.Worker          (addToServerList, initGossip)
+import qualified HStream.Logger                 as Log
+import qualified HStream.Server.HStreamInternal as I
 
-handlers :: GossipContext
-  -> HStreamGossip ServerRequest ServerResponse
-handlers gc = HStreamGossip {
-    hstreamGossipSendBootstrapPing = catchExceptions . sendBootstrapPingHandler gc
-  , hstreamGossipSendPing          = catchExceptions . sendPingHandler gc
-  , hstreamGossipSendPingReq       = catchExceptions . sendPingReqHandler gc
-  , hstreamGossipSendJoin          = catchExceptions . sendJoinHandler gc
-  , hstreamGossipSendGossip        = catchExceptions . sendGossipHandler gc
+runStateHandler :: GossipContext -> IO ()
+runStateHandler gc@GossipContext{..} = forever $ do
+  newMsgs <- atomically $ do
+    void $ peekTQueue statePool
+    flushTQueue statePool
+  unless (null newMsgs) $ do
+    handleStateMessages gc newMsgs
 
-  , hstreamGossipCliJoin           = undefined
-  , hstreamGossipCliCluster        = undefined
-  , hstreamGossipCliUserEvent      = undefined
-  , hstreamGossipCliGetSeenEvents  = undefined
-  }
+handleStateMessages :: GossipContext -> [StateMessage] -> IO ()
+handleStateMessages = mapM_ . handleStateMessage
+
+handleStateMessage :: GossipContext -> StateMessage -> IO ()
+handleStateMessage GossipContext{..} msg@(T.GConfirm inc node@I.ServerNode{..} _node)= do
+  Log.debug . Log.buildString $ "[Server Node " <> show (I.serverNodeId serverSelf) <> "] received message " <> show node <> " leaving cluster"
+  sMap <- snd <$> readTVarIO serverList
+  case Map.lookup serverNodeId sMap of
+    Nothing               -> pure ()
+    Just ServerStatus{..} -> do
+      inc' <- readTVarIO stateIncarnation
+      state <- readTVarIO serverState
+      when (inc >= inc' && state /= ServerDead) $ do
+        Log.info . Log.buildString $ "HStream-Gossip: [Server Node " <> show (I.serverNodeId serverSelf) <> "] handling message " <> show (T.TC msg)
+        now <- getSystemTime
+        mWorker <- atomically $ do
+          modifyTVar' broadcastPool (broadcastMessage $ T.GState msg)
+          writeTVar latestMessage msg
+          writeTVar serverState ServerDead
+          writeTVar stateChange now
+          writeTVar incarnation inc
+          modifyTVar' serverList $ first succ
+          modifyTVar' deadServers $ Map.insert serverNodeId serverInfo
+          stateTVar workers (Map.updateLookupWithKey (\_ _ -> Nothing) serverNodeId)
+        case mWorker of
+          Nothing -> pure ()
+          Just  a -> do
+            Log.info . Log.buildString $ "Stopping Worker" <> show serverNodeId
+            killThread a
+            Log.info . Log.buildString $ "[Server Node " <> show (I.serverNodeId serverSelf) <> "] " <> show node <> " left cluster"
+handleStateMessage GossipContext{..} msg@(T.GSuspect inc node@I.ServerNode{..} _node) = do
+  Log.debug . Log.buildString $ "HStream-Gossip: [Server Node " <> show (I.serverNodeId serverSelf) <> "] received" <> show (T.TC msg)
+  now <- getSystemTime
+  join . atomically $ if node == serverSelf
+    then -- TODO: add incarnation comparison
+      writeTQueue statePool (T.GAlive (succ inc) node serverSelf) >> return (pure ())
+    else do
+      sMap <- snd <$> readTVar serverList
+      case Map.lookup serverNodeId sMap of
+        Just ServerStatus{..} -> do
+          inc' <- readTVar stateIncarnation
+          state <- readTVar serverState
+          when (inc > inc' && state == ServerSuspicious || inc >= inc' && state == ServerAlive) $ do
+            writeTVar latestMessage msg
+            writeTVar serverState ServerSuspicious
+            writeTVar stateChange now
+            writeTVar incarnation inc
+            modifyTVar broadcastPool (broadcastMessage $ T.GState msg)
+          return (Log.info . Log.buildString $ "HStream-Gossip: [Server Node " <> show (I.serverNodeId serverSelf) <> "] handled message " <> show (T.TC msg))
+        Nothing -> return $ Log.debug "Suspected node not found in the server list"
+          -- addToServerList gc node msg Suspicious
+handleStateMessage gc@GossipContext{..} msg@(T.GAlive i node@I.ServerNode{..} _node) = do
+  Log.debug . Log.buildString $ "HStream-Gossip: [Server Node " <> show (I.serverNodeId serverSelf) <> "] received message " <> show (T.TC msg)
+  when (node /= serverSelf) $ do -- TODO: Remove this condition
+    now <- getSystemTime
+    join . atomically $ do
+      sMap <- snd <$> readTVar serverList
+      status@ServerStatus{..} <- case Map.lookup serverNodeId sMap of
+        Just ss -> return ss -- TODO: 1.check address and port 2.check if the old node is dead long enough 3.update address
+        Nothing -> do status <- initServerStatus node now
+                      modifyTVar' serverList $ second (Map.insert serverNodeId status)
+                      modifyTVar' deadServers $ Map.insert serverNodeId node
+                      return status
+      inc <- readTVar stateIncarnation
+      oldState <- readTVar serverState
+      let whetherHandle = not (node /= serverSelf && i <= inc {- &&  !nodeUpdate -}) && not (i < inc && node == serverSelf)
+      when whetherHandle $ do
+        -- cleanSuspicious
+        -- TODO: May need to refute if node == serverSelf
+        writeTVar serverState ServerAlive
+        writeTVar stateIncarnation i
+        modifyTVar' broadcastPool (broadcastMessage $ T.GState msg)
+        modifyTVar' deadServers $ Map.delete serverNodeId
+      if oldState == ServerDead && node /= serverSelf
+        then return (logHandled whetherHandle >> addToServerList gc node status False)
+        else return (logHandled whetherHandle)
   where
-    catchExceptions action = action `catches` exceptionHandlers
+    logHandled p = when p $ Log.info . Log.buildString $
+      "[INFO] HStream-Gossip: [Server Node " <> show (I.serverNodeId serverSelf) <> "] handled message " <> show (T.TC msg)
 
-handlersNew :: GossipContext -> [ServiceHandler]
-handlersNew gc = [
-    unary (GRPC :: GRPC P.HStreamGossip "sendBootstrapPing") (const $ catchExceptions . sendBootstrapPingCore gc)
-  , unary (GRPC :: GRPC P.HStreamGossip "sendPing"         ) (const $ catchExceptions . sendPingCore gc)
-  , unary (GRPC :: GRPC P.HStreamGossip "sendPingReq"      ) (const $ catchExceptions . sendPingReqCore gc)
-  , unary (GRPC :: GRPC P.HStreamGossip "sendJoin"         ) (const $ catchExceptions . sendJoinCore gc)
-  , unary (GRPC :: GRPC P.HStreamGossip "sendGossip"       ) (const $ catchExceptions . sendGossipCore gc)
-  ]
-  where
-    catchExceptions action = action `catches` exHandlers
+handleStateMessage _ _ = throwIOError "illegal state message"
 
-sendBootstrapPingHandler :: GossipContext
-  -> ServerRequest 'Normal Empty I.ServerNode
-  -> IO (ServerResponse 'Normal I.ServerNode)
-sendBootstrapPingHandler gc (ServerNormalRequest _metadata node) =
-  sendBootstrapPingCore gc node >>= returnResp
+runEventHandler :: GossipContext -> IO ()
+runEventHandler gc@GossipContext{..} = forever $ do
+  newMsgs <- atomically $ do
+    void $ peekTQueue eventPool
+    flushTQueue eventPool
+  unless (null newMsgs) $ do
+    handleEventMessages gc newMsgs
 
-sendBootstrapPingCore :: GossipContext
-  -> Empty -> IO I.ServerNode
-sendBootstrapPingCore GossipContext{..} _ =
-  tryReadMVar clusterReady >>= \case
-    Nothing -> tryReadMVar clusterInited >>= \case
-      Nothing -> return serverSelf
-      Just _  -> throwIO ClusterInitedErr
-    Just _ -> throwIO ClusterReadyErr
+handleEventMessages :: GossipContext -> [EventMessage] -> IO ()
+handleEventMessages = mapM_ . handleEventMessage
 
-sendPingHandler :: GossipContext
-  -> ServerRequest 'Normal Ping Ack
-  -> IO (ServerResponse 'Normal Ack)
-sendPingHandler gc (ServerNormalRequest _metadata ping) =
-  sendPingCore gc ping >>= returnResp
+handleEventMessage :: GossipContext -> EventMessage -> IO ()
+handleEventMessage gc@GossipContext{..} msg@(EventMessage eName lpTime bs) = do
+  Log.trace . Log.buildString $ "[Server Node" <> show (I.serverNodeId serverSelf)
+                            <> "] Received Custom Event" <> show eName <> " with lamport " <> show lpTime
+  join . atomically $ do
+    currentTime <- fromIntegral <$> updateLamportTime eventLpTime lpTime
+    seen <- readTVar seenEvents
+    -- FIXME: max length should be a setting for seen buffer
+    let len = max 10 (IM.size seen)
+        lpInt = fromIntegral lpTime
+    if currentTime > len && lpInt < currentTime - len then return $ pure ()
+      else case IM.lookup lpInt seen of
+        Nothing -> handleNewEvent lpInt
+        Just events -> if event `elem` events
+          then return $ pure ()
+          else handleNewEvent lpInt
+   where
+     event = (eName, bs)
+     handleNewEvent lpInt = do
+        modifyTVar' seenEvents $ IM.insertWith (++) lpInt [event]
+        modifyTVar' broadcastPool $ broadcastMessage (T.GEvent msg)
+        return $ case Map.lookup eName eventHandlers of
+          Nothing     -> if eName == eventNameINIT
+            then do
+              Log.info . Log.buildString $ "[Server Node" <> show (I.serverNodeId serverSelf)
+                                        <> "] Handling Internal Event" <> show eName <> " with lamport " <> show lpInt
+              (isSeed, _, wasIDead) <- readMVar seedsInfo
+              when (isSeed && not wasIDead) $ handleINITEvent gc bs
+            else Log.info $ "Action dealing with event " <> Log.buildString' eName <> " not found"
+          Just action -> do
+            action bs
 
-sendPingCore :: GossipContext -> Ping -> IO Ack
-sendPingCore GossipContext{..} Ping {..} = do
-  msgs <- atomically $ do
-    broadcast (V.toList pingMsg) statePool eventPool
-    memberMap <- snd <$> readTVar serverList
-    stateTVar broadcastPool $ getMessagesToSend (fromIntegral (Map.size memberMap))
-  return (Ack $ V.fromList msgs)
-
-sendPingReqHandler :: GossipContext
-  -> ServerRequest 'Normal PingReq PingReqResp
-  -> IO (ServerResponse 'Normal PingReqResp)
-sendPingReqHandler gc (ServerNormalRequest _metadata pingReq) = do
-  sendPingReqCore gc pingReq >>= returnResp
-
-sendPingReqCore :: GossipContext -> PingReq -> IO PingReqResp
-sendPingReqCore GossipContext{..} PingReq {..} = do
-  msgs <- atomically $ do
-    broadcast (V.toList pingReqMsg) statePool eventPool
-    memberMap <- snd <$> readTVar serverList
-    stateTVar broadcastPool $ getMessagesToSend (fromIntegral (Map.size memberMap))
-  case pingReqTarget of
-    Nothing -> throwIO EmptyPingRequest
-    Just x  -> do
-      isAcked <- newEmptyTMVarIO
+handleINITEvent :: GossipContext -> EventPayload -> IO ()
+handleINITEvent gc@GossipContext{..} payload = do
+  case PT.fromByteString payload of
+    Left err -> Log.warning $ Log.buildString' err
+    Right ServerList{..} -> do
+      initGossip gc $ V.toList serverListNodes
+      void $ tryPutMVar clusterInited Gossip
       atomically $ do
-        writeTChan actionChan (DoPingReqPing (I.serverNodeId x) isAcked msgs)
-      timeout (roundtripTimeout gossipOpts) (atomically $ readTMVar isAcked) >>= \case
-        Just msg -> do
-          newMsgs <- atomically $ do
-            broadcast msg statePool eventPool
-            memberMap <- snd <$> readTVar serverList
-            stateTVar broadcastPool $ getMessagesToSend (fromIntegral (Map.size memberMap))
-          return (PingReqResp True (V.fromList newMsgs))
-        Nothing  -> return (PingReqResp False (V.fromList msgs))
+        mWorkers <- readTVar workers
+        check $ (Map.size mWorkers + 1) == length seeds
+      broadCastUserEvent gc eventNameINITED (BL.toStrict $ PT.toLazyByteString serverSelf)
 
-sendJoinHandler :: GossipContext
-  -> ServerRequest 'Normal JoinReq JoinResp
-  -> IO (ServerResponse 'Normal JoinResp)
-sendJoinHandler gc (ServerNormalRequest _metadata joinReq) = do
-  sendJoinCore gc joinReq >>= returnResp
-
-sendJoinCore :: GossipContext
-  -> JoinReq
-  -> IO JoinResp
-sendJoinCore GossipContext{..} JoinReq {..} = do
-  case joinReqNew of
-    Nothing -> throwIO EmptyJoinRequest
-    Just node@I.ServerNode{..} -> do
-      (epoch, sMap') <- readTVarIO serverList
-      case Map.lookup serverNodeId sMap' of
-        Nothing | serverNodeId /= I.serverNodeId serverSelf -> do
-          atomically $ writeTQueue statePool $ T.GJoin node
-          return JoinResp
-            { joinRespEpoch   = epoch
-            , joinRespMembers = V.fromList $ serverSelf : (serverInfo <$> Map.elems sMap')
-            }
-
-        _  -> throwIO DuplicateNodeId
-
-sendGossipHandler :: GossipContext -> ServerRequest 'Normal Gossip Empty -> IO (ServerResponse 'Normal Empty)
-sendGossipHandler gc (ServerNormalRequest _metadata gossip) = do
-  sendGossipCore gc gossip >>= returnResp
-
-sendGossipCore :: GossipContext -> Gossip -> IO Empty
-sendGossipCore GossipContext{..} Gossip {..} = do
-  atomically $ broadcast (V.toList gossipMsg) statePool eventPool
-  return Empty
-
--- cliJoinHandler :: GossipContext -> ServerRequest 'Normal CliJoinReq JoinResp -> IO (ServerResponse 'Normal JoinResp)
--- cliJoinHandler gc (ServerNormalRequest _metadata cliJoinReq) = cliJoinCore gc cliJoinReq >>= returnResp
-
--- cliJoinCore gc@GossipContext{..} CliJoinReq {..} = do
---   GRPC.withGRPCClient (mkGRPCClientConf' cliJoinReqHost (fromIntegral cliJoinReqPort)) $ \client -> do
---    HStreamGossip{..} <- hstreamGossipClient client
---    hstreamGossipSendJoin (mkClientNormalRequest JoinReq { joinReqNew = Just serverSelf}) >>= \case
---      GRPC.ClientNormalResponse resp@(JoinResp members) _ _ _ _ -> do
---        membersOld <- (map serverInfo . Map.elems) . snd <$> readTVarIO serverList
---        mapM_ (\x -> addToServerList gc x (T.GJoin x) OK) $ V.toList members \\ membersOld
---        return resp
---      GRPC.ClientErrorResponse _             -> throwIO FailedToJoin
-
--- cliClusterHandler :: GossipContext -> ServerRequest 'Normal Empty Cluster -> IO (ServerResponse 'Normal Cluster)
--- cliClusterHandler GossipContext{..} _serverReq = do
---   members <- V.fromList . (:) serverSelf . map serverInfo . Map.elems . snd <$> readTVarIO serverList
---   returnResp Cluster {clusterMembers = members}
-
--- cliUserEventHandler :: GossipContext -> ServerRequest 'Normal UserEvent Empty -> IO (ServerResponse 'Normal Empty)
--- cliUserEventHandler gc (ServerNormalRequest _metadata UserEvent {..}) = do
---   broadCastUserEvent gc userEventName userEventPayload
---   returnResp Empty
-
--- cliGetSeenEventsHandler :: GossipContext -> ServerRequest 'Normal Empty SeenEvents -> IO (ServerResponse 'Normal SeenEvents)
--- cliGetSeenEventsHandler GossipContext{..} _ = do
---   sEvents <- IM.elems <$> readTVarIO seenEvents
---   let resp = SeenEvents . V.fromList $ uncurry UserEvent <$> concat sEvents
---   returnResp resp
+broadCastUserEvent :: GossipContext -> EventName -> EventPayload -> IO ()
+broadCastUserEvent gc@GossipContext {..} userEventName userEventPayload= do
+  lpTime <- atomically $ incrementTVar eventLpTime
+  let eventMessage = EventMessage userEventName lpTime userEventPayload
+  handleEventMessage gc eventMessage
