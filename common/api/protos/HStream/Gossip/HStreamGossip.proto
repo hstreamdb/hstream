@@ -69,14 +69,13 @@ message StateMessage {
     StateReport suspect = 1;
     StateReport alive   = 2;
     StateReport confirm = 3;
-    hstream.server.internal.ServerNode join = 4;
   }
 }
 
 message StateReport {
   uint32 incarnation = 1;
-  hstream.server.internal.ServerNode reporter = 2;
-  hstream.server.internal.ServerNode reportee = 3;
+  hstream.server.internal.ServerNode reportee = 2;
+  hstream.server.internal.ServerNode reporter = 3;
 }
 
 message EventMessage {

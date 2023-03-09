@@ -178,7 +178,7 @@ checkProcess ioTask@IOTask{..} = do
 tryWaitProcessWithTimeout :: TP.Process IO.Handle IO.Handle IO.Handle -> Int -> IO (Maybe TP.ExitCode)
 tryWaitProcessWithTimeout tp timeoutSec = do
   Async.race (C.threadDelay $ timeoutSec * 1000000) (TP.waitExitCode tp) >>= \case
-    Left _ -> return Nothing
+    Left _     -> return Nothing
     Right code -> return $ Just code
 
 checkIOTask :: IOTask -> IO ()

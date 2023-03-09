@@ -106,7 +106,6 @@ retryWhileAgain f retries = do
       | retries < 0 -> threadDelay 5000 >> (retryWhileAgain f $! (-1))
       | retries > 0 -> threadDelay 5000 >> (retryWhileAgain f $! retries - 1)
     _ -> E.throwStreamError errno callStack
-{-# INLINE retryWhileAgain #-}
 
 withForeignPtrList :: [ForeignPtr a] -> (Ptr (Ptr a) -> Int -> IO b) -> IO b
 withForeignPtrList fptrs f = do
