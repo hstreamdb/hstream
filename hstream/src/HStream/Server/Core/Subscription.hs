@@ -61,7 +61,7 @@ listConsumers :: ServerContext -> ListConsumersRequest -> IO ListConsumersRespon
 listConsumers sc@ServerContext{..} ListConsumersRequest{listConsumersRequestSubscriptionId = sid} = do
   subCtxMap <- readTVarIO scSubscribeContexts
   case HM.lookup sid subCtxMap of
-    Nothing -> throwIO $ HE.SubscriptionNotFound $ "No active subscription " <> sid <> " found on current server."
+    Nothing -> throwIO $ HE.SubscriptionNotFound sid
     Just subCtx@SubscribeContextNewWrapper{..} -> atomically $ do
       ctx@SubscribeContext{..} <- readTMVar scnwContext
       consumerMap <- readTVar subConsumerContexts
@@ -98,12 +98,12 @@ createSubscription ServerContext {..} sub@Subscription{..} = do
   unless streamExists $ do
     Log.debug $ "Try to create a subscription to a nonexistent stream. Stream Name: "
               <> Log.buildString' streamName
-    throwIO $ HE.EmptyStream $ "Stream " <> T.unpack subscriptionStreamName <> " not found."
+    throwIO $ HE.EmptyStream subscriptionStreamName
   shards <- getShards scLDClient subscriptionStreamName
   startOffsets <- case subscriptionOffset of
     (Enumerated (Right SpecialOffsetEARLIEST)) -> return $ foldl' (\acc logId -> HM.insert logId S.LSN_MIN acc) HM.empty shards
     (Enumerated (Right SpecialOffsetLATEST))   -> foldM gatherTailLSN HM.empty shards
-    _                                          -> throwIO $ HE.InvalidSubscriptionOffset "subscriptionOffset is invalid."
+    _                                          -> throwIO HE.InvalidSubscriptionOffset
 
   createTime <- getProtoTimestamp
   let newSub = sub {subscriptionCreationTime = Just createTime}
@@ -111,6 +111,9 @@ createSubscription ServerContext {..} sub@Subscription{..} = do
         { originSub  = newSub
         , subOffsets = startOffsets
         }
+  -- FIXME: SubscriptionExists
+  subExists <- M.checkMetaExists @SubscriptionWrap subscriptionSubscriptionId metaHandle
+  when subExists $ throwIO (HE.SubscriptionExists subscriptionSubscriptionId)
   M.insertMeta subscriptionSubscriptionId subWrap metaHandle
   return newSub
  where
@@ -121,7 +124,7 @@ createSubscription ServerContext {..} sub@Subscription{..} = do
 deleteSubscription :: ServerContext -> DeleteSubscriptionRequest -> IO ()
 deleteSubscription ServerContext{..} DeleteSubscriptionRequest { deleteSubscriptionRequestSubscriptionId = subId, deleteSubscriptionRequestForce = force} = do
   subscription <- M.getMeta @SubscriptionWrap subId metaHandle
-  when (isNothing subscription) $ throwIO (HE.SubscriptionNotFound $ "Subscription " <> subId <> " not found")
+  when (isNothing subscription) $ throwIO (HE.SubscriptionNotFound subId)
 
   (status, msub) <- atomically $ do
     res <- getSubState
@@ -264,7 +267,7 @@ initSub :: ServerContext -> SubscriptionId -> IO (SubscribeContextWrapper, Maybe
 initSub serverCtx@ServerContext {..} subId = M.getMeta subId metaHandle >>= \case
   Nothing -> do
     Log.fatal $ "subscription " <> Log.buildText subId <> " not exist."
-    throwIO $ HE.SubscriptionNotFound $ "Subscription " <> subId <> " not found"
+    throwIO $ HE.SubscriptionNotFound subId
   Just SubscriptionWrap{} -> do
     (needInit, SubscribeContextNewWrapper {..}) <- atomically $ do
       subMap <- readTVar scSubscribeContexts
@@ -303,7 +306,7 @@ doSubInit ServerContext{..} subId = do
   M.getMeta subId metaHandle >>= \case
     Nothing -> do
       Log.fatal $ "unexpected error: subscription " <> Log.buildText subId <> " not exist."
-      throwIO $ HE.SubscriptionNotFound $ "Subscription " <> subId <> " not found"
+      throwIO $ HE.SubscriptionNotFound subId
     Just SubscriptionWrap {originSub=oSub@Subscription{..}, ..} -> do
       Log.debug $ "get subscriptionInfo from persistence: \n"
                <> "subscription = " <> Log.buildString' (show oSub) <> "\n"
@@ -521,7 +524,7 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
           Enumerated (Right SpecialOffsetLATEST)   ->
             mapM (\x -> S.getTailLSN scLDClient x <&> (x,) . (+1)) newShards
           _                                        ->
-            throwIO $ HE.InvalidSubscriptionOffset "subscriptionOffset is invalid."
+            throwIO $ HE.InvalidSubscriptionOffset
 
     addRead :: S.LDSyncCkpReader -> Assignment -> HM.HashMap S.C_LogID S.LSN -> IO ()
     addRead ldCkpReader Assignment {..} startOffsets = do

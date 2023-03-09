@@ -70,6 +70,7 @@ createView' sc@ServerContext{..} view ins out builder accumulation sql = do
     False  -> do
       Log.warning $ "At least one of the streams/views do not exist: "
         <> Log.buildString (show sources)
+      -- FIXME: use another exception or find which resource doesn't exist
       throwIO $ HE.StreamNotFound $ "At least one of the streams/views do not exist: " <> T.pack (show sources)
 
 -- TODO: refactor this function after the meta data has been reorganized
@@ -84,7 +85,7 @@ deleteView sc@ServerContext{..} name checkIfExist = do
                       , M.deleteMetaOp @ViewInfo name Nothing metaHandle] metaHandle
           atomicModifyIORef' P.groupbyStores (\hm -> (HM.delete name hm, ()))
           return Empty
-    Nothing -> do unless checkIfExist $ throwIO $ HE.ViewNotFound (name <> " not found"); return Empty
+    Nothing -> do unless checkIfExist $ throwIO $ HE.ViewNotFound name; return Empty
 
 getView :: ServerContext -> T.Text -> IO API.View
 getView ServerContext{..} viewId = do
@@ -92,7 +93,7 @@ getView ServerContext{..} viewId = do
     Just vInfo -> hstreamViewToView metaHandle vInfo
     Nothing    -> do
       Log.warning $ "Cannot Find View with Name: " <> Log.buildString (T.unpack viewId)
-      throwIO $ ViewNotFound "View does not exist"
+      throwIO $ ViewNotFound viewId
 
 listViews :: HasCallStack => ServerContext -> IO [API.View]
 listViews ServerContext{..} = mapM (hstreamViewToView metaHandle) =<< M.listMeta metaHandle

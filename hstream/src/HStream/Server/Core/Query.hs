@@ -97,6 +97,7 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
         False -> do
           Log.warning $ "At least one of the streams/views do not exist: "
               <> Log.buildString (show sources)
+          -- FIXME: use another exception or find which resource doesn't exist
           throwIO $ HE.StreamNotFound $ "At least one of the streams/views do not exist: " <> T.pack (show sources)
         True  -> do
           createStreamWithShard scLDClient (transToStreamName sink) "query" factor
@@ -246,9 +247,9 @@ listQueries ServerContext{..} = do
   mapM (hstreamQueryToQuery metaHandle) queries
 
 getQuery :: ServerContext -> GetQueryRequest -> IO Query
-getQuery ctx req = do
+getQuery ctx req@GetQueryRequest{..} = do
   m_query <- getQuery' ctx req
-  maybe (throwIO $ HE.QueryNotFound "Query does not exist") pure m_query
+  maybe (throwIO $ HE.QueryNotFound getQueryRequestId) pure m_query
 
 getQuery' :: ServerContext -> GetQueryRequest -> IO (Maybe Query)
 getQuery' ServerContext{..} GetQueryRequest{..} = do

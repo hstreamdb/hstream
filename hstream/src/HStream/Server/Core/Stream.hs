@@ -72,7 +72,7 @@ createStream ServerContext{..} stream@API.Stream{
                     , S.logAttrsExtras       = extraAttr
                     }
   catch (S.createStream scLDClient streamId attrs) $ \(_ :: S.EXISTS) ->
-    throwIO $ HE.StreamExists $ "Stream (" <> show streamId <> ") has been created"
+    throwIO $ HE.StreamExists streamStreamName
 
   let partitions = devideKeySpace (fromIntegral shardCount)
   shards <- forM partitions $ \(startKey, endKey) -> do
@@ -107,7 +107,7 @@ deleteStream ServerContext{..} API.DeleteStreamRequest{deleteStreamRequestForce 
              _archivedStream <- S.archiveStream scLDClient streamId
              P.updateSubscription metaHandle sName (cBytesToText $ S.getArchivedStreamName _archivedStream)
            else
-             throwIO $ HE.FoundSubscription "Stream still has subscription"
+             throwIO $ HE.FoundSubscription
 
 getStream :: ServerContext -> API.GetStreamRequest -> IO API.GetStreamResponse
 getStream sc@ServerContext{..} API.GetStreamRequest{ getStreamRequestName = sName} = do
@@ -190,12 +190,12 @@ appendStream :: HasCallStack
 appendStream ServerContext{..} API.AppendRequest {appendRequestShardId = shardId,
   appendRequestRecords = mbRecord, ..} = do
   let record@API.BatchedRecord{batchedRecordBatchSize=recordSize} = case mbRecord of
-       Nothing -> throw $ HE.InvalidRecord "BatchedRecord shouldn't be Nothing"
+       Nothing -> throw $ HE.EmptyBatchedRecord
        Just r  -> r
   timestamp <- getProtoTimestamp
   let payload = encodBatchRecord . updateRecordTimestamp timestamp $ record
       payloadSize = BS.length payload
-  when (payloadSize > scMaxRecordSize) $ throwIO $ HE.InvalidRecord "Record size exceeds the maximum size limit"
+  when (payloadSize > scMaxRecordSize) $ throwIO $ HE.InvalidRecordSize payloadSize
   S.AppendCompletion {..} <- S.appendCompressedBS scLDClient shardId payload cmpStrategy Nothing
   Stats.stream_stat_add_append_in_bytes scStatsHolder cStreamName (fromIntegral payloadSize)
   Stats.stream_stat_add_append_in_records scStatsHolder cStreamName (fromIntegral recordSize)
