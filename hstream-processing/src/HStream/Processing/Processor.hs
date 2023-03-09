@@ -43,6 +43,7 @@ import           HStream.Processing.Type
 import           HStream.Processing.Util
 import qualified HStream.Server.HStreamApi             as API
 import qualified Prelude                               as Prelude
+import qualified RIO                                   as RIO
 import           RIO
 import qualified RIO.ByteString.Lazy                   as BL
 import qualified RIO.HashMap                           as HM
@@ -145,11 +146,24 @@ runTask SourceConnectorWithoutCkp {..} sinkConnector taskBuilder@TaskTopologyCon
     ctx <- buildTaskContext task lf
     let offset = API.SpecialOffsetLATEST
     forM_ sourceStreamNames (flip subscribeToStreamWithoutCkp offset)
-    loop task ctx sourceStreamNames []
+
+    chan <- newTChanIO
+    withAsync (f chan sourceStreamNames) $ \a ->
+      withAsync (g task ctx chan) $ \b ->
+        waitEither_ a b
   where
-    runOnePath :: Task -> TaskContext -> T.Text -> IO ()
-    runOnePath Task {..} ctx sourceStreamName = withReadRecordsWithoutCkp sourceStreamName (transKSrc sourceStreamName) (transVSrc sourceStreamName) $ \sourceRecords -> runRIO ctx $ do
-      forM_ sourceRecords $ \r@SourceRecord {..} -> do
+    f :: TChan ([SourceRecord], MVar ()) -> [T.Text] -> IO ()
+    f chan sourceStreamNames = forM_ sourceStreamNames $ \sourceStreamName -> do
+      withReadRecordsWithoutCkp sourceStreamName (transKSrc sourceStreamName) (transVSrc sourceStreamName) $ \sourceRecords -> do
+        mvar <- RIO.newEmptyMVar
+        let callback  = atomically $ writeTChan chan (sourceRecords, mvar)
+            beforeAck = RIO.takeMVar mvar
+        return (callback,beforeAck)
+
+    g :: Task -> TaskContext -> TChan ([SourceRecord], MVar ()) -> IO ()
+    g Task{..} ctx chan = forever $ do
+      (sourceRecords, mvar) <- atomically $ readTChan chan
+      runRIO ctx $ forM_ sourceRecords $ \r@SourceRecord {..} -> do
         let acSourceName = iSourceName (taskSourceConfig HM'.! srcStream)
         let (sourceEProcessor, _) = taskTopologyForward HM'.! acSourceName
         liftIO $ updateTimestampInTaskContext ctx srcTimestamp
@@ -157,16 +171,7 @@ runTask SourceConnectorWithoutCkp {..} sinkConnector taskBuilder@TaskTopologyCon
         case e' of
           Left (e :: SomeException) -> liftIO $ Log.fatal $ Log.buildString (Prelude.show e)
           Right _ -> return ()
-    loop :: Task -> TaskContext -> [T.Text] -> [Async ()] -> IO ()
-    loop task ctx [] asyncs = return ()
-    loop task ctx [sourceStreamName] asyncs =
-      runOnePath task ctx sourceStreamName `onException` do
-        forM_ asyncs cancel
-        let sourceStreamNames = HM.keys (taskSourceConfig task)
-        forM_ sourceStreamNames unSubscribeToStreamWithoutCkp
-    loop task ctx (sourceStreamName : xs) asyncs = do
-      withAsync (runOnePath task ctx sourceStreamName) $ \a -> do
-        loop task ctx xs (asyncs ++ [a])
+      RIO.putMVar mvar ()
 
 runImmTask ::
   (Ord t, Semigroup t, Aeson.FromJSON t, Aeson.ToJSON t, Typeable t) =>

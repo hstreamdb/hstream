@@ -349,7 +349,7 @@ sendToClient metaHandle qid streamName SourceConnectorWithoutCkp{..} streamSend 
       withReadRecordsWithoutCkp streamName Just Just $ \sourceRecords -> do
         let (objects' :: [Maybe Aeson.Object]) = Aeson.decode' . srcValue <$> sourceRecords
             structs = jsonObjectToStruct . fromJust <$> filter isJust objects'
-        void $ streamSendMany structs
+        return (void $ streamSendMany structs, return ())
     _ -> throwIO $ HE.UnknownPushQueryStatus ""
     . (P.queryState <$>)
   where

@@ -201,18 +201,18 @@ withReadRecordsFromHStore' :: ServerContext
                            -> HCT.StreamName
                            -> (BL.ByteString -> Maybe BL.ByteString)
                            -> (BL.ByteString -> Maybe BL.ByteString)
-                           -> ([SourceRecord] -> IO ())
+                           -> ([SourceRecord] -> IO (IO (), IO ()))
                            -> IO ()
-withReadRecordsFromHStore' ctx consumerName streamName transK transV action = do
+withReadRecordsFromHStore' ctx consumerName streamName transK transV actionGen = do
   let req = API.StreamingFetchRequest
             { API.streamingFetchRequestSubscriptionId = hstoreSubscriptionPrefix <> streamName <> "_" <> consumerName
             , API.streamingFetchRequestConsumerName = hstoreConsumerPrefix <> consumerName
             , API.streamingFetchRequestAckIds = V.empty
             }
-  Core.streamingFetchCore ctx Core.SFetchCoreDirect req action'
+  Core.streamingFetchCore ctx Core.SFetchCoreDirect req actionGen'
   where
-    action' :: Maybe API.ReceivedRecord -> IO ()
-    action' receivedRecords = do
+    actionGen' :: Maybe API.ReceivedRecord -> IO (IO (), IO ())
+    actionGen' receivedRecords = do
       let sourceRecords = receivedRecordToSourceRecord streamName receivedRecords
       let sourceRecords' = mapMaybe (\r@SourceRecord{..} ->
                                        case transV srcValue of
@@ -221,7 +221,7 @@ withReadRecordsFromHStore' ctx consumerName streamName transK transV action = do
                                                             , srcValue = v
                                                             }
                                     ) sourceRecords
-      action sourceRecords'
+      actionGen sourceRecords'
 
 -- Note: It actually gets 'Payload'(defined in this file)s of all JSON format DataRecords.
 getJsonFormatRecords :: S.DataRecord Bytes -> [Payload]
