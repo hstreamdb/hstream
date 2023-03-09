@@ -1,0 +1,17 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: hserver-bootstrap
+spec:
+  template:
+    spec:
+      containers:
+        - name: hserver-bootstrap
+          image: "hstreamdb/hstream"
+          command:
+            - bash
+            - -c
+            - 'hadmin server --host hstream-server-0.hstream-server init'
+      restartPolicy: Never
+  backoffLimit: 10
+  ttlSecondsAfterFinished: 0

@@ -24,6 +24,7 @@ import           Z.Data.Vector.Base             (Bytes)
 import qualified Z.Foreign                      as Z
 import           Z.Foreign                      (BA#, MBA#)
 
+import qualified HStream.Logger                 as Log
 import qualified HStream.Store.Exception        as E
 import           HStream.Store.Internal.Foreign (cbool2bool, retryWhileAgain,
                                                  withAsyncPrimUnsafe)
@@ -93,7 +94,11 @@ startReadingFromCheckpointOrStart
 startReadingFromCheckpointOrStart reader logid m_start end =
   withForeignPtr reader $ \ptr -> void $ do
     let start = fromMaybe LSN_INVALID m_start
-    E.throwStreamErrorIfNotOK $ ld_start_reading_from_ckp_or_start ptr logid start end
+        warnSlow = Log.warnSlow 10000000{- max_expect: 10s -}
+                                2000000{- duration: 2s -}
+                                "Starting to read from checkpoint is slower than expected"
+    E.throwStreamErrorIfNotOK . warnSlow $
+      ld_start_reading_from_ckp_or_start ptr logid start end
 
 -- | Start reading from checkpoint
 --
@@ -105,8 +110,12 @@ startReadingFromCheckpoint
   -> LSN
   -> IO ()
 startReadingFromCheckpoint reader logid untilSeq =
-  withForeignPtr reader $ \ptr -> void $
-    E.throwStreamErrorIfNotOK $ ld_checkpointed_reader_start_reading_from_ckp ptr logid untilSeq
+  withForeignPtr reader $ \ptr -> void $ do
+    let warnSlow = Log.warnSlow 10000000{- max_expect: 10s -}
+                                2000000{- duration: 2s -}
+                                "Starting to read from checkpoint is slower than expected"
+    E.throwStreamErrorIfNotOK . warnSlow $
+      ld_checkpointed_reader_start_reading_from_ckp ptr logid untilSeq
 
 readerStopReading :: LDReader -> C_LogID -> IO ()
 readerStopReading reader logid =
@@ -387,10 +396,12 @@ foreign import ccall unsafe "hs_logdevice.h &free_sync_checkpointed_reader"
   c_free_sync_checkpointed_reader_fun
     :: FunPtr (Ptr LogDeviceSyncCheckpointedReader -> IO ())
 
-foreign import ccall safe "hs_logdevice.h ld_reader_start_reading"
+foreign import ccall unsafe "hs_logdevice.h ld_reader_start_reading"
   ld_reader_start_reading :: Ptr LogDeviceReader -> C_LogID -> LSN -> LSN -> IO ErrorCode
-foreign import ccall safe "hs_logdevice.h ld_checkpointed_reader_start_reading"
+foreign import ccall unsafe "hs_logdevice.h ld_checkpointed_reader_start_reading"
   ld_checkpointed_reader_start_reading :: Ptr LogDeviceSyncCheckpointedReader -> C_LogID -> LSN -> LSN -> IO ErrorCode
+
+-- this should be safe ffi because from_ckp may block
 foreign import ccall safe "hs_logdevice.h ld_checkpointed_reader_start_reading_from_ckp"
   ld_checkpointed_reader_start_reading_from_ckp :: Ptr LogDeviceSyncCheckpointedReader -> C_LogID -> LSN -> IO ErrorCode
 foreign import ccall safe "hs_logdevice.h ld_start_reading_from_ckp_or_start"

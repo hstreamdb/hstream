@@ -18,6 +18,8 @@ module HStream.Logger
   , Log.warning
   , Log.fatal
 
+  , warnSlow
+
   , Log.LoggerConfig (..)
   , Log.defaultLoggerConfig
   , Log.withDefaultLogger
@@ -49,20 +51,23 @@ module HStream.Logger
   , pattern Log.NOTSET
   ) where
 
-import           Data.ByteString       (ByteString)
-import qualified Data.ByteString.Char8 as BSC
-import qualified Data.Text             as Text
-import qualified Data.Text.Lazy        as TL
-import           Foreign.C.Types       (CInt (..))
-import           GHC.Conc.Sync         (ThreadId (..))
-import           GHC.Exts              (ThreadId#)
-import           GHC.Stack             (HasCallStack)
-import qualified Text.Read             as Read
-import qualified Z.Data.Builder        as B
-import           Z.Data.Builder        (Builder)
-import qualified Z.Data.CBytes         as CBytes
-import qualified Z.IO.Logger           as Log
-import           Z.IO.StdStream.Ansi   (AnsiColor (..), color)
+import           Control.Concurrent       (threadDelay)
+import qualified Control.Concurrent.Async as Async
+import           Control.Monad            (forever)
+import           Data.ByteString          (ByteString)
+import qualified Data.ByteString.Char8    as BSC
+import qualified Data.Text                as Text
+import qualified Data.Text.Lazy           as TL
+import           Foreign.C.Types          (CInt (..))
+import           GHC.Conc.Sync            (ThreadId (..))
+import           GHC.Exts                 (ThreadId#)
+import           GHC.Stack                (HasCallStack)
+import qualified Text.Read                as Read
+import qualified Z.Data.Builder           as B
+import           Z.Data.Builder           (Builder)
+import qualified Z.Data.CBytes            as CBytes
+import qualified Z.IO.Logger              as Log
+import           Z.IO.StdStream.Ansi      (AnsiColor (..), color)
 
 -------------------------------------------------------------------------------
 -- Example:
@@ -231,3 +236,13 @@ e :: HasCallStack => Builder () -> IO ()
 e = Log.withDefaultLogger . Log.fatal
 
 foreign import ccall unsafe "rts_getThreadId" getThreadId :: ThreadId# -> CInt
+
+-------------------------------------------------------------------------------
+
+warnSlow :: Int -> Int -> Builder () -> IO a -> IO a
+warnSlow starter duration msg f = Async.withAsync f $ \a1 ->
+  Async.withAsync h $ \_a2 -> Async.wait a1
+  where
+    h = do threadDelay starter
+           forever $ do Log.warning msg
+                        threadDelay duration

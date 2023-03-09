@@ -1,0 +1,5 @@
+resources:
+  - hstream-server.yaml
+  - jobs.yaml
+generatorOptions:
+  disableNameSuffixHash: true

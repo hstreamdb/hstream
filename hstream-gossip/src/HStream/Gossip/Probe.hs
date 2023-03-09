@@ -17,7 +17,6 @@ import           Control.Monad                  (forever, join, when)
 import           Data.ByteString                (ByteString)
 import           Data.List                      ((\\))
 import qualified Data.List                      as L
-import qualified Data.Map                       as Map
 import qualified Data.Vector                    as V
 import           Data.Word                      (Word32)
 import           Network.GRPC.HighLevel         (GRPCIOError (..),
@@ -44,7 +43,8 @@ import           HStream.Gossip.Utils           (ClusterInitedErr (..),
                                                  ClusterReadyErr (..),
                                                  broadcast, clusterInitedErr,
                                                  clusterReadyErr,
-                                                 getMessagesToSend, getMsgInc,
+                                                 getMessagesToSend,
+                                                 getOtherMembersSTM,
                                                  mkClientNormalRequest,
                                                  mkClientNormalRequest')
 import qualified HStream.Logger                 as Log
@@ -109,9 +109,9 @@ doPing
   :: GRPC.Client -> GossipContext -> ServerStatus
   -> Word32 -> Messages
   -> IO ()
-doPing client GossipContext{gossipOpts = GossipOpts{..}, ..}
+doPing client gc@GossipContext{gossipOpts = GossipOpts{..}, ..}
   ss@ServerStatus{serverInfo = sNode@I.ServerNode{..}, ..} _sid msg = do
-  cInc <- getMsgInc <$> readTVarIO latestMessage
+  cInc <- readTVarIO stateIncarnation
   maybeAck <- timeout probeInterval $ do
     Log.trace . Log.buildString $ show (I.serverNodeId serverSelf)
                                <> "Sending ping >>> " <> show serverNodeId
@@ -120,7 +120,7 @@ doPing client GossipContext{gossipOpts = GossipOpts{..}, ..}
     acked    <- join . atomically . handleAck isAcked . join $ maybeAck
     if acked then return True  else do
       atomically $ do
-        inc     <- getMsgInc <$> readTVar latestMessage
+        inc     <- readTVar stateIncarnation
         writeTQueue statePool $ T.GSuspect inc sNode serverSelf
       atomically $ takeTMVar isAcked
       return True
@@ -129,7 +129,7 @@ doPing client GossipContext{gossipOpts = GossipOpts{..}, ..}
       Log.info $ "[" <> Log.buildString (show (I.serverNodeId serverSelf))
               <> "]Ping and PingReq exceeds timeout"
       atomically $ do
-        inc     <- getMsgInc <$> readTVar latestMessage
+        inc     <- readTVar stateIncarnation
         when (inc == cInc) $
           writeTQueue statePool $ T.GConfirm inc sNode serverSelf
     Just _ -> pure ()
@@ -138,8 +138,8 @@ doPing client GossipContext{gossipOpts = GossipOpts{..}, ..}
       broadcast (V.toList msgs) statePool eventPool
       return $ pure True
     handleAck isAcked Nothing = do
-      inc     <- getMsgInc <$> readTVar latestMessage
-      members <- L.delete serverNodeId . Map.keys . snd <$> readTVar serverList
+      inc     <- readTVar stateIncarnation
+      members <- L.delete serverNodeId . map I.serverNodeId <$> getOtherMembersSTM gc
       case members of
         [] -> return $ pure False
         _  -> do
@@ -158,10 +158,10 @@ scheduleProbe gc@GossipContext{..} = do
   _ <- readMVar clusterInited
   forever $ do
     memberMap <- atomically $ do
-      memberMap <- snd <$> readTVar serverList
-      check (not $ Map.null memberMap)
+      memberMap <- getOtherMembersSTM gc
+      check (not $ null memberMap)
       return memberMap
-    let members = Map.keys memberMap
+    let members = I.serverNodeId <$> memberMap
     let pingOrder = shuffle' members (length members) randomGen
     runProbe gc randomGen pingOrder members
 
@@ -172,7 +172,7 @@ runProbe gc@GossipContext{..} gen (x:xs) members = do
     msgs <- stateTVar broadcastPool $ getMessagesToSend (fromIntegral (length members))
     writeTChan actionChan (DoPing x msgs)
   threadDelay $ probeInterval gossipOpts
-  members' <- Map.keys . snd <$> readTVarIO serverList
+  members' <- atomically $ map I.serverNodeId <$> getOtherMembersSTM gc
   let xs' = if members' == members then xs else (xs \\ (members \\ members')) ++ (members' \\ members)
   runProbe gc gen xs' members'
 runProbe _sc _gen [] _ids = pure ()
