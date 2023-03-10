@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                 #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
@@ -35,7 +36,11 @@ spec = aroundAll provideHstreamApi $
       threadDelay 10000000 -- FIXME: requires a notification mechanism to ensure that the task starts successfully before inserting data
       runInsertSql api "INSERT INTO s1 (a, b) VALUES (1, 3);"
       runInsertSql api "INSERT INTO s2 (a, b) VALUES (2, 3);"
+#ifdef HStreamUseV2Engine
     runFetchSql "SELECT b, SUM(s1.a), SUM(s2.a) FROM s1 INNER JOIN s2 ON s1.b = s2.b GROUP BY s1.b EMIT CHANGES;"
+#else
+    runFetchSql "SELECT b, SUM(s1.a), SUM(s2.a) FROM s1 INNER JOIN s2 ON s1.b = s2.b WITHIN (INTERVAL 01:00:00) GROUP BY s1.b EMIT CHANGES;"
+#endif
       `shouldReturn` [ mkStruct
         [ ("SUM(s1.a)", Aeson.Number 1)
         , ("SUM(s2.a)", Aeson.Number 2)

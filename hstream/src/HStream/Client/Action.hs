@@ -1,4 +1,5 @@
 {-# LANGUAGE BlockArguments      #-}
+{-# LANGUAGE CPP                 #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE OverloadedStrings   #-}
@@ -57,9 +58,15 @@ import           HStream.Client.Utils
 import           HStream.Server.HStreamApi
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.SQL.AST                  (StreamName)
+#ifdef HStreamUseV2Engine
 import           HStream.SQL.Codegen              (DropObject (..),
                                                    InsertType (..),
                                                    TerminationSelection (..))
+#else
+import           HStream.SQL.Codegen.V1           (DropObject (..),
+                                                   InsertType (..),
+                                                   TerminationSelection (..))
+#endif
 import           HStream.ThirdParty.Protobuf      (Empty (..))
 import           HStream.Utils
 

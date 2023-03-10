@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                 #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE LambdaCase          #-}
@@ -54,7 +55,11 @@ import           HStream.SQL                      (HStreamPlan (..),
                                                    ResumeObject (..),
                                                    hstreamCodegen,
                                                    parseAndRefine)
+#ifdef HStreamUseV2Engine
 import           HStream.SQL.Codegen              (DropObject (..))
+#else
+import           HStream.SQL.Codegen.V1           (DropObject (..))
+#endif
 import           HStream.SQL.Exception            (SomeSQLException,
                                                    formatSomeSQLException,
                                                    isEOF)

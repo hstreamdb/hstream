@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GADTs              #-}
 {-# LANGUAGE OverloadedStrings  #-}
@@ -8,6 +9,8 @@ module HStream.Server.HStore
   ( hstoreSourceConnector
   , hstoreSourceConnectorWithoutCkp
   , hstoreSinkConnector
+  , memorySinkConnector
+  , blackholeSinkConnector
   )
 where
 
@@ -19,9 +22,11 @@ import qualified Data.ByteString.Lazy             as BL
 import           Data.Functor                     ((<&>))
 import qualified Data.HashMap.Strict              as HM
 import           Data.Int                         (Int32, Int64)
+import           Data.IORef
 import qualified Data.Map.Strict                  as M
 import qualified Data.Map.Strict                  as Map
-import           Data.Maybe                       (catMaybes, fromJust)
+import           Data.Maybe                       (catMaybes, fromJust,
+                                                   mapMaybe)
 import           Data.Text                        (Text)
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
@@ -31,7 +36,6 @@ import           Z.Data.Vector                    (Bytes)
 
 import           HStream.Exception                (WrongOffset (..))
 import qualified HStream.Logger                   as Log
-import           HStream.Server.ConnectorTypes    as HCT
 import qualified HStream.Server.Core.Stream       as Core
 import qualified HStream.Server.Core.Subscription as Core
 import qualified HStream.Server.HStreamApi        as API
@@ -40,6 +44,13 @@ import           HStream.Server.Shard             (cBytesToKey, hashShardKey,
 import           HStream.Server.Types
 import qualified HStream.Store                    as S
 import           HStream.Utils
+
+#ifdef HStreamUseV2Engine
+import           HStream.Server.ConnectorTypes    as HCT
+#else
+import           HStream.Processing.Connector     as HCT
+import           HStream.Processing.Type          as HCT
+#endif
 
 hstoreSourceConnector :: S.LDClient -> S.LDSyncCkpReader -> S.StreamType -> SourceConnector
 hstoreSourceConnector ldclient reader streamType = SourceConnector {
@@ -65,6 +76,16 @@ hstoreSourceConnectorWithoutCkp ctx consumerName = SourceConnectorWithoutCkp {
 hstoreSinkConnector :: ServerContext -> SinkConnector
 hstoreSinkConnector ctx = SinkConnector {
   writeRecord = writeRecordToHStore ctx
+}
+
+memorySinkConnector :: IORef [SinkRecord] -> SinkConnector
+memorySinkConnector ioRef = SinkConnector {
+  writeRecord = writeRecordToMemory ioRef
+}
+
+blackholeSinkConnector :: SinkConnector
+blackholeSinkConnector = SinkConnector {
+  writeRecord = writeRecordToBlackHole
 }
 
 --------------------------------------------------------------------------------
@@ -178,9 +199,11 @@ readRecordsFromHStore ldclient reader maxlen = do
 withReadRecordsFromHStore' :: ServerContext
                            -> T.Text
                            -> HCT.StreamName
+                           -> (BL.ByteString -> Maybe BL.ByteString)
+                           -> (BL.ByteString -> Maybe BL.ByteString)
                            -> ([SourceRecord] -> IO ())
                            -> IO ()
-withReadRecordsFromHStore' ctx consumerName streamName action = do
+withReadRecordsFromHStore' ctx consumerName streamName transK transV action = do
   let req = API.StreamingFetchRequest
             { API.streamingFetchRequestSubscriptionId = hstoreSubscriptionPrefix <> streamName <> "_" <> consumerName
             , API.streamingFetchRequestConsumerName = hstoreConsumerPrefix <> consumerName
@@ -191,7 +214,14 @@ withReadRecordsFromHStore' ctx consumerName streamName action = do
     action' :: Maybe API.ReceivedRecord -> IO ()
     action' receivedRecords = do
       let sourceRecords = receivedRecordToSourceRecord streamName receivedRecords
-      action sourceRecords
+      let sourceRecords' = mapMaybe (\r@SourceRecord{..} ->
+                                       case transV srcValue of
+                                         Nothing -> Nothing
+                                         Just v  -> Just $ r{ srcKey   = srcKey >>= transK
+                                                            , srcValue = v
+                                                            }
+                                    ) sourceRecords
+      action sourceRecords'
 
 -- Note: It actually gets 'Payload'(defined in this file)s of all JSON format DataRecords.
 getJsonFormatRecords :: S.DataRecord Bytes -> [Payload]
@@ -214,22 +244,37 @@ commitCheckpointToHStore ldclient reader streamId offset = do
     Latest     -> throwIO $ WrongOffset "expect normal offset, but get Latest"
     Offset lsn -> S.writeCheckpoints reader (M.singleton logId lsn) 10{-retries-}
 
-writeRecordToHStore :: ServerContext -> SinkRecord -> IO ()
-writeRecordToHStore ctx SinkRecord{..} = do
+writeRecordToHStore :: ServerContext
+                    -> (BL.ByteString -> Maybe BL.ByteString)
+                    -> (BL.ByteString -> Maybe BL.ByteString)
+                    -> SinkRecord
+                    -> IO ()
+writeRecordToHStore ctx transK transV SinkRecord{..} = do
   Log.withDefaultLogger . Log.debug $ "Start writeRecordToHStore..."
 
-  timestamp <- getProtoTimestamp
-  shardId <- getShardId ctx snkStream
-  let header  = buildRecordHeader API.HStreamRecordHeader_FlagJSON Map.empty clientDefaultKey
-      payload = BL.toStrict . PB.toLazyByteString . jsonObjectToStruct . fromJust $ Aeson.decode snkValue
-      hsRecord = mkHStreamRecord header payload
-      record = mkBatchedRecord (PB.Enumerated (Right API.CompressionTypeNone)) (Just timestamp) 1 (V.singleton hsRecord)
-  let req = API.AppendRequest
-            { appendRequestStreamName = snkStream
-            , appendRequestShardId = shardId
-            , appendRequestRecords = Just record
-            }
-  void $ Core.appendStream ctx req
+  case transV snkValue of
+    Nothing -> return () -- FIXME: error message
+    Just v  -> do
+      timestamp <- getProtoTimestamp
+      shardId <- getShardId ctx snkStream
+      let header  = buildRecordHeader API.HStreamRecordHeader_FlagJSON Map.empty clientDefaultKey
+          payload = BL.toStrict . PB.toLazyByteString . jsonObjectToStruct . fromJust $ Aeson.decode v
+          hsRecord = mkHStreamRecord header payload
+          record = mkBatchedRecord (PB.Enumerated (Right API.CompressionTypeNone)) (Just timestamp) 1 (V.singleton hsRecord)
+      let req = API.AppendRequest
+                { appendRequestStreamName = snkStream
+                , appendRequestShardId = shardId
+                , appendRequestRecords = Just record
+                }
+      void $ Core.appendStream ctx req
+
+writeRecordToMemory :: IORef [SinkRecord]
+                    -> (BL.ByteString -> Maybe BL.ByteString)
+                    -> (BL.ByteString -> Maybe BL.ByteString)
+                    -> SinkRecord
+                    -> IO ()
+writeRecordToMemory ioRef transK transV sinkRecord = do
+  atomicModifyIORef' ioRef (\xs -> (xs ++ [sinkRecord], ()))
 
 data Payload = Payload
   { pLogID     :: S.C_LogID
@@ -237,6 +282,12 @@ data Payload = Payload
   , pLSN       :: S.LSN
   , pTimeStamp :: Int64
   } deriving (Show)
+
+writeRecordToBlackHole :: (BL.ByteString -> Maybe BL.ByteString)
+                       -> (BL.ByteString -> Maybe BL.ByteString)
+                       -> SinkRecord
+                       -> IO ()
+writeRecordToBlackHole _ _ _ = return ()
 
 --------------------------------------------------------------------------------
 

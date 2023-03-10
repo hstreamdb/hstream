@@ -1,0 +1,350 @@
+{-
+Simple parser for a SQL-like language
+-}
+
+--------------------------------------------------------------------------------
+
+PInteger.  PNInteger ::= "+" Integer ;
+IPInteger. PNInteger ::=     Integer ;
+NInteger.  PNInteger ::= "-" Integer ;
+
+PDouble.  PNDouble ::= "+" Double ;
+IPDouble. PNDouble ::=     Double ;
+NDouble.  PNDouble ::= "-" Double ;
+
+token HyphenIdent letter (letter | digit | '_' | '\'' | '-')* ;
+token SString '\'' char+ '\'' ;
+token QuotedRaw '`' (char - ["`"])+ '`' ;
+
+ColumnIdentNormal. ColumnIdent ::= HyphenIdent ;
+ColumnIdentRaw.    ColumnIdent ::= QuotedRaw;
+
+HIdentNormal. HIdent ::= HyphenIdent ;
+HIdentRaw.    HIdent ::= QuotedRaw ;
+--------------------------------------------------------------------------------
+
+comment "//" ;
+comment "/*" "*/" ;
+
+entrypoints SQL ;
+
+QSelect.      SQL ::= Select      ";" ;
+QPushSelect.  SQL ::= Select "EMIT" "CHANGES" ";" ;
+QCreate.      SQL ::= Create      ";" ;
+QInsert.      SQL ::= Insert      ";" ;
+QShow.        SQL ::= ShowQ       ";" ;
+QDrop.        SQL ::= Drop        ";" ;
+QTerminate.   SQL ::= Terminate   ";" ;
+QExplain.     SQL ::= Explain     ";" ;
+QPause.       SQL ::= Pause       ";" ;
+QResume.      SQL ::= Resume      ";" ;
+
+---- Create Query
+DCreate.  Create ::= "CREATE" "STREAM" HIdent ;
+CreateOp. Create ::= "CREATE" "STREAM" HIdent "WITH" "(" [StreamOption] ")" ;
+separator StreamOption "," ;
+CreateAs. Create ::= "CREATE" "STREAM" HIdent "AS" Select ;
+CreateAsOp. Create ::= "CREATE" "STREAM" HIdent "AS" Select "WITH" "(" [StreamOption] ")" ;
+
+-- OptionTopic.  StreamOption ::= "TOPIC"  "=" String ;
+-- OptionFormat. StreamOption ::= "FORMAT" "=" String ;
+OptionRepFactor. StreamOption ::= "REPLICATE" "=" PNInteger ;
+
+CreateSourceConnector. Create ::= "CREATE" "SOURCE" "CONNECTOR" HIdent "FROM" HIdent "WITH" "(" [ConnectorOption] ")" ;
+CreateSourceConnectorIf. Create ::= "CREATE" "SOURCE" "CONNECTOR" HIdent "FROM" HIdent "IF" "NOT" "EXIST" "WITH" "(" [ConnectorOption] ")" ;
+CreateSinkConnector. Create ::= "CREATE" "SINK" "CONNECTOR" HIdent "TO" HIdent "WITH" "(" [ConnectorOption] ")" ;
+CreateSinkConnectorIf. Create ::= "CREATE" "SINK" "CONNECTOR" HIdent "TO" HIdent "IF" "NOT" "EXIST" "WITH" "(" [ConnectorOption] ")" ;
+separator ConnectorOption "," ;
+
+CreateView. Create ::= "CREATE" "VIEW" HIdent "AS" Select ;
+
+ConnectorProperty. ConnectorOption ::= String "=" ValueExpr ;
+
+---- Pause Query
+PauseConnector. Pause ::= "PAUSE" "CONNECTOR" HIdent ;
+
+--- Resume Query
+ResumeConnector. Resume ::= "RESUME" "CONNECTOR" HIdent ;
+
+---- Insert Query
+DInsert. Insert ::= "INSERT" "INTO" HIdent "(" [ColumnIdent] ")" "VALUES" "(" [ValueExpr] ")" ;
+separator ColumnIdent "," ;
+separator ValueExpr "," ;
+InsertBinary. Insert ::= "INSERT" "INTO" HIdent "VALUES" String ;
+InsertJson.   Insert ::= "INSERT" "INTO" HIdent "VALUES" SString ;
+
+---- Show Query
+DShow. ShowQ ::= "SHOW" ShowOption ;
+ShowQueries. ShowOption ::= "QUERIES" ;
+ShowStreams. ShowOption ::= "STREAMS" ;
+ShowConnectors. ShowOption ::= "CONNECTORS" ;
+ShowViews. ShowOption ::= "VIEWS" ;
+
+--- Drop Query
+DDrop.  Drop ::= "DROP" DropOption HIdent ;
+DropIf. Drop ::= "DROP" DropOption HIdent "IF" "EXISTS" ;
+
+DropConnector. DropOption ::= "CONNECTOR" ;
+DropStream.    DropOption ::= "STREAM"    ;
+DropView.      DropOption ::= "VIEW"      ;
+
+-- Terminate Query
+TerminateQuery. Terminate ::= "TERMINATE" "QUERY" HIdent ;
+TerminateAll. Terminate ::= "TERMINATE" "ALL";
+
+---- Explain
+ExplainSelect. Explain ::= "EXPLAIN" Select ;
+ExplainCreate. Explain ::= "EXPLAIN" Create ;
+
+---- Select Query
+DSelect. Select ::= Sel From Where GroupBy Having ;
+
+-- Sel
+DSel. Sel ::= "SELECT" [SelectItem] ;
+separator SelectItem "," ;
+
+SelectItemUnnamedExpr.       SelectItem ::= ValueExpr ;
+SelectItemExprWithAlias.     SelectItem ::= ValueExpr "AS" ColumnIdent ;
+SelectItemQualifiedWildcard. SelectItem ::= HIdent "." "*" ;
+SelectItemWildcard.          SelectItem ::= "*" ;
+
+-- From
+DFrom. From ::= "FROM" TableRef ;
+
+TableRefAs. TableRef ::= TableRef1 "AS" HIdent ;
+
+TableRefCrossJoin.   TableRef1 ::= TableRef1 JoinTypeWithoutCond "JOIN" TableRef2 "WITHIN" "(" Interval ")" ;
+TableRefNaturalJoin. TableRef1 ::= TableRef1 "NATURAL" JoinTypeWithCond "JOIN" TableRef2 "WITHIN" "(" Interval ")" ;
+TableRefJoinOn.      TableRef1 ::= TableRef1 JoinTypeWithCond "JOIN" TableRef2 "ON" ValueExpr "WITHIN" "(" Interval ")" ;
+TableRefJoinUsing.   TableRef1 ::= TableRef1 JoinTypeWithCond "JOIN" TableRef2 "USING" "(" [ColName] ")" "WITHIN" "(" Interval ")" ;
+TableRefIdent.     TableRef2 ::= HIdent ;
+TableRefSubquery.  TableRef2 ::= "(" Select ")" ;
+coercions TableRef 2 ;
+separator ColName "," ;
+
+JoinInner1. JoinTypeWithCond ::= "INNER" ;
+JoinInner2. JoinTypeWithCond ::= "" ;
+JoinLeft1.  JoinTypeWithCond ::= "LEFT" ;
+JoinLeft2.  JoinTypeWithCond ::= "LEFT" "OUTER" ;
+JoinRight1. JoinTypeWithCond ::= "RIGHT" ;
+JoinRight2. JoinTypeWithCond ::= "RIGHT" "OUTER" ;
+JoinFull1.  JoinTypeWithCond ::= "FULL" ;
+JoinFull2.  JoinTypeWithCond ::= "FULL" "OUTER" ;
+JoinCross.  JoinTypeWithoutCond ::= "CROSS" ;
+
+-- Where
+DWhereEmpty. Where ::= "" ;
+DWhere.     Where ::= "WHERE" ValueExpr ;
+
+-- GroupBy
+
+DTumbling. TimeWindow ::= "TUMBLING" "(" Interval ")" ;
+DHopping.  TimeWindow ::= "HOPPING"  "(" Interval "," Interval ")" ;
+DSession.  TimeWindow ::= "SESSION"  "(" Interval ")" ;
+
+DGroupByEmpty. GroupBy ::= "" ;
+DGroupBy.      GroupBy ::= "GROUP" "BY" [ColName] ;
+DGroupByWin.   GroupBy ::= "GROUP" "BY" [ColName] TimeWindow ;
+
+-- Having
+DHavingEmpty. Having ::= "" ;
+DHaving.      Having ::= "HAVING" ValueExpr ;
+
+--------------------------------------------------------------------------------
+
+---- Data Types
+TypeInteger.  DataType ::= "INTEGER" ;
+TypeFloat.    DataType ::= "FLOAT" ;
+TypeNumeric.  DataType ::= "NUMERIC" ;
+TypeBoolean.  DataType ::= "BOOLEAN" ;
+TypeByte.     DataType ::= "BYTEA" ;
+TypeText.     DataType ::= "STRING" ;
+TypeDate.     DataType ::= "DATE" ;
+TypeTime.     DataType ::= "TIME" ;
+TypeTimestamp. DataType ::= "TIMESTAMP" ;
+TypeInterval. DataType ::= "INTERVAL" ;
+TypeJson.     DataType ::= "JSONB" ;
+TypeArray.    DataType ::= DataType "[]" ;
+TypeMap.      DataType ::= "MAP" "[" DataType "=>" DataType "]" ;
+
+--------------------------------------------------------------------------------
+
+---- Value Expression
+-- Type Casting
+ExprCast1. ValueExpr ::= ValueExpr1 "::" DataType ;
+ExprCast2. ValueExpr ::= "CAST" "(" ValueExpr1 "AS" DataType ")" ;
+
+-- Boolean Expr
+ExprOr.  ValueExpr1  ::= ValueExpr1  "OR" ValueExpr2 ;
+ExprAnd. ValueExpr2 ::= ValueExpr2 "AND" ValueExpr3 ;
+
+ExprEQ.  ValueExpr3 ::= ValueExpr3 "="  ValueExpr4 ;
+ExprNEQ. ValueExpr3 ::= ValueExpr3 "<>" ValueExpr4 ;
+ExprLT.  ValueExpr3 ::= ValueExpr3 "<"  ValueExpr4 ;
+ExprGT.  ValueExpr3 ::= ValueExpr3 ">"  ValueExpr4 ;
+ExprLEQ. ValueExpr3 ::= ValueExpr3 "<=" ValueExpr4 ;
+ExprGEQ. ValueExpr3 ::= ValueExpr3 ">=" ValueExpr4 ;
+
+-- Arith Expr
+ExprAdd. ValueExpr4 ::= ValueExpr4 "+" ValueExpr5 ;
+ExprSub. ValueExpr4 ::= ValueExpr4 "-" ValueExpr5 ;
+ExprMul. ValueExpr5 ::= ValueExpr5 "*" ValueExpr6 ;
+
+-- Map and Array Access
+ArrayAccessRhsIndex. ArrayAccessRhs ::= "[" Integer "]" ;
+ArrayAccessRhsFrom. ArrayAccessRhs ::= "[" Integer ":" "]" ;
+ArrayAccessRhsTo. ArrayAccessRhs ::= "[" ":" Integer "]" ;
+ArrayAccessRhsFromTo. ArrayAccessRhs ::= "[" Integer ":" Integer "]" ;
+
+ExprAccessMap. ValueExpr ::= ValueExpr "=>" ValueExpr ; -- FIXME
+ExprAccessArray. ValueExpr ::= ValueExpr ArrayAccessRhs ; -- FIXME
+
+-- Null Expr.
+ExprNull. ValueExpr7 ::= "NULL" ;
+
+-- Scalar Numeric Type
+ExprInt. ValueExpr7 ::= PNInteger ; -- integer/numeric
+ExprNum. ValueExpr7 ::= PNDouble  ; -- float/numeric
+
+-- Plain String
+ExprString. ValueExpr7 ::= String ; -- string
+
+-- Boolean Type
+BoolTrue.  Boolean ::= "TRUE"  ; -- boolean
+BoolFalse. Boolean ::= "FALSE" ;
+ExprBool. ValueExpr7 ::= Boolean ;
+
+-- Date, Time and Interval
+TimeStrWithoutMicroSec. TimeStr ::= Integer ":" Integer ":" Integer ;
+TimeStrWithMicroSec.    TimeStr ::= Integer ":" Integer ":" Integer "." Integer ;
+
+DDateStr. DateStr ::= Integer "-" Integer "-" Integer ;
+DDateTimeStr. DateTimeStr ::= DateStr TimeStr ;
+
+TimezoneZ.        Timezone ::= "Z" ;
+TimezonePositive. Timezone ::= "+" Integer ":" Integer ;
+TimezoneNegative. Timezone ::= "-" Integer ":" Integer ;
+
+DTimestampStr. TimestampStr ::= DateStr "T" TimeStr Timezone ;
+
+DDate. Date ::= "DATE" DateStr ;
+DTime. Time ::= "TIME" TimeStr ;
+TimestampWithoutZone. Timestamp ::= "TIMESTAMP" DateTimeStr ;
+TimestampWithZone.    Timestamp ::= "TIMESTAMP" TimestampStr ;
+
+ExprDate. ValueExpr7 ::= Date ;
+ExprTime. ValueExpr7 ::= Time ;
+ExprTimestamp. ValueExpr7 ::= Timestamp ;
+
+IntervalWithoutDate. Interval ::= "INTERVAL" TimeStr ;     -- TimeOfDay
+IntervalWithDate.    Interval ::= "INTERVAL" DateTimeStr ; -- LocalTime
+ExprInterval. ValueExpr7 ::= Interval ;
+
+-- Non-Scalar Type (Array and Map)
+ExprArr. ValueExpr ::= "[" [ValueExpr] "]" ; -- array
+ExprMap. ValueExpr ::= "{" [LabelledValueExpr] "}" ; -- map
+DLabelledValueExpr. LabelledValueExpr ::= ValueExpr ":" ValueExpr ;
+separator LabelledValueExpr "," ;
+
+-- SubQuery
+ExprSubquery. ValueExpr7 ::= "(" Select ")" ;
+
+-- Column Name
+ColNameSimple. ColName ::= ColumnIdent ;
+ColNameStream. ColName ::= HIdent "." ColumnIdent ;
+ExprColName. ValueExpr7 ::= ColName ;
+
+-- Set Functions
+SetFuncCountAll. SetFunc ::= "COUNT" "(" "*"       ")" ;
+SetFuncCount.    SetFunc ::= "COUNT" "(" ValueExpr ")" ;
+SetFuncAvg.      SetFunc ::= "AVG"   "(" ValueExpr ")" ;
+SetFuncSum.      SetFunc ::= "SUM"   "(" ValueExpr ")" ;
+SetFuncMax.      SetFunc ::= "MAX"   "(" ValueExpr ")" ;
+SetFuncMin.      SetFunc ::= "MIN"   "(" ValueExpr ")" ;
+
+SetFuncTopK.         SetFunc ::= "TOPK"         "(" ValueExpr "," ValueExpr ")" ;
+SetFuncTopKDistinct. SetFunc ::= "TOPKDISTINCT" "(" ValueExpr "," ValueExpr ")" ;
+
+ExprSetFunc. ValueExpr7 ::= SetFunc ;
+
+-- Scalar Functions
+-- jsonb related
+ScalarFuncFieldToJson.   ScalarFunc ::= ValueExpr "->"  ValueExpr ;
+ScalarFuncFieldToText.   ScalarFunc ::= ValueExpr "->>" ValueExpr ;
+ScalarFuncFieldsToJson.  ScalarFunc ::= ValueExpr "#>"  ValueExpr ;
+ScalarFuncFieldsToTexts. ScalarFunc ::= ValueExpr "#>>" ValueExpr ;
+
+ScalarFuncSin.   ScalarFunc ::= "SIN"   "(" ValueExpr ")" ;
+ScalarFuncSinh.  ScalarFunc ::= "SINH"  "(" ValueExpr ")" ;
+ScalarFuncAsin.  ScalarFunc ::= "ASIN"  "(" ValueExpr ")" ;
+ScalarFuncAsinh. ScalarFunc ::= "ASINH" "(" ValueExpr ")" ;
+ScalarFuncCos.   ScalarFunc ::= "COS"   "(" ValueExpr ")" ;
+ScalarFuncCosh.  ScalarFunc ::= "COSH"  "(" ValueExpr ")" ;
+ScalarFuncAcos.  ScalarFunc ::= "ACOS"  "(" ValueExpr ")" ;
+ScalarFuncAcosh. ScalarFunc ::= "ACOSH" "(" ValueExpr ")" ;
+ScalarFuncTan.   ScalarFunc ::= "TAN"   "(" ValueExpr ")" ;
+ScalarFuncTanh.  ScalarFunc ::= "TANH"  "(" ValueExpr ")" ;
+ScalarFuncAtan.  ScalarFunc ::= "ATAN"  "(" ValueExpr ")" ;
+ScalarFuncAtanh. ScalarFunc ::= "ATANH" "(" ValueExpr ")" ;
+
+ScalarFuncAbs.   ScalarFunc ::= "ABS"   "(" ValueExpr ")" ;
+ScalarFuncCeil.  ScalarFunc ::= "CEIL"  "(" ValueExpr ")" ;
+ScalarFuncFloor. ScalarFunc ::= "FLOOR" "(" ValueExpr ")" ;
+ScalarFuncRound. ScalarFunc ::= "ROUND" "(" ValueExpr ")" ;
+
+ScalarFuncSign.  ScalarFunc ::= "SIGN"  "(" ValueExpr ")" ;
+ScalarFuncSqrt.  ScalarFunc ::= "SQRT"  "(" ValueExpr ")" ;
+ScalarFuncLog.   ScalarFunc ::= "LOG"   "(" ValueExpr ")" ;
+ScalarFuncLog2.  ScalarFunc ::= "LOG2"  "(" ValueExpr ")" ;
+ScalarFuncLog10. ScalarFunc ::= "LOG10" "(" ValueExpr ")" ;
+ScalarFuncExp.   ScalarFunc ::= "EXP"   "(" ValueExpr ")" ;
+
+ScalarFuncIsInt.   ScalarFunc ::= "IS_INT"   "(" ValueExpr ")" ;
+ScalarFuncIsFloat. ScalarFunc ::= "IS_FLOAT" "(" ValueExpr ")" ;
+ScalarFuncIsNum.   ScalarFunc ::= "IS_NUM"   "(" ValueExpr ")" ;
+ScalarFuncIsBool.  ScalarFunc ::= "IS_BOOL"  "(" ValueExpr ")" ;
+ScalarFuncIsStr.   ScalarFunc ::= "IS_STR"   "(" ValueExpr ")" ;
+ScalarFuncIsMap.   ScalarFunc ::= "IS_MAP"   "(" ValueExpr ")" ;
+ScalarFuncIsArr.   ScalarFunc ::= "IS_ARRAY" "(" ValueExpr ")" ;
+ScalarFuncIsDate.  ScalarFunc ::= "IS_DATE"  "(" ValueExpr ")" ;
+ScalarFuncIsTime.  ScalarFunc ::= "IS_TIME"  "(" ValueExpr ")" ;
+
+ScalarFuncToStr.  ScalarFunc ::= "TO_STR" "(" ValueExpr ")" ;
+
+ScalarFuncToLower. ScalarFunc ::= "TO_LOWER"   "(" ValueExpr ")" ;
+ScalarFuncToUpper. ScalarFunc ::= "TO_UPPER"   "(" ValueExpr ")" ;
+ScalarFuncTrim.    ScalarFunc ::= "TRIM"       "(" ValueExpr ")" ;
+ScalarFuncLTrim.   ScalarFunc ::= "LEFT_TRIM"  "(" ValueExpr ")" ;
+ScalarFuncRTrim.   ScalarFunc ::= "RIGHT_TRIM" "(" ValueExpr ")" ;
+ScalarFuncRev.     ScalarFunc ::= "REVERSE"    "(" ValueExpr ")" ;
+ScalarFuncStrlen.  ScalarFunc ::= "STRLEN"     "(" ValueExpr ")" ;
+
+ScalarFuncIfNull. ScalarFunc ::= "IFNULL" "(" ValueExpr "," ValueExpr ")" ;
+ScalarFuncNullIf. ScalarFunc ::= "NULLIF" "(" ValueExpr "," ValueExpr ")" ;
+
+ScalarFuncDateStr. ScalarFunc ::= "DATETOSTRING" "(" ValueExpr "," ValueExpr ")" ;
+ScalarFuncStrDate. ScalarFunc ::= "STRINGTODATE" "(" ValueExpr "," ValueExpr ")" ;
+
+ScalarFuncSplit.    ScalarFunc ::= "SPLIT"    "(" ValueExpr "," ValueExpr ")" ;
+ScalarFuncChunksOf. ScalarFunc ::= "CHUNKSOF" "(" ValueExpr "," ValueExpr ")" ;
+
+ScalarFuncTake.    ScalarFunc ::= "TAKE"    "(" ValueExpr "," ValueExpr ")" ;
+ScalarFuncTakeEnd. ScalarFunc ::= "TAKEEND" "(" ValueExpr "," ValueExpr ")" ;
+ScalarFuncDrop.    ScalarFunc ::= "DROP"    "(" ValueExpr "," ValueExpr ")" ;
+ScalarFuncDropEnd. ScalarFunc ::= "DROPEND" "(" ValueExpr "," ValueExpr ")" ;
+
+ArrayFuncContain.   ScalarFunc ::= "ARRAY_CONTAIN"   "(" ValueExpr "," ValueExpr ")" ;
+ArrayFuncDistinct.  ScalarFunc ::= "ARRAY_DISTINCT"  "(" ValueExpr               ")" ;
+ArrayFuncExcept.    ScalarFunc ::= "ARRAY_EXCEPT"    "(" ValueExpr "," ValueExpr ")" ;
+ArrayFuncIntersect. ScalarFunc ::= "ARRAY_INTERSECT" "(" ValueExpr "," ValueExpr ")" ;
+ArrayFuncLength.    ScalarFunc ::= "ARRAY_LENGTH"    "(" ValueExpr               ")" ;
+ArrayFuncRemove.    ScalarFunc ::= "ARRAY_REMOVE"    "(" ValueExpr "," ValueExpr ")" ;
+ArrayFuncUnion.     ScalarFunc ::= "ARRAY_UNION"     "(" ValueExpr "," ValueExpr ")" ;
+ArrayFuncJoin.      ScalarFunc ::= "ARRAY_JOIN"      "(" ValueExpr               ")" ;
+ArrayFuncJoinWith.  ScalarFunc ::= "ARRAY_JOIN"      "(" ValueExpr "," ValueExpr ")" ;
+ArrayFuncMax.       ScalarFunc ::= "ARRAY_MAX"       "(" ValueExpr               ")" ;
+ArrayFuncMin.       ScalarFunc ::= "ARRAY_MIN"       "(" ValueExpr               ")" ;
+ArrayFuncSort.      ScalarFunc ::= "ARRAY_SORT"      "(" ValueExpr               ")" ;
+
+ExprScalarFunc. ValueExpr ::= ScalarFunc ;
+coercions ValueExpr 7 ;
