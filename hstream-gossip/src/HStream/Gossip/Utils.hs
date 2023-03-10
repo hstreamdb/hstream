@@ -178,6 +178,9 @@ clusterInitedErr = "Cluster is already initialized"
 clusterReadyErr  :: StatusDetails
 clusterReadyErr  = "Cluster is ready"
 
+clusterNotReadyErr  :: StatusDetails
+clusterNotReadyErr  = "Node / Cluster is not ready"
+
 data ClusterInitedErr = ClusterInitedErr
   deriving (Show, Eq)
 instance Exception ClusterInitedErr
@@ -185,6 +188,10 @@ instance Exception ClusterInitedErr
 data ClusterReadyErr = ClusterReadyErr
   deriving (Show, Eq)
 instance Exception ClusterReadyErr
+
+data ClusterNotReadyErr = ClusterNotReadyErr
+  deriving (Show, Eq)
+instance Exception ClusterNotReadyErr
 
 data FailedToStart = FailedToStart
   deriving (Show, Eq)
@@ -211,6 +218,10 @@ exHandlers =
   , Handler $ \(err :: ClusterReadyErr) -> do
       Log.debug $ Log.buildString' err
       HsGrpc.throwGrpcError $ HsGrpc.GrpcStatus HsGrpc.StatusFailedPrecondition (Just $ unStatusDetails clusterReadyErr) Nothing
+
+  , Handler $ \(err :: ClusterNotReadyErr) -> do
+      Log.debug $ Log.buildString' err
+      HsGrpc.throwGrpcError $ HsGrpc.GrpcStatus HsGrpc.StatusFailedPrecondition (Just $ unStatusDetails clusterNotReadyErr) Nothing
 
   , Handler $ \(err :: DuplicateNodeId) -> do
       Log.fatal $ Log.buildString' err
@@ -247,6 +258,10 @@ exceptionHandlers =
   , Handler $ \(err :: ClusterReadyErr) -> do
       Log.debug $ Log.buildString' err
       returnErrResp StatusFailedPrecondition clusterReadyErr
+
+  , Handler $ \(err :: ClusterNotReadyErr) -> do
+      Log.debug $ Log.buildString' err
+      returnErrResp StatusFailedPrecondition clusterNotReadyErr
 
   , Handler $ \(err :: FailedToStart) -> do
       Log.fatal $ Log.buildString' err
