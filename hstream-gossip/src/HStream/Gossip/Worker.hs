@@ -24,8 +24,9 @@ import           Data.Time.Clock.System
 import qualified SlaveThread
 
 import qualified HStream.Common.GrpcHaskell     as GRPC
-import           HStream.Gossip.Gossip          (gossip)
+import           HStream.Gossip.Gossip          (doGossip)
 import           HStream.Gossip.Probe           (doPing, pingReq, pingReqPing)
+import           HStream.Gossip.Reconnect       (doReconnect)
 import           HStream.Gossip.Types           (GossipContext (..),
                                                  RequestAction (..),
                                                  ServerState (..),
@@ -102,4 +103,4 @@ joinWorkers client gc@GossipContext{..} ss@ServerStatus{serverInfo = sNode@I.Ser
         Log.info . Log.buildString $ "Sending PingReqPing to: " <> show serverNodeId
         pingReqPing msg isAcked client
       DoGossip sids msg -> when (serverNodeId `elem` sids) $ do
-        gossip msg client
+        doGossip client msg

@@ -9,8 +9,8 @@ import           Control.Concurrent             (MVar, ThreadId)
 import           Control.Concurrent.STM         (TChan, TMVar, TQueue, TVar)
 import           Data.ByteString                (ByteString)
 import qualified Data.IntMap.Strict             as IM
-import qualified Data.Map                       as Map
 import           Data.Map.Strict                (Map)
+import qualified Data.Map.Strict                as Map
 import           Data.Text                      (Text)
 import           Data.Time.Clock.System
 import           Data.Word                      (Word32, Word64)
@@ -41,7 +41,6 @@ type DeadServers = Map ServerId I.ServerNode
 data ServerStatus = ServerStatus
   { serverInfo       :: I.ServerNode
   , serverState      :: TVar ServerState
-  , latestMessage    :: TVar G.StateMessage
   , stateIncarnation :: TVar Incarnation
   , stateChange      :: TVar SystemTime
   }
@@ -103,6 +102,7 @@ data RequestAction
   | DoPingReq [ServerId] ServerStatus (TMVar ()) Messages
   | DoPingReqPing ServerId  (TMVar Messages) Messages
   | DoGossip [ServerId] Messages
+  | DoReconnect ServerId
 instance Show RequestAction where
   show (DoPing        x y)       = "Send ping to"     <> show x <> " with message: " <> show y
   show (DoPingReq     ids x _ y) = "Send PingReq to " <> show ids <> " for " <> show (serverInfo x)

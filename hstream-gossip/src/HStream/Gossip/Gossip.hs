@@ -27,10 +27,10 @@ import           HStream.Gossip.Utils           (getMessagesToSend,
 import qualified HStream.Logger                 as Log
 import qualified HStream.Server.HStreamInternal as I
 
-gossip :: [G.Message] -> GRPC.Client -> IO ()
-gossip msg client = do
+doGossip :: GRPC.Client -> [G.Message] -> IO ()
+doGossip client msgs = do
   HStreamGossip{..} <- hstreamGossipClient client
-  hstreamGossipSendGossip (mkClientNormalRequest . Gossip $ V.fromList msg) >>= \case
+  hstreamGossipSendGossip (mkClientNormalRequest . Gossip $ V.fromList msgs) >>= \case
     ClientNormalResponse {} -> return ()
     ClientErrorResponse  {} -> Log.debug "Failed to send gossip"
 

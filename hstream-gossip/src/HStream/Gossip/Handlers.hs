@@ -67,7 +67,6 @@ handleStateMessage GossipContext{..} msg@(T.GConfirm inc node@I.ServerNode{..} _
         now <- getSystemTime
         mWorker <- atomically $ do
           modifyTVar' broadcastPool (broadcastMessage $ T.GState msg)
-          writeTVar latestMessage msg
           writeTVar serverState ServerDead
           writeTVar stateChange now
           writeTVar incarnation inc
@@ -93,7 +92,6 @@ handleStateMessage GossipContext{..} msg@(T.GSuspect inc node@I.ServerNode{..} _
           inc' <- readTVar stateIncarnation
           state <- readTVar serverState
           when (inc > inc' && state == ServerSuspicious || inc >= inc' && state == ServerAlive) $ do
-            writeTVar latestMessage msg
             writeTVar serverState ServerSuspicious
             writeTVar stateChange now
             writeTVar incarnation inc

@@ -36,6 +36,7 @@ library
     HStream.Gossip.Gossip
     HStream.Gossip.Handlers
     HStream.Gossip.Probe
+    HStream.Gossip.Reconnect
     HStream.Gossip.Server.Handlers
     HStream.Gossip.Start
     HStream.Gossip.Types

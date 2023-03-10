@@ -41,6 +41,7 @@ import           HStream.Gossip.Handlers          (broadCastUserEvent,
 import qualified HStream.Gossip.HStreamGossip     as API
 import           HStream.Gossip.Probe             (bootstrapPing, scheduleProbe)
 -- NOTE: please keep both of the following import
+import           HStream.Gossip.Reconnect         (scheduleReconnect)
 import           HStream.Gossip.Server.Handlers   (handlers, handlersNew)
 import           HStream.Gossip.Types             (Epoch, EventHandlers,
                                                    EventPayload,
@@ -117,7 +118,8 @@ startGossip grpcHost gc@GossipContext{..} = do
                               : map ($ gc) [ runStateHandler
                                            , runEventHandler
                                            , scheduleGossip
-                                           , scheduleProbe ])
+                                           , scheduleProbe
+                                           , scheduleReconnect ])
   mapM_ (link2Only (const True) a1) asyncs
   return a1
 
