@@ -25,6 +25,8 @@ module HStream.Processing.Processor
     SourceConfig (..),
     SinkConfig (..),
     TaskBuilder,
+
+    ChangeLogger (..)
   )
 where
 
@@ -38,6 +40,7 @@ import           HStream.Processing.Connector
 import           HStream.Processing.Encoding
 import           HStream.Processing.Error              (HStreamProcessingError (..))
 import           HStream.Processing.Processor.Internal
+import           HStream.Processing.Processor.ChangeLog
 import           HStream.Processing.Store
 import           HStream.Processing.Type
 import           HStream.Processing.Util
@@ -111,16 +114,17 @@ taskBuilderWithName builder taskName =
     { ttcName = taskName
     }
 
-runTask ::
+runTask :: (ChangeLogger h) =>
   SourceConnectorWithoutCkp ->
   SinkConnector ->
   TaskBuilder ->
+  h ->
   (T.Text -> BL.ByteString -> Maybe BL.ByteString) ->
   (T.Text -> BL.ByteString -> Maybe BL.ByteString) ->
   (BL.ByteString -> Maybe BL.ByteString) ->
   (BL.ByteString -> Maybe BL.ByteString) ->
   IO ()
-runTask SourceConnectorWithoutCkp {..} sinkConnector taskBuilder@TaskTopologyConfig {..} transKSrc transVSrc transKSnk transVSnk = do
+runTask SourceConnectorWithoutCkp {..} sinkConnector taskBuilder@TaskTopologyConfig {..} changeLogger transKSrc transVSrc transKSnk transVSnk = do
   -- build and add internalSinkProcessor
   let sinkProcessors =
         HM.map
@@ -143,7 +147,7 @@ runTask SourceConnectorWithoutCkp {..} sinkConnector taskBuilder@TaskTopologyCon
   let sourceStreamNames = HM.keys taskSourceConfig
   logOptions <- logOptionsHandle stderr True
   withLogFunc logOptions $ \lf -> do
-    ctx <- buildTaskContext task lf
+    ctx <- buildTaskContext task lf changeLogger
     let offset = API.SpecialOffsetLATEST
     forM_ sourceStreamNames (flip subscribeToStreamWithoutCkp offset)
 
@@ -174,14 +178,15 @@ runTask SourceConnectorWithoutCkp {..} sinkConnector taskBuilder@TaskTopologyCon
       RIO.putMVar mvar ()
 
 runImmTask ::
-  (Ord t, Semigroup t, Aeson.FromJSON t, Aeson.ToJSON t, Typeable t) =>
+  (Ord t, Semigroup t, Aeson.FromJSON t, Aeson.ToJSON t, Typeable t, ChangeLogger h) =>
   [(T.Text, Materialized t t t)] ->
   SinkConnector ->
   TaskBuilder ->
+  h ->
   (BL.ByteString -> Maybe BL.ByteString) ->
   (BL.ByteString -> Maybe BL.ByteString) ->
   IO ()
-runImmTask srcTups sinkConnector taskBuilder@TaskTopologyConfig {..} transKSnk transVSnk = do
+runImmTask srcTups sinkConnector taskBuilder@TaskTopologyConfig {..} changeLogger transKSnk transVSnk = do
   -- build and add internalSinkProcessor
   let sinkProcessors =
         HM.map
@@ -203,7 +208,7 @@ runImmTask srcTups sinkConnector taskBuilder@TaskTopologyConfig {..} transKSnk t
   -- runTask
   logOptions <- logOptionsHandle stderr True
   withLogFunc logOptions $ \lf -> do
-    ctx <- buildTaskContext task lf
+    ctx <- buildTaskContext task lf changeLogger
 
     loop task ctx srcTups []
   where

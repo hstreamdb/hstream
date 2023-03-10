@@ -52,7 +52,9 @@ import qualified HStream.Server.ConnectorTypes    as HCT
 import           HStream.SQL.Codegen
 #else
 import           HStream.Processing.Connector
-import           HStream.Processing.Processor     (TaskBuilder, getTaskName,
+import           HStream.Processing.Processor     (TaskBuilder,
+                                                   ChangeLogger(..),
+                                                   getTaskName,
                                                    runTask)
 import           HStream.SQL.Codegen.V1
 #endif
@@ -284,10 +286,19 @@ handleCreateAsSelect ctx@ServerContext{..} sink insWithRole outWithRole builder 
       ]
     releasePid qid = modifyMVar_ runningQueries (return . HM.delete qid)
 #else
+
+-- do nothing
+instance ChangeLogger () where
+  logChangelog () _ = return ()
+
+instance ChangeLogger Int where
+  logChangelog _ bs = print bs
+
 --------------------------------------------------------------------------------
 runTaskWrapper :: ServerContext -> TaskBuilder -> Bool -> IO ()
 runTaskWrapper ctx@ServerContext{..} taskBuilder writeToHStore = do
-  let consumerName = textToCBytes (getTaskName taskBuilder)
+  let taskName = getTaskName taskBuilder
+  let consumerName = textToCBytes taskName
 
   -- create a new sourceConnector
   let sourceConnector = HStore.hstoreSourceConnectorWithoutCkp ctx (cBytesToText consumerName)
@@ -297,7 +308,6 @@ runTaskWrapper ctx@ServerContext{..} taskBuilder writeToHStore = do
                          then HStore.hstoreSinkConnector ctx
                          else HStore.blackholeSinkConnector
   -- RUN TASK
-
   let transKSrc = \s bl -> case Aeson.decode bl of
                           Nothing -> Nothing
                           Just k  -> Just . Aeson.encode $ jsonObjectToFlowObject s k
@@ -306,7 +316,7 @@ runTaskWrapper ctx@ServerContext{..} taskBuilder writeToHStore = do
                              Nothing -> Nothing
                              Just k  -> Just . Aeson.encode $ flowObjectToJsonObject k
       transVSnk = transKSnk
-  runTask sourceConnector sinkConnector taskBuilder transKSrc transVSrc transKSnk transVSnk
+  runTask sourceConnector sinkConnector taskBuilder (0 :: Int) transKSrc transVSrc transKSnk transVSnk
 
 handleCreateAsSelect :: ServerContext
                      -> TaskBuilder

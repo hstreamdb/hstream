@@ -1,5 +1,8 @@
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE StrictData        #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module HStream.Processing.Type
   ( Timestamp,
@@ -12,6 +15,7 @@ module HStream.Processing.Type
   )
 where
 
+import           Data.Aeson
 import           RIO
 import qualified RIO.ByteString.Lazy as BL
 import qualified RIO.Text            as T
@@ -46,6 +50,10 @@ data TimestampedKey k = TimestampedKey
   { tkKey       :: k,
     tkTimestamp :: Timestamp
   }
+  deriving Generic
+
+deriving instance (ToJSON k) => ToJSON (TimestampedKey k)
+deriving instance (FromJSON k) => FromJSON (TimestampedKey k)
 
 mkTimestampedKey :: k -> Timestamp -> TimestampedKey k
 mkTimestampedKey key timestamp =

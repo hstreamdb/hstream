@@ -9,6 +9,7 @@ module HStream.Processing.Processor.Internal where
 import           Control.Exception        (throw)
 import           Data.Default
 import           Data.Typeable
+import           HStream.Processing.Processor.ChangeLog
 import           HStream.Processing.Error (HStreamProcessingError (..))
 import           HStream.Processing.Store
 import           HStream.Processing.Type
@@ -132,21 +133,24 @@ data Task = Task
     taskStores           :: HM.HashMap T.Text (EStateStore, HS.HashSet T.Text)
   }
 
-data TaskContext = TaskContext
-  { taskConfig   :: Task,
-    tctLogFunc   :: LogFunc,
-    curProcessor :: IORef T.Text,
-    tcTimestamp  :: IORef Int64
+data TaskContext = forall h. ChangeLogger h => TaskContext
+  { taskConfig     :: Task,
+    tctLogFunc     :: LogFunc,
+    curProcessor   :: IORef T.Text,
+    tcTimestamp    :: IORef Int64,
+    tcChangeLogger :: h
   }
 
 instance HasLogFunc TaskContext where
   logFuncL = lens tctLogFunc (\x y -> x {tctLogFunc = y})
 
 buildTaskContext ::
+  (ChangeLogger h) =>
   Task ->
   LogFunc ->
+  h ->
   IO TaskContext
-buildTaskContext task lf = do
+buildTaskContext task lf changeLogger = do
   pRef <- newIORef ""
   tRef <- newIORef (-1)
   return $
@@ -154,7 +158,8 @@ buildTaskContext task lf = do
       { taskConfig = task,
         tctLogFunc = lf,
         curProcessor = pRef,
-        tcTimestamp = tRef
+        tcTimestamp = tRef,
+        tcChangeLogger = changeLogger
       }
 
 updateTimestampInTaskContext :: TaskContext -> Timestamp -> IO ()

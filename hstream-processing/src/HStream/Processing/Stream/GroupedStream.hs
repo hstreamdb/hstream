@@ -3,6 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE StrictData        #-}
+{-# LANGUAGE TypeApplications #-}
 
 module HStream.Processing.Stream.GroupedStream
   ( GroupedStream (..),
@@ -13,9 +14,12 @@ module HStream.Processing.Stream.GroupedStream
   )
 where
 
+import qualified Data.Aeson as Aeson
 import           Data.Maybe
 import           HStream.Processing.Encoding
 import           HStream.Processing.Processor
+import           HStream.Processing.Processor.Internal
+import           HStream.Processing.Processor.ChangeLog
 import           HStream.Processing.Store
 import           HStream.Processing.Stream.Internal
 import           HStream.Processing.Stream.SessionWindowedStream (SessionWindowedStream (..))
@@ -25,6 +29,7 @@ import           HStream.Processing.Stream.TimeWindows
 import           HStream.Processing.Table
 import           RIO
 import qualified RIO.Text                                        as T
+import qualified RIO.ByteString.Lazy as BL
 
 data GroupedStream k v s = GroupedStream
   { gsKeySerde        :: Maybe (Serde k s),
@@ -34,7 +39,7 @@ data GroupedStream k v s = GroupedStream
   }
 
 aggregate ::
-  (Typeable k, Typeable v, Ord k, Typeable a, Ord s1, Typeable s1, Ord s2, Typeable s2) =>
+  (Typeable k, Typeable v, Ord k, Typeable a, Ord s1, Typeable s1, Ord s2, Typeable s2, Aeson.ToJSON s1) =>
   a ->
   (a -> Record k v -> a) ->
   (a -> k -> a) ->
@@ -59,7 +64,7 @@ aggregate initialValue aggF outputF kSerde2 aSerde2 Materialized {..} GroupedStr
       }
 
 count ::
-  (Typeable k, Typeable v, Ord k, Ord s, Typeable s) =>
+  (Typeable k, Typeable v, Ord k, Ord s, Typeable s, Aeson.ToJSON s) =>
   Materialized k Int s ->
   Serde k s ->
   Serde Int s ->
@@ -71,7 +76,7 @@ count materialized kSerde intSerde = aggregate 0 aggF const kSerde intSerde mate
     aggF acc _ = acc + 1
 
 aggregateProcessor ::
-  (Typeable k, Typeable v, Ord k, Typeable a, Ord s, Typeable s) =>
+  (Typeable k, Typeable v, Ord k, Typeable a, Ord s, Typeable s, Aeson.ToJSON s) =>
   T.Text ->
   a ->
   (a -> Record k v -> a) ->
@@ -80,6 +85,7 @@ aggregateProcessor ::
   Serde a s ->
   Processor k v
 aggregateProcessor storeName initialValue aggF outputF keySerde accSerde = Processor $ \r -> do
+  TaskContext{..} <- ask
   store <- getKVStateStore storeName
   let key = fromJust $ recordKey r
       sKey = runSer (serializer keySerde) key
@@ -88,6 +94,8 @@ aggregateProcessor storeName initialValue aggF outputF keySerde accSerde = Proce
   let newAcc = aggF acc r
   let sNewAcc = runSer (serializer accSerde) newAcc
   liftIO $ ksPut sKey sNewAcc store
+  let changeLog = CLKSPut @_ @_ @BL.ByteString sKey sNewAcc
+  liftIO $ logChangelog tcChangeLogger (Aeson.encode changeLog)
   forward r {recordValue = outputF newAcc key}
 
 timeWindowedBy ::

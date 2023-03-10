@@ -2,6 +2,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE StrictData        #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE DeriveAnyClass #-}
 
 module HStream.Processing.Stream.TimeWindows
   ( TimeWindow (..),
@@ -17,6 +20,7 @@ module HStream.Processing.Stream.TimeWindows
   )
 where
 
+import           Data.Aeson
 import           HStream.Processing.Encoding
 import           RIO
 
@@ -46,6 +50,7 @@ data TimeWindow = TimeWindow
   { tWindowStart :: Int64,
     tWindowEnd   :: Int64
   }
+  deriving (Generic, FromJSON, ToJSON)
 
 instance Show TimeWindow where
   show TimeWindow {..} = "[" ++ show tWindowStart ++ ", " ++ show tWindowEnd ++ "]"
@@ -61,9 +66,13 @@ data TimeWindowKey k = TimeWindowKey
   { twkKey    :: k,
     twkWindow :: TimeWindow
   }
+  deriving Generic
 
 instance (Show k) => Show (TimeWindowKey k) where
   show TimeWindowKey {..} = "key: " ++ show twkKey ++ ", window: " ++ show twkWindow
+
+deriving instance (FromJSON k) => FromJSON (TimeWindowKey k)
+deriving instance (ToJSON k) => ToJSON (TimeWindowKey k)
 
 timeWindowKeySerializer ::
   (Serialized s) =>
