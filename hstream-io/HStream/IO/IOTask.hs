@@ -184,34 +184,33 @@ tryWaitProcessWithTimeout tp timeoutSec = do
 checkIOTask :: IOTask -> IO ()
 checkIOTask IOTask{..} = do
   Log.info $ "checkCmd:" <> Log.buildString checkCmd
-  IO.withFile (taskPath ++ "/check.log") IO.ReadWriteMode $ \checkLogHandle -> do
-    checkResult <- Async.race delay (TP.runProcess (checkProcessConfig checkLogHandle))
-    IO.hSeek checkLogHandle IO.AbsoluteSeek 0
-    checkOutput <- BSL.hGetContents checkLogHandle
-    case checkResult of
-      Left _ -> do
-        Log.warning $ Log.buildString "run process timeout"
-        Log.info $ "output:" <> Log.buildString (BSLC.unpack checkOutput)
-        throwIO (RunProcessTimeoutException timeoutSec)
-      Right TP.ExitSuccess -> do
-        let (result :: Maybe MSG.CheckResult) = msum . map J.decode $ BSLC.lines checkOutput
-        case result of
-          Nothing -> do
-            Log.info $ "output:" <> Log.buildString (BSLC.unpack checkOutput)
-            E.throwIO (CheckFailedException "check process didn't return correct result messsage")
-          Just MSG.CheckResult {result=False, message=msg} -> do
-            E.throwIO (CheckFailedException $ "check failed:" <> msg)
-          Just _ -> pure ()
-      Right exitCode -> do
-        Log.warning $ Log.buildString ("check process exited: " ++ show exitCode)
-        Log.info $ "output:" <> Log.buildString (BSLC.unpack checkOutput)
-        E.throwIO (CheckFailedException "check process exited unexpectedly")
+  checkResult <- Async.race delay (TP.runProcess checkProcessConfig)
+  checkOutput <- BSL.readFile checkLogPath
+  case checkResult of
+    Left _ -> do
+      Log.warning $ Log.buildString "run process timeout"
+      Log.info $ "output:" <> Log.buildString (BSLC.unpack checkOutput)
+      throwIO (RunProcessTimeoutException timeoutSec)
+    Right TP.ExitSuccess -> do
+      let (result :: Maybe MSG.CheckResult) = msum . map J.decode $ BSLC.lines checkOutput
+      case result of
+        Nothing -> do
+          Log.info $ "output:" <> Log.buildString (BSLC.unpack checkOutput)
+          E.throwIO (CheckFailedException "check process didn't return correct result messsage")
+        Just MSG.CheckResult {result=False, message=msg} -> do
+          E.throwIO (CheckFailedException $ "check failed:" <> msg)
+        Just _ -> pure ()
+    Right exitCode -> do
+      Log.warning $ Log.buildString ("check process exited: " ++ show exitCode)
+      Log.info $ "output:" <> Log.buildString (BSLC.unpack checkOutput)
+      E.throwIO (CheckFailedException "check process exited unexpectedly")
   where
-    checkProcessConfig fileHandle = TP.setStdin TP.closed
-      . TP.setStdout (TP.useHandleOpen fileHandle)
-      . TP.setStderr (TP.useHandleOpen fileHandle)
+    checkProcessConfig = TP.setStdin TP.closed
+      . TP.setStdout TP.closed
+      . TP.setStderr TP.closed
       $ TP.shell checkCmd
     TaskConfig {..} = taskConfig taskInfo
+    checkLogPath = taskPath ++ "/check.log"
     checkCmd = concat [
         "docker run --rm -i",
         " --network=", T.unpack tcNetwork,
@@ -219,7 +218,8 @@ checkIOTask IOTask{..} = do
         " -v " , taskPath, ":/data",
         " " , T.unpack tcImage,
         " check",
-        " --config /data/config.json"
+        " --config /data/config.json",
+        " >> ", checkLogPath, " 2>&1"
       ]
     timeoutSec = 15
     delay = C.threadDelay $ timeoutSec * 1000000
