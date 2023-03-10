@@ -1,3 +1,5 @@
+{-# LANGUAGE CPP #-}
+
 module HStream.Server.Core.View
   ( deleteView
   , getView
@@ -17,8 +19,6 @@ import           Control.Monad                 (unless)
 import           Data.Functor                  ((<&>))
 import qualified Data.List                     as L
 import           Data.Maybe                    (fromJust, isJust)
-import           DiffFlow.Graph                (GraphBuilder)
-import           DiffFlow.Types                (DataChangeBatch)
 import           HStream.Exception             (ViewNotFound (..))
 import qualified HStream.Exception             as HE
 import qualified HStream.Logger                as Log
@@ -33,13 +33,21 @@ import qualified HStream.Server.MetaData       as P
 import           HStream.Server.MetaData.Types (ViewInfo (viewName))
 import           HStream.Server.Types
 import           HStream.SQL                   (FlowObject)
+import           HStream.ThirdParty.Protobuf   (Empty (..))
+import           HStream.Utils                 (TaskStatus (..))
+#ifdef HStreamUseV2Engine
+import           DiffFlow.Graph                (GraphBuilder)
+import           DiffFlow.Types                (DataChangeBatch)
 import           HStream.SQL.Codegen           (HStreamPlan (..), In (..),
                                                 Out (..), Row,
                                                 TerminationSelection (..),
                                                 streamCodegen)
-import           HStream.ThirdParty.Protobuf   (Empty (..))
-import           HStream.Utils                 (TaskStatus (..))
+#else
+import qualified HStream.Processing.Processor  as HP
+import           HStream.SQL.Codegen.V1
+#endif
 
+#ifdef HStreamUseV2Engine
 createView :: ServerContext -> T.Text -> IO P.ViewInfo
 createView sc sql = do
   plan <- streamCodegen sql
@@ -71,6 +79,40 @@ createView' sc@ServerContext{..} view ins out builder accumulation sql = do
       Log.warning $ "At least one of the streams/views do not exist: "
         <> Log.buildString (show sources)
       throwIO $ HE.StreamNotFound $ "At least one of the streams/views do not exist: " <> T.pack (show sources)
+#else
+createView :: ServerContext -> T.Text -> IO P.ViewInfo
+createView sc sql = do
+  plan <- streamCodegen sql
+  case plan of
+    CreateViewPlan srcs sink view builder persist -> do
+      createView' sc view srcs sink builder persist sql
+    _ ->  throw $ HE.WrongExecutionPlan "Create query only support create view as select statements"
+
+createView' :: ServerContext
+            -> T.Text
+            -> [T.Text]
+            -> T.Text
+            -> HP.TaskBuilder
+            -> Persist
+            -> T.Text
+            -> IO ViewInfo
+createView' sc@ServerContext{..} view srcs sink builder persist sql = do
+  roles_m <- mapM (findIdentifierRole sc) srcs
+  case all isJust roles_m of
+    True -> do
+      let relatedStreams = (srcs, sink)
+      qInfo <- handleCreateAsSelect sc builder sql relatedStreams False -- Do not write to any sink stream
+      let accumulation = L.head (snd persist)
+      atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert view accumulation hm, ()))
+      let vInfo = P.ViewInfo{ viewName = view, viewQuery = qInfo }
+      -- FIXME: this should be inserted as the same time as the query
+      insertMeta view vInfo metaHandle
+      return vInfo
+    False  -> do
+      Log.warning $ "At least one of the streams/views do not exist: "
+        <> Log.buildString (show srcs)
+      throwIO $ HE.StreamNotFound $ "At least one of the streams/views do not exist: " <> T.pack (show srcs)
+#endif
 
 -- TODO: refactor this function after the meta data has been reorganized
 deleteView :: ServerContext -> T.Text -> Bool -> IO Empty

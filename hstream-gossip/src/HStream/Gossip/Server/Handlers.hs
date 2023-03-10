@@ -149,22 +149,24 @@ sendJoinCore :: GossipContext
 sendJoinCore gc@GossipContext{..} JoinReq {..} = do
   case joinReqNew of
     Nothing -> throwIO EmptyJoinRequest
-    Just node@I.ServerNode{..} -> do
-      when (serverNodeId == I.serverNodeId serverSelf) $ throwIO DuplicateNodeId
-      (epoch, sMap') <- readTVarIO serverList
-      case Map.lookup serverNodeId sMap' of
-        Just ServerStatus{..} -> do
-          state <- readTVarIO serverState
-          when (state == ServerAlive) $ throwIO DuplicateNodeId
-          atomically $ do
-            inc <- readTVar stateIncarnation
-            writeTQueue statePool $ T.GAlive (inc + 1) node node
-        Nothing -> atomically $ writeTQueue statePool $ T.GAlive 1 node node
-      members <- getMemberList gc
-      return JoinResp {
-        joinRespEpoch   = epoch
-      , joinRespMembers = V.fromList $ members
-      }
+    Just node@I.ServerNode{..} -> tryReadMVar clusterReady >>= \case
+      Nothing -> throwIO ClusterNotReadyErr
+      Just  _ -> do
+        when (serverNodeId == I.serverNodeId serverSelf) $ throwIO DuplicateNodeId
+        (epoch, sMap') <- readTVarIO serverList
+        case Map.lookup serverNodeId sMap' of
+          Just ServerStatus{..} -> do
+            state <- readTVarIO serverState
+            when (state == ServerAlive) $ throwIO DuplicateNodeId
+            atomically $ do
+              inc <- readTVar stateIncarnation
+              writeTQueue statePool $ T.GAlive (inc + 1) node node
+          Nothing -> atomically $ writeTQueue statePool $ T.GAlive 1 node node
+        members <- getMemberList gc
+        return JoinResp {
+          joinRespEpoch   = epoch
+        , joinRespMembers = V.fromList $ members
+        }
 
 sendGossipHandler :: GossipContext -> ServerRequest 'Normal Gossip Empty -> IO (ServerResponse 'Normal Empty)
 sendGossipHandler gc (ServerNormalRequest _metadata gossip) = do

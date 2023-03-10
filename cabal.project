@@ -20,6 +20,7 @@ packages:
 
   hstream-store
   hstream-diffflow
+  hstream-processing
   hstream-sql
   hstream-io
   hstream-gossip

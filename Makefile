@@ -10,6 +10,7 @@ CABAL_PROJECT_FILE ?= cabal.project
 all:: grpc sql
 endif
 
+ENGINE_VERSION ?= v1
 BNFC = bnfc
 PROTO_COMPILE = protoc
 PROTO_COMPILE_HS = ~/.cabal/bin/compile-proto-file_hstream
@@ -64,6 +65,7 @@ grpc-cpp:
 	)
 
 sql:: sql-deps
+	(cd hstream-sql/etc && if [ $(ENGINE_VERSION) = v2 ]; then cp SQL-v2.cf SQL.cf; else cp SQL-v1.cf SQL.cf; fi)
 	(cd hstream-sql/etc && $(BNFC) --haskell --functor --text-token -p HStream -m -d SQL.cf -o ../gen-sql)
 	(awk -v RS= -v ORS='\n\n' '/\neitherResIdent/{system("cat hstream-sql/etc/replace/eitherResIdent");next } {print}' \
 		hstream-sql/gen-sql/HStream/SQL/Lex.x > hstream-sql/gen-sql/HStream/SQL/Lex.x.new)
