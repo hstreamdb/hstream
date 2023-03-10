@@ -1,13 +1,14 @@
 {-# LANGUAGE BlockArguments      #-}
+{-# LANGUAGE CPP                 #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StrictData          #-}
-{-# LANGUAGE ViewPatterns        #-}
 
 module HStream.SQL.Codegen where
 
+#ifdef HStreamUseV2Engine
 import           Control.Concurrent
 import           Data.Aeson                            (Object, Value (..))
 import qualified Data.Aeson                            as Aeson
@@ -17,9 +18,7 @@ import qualified Data.ByteString.Lazy                  as BL
 import qualified Data.HashMap.Strict                   as HM
 import           Data.Int                              (Int64)
 import qualified Data.List                             as L
-import qualified Data.Map.Strict                       as Map
 import           Data.Maybe
-import           Data.Scientific
 import           Data.Text                             (Text)
 import qualified Data.Text                             as T
 import           Data.Text.Prettyprint.Doc             as PP
@@ -27,18 +26,12 @@ import           Data.Text.Prettyprint.Doc.Render.Text as PP
 import           GHC.Stack                             (HasCallStack)
 import qualified Proto3.Suite                          as PB
 
-import           DiffFlow.Error
 import           DiffFlow.Graph
 import qualified DiffFlow.Graph                        as DiffFlow
 import           DiffFlow.Types
 import           HStream.SQL.AST
-import           HStream.SQL.Codegen.BinOp
-import           HStream.SQL.Codegen.Cast
 import           HStream.SQL.Codegen.ColumnCatalog
-import           HStream.SQL.Codegen.JsonOp
-import           HStream.SQL.Codegen.UnaryOp
-import           HStream.SQL.Exception                 (SomeSQLException (..),
-                                                        throwSQLException)
+import           HStream.SQL.Codegen.Common
 import           HStream.SQL.Parse                     (parseAndRefine)
 import           HStream.SQL.Planner
 import qualified HStream.SQL.Planner                   as Planner
@@ -126,7 +119,6 @@ hstreamCodegen = \case
   RQDrop (RDropIf RDropView x)       -> return $ DropPlan True (DView x)
   RQTerminate (RTerminateQuery qid)  -> return $ TerminatePlan (OneQuery qid)
   RQTerminate RTerminateAll          -> return $ TerminatePlan AllQueries
-  --RQSelectView rSelectView           -> return $ SelectViewPlan rSelectView
   RQExplain rselect                  -> do
     let relationExpr = decouple rselect
     return $ ExplainPlan (PP.renderStrict $ PP.layoutPretty PP.defaultLayoutOptions (PP.pretty relationExpr))
@@ -158,60 +150,7 @@ elabRSelectWithOut select startBuilder subgraph = do
   (builder, ins, out) <- elabRSelect select startBuilder subgraph
   let (builder', node') = addNode builder subgraph (OutputSpec (outNode out))
   return (builder', ins, Out node')
-
 --------------------------------------------------------------------------------
-scalarExprToFun :: ScalarExpr -> FlowObject -> Either DiffFlowError FlowValue
-scalarExprToFun scalar o = case scalar of
-  ColumnRef field stream_m ->
-    case getField (ColumnCatalog field stream_m) o of
-      Nothing    -> Left . RunShardError $ "Can not get column: " <> T.pack (show $ ColumnCatalog field stream_m)
-      Just (_,v) -> Right v
-  Literal constant -> Right $ constantToFlowValue constant
-  CallUnary op scalar -> do
-    v1 <- scalarExprToFun scalar o
-    unaryOpOnValue op v1
-  CallBinary op scalar1 scalar2 -> do
-    v1 <- scalarExprToFun scalar1 o
-    v2 <- scalarExprToFun scalar2 o
-    binOpOnValue op v1 v2
-  CallCast scalar typ -> do
-    v1 <- scalarExprToFun scalar o
-    castOnValue typ v1
-  CallJson op scalar1 scalar2 -> do
-    v1 <- scalarExprToFun scalar1 o
-    v2 <- scalarExprToFun scalar2 o
-    jsonOpOnValue op v1 v2
-  ValueArray scalars -> do
-    values <- mapM (flip scalarExprToFun o) scalars
-    return $ FlowArray values
-  ValueMap m -> do
-    ks <- mapM (flip scalarExprToFun o) (Map.keys m)
-    vs <- mapM (flip scalarExprToFun o) (Map.elems m)
-    return $ FlowMap (Map.fromList $ ks `zip` vs)
-  AccessArray scalar rhs -> do
-    v1 <- scalarExprToFun scalar o
-    case v1 of
-      FlowArray arr -> case rhs of
-        RArrayAccessRhsIndex n ->
-          if n >= 0 && n < L.length arr then
-            Right $ arr L.!! n else
-            Left . RunShardError $ "Access array operator: out of bound"
-        RArrayAccessRhsRange start_m end_m ->
-          let start = fromMaybe 0 start_m
-              end   = fromMaybe (maxBound :: Int) end_m
-           in if start >= 0 && end < L.length arr then
-                Right $ FlowArray (L.drop start (L.take (end+1) arr)) else
-                Left . RunShardError $ "Access array operator: out of bound"
-      _ -> Left . RunShardError $ "Can not perform AccessArray operator on value " <> T.pack (show v1)
-  AccessMap scalar scalarK -> do
-    vm <- scalarExprToFun scalar o
-    vk <- scalarExprToFun scalarK o
-    case vm of
-      FlowMap m -> case Map.lookup vk m of
-        Nothing -> Left . RunShardError $ "Can not find key " <> T.pack (show vk) <> " in Map " <> T.pack (show m)
-        Just v  -> Right v
-      _ -> Left . RunShardError $ "Can not perform AccessMap operator on value " <> T.pack (show vm)
-
 relationExprToGraph :: RelationExpr
                     -> GraphBuilder Row
                     -> Subgraph
@@ -356,187 +295,4 @@ relationExprToGraph relation startBuilder subgraph = case relation of
     (builder2, ins2, out2) <- relationExprToGraph r2 builder1 subgraph
     let (builder, node) = addNode builder2 subgraph (UnionSpec (outNode out1) (outNode out2))
     return (builder, L.nub (ins1++ins2), Out node)
-
---------------------------------------------------------------------------------
--- Aggregate
-data AggregateComponent = AggregateComponent
-  { aggregateInit :: FlowObject
-  , aggregateF    :: FlowObject -> FlowObject -> Either (DiffFlowError,FlowObject) FlowObject
-  }
-
-composeAggs :: [AggregateComponent] -> AggregateComponent
-composeAggs aggs =
-  AggregateComponent
-  { aggregateInit = HM.unions (L.map aggregateInit aggs)
-  , aggregateF = \acc row -> do
-      accs <- mapM (\agg -> aggregateF agg acc row) aggs
-      return $ HM.unions accs
-  }
-
-genAggregateComponent :: Aggregate ScalarExpr
-                      -> ColumnCatalog
-                      -> AggregateComponent
-genAggregateComponent agg cata = case agg of
-  Nullary AggCountAll ->
-    AggregateComponent
-    { aggregateInit = HM.singleton cata (FlowInt 0)
-    , aggregateF    = \acc _ ->
-        case getField cata acc of
-          Just (k, FlowInt acc_x) -> Right $ HM.fromList [(k, FlowInt (acc_x + 1))]
-          _                       -> let e = RunShardError "CountAll: internal error. Please report this as a bug"
-                                      in Left (e, HM.fromList [(cata, FlowNull)])
-    }
-
-  Unary AggCount expr ->
-    AggregateComponent
-    { aggregateInit = HM.singleton cata (FlowInt 0)
-    , aggregateF = \acc row ->
-        case getField cata acc of
-          Just (k, FlowInt acc_x) ->
-            case scalarExprToFun expr row of
-              Left e  -> Left (e, HM.fromList [(cata, FlowNull)])
-              Right _ -> Right $ HM.fromList [(k, FlowInt (acc_x + 1))]
-          _                       -> let e = RunShardError "Count: internal error. Please report this as a bug"
-                                      in Left (e, HM.fromList [(cata, FlowNull)])
-    }
-
-  Unary AggSum expr ->
-    AggregateComponent
-    { aggregateInit = HM.singleton cata (FlowNumeral 0)
-    , aggregateF = \acc row ->
-        case getField cata acc of
-          Just (k, FlowNumeral acc_x) ->
-            case scalarExprToFun expr row of
-              Left e                    ->
-                Left (e, HM.fromList [(cata, FlowNull)])
-              Right (FlowInt row_x)     ->
-                Right $ HM.fromList [(k, FlowNumeral (acc_x + fromIntegral row_x))]
-              Right (FlowFloat row_x)   ->
-                Right $ HM.fromList [(k, FlowNumeral (acc_x + fromFloatDigits row_x))]
-              Right (FlowNumeral row_x) ->
-                Right $ HM.fromList [(k, FlowNumeral (acc_x + row_x))]
-              Right _                   ->
-                let e = RunShardError "Sum: type mismatch (expect a numeral value)"
-                 in Left (e, HM.fromList [(cata, FlowNull)])
-          _                           -> let e = RunShardError "Sum: internal error. Please report this as a bug"
-                                          in Left (e, HM.fromList [(cata, FlowNull)])
-    }
-
-  Unary AggMax expr ->
-    AggregateComponent
-    { aggregateInit = HM.singleton cata (FlowNumeral 0)
-    , aggregateF = \acc row ->
-        case getField cata acc of
-          Just (k, FlowNumeral acc_x) ->
-            case scalarExprToFun expr row of
-              Left e                    ->
-                Left (e, HM.fromList [(cata, FlowNull)])
-              Right (FlowInt row_x)     ->
-                Right $ HM.fromList [(k, FlowNumeral (max acc_x (fromIntegral row_x)))]
-              Right (FlowFloat row_x)   ->
-                Right $ HM.fromList [(k, FlowNumeral (max acc_x (fromFloatDigits row_x)))]
-              Right (FlowNumeral row_x) ->
-                Right $ HM.fromList [(k, FlowNumeral (max acc_x row_x))]
-              Right _                   ->
-                let e = RunShardError "Max: type mismatch (expect a numeral value)"
-                 in Left (e, HM.fromList [(cata, FlowNull)])
-          _                           -> let e = RunShardError "Max: internal error. Please report this as a bug"
-                                          in Left (e, HM.fromList [(cata, FlowNull)])
-    }
-
-  Unary AggMin expr ->
-    AggregateComponent
-    { aggregateInit = HM.singleton cata (FlowNumeral 0)
-    , aggregateF = \acc row ->
-        case getField cata acc of
-          Just (k, FlowNumeral acc_x) ->
-            case scalarExprToFun expr row of
-              Left e                    ->
-                Left (e, HM.fromList [(cata, FlowNull)])
-              Right (FlowInt row_x)     ->
-                Right $ HM.fromList [(k, FlowNumeral (min acc_x (fromIntegral row_x)))]
-              Right (FlowFloat row_x)   ->
-                Right $ HM.fromList [(k, FlowNumeral (min acc_x (fromFloatDigits row_x)))]
-              Right (FlowNumeral row_x) ->
-                Right $ HM.fromList [(k, FlowNumeral (min acc_x row_x))]
-              Right _                   ->
-                let e = RunShardError "Min: type mismatch (expect a numeral value)"
-                 in Left (e, HM.fromList [(cata, FlowNull)])
-          _                           -> let e = RunShardError "Min: internal error. Please report this as a bug"
-                                          in Left (e, HM.fromList [(cata, FlowNull)])
-    }
-
-  Binary AggTopK exprV exprK ->
-    AggregateComponent
-    { aggregateInit = HM.singleton cata (FlowArray [])
-    , aggregateF = \acc row ->
-        case getField cata acc of
-          Just (key, FlowArray acc_x) ->
-            case scalarExprToFun exprK row of
-              Left e            -> Left (e, HM.fromList [(cata, FlowNull)])
-              Right (FlowInt k) ->
-                case scalarExprToFun exprV row of
-                  Left e                    ->
-                    Left (e, HM.fromList [(cata, FlowNull)])
-                  Right (FlowInt row_x)     ->
-                    let arr = (L.take k) . (L.sortBy (flip compare)) $ (FlowNumeral (fromIntegral row_x)) : acc_x
-                     in Right $ HM.fromList [(key, FlowArray arr)]
-                  Right (FlowFloat row_x)   ->
-                    let arr = (L.take k) . (L.sortBy (flip compare)) $ (FlowNumeral (fromFloatDigits row_x)) : acc_x
-                     in Right $ HM.fromList [(key, FlowArray arr)]
-                  Right (FlowNumeral row_x) ->
-                    let arr = (L.take k) . (L.sortBy (flip compare)) $ (FlowNumeral row_x) : acc_x
-                     in Right $ HM.fromList [(key, FlowArray arr)]
-                  Right _                   ->
-                    let e = RunShardError "TopK: type mismatch (expect a numeral value)"
-                     in Left (e, HM.fromList [(cata, FlowNull)])
-              Right _           ->
-                let e = RunShardError "TopK: type mismatch (expect a numeral value)"
-                 in Left (e, HM.fromList [(cata, FlowNull)])
-          _                           -> let e = RunShardError "TopK: internal error. Please report this as a bug"
-                                          in Left (e, HM.fromList [(cata, FlowNull)])
-    }
-
-  Binary AggTopKDistinct exprV exprK ->
-    AggregateComponent
-    { aggregateInit = HM.singleton cata (FlowArray [])
-    , aggregateF = \acc row ->
-        case getField cata acc of
-          Just (key, FlowArray acc_x) ->
-            case scalarExprToFun exprK row of
-              Left e            -> Left (e, HM.fromList [(cata, FlowNull)])
-              Right (FlowInt k) ->
-                case scalarExprToFun exprV row of
-                  Left e                    ->
-                    Left (e, HM.fromList [(cata, FlowNull)])
-                  Right (FlowInt row_x)     ->
-                    let arr = (L.take k) . (L.sortBy (flip compare)) . L.nub $ (FlowNumeral (fromIntegral row_x)) : acc_x
-                     in Right $ HM.fromList [(key, FlowArray arr)]
-                  Right (FlowFloat row_x)   ->
-                    let arr = (L.take k) . (L.sortBy (flip compare)) . L.nub $ (FlowNumeral (fromFloatDigits row_x)) : acc_x
-                     in Right $ HM.fromList [(key, FlowArray arr)]
-                  Right (FlowNumeral row_x) ->
-                    let arr = (L.take k) . (L.sortBy (flip compare)) . L.nub $ (FlowNumeral row_x) : acc_x
-                     in Right $ HM.fromList [(key, FlowArray arr)]
-                  Right _                   ->
-                    let e = RunShardError "TopKDistinct: type mismatch (expect a numeral value)"
-                     in Left (e, HM.fromList [(cata, FlowNull)])
-              Right _           ->
-                let e = RunShardError "TopK: type mismatch (expect a numeral value)"
-                 in Left (e, HM.fromList [(cata, FlowNull)])
-          _                           -> let e = RunShardError "TopKDistinct: internal error. Please report this as a bug"
-                                          in Left (e, HM.fromList [(cata, FlowNull)])
-    }
-
-  _ -> throwSQLException CodegenException Nothing ("Unsupported aggregate function: " <> show agg)
-
---------------------------------------------------------------------------------
-pattern ConnectorWritePlan :: T.Text -> HStreamPlan
-pattern ConnectorWritePlan name <- (getLookupConnectorName -> Just name)
-
-getLookupConnectorName :: HStreamPlan -> Maybe T.Text
-getLookupConnectorName (CreateConnectorPlan _ name _ _ _)        = Just name
-getLookupConnectorName (PausePlan (PauseObjectConnector name))   = Just name
-getLookupConnectorName (ResumePlan (ResumeObjectConnector name)) = Just name
-getLookupConnectorName (DropPlan _ (DConnector name))            = Just name
-getLookupConnectorName _                                         = Nothing
+#endif

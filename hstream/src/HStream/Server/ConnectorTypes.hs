@@ -82,11 +82,18 @@ data SourceConnectorWithoutCkp = SourceConnectorWithoutCkp
   { subscribeToStreamWithoutCkp :: StreamName -> API.SpecialOffset -> IO (),
     unSubscribeToStreamWithoutCkp :: StreamName -> IO (),
     --readRecordsWithoutCkp :: StreamName -> IO [SourceRecord]
-    withReadRecordsWithoutCkp :: StreamName -> ([SourceRecord] -> IO ()) -> IO ()
+    withReadRecordsWithoutCkp :: StreamName
+                              -> (BL.ByteString -> Maybe BL.ByteString)
+                              -> (BL.ByteString -> Maybe BL.ByteString)
+                              -> ([SourceRecord] -> IO ())
+                              -> IO ()
   }
 
 data SinkConnector = SinkConnector
-  { writeRecord :: SinkRecord -> IO ()
+  { writeRecord :: (BL.ByteString -> Maybe BL.ByteString)
+                -> (BL.ByteString -> Maybe BL.ByteString)
+                -> SinkRecord
+                -> IO ()
   }
 
 posixTimeToMilliSeconds :: POSIXTime -> Timestamp

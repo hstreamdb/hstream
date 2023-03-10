@@ -1,29 +1,51 @@
+{-# LANGUAGE CPP               #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeFamilies      #-}
 
 module HStream.SQL.Planner where
 
-import           Data.Kind       (Type)
-import qualified Data.List       as L
-import qualified Data.Map        as Map
-import           Data.Text       (Text)
-import qualified Data.Text       as T
+import           Data.Int              (Int64)
+import           Data.Kind             (Type)
+import qualified Data.List             as L
+import qualified Data.Map              as Map
+import           Data.Text             (Text)
+import qualified Data.Text             as T
 
 import           HStream.SQL.AST
+import           HStream.SQL.Exception
 
 data RelationExpr
   = StreamScan   Text
   | StreamRename RelationExpr Text
+
+#ifdef HStreamUseV2Engine
   | CrossJoin RelationExpr RelationExpr
   | LoopJoinOn RelationExpr RelationExpr ScalarExpr RJoinType
   | LoopJoinUsing RelationExpr RelationExpr [Text] RJoinType
   | LoopJoinNatural RelationExpr RelationExpr RJoinType
+#else
+  | CrossJoin RelationExpr RelationExpr Int64
+  | LoopJoinOn RelationExpr RelationExpr ScalarExpr RJoinType Int64
+  | LoopJoinUsing RelationExpr RelationExpr [Text] RJoinType Int64
+  | LoopJoinNatural RelationExpr RelationExpr RJoinType Int64
+#endif
+
   | Filter RelationExpr ScalarExpr
   | Project RelationExpr [(ColumnCatalog, ColumnCatalog)] [Text] -- project [(column AS alias)] or [stream.*]
   | Affiliate RelationExpr [(ColumnCatalog,ScalarExpr)]
+
+#ifdef HStreamUseV2Engine
   | Reduce RelationExpr [(ColumnCatalog,ScalarExpr)] [(ColumnCatalog,AggregateExpr)]
+#else
+  | Reduce RelationExpr [(ColumnCatalog,ScalarExpr)] [(ColumnCatalog,AggregateExpr)] (Maybe WindowType)
+#endif
+
   | Distinct RelationExpr
+
+#ifdef HStreamUseV2Engine
   | TimeWindow RelationExpr WindowType
+#endif
+
   | Union RelationExpr RelationExpr
   deriving (Eq)
 
@@ -61,7 +83,7 @@ instance Decouple RValueExpr where
     RExprMap _ m               -> ValueMap (Map.mapKeys decouple $ Map.map decouple m)
     RExprAccessArray _ e rhs   -> AccessArray (decouple e) rhs
     RExprAccessMap _ em ek     -> AccessMap (decouple em) (decouple ek)
-    RExprSubquery _ _          -> error "subquery is not supported"
+    RExprSubquery _ _          -> throwSQLException RefineException Nothing "subquery is not supported"
 
 rSelToAffiliateItems :: RSel -> [(ColumnCatalog,ScalarExpr)]
 rSelToAffiliateItems (RSel items) =
@@ -130,6 +152,7 @@ instance Decouple (Aggregate RValueExpr) where
     Unary agg expr      -> Unary agg (decouple expr)
     Binary agg e1 e2    -> Binary agg (decouple e1) (decouple e2)
 
+#ifdef HStreamUseV2Engine
 type instance DecoupledType RGroupBy = [(ColumnCatalog,ScalarExpr)]
 instance Decouple RGroupBy where
   decouple RGroupByEmpty = []
@@ -142,6 +165,21 @@ instance Decouple RGroupBy where
                   scalar = ColumnRef field stream_m
                in (cata, scalar)
           ) tups
+#else
+type instance DecoupledType RGroupBy = ([(ColumnCatalog,ScalarExpr)], Maybe WindowType)
+instance Decouple RGroupBy where
+  decouple RGroupByEmpty = ([], Nothing)
+  decouple (RGroupBy tups win_m) =
+    ( L.map (\(stream_m,field) ->
+               let cata = ColumnCatalog
+                          { columnName = field
+                          , columnStream = stream_m
+                          }
+                   scalar = ColumnRef field stream_m
+                in (cata, scalar)
+            ) tups
+    , win_m)
+#endif
 
 type instance DecoupledType RTableRef = RelationExpr
 instance Decouple RTableRef where
@@ -150,6 +188,7 @@ instance Decouple RTableRef where
      in case alias_m of
           Nothing    -> base
           Just alias -> StreamRename base alias
+#ifdef HStreamUseV2Engine
   decouple (RTableRefCrossJoin ref1 ref2 alias_m) =
     let base_1 = decouple ref1
         base_2 = decouple ref2
@@ -185,6 +224,37 @@ instance Decouple RTableRef where
      in case alias_m of
           Nothing    -> windowed
           Just alias -> StreamRename windowed alias
+#else
+  decouple (RTableRefCrossJoin ref1 ref2 t alias_m) =
+    let base_1 = decouple ref1
+        base_2 = decouple ref2
+        joined = CrossJoin base_1 base_2 (calendarDiffTimeToMs t)
+     in case alias_m of
+          Nothing    -> joined
+          Just alias -> StreamRename joined alias
+  decouple (RTableRefNaturalJoin ref1 typ ref2 t alias_m) =
+    let base_1 = decouple ref1
+        base_2 = decouple ref2
+        joined = LoopJoinNatural base_1 base_2 typ (calendarDiffTimeToMs t)
+     in case alias_m of
+          Nothing    -> joined
+          Just alias -> StreamRename joined alias
+  decouple (RTableRefJoinOn ref1 typ ref2 expr t alias_m) =
+    let base_1 = decouple ref1
+        base_2 = decouple ref2
+        scalar = decouple expr
+        joined = LoopJoinOn base_1 base_2 scalar typ (calendarDiffTimeToMs t)
+     in case alias_m of
+          Nothing    -> joined
+          Just alias -> StreamRename joined alias
+  decouple (RTableRefJoinUsing ref1 typ ref2 cols t alias_m) =
+    let base_1 = decouple ref1
+        base_2 = decouple ref2
+        joined = LoopJoinUsing base_1 base_2 cols typ (calendarDiffTimeToMs t)
+     in case alias_m of
+          Nothing    -> joined
+          Just alias -> StreamRename joined alias
+#endif
   decouple (RTableRefSubquery select alias_m) =
     let base = decouple select
      in case alias_m of
@@ -193,8 +263,12 @@ instance Decouple RTableRef where
 
 type instance DecoupledType RFrom = RelationExpr
 instance Decouple RFrom where
+#ifdef HStreamUseV2Engine
   decouple (RFrom refs) =
     L.foldl1 (\x acc -> CrossJoin acc x) (L.map decouple refs)
+#else
+  decouple (RFrom ref) = decouple ref
+#endif
 
 type instance DecoupledType RSelect = RelationExpr
 instance Decouple RSelect where
@@ -213,7 +287,14 @@ instance Decouple RSelect where
         aggs = getAggregates sel ++ getAggregates hav
         grped = case grp of
                   RGroupByEmpty -> affiliated
+#ifdef HStreamUseV2Engine
                   RGroupBy _    -> Reduce affiliated (decouple grp) aggs
+#else
+                  RGroupBy _ _  ->
+                    let (tups, win_m) = decouple grp
+                     in Reduce affiliated tups aggs win_m
+#endif
+
         -- HAVING
         filtered_2 = case hav of
                        RHavingEmpty -> grped

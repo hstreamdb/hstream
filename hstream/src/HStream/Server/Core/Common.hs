@@ -1,3 +1,5 @@
+{-# LANGUAGE CPP #-}
+
 module HStream.Server.Core.Common where
 
 import           Control.Concurrent
@@ -24,7 +26,11 @@ import qualified HStream.MetaStore.Types          as M
 import           HStream.Server.HStreamApi
 import qualified HStream.Server.MetaData          as P
 import           HStream.Server.Types
+#ifdef HStreamUseV2Engine
 import           HStream.SQL.Codegen
+#else
+import           HStream.SQL.Codegen.V1
+#endif
 import qualified HStream.Store                    as HS
 import           HStream.Utils                    (decodeByteStringBatch,
                                                    textToCBytes)

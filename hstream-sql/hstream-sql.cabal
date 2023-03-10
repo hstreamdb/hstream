@@ -31,6 +31,10 @@ flag ReleaseBuild
   description:
     Enables all optimisations, leads to slower build time and better performance
 
+flag hstream_use_v2_engine
+  default:     False
+  description: Use v2 processing engine
+
 common shared-properties
   ghc-options:
     -Wall -Wcompat -Widentities -Wincomplete-record-updates
@@ -42,6 +46,9 @@ common shared-properties
       -fspec-constr-keen -fstatic-argument-transformation
       -funbox-strict-fields -O2
 
+  if flag(hstream_use_v2_engine)
+    cpp-options: -DHStreamUseV2Engine
+
 library
   import:             shared-properties
   exposed-modules:
@@ -49,12 +56,16 @@ library
     HStream.SQL.Abs
     HStream.SQL.AST
     HStream.SQL.Codegen
+    HStream.SQL.Codegen.AggOp
     HStream.SQL.Codegen.BinOp
     HStream.SQL.Codegen.Cast
     HStream.SQL.Codegen.ColumnCatalog
+    HStream.SQL.Codegen.Common
     HStream.SQL.Codegen.JsonOp
     HStream.SQL.Codegen.UnaryOp
     HStream.SQL.Codegen.Utils
+    HStream.SQL.Codegen.V1
+    HStream.SQL.Codegen.V1.Boilerplate
     HStream.SQL.Exception
     HStream.SQL.Internal.Validate
     HStream.SQL.Parse
@@ -82,8 +93,11 @@ library
     , extra
     , hashable
     , hstream-common
+    , hstream-common-base
+    , hstream-processing
     , prettyprinter         ^>=1.6
     , proto3-suite
+    , rio
     , scientific
     , string-random
     , text                  ^>=1.2
