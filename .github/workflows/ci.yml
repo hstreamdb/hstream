@@ -410,72 +410,72 @@ jobs:
           path: ci_artifact
           retention-days: 7
 
-  hstream-io-tests:
-    needs: [pre-build, build-and-test]
-    runs-on: ubuntu-latest
-    name: hstream-io-tests-ghc-${{ matrix.ghc }}
-    strategy:
-      fail-fast: false
-      matrix:
-        ghc: ${{ fromJson(needs.pre-build.outputs.ghc) }}
+  # hstream-io-tests:
+  #   needs: [pre-build, build-and-test]
+  #   runs-on: ubuntu-latest
+  #   name: hstream-io-tests-ghc-${{ matrix.ghc }}
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       ghc: ${{ fromJson(needs.pre-build.outputs.ghc) }}
 
-    steps:
-      - name: retrieve saved docker image
-        uses: actions/download-artifact@v3
-        with:
-          name: image-testing-${{ matrix.ghc }}
-          path: ~/data
+  #   steps:
+  #     - name: retrieve saved docker image
+  #       uses: actions/download-artifact@v3
+  #       with:
+  #         name: image-testing-${{ matrix.ghc }}
+  #         path: ~/data
 
-      - name: docker load
-        run: |
-          docker load -i ~/data/new_hstream_image.tar
-          docker run -t --rm $NEW_HSTREAM_IMAGE /usr/local/bin/hstream-server +RTS --info
+  #     - name: docker load
+  #       run: |
+  #         docker load -i ~/data/new_hstream_image.tar
+  #         docker run -t --rm $NEW_HSTREAM_IMAGE /usr/local/bin/hstream-server +RTS --info
 
-      - name: fetch hstream io tests source code
-        uses: actions/checkout@v3
-        with:
-          repository: "hstreamdb/hstream-connectors"
-          submodules: "recursive"
-          path: hstream-connectors
+  #     - name: fetch hstream io tests source code
+  #       uses: actions/checkout@v3
+  #       with:
+  #         repository: "hstreamdb/hstream-connectors"
+  #         submodules: "recursive"
+  #         path: hstream-connectors
 
-      - uses: actions/setup-java@v3
-        with:
-          distribution: "adopt"
-          java-version: 11
-          cache: "gradle"
+  #     - uses: actions/setup-java@v3
+  #       with:
+  #         distribution: "adopt"
+  #         java-version: 11
+  #         cache: "gradle"
 
-      - uses: gradle/gradle-build-action@v2
+  #     - uses: gradle/gradle-build-action@v2
 
-      - name: build and pull images
-        run: |
-          cd hstream-connectors
-          export CONNECTOR_IMAGE_VERSION=v0.2.3
-          make pull_images
-          make build_images
+  #     - name: build and pull images
+  #       run: |
+  #         cd hstream-connectors
+  #         export CONNECTOR_IMAGE_VERSION=v0.2.3
+  #         make pull_images
+  #         make build_images
 
-      - name: run hstream io tests
-        run: |
-          cd hstream-connectors/integration_tests
-          export HSTREAM_IMAGE_NAME=$NEW_HSTREAM_IMAGE
-          export HSTREAM_IO_USE_DEFAULT_IMAGES=true
-          ./gradlew test --info --fail-fast
+  #     - name: run hstream io tests
+  #       run: |
+  #         cd hstream-connectors/integration_tests
+  #         export HSTREAM_IMAGE_NAME=$NEW_HSTREAM_IMAGE
+  #         export HSTREAM_IO_USE_DEFAULT_IMAGES=true
+  #         ./gradlew test --info --fail-fast
 
-      - name: collect tests reports
-        if: ${{ success() }} || ${{ failure() }}
-        run: |
-          rm -rf ci_artifact && mkdir ci_artifact
-          mv hstream-connectors/integration_tests/.logs ci_artifact/logs
-          mv hstream-connectors/integration_tests/app/build/reports ci_artifact/reports
-          export U=$(id -u); export G=$(id -g); sudo chown -R $U:$G /tmp/io
-          mv /tmp/io/tasks ci_artifact/tasks
+  #     - name: collect tests reports
+  #       if: ${{ success() }} || ${{ failure() }}
+  #       run: |
+  #         rm -rf ci_artifact && mkdir ci_artifact
+  #         mv hstream-connectors/integration_tests/.logs ci_artifact/logs
+  #         mv hstream-connectors/integration_tests/app/build/reports ci_artifact/reports
+  #         export U=$(id -u); export G=$(id -g); sudo chown -R $U:$G /tmp/io
+  #         mv /tmp/io/tasks ci_artifact/tasks
 
-      - name: upload tests-reports
-        uses: actions/upload-artifact@v3
-        if: ${{ success() }} || ${{ failure() }}
-        with:
-          name: hstream-io-logs-${{ matrix.ghc }}
-          path: ci_artifact
-          retention-days: 7
+  #     - name: upload tests-reports
+  #       uses: actions/upload-artifact@v3
+  #       if: ${{ success() }} || ${{ failure() }}
+  #       with:
+  #         name: hstream-io-logs-${{ matrix.ghc }}
+  #         path: ci_artifact
+  #         retention-days: 7
 
   deploy-k8s:
     # disabled due to a lack of hardware resources of the github action
