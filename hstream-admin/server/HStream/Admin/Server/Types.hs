@@ -6,13 +6,13 @@ import           Data.Aeson                (FromJSON (..), ToJSON (..))
 import qualified Data.Aeson                as Aeson
 import           Data.Text                 (Text)
 import           GHC.Generics              (Generic)
+import           Network.Socket            (PortNumber)
 import           Options.Applicative       ((<|>))
 import qualified Options.Applicative       as O
 import           Proto3.Suite              (Enumerated (Enumerated))
 import qualified Text.Read                 as Read
 import qualified Z.Data.CBytes             as CB
 import           Z.Data.CBytes             (CBytes)
-import           Z.IO.Network.SocketAddr   (PortNumber)
 
 import qualified HStream.Logger            as Log
 import qualified HStream.Server.HStreamApi as API
@@ -82,7 +82,7 @@ serverSqlCmdOptsParser = ServerSqlCmdOpts
 logLevelParser :: O.Parser Log.Level
 logLevelParser =
   O.option O.auto ( O.long "log-level" <> O.metavar "[critical|fatal|warning|info|debug]"
-                 <> O.showDefault <> O.value (Log.Level Log.INFO)
+                 <> O.showDefault <> O.value Log.INFO
                  <> O.help "Log level"
                   )
 

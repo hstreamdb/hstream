@@ -78,7 +78,7 @@ createStream ServerContext{..} stream@API.Stream{
   shards <- forM partitions $ \(startKey, endKey) -> do
     let shard = mkShardWithDefaultId streamId startKey endKey (fromIntegral shardCount)
     createShard scLDClient shard
-  Log.debug $ "create shards for stream " <> Log.buildText streamStreamName <> ": " <> Log.buildString' (show shards)
+  Log.debug $ "create shards for stream " <> Log.build streamStreamName <> ": " <> Log.buildString' (show shards)
 
   shardMp <- mkSharedShardMapWithShards shards
   modifyMVar_ shardInfo $ return . HM.insert streamStreamName shardMp
@@ -168,9 +168,9 @@ append :: HasCallStack
 append sc@ServerContext{..} request@API.AppendRequest{..} = do
   recv_time <- getPOSIXTime
   Log.debug $ "Receive Append Request: StreamName {"
-           <> Log.buildText appendRequestStreamName
+           <> Log.build appendRequestStreamName
            <> "(shardId: "
-           <> Log.buildInt appendRequestShardId
+           <> Log.build appendRequestShardId
            <> ")}"
 
   Stats.handle_time_series_add_queries_in scStatsHolder "append" 1
@@ -335,6 +335,6 @@ readShard ServerContext{..} API.ReadShardRequest{..} = do
      records <- S.readerRead reader (fromIntegral readShardRequestMaxRecords)
      receivedRecordsVecs <- forM records decodeRecordBatch
      let res = V.fromList $ map (\(_, _, _, record) -> record) receivedRecordsVecs
-     Log.debug $ "reader " <> Log.buildText readShardRequestReaderId
-              <> " read " <> Log.buildInt (V.length res) <> " batchRecords"
+     Log.debug $ "reader " <> Log.build readShardRequestReaderId
+              <> " read " <> Log.build (V.length res) <> " batchRecords"
      return res

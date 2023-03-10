@@ -67,9 +67,9 @@ adminCommandHandler sc req = defaultExceptionHandle $ do
 handleAdminCommand
   :: ServerContext -> G.UnaryHandler API.AdminCommandRequest API.AdminCommandResponse
 handleAdminCommand sc _ (API.AdminCommandRequest cmd) = catchDefaultEx $ do
-  Log.debug $ "Receive amdin command: " <> Log.buildText cmd
+  Log.debug $ "Receive amdin command: " <> Log.build cmd
   result <- runAdminCommand sc cmd
-  Log.trace $ "Admin command result: " <> Log.buildText result
+  Log.trace $ "Admin command result: " <> Log.build result
   pure $ API.AdminCommandResponse {adminCommandResponseResult = result}
 
 -------------------------------------------------------------------------------

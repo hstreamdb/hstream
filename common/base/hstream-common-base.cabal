@@ -29,6 +29,9 @@ flag ReleaseBuild
   description:
     Enables all optimisations, leads to slower build time and better performance
 
+flag build_old_log
+  default: False
+
 common shared-properties
   ghc-options:
     -Wall -Wcompat -Widentities -Wincomplete-record-updates
@@ -45,11 +48,15 @@ library
   import:             shared-properties
   exposed-modules:
     HStream.Base
+    HStream.Base.Ansi
     HStream.Base.Bytes
     HStream.Base.Table
     HStream.Base.Time
     HStream.Foreign
     HStream.Logger
+
+  if flag(build_old_log)
+    exposed-modules: HStream.LoggerOld
 
   hs-source-dirs:     .
   include-dirs:       include /usr/local/include
@@ -72,15 +79,19 @@ library
     , bytestring
     , containers
     , data-default
+    , fast-logger
     , ghc-prim       >=0.5    && <1.0
     , primitive      ^>=0.7.2
     , random
     , table-layout
     , text
     , time
+    , unix
     , unix-time
     , Z-Data
-    , Z-IO
+
+  if flag(build_old_log)
+    build-depends: Z-IO ==2.0.0.0
 
   cxx-options:        -std=c++17 -Werror=switch
   extra-lib-dirs:     /usr/local/lib

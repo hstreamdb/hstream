@@ -15,7 +15,7 @@ import qualified HStream.Logger              as Log
 
 runStoreCli :: Store.Cli -> IO ()
 runStoreCli Store.Cli{..} =
-  Log.setLogLevel logLevel True >> runStoreCli' headerConfig command
+  Log.setLogConfig logLevel True >> runStoreCli' headerConfig command
 
 runStoreCli' :: Store.HeaderConfig Store.AdminAPI -> Store.Command -> IO ()
 runStoreCli' s (Store.StatusCmd statusOpts) = printTime $ putStrLn =<< Store.runStatus s statusOpts

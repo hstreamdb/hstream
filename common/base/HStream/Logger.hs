@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns         #-}
 {-# LANGUAGE MagicHash            #-}
 {-# LANGUAGE PatternSynonyms      #-}
 {-# LANGUAGE TypeSynonymInstances #-}
@@ -12,62 +13,58 @@ Relatead ghc issues:
 {-# OPTIONS_GHC -fobject-code #-}
 
 module HStream.Logger
-  ( trace
-  , Log.debug
-  , Log.info
-  , Log.warning
-  , Log.fatal
+  ( -- * Logger
+    Logger
+  , withDefaultLogger
 
+  -- * Log function
+  , trace
+  , debug
+  , info
+  , warning
+  , fatal
   , warnSlow
+  , i
 
-  , Log.LoggerConfig (..)
-  , Log.defaultLoggerConfig
-  , Log.withDefaultLogger
-  , Log.flushDefaultLogger
-  , Log.setDefaultLogger
-  , Log.getDefaultLogger
-  , Log.Logger
-
-  , t, d, i, w, e
+    -- * Log Config
+  , LoggerConfig (..)
+  , setLogConfig
+  , defaultLoggerConfig
 
   -- * Builder
-  , buildInt
+  , build
   , buildString
   , buildString'
-  , buildText
-  , buildLazyText
-  , buildByteString
-  , buildCBytes
 
   -- * Log Level
-  , setLogLevel
   , Level (..)
-  , pattern Log.CRITICAL
-  , pattern Log.FATAL
-  , pattern Log.WARNING
-  , pattern Log.INFO
-  , pattern Log.DEBUG
+  , pattern CRITICAL
+  , pattern FATAL
+  , pattern WARNING
+  , pattern INFO
+  , pattern DEBUG
   , pattern TRACE
-  , pattern Log.NOTSET
+  , pattern NOTSET
   ) where
 
-import           Control.Concurrent       (threadDelay)
-import qualified Control.Concurrent.Async as Async
-import           Control.Monad            (forever)
-import           Data.ByteString          (ByteString)
-import qualified Data.ByteString.Char8    as BSC
-import qualified Data.Text                as Text
-import qualified Data.Text.Lazy           as TL
-import           Foreign.C.Types          (CInt (..))
-import           GHC.Conc.Sync            (ThreadId (..))
-import           GHC.Exts                 (ThreadId#)
-import           GHC.Stack                (HasCallStack)
-import qualified Text.Read                as Read
-import qualified Z.Data.Builder           as B
-import           Z.Data.Builder           (Builder)
-import qualified Z.Data.CBytes            as CBytes
-import qualified Z.IO.Logger              as Log
-import           Z.IO.StdStream.Ansi      (AnsiColor (..), color)
+import           Control.Concurrent             (threadDelay)
+import qualified Control.Concurrent.Async       as Async
+import           Control.Exception              (finally)
+import           Control.Monad                  (forever, when)
+import           Data.IORef                     (IORef, atomicWriteIORef,
+                                                 newIORef, readIORef)
+import           Foreign.C.Types                (CInt (..))
+import           GHC.Conc.Sync                  (ThreadId (..), myThreadId)
+import           GHC.Exts                       (ThreadId#)
+import           GHC.Stack
+import           System.IO.Unsafe               (unsafePerformIO)
+import qualified System.Log.FastLogger          as Log
+import qualified System.Log.FastLogger.Internal as Log
+import           System.Posix.IO                (stdError)
+import           System.Posix.Terminal          (queryTerminal)
+import qualified Text.Read                      as Read
+
+import           HStream.Base.Ansi              (AnsiColor (..), color)
 
 -------------------------------------------------------------------------------
 -- Example:
@@ -83,7 +80,7 @@ import           Z.IO.StdStream.Ansi      (AnsiColor (..), color)
 --
 -------------------------------------------------------------------------------
 
--- Logging Levels
+-- | Logging Levels
 --
 -- +----------+---------------+
 -- | Level    | Numeric value |
@@ -102,147 +99,270 @@ import           Z.IO.StdStream.Ansi      (AnsiColor (..), color)
 -- +----------+---------------+
 -- | NOTSET   | 0             |
 -- +----------+---------------+
+newtype Level = Level {unLevel :: Int}
+  deriving (Eq, Ord)
 
-pattern TRACE :: Log.Level
-pattern TRACE = 5
+pattern CRITICAL :: Level
+pattern CRITICAL = Level 50
 
-trace :: HasCallStack => Builder () -> IO ()
-trace = Log.otherLevel TRACE False{- flush immediately ? -}
-{-# INLINE trace #-}
+pattern FATAL :: Level
+pattern FATAL = Level 40
 
-buildInt :: (Integral a, Bounded a) => a -> Builder ()
-buildInt = B.int
-{-# INLINE buildInt #-}
+pattern WARNING :: Level
+pattern WARNING = Level 30
 
-buildString :: String -> Builder ()
-buildString = B.stringUTF8
-{-# INLINE buildString #-}
+pattern INFO :: Level
+pattern INFO = Level 20
 
-buildString' :: Show a => a -> Builder ()
-buildString' = B.stringUTF8 . show
-{-# INLINE buildString' #-}
+pattern DEBUG :: Level
+pattern DEBUG = Level 10
 
-buildText :: Text.Text -> Builder ()
-buildText = B.stringUTF8 . Text.unpack
-{-# INLINE buildText #-}
+pattern TRACE :: Level
+pattern TRACE = Level 5
 
-buildLazyText :: TL.Text -> Builder ()
-buildLazyText = B.stringUTF8 . Text.unpack . TL.toStrict
-{-# INLINE buildLazyText #-}
-
-buildByteString :: ByteString -> Builder ()
-buildByteString = B.stringUTF8 . BSC.unpack
-{-# INLINE buildByteString #-}
-
-buildCBytes :: CBytes.CBytes -> Builder ()
-buildCBytes = CBytes.toBuilder
-{-# INLINE buildCBytes #-}
-
-setLogLevel :: Level -> Bool -> IO ()
-setLogLevel level withColor = do
-  let config = Log.defaultLoggerConfig
-        { Log.loggerLevel = unLevel level
-        , Log.loggerFormatter = if withColor
-                                then defaultColoredFmt
-                                else defaultFmt
-        }
-  Log.setDefaultLogger =<< Log.newStdLogger config
-
--- | A default log formatter
---
--- @[FATAL][2021-02-01T15:03:30+0800][<interactive>:31:1][thread#669]...@
-defaultFmt :: Log.LogFormatter
-defaultFmt ts level content cstack (ThreadId tid#) = do
-    B.square (defaultLevelFmt level)
-    B.square ts
-    B.square $ Log.defaultFmtCallStack cstack
-    B.square $ "thread#" >> B.int (getThreadId tid#)
-    content
-    B.char8 '\n'
-
--- | A default colored log formatter
---
--- DEBUG level is 'Cyan', WARNING level is 'Yellow', FATAL and CRITICAL level are 'Red'.
-defaultColoredFmt :: Log.LogFormatter
-defaultColoredFmt ts level content cstack (ThreadId tid#) = do
-  let blevel = defaultLevelFmt level
-  B.square (case level of
-    Log.DEBUG    -> color Cyan blevel
-    Log.INFO     -> color Magenta blevel
-    Log.WARNING  -> color Yellow blevel
-    Log.FATAL    -> color Red blevel
-    Log.CRITICAL -> color Red blevel
-    _            -> blevel)
-  B.square ts
-  B.square $ Log.defaultFmtCallStack cstack
-  B.square $ "thread#" >> B.int (getThreadId tid#)
-  content
-  B.char8 '\n'
-
--- | Format 'DEBUG' to 'CRITICAL', etc.
---
--- Level other than built-in ones, are formatted in decimal numeric format, i.e.
--- @defaultLevelFmt 60 == "LEVEL60"@
-defaultLevelFmt :: Log.Level -> B.Builder ()
-{-# INLINE defaultLevelFmt #-}
-defaultLevelFmt level = case level of
-  Log.CRITICAL -> "CRITICAL"
-  Log.FATAL    -> "FATAL"
-  Log.WARNING  -> "WARNING"
-  Log.INFO     -> "INFO"
-  Log.DEBUG    -> "DEBUG"
-  TRACE        -> "TRACE"
-  Log.NOTSET   -> "NOTSET"
-  level'       -> "LEVEL" >> B.int level'
-
-newtype Level = Level {unLevel :: Log.Level} deriving (Eq)
+pattern NOTSET :: Level
+pattern NOTSET = Level 0
 
 instance Show Level where
-  show (Level Log.CRITICAL) = "critical"
-  show (Level Log.FATAL)    = "fatal"
-  show (Level Log.WARNING)  = "warning"
-  show (Level Log.INFO)     = "info"
-  show (Level Log.DEBUG)    = "debug"
-  show (Level TRACE)        = "trace"
-  show (Level Log.NOTSET)   = "notset"
-  show _                    = "unknown log level"
+  show CRITICAL = "critical"
+  show FATAL    = "fatal"
+  show WARNING  = "warning"
+  show INFO     = "info"
+  show DEBUG    = "debug"
+  show TRACE    = "trace"
+  show NOTSET   = "notset"
+  show _        = "unknown log level"
 
 instance Read Level where
   readPrec = do
     l <- Read.lexP
-    return . Level $
+    return $
       case l of
-        Read.Ident "critical" -> Log.CRITICAL
-        Read.Ident "fatal"    -> Log.FATAL
-        Read.Ident "warning"  -> Log.WARNING
-        Read.Ident "info"     -> Log.INFO
-        Read.Ident "debug"    -> Log.DEBUG
+        Read.Ident "critical" -> CRITICAL
+        Read.Ident "fatal"    -> FATAL
+        Read.Ident "warning"  -> WARNING
+        Read.Ident "info"     -> INFO
+        Read.Ident "debug"    -> DEBUG
         Read.Ident "trace"    -> TRACE
         x -> errorWithoutStackTrace $ "cannot parse log level" <> show x
 
-t :: HasCallStack => Builder () -> IO ()
-t = Log.withDefaultLogger . trace
+-------------------------------------------------------------------------------
 
-d :: HasCallStack => Builder () -> IO ()
-d = Log.withDefaultLogger . Log.debug
+build :: Log.ToLogStr a => a -> Log.LogStr
+build = Log.toLogStr
 
-i :: HasCallStack => Builder () -> IO ()
-i = Log.withDefaultLogger . Log.info
+buildString :: String -> Log.LogStr
+buildString = Log.toLogStr
+{-# INLINE buildString #-}
 
-w :: HasCallStack => Builder () -> IO ()
-w = Log.withDefaultLogger . Log.warning
-
-e :: HasCallStack => Builder () -> IO ()
-e = Log.withDefaultLogger . Log.fatal
-
-foreign import ccall unsafe "rts_getThreadId" getThreadId :: ThreadId# -> CInt
+buildString' :: Show a => a -> Log.LogStr
+buildString' = Log.toLogStr . show
+{-# INLINE buildString' #-}
 
 -------------------------------------------------------------------------------
 
-warnSlow :: Int -> Int -> Builder () -> IO a -> IO a
+-- | Log Formatter.
+type LogFormatter
+   = Log.LogStr           -- ^ data\/time string(second precision)
+  -> Level                -- ^ log level
+  -> Log.LogStr           -- ^ log content
+  -> CallStack            -- ^ call stack trace
+  -> ThreadId             -- ^ logging thread id
+  -> Log.LogStr
+
+-- | A default log formatter
+--
+-- @[FATAL][2021-02-01T15:03:30+0800][<interactive>:31:1][thread#669]...@
+defaultFmt :: LogFormatter
+defaultFmt time level content cstack (ThreadId tid#) =
+    square (defaultFmtLevel level)
+ <> square time
+ <> square (defaultFmtCallStack cstack)
+ <> square ("thread#" <> Log.toLogStr @Int (fromIntegral $ getThreadId tid#))
+ <> content
+ <> "\n"
+
+-- | A default colored log formatter
+--
+-- DEBUG level is 'Cyan'
+-- WARNING level is 'Yellow'
+-- FATAL and CRITICAL level are 'Red'
+defaultColoredFmt :: LogFormatter
+defaultColoredFmt time level content cstack (ThreadId tid#) =
+  let Log.LogStr _ b = defaultFmtLevel level
+      coloredLevel =
+        case level of
+          -- TODO: color for trace
+          DEBUG    -> color Cyan b
+          INFO     -> color Magenta b
+          WARNING  -> color Yellow b
+          FATAL    -> color Red b
+          CRITICAL -> color Red b
+          _        -> b
+   in square (Log.toLogStr coloredLevel)
+   <> square time
+   <> square (defaultFmtCallStack cstack)
+   <> square ("thread#" <> Log.toLogStr @Int (fromIntegral $ getThreadId tid#))
+   <> content
+   <> "\n"
+
+-- | Format log levels
+--
+-- Level other than built-in ones, are formatted in decimal numeric format.
+defaultFmtLevel :: Level -> Log.LogStr
+defaultFmtLevel level = case level of
+  CRITICAL -> "CRITICAL"
+  FATAL    -> "FATAL"
+  WARNING  -> "WARNING"
+  INFO     -> "INFO"
+  DEBUG    -> "DEBUG"
+  TRACE    -> "TRACE"
+  NOTSET   -> "NOTSET"
+  level'   -> "LEVEL" <> Log.toLogStr (unLevel level')
+{-# INLINE defaultFmtLevel #-}
+
+-- | Default stack formatter which fetch the logging source and location.
+defaultFmtCallStack :: CallStack -> Log.LogStr
+defaultFmtCallStack cs =
+ case reverse $ getCallStack cs of
+   [] -> "<no call stack found>"
+   (_, loc):_ ->
+      Log.toLogStr (srcLocFile loc)
+      <> ":"
+      <> Log.toLogStr (srcLocStartLine loc)
+      <> ":"
+      <> Log.toLogStr (srcLocStartCol loc)
+{-# INLINABLE defaultFmtCallStack #-}
+
+square :: Log.LogStr -> Log.LogStr
+square s = "[" <> s <> "]"
+{-# INLINE square #-}
+
+-------------------------------------------------------------------------------
+
+-- | Logger config type used in this module.
+data LoggerConfig = LoggerConfig
+  { loggerBufSize   :: {-# UNPACK #-} !Int
+    -- ^ Buffer size of each core
+  , loggerLevel     :: {-# UNPACK #-} !Level
+    -- ^ Config log's filter level
+  , loggerFormatter :: LogFormatter
+    -- ^ Log formatter
+  }
+
+setLogConfig :: Level -> Bool -> IO ()
+setLogConfig level withColor = do
+  let config = defaultLoggerConfig
+        { loggerLevel = level
+        , loggerFormatter = if withColor then defaultColoredFmt else defaultFmt
+        }
+  setDefaultLogger =<< newStderrLogger config
+
+defaultLoggerConfig :: LoggerConfig
+defaultLoggerConfig = LoggerConfig 4096 NOTSET defaultFmt
+{-# INLINABLE defaultLoggerConfig #-}
+
+-- FIXME: 'Log.newTimeCache' updates every 1 second, so it doesn't provide
+-- microsecond precision
+defaultTimeCache :: IO Log.FormattedTime
+defaultTimeCache = unsafePerformIO $ Log.newTimeCache iso8061DateFormat
+  where
+    iso8061DateFormat = "%Y-%m-%dT%H:%M:%S%z"
+{-# NOINLINE defaultTimeCache #-}
+
+-------------------------------------------------------------------------------
+
+data Logger = Logger
+  (Level -> CallStack -> Log.LogStr -> IO ())  -- ^ logging function
+  (IO ()) -- ^ clean up action
+  (IO ()) -- ^ manually flush
+
+newStderrLogger :: LoggerConfig -> IO Logger
+newStderrLogger LoggerConfig{..} = do
+  -- 'Log.newTimedFastLogger' don't export the flush function
+  (logger_, clean_, flush_) <- stdLoggerInit =<< Log.newStderrLoggerSet loggerBufSize
+  return $
+    Logger (\level cstack s ->
+      when (level >= loggerLevel) $ do
+        tid <- myThreadId
+        logger_ $ \time ->
+            loggerFormatter (Log.toLogStr time) level s cstack tid
+    ) clean_ flush_
+  where
+    stdLoggerInit lgrset = return
+      ( \f -> defaultTimeCache >>= Log.pushLogStr lgrset . f
+      , Log.rmLoggerSet lgrset
+      , Log.flushLogStr lgrset
+      )
+
+globalLogger :: IORef Logger
+globalLogger = unsafePerformIO $ do
+  istty <- queryTerminal stdError
+  let fmt = if istty then defaultColoredFmt else defaultFmt
+  newIORef =<< newStderrLogger defaultLoggerConfig{loggerFormatter = fmt}
+{-# NOINLINE globalLogger #-}
+
+-- | Change the global logger.
+setDefaultLogger :: Logger -> IO ()
+setDefaultLogger !logger = atomicWriteIORef globalLogger logger
+{-# INLINABLE setDefaultLogger #-}
+
+getDefaultLogger :: IO Logger
+getDefaultLogger = readIORef globalLogger
+{-# INLINABLE getDefaultLogger #-}
+
+-- NOTE: do **NOT** use this with nesting calls like:
+--
+-- @
+-- Log.withDefaultLogger $ do
+--   Log.withDefaultLogger $ do
+--     Log.debug $ "..."
+--   Log.debug $ "..."
+-- @
+--
+-- because the inner call will call the release function to release the global
+-- LoggerSet.
+withDefaultLogger :: IO () -> IO ()
+withDefaultLogger = (`finally` clean)
+  where
+    clean = getDefaultLogger >>= \(Logger _ c _) -> c
+{-# INLINABLE withDefaultLogger #-}
+
+-------------------------------------------------------------------------------
+
+trace :: HasCallStack => Log.LogStr -> IO ()
+trace = logBylevel False TRACE callStack
+
+debug :: HasCallStack => Log.LogStr -> IO ()
+debug = logBylevel False DEBUG callStack
+
+info :: HasCallStack => Log.LogStr -> IO ()
+info = logBylevel False INFO callStack
+
+i :: HasCallStack => Log.LogStr -> IO ()
+i = logBylevel True INFO callStack
+
+warning :: HasCallStack => Log.LogStr -> IO ()
+warning = logBylevel True WARNING callStack
+
+fatal :: HasCallStack => Log.LogStr -> IO ()
+fatal = logBylevel True FATAL callStack
+
+warnSlow :: Int -> Int -> Log.LogStr -> IO a -> IO a
 warnSlow starter duration msg f = Async.withAsync f $ \a1 ->
   Async.withAsync h $ \_a2 -> Async.wait a1
   where
     h = do threadDelay starter
-           forever $ do Log.warning msg
+           forever $ do warning msg
                         threadDelay duration
+
+logBylevel :: Bool -> Level -> CallStack -> Log.LogStr -> IO ()
+logBylevel flushNow level cstack s = do
+  Logger f _ flush_ <- getDefaultLogger
+  f level cstack s
+  when flushNow flush_
+{-# INLINABLE logBylevel #-}
+
+-------------------------------------------------------------------------------
+
+foreign import ccall unsafe "rts_getThreadId" getThreadId :: ThreadId# -> CInt

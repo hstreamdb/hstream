@@ -250,7 +250,7 @@ writeRecordToHStore :: ServerContext
                     -> SinkRecord
                     -> IO ()
 writeRecordToHStore ctx transK transV SinkRecord{..} = do
-  Log.withDefaultLogger . Log.debug $ "Start writeRecordToHStore..."
+  Log.debug $ "Start writeRecordToHStore..."
 
   case transV snkValue of
     Nothing -> return () -- FIXME: error message
@@ -306,12 +306,12 @@ getShardId ServerContext{..} sName = do
          -- loading shard infomation for stream first.
          shards <- M.elems <$> S.listStreamPartitions scLDClient streamID
          shardDict <- foldM insertShardDict M.empty shards
-         Log.debug $ "build shardDict for stream " <> Log.buildText sName <> ": " <> Log.buildString' (show shardDict)
+         Log.debug $ "build shardDict for stream " <> Log.build sName <> ": " <> Log.buildString' (show shardDict)
          return (HM.insert sName shardDict mp, shardDict)
 
    insertShardDict dict shardId = do
      attrs <- S.getStreamPartitionExtraAttrs scLDClient shardId
-     Log.debug $ "attrs for shard " <> Log.buildInt shardId <> ": " <> Log.buildString' (show attrs)
+     Log.debug $ "attrs for shard " <> Log.build shardId <> ": " <> Log.buildString' (show attrs)
      startKey <- case M.lookup shardStartKey attrs of
         -- FIXME: Under the new shard model, each partition created should have an extrAttr attribute,
         -- except for the default partition created by default for each stream. After the default

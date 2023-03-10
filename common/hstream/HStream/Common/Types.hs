@@ -30,7 +30,7 @@ fromInternalServerNodeWithKey (Just key) I.ServerNode{..} =
   case Map.lookup key serverNodeAdvertisedListeners of
     Nothing -> do Log.warning "Unexpected happened! There may be misconfiguration(AdvertisedListeners) in hserver cluter."
                   pure V.empty
-    Just Nothing -> do Log.warning $ "There is no AdvertisedListeners with key " <> Log.buildText key
+    Just Nothing -> do Log.warning $ "There is no AdvertisedListeners with key " <> Log.build key
                        pure V.empty
     Just (Just (I.ListOfListener xs)) -> pure $ V.map (\I.Listener{..} ->
       A.ServerNode { serverNodeId   = serverNodeId
