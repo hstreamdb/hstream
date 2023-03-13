@@ -13,21 +13,25 @@ import qualified Data.Aeson                       as A
 import qualified Data.Aeson.Text                  as A
 import qualified Data.ByteString.Char8            as BS
 import           Data.Default                     (def)
+import           Data.Int                         (Int64)
 import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as M
 import qualified Data.Text                        as T
+import qualified Data.Text.Encoding               as T
 import qualified Data.Text.Lazy                   as TL
+import           Data.Time.Clock.System           (SystemTime (MkSystemTime))
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 import qualified Proto3.Suite                     as PB
 import qualified Text.Layout.Table                as Table
 import qualified Z.Data.CBytes                    as CB
-import           Z.IO.Time                        (SystemTime (MkSystemTime),
-                                                   formatSystemTimeGMT,
-                                                   iso8061DateFormat)
 
 import           Data.Maybe                       (maybeToList)
 
+import           HStream.Base.Time                (CTime (CTime),
+                                                   UnixTime (UnixTime),
+                                                   formatUnixTimeGMT,
+                                                   iso8061DateFormat)
 import qualified HStream.Server.HStreamApi        as API
 import qualified HStream.ThirdParty.Protobuf      as PB
 import qualified HStream.Utils.Aeson              as A
@@ -142,7 +146,7 @@ renderQueriesToTable queries = showTable titles rows
     formatRow API.Query {..} =
       [ [T.unpack queryId]
       , [formatStatus queryStatus]
-      , [CB.unpack $ formatSystemTimeGMT iso8061DateFormat (MkSystemTime queryCreatedTime 0)]
+      , [formatTime queryCreatedTime]
       , [T.unpack queryQueryText]
       ]
     rows = map formatRow queries
@@ -200,7 +204,7 @@ renderViewsToTable views = showTable titles rows
     formatRow API.View {..} =
       [ [T.unpack viewViewId]
       , [formatStatus viewStatus]
-      , [CB.unpack $ formatSystemTimeGMT iso8061DateFormat (MkSystemTime viewCreatedTime 0)]
+      , [formatTime viewCreatedTime]
       , [show viewSchema]
       ]
     rows = map formatRow views
@@ -243,3 +247,7 @@ formatStatus (PB.Enumerated (Right API.TaskStatusPBTASK_CREATED)) = "CREATED"
 formatStatus (PB.Enumerated (Right API.TaskStatusPBTASK_CREATION_ABORT)) = "CREATION_ABORT"
 formatStatus (PB.Enumerated (Right API.TaskStatusPBTASK_UNKNOWN)) = "UNKNOWN"
 formatStatus _ = "Unknown Status"
+
+formatTime :: Int64 -> String
+formatTime t = T.unpack . T.decodeUtf8 $
+  formatUnixTimeGMT iso8061DateFormat (UnixTime (CTime t) 0)

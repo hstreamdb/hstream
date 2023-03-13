@@ -76,13 +76,13 @@ library
     , cache                ^>=0.1
     , containers           ^>=0.6
     , data-default         ^>=0.7
+    , filepath             ^>=1.4.2
     , ghc-prim             >=0.5    && <1.0
     , hashable             ^>=1.3.5
     , hstream-common-base
     , primitive            ^>=0.7
     , vector               ^>=0.12
     , Z-Data
-    , Z-IO
 
   default-language:   Haskell2010
   default-extensions:
@@ -156,7 +156,6 @@ test-suite hstream-store-test
     , random                ^>=1.2
     , vector                ^>=0.12
     , Z-Data
-    , Z-IO
 
   default-language:   Haskell2010
   default-extensions:
@@ -188,7 +187,6 @@ benchmark hstore-bench-append
     , hstream-store
     , optparse-applicative  ^>=0.16
     , Z-Data
-    , Z-IO
 
   default-extensions:
     DeriveGeneric
@@ -219,7 +217,6 @@ benchmark hstore-bench-append-batch
     , hstream-store
     , optparse-applicative  ^>=0.16
     , Z-Data
-    , Z-IO
 
   default-extensions:
     DeriveGeneric
@@ -251,7 +248,6 @@ benchmark hstore-bench-stream
     , optparse-applicative  ^>=0.16
     , unordered-containers  ^>=0.2.19
     , Z-Data
-    , Z-IO
 
   default-language: Haskell2010
   ghc-options:      -threaded -rtsopts -with-rtsopts=-N
@@ -269,8 +265,8 @@ executable hstore-bench-writter
     , hstream-store
     , optparse-applicative  ^>=0.16
     , random
+    , time
     , Z-Data
-    , Z-IO
 
   default-language: Haskell2010
   ghc-options:      -threaded -rtsopts -with-rtsopts=-N

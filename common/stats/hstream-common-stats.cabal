@@ -87,7 +87,6 @@ library
     , unordered-containers
     , vector
     , Z-Data
-    , Z-IO
 
   cxx-options:        -std=c++17
   cpp-options:        -std=c++17
@@ -133,7 +132,6 @@ test-suite hstream-common-stats-test
     , text
     , unordered-containers
     , Z-Data
-    , Z-IO
 
   default-extensions:
     DeriveGeneric

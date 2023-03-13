@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP             #-}
+{-# LANGUAGE MagicHash       #-}
 {-# LANGUAGE MultiWayIf      #-}
 {-# LANGUAGE PatternSynonyms #-}
 
@@ -133,6 +134,7 @@ module HStream.Store.Stream
 
 import           Control.Exception                (try)
 import           Control.Monad                    (filterM, forM, (<=<))
+import           Data.Bifunctor                   (bimap, second)
 import           Data.Bits                        (bit)
 import           Data.Default                     (def)
 import           Data.Foldable                    (foldrM)
@@ -147,14 +149,21 @@ import           Foreign.ForeignPtr               (withForeignPtr)
 import           GHC.Generics                     (Generic)
 import           GHC.Stack                        (HasCallStack, callStack)
 import           System.IO.Unsafe                 (unsafePerformIO)
+#if !MIN_VERSION_filepath(1, 4, 100)
+import qualified System.FilePath.Posix            as P
+#else
+import qualified System.OsPath.Posix              as P
+import qualified System.OsString.Internal.Types   as P
+#endif
 import qualified Z.Data.Builder                   as ZB
 import qualified Z.Data.CBytes                    as CBytes
 import           Z.Data.CBytes                    (CBytes)
 import qualified Z.Data.Text                      as ZT
 import qualified Z.Data.Vector                    as ZV
-import qualified Z.IO.FileSystem                  as FS
 
 import           HStream.Base                     (genUnique)
+import           HStream.Base.Bytes               (cbytes2sbs, cbytes2sbsUnsafe,
+                                                   sbs2cbytes, sbs2cbytesUnsafe)
 import qualified HStream.Logger                   as Log
 import qualified HStream.Store.Exception          as E
 import qualified HStream.Store.Internal.LogDevice as LD
@@ -290,10 +299,11 @@ mkStreamId = StreamId
 mkStreamIdFromFullLogDir :: StreamType -> CBytes -> IO StreamId
 mkStreamIdFromFullLogDir streamType path = do
   s <- readIORef gloStreamSettings
-  name <- case streamType of
-            StreamTypeStream -> FS.relative (streamNameLogDir s) path
-            StreamTypeView   -> FS.relative (streamViewLogDir s) path
-            StreamTypeTemp   -> FS.relative (streamTempLogDir s) path
+  let name =
+        case streamType of
+          StreamTypeStream -> t2 P.makeRelative (streamNameLogDir s) path
+          StreamTypeView   -> t2 P.makeRelative (streamViewLogDir s) path
+          StreamTypeTemp   -> t2 P.makeRelative (streamTempLogDir s) path
   return $ StreamId streamType name
 
 showStreamName :: StreamId -> String
@@ -568,16 +578,14 @@ getStreamIdFromLogId
   -> IO (StreamId, Maybe CBytes)
 getStreamIdFromLogId client logid = do
   -- e.g. /hstream/stream/some_stream/some_key
-  logpath <- LD.logGroupGetFullName =<< LD.getLogGroupByID client logid
-  (logdir, key) <- FS.splitBaseName logpath
-  (dir, name) <- FS.splitBaseName logdir
+  logpath <- fmap thawToPosixPath . LD.logGroupGetFullName =<< LD.getLogGroupByID client logid
+  let (logdir, key) = second thawFromPosixPath $ P.splitFileName logpath
+  let (dir, name) = bimap (fromPosixPath . P.normalise) thawFromPosixPath $ P.splitFileName logdir
   s <- readIORef gloStreamSettings
-  let errmsg = "Unknown stream path: " <> CBytes.toText logpath
-  dir' <- FS.normalize dir
-  streamid <- if | dir' == streamNameLogDir s -> pure $ mkStreamId StreamTypeStream name
-                 | dir' == streamViewLogDir s -> pure $ mkStreamId StreamTypeView name
-                 | dir' == streamTempLogDir s -> pure $ mkStreamId StreamTypeTemp name
-                 | otherwise -> E.throwStoreError errmsg callStack
+  streamid <- if | dir == streamNameLogDir s -> pure $ mkStreamId StreamTypeStream name
+                 | dir == streamViewLogDir s -> pure $ mkStreamId StreamTypeView name
+                 | dir == streamTempLogDir s -> pure $ mkStreamId StreamTypeTemp name
+                 | otherwise -> E.throwStoreError (ZB.buildText $ "Unknown logid " <> ZB.int logid) callStack
   let key_ = if key == streamDefaultKey s then Nothing else Just key
   pure (streamid, key_)
 
@@ -690,9 +698,9 @@ getStreamDirPath :: StreamId -> IO CBytes
 getStreamDirPath StreamId{..} = do
   s <- readIORef gloStreamSettings
   case streamType of
-    StreamTypeStream -> streamNameLogDir s `FS.join` streamName
-    StreamTypeView   -> streamViewLogDir s `FS.join` streamName
-    StreamTypeTemp   -> streamTempLogDir s `FS.join` streamName
+    StreamTypeStream -> pure $ t2 P.combine (streamNameLogDir s) streamName
+    StreamTypeView   -> pure $ t2 P.combine (streamViewLogDir s) streamName
+    StreamTypeTemp   -> pure $ t2 P.combine (streamTempLogDir s) streamName
 {-# INLINABLE getStreamDirPath #-}
 
 getStreamLogPath :: StreamId -> Maybe CBytes -> IO (CBytes, CBytes)
@@ -703,9 +711,55 @@ getStreamLogPath streamid m_key = do
        Just ""  -> streamDefaultKey s
        Just key -> key
        Nothing  -> streamDefaultKey s
-  full_path <- dir_path `FS.join` key_name
+  let full_path = t2 P.combine dir_path key_name
   pure (full_path, key_name)
 {-# INLINABLE getStreamLogPath #-}
+
+-------------------------------------------------------------------------------
+
+#if !MIN_VERSION_filepath(1, 4, 100)
+t2 :: (String -> String -> String) -> CBytes -> CBytes -> CBytes
+t2 f a1 a2 = fromPosixPath $ f (toPosixPath a1) (toPosixPath a2)
+
+fromPosixPath :: String -> StreamName
+fromPosixPath = CBytes.pack
+{-# INLINABLE fromPosixPath #-}
+
+thawFromPosixPath :: String -> StreamName
+thawFromPosixPath = fromPosixPath
+{-# INLINABLE thawFromPosixPath #-}
+
+toPosixPath :: StreamName -> String
+toPosixPath = CBytes.unpack
+{-# INLINABLE toPosixPath #-}
+
+thawToPosixPath :: StreamName -> String
+thawToPosixPath = toPosixPath
+{-# INLINABLE thawToPosixPath #-}
+
+#else
+
+-- TODO: All use ShortByteString instead of CBytes
+
+t2 :: (P.PosixString -> P.PosixString -> P.PosixString) -> CBytes -> CBytes -> CBytes
+t2 f a1 a2 = fromPosixPath $ f (toPosixPath a1) (toPosixPath a2)
+
+fromPosixPath :: P.PosixString -> StreamName
+fromPosixPath (P.PosixString sbs) = sbs2cbytes sbs
+{-# INLINABLE fromPosixPath #-}
+
+thawFromPosixPath :: P.PosixString -> StreamName
+thawFromPosixPath (P.PosixString sbs) = sbs2cbytesUnsafe sbs
+{-# INLINABLE thawFromPosixPath #-}
+
+toPosixPath :: StreamName -> P.PosixPath
+toPosixPath name = P.PosixString (cbytes2sbs name)
+{-# INLINABLE toPosixPath #-}
+
+thawToPosixPath :: StreamName -> P.PosixPath
+thawToPosixPath name = P.PosixString (cbytes2sbsUnsafe name)
+{-# INLINABLE thawToPosixPath #-}
+#endif
 
 -------------------------------------------------------------------------------
 

@@ -107,7 +107,6 @@ library
     , uuid
     , vector
     , Z-Data
-    , Z-IO
 
   -- Note: build on osx may require this
   build-tool-depends:

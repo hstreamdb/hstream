@@ -146,7 +146,6 @@ library
     , vector-algorithms
     , yaml
     , Z-Data
-    , Z-IO
     , zoovisitor
 
   if impl(ghc <9.2.0)
@@ -199,7 +198,6 @@ executable hstream-server
     , timers
     , vector
     , Z-Data
-    , Z-IO
     , zoovisitor
 
   if flag(hstream_use_grpc_haskell)
@@ -238,7 +236,6 @@ executable hstream
     , unordered-containers
     , vector
     , Z-Data
-    , Z-IO
 
   default-language: Haskell2010
   ghc-options:      -threaded -rtsopts -with-rtsopts=-N
@@ -290,7 +287,6 @@ test-suite hstream-test
     , vector
     , yaml
     , Z-Data
-    , Z-IO
     , zoovisitor
 
   if impl(ghc <9.2.0)

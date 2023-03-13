@@ -4,20 +4,24 @@
 
 module HStream.SQL.Codegen.Utils where
 
-import           Data.Function         ((&))
+import           Data.ByteString       (ByteString)
 import           Data.List             (foldl')
 import           Data.Maybe            (fromMaybe)
 import           Data.Scientific
 import           Data.Text             (Text)
 import qualified Data.Text             as T
+import qualified Data.Text.Encoding    as Text
+import           Foreign.C.Types       (CTime (CTime))
+import           GHC.Stack             (HasCallStack)
+import           Text.StringRandom     (stringRandomIO)
 
+import           HStream.Base.Time     (UnixTime (..), formatUnixTimeGMT,
+                                        iso8061DateFormat, mailDateFormat,
+                                        parseUnixTimeGMT, simpleDateFormat,
+                                        webDateFormat)
 import           HStream.SQL.AST
 import           HStream.SQL.Exception (SomeSQLException (..),
                                         throwSQLException)
-import           HStream.Utils
-import           Text.StringRandom     (stringRandomIO)
-import qualified Z.Data.CBytes         as ZCB
-import           Z.IO.Time
 
 funcOnScientific :: RealFloat a => (a -> a) -> Scientific -> Scientific
 funcOnScientific f = fromFloatDigits . f . toRealFloat
@@ -48,31 +52,29 @@ arrJoinPrim xs delimiterM | null xs = T.empty
       ("Operation OpArrJoin on " <> show notPrim <> " is not supported")
     ) <> delimiter
 
-strToDateGMT :: T.Text -> T.Text -> Scientific
-strToDateGMT date fmt = parseSystemTimeGMT (case timeFmt fmt of
-  Just x -> x
-  _ -> throwSQLException CodegenException Nothing
-    ("Operation OpStrDate on time format " <> show fmt <> " is not supported")) (textToCBytes date)
-      & systemSeconds & Prelude.toInteger & flip scientific 0
+strToDateGMT :: HasCallStack => T.Text -> T.Text -> Scientific
+strToDateGMT date fmt =
+  let fmt' = checkTimeFmt "OpStrDate" fmt
+      CTime sec = utSeconds $ parseUnixTimeGMT fmt' $ Text.encodeUtf8 date
+   in scientific (toInteger sec) 0
 
 dateToStrGMT :: Scientific -> T.Text -> T.Text
 dateToStrGMT date fmt =
-  let sysTime = MkSystemTime (case toBoundedInteger date of
-        Just x -> x
-        _ -> throwSQLException CodegenException Nothing "Impossible happened...") 0
-  in formatSystemTimeGMT (case timeFmt fmt of
-  Just x -> x
-  _ -> throwSQLException CodegenException Nothing
-    ("Operation OpDateStr on time format " <> show fmt <> " is not supported")) sysTime
-      & cBytesToText
+  let sec = case toBoundedInteger date of
+              Just x -> x
+              _ -> throwSQLException CodegenException Nothing "Impossible happened..."
+      time = UnixTime (CTime sec) 0
+      fmt' = checkTimeFmt "OpDateStr" fmt
+   in Text.decodeUtf8 $ formatUnixTimeGMT fmt' time
 
-timeFmt :: T.Text -> Maybe ZCB.CBytes
-timeFmt fmt
-  | textToCBytes fmt == simpleDateFormat  = Just simpleDateFormat
-  | textToCBytes fmt == iso8061DateFormat = Just iso8061DateFormat
-  | textToCBytes fmt == webDateFormat     = Just webDateFormat
-  | textToCBytes fmt == mailDateFormat    = Just mailDateFormat
-  | otherwise                             = Nothing
+checkTimeFmt :: HasCallStack => String -> T.Text -> ByteString
+checkTimeFmt label fmt
+  | Text.encodeUtf8 fmt == simpleDateFormat  = simpleDateFormat
+  | Text.encodeUtf8 fmt == iso8061DateFormat = iso8061DateFormat
+  | Text.encodeUtf8 fmt == webDateFormat     = webDateFormat
+  | Text.encodeUtf8 fmt == mailDateFormat    = mailDateFormat
+  | otherwise = throwSQLException CodegenException Nothing
+      ("Operation " <> label <> " on time format " <> show fmt <> " is not supported")
 
 genRandomSinkStream :: IO Text
 genRandomSinkStream = stringRandomIO "[a-zA-Z]{20}"

@@ -33,11 +33,11 @@ import           Data.Int                      (Int64)
 import           Data.IORef
 import           Data.Maybe                    (fromJust)
 import           Data.Text                     (Text)
-import           Data.Time.Clock.System        (SystemTime (MkSystemTime))
+import           Data.Time.Clock.System        (SystemTime (MkSystemTime),
+                                                getSystemTime)
 import           Data.Word                     (Word32, Word64)
 import           GHC.Generics                  (Generic)
 import           GHC.IO                        (unsafePerformIO)
-import           Z.IO.Time                     (getSystemTime')
 import           ZooKeeper.Types               (ZHandle)
 
 import           HStream.MetaStore.Types       (FHandle, HasPath (..),
@@ -174,7 +174,7 @@ getQuerySources QueryInfo{..} = fst queryStreams
 
 createInsertQueryInfo :: Text -> Text -> RelatedStreams -> MetaHandle -> IO QueryInfo
 createInsertQueryInfo queryId querySql queryStreams h = do
-  MkSystemTime queryCreatedTime _ <- getSystemTime'
+  MkSystemTime queryCreatedTime _ <- getSystemTime
   let qInfo = QueryInfo {..}
   insertQuery qInfo h
   return qInfo

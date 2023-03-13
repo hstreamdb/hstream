@@ -70,7 +70,6 @@ library
     , uuid
     , vector
     , Z-Data
-    , Z-IO
     , zoovisitor
 
   default-extensions:
