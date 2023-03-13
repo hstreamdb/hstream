@@ -3,7 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE StrictData        #-}
-{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeApplications  #-}
 
 module HStream.Processing.Stream.GroupedStream
   ( GroupedStream (..),
@@ -14,12 +14,12 @@ module HStream.Processing.Stream.GroupedStream
   )
 where
 
-import qualified Data.Aeson as Aeson
+import qualified Data.Aeson                                      as Aeson
 import           Data.Maybe
 import           HStream.Processing.Encoding
 import           HStream.Processing.Processor
-import           HStream.Processing.Processor.Internal
 import           HStream.Processing.Processor.ChangeLog
+import           HStream.Processing.Processor.Internal
 import           HStream.Processing.Store
 import           HStream.Processing.Stream.Internal
 import           HStream.Processing.Stream.SessionWindowedStream (SessionWindowedStream (..))
@@ -28,8 +28,8 @@ import           HStream.Processing.Stream.TimeWindowedStream    (TimeWindowedSt
 import           HStream.Processing.Stream.TimeWindows
 import           HStream.Processing.Table
 import           RIO
+import qualified RIO.ByteString.Lazy                             as BL
 import qualified RIO.Text                                        as T
-import qualified RIO.ByteString.Lazy as BL
 
 data GroupedStream k v s = GroupedStream
   { gsKeySerde        :: Maybe (Serde k s),
@@ -94,7 +94,7 @@ aggregateProcessor storeName initialValue aggF outputF keySerde accSerde = Proce
   let newAcc = aggF acc r
   let sNewAcc = runSer (serializer accSerde) newAcc
   liftIO $ ksPut sKey sNewAcc store
-  let changeLog = CLKSPut @_ @_ @BL.ByteString sKey sNewAcc
+  let changeLog = CLKSPut @_ @_ @BL.ByteString storeName sKey sNewAcc
   liftIO $ logChangelog tcChangeLogger (Aeson.encode changeLog)
   forward r {recordValue = outputF newAcc key}
 

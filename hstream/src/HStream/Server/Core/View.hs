@@ -34,7 +34,7 @@ import           HStream.Server.MetaData.Types (ViewInfo (viewName))
 import           HStream.Server.Types
 import           HStream.SQL                   (FlowObject)
 import           HStream.ThirdParty.Protobuf   (Empty (..))
-import           HStream.Utils                 (TaskStatus (..))
+import           HStream.Utils                 (TaskStatus (..), newRandomText)
 #ifdef HStreamUseV2Engine
 import           DiffFlow.Graph                (GraphBuilder)
 import           DiffFlow.Types                (DataChangeBatch)
@@ -102,7 +102,8 @@ createView' sc@ServerContext{..} view srcs sink builder persist sql = do
   case all isJust roles_m of
     True -> do
       let relatedStreams = (srcs, sink)
-      qInfo <- handleCreateAsSelect sc builder sql relatedStreams False -- Do not write to any sink stream
+      queryId <- newRandomText 10
+      qInfo <- handleCreateAsSelect sc builder queryId sql relatedStreams False -- Do not write to any sink stream
       let accumulation = L.head (snd persist)
       atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert view accumulation hm, ()))
       let vInfo = P.ViewInfo{ viewName = view, viewQuery = qInfo }

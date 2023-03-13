@@ -26,35 +26,37 @@ module HStream.Processing.Processor
     SinkConfig (..),
     TaskBuilder,
 
-    ChangeLogger (..)
+    ChangeLogger (..),
+    StateStoreChangelog(..),
+    applyStateStoreChangelog
   )
 where
 
 import           Control.Concurrent
-import           Control.Exception                     (throw)
-import qualified Data.Aeson                            as Aeson
+import           Control.Exception                      (throw)
+import qualified Data.Aeson                             as Aeson
 import           Data.Maybe
 import           Data.Typeable
-import qualified HStream.Logger                        as Log
+import qualified HStream.Logger                         as Log
 import           HStream.Processing.Connector
 import           HStream.Processing.Encoding
-import           HStream.Processing.Error              (HStreamProcessingError (..))
-import           HStream.Processing.Processor.Internal
+import           HStream.Processing.Error               (HStreamProcessingError (..))
 import           HStream.Processing.Processor.ChangeLog
+import           HStream.Processing.Processor.Internal
 import           HStream.Processing.Store
 import           HStream.Processing.Type
 import           HStream.Processing.Util
-import qualified HStream.Server.HStreamApi             as API
-import qualified Prelude                               as Prelude
-import qualified RIO                                   as RIO
+import qualified HStream.Server.HStreamApi              as API
+import qualified Prelude                                as Prelude
+import qualified RIO                                    as RIO
 import           RIO
-import qualified RIO.ByteString.Lazy                   as BL
-import qualified RIO.HashMap                           as HM
-import           RIO.HashMap.Partial                   as HM'
-import qualified RIO.HashSet                           as HS
-import qualified RIO.List                              as L
-import qualified RIO.Map                               as Map
-import qualified RIO.Text                              as T
+import qualified RIO.ByteString.Lazy                    as BL
+import qualified RIO.HashMap                            as HM
+import           RIO.HashMap.Partial                    as HM'
+import qualified RIO.HashSet                            as HS
+import qualified RIO.List                               as L
+import qualified RIO.Map                                as Map
+import qualified RIO.Text                               as T
 
 data Materialized k v s = Materialized
   { mKeySerde   :: Serde k s,
@@ -152,12 +154,15 @@ runTask SourceConnectorWithoutCkp {..} sinkConnector taskBuilder@TaskTopologyCon
     forM_ sourceStreamNames (flip subscribeToStreamWithoutCkp offset)
 
     chan <- newTChanIO
-    withAsync (f chan sourceStreamNames) $ \a ->
-      withAsync (g task ctx chan) $ \b ->
+
+    withAsync (forConcurrently_ sourceStreamNames (f chan)) $ \a ->
+      withAsync (g task ctx chan) $ \b -> do
         waitEither_ a b
+        -- cleanup: source subscriptions
+        forM_ sourceStreamNames unSubscribeToStreamWithoutCkp
   where
-    f :: TChan ([SourceRecord], MVar ()) -> [T.Text] -> IO ()
-    f chan sourceStreamNames = forM_ sourceStreamNames $ \sourceStreamName -> do
+    f :: TChan ([SourceRecord], MVar ()) -> T.Text -> IO ()
+    f chan sourceStreamName =
       withReadRecordsWithoutCkp sourceStreamName (transKSrc sourceStreamName) (transVSrc sourceStreamName) $ \sourceRecords -> do
         mvar <- RIO.newEmptyMVar
         let callback  = atomically $ writeTChan chan (sourceRecords, mvar)

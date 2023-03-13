@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE StrictData        #-}
-{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeApplications  #-}
 
 module HStream.Processing.Stream.TimeWindowedStream
   ( TimeWindowedStream (..),
@@ -11,19 +11,19 @@ module HStream.Processing.Stream.TimeWindowedStream
   )
 where
 
-import qualified Data.Aeson as Aeson
+import qualified Data.Aeson                             as Aeson
 import           Data.Maybe
 import           HStream.Processing.Encoding
 import           HStream.Processing.Processor
-import           HStream.Processing.Processor.Internal
 import           HStream.Processing.Processor.ChangeLog
+import           HStream.Processing.Processor.Internal
 import           HStream.Processing.Store
 import           HStream.Processing.Stream.Internal
 import           HStream.Processing.Stream.TimeWindows
 import           HStream.Processing.Table
 import           RIO
-import qualified RIO.Text                              as T
-import qualified RIO.ByteString.Lazy as BL
+import qualified RIO.ByteString.Lazy                    as BL
+import qualified RIO.Text                               as T
 
 data TimeWindowedStream k v s = TimeWindowedStream
   { twsKeySerde        :: Maybe (Serde k s),
@@ -104,7 +104,7 @@ aggregateProcessor storeName initialValue aggF outputF keySerde accSerde twSerde
             let newAcc = aggF acc r
             let sNewAcc = runSer (serializer accSerde) newAcc
             liftIO $ ksPut key sNewAcc store
-            let changeLog = CLKSPut @_ @_ @BL.ByteString key sNewAcc
+            let changeLog = CLKSPut @_ @_ @BL.ByteString storeName key sNewAcc
             liftIO $ logChangelog tcChangeLogger (Aeson.encode changeLog)
             forward r {recordKey = Just windowKey, recordValue = outputF newAcc (fromJust recordKey)}
           else logWarn "Skipping record for expired window."

@@ -1,8 +1,8 @@
-{-# LANGUAGE NoImplicitPrelude #-}
-{-# LANGUAGE StrictData        #-}
+{-# LANGUAGE DeriveAnyClass     #-}
+{-# LANGUAGE DeriveGeneric      #-}
+{-# LANGUAGE NoImplicitPrelude  #-}
 {-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE StrictData         #-}
 
 module HStream.Processing.Type
   ( Timestamp,

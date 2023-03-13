@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE StrictData        #-}
-{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeApplications  #-}
 
 module HStream.Processing.Stream
   ( mkStreamBuilder,
@@ -26,12 +26,12 @@ module HStream.Processing.Stream
   )
 where
 
-import qualified Data.Aeson as Aeson
+import qualified Data.Aeson                              as Aeson
 import           Data.Maybe
 import           HStream.Processing.Encoding
 import           HStream.Processing.Processor
-import           HStream.Processing.Processor.Internal
 import           HStream.Processing.Processor.ChangeLog
+import           HStream.Processing.Processor.Internal
 import           HStream.Processing.Store
 import           HStream.Processing.Stream.GroupedStream
 import           HStream.Processing.Stream.Internal
@@ -130,7 +130,7 @@ tableStoreProcessor keySerde valueSerde storeName = Processor $ \r@Record {..} -
   let keyBytes = runSer (serializer keySerde) (fromJust recordKey)
   let valueBytes = runSer (serializer valueSerde) recordValue
   liftIO $ ksPut keyBytes valueBytes store
-  let changeLog = CLKSPut @_ @_ @BL.ByteString keyBytes valueBytes
+  let changeLog = CLKSPut @_ @_ @BL.ByteString storeName keyBytes valueBytes
   liftIO $ logChangelog tcChangeLogger (Aeson.encode changeLog)
   forward r
 
@@ -291,7 +291,7 @@ joinStreamProcessor joiner joinCond newKeySelector beforeMs afterMs storeName1 s
   let k1Bytes = runSer (serializer k1Serde) k1
   let v1Bytes = runSer (serializer v1Serde) recordValue
   liftIO $ tksPut (mkTimestampedKey k1Bytes recordTimestamp) v1Bytes store1
-  let changeLog = CLTKSPut @() @() (mkTimestampedKey k1Bytes recordTimestamp) v1Bytes
+  let changeLog = CLTKSPut @() @() storeName1 (mkTimestampedKey k1Bytes recordTimestamp) v1Bytes
   liftIO $ logChangelog tcChangeLogger (Aeson.encode changeLog)
   store2 <- getTimestampedKVStateStore storeName2
   candinates <- liftIO $ tksRange (mkTimestampedKey k1Bytes $ recordTimestamp - beforeMs) (mkTimestampedKey k1Bytes $ recordTimestamp + afterMs) store2

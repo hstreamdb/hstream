@@ -1,5 +1,6 @@
 {-# LANGUAGE CPP                 #-}
 {-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
@@ -15,11 +16,17 @@ import           Control.Exception                (Handler (Handler),
 import           Control.Exception.Base           (AsyncException (..))
 import           Control.Monad
 import qualified Data.Aeson                       as Aeson
+import qualified Data.ByteString                  as BS
+import qualified Data.ByteString.Lazy             as BL
+import           Data.Foldable                    (foldlM)
+import           Data.Function                    (fix)
 import qualified Data.HashMap.Strict              as HM
 import           Data.Int                         (Int64)
 import           Data.IORef
+import qualified Data.List                        as L
 import           Data.Maybe                       (catMaybes, fromJust)
 import           Data.Text                        (Text)
+import qualified Data.Text                        as T
 import qualified Data.Time                        as Time
 import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Op         (Op (OpRecvCloseOnServer),
@@ -36,8 +43,9 @@ import           HStream.Server.Types
 import           HStream.SQL.AST
 import qualified HStream.Store                    as S
 import           HStream.Utils                    (TaskStatus (..),
-                                                   cBytesToText, newRandomText,
-                                                   textToCBytes)
+                                                   cBytesToText,
+                                                   lazyByteStringToBytes,
+                                                   newRandomText, textToCBytes)
 
 #ifdef HStreamUseV2Engine
 import qualified DiffFlow.Graph                   as DiffFlow
@@ -52,10 +60,11 @@ import qualified HStream.Server.ConnectorTypes    as HCT
 import           HStream.SQL.Codegen
 #else
 import           HStream.Processing.Connector
-import           HStream.Processing.Processor     (TaskBuilder,
-                                                   ChangeLogger(..),
-                                                   getTaskName,
-                                                   runTask)
+import           HStream.Processing.Processor     (ChangeLogger (..),
+                                                   StateStoreChangelog (..),
+                                                   TaskBuilder,
+                                                   applyStateStoreChangelog,
+                                                   getTaskName, runTask)
 import           HStream.SQL.Codegen.V1
 #endif
 
@@ -287,22 +296,25 @@ handleCreateAsSelect ctx@ServerContext{..} sink insWithRole outWithRole builder 
     releasePid qid = modifyMVar_ runningQueries (return . HM.delete qid)
 #else
 
+---- store processing node states
 -- do nothing
 instance ChangeLogger () where
   logChangelog () _ = return ()
 
-instance ChangeLogger Int where
-  logChangelog _ bs = print bs
+-- use logdevice stream
+instance ChangeLogger (S.LDClient, S.C_LogID) where
+  logChangelog (ldClient, logId) bs =
+    void $ S.append ldClient logId (lazyByteStringToBytes bs) Nothing
 
 --------------------------------------------------------------------------------
-runTaskWrapper :: ServerContext -> TaskBuilder -> Bool -> IO ()
-runTaskWrapper ctx@ServerContext{..} taskBuilder writeToHStore = do
+runTaskWrapper :: ServerContext -> TaskBuilder -> S.C_LogID -> Bool -> IO ()
+runTaskWrapper ctx@ServerContext{..} taskBuilder logId writeToHStore = do
+  -- taskName: randomly generated in `Codegen.V1`
   let taskName = getTaskName taskBuilder
   let consumerName = textToCBytes taskName
 
   -- create a new sourceConnector
   let sourceConnector = HStore.hstoreSourceConnectorWithoutCkp ctx (cBytesToText consumerName)
-
   -- create a new sinkConnector
   let sinkConnector = if writeToHStore
                          then HStore.hstoreSinkConnector ctx
@@ -310,34 +322,72 @@ runTaskWrapper ctx@ServerContext{..} taskBuilder writeToHStore = do
   -- RUN TASK
   let transKSrc = \s bl -> case Aeson.decode bl of
                           Nothing -> Nothing
-                          Just k  -> Just . Aeson.encode $ jsonObjectToFlowObject s k
+                          Just k  -> Just . Aeson.encode $
+                                     jsonObjectToFlowObject s k
       transVSrc = transKSrc
       transKSnk = \bl -> case Aeson.decode bl of
                              Nothing -> Nothing
-                             Just k  -> Just . Aeson.encode $ flowObjectToJsonObject k
+                             Just k  -> Just . Aeson.encode $
+                                        flowObjectToJsonObject k
       transVSnk = transKSnk
-  runTask sourceConnector sinkConnector taskBuilder (0 :: Int) transKSrc transVSrc transKSnk transVSnk
+  runTask sourceConnector sinkConnector taskBuilder (scLDClient,logId) transKSrc transVSrc transKSnk transVSnk
 
 handleCreateAsSelect :: ServerContext
                      -> TaskBuilder
                      -> Text
+                     -> Text
                      -> P.RelatedStreams
                      -> Bool
                      -> IO P.QueryInfo
-handleCreateAsSelect ctx@ServerContext{..} taskBuilder commandQueryStmtText related writeToHStore = do
-  taskName <- newRandomText 10
-  qInfo@P.QueryInfo{..} <- P.createInsertQueryInfo
-                      taskName commandQueryStmtText related metaHandle
-  M.updateMeta queryId P.QueryRunning Nothing metaHandle
-  tid <- forkIO $ catches (action queryId) (cleanup queryId)
-  modifyMVar_ runningQueries (return . HM.insert queryId tid)
-  return qInfo
+handleCreateAsSelect ctx@ServerContext{..} taskBuilder queryId commandQueryStmtText related writeToHStore = do
+  ---- check if the query exists and try to recover it ----
+  M.getMeta @P.QueryInfo queryId metaHandle >>= \case
+    Just qInfo@P.QueryInfo{..} -> M.getMeta @P.QueryStatus queryId metaHandle >>= \case
+      Just P.QueryTerminated -> restoreStateAndRun >> return qInfo
+      Just P.QueryAbort      -> restoreStateAndRun >> return qInfo
+      Just P.QueryRunning    -> throwIO $ HE.UnexpectedError ("Query " <> T.unpack queryId <> " is already running") -- FIXME: which exception should it throw?
+      Just P.QueryCreated    -> throwIO $ HE.UnexpectedError ("Query " <> T.unpack queryId <> " has state CREATED") -- FIXME: do what?
+      _                      -> throwIO $ HE.UnexpectedError ("Query " <> T.unpack queryId <> " has unknown state")
+    Nothing    -> do
+      -- state store
+      let streamId = transToTempStreamName queryId
+      let attrs = S.def { S.logReplicationFactor = S.defAttr1 1 }
+      S.createStream scLDClient streamId attrs
+      logId <- S.createStreamPartition scLDClient streamId Nothing mempty
+
+      -- update metadata
+      qInfo@P.QueryInfo{..} <- P.createInsertQueryInfo
+                          queryId commandQueryStmtText related metaHandle
+      M.updateMeta queryId P.QueryRunning Nothing metaHandle
+      tid <- forkIO $ catches (action queryId taskBuilder logId) (cleanup queryId)
+      modifyMVar_ runningQueries (return . HM.insert queryId tid)
+      return qInfo
   where
-    action qid = do
+    restoreStateAndRun = do
+      let streamId = transToTempStreamName queryId
+      logId <- S.getUnderlyingLogId scLDClient streamId Nothing
+      tailLSN <- S.getTailLSN scLDClient logId
+      reader <- S.newLDReader scLDClient 1 Nothing
+      S.readerStartReading reader logId S.LSN_MIN tailLSN
+      newBuilder <-
+        fix $ \go -> S.readerRead reader 10 >>= \dataRecords -> do
+          (curBuilder, curLSN) <-
+            foldlM (\(acc_builder,acc_lsn) dr@S.DataRecord{..} -> do
+                       let (cl :: StateStoreChangelog K V Ser) = fromJust (Aeson.decode $ BL.fromStrict recordPayload)
+                       builder' <- applyStateStoreChangelog acc_builder cl
+                       return (builder', S.recordLSN dr)
+                   ) (taskBuilder, S.LSN_MIN) dataRecords
+          if curLSN >= tailLSN
+            then return curBuilder
+            else go
+      M.updateMeta queryId P.QueryRunning Nothing metaHandle
+      tid <- forkIO $ catches (action queryId newBuilder logId) (cleanup queryId)
+      modifyMVar_ runningQueries (return . HM.insert queryId tid)
+    action qid builder logId = do
       Log.debug . Log.buildString
         $ "CREATE AS SELECT: query " <> show qid
        <> " has stared working on " <> show commandQueryStmtText
-      runTaskWrapper ctx taskBuilder writeToHStore
+      runTaskWrapper ctx builder logId writeToHStore
     cleanup qid =
       [ Handler (\(e :: AsyncException) -> do
                     Log.debug . Log.buildString
@@ -353,7 +403,6 @@ handleCreateAsSelect ctx@ServerContext{..} taskBuilder commandQueryStmtText rela
                     void $ releasePid qid)
       ]
     releasePid qid = modifyMVar_ runningQueries (return . HM.delete qid)
-
 
 #endif
 
