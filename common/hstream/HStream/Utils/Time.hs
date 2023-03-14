@@ -20,6 +20,8 @@ import qualified Data.Text             as T
 import           Data.Time.Clock       (NominalDiffTime)
 import           Data.Time.Clock.POSIX (getPOSIXTime)
 
+import           HStream.Base          (rmTrailingZeros)
+
 data Interval
   = Milliseconds Double
   | Seconds Double
@@ -28,16 +30,10 @@ data Interval
   deriving (Eq)
 
 instance Show Interval where
-  show (Seconds x)      = showInInt x <> " seconds"
-  show (Minutes x)      = showInInt x <> " minutes"
-  show (Hours x)        = showInInt x <> " hours"
-  show (Milliseconds x) = showInInt x <> " milliseconds"
-
-showInInt :: Double -> String
-showInInt x | fromIntegral x' == x = show x'
-            | otherwise            = show x
-  where
-    x' = floor x :: Int
+  show (Seconds x)      = rmTrailingZeros x <> " seconds"
+  show (Minutes x)      = rmTrailingZeros x <> " minutes"
+  show (Hours x)        = rmTrailingZeros x <> " hours"
+  show (Milliseconds x) = rmTrailingZeros x <> " milliseconds"
 
 interval2ms :: Interval -> Int
 interval2ms (Milliseconds x) = round x

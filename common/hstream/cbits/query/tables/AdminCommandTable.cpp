@@ -330,6 +330,7 @@ PartialTableData AdminCommandTable::jsonToTableData(std::string json) const {
 
       auto it = nameToPosMap_.find(name);
       if (it == nameToPosMap_.end()) {
+        ld_warning("Unable to find the cloumn: %s", name.c_str());
         // Tell the row parser to ignore this column.
         columns_present.emplace_back();
       } else {
