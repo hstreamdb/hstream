@@ -1,8 +1,8 @@
-{-# LANGUAGE GADTs             #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE StrictData        #-}
+{-# LANGUAGE TypeApplications  #-}
 
 module HStream.Processing.Stream.TimeWindowedStream
   ( TimeWindowedStream (..),
@@ -11,16 +11,19 @@ module HStream.Processing.Stream.TimeWindowedStream
   )
 where
 
+import qualified Data.Aeson                             as Aeson
 import           Data.Maybe
 import           HStream.Processing.Encoding
 import           HStream.Processing.Processor
+import           HStream.Processing.Processor.ChangeLog
 import           HStream.Processing.Processor.Internal
 import           HStream.Processing.Store
 import           HStream.Processing.Stream.Internal
 import           HStream.Processing.Stream.TimeWindows
 import           HStream.Processing.Table
 import           RIO
-import qualified RIO.Text                              as T
+import qualified RIO.ByteString.Lazy                    as BL
+import qualified RIO.Text                               as T
 
 data TimeWindowedStream k v s = TimeWindowedStream
   { twsKeySerde        :: Maybe (Serde k s),
@@ -31,7 +34,7 @@ data TimeWindowedStream k v s = TimeWindowedStream
   }
 
 aggregate ::
-  (Typeable k, Typeable v, Ord k, Typeable a, Ord s1, Ord s2, Typeable s1, Serialized s1, Typeable s2, Serialized s2) =>
+  (Typeable k, Typeable v, Ord k, Typeable a, Ord s1, Ord s2, Typeable s1, Serialized s1, Typeable s2, Serialized s2, Aeson.ToJSON s1) =>
   a ->
   (a -> Record k v -> a) ->
   (a -> k -> a) ->
@@ -59,7 +62,7 @@ aggregate initialValue aggF outputF twSerde1 twSerde2 aSerde2 Materialized {..} 
       }
 
 count ::
-  (Typeable k, Typeable v, Ord k, Ord s, Typeable s, Serialized s) =>
+  (Typeable k, Typeable v, Ord k, Ord s, Typeable s, Serialized s, Aeson.ToJSON s) =>
   Materialized k Int s ->
   Serde TimeWindow s ->
   Serde TimeWindow s ->
@@ -72,7 +75,7 @@ count mat twSerde1 twSerde2 intSerde = aggregate 0 aggF const twSerde1 twSerde2 
     aggF acc _ = acc + 1
 
 aggregateProcessor ::
-  (Typeable k, Typeable v, Ord k, Typeable a, Ord s, Typeable s, Serialized s) =>
+  (Typeable k, Typeable v, Ord k, Typeable a, Ord s, Typeable s, Serialized s, Aeson.ToJSON s) =>
   T.Text ->
   a ->
   (a -> Record k v -> a) ->
@@ -83,7 +86,7 @@ aggregateProcessor ::
   TimeWindows ->
   Processor k v
 aggregateProcessor storeName initialValue aggF outputF keySerde accSerde twSerde windows@TimeWindows {..} = Processor $ \r@Record {..} -> do
-  ctx <- ask
+  ctx@TaskContext{..} <- ask
   store <- getKVStateStore storeName
   logDebug $ "recordTimestamp: " <> displayShow recordTimestamp
   let matchedWindows = windowsFor recordTimestamp windows
@@ -101,6 +104,8 @@ aggregateProcessor storeName initialValue aggF outputF keySerde accSerde twSerde
             let newAcc = aggF acc r
             let sNewAcc = runSer (serializer accSerde) newAcc
             liftIO $ ksPut key sNewAcc store
+            let changeLog = CLKSPut @_ @_ @BL.ByteString storeName key sNewAcc
+            liftIO $ logChangelog tcChangeLogger (Aeson.encode changeLog)
             forward r {recordKey = Just windowKey, recordValue = outputF newAcc (fromJust recordKey)}
           else logWarn "Skipping record for expired window."
     )

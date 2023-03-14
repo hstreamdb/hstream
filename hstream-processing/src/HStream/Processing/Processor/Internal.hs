@@ -3,20 +3,22 @@
 {-# LANGUAGE OverloadedStrings         #-}
 {-# LANGUAGE RecordWildCards           #-}
 {-# LANGUAGE StrictData                #-}
+{-# LANGUAGE TypeApplications          #-}
 
 module HStream.Processing.Processor.Internal where
 
-import           Control.Exception        (throw)
+import           Control.Exception                      (throw)
 import           Data.Default
 import           Data.Typeable
-import           HStream.Processing.Error (HStreamProcessingError (..))
+import           HStream.Processing.Error               (HStreamProcessingError (..))
+import           HStream.Processing.Processor.ChangeLog
 import           HStream.Processing.Store
 import           HStream.Processing.Type
 import           RIO
-import qualified RIO.ByteString.Lazy      as BL
-import qualified RIO.HashMap              as HM
-import qualified RIO.HashSet              as HS
-import qualified RIO.Text                 as T
+import qualified RIO.ByteString.Lazy                    as BL
+import qualified RIO.HashMap                            as HM
+import qualified RIO.HashSet                            as HS
+import qualified RIO.Text                               as T
 
 newtype Processor kin vin = Processor {runP :: Record kin vin -> RIO TaskContext ()}
 
@@ -54,6 +56,49 @@ data TaskTopologyConfig = TaskTopologyConfig
     sinkCfgs   :: HM.HashMap T.Text InternalSinkConfig,
     stores     :: HM.HashMap T.Text (EStateStore, HS.HashSet T.Text)
   }
+
+----
+applyStateStoreChangelog :: (Typeable k, Typeable v, Typeable ser,
+                             Ord k, Ord ser)
+                         => TaskBuilder -> StateStoreChangelog k v ser -> IO TaskBuilder
+applyStateStoreChangelog builder@TaskTopologyConfig{..} cl = case cl of
+  CLKSPut storeName k v -> do
+    case HM.lookup storeName stores of
+      Nothing      -> return builder -- FIXME: log error message
+      Just (ess,_) -> case ess of
+        EKVStateStore dekvs -> do
+          let ekvs = fromDEKVStoreToEKVStore dekvs
+          ksPut k v ekvs
+          return builder
+        _                   -> return builder -- FIXME: log error message
+  CLSSPut storeName tk v -> do
+    case HM.lookup storeName stores of
+      Nothing      -> return builder -- FIXME: log error message
+      Just (ess,_) -> case ess of
+        ESessionStateStore desss -> do
+          let esss = fromDESessionStoreToESessionStore desss
+          ssPut tk v esss
+          return builder
+        _                        -> return builder -- FIXME: log error message
+  CLSSRemove storeName tk -> do
+    case HM.lookup storeName stores of
+      Nothing      -> return builder -- FIXME: log error message
+      Just (ess,_) -> case ess of
+        ESessionStateStore desss -> do
+          let esss = fromDESessionStoreToESessionStore @_ @() desss
+          ssRemove tk esss
+          return builder
+        _                        -> return builder -- FIXME: log error message
+  CLTKSPut storeName tsk ser -> do
+    case HM.lookup storeName stores of
+      Nothing      -> return builder -- FIXME: log error message
+      Just (ess,_) -> case ess of
+        ETimestampedKVStateStore detkvs -> do
+          let etkvs = fromDETimestampedKVStoreToETimestampedKVStore detkvs
+          tksPut tsk ser etkvs
+          return builder
+        _                               -> return builder -- FIXME: log error message
+
 
 instance Default TaskTopologyConfig where
   def =
@@ -132,21 +177,24 @@ data Task = Task
     taskStores           :: HM.HashMap T.Text (EStateStore, HS.HashSet T.Text)
   }
 
-data TaskContext = TaskContext
-  { taskConfig   :: Task,
-    tctLogFunc   :: LogFunc,
-    curProcessor :: IORef T.Text,
-    tcTimestamp  :: IORef Int64
+data TaskContext = forall h. ChangeLogger h => TaskContext
+  { taskConfig     :: Task,
+    tctLogFunc     :: LogFunc,
+    curProcessor   :: IORef T.Text,
+    tcTimestamp    :: IORef Int64,
+    tcChangeLogger :: h
   }
 
 instance HasLogFunc TaskContext where
   logFuncL = lens tctLogFunc (\x y -> x {tctLogFunc = y})
 
 buildTaskContext ::
+  (ChangeLogger h) =>
   Task ->
   LogFunc ->
+  h ->
   IO TaskContext
-buildTaskContext task lf = do
+buildTaskContext task lf changeLogger = do
   pRef <- newIORef ""
   tRef <- newIORef (-1)
   return $
@@ -154,7 +202,8 @@ buildTaskContext task lf = do
       { taskConfig = task,
         tctLogFunc = lf,
         curProcessor = pRef,
-        tcTimestamp = tRef
+        tcTimestamp = tRef,
+        tcChangeLogger = changeLogger
       }
 
 updateTimestampInTaskContext :: TaskContext -> Timestamp -> IO ()

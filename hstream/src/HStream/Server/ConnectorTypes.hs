@@ -85,7 +85,7 @@ data SourceConnectorWithoutCkp = SourceConnectorWithoutCkp
     withReadRecordsWithoutCkp :: StreamName
                               -> (BL.ByteString -> Maybe BL.ByteString)
                               -> (BL.ByteString -> Maybe BL.ByteString)
-                              -> ([SourceRecord] -> IO ())
+                              -> ([SourceRecord] -> IO (IO (), IO ()))
                               -> IO ()
   }
 

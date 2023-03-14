@@ -13,6 +13,8 @@ module HStream.Server.Core.Query
   , deleteQuery
 
   , hstreamQueryToQuery
+
+  , restoreQuery
   ) where
 
 import           Control.Concurrent
@@ -227,7 +229,7 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
 
           sinkRecords_m <- newIORef []
           let sinkConnector = HStore.memorySinkConnector sinkRecords_m
-          HP.runImmTask (sources `zip` mats) sinkConnector builder Just Just
+          HP.runImmTask (sources `zip` mats) sinkConnector builder () Just Just
           sinkRecords <- readIORef sinkRecords_m
 
           let flowObjects = (L.map (fromJust . Aeson.decode . snkValue) sinkRecords) :: [FlowObject]
@@ -245,7 +247,8 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
         True  -> do
           createStreamWithShard scLDClient (transToStreamName sink) "query" factor
           let relatedStreams = (sources, sink)
-          P.QueryInfo{..} <- handleCreateAsSelect sc builder commandQueryStmtText relatedStreams True
+          queryId <- newRandomText 10
+          P.QueryInfo{..} <- handleCreateAsSelect sc builder queryId commandQueryStmtText relatedStreams True
           pure $ API.CommandQueryResponse (mkVectorStruct queryId "stream_query_id")
     CreateViewPlan sources sink view builder persist -> do
       validateNameAndThrow sink
@@ -349,7 +352,7 @@ sendToClient metaHandle qid streamName SourceConnectorWithoutCkp{..} streamSend 
       withReadRecordsWithoutCkp streamName Just Just $ \sourceRecords -> do
         let (objects' :: [Maybe Aeson.Object]) = Aeson.decode' . srcValue <$> sourceRecords
             structs = jsonObjectToStruct . fromJust <$> filter isJust objects'
-        void $ streamSendMany structs
+        return (void $ streamSendMany structs, return ())
     _ -> throwIO $ HE.UnknownPushQueryStatus ""
     . (P.queryState <$>)
   where
@@ -419,6 +422,21 @@ terminateQueries' ctx@ServerContext{..} TerminateQueriesRequest{..} = do
 deleteQuery :: ServerContext -> DeleteQueryRequest -> IO ()
 deleteQuery ServerContext{..} DeleteQueryRequest{..} =
   M.deleteMeta @P.QueryInfo deleteQueryRequestId Nothing metaHandle
+
+----
+-- Warning: may throw exceptions if restoration fails
+restoreQuery :: ServerContext -> T.Text -> IO ()
+restoreQuery ctx@ServerContext{..} queryId = do
+  getMeta @P.QueryInfo queryId metaHandle >>= \case
+    Just qInfo@P.QueryInfo{..} -> do
+      plan <- streamCodegen querySql
+      case plan of
+        CreateBySelectPlan sources sink builder _ _ ->
+          void $ handleCreateAsSelect ctx builder queryId querySql queryStreams True
+        CreateViewPlan sources sink view builder _ ->
+          void $ handleCreateAsSelect ctx builder queryId querySql queryStreams False
+        _ -> throwIO $ HE.UnexpectedError ("Query " <> T.unpack queryId <> "should not be like \"" <> T.unpack querySql <> "\". What happened?")
+    Nothing -> throwIO $ HE.QueryNotFound ("Query " <> queryId <> "does not exist")
 
 -------------------------------------------------------------------------------
 

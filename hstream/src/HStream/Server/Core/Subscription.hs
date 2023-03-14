@@ -212,12 +212,12 @@ type instance FetchCoreType 'FetchCoreInteractive a b
 -- TODO: use a datatype instead of tuple
   = (StreamSend a, StreamRecv b, Text, Text) -> IO ()
 type instance FetchCoreType 'FetchCoreDirect a b
-  = StreamingFetchRequest -> (Maybe ReceivedRecord -> IO ()) -> IO ()
+  = StreamingFetchRequest -> (Maybe ReceivedRecord -> IO (IO (), IO ())) -> IO ()
 
 streamingFetchCore :: ServerContext
                    -> SFetchCoreMode mode
                    -> FetchCoreType mode StreamingFetchResponse StreamingFetchRequest
-streamingFetchCore ctx SFetchCoreDirect = \initReq callback -> do
+streamingFetchCore ctx SFetchCoreDirect = \initReq callbacksGen -> do
   mockAckPool <- newTChanIO
   Stats.subscription_time_series_add_request_messages (scStatsHolder ctx) (textToCBytes (streamingFetchRequestSubscriptionId initReq)) 1
   Stats.subscription_stat_add_request_messages (scStatsHolder ctx) (textToCBytes (streamingFetchRequestSubscriptionId initReq)) 1
@@ -230,8 +230,9 @@ streamingFetchCore ctx SFetchCoreDirect = \initReq callback -> do
                   , streamingFetchRequestConsumerName = streamingFetchRequestConsumerName initReq
                   , streamingFetchRequestAckIds = maybe V.empty receivedRecordRecordIds $ streamingFetchResponseReceivedRecords resp
                   }
-        atomically $ writeTChan mockAckPool req
-        callback (streamingFetchResponseReceivedRecords resp)
+        (callback,beforeAck) <- callbacksGen (streamingFetchResponseReceivedRecords resp)
+        callback
+        async (beforeAck >> (atomically $ writeTChan mockAckPool req))
         return $ Right ()
   consumerCtx <- initConsumer scwContext (streamingFetchRequestConsumerName initReq) Nothing Nothing streamSend
   Log.debug "pass initConsumer"

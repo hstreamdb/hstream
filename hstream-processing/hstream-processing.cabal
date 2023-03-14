@@ -47,6 +47,7 @@ library
     HStream.Processing.Error
     HStream.Processing.MockStreamStore
     HStream.Processing.Processor
+    HStream.Processing.Processor.ChangeLog
     HStream.Processing.Processor.Internal
     HStream.Processing.Store
     HStream.Processing.Stream
@@ -73,6 +74,7 @@ library
     , rio
     , scientific
     , template-haskell
+    , text
     , time
     , unordered-containers
 

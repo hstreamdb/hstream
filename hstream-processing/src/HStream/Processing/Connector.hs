@@ -38,7 +38,7 @@ data SourceConnectorWithoutCkp = SourceConnectorWithoutCkp
       StreamName ->
       (BL.ByteString -> Maybe BL.ByteString) ->
       (BL.ByteString -> Maybe BL.ByteString) ->
-      ([SourceRecord] -> IO ()) ->
+      ([SourceRecord] -> IO (IO (), IO ())) ->
       IO ()
   }
 

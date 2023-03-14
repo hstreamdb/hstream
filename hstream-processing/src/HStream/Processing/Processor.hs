@@ -25,32 +25,38 @@ module HStream.Processing.Processor
     SourceConfig (..),
     SinkConfig (..),
     TaskBuilder,
+
+    ChangeLogger (..),
+    StateStoreChangelog(..),
+    applyStateStoreChangelog
   )
 where
 
 import           Control.Concurrent
-import           Control.Exception                     (throw)
-import qualified Data.Aeson                            as Aeson
+import           Control.Exception                      (throw)
+import qualified Data.Aeson                             as Aeson
 import           Data.Maybe
 import           Data.Typeable
-import qualified HStream.Logger                        as Log
+import qualified HStream.Logger                         as Log
 import           HStream.Processing.Connector
 import           HStream.Processing.Encoding
-import           HStream.Processing.Error              (HStreamProcessingError (..))
+import           HStream.Processing.Error               (HStreamProcessingError (..))
+import           HStream.Processing.Processor.ChangeLog
 import           HStream.Processing.Processor.Internal
 import           HStream.Processing.Store
 import           HStream.Processing.Type
 import           HStream.Processing.Util
-import qualified HStream.Server.HStreamApi             as API
-import qualified Prelude                               as Prelude
+import qualified HStream.Server.HStreamApi              as API
+import qualified Prelude                                as Prelude
+import qualified RIO                                    as RIO
 import           RIO
-import qualified RIO.ByteString.Lazy                   as BL
-import qualified RIO.HashMap                           as HM
-import           RIO.HashMap.Partial                   as HM'
-import qualified RIO.HashSet                           as HS
-import qualified RIO.List                              as L
-import qualified RIO.Map                               as Map
-import qualified RIO.Text                              as T
+import qualified RIO.ByteString.Lazy                    as BL
+import qualified RIO.HashMap                            as HM
+import           RIO.HashMap.Partial                    as HM'
+import qualified RIO.HashSet                            as HS
+import qualified RIO.List                               as L
+import qualified RIO.Map                                as Map
+import qualified RIO.Text                               as T
 
 data Materialized k v s = Materialized
   { mKeySerde   :: Serde k s,
@@ -110,16 +116,17 @@ taskBuilderWithName builder taskName =
     { ttcName = taskName
     }
 
-runTask ::
+runTask :: (ChangeLogger h) =>
   SourceConnectorWithoutCkp ->
   SinkConnector ->
   TaskBuilder ->
+  h ->
   (T.Text -> BL.ByteString -> Maybe BL.ByteString) ->
   (T.Text -> BL.ByteString -> Maybe BL.ByteString) ->
   (BL.ByteString -> Maybe BL.ByteString) ->
   (BL.ByteString -> Maybe BL.ByteString) ->
   IO ()
-runTask SourceConnectorWithoutCkp {..} sinkConnector taskBuilder@TaskTopologyConfig {..} transKSrc transVSrc transKSnk transVSnk = do
+runTask SourceConnectorWithoutCkp {..} sinkConnector taskBuilder@TaskTopologyConfig {..} changeLogger transKSrc transVSrc transKSnk transVSnk = do
   -- build and add internalSinkProcessor
   let sinkProcessors =
         HM.map
@@ -142,14 +149,30 @@ runTask SourceConnectorWithoutCkp {..} sinkConnector taskBuilder@TaskTopologyCon
   let sourceStreamNames = HM.keys taskSourceConfig
   logOptions <- logOptionsHandle stderr True
   withLogFunc logOptions $ \lf -> do
-    ctx <- buildTaskContext task lf
+    ctx <- buildTaskContext task lf changeLogger
     let offset = API.SpecialOffsetLATEST
     forM_ sourceStreamNames (flip subscribeToStreamWithoutCkp offset)
-    loop task ctx sourceStreamNames []
+
+    chan <- newTChanIO
+
+    withAsync (forConcurrently_ sourceStreamNames (f chan)) $ \a ->
+      withAsync (g task ctx chan) $ \b -> do
+        waitEither_ a b
+        -- cleanup: source subscriptions
+        forM_ sourceStreamNames unSubscribeToStreamWithoutCkp
   where
-    runOnePath :: Task -> TaskContext -> T.Text -> IO ()
-    runOnePath Task {..} ctx sourceStreamName = withReadRecordsWithoutCkp sourceStreamName (transKSrc sourceStreamName) (transVSrc sourceStreamName) $ \sourceRecords -> runRIO ctx $ do
-      forM_ sourceRecords $ \r@SourceRecord {..} -> do
+    f :: TChan ([SourceRecord], MVar ()) -> T.Text -> IO ()
+    f chan sourceStreamName =
+      withReadRecordsWithoutCkp sourceStreamName (transKSrc sourceStreamName) (transVSrc sourceStreamName) $ \sourceRecords -> do
+        mvar <- RIO.newEmptyMVar
+        let callback  = atomically $ writeTChan chan (sourceRecords, mvar)
+            beforeAck = RIO.takeMVar mvar
+        return (callback,beforeAck)
+
+    g :: Task -> TaskContext -> TChan ([SourceRecord], MVar ()) -> IO ()
+    g Task{..} ctx chan = forever $ do
+      (sourceRecords, mvar) <- atomically $ readTChan chan
+      runRIO ctx $ forM_ sourceRecords $ \r@SourceRecord {..} -> do
         let acSourceName = iSourceName (taskSourceConfig HM'.! srcStream)
         let (sourceEProcessor, _) = taskTopologyForward HM'.! acSourceName
         liftIO $ updateTimestampInTaskContext ctx srcTimestamp
@@ -157,26 +180,18 @@ runTask SourceConnectorWithoutCkp {..} sinkConnector taskBuilder@TaskTopologyCon
         case e' of
           Left (e :: SomeException) -> liftIO $ Log.fatal $ Log.buildString (Prelude.show e)
           Right _ -> return ()
-    loop :: Task -> TaskContext -> [T.Text] -> [Async ()] -> IO ()
-    loop task ctx [] asyncs = return ()
-    loop task ctx [sourceStreamName] asyncs =
-      runOnePath task ctx sourceStreamName `onException` do
-        forM_ asyncs cancel
-        let sourceStreamNames = HM.keys (taskSourceConfig task)
-        forM_ sourceStreamNames unSubscribeToStreamWithoutCkp
-    loop task ctx (sourceStreamName : xs) asyncs = do
-      withAsync (runOnePath task ctx sourceStreamName) $ \a -> do
-        loop task ctx xs (asyncs ++ [a])
+      RIO.putMVar mvar ()
 
 runImmTask ::
-  (Ord t, Semigroup t, Aeson.FromJSON t, Aeson.ToJSON t, Typeable t) =>
+  (Ord t, Semigroup t, Aeson.FromJSON t, Aeson.ToJSON t, Typeable t, ChangeLogger h) =>
   [(T.Text, Materialized t t t)] ->
   SinkConnector ->
   TaskBuilder ->
+  h ->
   (BL.ByteString -> Maybe BL.ByteString) ->
   (BL.ByteString -> Maybe BL.ByteString) ->
   IO ()
-runImmTask srcTups sinkConnector taskBuilder@TaskTopologyConfig {..} transKSnk transVSnk = do
+runImmTask srcTups sinkConnector taskBuilder@TaskTopologyConfig {..} changeLogger transKSnk transVSnk = do
   -- build and add internalSinkProcessor
   let sinkProcessors =
         HM.map
@@ -198,7 +213,7 @@ runImmTask srcTups sinkConnector taskBuilder@TaskTopologyConfig {..} transKSnk t
   -- runTask
   logOptions <- logOptionsHandle stderr True
   withLogFunc logOptions $ \lf -> do
-    ctx <- buildTaskContext task lf
+    ctx <- buildTaskContext task lf changeLogger
 
     loop task ctx srcTups []
   where

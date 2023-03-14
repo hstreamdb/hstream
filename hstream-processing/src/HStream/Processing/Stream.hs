@@ -2,6 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE StrictData        #-}
+{-# LANGUAGE TypeApplications  #-}
 
 module HStream.Processing.Stream
   ( mkStreamBuilder,
@@ -25,9 +26,11 @@ module HStream.Processing.Stream
   )
 where
 
+import qualified Data.Aeson                              as Aeson
 import           Data.Maybe
 import           HStream.Processing.Encoding
 import           HStream.Processing.Processor
+import           HStream.Processing.Processor.ChangeLog
 import           HStream.Processing.Processor.Internal
 import           HStream.Processing.Store
 import           HStream.Processing.Stream.GroupedStream
@@ -84,7 +87,7 @@ stream StreamSourceConfig {..} StreamBuilder {..} = do
       }
 
 table ::
-  (Typeable k, Typeable v, Typeable s, Ord s) =>
+  (Typeable k, Typeable v, Typeable s, Ord s, Aeson.ToJSON s) =>
   StreamSourceConfig k v s ->
   StreamBuilder ->
   IO (Table k v s)
@@ -116,16 +119,19 @@ table StreamSourceConfig {..} StreamBuilder {..} = do
       }
 
 tableStoreProcessor ::
-  (Typeable k, Typeable v, Typeable s, Ord s) =>
+  (Typeable k, Typeable v, Typeable s, Ord s, Aeson.ToJSON s) =>
   Serde k s ->
   Serde v s ->
   T.Text ->
   Processor k v
 tableStoreProcessor keySerde valueSerde storeName = Processor $ \r@Record {..} -> do
+  TaskContext{..} <- ask
   store <- getKVStateStore storeName
   let keyBytes = runSer (serializer keySerde) (fromJust recordKey)
   let valueBytes = runSer (serializer valueSerde) recordValue
   liftIO $ ksPut keyBytes valueBytes store
+  let changeLog = CLKSPut @_ @_ @BL.ByteString storeName keyBytes valueBytes
+  liftIO $ logChangelog tcChangeLogger (Aeson.encode changeLog)
   forward r
 
 to ::
@@ -220,7 +226,7 @@ data StreamJoined k1 v1 k2 v2 s = StreamJoined
   }
 
 joinStream ::
-  (Typeable k1, Typeable v1, Typeable k2, Typeable v2, Typeable k3, Typeable v3, Eq k3, Typeable s, Ord s) =>
+  (Typeable k1, Typeable v1, Typeable k2, Typeable v2, Typeable k3, Typeable v3, Eq k3, Typeable s, Ord s, Aeson.ToJSON s) =>
   Stream k2 v2 s ->
   (v1 -> v2 -> v3) ->
   (Record k1 v1 -> Record k2 v2 -> Bool) ->
@@ -265,7 +271,7 @@ joinStream otherStream joiner joinCond newKeySelector JoinWindows {..} StreamJoi
       forward r
 
 joinStreamProcessor ::
-  (Typeable k1, Typeable v1, Typeable k2, Typeable v2, Typeable k3, Typeable v3, Eq k3, Ord s, Typeable s) =>
+  (Typeable k1, Typeable v1, Typeable k2, Typeable v2, Typeable k3, Typeable v3, Eq k3, Ord s, Typeable s, Aeson.ToJSON s) =>
   (v1 -> v2 -> v3) ->
   (Record k1 v1 -> Record k2 v2 -> Bool) ->
   (Record k1 v1 -> Record k2 v2 -> k3) ->
@@ -279,11 +285,14 @@ joinStreamProcessor ::
   Serde v2 s ->
   Processor k1 v1
 joinStreamProcessor joiner joinCond newKeySelector beforeMs afterMs storeName1 storeName2 k1Serde v1Serde k2Serde v2Serde = Processor $ \r1@Record {..} -> do
+  TaskContext{..} <- ask
   store1 <- getTimestampedKVStateStore storeName1
   let k1 = fromJust recordKey
   let k1Bytes = runSer (serializer k1Serde) k1
   let v1Bytes = runSer (serializer v1Serde) recordValue
   liftIO $ tksPut (mkTimestampedKey k1Bytes recordTimestamp) v1Bytes store1
+  let changeLog = CLTKSPut @() @() storeName1 (mkTimestampedKey k1Bytes recordTimestamp) v1Bytes
+  liftIO $ logChangelog tcChangeLogger (Aeson.encode changeLog)
   store2 <- getTimestampedKVStateStore storeName2
   candinates <- liftIO $ tksRange (mkTimestampedKey k1Bytes $ recordTimestamp - beforeMs) (mkTimestampedKey k1Bytes $ recordTimestamp + afterMs) store2
   forM_
