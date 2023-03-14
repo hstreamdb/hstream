@@ -95,13 +95,12 @@ interactiveSQLApp sqlCtx@HStreamSqlContext{hstreamCliContext = cliCtx@HStreamCli
           | take 1 (words str)                 == [":q"] -> pure ()
           | (head . head . take 1 . words) str == ':'    -> liftIO (commandExec sqlCtx str) >> loop
           | otherwise -> do
+              RL.getHistory >>= RL.putHistory . RL.addHistoryUnlessConsecutiveDupe str
               str' <- readToSQL $ T.pack str
               case str' of
-                Nothing  -> loop
-                Just str'' -> do
-                  RL.getHistory >>= RL.putHistory . RL.addHistoryUnlessConsecutiveDupe str
-                  liftIO (handle (\(e :: SomeException) -> print e) $ commandExec sqlCtx str'')
-                  loop
+                Just str'' -> liftIO (handle (\(e :: SomeException) -> print e) $ commandExec sqlCtx str'')
+                Nothing    -> pure ()
+              loop
 
 commandExec :: HStreamSqlContext -> String -> IO ()
 commandExec HStreamSqlContext{hstreamCliContext = cliCtx@HStreamCliContext{..},..} xs = case words xs of
