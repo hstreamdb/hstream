@@ -3,6 +3,7 @@ module HStream.Base
   , genUnique
   , withoutPrefix
   , approxNaturalTime
+  , rmTrailingZeros
   ) where
 
 import           Control.Monad          (unless)
@@ -14,6 +15,7 @@ import           Data.Time.Clock        (NominalDiffTime)
 import           Data.Time.Clock.System (SystemTime (..), getSystemTime)
 import           Data.Word              (Word16, Word32, Word64)
 import           System.Random          (randomRIO)
+import           Text.Printf            (printf)
 
 -- | Generate a "unique" number through a modified version of snowflake algorithm.
 --
@@ -57,3 +59,14 @@ approxNaturalTime n
     hour = 60 * 60
     day = hour * 24
     year = day * 365
+
+-- > rmTrailingZeros "1.0"
+-- "1"
+-- > rmTrailingZeros "0.10"
+-- "0.1"
+rmTrailingZeros :: Double -> String
+rmTrailingZeros x
+  | fromIntegral x' == x = show x'
+  | otherwise            = printf "%g" x
+  where
+    x' = floor x :: Int

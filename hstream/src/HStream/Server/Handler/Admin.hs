@@ -31,6 +31,7 @@ import qualified Z.Data.CBytes                    as CB
 import           Z.Data.CBytes                    (CBytes)
 
 import qualified HStream.Admin.Server.Types       as AT
+import           HStream.Base                     (rmTrailingZeros)
 import           HStream.Gossip                   (GossipContext (clusterReady),
                                                    getClusterStatus,
                                                    initCluster)
@@ -43,7 +44,7 @@ import           HStream.Server.Exception         (catchDefaultEx,
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.Server.Types
 import qualified HStream.Stats                    as Stats
-import           HStream.Utils                    (Interval, formatStatus,
+import           HStream.Utils                    (Interval (..), formatStatus,
                                                    interval2ms, returnResp,
                                                    showNodeStatus)
 
@@ -66,7 +67,9 @@ adminCommandHandler sc req = defaultExceptionHandle $ do
 handleAdminCommand
   :: ServerContext -> G.UnaryHandler API.AdminCommandRequest API.AdminCommandResponse
 handleAdminCommand sc _ (API.AdminCommandRequest cmd) = catchDefaultEx $ do
+  Log.debug $ "Receive amdin command: " <> Log.buildText cmd
   result <- runAdminCommand sc cmd
+  Log.trace $ "Admin command result: " <> Log.buildText result
   pure $ API.AdminCommandResponse {adminCommandResponseResult = result}
 
 -------------------------------------------------------------------------------
@@ -82,7 +85,6 @@ parseAdminCommand args = extractAdminCmd =<< execParser
 
 runAdminCommand :: ServerContext -> Text -> IO Text
 runAdminCommand sc@ServerContext{..} cmd = do
-  Log.debug $ "Receive amdin command: " <> Log.buildText cmd
   let args = words (Text.unpack cmd)
   adminCommand <- parseAdminCommand args
   case adminCommand of
@@ -106,6 +108,7 @@ handleParseResult (O.CompletionInvoked compl) = throwParsingErr =<< O.execComple
 -------------------------------------------------------------------------------
 -- Admin Stats Command
 
+-- NOTE: the heasers name must match defines in hstream-admin/server/cbits/query/tables
 runStats :: Stats.StatsHolder -> AT.StatsCommand -> IO Text
 runStats statsHolder AT.StatsCommand{..} = do
   case statsCategory of
@@ -165,10 +168,16 @@ doTimeSeries stat_name x intervals f = do
   case m of
     Left errmsg -> return $ errorResponse $ Text.pack errmsg
     Right stats -> do
-      let headers = x : (((stat_name <> "_") <>) . CB.pack . show <$> intervals)
+      let headers = x : (((stat_name <> "_") <>) . formatInterval <$> intervals)
           rows = Map.foldMapWithKey (\k vs -> [CB.unpack k : (show @Int . floor <$> vs)]) stats
           content = Aeson.object ["headers" .= headers, "rows" .= rows]
       return $ tableResponse content
+
+formatInterval :: Interval -> CBytes
+formatInterval (Milliseconds x) = CB.pack (rmTrailingZeros x) <> "ms"
+formatInterval (Seconds x)      = CB.pack (rmTrailingZeros x) <> "s"
+formatInterval (Minutes x)      = CB.pack (rmTrailingZeros x) <> "min"
+formatInterval (Hours x)        = CB.pack (rmTrailingZeros x) <> "h"
 
 runResetStats :: Stats.StatsHolder -> IO Text
 runResetStats stats_holder = do
