@@ -221,7 +221,7 @@ renderServerNodesStatusToTable values = showTable titles rows
   where
     titles = ["Server Id", "State", "Address"]
     formatRow API.ServerNodeStatus {serverNodeStatusNode = Just API.ServerNode{..}, ..} =
-      [[show serverNodeId], [showNodeStatus serverNodeStatusState], [show serverNodeHost <> ":" <> show serverNodePort]]
+      [[show serverNodeId], [showNodeStatus serverNodeStatusState], [T.unpack serverNodeHost <> ":" <> show serverNodePort]]
     formatRow API.ServerNodeStatus {serverNodeStatusNode = Nothing} = []
     rows = map formatRow . L.sort $ values
 
