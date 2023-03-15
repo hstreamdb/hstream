@@ -101,15 +101,21 @@ createView' sc@ServerContext{..} view srcs sink builder persist sql = do
   roles_m <- mapM (findIdentifierRole sc) srcs
   case all isJust roles_m of
     True -> do
-      let relatedStreams = (srcs, sink)
-      queryId <- newRandomText 10
-      qInfo <- handleCreateAsSelect sc builder queryId sql relatedStreams False -- Do not write to any sink stream
-      let accumulation = L.head (snd persist)
-      atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert view accumulation hm, ()))
-      let vInfo = P.ViewInfo{ viewName = view, viewQuery = qInfo }
-      -- FIXME: this should be inserted as the same time as the query
-      insertMeta view vInfo metaHandle
-      return vInfo
+      -- TODO: Support joining between streams and views
+      case all (== Just RoleStream) roles_m of
+        False -> do
+          Log.warning "CREATE VIEW only supports sources of stream type"
+          throwIO $ HE.InvalidSqlStatement "CREATE VIEW only supports sources of stream type"
+        True  -> do
+          let relatedStreams = (srcs, sink)
+          queryId <- newRandomText 10
+          qInfo <- handleCreateAsSelect sc builder queryId sql relatedStreams False -- Do not write to any sink stream
+          let accumulation = L.head (snd persist)
+          atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert view accumulation hm, ()))
+          let vInfo = P.ViewInfo{ viewName = view, viewQuery = qInfo }
+          -- FIXME: this should be inserted as the same time as the query
+          insertMeta view vInfo metaHandle
+          return vInfo
     False  -> do
       Log.warning $ "At least one of the streams/views do not exist: "
         <> Log.buildString (show srcs)

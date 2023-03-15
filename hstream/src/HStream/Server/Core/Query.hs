@@ -244,12 +244,18 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
           Log.warning $ "At least one of the streams/views do not exist: "
               <> Log.buildString (show sources)
           throwIO $ HE.StreamNotFound $ "At least one of the streams/views do not exist: " <> T.pack (show sources)
-        True  -> do
-          createStreamWithShard scLDClient (transToStreamName sink) "query" factor
-          let relatedStreams = (sources, sink)
-          queryId <- newRandomText 10
-          P.QueryInfo{..} <- handleCreateAsSelect sc builder queryId commandQueryStmtText relatedStreams True
-          pure $ API.CommandQueryResponse (mkVectorStruct queryId "stream_query_id")
+        True  ->
+          -- TODO: Support joining between streams and views
+          case all (== Just RoleStream) roles_m of
+            False -> do
+              Log.warning "CREATE STREAM only supports sources of stream type"
+              throwIO $ HE.InvalidSqlStatement "CREATE STREAM only supports sources of stream type"
+            True  -> do
+              createStreamWithShard scLDClient (transToStreamName sink) "query" factor
+              let relatedStreams = (sources, sink)
+              queryId <- newRandomText 10
+              P.QueryInfo{..} <- handleCreateAsSelect sc builder queryId commandQueryStmtText relatedStreams True
+              pure $ API.CommandQueryResponse (mkVectorStruct queryId "stream_query_id")
     CreateViewPlan sources sink view builder persist -> do
       validateNameAndThrow sink
       validateNameAndThrow view
