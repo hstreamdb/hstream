@@ -49,6 +49,7 @@ library
     HStream.Processing.Processor
     HStream.Processing.Processor.ChangeLog
     HStream.Processing.Processor.Internal
+    HStream.Processing.Processor.Snapshot
     HStream.Processing.Store
     HStream.Processing.Stream
     HStream.Processing.Stream.GroupedStream
@@ -68,6 +69,7 @@ library
     , base                  >=4.11 && <5
     , binary
     , bytestring
+    , containers
     , data-default
     , hstream-api-hs
     , hstream-common-base

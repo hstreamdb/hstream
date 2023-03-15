@@ -50,7 +50,7 @@ data TimeWindow = TimeWindow
   { tWindowStart :: Int64,
     tWindowEnd   :: Int64
   }
-  deriving (Generic, FromJSON, ToJSON)
+  deriving (Eq, Ord, Generic, FromJSON, ToJSON)
 
 instance Show TimeWindow where
   show TimeWindow {..} = "[" ++ show tWindowStart ++ ", " ++ show tWindowEnd ++ "]"
@@ -71,8 +71,12 @@ data TimeWindowKey k = TimeWindowKey
 instance (Show k) => Show (TimeWindowKey k) where
   show TimeWindowKey {..} = "key: " ++ show twkKey ++ ", window: " ++ show twkWindow
 
+deriving instance (Eq k) => Eq (TimeWindowKey k)
+deriving instance (Ord k) => Ord (TimeWindowKey k)
 deriving instance (FromJSON k) => FromJSON (TimeWindowKey k)
+deriving instance (FromJSON k) => FromJSONKey (TimeWindowKey k)
 deriving instance (ToJSON k) => ToJSON (TimeWindowKey k)
+deriving instance (ToJSON k) => ToJSONKey (TimeWindowKey k)
 
 timeWindowKeySerializer ::
   (Serialized s) =>

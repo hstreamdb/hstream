@@ -132,6 +132,8 @@ data ServerOpts = ServerOpts
 
   , _gossipOpts                   :: !GossipOpts
   , _ioOptions                    :: !IO.IOOptions
+
+  , _querySnapshotPath            :: !FilePath
   } deriving (Show, Eq)
 
 getConfig :: IO ServerOpts
@@ -189,6 +191,8 @@ data CliOptions = CliOptions
   , _ioTasksPath_                  :: !(Maybe Text)
   , _ioTasksNetwork_               :: !(Maybe Text)
   , _ioConnectorImages_            :: ![Text]
+
+  , _querySnapshotPath_            :: !(Maybe FilePath)
   } deriving Show
 
 parseCliOptions :: [String] -> ParserResult CliOptions
@@ -223,6 +227,7 @@ cliOptionsParser = do
   _ioTasksPath_        <- optional ioTasksPath
   _ioTasksNetwork_     <- optional ioTasksNetwork
   _ioConnectorImages_  <- ioConnectorImage
+  _querySnapshotPath_  <- optional querySnapshotPath
   return CliOptions {..}
 
 parseJSONToOptions :: CliOptions -> Y.Object -> Y.Parser ServerOpts
@@ -335,6 +340,11 @@ parseJSONToOptions CliOptions {..} obj = do
   -- FIXME: This should be more flexible
   let !_listenersSecurityProtocolMap = Map.union _listenersSecurityProtocolMap_ nodeListenersSecurityProtocolMap
   let !_securityProtocolMap = defaultProtocolMap _tlsConfig
+
+  -- processing config
+  processingCfg <- nodeCfgObj .:? "hstream-processing" .!= mempty
+  snapshotPath <- processingCfg .:? "query-snapshot-path" .!= "/data/query_snapshots"
+  let !_querySnapshotPath = fromMaybe snapshotPath _querySnapshotPath_
   return ServerOpts {..}
 
 -------------------------------------------------------------------------------
@@ -498,6 +508,12 @@ ioConnectorImage = many . strOption $
   long "io-connector-image"
   <> metavar "<source | sink> <target connector> <docker image>"
   <> help "update connector image, e.g. \"source mysql hsteramdb/source-mysql:latest\""
+
+querySnapshotPath :: O.Parser FilePath
+querySnapshotPath = strOption
+  $  long "query-snapshot-path"
+  <> metavar "PATH" <> value "/data/query_snapshots"
+  <> help "hstream query snapshot store path"
 
 #if __GLASGOW_HASKELL__ < 902
 readProtocol :: Text.Text -> AA.ProtocolId

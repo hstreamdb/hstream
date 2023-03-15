@@ -19,3 +19,6 @@
 [submodule "external/table-layout"]
 	path = external/table-layout
 	url = https://github.com/muesli4/table-layout.git
+[submodule "external/haskell-rocksdb-bindings"]
+	path = external/haskell-rocksdb-bindings
+	url = https://github.com/hstreamdb/haskell-rocksdb-bindings.git

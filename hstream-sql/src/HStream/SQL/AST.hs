@@ -65,6 +65,8 @@ instance Show ColumnCatalog where
 
 type FlowObject = HM.HashMap ColumnCatalog FlowValue
 deriving instance Typeable FlowObject
+deriving instance Aeson.FromJSONKey FlowObject
+deriving instance Aeson.ToJSONKey FlowObject
 
 data FlowValue
   = FlowNull
@@ -151,6 +153,11 @@ flowObjectToJsonObject hm =
 jsonObjectToFlowObject :: Text -> Aeson.Object -> FlowObject
 jsonObjectToFlowObject streamName object =
   HM.mapKeys (\k -> ColumnCatalog (HsAeson.toText k) (Just streamName))
+             (HM.map jsonValueToFlowValue $ HsAeson.toHashMap object)
+
+jsonObjectToFlowObject' :: Aeson.Object -> FlowObject
+jsonObjectToFlowObject' object =
+  HM.mapKeys (\k -> ColumnCatalog (HsAeson.toText k) Nothing)
              (HM.map jsonValueToFlowValue $ HsAeson.toHashMap object)
 
 --------------------------------------------------------------------------------
