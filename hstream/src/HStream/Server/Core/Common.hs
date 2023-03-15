@@ -139,7 +139,7 @@ decodeRecordBatch dataRecord = do
       batchId = HS.recordLSN dataRecord
   let batch = decodeByteStringBatch payload
       batchSize = batchedRecordBatchSize batch :: Word32
-  Log.debug $ "Decoding BatchedRecord size: " <> Log.buildInt batchSize
+  Log.debug $ "Decoding BatchedRecord size: " <> Log.build batchSize
   let shardRecordIds = V.generate (fromIntegral batchSize) (ShardRecordId batchId . fromIntegral)
       recordIds = V.generate (fromIntegral batchSize) (RecordId logId batchId . fromIntegral)
       receivedRecords = ReceivedRecord recordIds (Just batch)

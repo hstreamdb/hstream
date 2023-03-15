@@ -83,7 +83,7 @@ main = getConfig >>= app
 app :: ServerOpts -> IO ()
 app config@ServerOpts{..} = do
   setupSigsegvHandler
-  Log.setLogLevel _serverLogLevel _serverLogWithColor
+  Log.setLogConfig _serverLogLevel _serverLogWithColor
   Log.setLogDeviceDbgLevel' _ldLogLevel
 
   case _metaStore of
@@ -141,9 +141,9 @@ serve host port securityMap sc@ServerContext{..} listeners listenerSecurityMap =
   Log.i "************************"
 
   let serverOnStarted = do
-        Log.info $ "Server is started on port " <> Log.buildInt port <> ", waiting for cluster to get ready"
+        Log.info $ "Server is started on port " <> Log.build port <> ", waiting for cluster to get ready"
         void $ forkIO $ do
-          void (readMVar (clusterReady gossipContext)) >> Log.i "Cluster is ready!"
+          void (readMVar (clusterReady gossipContext)) >> Log.info "Cluster is ready!"
           readMVar (clusterInited gossipContext) >>= \case
             Gossip -> return ()
             _ -> do
@@ -176,12 +176,12 @@ serve host port securityMap sc@ServerContext{..} listeners listenerSecurityMap =
   forM_ (Map.toList listeners) $ \(key, vs) ->
     forM_ vs $ \I.Listener{..} -> do
       Log.debug $ "Starting advertised listener, "
-               <> "key: " <> Log.buildText key <> ", "
-               <> "address: " <> Log.buildText listenerAddress <> ", "
-               <> "port: " <> Log.buildInt listenerPort
+               <> "key: " <> Log.build key <> ", "
+               <> "address: " <> Log.build listenerAddress <> ", "
+               <> "port: " <> Log.build listenerPort
       forkIO $ do
         let listenerOnStarted = Log.info $ "Extra listener is started on port "
-                                        <> Log.buildInt listenerPort
+                                        <> Log.build listenerPort
         let sc' = sc{scAdvertisedListenersKey = Just key}
 #ifdef HStreamUseGrpcHaskell
         let newSslOpts = initializeTlsConfig <$> join ((`Map.lookup` securityMap) =<< Map.lookup key listenerSecurityMap )

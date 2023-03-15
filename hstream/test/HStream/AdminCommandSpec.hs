@@ -46,7 +46,7 @@ adminCommandStatsSpec = aroundAll provideHstreamApi $ describe "adminCommandStat
       forM_ rows $ \(A.Array row) -> do
         let (A.String name) = row V.! 0
         when (name `elem` (fst <$> streamNames)) $ do
-          Log.i $ "Check stream " <> Log.buildText name
+          Log.i $ "Check stream " <> Log.build name
           row V.! 1 `shouldSatisfy` (\(A.String x) -> read @Double (T.unpack x) > 0)
           row V.! 2 `shouldSatisfy` (\(A.String x) -> read @Double (T.unpack x) > 0)
 

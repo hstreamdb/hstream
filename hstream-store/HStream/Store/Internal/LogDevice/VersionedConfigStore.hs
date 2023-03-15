@@ -162,7 +162,7 @@ ldVcsUpdateConfig vcs key val cond auto_retries =
           | retries < 0 -> threadDelay 5000 >> (go vcs' key' val' offset len $! (- 1))
           | retries > 0 -> threadDelay 5000 >> (go vcs' key' val' offset len $! (retries - 1))
         C_VERSION_MISMATCH -> do
-          Log.warning "VersoinedConfigStore update config: VERSION_MISMATCH" >> Log.flushDefaultLogger
+          Log.warning "VersoinedConfigStore update config: VERSION_MISMATCH"
           return (vcsWriteCallbackVersion cbData, vcsWriteCallbackValue cbData)
         _ -> E.throwStreamError st callStack
     (cond_mode, cond_ver_) = toCVcsConditionMode cond

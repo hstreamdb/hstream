@@ -11,7 +11,6 @@ import qualified Data.List            as L
 import qualified Data.Text            as T
 import           Test.Hspec
 
-import           HStream.Logger       as Log
 import           HStream.SpecUtils
 import           HStream.Store.Logger (pattern C_DBG_ERROR,
                                        setLogDeviceDbgLevel)
@@ -47,7 +46,7 @@ baseSpec = aroundAll provideHstreamApi $ aroundWith baseSpecAround $
       -- FIXME: requires a notification mechanism to ensure that the task
       -- starts successfully before inserting data
       threadDelay 10000000
-      Log.d $ "Insert into " <> Log.buildText source <> " ..."
+      putStrLn $ "Insert into " <> show source <> " ..."
       runInsertSql api ("INSERT INTO " <> source <> " (temperature, humidity) VALUES (22, 80);")
       threadDelay 1000000
       runInsertSql api ("INSERT INTO " <> source <> " (temperature, humidity) VALUES (15, 10);")
@@ -63,7 +62,7 @@ baseSpec = aroundAll provideHstreamApi $ aroundWith baseSpecAround $
       -- FIXME: requires a notification mechanism to ensure that the task
       -- starts successfully before inserting data
       threadDelay 10000000
-      Log.d $ "Insert into " <> Log.buildText source <> " ..."
+      putStrLn $ "Insert into " <> show source <> " ..."
       runInsertSql api ("INSERT INTO " <> source <> " (a, b) VALUES (1, 2);")
       threadDelay 1000000
       runInsertSql api ("INSERT INTO " <> source <> " (a, b) VALUES (2, 2);")

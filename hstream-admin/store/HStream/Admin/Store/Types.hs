@@ -925,7 +925,7 @@ startSQLReplOptsParser = StartSQLReplOpts
 logLevelParser :: Parser Log.Level
 logLevelParser =
   option auto ( long "log-level" <> metavar "[critical|fatal|warning|info|debug]"
-             <> showDefault <> value (Log.Level Log.INFO)
+             <> showDefault <> value Log.INFO
              <> help "log level"
               )
 

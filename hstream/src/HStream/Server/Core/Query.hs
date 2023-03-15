@@ -79,7 +79,7 @@ import           HStream.SQL.Codegen.V1           as HSC
 -------------------------------------------------------------------------------
 executeQuery :: ServerContext -> CommandQuery -> IO CommandQueryResponse
 executeQuery sc@ServerContext{..} CommandQuery{..} = do
-  Log.debug $ "Receive Query Request: " <> Log.buildText commandQueryStmtText
+  Log.debug $ "Receive Query Request: " <> Log.build commandQueryStmtText
   plan <- streamCodegen commandQueryStmtText
   case plan of
     PushSelectPlan {} ->
@@ -211,7 +211,7 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
 -------------------------------------------------------------------------------
 executeQuery :: ServerContext -> CommandQuery -> IO CommandQueryResponse
 executeQuery sc@ServerContext{..} CommandQuery{..} = do
-  Log.debug $ "Receive Query Request: " <> Log.buildText commandQueryStmtText
+  Log.debug $ "Receive Query Request: " <> Log.build commandQueryStmtText
   plan <- streamCodegen commandQueryStmtText
   case plan of
     PushSelectPlan {} ->

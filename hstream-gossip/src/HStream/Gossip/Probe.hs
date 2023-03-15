@@ -63,15 +63,15 @@ bootstrapPing (joinHost, joinPort) client = do
       when (details == clusterInitedErr)$ throwIO ClusterInitedErr
       when (details == clusterReadyErr) $ throwIO ClusterReadyErr
       Log.debug $ "The server "
-                <> Log.buildByteString joinHost <> ":"
-                <> Log.buildInt joinPort
+                <> Log.build joinHost <> ":"
+                <> Log.build joinPort
                 <> " returned an unexpected status details"
-                <> Log.buildByteString (unStatusDetails details)
+                <> Log.build (unStatusDetails details)
       return Nothing
     ClientErrorResponse err                   -> do
       Log.debug $ "The server "
-                <> Log.buildByteString joinHost <> ":"
-                <> Log.buildInt joinPort
+                <> Log.build joinHost <> ":"
+                <> Log.build joinPort
                 <> " has not been started: "
                 <> Log.buildString' err
       return Nothing

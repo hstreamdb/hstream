@@ -97,7 +97,6 @@ library
     , unordered-containers  ^>=0.2.9.0
     , vector                ^>=0.12.0.1
     , Z-Data
-    , Z-IO
 
   default-language:   Haskell2010
   default-extensions:

@@ -107,7 +107,7 @@ deleteConnectorHandler
 deleteConnectorHandler sc@ServerContext{..}
   (ServerNormalRequest _metadata DeleteConnectorRequest{..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive Delete Connector Request. "
-    <> "Connector Name: " <> Log.buildText deleteConnectorRequestName
+    <> "Connector Name: " <> Log.build deleteConnectorRequestName
   ServerNode{..} <- lookupResource' sc ResConnector deleteConnectorRequestName
   unless (serverNodeId == serverID) $
     throwIO $ HE.WrongServer "Connector is bound to a different node"
@@ -128,7 +128,7 @@ resumeConnectorHandler
 resumeConnectorHandler sc@ServerContext{..}
   (ServerNormalRequest _metadata ResumeConnectorRequest{..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive ResumeConnectorRequest. "
-    <> "Connector Name: " <> Log.buildText resumeConnectorRequestName
+    <> "Connector Name: " <> Log.build resumeConnectorRequestName
   ServerNode{..} <- lookupResource' sc ResConnector resumeConnectorRequestName
   unless (serverNodeId == serverID) $
     throwIO $ HE.WrongServer "Connector is bound to a different node"
@@ -149,7 +149,7 @@ pauseConnectorHandler
 pauseConnectorHandler sc@ServerContext{..}
   (ServerNormalRequest _metadata PauseConnectorRequest{..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive Terminate Connector Request. "
-    <> "Connector ID: " <> Log.buildText pauseConnectorRequestName
+    <> "Connector ID: " <> Log.build pauseConnectorRequestName
   ServerNode{..} <- lookupResource' sc ResConnector pauseConnectorRequestName
   unless (serverNodeId == serverID) $
     throwIO $ HE.WrongServer "Connector is bound to a different node"
@@ -171,8 +171,8 @@ createIOTaskFromSql sc@ServerContext{scIOWorker = worker@IO.Worker{..}, ..} sql 
   unless (serverNodeId == serverID) $
     throwIO $ HE.WrongServer "Connector is bound to a different node"
   Log.info $ "CreateConnector CodeGen"
-           <> ", connector type: " <> Log.buildText cType
-           <> ", connector name: " <> Log.buildText cName
+           <> ", connector type: " <> Log.build cType
+           <> ", connector name: " <> Log.build cName
            <> ", config: "         <> Log.buildString (show cfg)
   taskId <- UUID.toText <$> UUID.nextRandom
   let IO.IOOptions {..} = options

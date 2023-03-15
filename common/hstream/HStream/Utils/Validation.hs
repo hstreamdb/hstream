@@ -16,7 +16,7 @@ validateNameAndThrow :: T.Text -> IO ()
 validateNameAndThrow n =
   case validateNameText n of
     Left s   -> do
-      Log.warning $ "Invalid Object Identifier:" <> Log.buildString s
+      Log.warning $ "Invalid Object Identifier:" <> Log.build s
       throwIO (InvalidObjectIdentifier s)
     Right () -> return ()
 

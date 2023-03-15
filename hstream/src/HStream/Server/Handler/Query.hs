@@ -70,13 +70,13 @@ createQueryHandler
   -> IO (ServerResponse 'Normal API.Query)
 createQueryHandler ctx (ServerNormalRequest _metadata req@API.CreateQueryRequest{..}) =
   queryExceptionHandle $ do
-    Log.debug $ "Receive Create Query Request with statement: " <> Log.buildText createQueryRequestSql
+    Log.debug $ "Receive Create Query Request with statement: " <> Log.build createQueryRequestSql
     Core.createQuery ctx req >>= returnResp
 
 handleCreateQuery
   :: ServerContext -> G.UnaryHandler API.CreateQueryRequest API.Query
 handleCreateQuery ctx _ req@API.CreateQueryRequest{..} = catchQueryEx $ do
-  Log.debug $ "Receive Create Query Request with statement: " <> Log.buildText createQueryRequestSql
+  Log.debug $ "Receive Create Query Request with statement: " <> Log.build createQueryRequestSql
   Core.createQuery ctx req
 
 listQueriesHandler
@@ -100,13 +100,13 @@ getQueryHandler
 getQueryHandler ctx (ServerNormalRequest _metadata req@API.GetQueryRequest{..}) =
   queryExceptionHandle $ do
     Log.debug $ "Receive Get Query Request. "
-             <> "Query ID: " <> Log.buildText getQueryRequestId
+             <> "Query ID: " <> Log.build getQueryRequestId
     returnResp =<< Core.getQuery ctx req
 
 handleGetQuery :: ServerContext -> G.UnaryHandler API.GetQueryRequest API.Query
 handleGetQuery ctx _ req@API.GetQueryRequest{..} = catchQueryEx $ do
   Log.debug $ "Receive Get Query Request. "
-           <> "Query ID: " <> Log.buildText getQueryRequestId
+           <> "Query ID: " <> Log.build getQueryRequestId
   Core.getQuery ctx req
 
 terminateQueriesHandler
@@ -132,14 +132,14 @@ deleteQueryHandler
 deleteQueryHandler ctx (ServerNormalRequest _metadata req@API.DeleteQueryRequest{..}) =
   queryExceptionHandle $ do
     Log.debug $ "Receive Delete Query Request. "
-      <> "Query ID: " <> Log.buildText deleteQueryRequestId
+      <> "Query ID: " <> Log.build deleteQueryRequestId
     Core.deleteQuery ctx req
     returnResp Empty
 
 handleDeleteQuery :: ServerContext -> G.UnaryHandler API.DeleteQueryRequest Empty
 handleDeleteQuery ctx _ req@API.DeleteQueryRequest{..} = catchQueryEx $ do
   Log.debug $ "Receive Delete Query Request. "
-           <> "Query ID: " <> Log.buildText deleteQueryRequestId
+           <> "Query ID: " <> Log.build deleteQueryRequestId
   Core.deleteQuery ctx req
   pure Empty
 
