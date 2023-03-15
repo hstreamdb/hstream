@@ -20,7 +20,7 @@ import           HStream.TestUtils             (AB (..), MetaExample (..), name)
 
 spec :: Spec
 spec = do
-  runIO $ Log.setLogConfig Log.DEBUG True
+  runIO $ Log.setDefaultLoggerLevel Log.DEBUG
   m <- runIO $ newManager defaultManagerSettings
   port <- runIO $ fromMaybe "4001" <$> lookupEnv "RQLITE_LOCAL_PORT"
   let host = "localhost"

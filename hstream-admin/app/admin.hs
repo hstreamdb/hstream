@@ -45,7 +45,7 @@ runCli (ServerCli cli) = runServerCli cli
 runServerCli :: Server.Cli -> IO ()
 runServerCli Server.Cli{..} = do
   CLog.setLogDeviceDbgLevel CLog.C_DBG_ERROR
-  Log.setLogConfig logLevel True
+  Log.setDefaultLoggerLevel logLevel
   runServerCli' cliOpts command
 
 runServerCli' :: Server.CliOpts -> Server.Command -> IO ()
