@@ -75,16 +75,13 @@ import           HStream.SQL.Codegen.V1
 import           HStream.SQL.Codegen.V1           as HSC
 #endif
 
-#ifdef HStreamUseV2Engine
 -------------------------------------------------------------------------------
 executeQuery :: ServerContext -> CommandQuery -> IO CommandQueryResponse
 executeQuery sc@ServerContext{..} CommandQuery{..} = do
   Log.debug $ "Receive Query Request: " <> Log.build commandQueryStmtText
   plan <- streamCodegen commandQueryStmtText
   case plan of
-    PushSelectPlan {} ->
-      let x = "Inconsistent method called: select from streams SQL statements should be sent to rpc `ExecutePushQuery`"
-       in throwIO $ HE.InvalidSqlStatement x
+#ifdef HStreamUseV2Engine
     SelectPlan ins out builder -> do
       let sources = inStream <$> ins
       roles_m <- mapM (findIdentifierRole sc) sources
@@ -100,123 +97,12 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
             [] -> sendResp mempty
             _  -> do
               sendResp $ V.map (flowObjectToJsonObject . dcRow) (V.fromList dcbChanges)
-    CreateBySelectPlan stream ins out builder factor -> do
-      validateNameAndThrow stream
-      let sources = inStream <$> ins
-          sink    = stream
-      roles_m <- mapM (findIdentifierRole sc) sources
-      case all isJust roles_m of
-        False -> do
-          Log.warning $ "At least one of the streams/views do not exist: "
-              <> Log.buildString (show sources)
-          -- FIXME: use another exception or find which resource doesn't exist
-          throwIO $ HE.StreamNotFound $ "At least one of the streams/views do not exist: " <> T.pack (show sources)
-        True  -> do
-          createStreamWithShard scLDClient (transToStreamName sink) "query" factor
-          let relatedStreams = (sources, sink)
-          P.QueryInfo{..} <- handleCreateAsSelect
-                     sc
-                     sink
-                     (ins `zip` L.map fromJust roles_m)
-                     (out, RoleStream)
-                     builder
-                     commandQueryStmtText
-                     relatedStreams
-          pure $ API.CommandQueryResponse (mkVectorStruct queryId "stream_query_id")
     CreateViewPlan view ins out builder accumulation -> do
       validateNameAndThrow view
       P.ViewInfo{viewQuery=P.QueryInfo{..}} <-
         Core.createView' sc view ins out builder accumulation commandQueryStmtText
       pure $ API.CommandQueryResponse (mkVectorStruct queryId "view_query_id")
-    CreatePlan stream fac -> do
-      validateNameAndThrow stream
-      let s = API.Stream
-            { streamStreamName = stream
-            , streamReplicationFactor = fromIntegral fac
-            , streamBacklogDuration = 0
-            , streamShardCount = 1
-            }
-      Core.createStream sc s
-      pure $ API.CommandQueryResponse (mkVectorStruct s "created_stream")
-    CreateConnectorPlan _ cName _ _ _ -> do
-      validateNameAndThrow cName
-      void $ createIOTaskFromSql sc commandQueryStmtText
-      pure $ CommandQueryResponse V.empty
-    InsertPlan {} -> discard "Append"
-    DropPlan checkIfExist dropObject ->
-      case dropObject of
-        DStream stream -> do
-          let request = DeleteStreamRequest
-                      { deleteStreamRequestStreamName = stream
-                      , deleteStreamRequestIgnoreNonExist = not checkIfExist
-                      , deleteStreamRequestForce = False
-                      }
-          Core.deleteStream sc request
-          pure $ API.CommandQueryResponse V.empty
-        DView view -> do
-          void $ Core.deleteView sc view checkIfExist
-          pure $ API.CommandQueryResponse V.empty
-        DConnector conn -> do
-          IO.deleteIOTask scIOWorker conn
-          pure $ API.CommandQueryResponse V.empty
-    ShowPlan showObject ->
-      case showObject of
-        SStreams -> do
-          streams <- Core.listStreams sc ListStreamsRequest
-          pure $ API.CommandQueryResponse (mkVectorStruct streams "streams")
-        SQueries -> do
-          queries <- listQueries sc
-          pure $ API.CommandQueryResponse (mkVectorStruct (V.fromList queries) "queries")
-        SConnectors -> do
-          connectors <- IO.listIOTasks scIOWorker
-          pure $ API.CommandQueryResponse (mkVectorStruct (V.fromList connectors) "connectors")
-        SViews -> do
-          views <- Core.listViews sc
-          pure $ API.CommandQueryResponse (mkVectorStruct (V.fromList views) "views")
-    TerminatePlan sel -> do
-      let request = case sel of
-            AllQueries       -> TerminateQueriesRequest
-                                { terminateQueriesRequestQueryId = V.empty
-                                , terminateQueriesRequestAll = True
-                                }
-            OneQuery qid     -> TerminateQueriesRequest
-                                { terminateQueriesRequestQueryId = V.singleton qid
-                                , terminateQueriesRequestAll = False
-                                }
-            ManyQueries qids -> TerminateQueriesRequest
-                                { terminateQueriesRequestQueryId = V.fromList qids
-                                , terminateQueriesRequestAll = False
-                                }
-      TerminateQueriesResponse{..} <- terminateQueries sc request
-      let value  = PB.toAesonValue terminateQueriesResponseQueryId
-          object = AesonComp.fromList [("terminated", value)]
-          result = V.singleton (jsonObjectToStruct object)
-      pure $ API.CommandQueryResponse result
-    ExplainPlan plan -> pure $ API.CommandQueryResponse (mkVectorStruct plan "explain")
-    PausePlan (PauseObjectConnector name) -> do
-      IO.stopIOTask scIOWorker name False False
-      pure (CommandQueryResponse V.empty)
-    ResumePlan (ResumeObjectConnector name) -> do
-      IO.startIOTask scIOWorker name
-      pure (CommandQueryResponse V.empty)
-  where
-    discard rpcName = throwIO $ HE.DiscardedMethod $
-      "Discarded method called: should call rpc `" <> rpcName <> "` instead"
-    sendResp results = pure $ API.CommandQueryResponse $
-      V.map (structToStruct "SELECTVIEW" . jsonObjectToStruct) results
-    mkVectorStruct a label =
-      let object = AesonComp.fromList [(label, PB.toAesonValue a)]
-       in V.singleton (jsonObjectToStruct object)
 #else
--------------------------------------------------------------------------------
-executeQuery :: ServerContext -> CommandQuery -> IO CommandQueryResponse
-executeQuery sc@ServerContext{..} CommandQuery{..} = do
-  Log.debug $ "Receive Query Request: " <> Log.build commandQueryStmtText
-  plan <- streamCodegen commandQueryStmtText
-  case plan of
-    PushSelectPlan {} ->
-      let x = "Inconsistent method called: select from streams SQL statements should be sent to rpc `ExecutePushQuery`"
-       in throwIO $ HE.InvalidSqlStatement x
     SelectPlan sources sink builder persist -> do
       roles_m <- mapM (findIdentifierRole sc) sources
       case all (== Just RoleView) roles_m of
@@ -236,96 +122,13 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
           case flowObjects of
             [] -> sendResp mempty
             _  -> sendResp (V.fromList $ flowObjectToJsonObject <$> flowObjects)
-    CreateBySelectPlan sources sink builder factor persist -> do
-      validateNameAndThrow sink
-      roles_m <- mapM (findIdentifierRole sc) sources
-      case all isJust roles_m of
-        False -> do
-          Log.warning $ "At least one of the streams/views do not exist: "
-              <> Log.buildString (show sources)
-          throwIO $ HE.StreamNotFound $ "At least one of the streams/views do not exist: " <> T.pack (show sources)
-        True  ->
-          -- TODO: Support joining between streams and views
-          case all (== Just RoleStream) roles_m of
-            False -> do
-              Log.warning "CREATE STREAM only supports sources of stream type"
-              throwIO $ HE.InvalidSqlStatement "CREATE STREAM only supports sources of stream type"
-            True  -> do
-              createStreamWithShard scLDClient (transToStreamName sink) "query" factor
-              let relatedStreams = (sources, sink)
-              queryId <- newRandomText 10
-              P.QueryInfo{..} <- handleCreateAsSelect sc builder queryId commandQueryStmtText relatedStreams True
-              pure $ API.CommandQueryResponse (mkVectorStruct queryId "stream_query_id")
     CreateViewPlan sources sink view builder persist -> do
       validateNameAndThrow sink
       validateNameAndThrow view
       P.ViewInfo{viewQuery=P.QueryInfo{..}} <-
         Core.createView' sc view sources sink builder persist commandQueryStmtText
       pure $ API.CommandQueryResponse (mkVectorStruct queryId "view_query_id")
-    CreatePlan stream fac -> do
-      validateNameAndThrow stream
-      let s = API.Stream
-            { streamStreamName = stream
-            , streamReplicationFactor = fromIntegral fac
-            , streamBacklogDuration = 0
-            , streamShardCount = 1
-            }
-      Core.createStream sc s
-      pure $ API.CommandQueryResponse (mkVectorStruct s "created_stream")
-    CreateConnectorPlan _ cName _ _ _ -> do
-      validateNameAndThrow cName
-      void $ createIOTaskFromSql sc commandQueryStmtText
-      pure $ CommandQueryResponse V.empty
-    InsertPlan {} -> discard "Append"
-    DropPlan checkIfExist dropObject ->
-      case dropObject of
-        DStream stream -> do
-          let request = DeleteStreamRequest
-                      { deleteStreamRequestStreamName = stream
-                      , deleteStreamRequestIgnoreNonExist = not checkIfExist
-                      , deleteStreamRequestForce = False
-                      }
-          Core.deleteStream sc request
-          pure $ API.CommandQueryResponse V.empty
-        DView view -> do
-          void $ Core.deleteView sc view checkIfExist
-          pure $ API.CommandQueryResponse V.empty
-        DConnector conn -> do
-          IO.deleteIOTask scIOWorker conn
-          pure $ API.CommandQueryResponse V.empty
-    ShowPlan showObject ->
-      case showObject of
-        SStreams -> do
-          streams <- Core.listStreams sc ListStreamsRequest
-          pure $ API.CommandQueryResponse (mkVectorStruct streams "streams")
-        SQueries -> do
-          queries <- listQueries sc
-          pure $ API.CommandQueryResponse (mkVectorStruct (V.fromList queries) "queries")
-        SConnectors -> do
-          connectors <- IO.listIOTasks scIOWorker
-          pure $ API.CommandQueryResponse (mkVectorStruct (V.fromList connectors) "connectors")
-        SViews -> do
-          views <- Core.listViews sc
-          pure $ API.CommandQueryResponse (mkVectorStruct (V.fromList views) "views")
-    TerminatePlan sel -> do
-      let request = case sel of
-            AllQueries       -> TerminateQueriesRequest
-                                { terminateQueriesRequestQueryId = V.empty
-                                , terminateQueriesRequestAll = True
-                                }
-            OneQuery qid     -> TerminateQueriesRequest
-                                { terminateQueriesRequestQueryId = V.singleton qid
-                                , terminateQueriesRequestAll = False
-                                }
-            ManyQueries qids -> TerminateQueriesRequest
-                                { terminateQueriesRequestQueryId = V.fromList qids
-                                , terminateQueriesRequestAll = False
-                                }
-      TerminateQueriesResponse{..} <- terminateQueries sc request
-      let value  = PB.toAesonValue terminateQueriesResponseQueryId
-          object = AesonComp.fromList [("terminated", value)]
-          result = V.singleton (jsonObjectToStruct object)
-      pure $ API.CommandQueryResponse result
+#endif
     ExplainPlan plan -> pure $ API.CommandQueryResponse (mkVectorStruct plan "explain")
     PausePlan (PauseObjectConnector name) -> do
       IO.stopIOTask scIOWorker name False False
@@ -333,6 +136,19 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
     ResumePlan (ResumeObjectConnector name) -> do
       IO.startIOTask scIOWorker name
       pure (CommandQueryResponse V.empty)
+    PushSelectPlan {} ->
+      let x = "Inconsistent method called: select from streams SQL statements should be sent to rpc `ExecutePushQuery`"
+       in throwIO $ HE.InvalidSqlStatement x
+    -- NOTE: We may need a handler to be able to execute all available sql statements in the future,
+    -- but for the simplicity and readability of this module of code,
+    -- we use the handler for sql statements that haven't had its own handler only.
+    CreateBySelectPlan {} -> discard "CreateQuery"
+    CreatePlan {} -> discard "CreateStream"
+    CreateConnectorPlan {} -> discard "CreateConnector"
+    InsertPlan {} -> discard "Append"
+    DropPlan {} -> discard "Delete"
+    ShowPlan {} -> discard "List"
+    TerminatePlan {} -> discard "TerminateQuery"
   where
     discard rpcName = throwIO $ HE.DiscardedMethod $
       "Discarded method called: should call rpc `" <> rpcName <> "` instead"
@@ -341,7 +157,6 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
     mkVectorStruct a label =
       let object = AesonComp.fromList [(label, PB.toAesonValue a)]
        in V.singleton (jsonObjectToStruct object)
-#endif
 
 sendToClient
   :: MetaHandle
@@ -377,16 +192,41 @@ createQuery
   sc@ServerContext {..} CreateQueryRequest {..} = do
     plan <- streamCodegen createQueryRequestSql
     case plan of
-      CreateBySelectPlan{} -> do
-        CommandQueryResponse{..} <-
-          executeQuery sc CommandQuery{commandQueryStmtText = createQueryRequestSql}
-        let (PB.Struct kvmap) = V.head commandQueryResponseResultSet
-            [(_,qid_m)] = Map.toList kvmap
-            (Just (PB.Value (Just (PB.ValueKindStringValue qid)))) = qid_m
-        getMeta @P.QueryInfo qid metaHandle >>= \case
-          Just pQuery -> hstreamQueryToQuery metaHandle pQuery
-          Nothing     -> throwIO $ HE.UnexpectedError "Failed to create query for some unknown reason"
+#ifdef HStreamUseV2Engine
+      CreateBySelectPlan stream ins out builder factor -> do
+        validateNameAndThrow stream
+        let sources = inStream <$> ins
+            sink    = stream
+        roles_m <- mapM (findIdentifierRole sc) sources
+        case all isJust roles_m of
+          False -> do
+            Log.warning $ "At least one of the streams/views do not exist: "
+                <> Log.buildString (show sources)
+            -- FIXME: use another exception or find which resource doesn't exist
+            throwIO $ HE.StreamNotFound $ "At least one of the streams/views do not exist: " <> T.pack (show sources)
+          True  -> do
+            createStreamWithShard scLDClient (transToStreamName sink) "query" factor
+            let relatedStreams = (sources, sink)
+            handleCreateAsSelect sc sink (ins `zip` L.map fromJust roles_m) (out, RoleStream) builder createQueryRequestSql relatedStreams
+            >>= hstreamQueryToQuery metaHandle
+#else
+      CreateBySelectPlan sources sink builder factor persist -> do
+        validateNameAndThrow sink
+        roles_m <- mapM (findIdentifierRole sc) sources
+        unless (all isJust roles_m) $ do
+          Log.warning $ "At least one of the streams/views do not exist: "
+              <> Log.buildString (show sources)
+          throwIO $ HE.StreamNotFound $ "At least one of the streams/views do not exist: " <> T.pack (show sources)
+        unless (all (== Just RoleStream) roles_m) $ do
+          Log.warning "CREATE STREAM only supports sources of stream type"
+          throwIO $ HE.InvalidSqlStatement "CREATE STREAM only supports sources of stream type"
+        createStreamWithShard scLDClient (transToStreamName sink) "query" factor
+        let relatedStreams = (sources, sink)
+        queryId <- newRandomText 10
+        handleCreateAsSelect sc builder queryId createQueryRequestSql relatedStreams True
+        >>= hstreamQueryToQuery metaHandle
       _ -> throw $ HE.WrongExecutionPlan "Create query only support select / create stream as select statements"
+#endif
 
 listQueries :: ServerContext -> IO [Query]
 listQueries ServerContext{..} = do
