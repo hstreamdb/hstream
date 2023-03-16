@@ -207,6 +207,7 @@ createQuery
           True  -> do
             createStreamWithShard scLDClient (transToStreamName sink) "query" factor
             let relatedStreams = (sources, sink)
+            -- FIXME: pass custom query name
             handleCreateAsSelect sc sink (ins `zip` L.map fromJust roles_m) (out, RoleStream) builder createQueryRequestSql relatedStreams
             >>= hstreamQueryToQuery metaHandle
 #else
@@ -222,8 +223,7 @@ createQuery
           throwIO $ HE.InvalidSqlStatement "CREATE STREAM only supports sources of stream type"
         createStreamWithShard scLDClient (transToStreamName sink) "query" factor
         let relatedStreams = (sources, sink)
-        queryId <- newRandomText 10
-        handleCreateAsSelect sc builder queryId createQueryRequestSql relatedStreams True
+        handleCreateAsSelect sc builder createQueryRequestQueryName createQueryRequestSql relatedStreams True
         >>= hstreamQueryToQuery metaHandle
       _ -> throw $ HE.WrongExecutionPlan "Create query only support select / create stream as select statements"
 #endif

@@ -26,7 +26,7 @@ validateChar c
   | otherwise = Left $ "Illegal character \'" ++ (c : "\' found")
 
 validateLength :: T.Text -> Either String ()
-validateLength x = if T.length x <= 255 then Right () else Left "Length must be no more than 255"
+validateLength x = if T.length x <= 255 && T.length x > 0 then Right () else Left "The length must be between 1 and 255 characters."
 
 validateHead :: T.Text -> Either String ()
 validateHead x = if isLetter (T.head x) then Right () else Left "The first character of a name must be a letter"
