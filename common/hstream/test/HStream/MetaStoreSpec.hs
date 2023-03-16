@@ -35,7 +35,7 @@ import           HStream.Utils                    (textToCBytes)
 
 spec :: Spec
 spec = do
-  runIO $ Log.setLogConfig Log.DEBUG True
+  runIO $ Log.setDefaultLoggerLevel Log.DEBUG
   m <- runIO $ newManager defaultManagerSettings
   let host = "127.0.0.1"
 

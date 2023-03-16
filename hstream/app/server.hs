@@ -83,7 +83,7 @@ main = getConfig >>= app
 app :: ServerOpts -> IO ()
 app config@ServerOpts{..} = do
   setupSigsegvHandler
-  Log.setLogConfig _serverLogLevel _serverLogWithColor
+  Log.setDefaultLogger _serverLogLevel _serverLogWithColor Log.LogStderr
   Log.setLogDeviceDbgLevel' _ldLogLevel
 
   case _metaStore of

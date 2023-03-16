@@ -1,4 +1,5 @@
 {-# LANGUAGE BangPatterns         #-}
+{-# LANGUAGE GADTs                #-}
 {-# LANGUAGE MagicHash            #-}
 {-# LANGUAGE PatternSynonyms      #-}
 {-# LANGUAGE TypeSynonymInstances #-}
@@ -15,6 +16,8 @@ Relatead ghc issues:
 module HStream.Logger
   ( -- * Logger
     Logger
+  , setDefaultLogger
+  , setDefaultLoggerLevel
   , withDefaultLogger
 
   -- * Log function
@@ -26,17 +29,20 @@ module HStream.Logger
   , warnSlow
   , i
 
-    -- * Log Config
-  , LoggerConfig (..)
-  , setLogConfig
-  , defaultLoggerConfig
-
   -- * Builder
   , build
   , buildString
   , buildString'
 
-  -- * Log Level
+    -- * Log Config
+  , LoggerConfig (..)
+  , defaultLoggerConfig
+    -- ** LogType
+  , LogType
+  , LogType' (..)
+    -- ** Formatter
+  , LogFormatter
+    -- ** Log Level
   , Level (..)
   , pattern CRITICAL
   , pattern FATAL
@@ -240,6 +246,17 @@ square s = "[" <> s <> "]"
 
 -------------------------------------------------------------------------------
 
+type LogType = LogType' Log.LogStr
+
+-- Variant of Log.LogType'
+--
+-- | Logger Type.
+data LogType' a where
+  LogNone :: LogType' Log.LogStr
+  LogStdout :: LogType' Log.LogStr
+  LogStderr :: LogType' Log.LogStr
+  LogFile :: FilePath -> LogType' Log.LogStr
+
 -- | Logger config type used in this module.
 data LoggerConfig = LoggerConfig
   { loggerBufSize   :: {-# UNPACK #-} !Int
@@ -248,18 +265,11 @@ data LoggerConfig = LoggerConfig
     -- ^ Config log's filter level
   , loggerFormatter :: LogFormatter
     -- ^ Log formatter
+  , loggerType      :: LogType
   }
 
-setLogConfig :: Level -> Bool -> IO ()
-setLogConfig level withColor = do
-  let config = defaultLoggerConfig
-        { loggerLevel = level
-        , loggerFormatter = if withColor then defaultColoredFmt else defaultFmt
-        }
-  setDefaultLogger =<< newStderrLogger config
-
 defaultLoggerConfig :: LoggerConfig
-defaultLoggerConfig = LoggerConfig 4096 NOTSET defaultFmt
+defaultLoggerConfig = LoggerConfig 4096 NOTSET defaultFmt LogStderr
 {-# INLINABLE defaultLoggerConfig #-}
 
 -- FIXME: 'Log.newTimeCache' updates every 1 second, so it doesn't provide
@@ -277,39 +287,56 @@ data Logger = Logger
   (IO ()) -- ^ clean up action
   (IO ()) -- ^ manually flush
 
-newStderrLogger :: LoggerConfig -> IO Logger
-newStderrLogger LoggerConfig{..} = do
-  -- 'Log.newTimedFastLogger' don't export the flush function
-  (logger_, clean_, flush_) <- stdLoggerInit =<< Log.newStderrLoggerSet loggerBufSize
-  return $
-    Logger (\level cstack s ->
-      when (level >= loggerLevel) $ do
-        tid <- myThreadId
-        logger_ $ \time ->
-            loggerFormatter (Log.toLogStr time) level s cstack tid
-    ) clean_ flush_
+-- 'Log.newTimedFastLogger' doesn't export the flush function
+newLogger :: LoggerConfig -> IO Logger
+newLogger LoggerConfig{..} =
+  case loggerType of
+    LogNone    -> return $ Logger (\_ _ _ -> pure ()) (pure ()) (pure ())
+    LogStdout  -> Log.newStdoutLoggerSet loggerBufSize >>= loggerInit
+    LogStderr  -> Log.newStderrLoggerSet loggerBufSize >>= loggerInit
+    LogFile fp -> Log.newFileLoggerSet loggerBufSize fp >>= loggerInit
   where
-    stdLoggerInit lgrset = return
-      ( \f -> defaultTimeCache >>= Log.pushLogStr lgrset . f
-      , Log.rmLoggerSet lgrset
-      , Log.flushLogStr lgrset
+    loggerInit lgrset = return $ Logger
+      (\level cstack s ->
+        when (level >= loggerLevel) $ do
+          tid <- myThreadId
+          time <- defaultTimeCache
+          Log.pushLogStr lgrset $
+            loggerFormatter (Log.toLogStr time) level s cstack tid
       )
+      (Log.rmLoggerSet lgrset)
+      (Log.flushLogStr lgrset)
 
 globalLogger :: IORef Logger
 globalLogger = unsafePerformIO $ do
   istty <- queryTerminal stdError
   let fmt = if istty then defaultColoredFmt else defaultFmt
-  newIORef =<< newStderrLogger defaultLoggerConfig{loggerFormatter = fmt}
+  newIORef =<< newLogger defaultLoggerConfig{loggerFormatter = fmt}
 {-# NOINLINE globalLogger #-}
 
 -- | Change the global logger.
-setDefaultLogger :: Logger -> IO ()
-setDefaultLogger !logger = atomicWriteIORef globalLogger logger
-{-# INLINABLE setDefaultLogger #-}
+setGlobalLogger :: Logger -> IO ()
+setGlobalLogger !logger = atomicWriteIORef globalLogger logger
+{-# INLINABLE setGlobalLogger #-}
 
-getDefaultLogger :: IO Logger
-getDefaultLogger = readIORef globalLogger
-{-# INLINABLE getDefaultLogger #-}
+getGlobalLogger :: IO Logger
+getGlobalLogger = readIORef globalLogger
+{-# INLINABLE getGlobalLogger #-}
+
+-- | Set the global logger by config.
+setDefaultLogger :: Level -> Bool -> LogType -> IO ()
+setDefaultLogger level withColor typ = do
+  let config = defaultLoggerConfig
+        { loggerLevel = level
+        , loggerFormatter = if withColor then defaultColoredFmt else defaultFmt
+        , loggerType = typ
+        }
+  setGlobalLogger =<< newLogger config
+
+-- | Set the global logger by level.
+setDefaultLoggerLevel :: Level -> IO ()
+setDefaultLoggerLevel lvl =
+  setGlobalLogger =<< newLogger defaultLoggerConfig{loggerLevel = lvl}
 
 -- NOTE: do **NOT** use this with nesting calls like:
 --
@@ -325,7 +352,7 @@ getDefaultLogger = readIORef globalLogger
 withDefaultLogger :: IO () -> IO ()
 withDefaultLogger = (`finally` clean)
   where
-    clean = getDefaultLogger >>= \(Logger _ c _) -> c
+    clean = getGlobalLogger >>= \(Logger _ c _) -> c
 {-# INLINABLE withDefaultLogger #-}
 
 -------------------------------------------------------------------------------
@@ -358,7 +385,7 @@ warnSlow starter duration msg f = Async.withAsync f $ \a1 ->
 
 logBylevel :: Bool -> Level -> CallStack -> Log.LogStr -> IO ()
 logBylevel flushNow level cstack s = do
-  Logger f _ flush_ <- getDefaultLogger
+  Logger f _ flush_ <- getGlobalLogger
   f level cstack s
   when flushNow flush_
 {-# INLINABLE logBylevel #-}
