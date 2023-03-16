@@ -20,7 +20,7 @@ import           HStream.Utils                    (TaskStatus (..),
                                                    setupSigsegvHandler)
 
 getQueryResponseIdIs :: T.Text -> Query -> Bool
-getQueryResponseIdIs targetId (Query queryId _ _ _) = queryId == targetId
+getQueryResponseIdIs targetId Query {..} = queryId == targetId
 
 listQueries :: IO (Maybe ListQueriesResponse)
 listQueries = withGRPCClient clientConfig $ \client -> do
@@ -129,8 +129,8 @@ spec = aroundAll provideHstreamApi $
         query <- getQuery (queryId thisQuery)
         let terminated = getPBStatus Terminated
         case query of
-          Just (Query _ status _ _ ) -> return (status == terminated)
-          _                          -> return False
+          Just Query {..} -> return (queryStatus == terminated)
+          _               -> return False
     ) `shouldReturn` True
 
   -- it "restart query" $ \_ ->

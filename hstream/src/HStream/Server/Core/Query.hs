@@ -296,6 +296,8 @@ hstreamQueryToQuery h P.QueryInfo{..} = do
     , queryQueryText = querySql
     , queryStatus = getPBStatus state
     , queryCreatedTime = queryCreatedTime
+    , querySources = V.fromList $ fst queryStreams
+    , querySink = snd queryStreams
     }
 
 -------------------------------------------------------------------------------
