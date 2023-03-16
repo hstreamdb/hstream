@@ -5,7 +5,7 @@ package hstream.gossip;
 import "HStream/Server/HStreamInternal.proto";
 
 service HStreamGossip {
-  rpc SendBootstrapPing(Empty) returns (hstream.server.internal.ServerNode);
+  rpc SendBootstrapPing(BootstrapPing) returns (hstream.server.internal.ServerNode);
   rpc SendPing(Ping) returns (Ack);
   rpc SendPingReq(PingReq) returns (PingReqResp);
   rpc SendJoin(JoinReq) returns (JoinResp);
@@ -22,6 +22,8 @@ service HStreamGossip {
 message Empty {};
 
 message ServerList { repeated hstream.server.internal.ServerNode nodes = 1;}
+
+message BootstrapPing { bool ignoreInitedErr = 1; }
 
 message Ping { repeated Message msg = 1; }
 

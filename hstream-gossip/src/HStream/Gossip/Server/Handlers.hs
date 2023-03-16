@@ -22,8 +22,9 @@ import           Network.GRPC.HighLevel.Generated   (GRPCMethodType (..),
                                                      ServerResponse)
 import           System.Timeout                     (timeout)
 
-import           HStream.Gossip.HStreamGossip       (Ack (..), Empty (..),
-                                                     Gossip (..),
+import           HStream.Gossip.HStreamGossip       (Ack (..),
+                                                     BootstrapPing (..),
+                                                     Empty (..), Gossip (..),
                                                      HStreamGossip (..),
                                                      JoinReq (..),
                                                      JoinResp (..), Ping (..),
@@ -82,18 +83,20 @@ handlersNew gc = [
     catchExceptions action = action `catches` exHandlers
 
 sendBootstrapPingHandler :: GossipContext
-  -> ServerRequest 'Normal Empty I.ServerNode
+  -> ServerRequest 'Normal BootstrapPing I.ServerNode
   -> IO (ServerResponse 'Normal I.ServerNode)
 sendBootstrapPingHandler gc (ServerNormalRequest _metadata node) =
   sendBootstrapPingCore gc node >>= returnResp
 
 sendBootstrapPingCore :: GossipContext
-  -> Empty -> IO I.ServerNode
-sendBootstrapPingCore GossipContext{..} _ =
+  -> BootstrapPing -> IO I.ServerNode
+sendBootstrapPingCore GossipContext{..} BootstrapPing{..} =
   tryReadMVar clusterReady >>= \case
     Nothing -> tryReadMVar clusterInited >>= \case
       Nothing -> return serverSelf
-      Just _  -> throwIO ClusterInitedErr
+      Just _  -> if bootstrapPingIgnoreInitedErr
+                 then return serverSelf
+                 else throwIO ClusterInitedErr
     Just _ -> throwIO ClusterReadyErr
 
 sendPingHandler :: GossipContext

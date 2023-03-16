@@ -174,7 +174,7 @@ amIASeed self@I.ServerNode{..} seeds = do
           Log.fatal $ "Unexpecte exception: " <> Log.buildString' err <> ", you may need to re-bootstrap"
           throwIO err)
         ] $ do
-        started <- bootstrapPing join client
+        started <- bootstrapPing join True client
         case started of
           Nothing     -> do
             Log.debug . Log.buildString $ "I am not node " <> show join
@@ -202,7 +202,7 @@ waitForServersToStart = mapConcurrently wait
   where
     wait join@(joinHost,joinPort) = GRPC.withGRPCClient (mkGRPCClientConf' joinHost joinPort) (loop join)
     loop join client = do
-      started <- bootstrapPing join client
+      started <- bootstrapPing join False client
       case started of
         Nothing   -> do
           threadDelay $ 1000 * 1000
