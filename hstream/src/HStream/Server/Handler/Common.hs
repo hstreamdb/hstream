@@ -429,8 +429,8 @@ handleCreateAsSelect ctx@ServerContext{..} taskBuilder queryId commandQueryStmtT
           False -> return Nothing
         -- path does not exist, try to create it
         False -> try (Directory.createDirectory dbPath) >>= \case
-          Left (e :: SomeException)  -> return Nothing
-          Right _                    -> RocksDB.open dbOption dbPath <&> Just
+          Left (e :: SomeException) -> return Nothing
+          Right _                   -> RocksDB.open dbOption dbPath <&> Just
       -- update metadata
       qInfo@P.QueryInfo{..} <- P.createInsertQueryInfo
                           queryId commandQueryStmtText related metaHandle

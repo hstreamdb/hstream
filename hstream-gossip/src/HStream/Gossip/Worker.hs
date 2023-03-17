@@ -72,7 +72,7 @@ addToServerList gc@GossipContext{..} node@I.ServerNode{..} status isJoin = unles
 
 joinWorkers :: GRPC.Client -> GossipContext -> ServerStatus -> IO ()
 joinWorkers client gc@GossipContext{..} ss@ServerStatus{serverInfo = sNode@I.ServerNode{..}, ..} = do
-    Log.info . Log.buildString $ "Setting up workers for: " <> show serverNodeId
+    Log.info . Log.buildString $ "Setting up workers for node " <> show serverNodeId
     myChan <- atomically $ dupTChan actionChan
     mvars <- replicateM (T.joinWorkerConcurrency gossipOpts) $ do
       mvar <- newEmptyMVar

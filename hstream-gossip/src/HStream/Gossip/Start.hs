@@ -47,7 +47,9 @@ import           HStream.Gossip.Types             (Epoch, EventHandlers,
                                                    EventPayload,
                                                    GossipContext (..),
                                                    GossipOpts (..),
-                                                   InitType (..))
+                                                   InitType (..),
+                                                   showNodeSimpleAdvertise,
+                                                   showNodeSimpleGossip)
 import           HStream.Gossip.Utils             (ClusterInitedErr (..),
                                                    ClusterReadyErr (..),
                                                    FailedToStart (..),
@@ -63,7 +65,7 @@ import qualified HStream.Utils                    as U
 
 initGossipContext :: GossipOpts -> EventHandlers -> I.ServerNode -> [(ByteString, Int)] -> IO GossipContext
 initGossipContext gossipOpts _eventHandlers serverSelf seeds = do
-  when (null seeds) $ error " Please specify at least one node to start with"
+  when (null seeds) $ error "Please specify at least one node in `seed-nodes` to start with"
   actionChan    <- newBroadcastTChanIO
   statePool     <- newTQueueIO
   eventPool     <- newTQueueIO
@@ -87,7 +89,7 @@ startGossip grpcHost gc@GossipContext{..} = do
   let port = I.serverNodeGossipPort serverSelf
   let serverOnStarted = do
         void . forkIO $ amIASeed serverSelf seeds >>= putMVar seedsInfo
-        Log.debug . Log.buildString $ "Internal gossiping server " <> show serverSelf <> " started"
+        Log.debug $ "Internal gossiping server " <> Log.build (showNodeSimpleGossip serverSelf) <> " started"
   let grpcOpts =
 #ifdef HStreamUseGrpcHaskell
         GRPC.defaultServiceOptions
@@ -145,7 +147,7 @@ bootstrap [] GossipContext{..} = do
   Log.info "Only one node in the cluster, no bootstrapping needed"
   putMVar clusterInited Self
   putMVar clusterReady ()
-  Log.info "All servers have been initialized"
+  Log.info "The one-node cluster have been initialized"
 bootstrap initialServers gc@GossipContext{..} = handle
   (\(_ :: ClusterInitedErr) -> do
       Log.warning "Received multiple init signals in the cluster, this one will be ignored"
@@ -159,7 +161,7 @@ bootstrap initialServers gc@GossipContext{..} = handle
 
 amIASeed :: I.ServerNode -> [(ByteString, Int)] -> IO (Bool, [(ByteString, Int)], Bool)
 amIASeed self@I.ServerNode{..} seeds = do
-    Log.debug . Log.buildString' $ seeds
+    Log.debug $ "The list of the seed nodes is " <> Log.buildString' seeds
     if current `elem` seeds then pingToFindOut (True, L.delete current seeds, False) (L.delete current seeds)
                             else pingToFindOut (False, seeds, False) seeds
   where
@@ -168,19 +170,22 @@ amIASeed self@I.ServerNode{..} seeds = do
       new <- GRPC.withGRPCClient (mkGRPCClientConf' joinHost joinPort) $ \client -> flip catches
         [ Handler (\( _ :: ClusterInitedErr) -> return old)
         , Handler (\( _ :: ClusterReadyErr ) -> do
-            Log.info . Log.buildString $ "The cluster has been bootstrapped and is running"
+            Log.info "The cluster has been bootstrapped and is running"
             return (isSeed, oldSeeds, True))
         , Handler (\(err :: SomeException) -> do
-          Log.fatal $ "Unexpecte exception: " <> Log.buildString' err <> ", you may need to re-bootstrap"
+          Log.fatal $ "Unexpected exception [" <> Log.buildString' err <> "], you may need to re-bootstrap"
           throwIO err)
         ] $ do
         started <- bootstrapPing join True client
         case started of
           Nothing     -> do
-            Log.debug . Log.buildString $ "I am not node " <> show join
+            Log.debug $ "Trying to identify seed nodes, and I am not node with address "
+                     <> Log.build joinHost <> ":" <> Log.build joinPort
+                     <> "/ or the address is not available"
             return old
           Just node -> if node == self then do
-            Log.debug ("I am a seed: " <> Log.buildString' join)
+            Log.debug $ "I am one of the seeds nodes in the list, and my address is "
+                     <> Log.build joinHost <> ":" <> Log.build joinPort
             return (True, L.delete join oldSeeds, wasDead)
                                        else return old
       pingToFindOut new rest
@@ -192,10 +197,10 @@ handleINITEDEvent initedM l ready payload = readMVar initedM >>= \case
   Just inited -> case PT.fromByteString payload of
     Left err -> Log.warning $ Log.buildString' err
     Right (node :: I.ServerNode) -> do
-      Log.debug $ Log.buildString' node <> " has been initialized"
+      Log.debug . Log.build $ "" <> Log.build (showNodeSimpleGossip node) <> " has been initialized"
       x <- atomically $ stateTVar inited (\x -> (x + 1, x + 1))
       if x == l then putMVar ready () >> Log.info "All servers have been initialized"
-        else when (x > l) $ Log.warning "More seeds has been initiated, something went wrong"
+        else when (x > l) $ Log.warning "More seeds than expected has been initiated, something went wrong"
 
 waitForServersToStart :: [(ByteString, Int)] -> IO [I.ServerNode]
 waitForServersToStart = mapConcurrently wait
@@ -225,11 +230,12 @@ joinCluster node joins = do
       -- TODO: Allow configuration to specify the retry count
       if count >= 5
         then do
-          Log.fatal $ "Failed to join the cluster, "
+          Log.fatal $ "After retrying all the node listed, the node failed to join the cluster, "
                     <> "please make sure the seed-nodes lists at least one available node from the cluster."
           throwIO FailedToStart
         else do
-          Log.warning $ Log.buildString $ "Failed to join, retrying " <> show count <> " time"
+          Log.warning $ "Failed to join the cluster on any address given by the seed-nodes list, retrying "
+                     <> Log.build count <> " time"
           threadDelay $ min ((2 ^ count) * 1000 * 1000) maxRetryTimeInterval
           loop retryCount
 
@@ -243,9 +249,10 @@ joinCluster' sNode ((joinHost, joinPort):rest) = do
         Log.info . Log.buildString $ "Successfully joined cluster with " <> show joinRespMembers
         return (joinRespEpoch, L.delete sNode (V.toList joinRespMembers))
       GRPC.ClientErrorResponse (GRPC.ClientIOError (GRPC.GRPCIOBadStatusCode GRPC.StatusAlreadyExists _))  -> do
-        Log.fatal "Failed to join the cluster, node with the same id already exists"
+        Log.fatal $ "Failed to join the cluster on address" <> Log.build joinHost <> ":" <> Log.build joinPort <> "node with the same id already exists"
         throwIO FailedToStart
-      GRPC.ClientErrorResponse _ -> do
-        Log.info . Log.buildString $ "failed to join " <> U.bs2str joinHost <> ":" <> show joinPort
+      GRPC.ClientErrorResponse err -> do
+        Log.info $ "Failed to join the cluster on address" <> Log.build joinHost <> ":" <> Log.build joinPort
+                <> " due to " <> Log.buildString' err
         return (0, [])
   if null members then joinCluster' sNode rest else return (epoch, members)

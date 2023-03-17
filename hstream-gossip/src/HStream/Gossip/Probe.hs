@@ -57,21 +57,31 @@ bootstrapPing (joinHost, joinPort) bootstrapPingIgnoreInitedErr client = do
   HStreamGossip{..} <- hstreamGossipClient client
   hstreamGossipSendBootstrapPing (mkClientNormalRequest BootstrapPing{..}) >>= \case
     ClientNormalResponse serverNode _ _ _ _ -> do
-      Log.debug $ "The server "
-                <> Log.buildString' serverNode
-                <> " ready"
+      Log.info $ "The server "
+                <> Log.build (T.showNodeSimpleGossip serverNode)
+                <> " is starting"
       return (Just serverNode)
     ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode StatusFailedPrecondition details)) -> do
-      when (details == clusterInitedErr)$ throwIO ClusterInitedErr
-      when (details == clusterReadyErr) $ throwIO ClusterReadyErr
-      Log.debug $ "The server "
+      when (details == clusterInitedErr)$ do
+        Log.info $ "The server "
+                  <> Log.build joinHost <> ":"
+                  <> Log.build joinPort
+                  <> " has been initialized"
+        throwIO ClusterInitedErr
+      when (details == clusterReadyErr) $ do
+          Log.info $ "The server "
+                    <> Log.build joinHost <> ":"
+                    <> Log.build joinPort
+                    <> " is in a ready cluster"
+          throwIO ClusterReadyErr
+      Log.info $ "The server "
                 <> Log.build joinHost <> ":"
                 <> Log.build joinPort
                 <> " returned an unexpected status details"
                 <> Log.build (unStatusDetails details)
       return Nothing
     ClientErrorResponse err                   -> do
-      Log.debug $ "The server "
+      Log.info $ "The server "
                 <> Log.build joinHost <> ":"
                 <> Log.build joinPort
                 <> " has not been started: "
@@ -96,7 +106,7 @@ pingReq sNode msg client = do
       if pingReqRespAcked
         then return . Right $ V.toList pingReqRespMsg
         else return . Left . Just $ V.toList pingReqRespMsg
-    ClientErrorResponse _            -> Log.info "no acks" >> return (Left Nothing)
+    ClientErrorResponse _            -> Log.info "no acks from" >> return (Left Nothing)
 
 pingReqPing :: Messages -> TMVar Messages -> GRPC.Client -> IO ()
 pingReqPing msg isAcked client = do
@@ -129,7 +139,7 @@ doPing client gc@GossipContext{gossipOpts = GossipOpts{..}, ..}
   case maybeAck of
     Nothing -> do
       Log.info $ "[" <> Log.buildString (show (I.serverNodeId serverSelf))
-              <> "]Ping and PingReq exceeds timeout"
+              <> " ]Ping and PingReq exceeds timeout"
       atomically $ do
         inc     <- readTVar stateIncarnation
         when (inc == cInc) $

@@ -1,4 +1,5 @@
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module HStream.Gossip.Types
   ( module HStream.Gossip.Types
@@ -7,11 +8,14 @@ module HStream.Gossip.Types
 
 import           Control.Concurrent             (MVar, ThreadId)
 import           Control.Concurrent.STM         (TChan, TMVar, TQueue, TVar)
+import           Data.Aeson.Text                (encodeToLazyText)
 import           Data.ByteString                (ByteString)
 import qualified Data.IntMap.Strict             as IM
 import           Data.Map.Strict                (Map)
 import qualified Data.Map.Strict                as Map
-import           Data.Text                      (Text)
+import           Data.Text                      (Text, unpack)
+import           Data.Text.Encoding             (decodeUtf8)
+import           Data.Text.Lazy                 (toStrict)
 import           Data.Time.Clock.System
 import           Data.Word                      (Word32, Word64)
 import qualified Options.Applicative            as O
@@ -178,6 +182,11 @@ defaultGossipOpts = GossipOpts
   , roundtripTimeout      = 500 * 1000
   , joinWorkerConcurrency = 10
   }
+
+showNodeSimpleGossip :: I.ServerNode -> String
+showNodeSimpleGossip I.ServerNode{..} = show serverNodeId <> "@" <> unpack (decodeUtf8 serverNodeGossipAddress) <> ":" <> show serverNodeGossipPort
+showNodeSimpleAdvertise :: I.ServerNode -> String
+showNodeSimpleAdvertise I.ServerNode{..} = show serverNodeId <> "@" <> unpack (decodeUtf8 serverNodeAdvertisedAddress) <> ":" <> show serverNodePort
 
 -------------------------------------------------------------------------------
 

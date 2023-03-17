@@ -71,7 +71,7 @@ doReconnect client GossipContext{gossipOpts = GossipOpts{..}, ..}
     Just _ack -> do
       atomically $ do inc  <- readTVar stateIncarnation
                       writeTQueue statePool $ T.GAlive (inc + 1) sNode serverSelf
-      Log.info $ "HStream-Gossip: reconnecting to " <> Log.buildString' (I.serverNodeId sNode)
+      Log.info $ "reconnecting to " <> Log.buildString' (I.serverNodeId sNode)
     Nothing -> pure ()
 
 reconnect :: Int -> Messages -> GRPC.Client -> IO (Maybe ())
@@ -79,4 +79,4 @@ reconnect ttSec msg client = do
   HStreamGossip{..} <- hstreamGossipClient client
   hstreamGossipSendReconnect (mkClientNormalRequest' Empty ttSec) >>= \case
     GRPC.ClientNormalResponse {} -> return (Just ())
-    GRPC.ClientErrorResponse _   ->  Log.debug "HStream-Gossip: failed to reconnect" >> return Nothing
+    GRPC.ClientErrorResponse _   ->  Log.debug "failed to reconnect" >> return Nothing

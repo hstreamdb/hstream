@@ -200,39 +200,39 @@ instance Exception DuplicateNodeId
 exHandlers :: [Handler a]
 exHandlers =
   [ Handler $ \(err :: ClusterInitedErr) -> do
-      Log.debug $ Log.buildString' err
+      displayErr err
       HsGrpc.throwGrpcError $ HsGrpc.GrpcStatus HsGrpc.StatusFailedPrecondition (Just $ unStatusDetails clusterInitedErr) Nothing
 
   , Handler $ \(err :: ClusterReadyErr) -> do
-      Log.debug $ Log.buildString' err
+      displayErr err
       HsGrpc.throwGrpcError $ HsGrpc.GrpcStatus HsGrpc.StatusFailedPrecondition (Just $ unStatusDetails clusterReadyErr) Nothing
 
   , Handler $ \(err :: ClusterNotReadyErr) -> do
-      Log.debug $ Log.buildString' err
+      displayErr err
       HsGrpc.throwGrpcError $ HsGrpc.GrpcStatus HsGrpc.StatusFailedPrecondition (Just $ unStatusDetails clusterNotReadyErr) Nothing
 
   , Handler $ \(err :: DuplicateNodeId) -> do
-      Log.fatal $ Log.buildString' err
+      displayErr err
       HsGrpc.throwGrpcError $ HsGrpc.GrpcStatus HsGrpc.StatusAlreadyExists (Just "Duplicate node id join not allowed") Nothing
 
   , Handler $ \(err :: FailedToStart) -> do
-      Log.fatal $ Log.buildString' err
+      displayErr err
       HsGrpc.throwGrpcError $ HE.mkGrpcStatus err HsGrpc.StatusFailedPrecondition
 
   , Handler $ \(err :: EmptyPingRequest) -> do
-      Log.fatal $ Log.buildString' err
+      displayErr err
       HsGrpc.throwGrpcError $ HE.mkGrpcStatus err HsGrpc.StatusInvalidArgument
 
   , Handler $ \(err :: EmptyJoinRequest) -> do
-      Log.fatal $ Log.buildString' err
+      displayErr err
       HsGrpc.throwGrpcError $ HE.mkGrpcStatus err HsGrpc.StatusInvalidArgument
 
   , Handler $ \(err :: IOException) -> do
-      Log.fatal $ Log.buildString' err
+      displayErr err
       HsGrpc.throwGrpcError $ HE.mkGrpcStatus err HsGrpc.StatusInternal
 
   , Handler $ \(err :: SomeException) -> do
-      Log.fatal $ Log.buildString' err
+      displayErr err
       let x = ("UnKnown exception: " <>) <$> HE.mkStatusMsg err
       HsGrpc.throwGrpcError $ HsGrpc.GrpcStatus HsGrpc.StatusUnknown x Nothing
   ]
@@ -240,42 +240,46 @@ exHandlers =
 exceptionHandlers :: [Handler (ServerResponse 'Normal a)]
 exceptionHandlers =
   [ Handler $ \(err :: ClusterInitedErr) -> do
-      Log.debug $ Log.buildString' err
+      displayErr err
       returnErrResp StatusFailedPrecondition clusterInitedErr
 
   , Handler $ \(err :: ClusterReadyErr) -> do
-      Log.debug $ Log.buildString' err
+      displayErr err
       returnErrResp StatusFailedPrecondition clusterReadyErr
 
   , Handler $ \(err :: ClusterNotReadyErr) -> do
-      Log.debug $ Log.buildString' err
+      displayErr err
       returnErrResp StatusFailedPrecondition clusterNotReadyErr
 
   , Handler $ \(err :: FailedToStart) -> do
-      Log.fatal $ Log.buildString' err
+      displayErr err
       returnErrResp StatusFailedPrecondition "Cluster failed to start"
 
   , Handler $ \(err :: DuplicateNodeId) -> do
-      Log.fatal $ Log.buildString' err
+      displayErr err
       returnErrResp StatusAlreadyExists "Duplicate node id join not allowed "
 
   , Handler $ \(err :: EmptyPingRequest) -> do
-      Log.fatal $ Log.buildString' err
+      displayErr err
       returnErrResp StatusInvalidArgument "Empty ping request"
 
   , Handler $ \(err :: EmptyJoinRequest) -> do
-      Log.fatal $ Log.buildString' err
+      displayErr err
       returnErrResp StatusInvalidArgument "Empty join request"
 
   , Handler $ \(err :: IOException) -> do
-      Log.fatal $ Log.buildString' err
+      displayErr err
       returnErrResp StatusInternal (fromString $ displayException err)
 
   , Handler $ \(err :: SomeException) -> do
-      Log.fatal $ Log.buildString' err
+      displayErr err
       let x = "UnKnown exception: " <> displayException err
       returnErrResp StatusUnknown (fromString x)
   ]
+
+displayErr :: Exception e => e -> IO ()
+displayErr err = Log.debug $ "exception " <> Log.buildString' err
+                          <> " happened while handling ping/bootstrap/gossip from other nodes"
 
 --------------------------------------------------------------------------------
 

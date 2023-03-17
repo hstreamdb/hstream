@@ -31,7 +31,9 @@ import           HStream.Gossip.Types           (EventMessage (EventMessage),
                                                  InitType (Gossip),
                                                  ServerState (..),
                                                  ServerStatus (..),
-                                                 StateMessage (..))
+                                                 StateMessage (..),
+                                                 showNodeSimpleAdvertise,
+                                                 showNodeSimpleGossip)
 import qualified HStream.Gossip.Types           as T
 import           HStream.Gossip.Utils           (broadcastMessage,
                                                  eventNameINIT, eventNameINITED,
@@ -55,7 +57,7 @@ handleStateMessages = mapM_ . handleStateMessage
 
 handleStateMessage :: GossipContext -> StateMessage -> IO ()
 handleStateMessage GossipContext{..} msg@(T.GConfirm inc node@I.ServerNode{..} _node)= do
-  Log.debug . Log.buildString $ "[Server Node " <> show (I.serverNodeId serverSelf) <> "] received message " <> show node <> " leaving cluster"
+  Log.debug $ "[Server Node " <> Log.buildString' (I.serverNodeId serverSelf) <> "] received message " <> Log.build (showNodeSimpleGossip node) <> " leaving cluster"
   sMap <- snd <$> readTVarIO serverList
   case Map.lookup serverNodeId sMap of
     Nothing               -> pure ()
@@ -63,7 +65,7 @@ handleStateMessage GossipContext{..} msg@(T.GConfirm inc node@I.ServerNode{..} _
       inc' <- readTVarIO stateIncarnation
       state <- readTVarIO serverState
       when (inc >= inc' && state /= ServerDead) $ do
-        Log.info . Log.buildString $ "HStream-Gossip: [Server Node " <> show (I.serverNodeId serverSelf) <> "] handling message " <> show (T.TC msg)
+        Log.info . Log.buildString $ "[Server Node " <> showNodeSimpleGossip serverSelf <> "] handling message " <> show (T.TC msg)
         now <- getSystemTime
         mWorker <- atomically $ do
           modifyTVar' broadcastPool (broadcastMessage $ T.GState msg)
@@ -76,11 +78,11 @@ handleStateMessage GossipContext{..} msg@(T.GConfirm inc node@I.ServerNode{..} _
         case mWorker of
           Nothing -> pure ()
           Just  a -> do
-            Log.info . Log.buildString $ "Stopping Worker" <> show serverNodeId
+            Log.info $ "Stopping Worker" <> Log.buildString' serverNodeId
             killThread a
-            Log.info . Log.buildString $ "[Server Node " <> show (I.serverNodeId serverSelf) <> "] " <> show node <> " left cluster"
+            Log.info $ "[Server Node " <> Log.buildString' (I.serverNodeId serverSelf) <> "] " <> Log.build (showNodeSimpleGossip node) <> " left cluster"
 handleStateMessage GossipContext{..} msg@(T.GSuspect inc node@I.ServerNode{..} _node) = do
-  Log.debug . Log.buildString $ "HStream-Gossip: [Server Node " <> show (I.serverNodeId serverSelf) <> "] received" <> show (T.TC msg)
+  Log.debug $ "[Server Node " <> Log.buildString' (I.serverNodeId serverSelf) <> "] received" <> Log.buildString' (T.TC msg)
   now <- getSystemTime
   join . atomically $ if node == serverSelf
     then -- TODO: add incarnation comparison
@@ -96,11 +98,11 @@ handleStateMessage GossipContext{..} msg@(T.GSuspect inc node@I.ServerNode{..} _
             writeTVar stateChange now
             writeTVar incarnation inc
             modifyTVar broadcastPool (broadcastMessage $ T.GState msg)
-          return (Log.info . Log.buildString $ "HStream-Gossip: [Server Node " <> show (I.serverNodeId serverSelf) <> "] handled message " <> show (T.TC msg))
+          return (Log.info $ "[Server Node " <> Log.buildString' (I.serverNodeId serverSelf) <> "] handled message " <> Log.buildString' (T.TC msg))
         Nothing -> return $ Log.debug "Suspected node not found in the server list"
           -- addToServerList gc node msg Suspicious
 handleStateMessage gc@GossipContext{..} msg@(T.GAlive i node@I.ServerNode{..} _node) = do
-  Log.debug . Log.buildString $ "HStream-Gossip: [Server Node " <> show (I.serverNodeId serverSelf) <> "] received message " <> show (T.TC msg)
+  Log.debug $ "[Server Node " <> Log.buildString' (I.serverNodeId serverSelf) <> "] received message " <> Log.buildString' (T.TC msg)
   when (node /= serverSelf) $ do -- TODO: Remove this condition
     now <- getSystemTime
     join . atomically $ do
@@ -130,8 +132,8 @@ handleStateMessage gc@GossipContext{..} msg@(T.GAlive i node@I.ServerNode{..} _n
       modifyTVar' serverList $ second (Map.insert serverNodeId status)
       modifyTVar' deadServers $ Map.insert serverNodeId node
       return status
-    logHandled p = when p $ Log.info . Log.buildString $
-      "[INFO] HStream-Gossip: [Server Node " <> show (I.serverNodeId serverSelf) <> "] handled message " <> show (T.TC msg)
+    logHandled p = when p $ Log.info $
+      "[Server Node " <> Log.buildString' (I.serverNodeId serverSelf) <> "] handled message " <> Log.buildString' (T.TC msg)
 
 handleStateMessage _ _ = throwIOError "illegal state message"
 
@@ -148,8 +150,8 @@ handleEventMessages = mapM_ . handleEventMessage
 
 handleEventMessage :: GossipContext -> EventMessage -> IO ()
 handleEventMessage gc@GossipContext{..} msg@(EventMessage eName lpTime bs) = do
-  Log.trace . Log.buildString $ "[Server Node" <> show (I.serverNodeId serverSelf)
-                            <> "] Received Custom Event" <> show eName <> " with lamport " <> show lpTime
+  Log.trace $ "[Server Node" <> Log.buildString' (I.serverNodeId serverSelf)
+           <> "] Received Custom Event" <> Log.build eName <> " with lamport " <> Log.buildString' lpTime
   join . atomically $ do
     currentTime <- fromIntegral <$> updateLamportTime eventLpTime lpTime
     seen <- readTVar seenEvents
@@ -170,11 +172,11 @@ handleEventMessage gc@GossipContext{..} msg@(EventMessage eName lpTime bs) = do
         return $ case Map.lookup eName eventHandlers of
           Nothing     -> if eName == eventNameINIT
             then do
-              Log.info . Log.buildString $ "[Server Node" <> show (I.serverNodeId serverSelf)
-                                        <> "] Handling Internal Event" <> show eName <> " with lamport " <> show lpInt
+              Log.info $ "[Server Node" <> Log.buildString' (I.serverNodeId serverSelf)
+                                        <> "] Handling Internal Event" <> Log.build eName <> " with lamport " <> Log.buildString' lpInt
               (isSeed, _, wasIDead) <- readMVar seedsInfo
               when (isSeed && not wasIDead) $ handleINITEvent gc bs
-            else Log.info $ "Action dealing with event " <> Log.buildString' eName <> " not found"
+            else Log.info $ "Corresponding action dealing with event " <> Log.build eName <> " not found"
           Just action -> do
             action bs
 

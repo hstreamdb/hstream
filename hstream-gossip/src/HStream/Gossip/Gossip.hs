@@ -32,7 +32,7 @@ doGossip client msgs = do
   HStreamGossip{..} <- hstreamGossipClient client
   hstreamGossipSendGossip (mkClientNormalRequest . Gossip $ V.fromList msgs) >>= \case
     ClientNormalResponse {} -> return ()
-    ClientErrorResponse  {} -> Log.debug "Failed to send gossip"
+    ClientErrorResponse  {} -> Log.debug "failed to send gossip to node"
 
 scheduleGossip :: GossipContext -> IO ()
 scheduleGossip gc@GossipContext{..} = do
