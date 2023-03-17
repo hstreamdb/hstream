@@ -106,11 +106,11 @@ handleStateMessage gc@GossipContext{..} msg@(T.GAlive i node@I.ServerNode{..} _n
     join . atomically $ do
       sMap <- snd <$> readTVar serverList
       status@ServerStatus{..} <- case Map.lookup serverNodeId sMap of
-        Just ss -> return ss -- TODO: 1.check address and port 2.check if the old node is dead long enough 3.update address
-        Nothing -> do status <- initServerStatus node now
-                      modifyTVar' serverList $ second (Map.insert serverNodeId status)
-                      modifyTVar' deadServers $ Map.insert serverNodeId node
-                      return status
+        Just ss@ServerStatus{..} -> do -- TODO: 1.check address and port 2.check if the old node is dead long enough 3.update address
+          oldState <- readTVar serverState
+          if oldState == ServerDead && node /= serverInfo
+            then addNew now else return ss
+        Nothing -> addNew now
       inc <- readTVar stateIncarnation
       oldState <- readTVar serverState
       let whetherHandle = not (node /= serverSelf && i <= inc {- &&  !nodeUpdate -}) && not (i < inc && node == serverSelf)
@@ -125,6 +125,11 @@ handleStateMessage gc@GossipContext{..} msg@(T.GAlive i node@I.ServerNode{..} _n
         then return (logHandled whetherHandle >> addToServerList gc node status False)
         else return (logHandled whetherHandle)
   where
+    addNew now = do
+      status <- initServerStatus node now
+      modifyTVar' serverList $ second (Map.insert serverNodeId status)
+      modifyTVar' deadServers $ Map.insert serverNodeId node
+      return status
     logHandled p = when p $ Log.info . Log.buildString $
       "[INFO] HStream-Gossip: [Server Node " <> show (I.serverNodeId serverSelf) <> "] handled message " <> show (T.TC msg)
 
