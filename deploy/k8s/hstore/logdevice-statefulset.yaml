@@ -4,9 +4,9 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-    name: nshards
+  name: nshards
 data:
-    NSHARDS: "1"
+  NSHARDS: "1"
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -25,63 +25,70 @@ spec:
         app: logdevice
     spec:
       containers:
-      - name: logdevice
-        image: "hstreamdb/hstream"
-        command:
-          - "/usr/local/bin/logdeviced"
-          - "--config-path"
-          - "/etc/logdevice/config.json"
-          - "--address"
-          - "$(POD_IP)"
-          - "--name"
-          - "$(POD_NAME)"
-          - "--local-log-store-path"
-          - "/data/logdevice"
-          - "--num-shards"
-          - "1"
-        ports:
-        # Plain text data port
-        - containerPort: 4440
-        # Gossip port
-        - containerPort: 4441
-        # Admin Port
-        - containerPort: 6440
-        env:
-          - name: POD_NAME
-            valueFrom:
-              fieldRef:
-                fieldPath: metadata.name
-          - name: POD_IP
-            valueFrom:
-              fieldRef:
-                fieldPath: status.podIP
-        volumeMounts:
-        - name: shard0
-          mountPath: /data/logdevice/shard0
-        - name: config
-          mountPath: /etc/logdevice
-        - name: nshards
-          mountPath: /data/logdevice
+        - name: logdevice
+          image: "hstreamdb/hstream"
+          command:
+            - "/usr/local/bin/logdeviced"
+            - "--config-path"
+            - "/etc/logdevice/config.json"
+            - "--address"
+            - "$(POD_IP)"
+            - "--name"
+            - "$(POD_NAME)"
+            - "--local-log-store-path"
+            - "/data/logdevice"
+            - "--num-shards"
+            - "1"
+          ports:
+            # Plain text data port
+            - containerPort: 4440
+            # Gossip port
+            - containerPort: 4441
+            # Admin Port
+            - containerPort: 6440
+          startupProbe:
+            tcpSocket:
+              port: 6440
+            periodSeconds: 20
+            failureThreshold: 10
+            timeoutSeconds: 2
+            initialDelaySeconds: 2
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          volumeMounts:
+            - name: shard0
+              mountPath: /data/logdevice/shard0
+            - name: config
+              mountPath: /etc/logdevice
+            - name: nshards
+              mountPath: /data/logdevice
       volumes:
-      - name: config
-        configMap:
-          name: logdevice-config
-          items:
-            - key: config.json
-              path: config.json
-      - name: nshards
-        configMap:
-          name: nshards
-          items:
-            - key: NSHARDS
-              path: NSHARDS
+        - name: config
+          configMap:
+            name: logdevice-config
+            items:
+              - key: config.json
+                path: config.json
+        - name: nshards
+          configMap:
+            name: nshards
+            items:
+              - key: NSHARDS
+                path: NSHARDS
   volumeClaimTemplates:
-  - metadata:
-      name: shard0
-    spec:
-      accessModes: [ "ReadWriteOnce" ]
-      resources:
-        requests:
-          storage: 40Gi
-      # change this to fit your storageClass
-      storageClassName: hstream-store
+    - metadata:
+        name: shard0
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 40Gi
+        # change this to fit your storageClass
+        storageClassName: hstream-store
