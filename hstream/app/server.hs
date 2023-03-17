@@ -214,12 +214,12 @@ serve host port securityMap sc@ServerContext{..} listeners listenerSecurityMap =
 -- However, reconstruct hashRing every time can be expensive
 -- when we have a large number of nodes in the cluster.
 updateHashRing :: GossipContext -> TVar (Epoch, HashRing) -> IO ()
-updateHashRing gc hashRing = loop 0
+updateHashRing gc hashRing = loop (0,[])
   where
-    loop epoch =
+    loop (epoch, list)=
       loop =<< atomically
-        ( do (epoch', list) <- getMemberListWithEpochSTM gc
-             when (epoch == epoch') retry
-             writeTVar hashRing (epoch', constructServerMap list)
-             return epoch'
+        ( do (epoch', list') <- getMemberListWithEpochSTM gc
+             when (epoch == epoch' && list == list') retry
+             writeTVar hashRing (epoch', constructServerMap list')
+             return (epoch', list')
         )
