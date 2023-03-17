@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE NoImplicitPrelude   #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
@@ -24,11 +26,14 @@ module HStream.Processing.Processor
     Processor (..),
     SourceConfig (..),
     SinkConfig (..),
-    TaskBuilder,
+    TaskBuilder (..),
+    TaskTopologyConfig (..),
+    Task (..),
 
     ChangeLogger (..),
-    StateStoreChangelog(..),
-    applyStateStoreChangelog
+    StateStoreChangelog (..),
+    applyStateStoreChangelog,
+    applyStateStoreSnapshot
   )
 where
 
@@ -43,6 +48,7 @@ import           HStream.Processing.Encoding
 import           HStream.Processing.Error               (HStreamProcessingError (..))
 import           HStream.Processing.Processor.ChangeLog
 import           HStream.Processing.Processor.Internal
+import           HStream.Processing.Processor.Snapshot
 import           HStream.Processing.Store
 import           HStream.Processing.Type
 import           HStream.Processing.Util
@@ -116,17 +122,19 @@ taskBuilderWithName builder taskName =
     { ttcName = taskName
     }
 
-runTask :: (ChangeLogger h) =>
+runTask :: (ChangeLogger h1, Snapshotter h2) =>
   SourceConnectorWithoutCkp ->
   SinkConnector ->
   TaskBuilder ->
-  h ->
+  h1 ->
+  h2 ->
+  (Task -> IO ()) ->
   (T.Text -> BL.ByteString -> Maybe BL.ByteString) ->
   (T.Text -> BL.ByteString -> Maybe BL.ByteString) ->
   (BL.ByteString -> Maybe BL.ByteString) ->
   (BL.ByteString -> Maybe BL.ByteString) ->
   IO ()
-runTask SourceConnectorWithoutCkp {..} sinkConnector taskBuilder@TaskTopologyConfig {..} changeLogger transKSrc transVSrc transKSnk transVSnk = do
+runTask SourceConnectorWithoutCkp {..} sinkConnector taskBuilder@TaskTopologyConfig {..} changeLogger snapshotter doSnapshot transKSrc transVSrc transKSnk transVSnk = do
   -- build and add internalSinkProcessor
   let sinkProcessors =
         HM.map
@@ -149,7 +157,7 @@ runTask SourceConnectorWithoutCkp {..} sinkConnector taskBuilder@TaskTopologyCon
   let sourceStreamNames = HM.keys taskSourceConfig
   logOptions <- logOptionsHandle stderr True
   withLogFunc logOptions $ \lf -> do
-    ctx <- buildTaskContext task lf changeLogger
+    ctx <- buildTaskContext task lf changeLogger snapshotter
     let offset = API.SpecialOffsetLATEST
     forM_ sourceStreamNames (flip subscribeToStreamWithoutCkp offset)
 
@@ -170,28 +178,42 @@ runTask SourceConnectorWithoutCkp {..} sinkConnector taskBuilder@TaskTopologyCon
         return (callback,beforeAck)
 
     g :: Task -> TaskContext -> TChan ([SourceRecord], MVar ()) -> IO ()
-    g Task{..} ctx chan = forever $ do
-      (sourceRecords, mvar) <- atomically $ readTChan chan
-      runRIO ctx $ forM_ sourceRecords $ \r@SourceRecord {..} -> do
-        let acSourceName = iSourceName (taskSourceConfig HM'.! srcStream)
-        let (sourceEProcessor, _) = taskTopologyForward HM'.! acSourceName
-        liftIO $ updateTimestampInTaskContext ctx srcTimestamp
-        e' <- try $ runEP sourceEProcessor (mkERecord Record {recordKey = srcKey, recordValue = srcValue, recordTimestamp = srcTimestamp})
-        case e' of
-          Left (e :: SomeException) -> liftIO $ Log.fatal $ Log.buildString (Prelude.show e)
-          Right _ -> return ()
-      RIO.putMVar mvar ()
+    g task@Task{..} ctx chan = do
+      timer <- newIORef False
+      tid <- forkIO . forever $ do
+        Control.Concurrent.threadDelay $ 10 * 1000 * 1000
+        atomicWriteIORef timer True
+      forever (do
+        readIORef timer >>= \case
+          False -> go
+          True  -> do
+            doSnapshot task
+            atomicWriteIORef timer False
+              ) `onException` (Control.Concurrent.killThread tid)
+      where
+        go = do
+          (sourceRecords, mvar) <- atomically $ readTChan chan
+          runRIO ctx $ forM_ sourceRecords $ \r@SourceRecord {..} -> do
+            let acSourceName = iSourceName (taskSourceConfig HM'.! srcStream)
+            let (sourceEProcessor, _) = taskTopologyForward HM'.! acSourceName
+            liftIO $ updateTimestampInTaskContext ctx srcTimestamp
+            e' <- try $ runEP sourceEProcessor (mkERecord Record {recordKey = srcKey, recordValue = srcValue, recordTimestamp = srcTimestamp})
+            case e' of
+              Left (e :: SomeException) -> liftIO $ Log.fatal $ Log.buildString (Prelude.show e)
+              Right _ -> return ()
+          RIO.putMVar mvar ()
 
 runImmTask ::
-  (Ord t, Semigroup t, Aeson.FromJSON t, Aeson.ToJSON t, Typeable t, ChangeLogger h) =>
+  (Ord t, Semigroup t, Aeson.FromJSON t, Aeson.ToJSON t, Typeable t, ChangeLogger h1, Snapshotter h2) =>
   [(T.Text, Materialized t t t)] ->
   SinkConnector ->
   TaskBuilder ->
-  h ->
+  h1 ->
+  h2 ->
   (BL.ByteString -> Maybe BL.ByteString) ->
   (BL.ByteString -> Maybe BL.ByteString) ->
   IO ()
-runImmTask srcTups sinkConnector taskBuilder@TaskTopologyConfig {..} changeLogger transKSnk transVSnk = do
+runImmTask srcTups sinkConnector taskBuilder@TaskTopologyConfig {..} changeLogger snapshotter transKSnk transVSnk = do
   -- build and add internalSinkProcessor
   let sinkProcessors =
         HM.map
@@ -213,7 +235,7 @@ runImmTask srcTups sinkConnector taskBuilder@TaskTopologyConfig {..} changeLogge
   -- runTask
   logOptions <- logOptionsHandle stderr True
   withLogFunc logOptions $ \lf -> do
-    ctx <- buildTaskContext task lf changeLogger
+    ctx <- buildTaskContext task lf changeLogger snapshotter
 
     loop task ctx srcTups []
   where

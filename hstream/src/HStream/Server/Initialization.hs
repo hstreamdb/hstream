@@ -104,6 +104,7 @@ initializeServer opts@ServerOpts{..} gossipContext hh = do
       , shardInfo                = shardInfo
       , shardTable               = shardTable
       , shardReaderMap           = shardReaderMap
+      , querySnapshotPath        = _querySnapshotPath
       }
 
 --------------------------------------------------------------------------------

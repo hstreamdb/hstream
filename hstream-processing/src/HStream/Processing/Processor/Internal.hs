@@ -1,3 +1,4 @@
+{-# LANGUAGE AllowAmbiguousTypes       #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE NoImplicitPrelude         #-}
 {-# LANGUAGE OverloadedStrings         #-}
@@ -12,6 +13,7 @@ import           Data.Default
 import           Data.Typeable
 import           HStream.Processing.Error               (HStreamProcessingError (..))
 import           HStream.Processing.Processor.ChangeLog
+import           HStream.Processing.Processor.Snapshot
 import           HStream.Processing.Store
 import           HStream.Processing.Type
 import           RIO
@@ -99,6 +101,42 @@ applyStateStoreChangelog builder@TaskTopologyConfig{..} cl = case cl of
           return builder
         _                               -> return builder -- FIXME: log error message
 
+applyStateStoreSnapshot :: (Typeable k, Ord k, Typeable v, Typeable ser,
+                            Ord ser)
+                        => TaskBuilder
+                        -> StateStoreSnapshotKey
+                        -> StateStoreSnapshotValue i k v ser
+                        -> IO (Maybe TaskBuilder, i)
+applyStateStoreSnapshot builder@TaskTopologyConfig{..} k v = do
+  let storeName = snapshotStoreName k
+  case v of
+    SnapshotKS i extData -> do
+      case HM.lookup storeName stores of
+        Nothing      -> return (Nothing, i) -- FIXME: log error message
+        Just (ess,_) -> case ess of
+          EKVStateStore dekvs -> do
+            let ekvs = fromDEKVStoreToEKVStore dekvs
+            ksImport ekvs extData
+            return (Just builder, i)
+          _                   -> return (Nothing, i)
+    SnapshotSS i extData -> do
+      case HM.lookup storeName stores of
+        Nothing      -> return (Nothing, i) -- FIXME: log error message
+        Just (ess,_) -> case ess of
+          ESessionStateStore desss -> do
+            let esss = fromDESessionStoreToESessionStore desss
+            ssImport esss extData
+            return (Just builder, i)
+          _                        -> return (Nothing, i) -- FIXME: log error message
+    SnapshotTKS i extData -> do
+      case HM.lookup storeName stores of
+        Nothing      -> return (Nothing, i) -- FIXME: log error message
+        Just (ess,_) -> case ess of
+          ETimestampedKVStateStore detkvs -> do
+            let etkvs = fromDETimestampedKVStoreToETimestampedKVStore detkvs
+            tksImport etkvs extData
+            return (Just builder, i)
+          _                               -> return (Nothing, i) -- FIXME: log error message
 
 instance Default TaskTopologyConfig where
   def =
@@ -177,24 +215,26 @@ data Task = Task
     taskStores           :: HM.HashMap T.Text (EStateStore, HS.HashSet T.Text)
   }
 
-data TaskContext = forall h. ChangeLogger h => TaskContext
+data TaskContext = forall h1 h2. (ChangeLogger h1, Snapshotter h2) => TaskContext
   { taskConfig     :: Task,
     tctLogFunc     :: LogFunc,
     curProcessor   :: IORef T.Text,
     tcTimestamp    :: IORef Int64,
-    tcChangeLogger :: h
+    tcChangeLogger :: h1,
+    tcSnapshotter  :: h2
   }
 
 instance HasLogFunc TaskContext where
   logFuncL = lens tctLogFunc (\x y -> x {tctLogFunc = y})
 
 buildTaskContext ::
-  (ChangeLogger h) =>
+  (ChangeLogger h1, Snapshotter h2) =>
   Task ->
   LogFunc ->
-  h ->
+  h1 ->
+  h2 ->
   IO TaskContext
-buildTaskContext task lf changeLogger = do
+buildTaskContext task lf changeLogger snapshotter = do
   pRef <- newIORef ""
   tRef <- newIORef (-1)
   return $
@@ -203,7 +243,8 @@ buildTaskContext task lf changeLogger = do
         tctLogFunc = lf,
         curProcessor = pRef,
         tcTimestamp = tRef,
-        tcChangeLogger = changeLogger
+        tcChangeLogger = changeLogger,
+        tcSnapshotter = snapshotter
       }
 
 updateTimestampInTaskContext :: TaskContext -> Timestamp -> IO ()

@@ -106,6 +106,7 @@ defaultConfig = ServerOpts
 
   , _gossipOpts                = defaultGossipOpts
   , _ioOptions                 = defaultIOOptions
+  , _querySnapshotPath         = "/data/query_snapshots"
   }
 
 defaultIOOptions :: IOOptions
@@ -220,6 +221,8 @@ emptyCliOptions = CliOptions {
   , _ioTasksPath_        = Nothing
   , _ioTasksNetwork_     = Nothing
   , _ioConnectorImages_  = []
+
+  , _querySnapshotPath_  = Nothing
   }
 
 
@@ -257,6 +260,7 @@ instance Arbitrary ServerOpts where
     _ldLogLevel                <- read <$> ldLogLevelGen
     _gossipOpts                <- arbitrary
     _ioOptions                 <- arbitrary
+    let _querySnapshotPath = "/data/query_snapshots"
     _listenersSecurityProtocolMap <- M.fromList . zip listenersKeys . repeat <$> elements ["plaintext", "tls"]
     let _securityProtocolMap = M.fromList [("plaintext", Nothing), ("tls", _tlsConfig)]
     pure ServerOpts{..}
@@ -289,6 +293,7 @@ instance Arbitrary CliOptions where
     _ioTasksPath_        <- genMaybe $ T.pack <$> pathGen
     _ioTasksNetwork_     <- genMaybe $ T.pack <$> nameGen
     _ioConnectorImages_  <- listOf5' $ T.pack <$> connectorImageCliOptGen
+    let _querySnapshotPath_ = Just "/data/query_snapshots"
     pure CliOptions{..}
 
 instance Arbitrary Listener where

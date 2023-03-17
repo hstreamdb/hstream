@@ -28,7 +28,15 @@ import qualified Data.Aeson.Key                        as Key
 import qualified Data.Aeson.KeyMap                     as KeyMap
 #endif
 
-deriving instance Serialized FlowObject
+instance Serialized FlowObject where
+  compose (fo1, fo2) =
+    let o = compose ( flowObjectToJsonObject fo1
+                    , flowObjectToJsonObject fo2)
+     in jsonObjectToFlowObject' o
+  separate fo =
+    let (o1, o2) = separate (flowObjectToJsonObject fo)
+     in ( jsonObjectToFlowObject' o1
+        , jsonObjectToFlowObject' o2)
 
 textSerde :: Serde TL.Text BL.ByteString
 textSerde =

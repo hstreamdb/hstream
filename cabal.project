@@ -7,6 +7,7 @@ packages:
   external/hs-grpc/hs-grpc-server/hs-grpc-server.cabal
   external/gRPC-haskell/grpc-haskell.cabal
   external/gRPC-haskell/core/grpc-haskell-core.cabal
+  external/haskell-rocksdb-bindings
 
   -- * Cpp library
   common/api/cpp/hstream-api-cpp.cabal
@@ -46,6 +47,10 @@ package grpc-haskell
 
 package grpc-haskell-core
   tests: false
+
+package rocksdb-haskell-bindings
+  extra-include-dirs: /usr/local/include
+  extra-lib-dirs:     /usr/local/lib
 
 constraints:
     Z-Data        == 2.0.0.1

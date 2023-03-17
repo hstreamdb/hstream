@@ -115,7 +115,7 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
 
           sinkRecords_m <- newIORef []
           let sinkConnector = HStore.memorySinkConnector sinkRecords_m
-          HP.runImmTask (sources `zip` mats) sinkConnector builder () Just Just
+          HP.runImmTask (sources `zip` mats) sinkConnector builder () () Just Just
           sinkRecords <- readIORef sinkRecords_m
 
           let flowObjects = (L.map (fromJust . Aeson.decode . snkValue) sinkRecords) :: [FlowObject]

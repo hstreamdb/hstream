@@ -102,6 +102,7 @@ library
     , containers
     , cryptohash-md5
     , cryptonite
+    , data-default
     , deepseq
     , diff-flow
     , directory
@@ -130,6 +131,7 @@ library
     , proto3-suite
     , proto3-wire
     , raw-strings-qq
+    , rocksdb-haskell-bindings
     , scientific
     , statgrab
     , stm
