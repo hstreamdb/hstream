@@ -71,12 +71,16 @@ createQueryHandler
 createQueryHandler ctx (ServerNormalRequest _metadata req@API.CreateQueryRequest{..}) =
   queryExceptionHandle $ do
     Log.debug $ "Receive Create Query Request with statement: " <> Log.build createQueryRequestSql
+             <> "and query name: " <> Log.build createQueryRequestQueryName
+    validateNameAndThrow createQueryRequestQueryName
     Core.createQuery ctx req >>= returnResp
 
 handleCreateQuery
   :: ServerContext -> G.UnaryHandler API.CreateQueryRequest API.Query
 handleCreateQuery ctx _ req@API.CreateQueryRequest{..} = catchQueryEx $ do
   Log.debug $ "Receive Create Query Request with statement: " <> Log.build createQueryRequestSql
+           <> "and query name: " <> Log.build createQueryRequestQueryName
+  validateNameAndThrow createQueryRequestQueryName
   Core.createQuery ctx req
 
 listQueriesHandler
