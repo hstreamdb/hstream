@@ -29,7 +29,9 @@ import           System.Random                  (RandomGen)
 import           System.Random.Shuffle          (shuffle')
 import           System.Timeout                 (timeout)
 
-import           HStream.Gossip.HStreamGossip   as API (Ack (..), Empty (..),
+import           HStream.Gossip.HStreamGossip   as API (Ack (..),
+                                                        BootstrapPing (..),
+                                                        Empty (..),
                                                         HStreamGossip (..),
                                                         Ping (..), PingReq (..),
                                                         PingReqResp (..),
@@ -50,10 +52,10 @@ import           HStream.Gossip.Utils           (ClusterInitedErr (..),
 import qualified HStream.Logger                 as Log
 import qualified HStream.Server.HStreamInternal as I
 
-bootstrapPing :: (ByteString, Int) -> GRPC.Client -> IO (Maybe I.ServerNode)
-bootstrapPing (joinHost, joinPort) client = do
+bootstrapPing :: (ByteString, Int) -> Bool -> GRPC.Client -> IO (Maybe I.ServerNode)
+bootstrapPing (joinHost, joinPort) bootstrapPingIgnoreInitedErr client = do
   HStreamGossip{..} <- hstreamGossipClient client
-  hstreamGossipSendBootstrapPing (mkClientNormalRequest Empty) >>= \case
+  hstreamGossipSendBootstrapPing (mkClientNormalRequest BootstrapPing{..}) >>= \case
     ClientNormalResponse serverNode _ _ _ _ -> do
       Log.debug $ "The server "
                 <> Log.buildString' serverNode
