@@ -76,6 +76,7 @@ handlers sc =
   , unary (GRPC :: GRPC P.HStreamApi "executeQuery") (H.handleExecuteQuery sc)
   , unary (GRPC :: GRPC P.HStreamApi "getQuery") (H.handleGetQuery sc)
   , unary (GRPC :: GRPC P.HStreamApi "createQuery") (H.handleCreateQuery sc)
+  , unary (GRPC :: GRPC P.HStreamApi "createQueryWithNamespace") (H.handleCreateQueryWithNamespace sc)
   , unary (GRPC :: GRPC P.HStreamApi "listQueries") (H.handleListQueries sc)
   , unary (GRPC :: GRPC P.HStreamApi "deleteQuery") (H.handleDeleteQuery sc)
   , unary (GRPC :: GRPC P.HStreamApi "restartQuery") (H.handleRestartQuery sc)

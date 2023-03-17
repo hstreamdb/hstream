@@ -72,6 +72,7 @@ handlers serverContext@ServerContext{..} =
         -- FIXME:
         hstreamApiGetQuery = getQueryHandler serverContext,
         hstreamApiCreateQuery = createQueryHandler serverContext,
+        hstreamApiCreateQueryWithNamespace = createQueryWithNamespaceHandler serverContext,
         hstreamApiListQueries = listQueriesHandler serverContext,
         hstreamApiDeleteQuery = deleteQueryHandler serverContext,
         hstreamApiRestartQuery = restartQueryHandler serverContext,

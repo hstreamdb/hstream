@@ -8,6 +8,7 @@ module HStream.Server.Core.Query
   , terminateQueries
 
   , createQuery
+  , createQueryWithNamespace
   , listQueries
   , getQuery
   , deleteQuery
@@ -186,17 +187,29 @@ sendToClient metaHandle qid streamName SourceConnectorWithoutCkp{..} streamSend 
             throwIO $ HE.PushQuerySendError (show err)
           Right _ -> streamSendMany xs'
 
-createQuery ::
-  ServerContext -> CreateQueryRequest -> IO Query
-createQuery
-  sc@ServerContext {..} CreateQueryRequest {..} = do
+-- NOTE: createQueryWithNameSpace may be modified in future.
+createQuery :: ServerContext -> CreateQueryRequest -> IO Query
+createQuery sc req = createQueryWithNamespace' sc req ""
+
+createQueryWithNamespace ::
+  ServerContext -> CreateQueryWithNamespaceRequest -> IO Query
+createQueryWithNamespace
+  sc@ServerContext {..} CreateQueryWithNamespaceRequest {..} =
+  createQueryWithNamespace' sc CreateQueryRequest{
+      createQueryRequestSql = createQueryWithNamespaceRequestSql
+    , createQueryRequestQueryName = createQueryWithNamespaceRequestQueryName } ""
+
+createQueryWithNamespace' ::
+  ServerContext -> CreateQueryRequest -> T.Text -> IO Query
+createQueryWithNamespace'
+  sc@ServerContext {..} CreateQueryRequest {..} namespace = do
     plan <- streamCodegen createQueryRequestSql
     case plan of
 #ifdef HStreamUseV2Engine
       CreateBySelectPlan stream ins out builder factor -> do
         validateNameAndThrow stream
-        let sources = inStream <$> ins
-            sink    = stream
+        let sources = addNamespace . inStream <$> ins  -- namespace
+            sink    = addNamespace stream              -- namespace
         roles_m <- mapM (findIdentifierRole sc) sources
         case all isJust roles_m of
           False -> do
@@ -211,7 +224,9 @@ createQuery
             handleCreateAsSelect sc sink (ins `zip` L.map fromJust roles_m) (out, RoleStream) builder createQueryRequestSql relatedStreams
             >>= hstreamQueryToQuery metaHandle
 #else
-      CreateBySelectPlan sources sink builder factor persist -> do
+      CreateBySelectPlan sources' sink' builder factor persist -> do
+        let sources = addNamespace <$> sources' --namespace
+        let sink = addNamespace sink'       --namespace
         validateNameAndThrow sink
         roles_m <- mapM (findIdentifierRole sc) sources
         unless (all isJust roles_m) $ do
@@ -227,6 +242,8 @@ createQuery
         >>= hstreamQueryToQuery metaHandle
       _ -> throw $ HE.WrongExecutionPlan "Create query only support select / create stream as select statements"
 #endif
+  where
+    addNamespace = (namespace <>)
 
 listQueries :: ServerContext -> IO [Query]
 listQueries ServerContext{..} = do
