@@ -17,9 +17,11 @@ module HStream.Server.Handler.Query
   , deleteQueryHandler
   , restartQueryHandler
   , createQueryHandler
+  , createQueryWithNamespaceHandler
     -- * For hs-grpc-server
   , handleExecuteQuery
   , handleCreateQuery
+  , handleCreateQueryWithNamespace
   , handleListQueries
   , handleGetQuery
   , handleTerminateQueries
@@ -82,6 +84,25 @@ handleCreateQuery ctx _ req@API.CreateQueryRequest{..} = catchQueryEx $ do
            <> "and query name: " <> Log.build createQueryRequestQueryName
   validateNameAndThrow createQueryRequestQueryName
   Core.createQuery ctx req
+
+createQueryWithNamespaceHandler
+  :: ServerContext
+  -> ServerRequest 'Normal API.CreateQueryWithNamespaceRequest API.Query
+  -> IO (ServerResponse 'Normal API.Query)
+createQueryWithNamespaceHandler ctx (ServerNormalRequest _metadata req@API.CreateQueryWithNamespaceRequest{..}) =
+  queryExceptionHandle $ do
+    Log.debug $ "Receive Create Query Request with statement: " <> Log.build createQueryWithNamespaceRequestSql
+             <> "and query name: " <> Log.build createQueryWithNamespaceRequestQueryName
+    validateNameAndThrow createQueryWithNamespaceRequestQueryName
+    Core.createQueryWithNamespace ctx req >>= returnResp
+
+handleCreateQueryWithNamespace
+  :: ServerContext -> G.UnaryHandler API.CreateQueryWithNamespaceRequest API.Query
+handleCreateQueryWithNamespace ctx _ req@API.CreateQueryWithNamespaceRequest{..} = catchQueryEx $ do
+  Log.debug $ "Receive Create Query Request with statement: " <> Log.build createQueryWithNamespaceRequestSql
+           <> "and query name: " <> Log.build createQueryWithNamespaceRequestQueryName
+  validateNameAndThrow createQueryWithNamespaceRequestQueryName
+  Core.createQueryWithNamespace ctx req
 
 listQueriesHandler
   :: ServerContext
