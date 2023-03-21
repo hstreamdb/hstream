@@ -7,17 +7,22 @@ module HStream.Server.Initialization
   ( initializeServer
   , initializeTlsConfig
   , readTlsPemFile
+  , openRocksDBHandle
+  , closeRocksDBHandle
   ) where
 
 import           Control.Concurrent               (MVar, newMVar)
 import           Control.Concurrent.STM           (TVar, atomically, newTVar,
                                                    newTVarIO, readTVarIO)
-import           Control.Exception                (catch)
+import           Control.Exception                (SomeException, catch, try)
 import           Control.Monad                    (void)
 import qualified Data.ByteString                  as BS
+import           Data.Default                     (def)
+import           Data.Functor                     ((<&>))
 import qualified Data.HashMap.Strict              as HM
 import           Data.List                        (find, sort)
 import           Data.Word                        (Word32)
+import qualified Database.RocksDB                 as RocksDB
 import qualified HsGrpc.Server.Types              as G
 import           Network.GRPC.HighLevel           (AuthProcessorResult (..),
                                                    AuthProperty (..),
@@ -26,8 +31,11 @@ import           Network.GRPC.HighLevel           (AuthProcessorResult (..),
                                                    SslClientCertificateRequestType (..),
                                                    StatusCode (..),
                                                    getAuthProperties)
+import qualified System.Directory                 as Directory
+import qualified System.Posix.Files               as Files
 import           Text.Printf                      (printf)
 import qualified Z.Data.CBytes                    as CB
+
 
 #if __GLASGOW_HASKELL__ < 902
 import qualified HStream.Admin.Store.API          as AA
@@ -51,8 +59,9 @@ initializeServer
   :: ServerOpts
   -> GossipContext
   -> MetaHandle
+  -> Maybe RocksDB.DB
   -> IO ServerContext
-initializeServer opts@ServerOpts{..} gossipContext hh = do
+initializeServer opts@ServerOpts{..} gossipContext hh db_m = do
   ldclient <- S.newLDClient _ldConfigPath
   let attrs = S.def{S.logReplicationFactor = S.defAttr1 _ckpRepFactor}
   Log.debug $ "checkpoint replication factor: " <> Log.build _ckpRepFactor
@@ -105,9 +114,25 @@ initializeServer opts@ServerOpts{..} gossipContext hh = do
       , shardTable               = shardTable
       , shardReaderMap           = shardReaderMap
       , querySnapshotPath        = _querySnapshotPath
+      , querySnapshotter         = db_m
       }
 
 --------------------------------------------------------------------------------
+
+openRocksDBHandle :: FilePath -> IO (Maybe RocksDB.DB)
+openRocksDBHandle dbPath = do
+  let dbOption = def { RocksDB.createIfMissing = True }
+  Directory.doesPathExist dbPath >>= \case
+    True -> Files.fileAccess dbPath True True False >>= \case
+      True  -> RocksDB.open dbOption dbPath <&> Just
+      False -> return Nothing
+    False -> try (Directory.createDirectory dbPath) >>= \case
+      Right _                    -> RocksDB.open dbOption dbPath <&> Just
+      Left  (_ :: SomeException) -> return Nothing
+
+closeRocksDBHandle :: Maybe RocksDB.DB -> IO ()
+closeRocksDBHandle Nothing   = return ()
+closeRocksDBHandle (Just db) = RocksDB.close db
 
 initializeHashRing :: GossipContext -> IO (TVar (Word32, HashRing))
 initializeHashRing gc = atomically $ do

@@ -32,12 +32,11 @@ import           Data.Maybe                            (catMaybes, fromJust)
 import           Data.Text                             (Text)
 import qualified Data.Text                             as T
 import qualified Data.Time                             as Time
+import qualified Database.RocksDB                      as RocksDB
 import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Op              (Op (OpRecvCloseOnServer),
                                                         OpRecvResult (OpRecvCloseOnServerResult),
                                                         runOps)
-import qualified System.Directory                      as Directory
-import qualified System.Posix.Files                    as Files
 
 import qualified HStream.Exception                     as HE
 import qualified HStream.Logger                        as Log
@@ -66,7 +65,6 @@ import           HStream.Server.ConnectorTypes         (SinkConnector (..),
 import qualified HStream.Server.ConnectorTypes         as HCT
 import           HStream.SQL.Codegen
 #else
-import qualified Database.RocksDB                      as RocksDB
 import           HStream.Processing.Connector
 import           HStream.Processing.Processor
 import           HStream.Processing.Processor.Snapshot
@@ -321,7 +319,7 @@ instance Snapshotter () where
 
 -- use rocksdb
 instance Snapshotter RocksDB.DB where
-  snapshot db keySer valueSer = RocksDB.put db def keySer valueSer
+  snapshot db = RocksDB.put db def
 
 doSnapshot :: (ChangeLogger h1, Snapshotter h2) => h1 -> h2 -> Task -> IO ()
 doSnapshot h1 h2 Task{..} = do
@@ -348,9 +346,11 @@ doSnapshot h1 h2 Task{..} = do
         valueSer = BL.toStrict $ Aeson.encode value
     snapshot h2 keySer valueSer
   Log.debug $ "Query " <> Log.build taskName <> ": I have successfully done a snapshot!"
+
 --------------------------------------------------------------------------------
-runTaskWrapper :: ServerContext -> TaskBuilder -> S.C_LogID -> Maybe RocksDB.DB -> Bool -> IO ()
-runTaskWrapper ctx@ServerContext{..} taskBuilder logId db_m writeToHStore = do
+
+runTaskWrapper :: ServerContext -> TaskBuilder -> S.C_LogID  -> Bool -> IO ()
+runTaskWrapper ctx@ServerContext{..} taskBuilder logId writeToHStore = do
   -- taskName: randomly generated in `Codegen.V1`
   let taskName = getTaskName taskBuilder
   let consumerName = textToCBytes taskName
@@ -372,7 +372,7 @@ runTaskWrapper ctx@ServerContext{..} taskBuilder logId db_m writeToHStore = do
                              Just k  -> Just . Aeson.encode $
                                         flowObjectToJsonObject k
       transVSnk = transKSnk
-  case db_m of
+  case querySnapshotter of
     Nothing -> do
       Log.warning "Snapshotting is not available. Only changelog is working..."
       runTask sourceConnector
@@ -419,37 +419,16 @@ handleCreateAsSelect ctx@ServerContext{..} taskBuilder queryId commandQueryStmtT
       let attrs = S.def { S.logReplicationFactor = S.defAttr1 1 }
       S.createStream scLDClient streamId attrs
       logId <- S.createStreamPartition scLDClient streamId Nothing mempty
-      -- state store(snapshot)
-      let dbPath = querySnapshotPath
-      let dbOption = def { RocksDB.createIfMissing = True }
-      db_m <- Directory.doesPathExist dbPath >>= \case
-        -- path exists, check read and write permissions
-        True  -> Files.fileAccess dbPath True True False >>= \case
-          True  -> RocksDB.open dbOption dbPath <&> Just
-          False -> return Nothing
-        -- path does not exist, try to create it
-        False -> try (Directory.createDirectory dbPath) >>= \case
-          Left (e :: SomeException)  -> return Nothing
-          Right _                    -> RocksDB.open dbOption dbPath <&> Just
       -- update metadata
       qInfo@P.QueryInfo{..} <- P.createInsertQueryInfo
                           queryId commandQueryStmtText related metaHandle
       M.updateMeta queryId P.QueryRunning Nothing metaHandle
-      tid <- forkIO $ catches (action queryId taskBuilder logId db_m) (cleanup queryId db_m)
+      tid <- forkIO $ catches (action queryId taskBuilder logId) (cleanup queryId)
       modifyMVar_ runningQueries (return . HM.insert queryId tid)
       return qInfo
   where
     restoreStateAndRun = do
-      -- snapshot
-      let dbPath = querySnapshotPath
-      db_m <- Directory.doesPathExist dbPath >>= \case
-        -- path exists, check read permission
-        True  -> Files.fileAccess dbPath True False False >>= \case
-          True  -> RocksDB.open def dbPath <&> Just
-          False -> return Nothing
-        -- path does not exist, which means no snapshot
-        False -> return Nothing
-      (builder_1, lsn_1) <- case db_m of
+      (builder_1, lsn_1) <- case querySnapshotter of
         Nothing -> do
           Log.warning "Snapshotting is not available. Roll back to changelog-based restoration..."
           return (taskBuilder, S.LSN_MIN)
@@ -489,23 +468,20 @@ handleCreateAsSelect ctx@ServerContext{..} taskBuilder queryId commandQueryStmtT
             else go
       -- update metadata and run task
       M.updateMeta queryId P.QueryRunning Nothing metaHandle
-      tid <- forkIO $ catches (action queryId newBuilder logId db_m) (cleanup queryId db_m)
+      tid <- forkIO $ catches (action queryId newBuilder logId) (cleanup queryId)
       modifyMVar_ runningQueries (return . HM.insert queryId tid)
-    action qid builder logId db_m = do
+    action qid builder logId = do
       Log.debug . Log.buildString
         $ "CREATE AS SELECT: query " <> show qid
        <> " has stared working on " <> show commandQueryStmtText
-      runTaskWrapper ctx builder logId db_m writeToHStore
-    cleanup qid db_m =
+      runTaskWrapper ctx builder logId writeToHStore
+    cleanup qid =
       [ Handler (\(e :: AsyncException) -> do
                     Log.debug . Log.buildString
                        $ "CREATE AS SELECT: query " <> show qid
                       <> " is killed because of " <> show e
                     M.updateMeta qid P.QueryTerminated Nothing metaHandle
                     void $ releasePid qid
-                    case db_m of
-                      Nothing -> return ()
-                      Just db -> RocksDB.close db
                 )
       , Handler (\(e :: SomeException) -> do
                     Log.warning . Log.buildString
@@ -513,9 +489,6 @@ handleCreateAsSelect ctx@ServerContext{..} taskBuilder queryId commandQueryStmtT
                       <> " died because of " <> show e
                     M.updateMeta qid P.QueryAbort Nothing metaHandle
                     void $ releasePid qid
-                    case db_m of
-                      Nothing -> return ()
-                      Just db -> RocksDB.close db
                 )
       ]
     releasePid qid = modifyMVar_ runningQueries (return . HM.delete qid)
