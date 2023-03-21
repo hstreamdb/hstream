@@ -295,6 +295,7 @@ joinStreamProcessor joiner joinCond newKeySelector beforeMs afterMs storeName1 s
   liftIO $ logChangelog tcChangeLogger (Aeson.encode changeLog)
   store2 <- getTimestampedKVStateStore storeName2
   candinates <- liftIO $ tksRange (mkTimestampedKey k1Bytes $ recordTimestamp - beforeMs) (mkTimestampedKey k1Bytes $ recordTimestamp + afterMs) store2
+  curProcessorName <- liftIO $ readIORef curProcessor
   forM_
     candinates
     ( \(timestampedKey, v2Bytes) -> do
@@ -306,6 +307,7 @@ joinStreamProcessor joiner joinCond newKeySelector beforeMs afterMs storeName1 s
         when (joinCond r1' r2') $ do
           let v3 = joiner recordValue v2
               jk3 = newKeySelector r1' r2'
+          liftIO $ writeIORef curProcessor curProcessorName -- Note: return to parent node
           forward $ Record {recordKey = Just jk3, recordValue = v3, recordTimestamp = max recordTimestamp ts2}
     )
 
