@@ -197,7 +197,7 @@ createQueryWithNamespace
   sc@ServerContext {..} CreateQueryWithNamespaceRequest {..} =
   createQueryWithNamespace' sc CreateQueryRequest{
       createQueryRequestSql = createQueryWithNamespaceRequestSql
-    , createQueryRequestQueryName = createQueryWithNamespaceRequestQueryName } ""
+    , createQueryRequestQueryName = createQueryWithNamespaceRequestQueryName } createQueryWithNamespaceRequestNamespace
 
 createQueryWithNamespace' ::
   ServerContext -> CreateQueryRequest -> T.Text -> IO Query
