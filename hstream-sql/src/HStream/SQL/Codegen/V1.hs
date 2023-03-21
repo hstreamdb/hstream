@@ -268,7 +268,7 @@ relationExprToGraph relation = case relation of
   CrossJoin r1 r2 t -> do
     let joiner = HM.union
         joinCond = \_ _ -> True
-        newKeySelector = \_ _ -> HM.fromList [(ColumnCatalog "__CROSS_JOIN__" Nothing, FlowNull)]
+        newKeySelector = \_ _ -> HM.fromList [] -- Default key is empty. See HStream.Processing.Stream#joinStreamProcessor
         joinWindows = JoinWindows
                     { jwBeforeMs = t
                     , jwAfterMs  = t
@@ -289,7 +289,7 @@ relationExprToGraph relation = case relation of
           case scalarExprToFun expr (recordValue record1 <> recordValue record2) of
             Left e  -> False -- FIXME: log error message
             Right v -> v == FlowBoolean True
-        newKeySelector = \_ _ -> HM.fromList [(ColumnCatalog "__LOOP_JOIN__" Nothing, FlowNull)]
+        newKeySelector = \_ _ -> HM.fromList [] -- Default key is empty. See HStream.Processing.Stream#joinStreamProcessor
         joinWindows = JoinWindows
                     { jwBeforeMs = t
                     , jwAfterMs  = t
@@ -309,7 +309,7 @@ relationExprToGraph relation = case relation of
         joinCond = \record1 record2 ->
           HM.mapKeys (\(ColumnCatalog f _) -> ColumnCatalog f Nothing) (HM.filterWithKey (\(ColumnCatalog f s_m) _ -> isJust s_m && L.elem f cols) (recordValue record1)) ==
           HM.mapKeys (\(ColumnCatalog f _) -> ColumnCatalog f Nothing) (HM.filterWithKey (\(ColumnCatalog f s_m) _ -> isJust s_m && L.elem f cols) (recordValue record2))
-        newKeySelector = \_ _ -> HM.fromList [(ColumnCatalog "__LOOP_JOIN__" Nothing, FlowNull)]
+        newKeySelector = \_ _ -> HM.fromList [] -- Default key is empty. See HStream.Processing.Stream#joinStreamProcessor
         joinWindows = JoinWindows
                     { jwBeforeMs = t
                     , jwAfterMs  = t
@@ -334,7 +334,7 @@ relationExprToGraph relation = case relation of
                                    Just (_,v') -> v == v'
                                else False
                             ) True (recordValue record1)
-        newKeySelector = \_ _ -> HM.fromList [(ColumnCatalog "__LOOP_JOIN__" Nothing, FlowNull)]
+        newKeySelector = \_ _ -> HM.fromList [] -- Default key is empty. See HStream.Processing.Stream#joinStreamProcessor
         joinWindows = JoinWindows
                     { jwBeforeMs = t
                     , jwAfterMs  = t
