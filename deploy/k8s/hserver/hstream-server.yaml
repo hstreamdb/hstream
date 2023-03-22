@@ -59,6 +59,8 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /etc/logdevice
+            - name: coredump
+              mountPath: /data/cores
       volumes:
         - name: config
           configMap:
@@ -66,3 +68,7 @@ spec:
             items:
               - key: config.json
                 path: config.json
+        - name: coredump
+          hostPath:
+            path: /data/cores
+            type: DirectoryOrCreate
