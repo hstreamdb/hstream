@@ -4,6 +4,7 @@
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications    #-}
 
 
 module HStream.Gossip.Start where
@@ -171,20 +172,20 @@ amIASeed self@I.ServerNode{..} seeds = do
             Log.info . Log.buildString $ "The cluster has been bootstrapped and is running"
             return (isSeed, oldSeeds, True))
         , Handler (\(err :: SomeException) -> do
-          Log.fatal $ "Unexpecte exception: " <> Log.buildString' err <> ", you may need to re-bootstrap"
-          throwIO err)
-        ] $ do
-        started <- bootstrapPing join True client
-        case started of
-          Nothing     -> do
-            Log.debug . Log.buildString $ "I am not node " <> show join
-            return old
-          Just node -> if node == self then do
-            Log.debug ("I am a seed: " <> Log.buildString' join)
-            return (True, L.delete join oldSeeds, wasDead)
-                                       else return old
+            Log.fatal $ "Unexpected exception: " <> Log.buildString' err <> ", you may need to re-bootstrap"
+            throwIO err)]
+        $ pingRetry old join client 0
       pingToFindOut new rest
     pingToFindOut old _ = return old
+    pingRetry old@(isSeed, oldSeeds, wasDead) join client n = if n < 3
+      then bootstrapPing join True client >>= \case
+        Nothing   -> do
+          Log.warning $ "bootstrapPing failed, retrying " <> Log.build @Int n <> " times"
+          threadDelay (2 ^ n * 1000 * 1000) >> pingRetry old join client (n + 1)
+        Just node -> if node == self
+          then return (True, L.delete join oldSeeds, wasDead)
+          else return old
+      else return old
 
 handleINITEDEvent :: MVar (Maybe (TVar Int)) -> Int -> MVar () -> EventPayload -> IO ()
 handleINITEDEvent initedM l ready payload = readMVar initedM >>= \case
