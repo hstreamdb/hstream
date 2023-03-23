@@ -213,6 +213,12 @@ jobs:
       - name: stop all started services
         run: docker rm -f $(docker ps -a -q)
 
+      # NOTE: The quick-build-dev-image relies on the "hstreamdb/hstream" base image.
+      # If you have installed any additional libraries in the builder image (hstreamdb/haskell),
+      # and these libraries are required (e.g., if a lib.so file is needed), you may encounter a
+      # linking error during the integration tests that follow. In such cases, you will need to
+      # publish a new version of the hstreamdb/hstream image first, which includes the necessary
+      # libraries.
       - name: quick build new hstream image
         run: |
           mkdir -p ~/data
