@@ -3,8 +3,11 @@ cradle:
     - path: "common/."
       component: "lib:hstream-common"
 
-    - path: "common/api/gen-hs"
-      component: "lib:hstream-common"
+    - path: "common/base/."
+      component: "lib:hstream-common-base"
+
+    - path: "common/api/."
+      component: "lib:hstream-api-hs"
 
     - path: "common/test"
       component: "hstream-common:test:hstream-common-test"
@@ -297,7 +300,7 @@ cradle:
     - path: "hstream-sql/test"
       component: "hstream-sql:test:hstream-sql-test"
 
-    - path: "hstream-store/./"
+    - path: "hstream-store/."
       component: "lib:hstream-store"
 
     - path: "hstream-store/test"

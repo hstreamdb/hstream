@@ -11,8 +11,8 @@ module HStream.Server.Core.Subscription where
 import           Control.Concurrent
 import           Control.Concurrent.Async      (async, wait, withAsync)
 import           Control.Concurrent.STM
-import           Control.Exception             (catch, handle, onException,
-                                                throwIO)
+import           Control.Exception             (catch, finally, handle,
+                                                onException, throwIO)
 import           Control.Monad
 import qualified Data.ByteString               as BS
 import           Data.Foldable                 (foldl')
@@ -322,7 +322,9 @@ doSubInit ServerContext{..} subId = do
         S.newLDRsmCkpReader scLDClient readerName S.checkpointStoreLogID 5000 maxReadLogs (Just ldReaderBufferSize)
       S.ckpReaderSetTimeout ldCkpReader 10  -- 10 milliseconds
       -- create a ldReader for rereading unacked records
-      ldReader <- newMVar =<< S.newLDReader scLDClient maxReadLogs (Just ldReaderBufferSize)
+      reader <- S.newLDReader scLDClient maxReadLogs (Just ldReaderBufferSize)
+      S.readerSetTimeout reader 10 -- 10 milliseconds
+      ldReader <- newMVar reader
       Log.debug $ "created a ldReader for subscription {" <> Log.build subId <> "}"
 
       unackedRecords <- newTVarIO 0
@@ -694,13 +696,14 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
 
       unless (V.null resendRecordIds) $ do
         Log.debug $ "There are " <> Log.build (V.length resendRecordIds) <> " records need to resent"
-                 <> ", batchId=" <> Log.build batchId
+                 <> ", logId=" <> Log.build logId  <> ", batchId=" <> Log.build batchId
         dataRecord <- withMVar subLdReader $ \reader -> do
           S.readerStartReading reader logId batchId batchId
-          S.readerRead reader 1
+          readLoop reader 3
         if length dataRecord /= 1
         then do
-          Log.fatal . Log.buildString $ "read error on `readerRead`. Expect 1 record but got " <> show (length dataRecord)
+          Log.fatal $ "read error on `readerRead`. Expect 1 record but got " <> Log.build (length dataRecord)
+                   <> ", logId " <> Log.build logId <> ", batchId " <> Log.build batchId
         else do
           (_, _, _, ReceivedRecord{..}) <- decodeRecordBatch $ head dataRecord
           let batchRecords@BatchedRecord{..} = fromJust receivedRecordRecord
@@ -717,6 +720,16 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
               resendBatch = mkBatchedRecord batchedRecordCompressionType batchedRecordPublishTime (fromIntegral $ V.length records) records
               resendRecords = ReceivedRecord ids (Just resendBatch)
           void $ sendReceivedRecords logId batchId resendRecordIds resendRecords True
+     where
+      readLoop reader n
+        | n == 0 = return []
+        | otherwise = do
+          res <- S.readerRead reader 1
+          if null res
+             then do
+               Log.warning $ "reader read got empty result, logId " <> Log.build logId <> ", batchId " <> Log.build batchId <> ", retry."
+               readLoop reader (n - 1)
+             else return res
 
     filterUnackedRecordIds recordIds ackedRanges windowLowerBound =
       flip V.filter recordIds $ \recordId ->
