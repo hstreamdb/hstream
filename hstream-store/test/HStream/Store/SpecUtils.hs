@@ -5,6 +5,7 @@ module HStream.Store.SpecUtils where
 
 import           Control.Applicative  (liftA2)
 import           Data.Maybe           (fromMaybe)
+import           System.Environment   (lookupEnv)
 import           System.IO.Unsafe     (unsafePerformIO)
 import           System.Random        (newStdGen, randomRs)
 import qualified Z.Data.CBytes        as CBytes
@@ -16,8 +17,9 @@ import qualified HStream.Store.Logger as S
 
 client :: S.LDClient
 client = unsafePerformIO $ do
+  config <- fromMaybe "/data/store/logdevice.conf" <$> lookupEnv "TEST_LD_CONFIG"
   _ <- S.setLogDeviceDbgLevel S.C_DBG_ERROR
-  S.newLDClient "/data/store/logdevice.conf"
+  S.newLDClient $ CBytes.pack config
 {-# NOINLINE client #-}
 
 readPayload :: S.C_LogID -> Maybe S.LSN -> IO Bytes

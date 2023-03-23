@@ -47,9 +47,13 @@ newLDReader client max_logs m_buffer_size =
     i <- c_new_logdevice_reader clientPtr max_logs buffer_size
     newForeignPtr c_free_logdevice_reader_fun i
 
--- NOTE: after you pass the reader and checkpointStore to this function, you
--- must NOT do anything with the reader and checkpointStore, forget it, the
--- ownship has "moved".
+-- NOTE:
+--
+-- You must NOT use the reader after you pass it to this function, since
+-- it a unique_ptr, the ownship has "moved".
+--
+-- For CheckpointStore, you have two choices. The underlying representation is
+-- either a unique_ptr or shared_ptr.
 newLDSyncCkpReader
   :: CBytes
   -> LDReader
