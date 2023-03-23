@@ -16,8 +16,10 @@ import           HStream.Store.SpecUtils
 
 spec :: Spec
 spec = describe "Stream Reader" $ do
+  preRsmBased
+  ---
   fileBased
-  preRsmBased >> rsmBased
+  rsmBased
   misc
 
 readerSpec
@@ -127,6 +129,18 @@ rsmBased = context "RSMBasedCheckpointedReader" $ do
              logid
              (S.newLDRsmCkpReader client readerName S.checkpointStoreLogID 5000 1 Nothing)
              (S.newRSMBasedCheckpointStore client S.checkpointStoreLogID 5000)
+
+  it "Sharing CheckpointStore" $ do
+    store <- S.newRSMBasedCheckpointStore client S.checkpointStoreLogID 5000
+    reader1 <- S.newLDRsmCkpReader' client store "sharing_store_1" 1 Nothing
+    reader2 <- S.newLDRsmCkpReader' client store "sharing_store_2" 1 Nothing
+    _ <- S.append client logid "hello" Nothing
+    until_lsn <- S.getTailLSN client logid
+
+    S.writeCheckpoints reader1 (Map.fromList [(logid, until_lsn)]) 10
+    S.ckpStoreGetLSN store "sharing_store_1" logid `shouldReturn` until_lsn
+    S.writeCheckpoints reader2 (Map.fromList [(logid, until_lsn)]) 10
+    S.ckpStoreGetLSN store "sharing_store_1" logid `shouldReturn` until_lsn
 
 misc :: Spec
 misc = do

@@ -108,6 +108,7 @@ module HStream.Store.Stream
   , FFI.LDSyncCkpReader
   , newLDFileCkpReader
   , newLDRsmCkpReader
+  , newLDRsmCkpReader'
   , newLDZkCkpReader
   , LD.ckpReaderStartReading
   , LD.startReadingFromCheckpoint
@@ -647,6 +648,22 @@ newLDRsmCkpReader
   -> IO FFI.LDSyncCkpReader
 newLDRsmCkpReader client name logid timeout max_logs m_buffer_size = do
   store <- LD.newRSMBasedCheckpointStore client logid timeout
+  reader <- LD.newLDReader client max_logs m_buffer_size
+  LD.newLDSyncCkpReader name reader store
+
+newLDRsmCkpReader'
+  :: FFI.LDClient
+  -> FFI.LDCheckpointStore
+  -> CBytes
+  -- ^ CheckpointedReader name
+  -> CSize
+  -- ^ maximum number of logs that can be read from
+  -- this Reader at the same time
+  -> Maybe Int64
+  -- ^ specify the read buffer size for this client, fallback
+  -- to the value in settings if it is Nothing.
+  -> IO FFI.LDSyncCkpReader
+newLDRsmCkpReader' client store name max_logs m_buffer_size = do
   reader <- LD.newLDReader client max_logs m_buffer_size
   LD.newLDSyncCkpReader name reader store
 
