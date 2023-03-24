@@ -315,5 +315,8 @@ cradle:
     - path: "hstream-store/app/writeBench.hs"
       component: "hstream-store:exe:hstore-bench-writter"
 
+    - path: "hstream-store/app/readBench.hs"
+      component: "hstream-store:exe:hstore-bench-reader"
+
     - path: "hstream-gossip/src"
       component: "lib:hstream-gossip"
