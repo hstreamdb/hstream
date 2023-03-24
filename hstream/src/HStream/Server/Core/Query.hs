@@ -34,6 +34,7 @@ import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel           (StreamSend)
 import           Network.GRPC.HighLevel.Generated (GRPCIOError)
 import           Network.GRPC.HighLevel.Server    (ServerCallMetadata)
+import           Proto3.Suite.Class               (def)
 import qualified Proto3.Suite.JSONPB              as PB
 import qualified Z.Data.CBytes                    as CB
 
@@ -236,7 +237,12 @@ createQueryWithNamespace'
         unless (all (== Just RoleStream) roles_m) $ do
           Log.warning "CREATE STREAM only supports sources of stream type"
           throwIO $ HE.InvalidSqlStatement "CREATE STREAM only supports sources of stream type"
-        createStreamWithShard scLDClient (transToStreamName sink) "query" factor
+        Core.createStream sc def {
+            streamStreamName = sink
+          , streamReplicationFactor = 1
+          , streamBacklogDuration = 7 * 24 * 3600
+          , streamShardCount = 1
+          }
         let relatedStreams = (sources, sink)
         handleCreateAsSelect sc builder createQueryRequestQueryName createQueryRequestSql relatedStreams True
         >>= hstreamQueryToQuery metaHandle
@@ -319,8 +325,8 @@ hstreamQueryToQuery h P.QueryInfo{..} = do
 
 -------------------------------------------------------------------------------
 
-createStreamWithShard :: S.LDClient -> S.StreamId -> CB.CBytes -> Int -> IO ()
-createStreamWithShard client streamId shardName factor = do
-  S.createStream client streamId (S.def{ S.logReplicationFactor = S.defAttr1 factor })
-  let extrAttr = Map.fromList [(Shard.shardStartKey, Shard.keyToCBytes minBound), (Shard.shardEndKey, Shard.keyToCBytes maxBound), (Shard.shardEpoch, "1")]
-  void $ S.createStreamPartition client streamId (Just shardName) extrAttr
+-- createStreamWithShard :: S.LDClient -> S.StreamId -> CB.CBytes -> Int -> IO ()
+-- createStreamWithShard client streamId shardName factor = do
+--   S.createStream client streamId (S.def{ S.logReplicationFactor = S.defAttr1 factor })
+--   let extrAttr = Map.fromList [(Shard.shardStartKey, Shard.keyToCBytes minBound), (Shard.shardEndKey, Shard.keyToCBytes maxBound), (Shard.shardEpoch, "1")]
+--   void $ S.createStreamPartition client streamId (Just shardName) extrAttr
