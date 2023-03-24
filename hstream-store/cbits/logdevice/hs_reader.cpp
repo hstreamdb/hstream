@@ -4,6 +4,8 @@ extern "C" {
 // ----------------------------------------------------------------------------
 // Reader & SyncCheckpointedReader
 
+#define HSTREAM_USE_SHARED_CHECKPOINT_STORE
+
 logdevice_reader_t* new_logdevice_reader(logdevice_client_t* client,
                                          size_t max_logs, ssize_t buffer_size) {
   std::unique_ptr<Reader> reader;
@@ -22,12 +24,20 @@ void free_logdevice_reader(logdevice_reader_t* reader) { delete reader; }
 logdevice_sync_checkpointed_reader_t* new_sync_checkpointed_reader(
     const char* reader_name, logdevice_reader_t* reader,
     logdevice_checkpoint_store_t* store, uint32_t num_retries) {
+#ifdef HSTREAM_USE_SHARED_CHECKPOINT_STORE
+  SharedCheckpointedReaderBase::CheckpointingOptions opts;
+#else
   CheckpointedReaderBase::CheckpointingOptions opts;
+#endif
   opts.num_retries = num_retries;
   const std::string reader_name_ = std::string(reader_name);
-  std::unique_ptr<SyncCheckpointedReader> scr =
-      CheckpointedReaderFactory().createCheckpointedReader(
-          reader_name_, std::move(reader->rep), std::move(store->rep), opts);
+#ifdef HSTREAM_USE_SHARED_CHECKPOINT_STORE
+  auto scr = CheckpointedReaderFactory().createCheckpointedReader(
+      reader_name_, std::move(reader->rep), store->rep, opts);
+#else
+  auto scr = CheckpointedReaderFactory().createCheckpointedReader(
+      reader_name_, std::move(reader->rep), std::move(store->rep), opts);
+#endif
   logdevice_sync_checkpointed_reader_t* result =
       new logdevice_sync_checkpointed_reader_t;
   result->rep = std::move(scr);

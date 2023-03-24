@@ -72,6 +72,8 @@ using facebook::logdevice::Processor;
 using facebook::logdevice::Reader;
 using facebook::logdevice::RecordOffset;
 using facebook::logdevice::RSMBasedVersionedConfigStore;
+using facebook::logdevice::SharedCheckpointedReaderBase;
+using facebook::logdevice::SharedSyncCheckpointedReader;
 using facebook::logdevice::SyncCheckpointedReader;
 using facebook::logdevice::vcs_config_version_t;
 using facebook::logdevice::VersionedConfigStore;
@@ -124,27 +126,45 @@ struct logdevice_client_t {
 struct logdevice_vcs_t {
   std::unique_ptr<VersionedConfigStore> rep;
 };
-struct logdevice_reader_t {
-  std::unique_ptr<Reader> rep;
-};
-struct logdevice_sync_checkpointed_reader_t {
-  std::unique_ptr<SyncCheckpointedReader> rep;
-};
-struct logdevice_checkpoint_store_t {
-  std::unique_ptr<CheckpointStore> rep;
-};
+
 struct logdevice_log_head_attributes_t {
   std::unique_ptr<LogHeadAttributes> rep;
 };
+
+typedef struct logdevice_reader_t {
+  std::unique_ptr<Reader> rep;
+} logdevice_reader_t;
+
+#define HSTREAM_USE_SHARED_CHECKPOINT_STORE
+
+#ifdef HSTREAM_USE_SHARED_CHECKPOINT_STORE
+
+typedef struct logdevice_checkpoint_store_t {
+  std::shared_ptr<CheckpointStore> rep;
+} logdevice_checkpoint_store_t;
+
+typedef struct logdevice_sync_checkpointed_reader_t {
+  std::unique_ptr<SharedSyncCheckpointedReader> rep;
+} logdevice_sync_checkpointed_reader_t;
+
+#else
+
+typedef struct logdevice_checkpoint_store_t {
+  std::unique_ptr<CheckpointStore> rep;
+} logdevice_checkpoint_store_t;
+
+typedef struct logdevice_sync_checkpointed_reader_t {
+  std::unique_ptr<SyncCheckpointedReader> rep;
+} logdevice_sync_checkpointed_reader_t;
+
+#endif
+
+#undef HSTREAM_USE_SHARED_CHECKPOINT_STORE
 
 typedef struct logdevice_loggroup_t logdevice_loggroup_t;
 typedef struct logdevice_logdirectory_t logdevice_logdirectory_t;
 typedef struct logdevice_client_t logdevice_client_t;
 typedef struct logdevice_vcs_t logdevice_vcs_t;
-typedef struct logdevice_checkpoint_store_t logdevice_checkpoint_store_t;
-typedef struct logdevice_reader_t logdevice_reader_t;
-typedef struct logdevice_sync_checkpointed_reader_t
-    logdevice_sync_checkpointed_reader_t;
 typedef struct logdevice_log_head_attributes_t logdevice_log_head_attributes_t;
 typedef struct log_tail_attributes_cb_data_t log_tail_attributes_cb_data_t;
 

@@ -5,6 +5,8 @@ extern "C" {
 // ----------------------------------------------------------------------------
 // Checkpoint Store
 
+#define HSTREAM_USE_SHARED_CHECKPOINT_STORE
+
 // Note: it's not safe to have multiple FileBasedVersionedConfigStore
 // objects created from the `root_path' accessing configs with the same
 // `key' concurrently. For the best practice, use only one
@@ -13,8 +15,13 @@ extern "C" {
 logdevice_checkpoint_store_t*
 new_file_based_checkpoint_store(const char* root_path) {
   std::string root_path_ = std::string(root_path);
+#ifdef HSTREAM_USE_SHARED_CHECKPOINT_STORE
+  std::shared_ptr<CheckpointStore> checkpoint_store =
+      CheckpointStoreFactory().createSharedFileBasedCheckpointStore(root_path_);
+#else
   std::unique_ptr<CheckpointStore> checkpoint_store =
       CheckpointStoreFactory().createFileBasedCheckpointStore(root_path_);
+#endif
   logdevice_checkpoint_store_t* result = new logdevice_checkpoint_store_t;
   result->rep = std::move(checkpoint_store);
   return result;
@@ -24,9 +31,15 @@ logdevice_checkpoint_store_t*
 new_rsm_based_checkpoint_store(logdevice_client_t* client, c_logid_t log_id,
                                int64_t stop_timeout) {
   std::chrono::milliseconds ms(stop_timeout);
+#ifdef HSTREAM_USE_SHARED_CHECKPOINT_STORE
+  std::shared_ptr<CheckpointStore> checkpoint_store =
+      CheckpointStoreFactory().createSharedRSMBasedCheckpointStore(
+          client->rep, logid_t(log_id), ms);
+#else
   std::unique_ptr<CheckpointStore> checkpoint_store =
       CheckpointStoreFactory().createRSMBasedCheckpointStore(
           client->rep, logid_t(log_id), ms);
+#endif
   logdevice_checkpoint_store_t* result = new logdevice_checkpoint_store_t;
   result->rep = std::move(checkpoint_store);
   return result;
