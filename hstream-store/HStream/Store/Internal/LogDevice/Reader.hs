@@ -117,6 +117,9 @@ startReadingFromCheckpoint reader logid untilSeq =
     E.throwStreamErrorIfNotOK . warnSlow $
       ld_checkpointed_reader_start_reading_from_ckp ptr logid untilSeq
 
+  -- Note: The exception NOTFOUND means the log is not being read, either because
+  -- readerStartReading() was never called (or readerStopReading() was
+  -- called), or because `until` LSN was reached
 readerStopReading :: LDReader -> C_LogID -> IO ()
 readerStopReading reader logid =
   withForeignPtr reader $ \ptr -> void $
