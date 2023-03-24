@@ -14,7 +14,7 @@ import           Control.Concurrent               (MVar, forkIO, newMVar,
 import qualified Control.Concurrent.Async         as Async
 import           Control.Concurrent.STM           (TVar, atomically, retry,
                                                    writeTVar)
-import           Control.Exception                (handle)
+import           Control.Exception                (bracket, handle)
 import           Control.Monad                    (forM_, join, void, when)
 import           Data.ByteString                  (ByteString)
 import qualified Data.ByteString.Short            as BS
@@ -61,8 +61,10 @@ import qualified HStream.Server.HsGrpcHandler     as HsGrpc
 import           HStream.Server.HStreamApi        (NodeState (..),
                                                    hstreamApiServer)
 import qualified HStream.Server.HStreamInternal   as I
-import           HStream.Server.Initialization    (initializeServer,
+import           HStream.Server.Initialization    (closeRocksDBHandle,
+                                                   initializeServer,
                                                    initializeTlsConfig,
+                                                   openRocksDBHandle,
                                                    readTlsPemFile)
 import           HStream.Server.MetaData          (TaskAllocation,
                                                    clusterStartTimeId,
@@ -86,21 +88,21 @@ app config@ServerOpts{..} = do
   Log.setDefaultLogger _serverLogLevel _serverLogWithColor Log.LogStderr
   Log.setLogDeviceDbgLevel' _ldLogLevel
 
-  case _metaStore of
-    ZkAddr addr -> do
-      let zkRes = zookeeperResInit addr Nothing 5000 Nothing 0
-      withResource zkRes $ \zk ->
-        initializeAncestors zk >> action (ZkHandle zk)
-    RqAddr addr -> do
-      m <- newManager defaultManagerSettings
-      let rq = RHandle m addr
-      initializeTables rq
-      action $ RLHandle rq
-    FileAddr addr -> do
-      initializeFile addr
-      action $ FileHandle addr
+  bracket (openRocksDBHandle _querySnapshotPath) closeRocksDBHandle $ \db_m ->
+   case _metaStore of
+     ZkAddr addr -> do
+       let zkRes = zookeeperResInit addr Nothing 5000 Nothing 0
+       withResource zkRes $ \zk -> initializeAncestors zk >> action (ZkHandle zk) db_m
+     RqAddr addr -> do
+       m <- newManager defaultManagerSettings
+       let rq = RHandle m addr
+       initializeTables rq
+       action (RLHandle rq) db_m
+     FileAddr addr -> do
+       initializeFile addr
+       action (FileHandle addr) db_m
   where
-    action h = do
+    action h db_m = do
       let serverNode =
             I.ServerNode { serverNodeId = _serverID
                          , serverNodePort = fromIntegral _serverPort
@@ -111,7 +113,7 @@ app config@ServerOpts{..} = do
                          }
       gossipContext <- initGossipContext defaultGossipOpts mempty serverNode _seedNodes
 
-      serverContext <- initializeServer config gossipContext h
+      serverContext <- initializeServer config gossipContext h db_m
       void . forkIO $ updateHashRing gossipContext (loadBalanceHashRing serverContext)
 
       Async.withAsync

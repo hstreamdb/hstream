@@ -19,6 +19,7 @@ import qualified Data.Set                         as Set
 import           Data.Text                        (Text)
 import qualified Data.Text                        as T
 import           Data.Word                        (Word32, Word64)
+import qualified Database.RocksDB                 as RocksDB
 import           GHC.Generics                     (Generic)
 import           Network.GRPC.HighLevel           (StreamSend)
 import qualified Proto3.Suite                     as PB
@@ -40,6 +41,7 @@ import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as HS
 import qualified HStream.Store                    as S
 import           HStream.Utils                    (textToCBytes)
+
 
 protocolVersion :: Text
 protocolVersion = "0.1.0"
@@ -82,6 +84,7 @@ data ServerContext = ServerContext
     -- ^ streamName -> Map startKey shardId, use to find target shard quickly when append
   , shardReaderMap           :: MVar (HM.HashMap Text (MVar S.LDReader))
   , querySnapshotPath        :: FilePath
+  , querySnapshotter         :: Maybe RocksDB.DB
 }
 
 data SubscribeContextNewWrapper = SubscribeContextNewWrapper
