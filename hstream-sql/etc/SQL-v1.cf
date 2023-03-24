@@ -236,8 +236,14 @@ ExprDate. ValueExpr7 ::= Date ;
 ExprTime. ValueExpr7 ::= Time ;
 ExprTimestamp. ValueExpr7 ::= Timestamp ;
 
-IntervalWithoutDate. Interval ::= "INTERVAL" TimeStr ;     -- TimeOfDay
-IntervalWithDate.    Interval ::= "INTERVAL" DateTimeStr ; -- LocalTime
+IntervalSecond. IntervalUnit ::= "SECOND" ;
+IntervalMinute. IntervalUnit ::= "MINUTE" ;
+IntervalHour.   IntervalUnit ::= "HOUR"   ;
+IntervalDay.    IntervalUnit ::= "DAY"    ;
+IntervalMonth.  IntervalUnit ::= "MONTH"  ;
+IntervalYear.   IntervalUnit ::= "YEAR"   ;
+
+Interval. Interval ::= "INTERVAL" SString IntervalUnit ;
 ExprInterval. ValueExpr7 ::= Interval ;
 
 -- Non-Scalar Type (Array and Map)
