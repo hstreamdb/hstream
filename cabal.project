@@ -60,3 +60,4 @@ constraints:
   , criterion    ^>= 1.6
   , aeson        ^>= 2.0
   , filepath      >= 1.4.100
+  , stm-hamt      == 1.2.0.9
