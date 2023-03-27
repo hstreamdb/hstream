@@ -91,14 +91,18 @@ getConnectorHandler ServerContext{..}
   Log.debug $ "Receive Get Connector Request. "
     <> "Connector Name: " <> Log.buildString (T.unpack getConnectorRequestName)
   IO.showIOTask scIOWorker getConnectorRequestName >>= \case
-    Nothing -> throwIO $ HE.ConnectorNotFound "ConnectorNotFound"
+    Nothing -> throwIO $ HE.ConnectorNotFound getConnectorRequestName
     Just c  -> returnResp c
 
 handleGetConnector :: ServerContext -> G.UnaryHandler GetConnectorRequest Connector
 handleGetConnector ServerContext{..} _ GetConnectorRequest{..} = catchDefaultEx $ do
   IO.showIOTask scIOWorker getConnectorRequestName >>= \case
-    Nothing -> throwIO $ HE.ConnectorNotFound "ConnectorNotFound"
+    Nothing -> throwIO $ HE.ConnectorNotFound getConnectorRequestName
     Just c  -> pure c
+
+handleGetConnectorSpec :: ServerContext -> G.UnaryHandler GetConnectorRequest GetConnectorSpecResponse
+handleGetConnectorSpec ServerContext{..} _ GetConnectorSpecRequest{..} = catchDefaultEx $ do
+  IO.getSpec GetConnectorSpecRequestType GetConnectorSpecRequestTarget
 
 deleteConnectorHandler
   :: ServerContext

@@ -1,5 +1,4 @@
 {-# LANGUAGE TemplateHaskell       #-}
-{-# OPTIONS_GHC -Wno-deferred-out-of-scope-variables #-}
 {-# LANGUAGE DeriveAnyClass        #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -23,6 +22,8 @@ import           HStream.MetaStore.Types    (FHandle, HasPath (..), MetaHandle,
                                              RHandle (..))
 import qualified HStream.Server.HStreamApi  as API
 import           HStream.Utils              (pairListToStruct, textToMaybeValue)
+import qualified Control.Exception          as E
+import qualified HStream.Exception as E
 
 data IOTaskType = SOURCE | SINK
   deriving (Show, Eq)
@@ -171,6 +172,12 @@ ioTaskStatusToText = T.pack . show
 
 ioTaskStatusToBS :: IOTaskStatus -> BSL.ByteString
 ioTaskStatusToBS = BSLC.pack . show
+
+ioTaskTypeFromText :: T.Text -> IOTaskType
+ioTaskTypeFromText typ = case T.toUpper typ of
+  "SOURCE" -> SOURCE
+  "SINK" -> SINK
+  _ -> E.throw (E.InvalidConnectorType typ)
 
 -- -------------------------------------------------------------------------- --
 

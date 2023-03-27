@@ -14,19 +14,19 @@ import qualified Data.ByteString.Lazy       as BSL
 import qualified Data.ByteString.Lazy.Char8 as BSLC
 import           Data.IORef                 (newIORef, readIORef, writeIORef)
 import qualified Data.Text                  as T
+import qualified Data.Text.Lazy             as TL
 import qualified GHC.IO.Handle              as IO
 import           System.Directory           (createDirectoryIfMissing)
 import qualified System.Process.Typed       as TP
 
 import qualified Control.Concurrent.Async   as Async
 import           Data.Maybe                 (isNothing)
-import qualified GHC.IO.Handle.FD           as IO
-import qualified GHC.IO.IOMode              as IO
 import qualified HStream.IO.Messages        as MSG
 import qualified HStream.IO.Meta            as M
 import           HStream.IO.Types
 import qualified HStream.Logger             as Log
 import qualified HStream.MetaStore.Types    as M
+import qualified Data.Aeson.Text as J
 
 newIOTask :: T.Text -> M.MetaHandle -> TaskInfo -> T.Text -> IO IOTask
 newIOTask taskId taskHandle taskInfo path = do
@@ -185,24 +185,21 @@ checkIOTask :: IOTask -> IO ()
 checkIOTask IOTask{..} = do
   Log.info $ "checkCmd:" <> Log.buildString checkCmd
   checkResult <- Async.race delay (TP.runProcess checkProcessConfig)
-  checkOutput <- BSL.readFile checkLogPath
   case checkResult of
     Left _ -> do
       Log.warning $ Log.buildString "run process timeout"
-      Log.info $ "output:" <> Log.buildString (BSLC.unpack checkOutput)
       throwIO (RunProcessTimeoutException timeoutSec)
     Right TP.ExitSuccess -> do
+      checkOutput <- BSL.readFile checkLogPath
       let (result :: Maybe MSG.CheckResult) = msum . map J.decode $ BSLC.lines checkOutput
       case result of
         Nothing -> do
-          Log.info $ "output:" <> Log.buildString (BSLC.unpack checkOutput)
           E.throwIO (CheckFailedException "check process didn't return correct result messsage")
         Just MSG.CheckResult {result=False, message=msg} -> do
           E.throwIO (CheckFailedException $ "check failed:" <> msg)
         Just _ -> pure ()
     Right exitCode -> do
       Log.warning $ Log.buildString ("check process exited: " ++ show exitCode)
-      Log.info $ "output:" <> Log.buildString (BSLC.unpack checkOutput)
       E.throwIO (CheckFailedException "check process exited unexpectedly")
   where
     checkProcessConfig = TP.setStdin TP.closed
@@ -221,5 +218,29 @@ checkIOTask IOTask{..} = do
         " --config /data/config.json",
         " >> ", checkLogPath, " 2>&1"
       ]
+    timeoutSec = 15
+    delay = C.threadDelay $ timeoutSec * 1000000
+
+getSpec :: T.Text -> IO T.Text
+getSpec img = do
+  Log.info $ "spec Cmd:" <> Log.buildString specCmd
+  Async.race delay (TP.readProcess getSpecCfg) >>= \case
+    Left () -> do
+      Log.warning $ Log.buildString "run process timeout"
+      throwIO (RunProcessTimeoutException timeoutSec)
+    Right (TP.ExitSuccess, out, _) -> do
+      case (msum . map J.decode $ BSLC.lines out :: Maybe J.Object) of
+        Nothing -> do
+          E.throwIO (CheckFailedException "spec process didn't return correct result messsage")
+        Just val -> return . TL.toStrict $ J.encodeToLazyText val
+    Right (exitCode, _, _) -> do
+      Log.warning $ Log.buildString ("spec process exited: " ++ show exitCode)
+      E.throwIO (CheckFailedException "spec process exited unexpectedly")
+  where
+    getSpecCfg = TP.setStdin TP.closed
+      . TP.setStdout TP.createPipe
+      . TP.setStderr TP.closed
+      $ TP.shell specCmd
+    specCmd = T.unpack $ "docker run --rm " <> img <> " spec"
     timeoutSec = 15
     delay = C.threadDelay $ timeoutSec * 1000000

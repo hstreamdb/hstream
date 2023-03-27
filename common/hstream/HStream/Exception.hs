@@ -42,6 +42,7 @@ module HStream.Exception
   , InvalidStatsType (..)
   , InvalidStatsInterval (..)
   , InvalidSqlStatement (..)
+  , InvalidConnectorType (..)
 
     -- * Exception: SomeDeadlineExceeded
     --
@@ -334,6 +335,7 @@ MAKE_STD_EX_0(SomeInvalidArgument, UnknownCompressionType, API.ErrorCodeInternal
 MAKE_STD_EX_1(SomeInvalidArgument, InvalidStatsType, String, API.ErrorCodeInternalError)
 MAKE_STD_EX_1(SomeInvalidArgument, InvalidStatsInterval, String, API.ErrorCodeInternalError)
 MAKE_STD_EX_1(SomeInvalidArgument, InvalidSqlStatement, String, API.ErrorCodeInternalError)
+MAKE_STD_EX_1(SomeInvalidArgument, InvalidConnectorType, Text, API.ErrorCodeConnectorInvalidType)
 
 -------------------------------------------------------------------------------
 -- Exception: SomeDeadlineExceeded
@@ -362,7 +364,7 @@ MAKE_SUB_EX(SomeHServerException, SomeNotFound)
 MAKE_STD_EX_1(SomeNotFound, NodesNotFound, Text, API.ErrorCodeInternalError)
 MAKE_STD_EX_1(SomeNotFound, StreamNotFound, Text, API.ErrorCodeStreamNotFound)
 MAKE_STD_EX_1(SomeNotFound, SubscriptionNotFound, Text, API.ErrorCodeSubscriptionNotFound)
-MAKE_STD_EX_1(SomeNotFound, ConnectorNotFound, Text, API.ErrorCodeInternalError)
+MAKE_STD_EX_1(SomeNotFound, ConnectorNotFound, Text, API.ErrorCodeConnectorNotFound)
 MAKE_STD_EX_1(SomeNotFound, ViewNotFound, Text, API.ErrorCodeInternalError)
 MAKE_STD_EX_1(SomeNotFound, ShardNotFound, Text, API.ErrorCodeInternalError)
 MAKE_STD_EX_1(SomeNotFound, QueryNotFound, Text, API.ErrorCodeQueryNotFound)

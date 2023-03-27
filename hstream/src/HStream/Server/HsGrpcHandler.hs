@@ -64,6 +64,7 @@ handlers sc =
   , unary (GRPC :: GRPC P.HStreamApi "createConnector") (H.handleCreateConnector sc)
   , unary (GRPC :: GRPC P.HStreamApi "listConnectors") (H.handleListConnectors sc)
   , unary (GRPC :: GRPC P.HStreamApi "getConnector") (H.handleGetConnector sc)
+  , unary (GRPC :: GRPC P.HStreamApi "getConnectorSpec") (H.handleGetConnectorSpec sc)
   , unary (GRPC :: GRPC P.HStreamApi "deleteConnector") (H.handleDeleteConnector sc)
   , unary (GRPC :: GRPC P.HStreamApi "resumeConnector") (H.handleResumeConnector sc)
   , unary (GRPC :: GRPC P.HStreamApi "pauseConnector") (H.handlePauseConnector sc)

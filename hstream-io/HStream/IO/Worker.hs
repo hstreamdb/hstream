@@ -7,8 +7,7 @@ module HStream.IO.Worker where
 
 import qualified Control.Concurrent        as C
 import           Control.Exception         (catch, throw, throwIO)
-import           Control.Monad             (forM_, unless)
-import qualified Data.Aeson                as J
+import           Control.Monad             (forM_)
 import qualified Data.HashMap.Strict       as HM
 import           Data.IORef                (newIORef, readIORef)
 import qualified Data.IORef                as C
@@ -22,8 +21,6 @@ import           HStream.IO.Types
 import qualified HStream.Logger            as Log
 import           HStream.MetaStore.Types   (MetaHandle (..))
 import qualified HStream.Server.HStreamApi as API
-import qualified HStream.SQL.Codegen       as CG
-import           HStream.Utils.Validation  (validateNameAndThrow)
 
 newWorker :: MetaHandle -> HStreamConfig -> IOOptions -> IO Worker
 newWorker mHandle hsConfig options = do
@@ -65,6 +62,10 @@ createIOTask Worker{..} taskId taskInfo@TaskInfo {..} = do
       Nothing -> do
         IOTask.startIOTask task
         return $ HM.insert taskName task ioTasks
+
+getSpec :: HasCallStack => Worker -> T.Text -> T.Text -> IO T.Text
+getSpec Worker{..} typ target = IOTask.getSpec img
+  where img = makeImage (ioTaskTypeFromText typ) target options
 
 showIOTask :: Worker -> T.Text -> IO (Maybe API.Connector)
 showIOTask Worker{..} name =
