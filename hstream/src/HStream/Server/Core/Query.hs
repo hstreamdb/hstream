@@ -55,7 +55,7 @@ import qualified HStream.Server.MetaData
 import qualified HStream.Server.MetaData          as P
 import qualified HStream.Server.Shard             as Shard
 import           HStream.Server.Types
-import           HStream.SQL.AST
+import           HStream.SQL
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils
@@ -204,9 +204,9 @@ createQueryWithNamespace' ::
   ServerContext -> CreateQueryRequest -> T.Text -> IO Query
 createQueryWithNamespace'
   sc@ServerContext {..} CreateQueryRequest {..} namespace = do
+#ifdef HStreamUseV2Engine
     plan <- streamCodegen createQueryRequestSql
     case plan of
-#ifdef HStreamUseV2Engine
       CreateBySelectPlan stream ins out builder factor -> do
         validateNameAndThrow stream
         let sources = addNamespace . inStream <$> ins  -- namespace
@@ -224,32 +224,45 @@ createQueryWithNamespace'
             -- FIXME: pass custom query name
             handleCreateAsSelect sc sink (ins `zip` L.map fromJust roles_m) (out, RoleStream) builder createQueryRequestSql relatedStreams
             >>= hstreamQueryToQuery metaHandle
-#else
-      CreateBySelectPlan sources' sink' builder factor persist -> do
-        let sources = addNamespace <$> sources' --namespace
-        let sink = addNamespace sink'       --namespace
-        validateNameAndThrow sink
-        roles_m <- mapM (findIdentifierRole sc) sources
-        unless (all isJust roles_m) $ do
-          Log.warning $ "At least one of the streams/views do not exist: "
-              <> Log.buildString (show sources)
-          throwIO $ HE.StreamNotFound $ "At least one of the streams/views do not exist: " <> T.pack (show sources)
-        unless (all (== Just RoleStream) roles_m) $ do
-          Log.warning "CREATE STREAM only supports sources of stream type"
-          throwIO $ HE.InvalidSqlStatement "CREATE STREAM only supports sources of stream type"
-        Core.createStream sc def {
-            streamStreamName = sink
-          , streamReplicationFactor = 1
-          , streamBacklogDuration = 7 * 24 * 3600
-          , streamShardCount = 1
-          }
-        let relatedStreams = (sources, sink)
-        handleCreateAsSelect sc builder createQueryRequestQueryName createQueryRequestSql relatedStreams True
-        >>= hstreamQueryToQuery metaHandle
       _ -> throw $ HE.WrongExecutionPlan "Create query only support select / create stream as select statements"
-#endif
+#else
+    ast <- parseAndRefine createQueryRequestSql
+    case ast of
+      RQCreate (RCreateAs stream select rOptions) -> hstreamCodegen (RQCreate (RCreateAs (addNamespace stream) (modifySelect select) rOptions)) >>= \case
+        CreateBySelectPlan sources sink builder factor persist -> do
+          validateNameAndThrow sink
+          roles_m <- mapM (findIdentifierRole sc) sources
+          unless (all isJust roles_m) $ do
+            Log.warning $ "At least one of the streams/views do not exist: "
+                <> Log.buildString (show sources)
+            throwIO $ HE.StreamNotFound $ "At least one of the streams/views do not exist: " <> T.pack (show sources)
+          unless (all (== Just RoleStream) roles_m) $ do
+            Log.warning "CREATE STREAM only supports sources of stream type"
+            throwIO $ HE.InvalidSqlStatement "CREATE STREAM only supports sources of stream type"
+          Core.createStream sc def {
+              streamStreamName = sink
+            , streamReplicationFactor = 1
+            , streamBacklogDuration = 7 * 24 * 3600
+            , streamShardCount = 1
+            }
+          let relatedStreams = (sources, sink)
+          handleCreateAsSelect sc builder createQueryRequestQueryName createQueryRequestSql relatedStreams True
+          >>= hstreamQueryToQuery metaHandle
+        _ -> throw $ HE.WrongExecutionPlan "Create query only support select / create stream as select statements"
+      _ -> throw $ HE.WrongExecutionPlan "Create query only support select / create stream as select statements"
   where
     addNamespace = (namespace <>)
+    modifySelect :: RSelect -> RSelect
+    modifySelect (RSelect a (RFrom t) b c d) = RSelect a (RFrom (modifyTableRef t)) b c d
+    modifyTableRef :: RTableRef -> RTableRef
+    modifyTableRef (RTableRefSimple                   x my) = RTableRefSimple      (addNamespace x) (addNamespace <$> my)
+    modifyTableRef (RTableRefSubquery            select mx) = RTableRefSubquery    (modifySelect select) (addNamespace <$> mx)
+    modifyTableRef (RTableRefCrossJoin          t1 t2 i mx) = RTableRefCrossJoin   (modifyTableRef t1) (modifyTableRef t2) i (addNamespace <$> mx)
+    modifyTableRef (RTableRefNaturalJoin      t1 j t2 i mx) = RTableRefNaturalJoin (modifyTableRef t1) j (modifyTableRef t2) i (addNamespace <$> mx)
+    modifyTableRef (RTableRefJoinOn         t1 j t2 v i mx) = RTableRefJoinOn      (modifyTableRef t1) j (modifyTableRef t2) v i (addNamespace <$> mx)
+    modifyTableRef (RTableRefJoinUsing   t1 j t2 cols i mx) = RTableRefJoinUsing   (modifyTableRef t1) j (modifyTableRef t2) cols i (addNamespace <$> mx)
+
+#endif
 
 listQueries :: ServerContext -> IO [Query]
 listQueries ServerContext{..} = do
