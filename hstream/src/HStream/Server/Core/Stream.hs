@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns      #-}
 {-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE OverloadedLists   #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -166,7 +167,7 @@ getStreamInfo ServerContext{..} stream = do
 append :: HasCallStack
        => ServerContext -> API.AppendRequest -> IO API.AppendResponse
 append sc@ServerContext{..} request@API.AppendRequest{..} = do
-  recv_time <- getPOSIXTime
+  !recv_time <- getPOSIXTime
   Log.debug $ "Receive Append Request: StreamName {"
            <> Log.build appendRequestStreamName
            <> "(shardId: "
@@ -177,7 +178,7 @@ append sc@ServerContext{..} request@API.AppendRequest{..} = do
   Stats.stream_stat_add_append_total scStatsHolder cStreamName 1
   Stats.stream_time_series_add_append_in_requests scStatsHolder cStreamName 1
 
-  append_start <- getPOSIXTime
+  !append_start <- getPOSIXTime
   resp <- appendStream sc request
   Stats.serverHistogramAdd scStatsHolder Stats.SHL_AppendLatency =<< msecSince append_start
   Stats.serverHistogramAdd scStatsHolder Stats.SHL_AppendRequestLatency =<< msecSince recv_time
