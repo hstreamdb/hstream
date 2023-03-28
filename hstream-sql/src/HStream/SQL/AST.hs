@@ -686,6 +686,7 @@ data RTableRef = RTableRefSimple StreamName (Maybe StreamName)
                | RTableRefNaturalJoin RTableRef RJoinType RTableRef RInterval (Maybe StreamName)
                | RTableRefJoinOn RTableRef RJoinType RTableRef RValueExpr RInterval (Maybe StreamName)
                | RTableRefJoinUsing RTableRef RJoinType RTableRef [Text] RInterval (Maybe StreamName)
+               | RTableRefWindowed StreamName WindowType (Maybe StreamName)
 #endif
                deriving (Show, Eq)
 setRTableRefAlias :: RTableRef -> StreamName -> RTableRef
@@ -703,6 +704,7 @@ setRTableRefAlias ref alias = case ref of
   RTableRefNaturalJoin r1 typ r2 t _ -> RTableRefNaturalJoin r1 typ r2 t (Just alias)
   RTableRefJoinOn r1 typ r2 e t _ -> RTableRefJoinOn r1 typ r2 e t (Just alias)
   RTableRefJoinUsing r1 typ r2 cols t _ -> RTableRefJoinUsing r1 typ r2 cols t (Just alias)
+  RTableRefWindowed r win _ -> RTableRefWindowed r win (Just alias)
 #endif
 
 data RJoinType = InnerJoin | LeftJoin | RightJoin | FullJoin
@@ -750,6 +752,9 @@ instance Refine TableRef where
     where extractStreamNameFromColName col = case col of
             ColNameSimple _ colIdent -> refine colIdent
             ColNameStream pos _ _    -> throwImpossible
+  refine (TableRefTumbling _ ref interval) = RTableRefWindowed (refine ref) (Tumbling (refine interval)) Nothing
+  refine (TableRefHopping _ ref len hop)   = RTableRefWindowed (refine ref) (Hopping (refine len) (refine hop)) Nothing
+  refine (TableRefSession _ ref interval)  = RTableRefWindowed (refine ref) (Session (refine interval)) Nothing
 #endif
 
 #ifdef HStreamUseV2Engine
@@ -785,11 +790,6 @@ instance Refine GroupBy where
     L.map (\col -> let (RExprCol _ m_stream field) = refine col
                     in (m_stream, field)) cols
 #else
-type instance RefinedType TimeWindow = WindowType
-instance Refine TimeWindow where
-  refine (DTumbling _ i)    = Tumbling (refine i)
-  refine (DHopping _ i1 i2) = Hopping  (refine i1) (refine i2)
-  refine (DSession _ i)     = Session  (refine i)
 
 data RGroupBy = RGroupByEmpty
               | RGroupBy [(Maybe StreamName, FieldName)] (Maybe WindowType)
@@ -801,9 +801,9 @@ instance Refine GroupBy where
     (L.map (\col -> let (RExprCol _ m_stream field) = refine col
                     in (m_stream, field)) cols
     ) Nothing
-  refine (DGroupByWin pos cols win) =
-    let (RGroupBy tups Nothing) = refine (DGroupBy pos cols)
-     in RGroupBy tups (Just $ refine win)
+  -- refine (DGroupByWin pos cols win) =
+  --   let (RGroupBy tups Nothing) = refine (DGroupBy pos cols)
+  --    in RGroupBy tups (Just $ refine win)
 #endif
 
 ---- Hav
@@ -816,11 +816,23 @@ instance Refine Having where
   refine (DHaving _ expr) = RHaving (refine expr)
 
 ---- SELECT
+
 data RSelect = RSelect RSel RFrom RWhere RGroupBy RHaving deriving (Show, Eq)
 type instance RefinedType Select = RSelect
+#ifdef HStreamUseV2Engine
 instance Refine Select where
   refine (DSelect _ sel frm whr grp hav) =
     RSelect (refine sel) (refine frm) (refine whr) (refine grp) (refine hav)
+#else
+instance Refine Select where
+  refine (DSelect _ sel frm whr grp hav) =
+    case refine frm of
+      RFrom (RTableRefWindowed r win alias)->
+        let newFrm = RFrom (RTableRefSimple r alias) in
+        let newGrp = case refine grp of RGroupBy x _ -> RGroupBy x (Just win); x -> x in
+        RSelect (refine sel) newFrm (refine whr) newGrp (refine hav)
+      rfrm -> RSelect (refine sel) rfrm (refine whr) (refine grp) (refine hav)
+#endif
 
 ---- EXPLAIN
 type RExplain = RSelect
