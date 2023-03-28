@@ -180,7 +180,9 @@ amIASeed self@I.ServerNode{..} seeds = do
     pingRetry old@(isSeed, oldSeeds, wasDead) join client n = if n < 3
       then bootstrapPing join True client >>= \case
         Nothing   -> do
-          Log.warning $ "bootstrapPing failed, retrying " <> Log.build @Int n <> " times"
+          Log.warning $ "bootstrapPing "
+            <> Log.build (fst join) <> ":" <> Log.build (snd join)
+            <> " failed, retrying " <> Log.build @Int n <> " times"
           threadDelay (2 ^ n * 1000 * 1000) >> pingRetry old join client (n + 1)
         Just node -> if node == self
           then return (True, L.delete join oldSeeds, wasDead)
