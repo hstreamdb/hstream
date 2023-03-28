@@ -14,6 +14,7 @@ module HStream.SQL.Internal.Validate
 import           Control.Monad              (Monad (return), unless, void, when)
 import qualified Data.Aeson                 as Aeson
 import qualified Data.ByteString.Lazy       as BSL
+import           Data.Char                  (isNumber)
 import qualified Data.List                  as L
 import           Data.List.Extra            (anySame)
 import qualified Data.Text                  as Text
@@ -140,9 +141,12 @@ instance Validate Time where
 instance Validate Timestamp where
   validate ts@(TimestampWithoutZone _ datetimeStr) = validate datetimeStr >> return ts
   validate ts@(TimestampWithZone _ tsStr) = validate tsStr >> return ts
+instance Validate IntervalUnit where
+  validate = return
 instance Validate Interval where
-  validate interval@(IntervalWithoutDate _ timeStr) = validate timeStr >> return interval
-  validate interval@(IntervalWithDate _ (DDateTimeStr _ _ timeStr)) = validate timeStr >> return interval
+  validate interval@(Interval pos (SString x) iUnit) = do
+    unless (all isNumber $ Text.unpack $ Text.dropAround (=='\'') x) $ Left $ buildSQLException ParseException pos "Invalid interval value, only integer values are supported"
+    validate iUnit >> return interval
 
 instance Validate ColName where
   validate col@(ColNameSimple _ colIdent) = validate colIdent >> return col

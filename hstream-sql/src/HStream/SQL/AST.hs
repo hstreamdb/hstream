@@ -304,15 +304,25 @@ instance Ord Time.ZonedTime where
 instance Hashable Time.ZonedTime where
   hashWithSalt salt z = hashWithSalt salt (Time.zonedTimeToUTC z)
 
+type RIntervalUnit = (Integer, Integer) -- from/toMonth, Second
+type instance RefinedType IntervalUnit = RIntervalUnit
+instance Refine IntervalUnit where
+  refine (IntervalSecond _) = (30 * 24 * 60 * 60, 1)
+  refine (IntervalMinute _) = (30 * 24 * 60 , 60)
+  refine (IntervalHour   _) = (30 * 24, 3600)
+  refine (IntervalDay    _) = (30, 3600 * 24)
+  refine (IntervalMonth  _) = (1, 0)
+  refine (IntervalYear   _) = (12, 0)
+
+fromUnitToDiffTime :: (Integer, Integer) -> Integer -> Time.CalendarDiffTime
+fromUnitToDiffTime (m, s) x
+  | s == 0    = Time.CalendarDiffTime (x * m) 0
+  | otherwise = let (m', rest) = divMod x m in Time.CalendarDiffTime m' (fromIntegral (rest * s))
+
 type RInterval = Time.CalendarDiffTime
 type instance RefinedType Interval = RInterval
 instance Refine Interval where
-  refine (IntervalWithoutDate _ timeStr) =
-    let nomialDiffTime = Time.daysAndTimeOfDayToTime 0 (refine timeStr)
-     in Time.CalendarDiffTime 0 nomialDiffTime
-  refine (IntervalWithDate _ (DDateTimeStr _ (DDateStr _ y m d) timeStr)) =
-    let nomialDiffTime = Time.daysAndTimeOfDayToTime d (refine timeStr)
-     in Time.CalendarDiffTime (12 * y +  m) nomialDiffTime
+  refine (Interval _ (SString n) iUnit) = fromUnitToDiffTime (refine iUnit) (read $ Text.unpack $ Text.dropAround (== '\'') n)
 
 instance Ord Time.CalendarDiffTime where
   d1 `compare` d2 =
