@@ -226,7 +226,7 @@ getSpec img = do
   Log.info $ "spec Cmd:" <> Log.buildString specCmd
   Async.race delay (TP.readProcess getSpecCfg) >>= \case
     Left () -> do
-      Log.warning $ Log.buildString "run process timeout"
+      Log.warning "run process timeout"
       throwIO (RunProcessTimeoutException timeoutSec)
     Right (TP.ExitSuccess, out, _) -> do
       case (msum . map J.decode $ BSLC.lines out :: Maybe J.Object) of
