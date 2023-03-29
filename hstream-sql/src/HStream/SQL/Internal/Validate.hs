@@ -14,6 +14,7 @@ module HStream.SQL.Internal.Validate
 import           Control.Monad              (Monad (return), unless, void, when)
 import qualified Data.Aeson                 as Aeson
 import qualified Data.ByteString.Lazy       as BSL
+import           Data.Char                  (isNumber)
 import qualified Data.List                  as L
 import           Data.List.Extra            (anySame)
 import qualified Data.Text                  as Text
@@ -140,9 +141,12 @@ instance Validate Time where
 instance Validate Timestamp where
   validate ts@(TimestampWithoutZone _ datetimeStr) = validate datetimeStr >> return ts
   validate ts@(TimestampWithZone _ tsStr) = validate tsStr >> return ts
+instance Validate IntervalUnit where
+  validate = return
 instance Validate Interval where
-  validate interval@(IntervalWithoutDate _ timeStr) = validate timeStr >> return interval
-  validate interval@(IntervalWithDate _ (DDateTimeStr _ _ timeStr)) = validate timeStr >> return interval
+  validate interval@(Interval pos (SString x) iUnit) = do
+    unless (all isNumber $ Text.unpack $ Text.dropAround (=='\'') x) $ Left $ buildSQLException ParseException pos "Invalid interval value, only integer values are supported"
+    validate iUnit >> return interval
 
 instance Validate ColName where
   validate col@(ColNameSimple _ colIdent) = validate colIdent >> return col
@@ -633,6 +637,9 @@ instance Validate TableRef where
   validate r@(TableRefSubquery _ select) = validate select >> return r
 #else
 instance Validate TableRef where
+  validate r@(TableRefTumbling _ ref interval) = validate ref >> validate interval >> return r
+  validate r@(TableRefHopping _ ref interval1 interval2) = validate ref >> validate interval1 >> validate interval2 >> return r
+  validate r@(TableRefSession _ ref interval) = validate ref >> validate interval >> return r
   validate r@(TableRefAs _ ref hIdent) = validate ref >> validate hIdent >> return r
   validate r@(TableRefCrossJoin _ ref1 _ ref2 i) = validate ref1 >> validate ref2 >> validate i >> return r
   validate r@(TableRefNaturalJoin _ ref1 _ ref2 i) = validate ref1 >> validate ref2 >> validate i >> return r
@@ -664,19 +671,11 @@ instance Validate GroupBy where
     (DGroupByEmpty _) -> return grp
     (DGroupBy _ cols) -> mapM_ validate cols >> return grp
 #else
-instance Validate TimeWindow where
-  validate win = case win of
-    (DTumbling _ i)    -> validate i >> return win
-    (DHopping _ i1 i2) -> validate i1 >> validate i2 >> return win
-    (DSession _ i)     -> validate i >> return win
-
 instance Validate GroupBy where
   validate grp = case grp of
     (DGroupByEmpty _) -> return grp
     (DGroupBy _ cols) -> mapM_ validate cols >> return grp
-    (DGroupByWin _ cols win) -> mapM_ validate cols >> validate win >> return grp
 #endif
-
 -- Having
 -- 1. ValueExpr in it should be legal
 instance Validate Having where
@@ -684,8 +683,21 @@ instance Validate Having where
   validate hav@(DHaving _ expr) = validate expr >> return hav
 
 ---- Select
+
 instance Validate Select where
   validate select@(DSelect _ sel@(DSel selPos selList) frm@(DFrom _ refs) whr grp hav) = do
+#ifndef HStreamUseV2Engine
+    case grp of
+      DGroupByEmpty pos -> case refs of
+        TableRefTumbling {} -> Left $ buildSQLException ParseException pos
+          "Time window function `TUMBLE` requires a `GROUP BY` CLAUSE"
+        TableRefHopping {} -> Left $ buildSQLException ParseException pos
+          "Time window function `HOP` requires a `GROUP BY` CLAUSE"
+        TableRefSession {} -> Left $ buildSQLException ParseException pos
+          "Time window function `SESSION` requires a `GROUP BY` CLAUSE"
+        _ -> pure ()
+      _ -> pure ()
+#endif
     void $ validate sel
     void $ validate frm
     void $ validate whr

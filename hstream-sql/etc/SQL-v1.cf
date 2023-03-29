@@ -110,13 +110,17 @@ SelectItemWildcard.          SelectItem ::= "*" ;
 
 -- From
 DFrom. From ::= "FROM" TableRef ;
-
 TableRefAs. TableRef ::= TableRef1 "AS" HIdent ;
 
 TableRefCrossJoin.   TableRef1 ::= TableRef1 JoinTypeWithoutCond "JOIN" TableRef2 "WITHIN" "(" Interval ")" ;
 TableRefNaturalJoin. TableRef1 ::= TableRef1 "NATURAL" JoinTypeWithCond "JOIN" TableRef2 "WITHIN" "(" Interval ")" ;
 TableRefJoinOn.      TableRef1 ::= TableRef1 JoinTypeWithCond "JOIN" TableRef2 "ON" ValueExpr "WITHIN" "(" Interval ")" ;
 TableRefJoinUsing.   TableRef1 ::= TableRef1 JoinTypeWithCond "JOIN" TableRef2 "USING" "(" [ColName] ")" "WITHIN" "(" Interval ")" ;
+
+TableRefTumbling. TableRef1 ::= "TUMBLE" "(" HIdent "," Interval ")" ;
+TableRefHopping.  TableRef1 ::= "HOP"    "(" HIdent "," Interval "," Interval ")" ;
+TableRefSession.  TableRef1 ::= "SESSION"  "(" HIdent "," Interval ")" ;
+
 TableRefIdent.     TableRef2 ::= HIdent ;
 TableRefSubquery.  TableRef2 ::= "(" Select ")" ;
 coercions TableRef 2 ;
@@ -138,13 +142,13 @@ DWhere.     Where ::= "WHERE" ValueExpr ;
 
 -- GroupBy
 
-DTumbling. TimeWindow ::= "TUMBLING" "(" Interval ")" ;
-DHopping.  TimeWindow ::= "HOPPING"  "(" Interval "," Interval ")" ;
-DSession.  TimeWindow ::= "SESSION"  "(" Interval ")" ;
+-- DTumbling. TimeWindow ::= "TUMBLING" "(" Interval ")" ;
+-- DHopping.  TimeWindow ::= "HOPPING"  "(" Interval "," Interval ")" ;
+-- DSession.  TimeWindow ::= "SESSION"  "(" Interval ")" ;
 
 DGroupByEmpty. GroupBy ::= "" ;
 DGroupBy.      GroupBy ::= "GROUP" "BY" [ColName] ;
-DGroupByWin.   GroupBy ::= "GROUP" "BY" [ColName] TimeWindow ;
+-- DGroupByWin.   GroupBy ::= "GROUP" "BY" [ColName] TimeWindow ;
 
 -- Having
 DHavingEmpty. Having ::= "" ;
@@ -236,8 +240,14 @@ ExprDate. ValueExpr7 ::= Date ;
 ExprTime. ValueExpr7 ::= Time ;
 ExprTimestamp. ValueExpr7 ::= Timestamp ;
 
-IntervalWithoutDate. Interval ::= "INTERVAL" TimeStr ;     -- TimeOfDay
-IntervalWithDate.    Interval ::= "INTERVAL" DateTimeStr ; -- LocalTime
+IntervalSecond. IntervalUnit ::= "SECOND" ;
+IntervalMinute. IntervalUnit ::= "MINUTE" ;
+IntervalHour.   IntervalUnit ::= "HOUR"   ;
+IntervalDay.    IntervalUnit ::= "DAY"    ;
+IntervalMonth.  IntervalUnit ::= "MONTH"  ;
+IntervalYear.   IntervalUnit ::= "YEAR"   ;
+
+Interval. Interval ::= "INTERVAL" SString IntervalUnit ;
 ExprInterval. ValueExpr7 ::= Interval ;
 
 -- Non-Scalar Type (Array and Map)
