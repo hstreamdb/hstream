@@ -32,7 +32,8 @@ import           HStream.SQL.Codegen.V1           (DropObject (..),
 import qualified HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils                    (ResourceType (..),
                                                    decompressBatchedRecord,
-                                                   formatResult, getServerResp)
+                                                   formatResult, getServerResp,
+                                                   newRandomText)
 
 
 streamingFetch :: T.Text -> API.HStreamApi ClientRequest response -> IO ()
@@ -73,13 +74,15 @@ cliFetch' :: Maybe (PB.Struct -> IO ()) -> HStreamCliContext -> String -> IO ()
 cliFetch' handleResult ctx sql = do
   (sName, newSql) <- genRandomSinkStreamSQL (T.pack . removeEmitChanges . words $ sql)
   subId <- genRandomSubscriptionId
-  API.Query {..} <- getServerResp =<< executeWithLookupResource ctx (Resource ResStream sName) (createStreamBySelect (T.unpack newSql))
+  qName <-  ("cli_generated_" <>) <$> newRandomText 10
+  API.Query {..} <- getServerResp =<< executeWithLookupResource ctx (Resource ResQuery qName)
+    (createStreamBySelectWithCustomQueryName (T.unpack newSql) qName)
   void . execute ctx $ createSubscription subId sName
   executeWithLookupResource_ ctx (Resource ResSubscription subId)
     (case handleResult of Nothing -> streamingFetch subId
                           Just h  -> streamingFetch' h subId)
   executeWithLookupResource_ ctx (Resource ResSubscription subId) (void . deleteSubscription subId True)
-  executeWithLookupResource_ ctx (Resource ResStream sName) (terminateQueries (OneQuery queryId))
+  executeWithLookupResource_ ctx (Resource ResQuery qName) (terminateQueries (OneQuery queryId))
   executeWithLookupResource_ ctx (Resource ResStream sName) (void . dropAction False (DStream sName))
 
 genRandomSubscriptionId :: IO T.Text

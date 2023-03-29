@@ -11,6 +11,7 @@ module HStream.Client.Action
 
   , createStream
   , createStreamBySelect
+  , createStreamBySelectWithCustomQueryName
   , deleteStream
   , getStream
   , listStreams
