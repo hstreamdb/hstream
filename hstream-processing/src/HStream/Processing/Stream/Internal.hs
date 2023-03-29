@@ -111,8 +111,7 @@ addStateStoreInternal storeName store processors builder@InternalStreamBuilder {
 
 mkInternalProcessorName :: T.Text -> InternalStreamBuilder -> IO T.Text
 mkInternalProcessorName namePrefix InternalStreamBuilder {..} = do
-  index <- readIORef isbProcessorId
-  writeIORef isbProcessorId (index + 1)
+  index <- atomicModifyIORef' isbProcessorId (\x -> (x+1, x))
   return $ namePrefix `T.append` T.pack (show index)
 
 mkInternalStoreName :: T.Text -> T.Text

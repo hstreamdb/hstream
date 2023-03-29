@@ -681,30 +681,30 @@ data RTableRef = RTableRefSimple StreamName (Maybe StreamName)
                | RTableRefWindowed RTableRef WindowType (Maybe StreamName)
 #else
 data RTableRef = RTableRefSimple StreamName (Maybe StreamName)
-               | RTableRefSubquery RSelect  (Maybe StreamName)
-               | RTableRefCrossJoin RTableRef RTableRef RInterval (Maybe StreamName)
-               | RTableRefNaturalJoin RTableRef RJoinType RTableRef RInterval (Maybe StreamName)
-               | RTableRefJoinOn RTableRef RJoinType RTableRef RValueExpr RInterval (Maybe StreamName)
-               | RTableRefJoinUsing RTableRef RJoinType RTableRef [Text] RInterval (Maybe StreamName)
-               | RTableRefWindowed StreamName WindowType (Maybe StreamName)
+              --  | RTableRefSubquery RSelect  (Maybe StreamName)
+               | RTableRefWindowed StreamName WindowType
+               | RTableRefCrossJoin RTableRef RTableRef RInterval
+               | RTableRefNaturalJoin RTableRef RJoinType RTableRef RInterval
+               | RTableRefJoinOn RTableRef RJoinType RTableRef RValueExpr RInterval
+               | RTableRefJoinUsing RTableRef RJoinType RTableRef [Text] RInterval
 #endif
                deriving (Show, Eq)
+#ifdef HStreamUseV2Engine
 setRTableRefAlias :: RTableRef -> StreamName -> RTableRef
 setRTableRefAlias ref alias = case ref of
   RTableRefSimple s _ -> RTableRefSimple s (Just alias)
   RTableRefSubquery sel _ -> RTableRefSubquery sel (Just alias)
-#ifdef HStreamUseV2Engine
   RTableRefCrossJoin r1 r2 _ -> RTableRefCrossJoin r1 r2 (Just alias)
   RTableRefNaturalJoin r1 typ r2 _ -> RTableRefNaturalJoin r1 typ r2 (Just alias)
   RTableRefJoinOn r1 typ r2 e _ -> RTableRefJoinOn r1 typ r2 e (Just alias)
   RTableRefJoinUsing r1 typ r2 cols _ -> RTableRefJoinUsing r1 typ r2 cols (Just alias)
   RTableRefWindowed r win _ -> RTableRefWindowed r win (Just alias)
-#else
-  RTableRefCrossJoin r1 r2 t _ -> RTableRefCrossJoin r1 r2 t (Just alias)
-  RTableRefNaturalJoin r1 typ r2 t _ -> RTableRefNaturalJoin r1 typ r2 t (Just alias)
-  RTableRefJoinOn r1 typ r2 e t _ -> RTableRefJoinOn r1 typ r2 e t (Just alias)
-  RTableRefJoinUsing r1 typ r2 cols t _ -> RTableRefJoinUsing r1 typ r2 cols t (Just alias)
-  RTableRefWindowed r win _ -> RTableRefWindowed r win (Just alias)
+-- #else
+--   RTableRefCrossJoin r1 r2 t _ -> RTableRefCrossJoin r1 r2 t (Just alias)
+--   RTableRefNaturalJoin r1 typ r2 t _ -> RTableRefNaturalJoin r1 typ r2 t (Just alias)
+--   RTableRefJoinOn r1 typ r2 e t _ -> RTableRefJoinOn r1 typ r2 e t (Just alias)
+--   RTableRefJoinUsing r1 typ r2 cols t _ -> RTableRefJoinUsing r1 typ r2 cols t (Just alias)
+--   RTableRefWindowed r win _ -> RTableRefWindowed r win (Just alias)
 #endif
 
 data RJoinType = InnerJoin | LeftJoin | RightJoin | FullJoin
@@ -741,20 +741,18 @@ instance Refine TableRef where
   refine (TableRefSliding _ ref interval) = RTableRefWindowed (refine ref) (Sliding (refine interval)) Nothing
 #else
   refine (TableRefIdent _ hIdent) = RTableRefSimple (refine hIdent) Nothing
-  refine (TableRefSubquery _ select) = RTableRefSubquery (refine select) Nothing
-  refine (TableRefAs _ ref alias) =
-    let rRef = refine ref
-     in setRTableRefAlias rRef (refine alias)
-  refine (TableRefCrossJoin _ r1 _ r2 interval) = RTableRefCrossJoin (refine r1) (refine r2) (refine interval) Nothing
-  refine (TableRefNaturalJoin _ r1 typ r2 interval) = RTableRefNaturalJoin (refine r1) (refine typ) (refine r2) (refine interval) Nothing
-  refine (TableRefJoinOn _ r1 typ r2 e interval) = RTableRefJoinOn (refine r1) (refine typ) (refine r2) (refine e) (refine interval) Nothing
-  refine (TableRefJoinUsing _ r1 typ r2 cols interval) = RTableRefJoinUsing (refine r1) (refine typ) (refine r2) (extractStreamNameFromColName <$> cols) (refine interval) Nothing
+  -- refine (TableRefSubquery _ select) = RTableRefSubquery (refine select) Nothing
+  refine (TableRefAs _ hIdent alias) = RTableRefSimple (refine hIdent) (Just $ refine alias)
+  refine (TableRefCrossJoin _ r1 _ r2 interval) = RTableRefCrossJoin (refine r1) (refine r2) (refine interval)
+  refine (TableRefNaturalJoin _ r1 typ r2 interval) = RTableRefNaturalJoin (refine r1) (refine typ) (refine r2) (refine interval)
+  refine (TableRefJoinOn _ r1 typ r2 e interval) = RTableRefJoinOn (refine r1) (refine typ) (refine r2) (refine e) (refine interval)
+  refine (TableRefJoinUsing _ r1 typ r2 cols interval) = RTableRefJoinUsing (refine r1) (refine typ) (refine r2) (extractStreamNameFromColName <$> cols) (refine interval)
     where extractStreamNameFromColName col = case col of
             ColNameSimple _ colIdent -> refine colIdent
             ColNameStream pos _ _    -> throwImpossible
-  refine (TableRefTumbling _ ref interval) = RTableRefWindowed (refine ref) (Tumbling (refine interval)) Nothing
-  refine (TableRefHopping _ ref len hop)   = RTableRefWindowed (refine ref) (Hopping (refine len) (refine hop)) Nothing
-  refine (TableRefSession _ ref interval)  = RTableRefWindowed (refine ref) (Session (refine interval)) Nothing
+  refine (TableRefTumbling _ ref interval) = RTableRefWindowed (refine ref) (Tumbling (refine interval))
+  refine (TableRefHopping _ ref len hop)   = RTableRefWindowed (refine ref) (Hopping (refine len) (refine hop))
+  refine (TableRefSession _ ref interval)  = RTableRefWindowed (refine ref) (Session (refine interval))
 #endif
 
 #ifdef HStreamUseV2Engine
@@ -827,8 +825,8 @@ instance Refine Select where
 instance Refine Select where
   refine (DSelect _ sel frm whr grp hav) =
     case refine frm of
-      RFrom (RTableRefWindowed r win alias)->
-        let newFrm = RFrom (RTableRefSimple r alias) in
+      RFrom (RTableRefWindowed r win)->
+        let newFrm = RFrom (RTableRefSimple r Nothing) in
         let newGrp = case refine grp of RGroupBy x _ -> RGroupBy x (Just win); x -> x in
         RSelect (refine sel) newFrm (refine whr) newGrp (refine hav)
       rfrm -> RSelect (refine sel) rfrm (refine whr) (refine grp) (refine hav)

@@ -256,11 +256,11 @@ createQueryWithNamespace'
     modifySelect (RSelect a (RFrom t) b c d) = RSelect a (RFrom (modifyTableRef t)) b c d
     modifyTableRef :: RTableRef -> RTableRef
     modifyTableRef (RTableRefSimple                   x my) = RTableRefSimple      (addNamespace x) (addNamespace <$> my)
-    modifyTableRef (RTableRefSubquery            select mx) = RTableRefSubquery    (modifySelect select) (addNamespace <$> mx)
-    modifyTableRef (RTableRefCrossJoin          t1 t2 i mx) = RTableRefCrossJoin   (modifyTableRef t1) (modifyTableRef t2) i (addNamespace <$> mx)
-    modifyTableRef (RTableRefNaturalJoin      t1 j t2 i mx) = RTableRefNaturalJoin (modifyTableRef t1) j (modifyTableRef t2) i (addNamespace <$> mx)
-    modifyTableRef (RTableRefJoinOn         t1 j t2 v i mx) = RTableRefJoinOn      (modifyTableRef t1) j (modifyTableRef t2) v i (addNamespace <$> mx)
-    modifyTableRef (RTableRefJoinUsing   t1 j t2 cols i mx) = RTableRefJoinUsing   (modifyTableRef t1) j (modifyTableRef t2) cols i (addNamespace <$> mx)
+    -- modifyTableRef (RTableRefSubquery            select mx) = RTableRefSubquery    (modifySelect select)
+    modifyTableRef (RTableRefCrossJoin          t1 t2 i) = RTableRefCrossJoin   (modifyTableRef t1) (modifyTableRef t2) i
+    modifyTableRef (RTableRefNaturalJoin      t1 j t2 i) = RTableRefNaturalJoin (modifyTableRef t1) j (modifyTableRef t2) i
+    modifyTableRef (RTableRefJoinOn         t1 j t2 v i) = RTableRefJoinOn      (modifyTableRef t1) j (modifyTableRef t2) v i
+    modifyTableRef (RTableRefJoinUsing   t1 j t2 cols i) = RTableRefJoinUsing   (modifyTableRef t1) j (modifyTableRef t2) cols i
 
 #endif
 

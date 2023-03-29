@@ -249,8 +249,8 @@ affiliateMapR tups =
                   ) recordValue tups
      in record{ recordValue = recordValue' }
 
-relationExprToGraph :: RelationExpr -> IO (EStream, [StreamName], [StreamJoined K V K V Ser], [HS.Materialized K V V])
-relationExprToGraph relation = case relation of
+relationExprToGraph :: RelationExpr -> StreamBuilder -> IO (EStream, [StreamName], [StreamJoined K V K V Ser], [HS.Materialized K V V])
+relationExprToGraph relation builder = case relation of
   StreamScan stream -> do
     let sourceConfig = HS.StreamSourceConfig
                      { sscStreamName = stream
@@ -258,11 +258,10 @@ relationExprToGraph relation = case relation of
                      , sscValueSerde = flowObjectSerde
                      }
     -- FIXME: builder name
-    builderName <- newRandomText 20
-    s' <- HS.mkStreamBuilder builderName >>= HS.stream sourceConfig
+    s' <- HS.stream sourceConfig builder
     return (EStream1 s', [stream], [], [])
   StreamRename r alias -> do
-    (es,srcs,joins,mats) <- relationExprToGraph r
+    (es,srcs,joins,mats) <- relationExprToGraph r builder
     es' <- withEStreamM es SK (HS.map $ renameMapR alias) (HS.map $ renameMapR alias)
     return (es',srcs,joins,mats)
   CrossJoin r1 r2 t -> do
@@ -274,8 +273,8 @@ relationExprToGraph relation = case relation of
                     , jwAfterMs  = t
                     , jwGraceMs  = 0
                     }
-    (es1,srcs1,joins1,mats1) <- relationExprToGraph r1
-    (es2,srcs2,joins2,mats2) <- relationExprToGraph r2
+    (es1,srcs1,joins1,mats1) <- relationExprToGraph r1 builder
+    (es2,srcs2,joins2,mats2) <- relationExprToGraph r2 builder
     -- FIXME: join timewindowed stream
     case (es1, es2) of
       (EStream1 s1, EStream1 s2) -> do
@@ -295,8 +294,8 @@ relationExprToGraph relation = case relation of
                     , jwAfterMs  = t
                     , jwGraceMs  = 0
                     }
-    (es1,srcs1,joins1,mats1) <- relationExprToGraph r1
-    (es2,srcs2,joins2,mats2) <- relationExprToGraph r2
+    (es1,srcs1,joins1,mats1) <- relationExprToGraph r1 builder
+    (es2,srcs2,joins2,mats2) <- relationExprToGraph r2 builder
     -- FIXME: join timewindowed stream
     case (es1, es2) of
       (EStream1 s1, EStream1 s2) -> do
@@ -315,8 +314,8 @@ relationExprToGraph relation = case relation of
                     , jwAfterMs  = t
                     , jwGraceMs  = 0
                     }
-    (es1,srcs1,joins1,mats1) <- relationExprToGraph r1
-    (es2,srcs2,joins2,mats2) <- relationExprToGraph r2
+    (es1,srcs1,joins1,mats1) <- relationExprToGraph r1 builder
+    (es2,srcs2,joins2,mats2) <- relationExprToGraph r2 builder
     -- FIXME: join timewindowed stream
     case (es1, es2) of
       (EStream1 s1, EStream1 s2) -> do
@@ -340,8 +339,8 @@ relationExprToGraph relation = case relation of
                     , jwAfterMs  = t
                     , jwGraceMs  = 0
                     }
-    (es1,srcs1,joins1,mats1) <- relationExprToGraph r1
-    (es2,srcs2,joins2,mats2) <- relationExprToGraph r2
+    (es1,srcs1,joins1,mats1) <- relationExprToGraph r1 builder
+    (es2,srcs2,joins2,mats2) <- relationExprToGraph r2 builder
     -- FIXME: join timewindowed stream
     case (es1, es2) of
       (EStream1 s1, EStream1 s2) -> do
@@ -350,17 +349,17 @@ relationExprToGraph relation = case relation of
         return (EStream1 s', srcs1++srcs2, streamJoined:joins1++joins2, mats1++mats2)
       _ -> throwSQLException CodegenException Nothing "Joining time-windowed and non-time-windowed streams is not supported"
   Planner.Filter r scalar -> do
-    (es,srcs,joins,mats) <- relationExprToGraph r
+    (es,srcs,joins,mats) <- relationExprToGraph r builder
     es' <- withEStreamM es SK (HS.filter $ filterFilterR scalar)
                               (HS.filter $ filterFilterR scalar)
     return (es',srcs,joins,mats)
   Project r cataTups streams -> do
-    (es,srcs,joins,mats) <- relationExprToGraph r
+    (es,srcs,joins,mats) <- relationExprToGraph r builder
     es' <- withEStreamM es SK (HS.map $ projectMapR cataTups streams)
                               (HS.map $ projectMapR cataTups streams)
     return (es',srcs,joins,mats)
   Affiliate r tups -> do
-    (es,srcs,joins,mats) <- relationExprToGraph r
+    (es,srcs,joins,mats) <- relationExprToGraph r builder
     es' <- withEStreamM es SK (HS.map $ affiliateMapR tups)
                               (HS.map $ affiliateMapR tups)
     return (es',srcs,joins,mats)
@@ -384,7 +383,7 @@ relationExprToGraph relation = case relation of
 
     materialized  <- genMaterialized win_m
 
-    (es,srcs,joins,mats) <- relationExprToGraph r
+    (es,srcs,joins,mats) <- relationExprToGraph r builder
     case es of
       EStream2 _ -> throwSQLException CodegenException Nothing "Reducing a time-windowed stream is not supported"
       EStream1 s -> do
@@ -485,7 +484,8 @@ elabRSelect :: Text
             -> IO (StreamBuilder, [StreamName], StreamName, Persist)
 elabRSelect taskName sinkStream' select@(RSelect sel frm whr grp hav) = do
   sinkConfig           <- genStreamSinkConfig sinkStream' grp
-  (es,srcs,joins,mats) <- relationExprToGraph (decouple select)
+  builder <- newRandomText 20 >>= HS.mkStreamBuilder
+  (es,srcs,joins,mats) <- relationExprToGraph (decouple select) builder
   case es of
     EStream1 s ->
       case sinkConfig of

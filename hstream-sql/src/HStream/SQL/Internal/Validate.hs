@@ -640,7 +640,7 @@ instance Validate TableRef where
   validate r@(TableRefTumbling _ ref interval) = validate ref >> validate interval >> return r
   validate r@(TableRefHopping _ ref interval1 interval2) = validate ref >> validate interval1 >> validate interval2 >> return r
   validate r@(TableRefSession _ ref interval) = validate ref >> validate interval >> return r
-  validate r@(TableRefAs _ ref hIdent) = validate ref >> validate hIdent >> return r
+  validate r@(TableRefAs _ hIdent alias) = validate hIdent >> validate alias >> return r
   validate r@(TableRefCrossJoin _ ref1 _ ref2 i) = validate ref1 >> validate ref2 >> validate i >> return r
   validate r@(TableRefNaturalJoin _ ref1 _ ref2 i) = validate ref1 >> validate ref2 >> validate i >> return r
   validate r@(TableRefJoinOn _ ref1 jointype ref2 expr i) = validate ref1 >> validate ref2 >> validate expr >> validate i >> return r
@@ -655,7 +655,7 @@ instance Validate TableRef where
     validate i
     return r
   validate r@(TableRefIdent _ hIdent) = validate hIdent >> Right r
-  validate r@(TableRefSubquery _ select) = validate select >> return r
+  -- validate r@(TableRefSubquery _ select) = validate select >> return r
 #endif
 
 -- Where
