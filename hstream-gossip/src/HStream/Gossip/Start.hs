@@ -48,7 +48,8 @@ import           HStream.Gossip.Types             (Epoch, EventHandlers,
                                                    EventPayload,
                                                    GossipContext (..),
                                                    GossipOpts (..),
-                                                   InitType (..))
+                                                   InitType (..),
+                                                   StateEventHandler)
 import           HStream.Gossip.Utils             (ClusterInitedErr (..),
                                                    ClusterReadyErr (..),
                                                    FailedToStart (..),
@@ -62,8 +63,8 @@ import qualified HStream.Logger                   as Log
 import qualified HStream.Server.HStreamInternal   as I
 import qualified HStream.Utils                    as U
 
-initGossipContext :: GossipOpts -> EventHandlers -> I.ServerNode -> [(ByteString, Int)] -> IO GossipContext
-initGossipContext gossipOpts _eventHandlers serverSelf seeds = do
+initGossipContext :: GossipOpts -> EventHandlers -> Maybe StateEventHandler -> I.ServerNode -> [(ByteString, Int)] -> IO GossipContext
+initGossipContext gossipOpts _eventHandlers stateEventHandler serverSelf seeds = do
   when (null seeds) $ error " Please specify at least one node to start with"
   actionChan    <- newBroadcastTChanIO
   statePool     <- newTQueueIO

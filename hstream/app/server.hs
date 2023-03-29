@@ -111,7 +111,7 @@ app config@ServerOpts{..} = do
                          , serverNodeGossipAddress = encodeUtf8 . T.pack $ _serverGossipAddress
                          , serverNodeAdvertisedListeners = advertisedListenersToPB _serverAdvertisedListeners
                          }
-      gossipContext <- initGossipContext defaultGossipOpts mempty serverNode _seedNodes
+      gossipContext <- initGossipContext defaultGossipOpts mempty Nothing serverNode _seedNodes
 
       serverContext <- initializeServer config gossipContext h db_m
       void . forkIO $ updateHashRing gossipContext (loadBalanceHashRing serverContext)

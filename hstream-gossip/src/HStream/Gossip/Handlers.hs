@@ -73,6 +73,7 @@ handleStateMessage GossipContext{..} msg@(T.GConfirm inc node@I.ServerNode{..} _
           modifyTVar' serverList $ first succ
           modifyTVar' deadServers $ Map.insert serverNodeId serverInfo
           stateTVar workers (Map.updateLookupWithKey (\_ _ -> Nothing) serverNodeId)
+        case stateEventHandler of Just f -> f ServerDead node; Nothing -> pure ()
         case mWorker of
           Nothing -> pure ()
           Just  a -> do
@@ -91,12 +92,17 @@ handleStateMessage GossipContext{..} msg@(T.GSuspect inc node@I.ServerNode{..} _
         Just ServerStatus{..} -> do
           inc' <- readTVar stateIncarnation
           state <- readTVar serverState
-          when (inc > inc' && state == ServerSuspicious || inc >= inc' && state == ServerAlive) $ do
+          let ifHandle = inc > inc' && state == ServerSuspicious || inc >= inc' && state == ServerAlive
+          when ifHandle $ do
             writeTVar serverState ServerSuspicious
             writeTVar stateChange now
             writeTVar incarnation inc
             modifyTVar broadcastPool (broadcastMessage $ T.GState msg)
-          return (Log.info . Log.buildString $ "HStream-Gossip: [Server Node " <> show (I.serverNodeId serverSelf) <> "] handled message " <> show (T.TC msg))
+          if ifHandle
+            then return $ do
+              case stateEventHandler of Just f -> f ServerSuspicious node; Nothing -> pure ()
+              Log.info . Log.buildString $ "HStream-Gossip: [Server Node " <> show (I.serverNodeId serverSelf) <> "] handled message " <> show (T.TC msg)
+            else return (pure ())
         Nothing -> return $ Log.debug "Suspected node not found in the server list"
           -- addToServerList gc node msg Suspicious
 handleStateMessage gc@GossipContext{..} msg@(T.GAlive i node@I.ServerNode{..} _node) = do
@@ -122,7 +128,7 @@ handleStateMessage gc@GossipContext{..} msg@(T.GAlive i node@I.ServerNode{..} _n
         modifyTVar' broadcastPool (broadcastMessage $ T.GState msg)
         modifyTVar' deadServers $ Map.delete serverNodeId
       if oldState == ServerDead && node /= serverSelf
-        then return (logHandled whetherHandle >> addToServerList gc node status False)
+        then return (logHandled whetherHandle >> case stateEventHandler of Just f -> f ServerSuspicious node; Nothing -> pure (); >> addToServerList gc node status False)
         else return (logHandled whetherHandle)
   where
     addNew now = do
