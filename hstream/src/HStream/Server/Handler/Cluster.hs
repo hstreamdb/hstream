@@ -9,7 +9,6 @@ module HStream.Server.Handler.Cluster
     describeClusterHandler
   , lookupShardHandler
   , lookupSubscriptionHandler
-  , lookupConnectorHandler
   , lookupShardReaderHandler
   , lookupResourceHandler
     -- * For hs-grpc-server
@@ -18,7 +17,6 @@ module HStream.Server.Handler.Cluster
   , handleLookupShard
   , handleLookupSubscription
   , handleLookupShardReader
-  , handleLookupConnector
   ) where
 
 import qualified HsGrpc.Server                    as G
@@ -62,14 +60,6 @@ lookupSubscriptionHandler
 lookupSubscriptionHandler sc (ServerNormalRequest _meta req) =
   defaultExceptionHandle $ returnResp =<< C.lookupSubscription sc req
 
-{-# DEPRECATED lookupConnectorHandler "Use lookupResourceHandler instead" #-}
-lookupConnectorHandler
-  :: ServerContext
-  -> ServerRequest 'Normal LookupConnectorRequest LookupConnectorResponse
-  -> IO (ServerResponse 'Normal LookupConnectorResponse)
-lookupConnectorHandler sc (ServerNormalRequest _meta req) =
-  defaultExceptionHandle $ returnResp =<< C.lookupConnector sc req
-
 {-# DEPRECATED lookupShardReaderHandler "Use lookupResourceHandler instead" #-}
 lookupShardReaderHandler
   :: ServerContext
@@ -101,8 +91,3 @@ handleLookupShardReader
   -> G.UnaryHandler LookupShardReaderRequest LookupShardReaderResponse
 handleLookupShardReader sc _ req = catchDefaultEx $
   C.lookupShardReader sc req
-
-{-# DEPRECATED handleLookupConnector "Use handleLookupResource instead" #-}
-handleLookupConnector
-  :: ServerContext -> G.UnaryHandler LookupConnectorRequest LookupConnectorResponse
-handleLookupConnector sc _ req = catchDefaultEx $ C.lookupConnector sc req

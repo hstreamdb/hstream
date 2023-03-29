@@ -1,28 +1,31 @@
-{-# LANGUAGE TemplateHaskell       #-}
-{-# OPTIONS_GHC -Wno-deferred-out-of-scope-variables #-}
 {-# LANGUAGE DeriveAnyClass        #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TemplateHaskell       #-}
 
 module HStream.IO.Types where
 
-import qualified Control.Concurrent         as C
-import           Control.Exception          (Exception)
-import qualified Data.Aeson                 as J
-import qualified Data.Aeson.TH              as JT
-import qualified Data.ByteString.Lazy       as BSL
-import qualified Data.ByteString.Lazy.Char8 as BSLC
-import qualified Data.HashMap.Strict        as HM
-import           Data.IORef                 (IORef)
-import qualified Data.Text                  as T
-import qualified GHC.IO.Handle              as IO
-import qualified System.Process.Typed       as TP
-import           ZooKeeper.Types            (ZHandle)
+import qualified Control.Concurrent          as C
+import           Control.Exception           (Exception)
+import qualified Data.Aeson                  as J
+import qualified Data.Aeson.TH               as JT
+import qualified Data.ByteString.Lazy        as BSL
+import qualified Data.ByteString.Lazy.Char8  as BSLC
+import qualified Data.HashMap.Strict         as HM
+import           Data.IORef                  (IORef)
+import qualified Data.Text                   as T
+import qualified GHC.IO.Handle               as IO
+import qualified System.Process.Typed        as TP
+import           ZooKeeper.Types             (ZHandle)
 
-import           HStream.MetaStore.Types    (FHandle, HasPath (..), MetaHandle,
-                                             RHandle (..))
-import qualified HStream.Server.HStreamApi  as API
-import           HStream.Utils              (pairListToStruct, textToMaybeValue)
+import qualified Control.Exception           as E
+import qualified Data.Aeson.Text             as J
+import qualified Data.Text.Lazy              as TL
+import qualified HStream.Exception           as E
+import           HStream.MetaStore.Types     (FHandle, HasPath (..), MetaHandle,
+                                              RHandle (..))
+import qualified HStream.Server.HStreamApi   as API
+import qualified HStream.ThirdParty.Protobuf as Grpc
 
 data IOTaskType = SOURCE | SINK
   deriving (Show, Eq)
@@ -38,9 +41,10 @@ $(JT.deriveJSON JT.defaultOptions ''TaskConfig)
 data TaskInfo = TaskInfo
   { taskName        :: T.Text
   , taskType        :: IOTaskType
+  , taskTarget      :: T.Text
+  , taskCreatedTime :: Grpc.Timestamp
   , taskConfig      :: TaskConfig
   , connectorConfig :: J.Value
-  , originSql       :: T.Text
   }
   deriving (Show)
 $(JT.deriveJSON JT.defaultOptions ''TaskInfo)
@@ -156,21 +160,36 @@ instance TaskJson ConnectorMetaConfig where
 instance TaskJson HStreamConfig where
   toTaskJson HStreamConfig {..} _ = J.object [ "serviceUrl" J..= serviceUrl]
 
-mkConnector :: T.Text -> T.Text -> API.Connector
-mkConnector name status = API.Connector. Just $
-  pairListToStruct
-    [ ("name", textToMaybeValue name)
-    , ("status", textToMaybeValue status)
-    ]
-
-convertTaskMeta :: TaskMeta -> API.Connector
-convertTaskMeta TaskMeta {..} = mkConnector (taskName taskInfoMeta) (ioTaskStatusToText taskStateMeta)
+convertTaskMeta :: Bool -> TaskMeta -> API.Connector
+convertTaskMeta addConfig TaskMeta {..} =
+  API.Connector
+    (taskName taskInfoMeta)
+    (ioTaskTypeToText . taskType $ taskInfoMeta)
+    (taskTarget taskInfoMeta)
+    (Just . taskCreatedTime $ taskInfoMeta)
+    (ioTaskStatusToText taskStateMeta)
+    cfg
+  where
+    cfg = if addConfig
+      then TL.toStrict . J.encodeToLazyText $ taskConfig taskInfoMeta
+      else ""
 
 ioTaskStatusToText :: IOTaskStatus -> T.Text
 ioTaskStatusToText = T.pack . show
 
 ioTaskStatusToBS :: IOTaskStatus -> BSL.ByteString
 ioTaskStatusToBS = BSLC.pack . show
+
+ioTaskTypeToText :: IOTaskType -> T.Text
+ioTaskTypeToText typ = case typ of
+  SOURCE -> "SOURCE"
+  SINK   -> "SINK"
+
+ioTaskTypeFromText :: T.Text -> IOTaskType
+ioTaskTypeFromText typ = case T.toUpper typ of
+  "SOURCE" -> SOURCE
+  "SINK"   -> SINK
+  _        -> E.throw (E.InvalidConnectorType typ)
 
 -- -------------------------------------------------------------------------- --
 
