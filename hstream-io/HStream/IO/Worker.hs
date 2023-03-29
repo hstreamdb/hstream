@@ -15,6 +15,7 @@ import           Data.Maybe                (fromMaybe)
 import qualified Data.Text                 as T
 import           GHC.Stack                 (HasCallStack)
 
+import qualified HStream.Exception         as HE
 import qualified HStream.IO.IOTask         as IOTask
 import qualified HStream.IO.Meta           as M
 import           HStream.IO.Types
@@ -49,8 +50,11 @@ monitor worker@Worker{..} = do
       ioTasks <- C.readMVar ioTasksM
       forM_ ioTasks IOTask.checkProcess
 
-createIOTask :: HasCallStack =>  Worker -> T.Text -> TaskInfo -> IO ()
-createIOTask Worker{..} taskId taskInfo@TaskInfo {..} = do
+createIOTask :: HasCallStack => Worker -> T.Text -> TaskInfo -> IO ()
+createIOTask worker@Worker{..} taskId taskInfo@TaskInfo {..} = do
+  getIOTask worker taskName >>= \case
+    Nothing -> pure ()
+    Just _ -> throwIO $ HE.ConnectorExists taskName
   let taskPath = optTasksPath options <> "/" <> taskId
   task <- IOTask.newIOTask taskId workerHandle taskInfo taskPath
   IOTask.initIOTask task
@@ -58,36 +62,42 @@ createIOTask Worker{..} taskId taskInfo@TaskInfo {..} = do
   M.createIOTaskMeta workerHandle taskName taskId taskInfo
   C.modifyMVar_ ioTasksM $ \ioTasks -> do
     case HM.lookup taskName ioTasks of
-      Just _ -> throwIO $ ConnectorExistedException taskName
+      Just _ -> throwIO $ HE.ConnectorExists taskName
       Nothing -> do
         IOTask.startIOTask task
         return $ HM.insert taskName task ioTasks
 
-getSpec :: HasCallStack => Worker -> T.Text -> T.Text -> IO T.Text
+getSpec :: Worker -> T.Text -> T.Text -> IO T.Text
 getSpec Worker{..} typ target = IOTask.getSpec img
   where img = makeImage (ioTaskTypeFromText typ) target options
 
-showIOTask :: Worker -> T.Text -> IO (Maybe API.Connector)
-showIOTask Worker{..} name =
-  fmap convertTaskMeta <$> M.getIOTaskMeta workerHandle name
+showIOTask_ :: Worker -> T.Text -> IO API.Connector
+showIOTask_ worker@Worker{..} name = do
+  ioTask <- getIOTask_ worker name
+  M.getIOTaskMeta workerHandle (taskId ioTask) >>= \case
+    Nothing -> throwIO $ HE.ConnectorNotFound name
+    Just c  -> return $ convertTaskMeta True c
 
 listIOTasks :: Worker -> IO [API.Connector]
 listIOTasks Worker{..} = M.listIOTaskMeta workerHandle
 
 stopIOTask :: Worker -> T.Text -> Bool -> Bool-> IO ()
 stopIOTask worker name ifIsRunning force = do
-  ioTask <- getIOTask worker name
+  ioTask <- getIOTask_ worker name
   IOTask.stopIOTask ioTask ifIsRunning force
 
 startIOTask :: Worker -> T.Text -> IO ()
 startIOTask worker name = do
-  getIOTask worker name >>= IOTask.startIOTask
+  getIOTask_ worker name >>= IOTask.startIOTask
 
-getIOTask :: Worker -> T.Text -> IO IOTask
-getIOTask Worker{..} name = do
+getIOTask :: Worker -> T.Text -> IO (Maybe IOTask)
+getIOTask Worker{..} name = HM.lookup name <$> C.readMVar ioTasksM
+
+getIOTask_ :: Worker -> T.Text -> IO IOTask
+getIOTask_ Worker{..} name = do
   ioTasks <- C.readMVar ioTasksM
   case HM.lookup name ioTasks of
-    Nothing     -> throwIO $ ConnectorNotExistException name
+    Nothing     -> throwIO $ HE.ConnectorNotFound name
     Just ioTask -> return ioTask
 
 deleteIOTask :: Worker -> T.Text -> IO ()

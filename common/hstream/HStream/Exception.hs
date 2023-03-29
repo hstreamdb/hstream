@@ -78,6 +78,7 @@ module HStream.Exception
   , LocalMetaStoreTableAlreadyExists (..)
   , LocalMetaStoreObjectAlreadyExists (..)
   , PushQueryCreated (..)
+  , ConnectorExists (..)
 
     -- * Exception: SomePermissionDenied
     --
@@ -390,6 +391,7 @@ MAKE_STD_EX_1(SomeAlreadyExists, RQLiteRowAlreadyExists, String, API.ErrorCodeIn
 MAKE_STD_EX_1(SomeAlreadyExists, LocalMetaStoreTableAlreadyExists, String, API.ErrorCodeInternalError)
 MAKE_STD_EX_1(SomeAlreadyExists, LocalMetaStoreObjectAlreadyExists, String, API.ErrorCodeInternalError)
 MAKE_STD_EX_1(SomeAlreadyExists, PushQueryCreated, String, API.ErrorCodeInternalError)
+MAKE_STD_EX_1(SomeAlreadyExists, ConnectorExists, Text, API.ErrorCodeConnectorExists)
 
 -------------------------------------------------------------------------------
 -- Exception: SomePermissionDenied

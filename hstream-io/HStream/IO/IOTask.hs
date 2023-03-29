@@ -20,13 +20,13 @@ import           System.Directory           (createDirectoryIfMissing)
 import qualified System.Process.Typed       as TP
 
 import qualified Control.Concurrent.Async   as Async
+import qualified Data.Aeson.Text            as J
 import           Data.Maybe                 (isNothing)
 import qualified HStream.IO.Messages        as MSG
 import qualified HStream.IO.Meta            as M
 import           HStream.IO.Types
 import qualified HStream.Logger             as Log
 import qualified HStream.MetaStore.Types    as M
-import qualified Data.Aeson.Text as J
 
 newIOTask :: T.Text -> M.MetaHandle -> TaskInfo -> T.Text -> IO IOTask
 newIOTask taskId taskHandle taskInfo path = do

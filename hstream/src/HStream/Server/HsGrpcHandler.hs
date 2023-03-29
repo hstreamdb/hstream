@@ -28,7 +28,6 @@ handlers sc =
   , unary (GRPC :: GRPC P.HStreamApi "lookupShard") (H.handleLookupShard sc)
   , unary (GRPC :: GRPC P.HStreamApi "lookupSubscription") (H.handleLookupSubscription sc)
   , unary (GRPC :: GRPC P.HStreamApi "lookupShardReader") (H.handleLookupShardReader sc)
-  , unary (GRPC :: GRPC P.HStreamApi "lookupConnector") (H.handleLookupConnector sc)
     -- Stream
   , unary (GRPC :: GRPC P.HStreamApi "createStream") (H.handleCreateStream sc)
   , unary (GRPC :: GRPC P.HStreamApi "deleteStream") (H.handleDeleteStream sc)

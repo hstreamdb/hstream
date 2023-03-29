@@ -7,7 +7,6 @@ module HStream.Server.Core.Cluster
   , lookupShard
   , lookupSubscription
   , lookupShardReader
-  , lookupConnector
   ) where
 
 import           Control.Concurrent            (tryReadMVar)
@@ -79,20 +78,6 @@ lookupShard ServerContext{..} req@LookupShardRequest {
   return $ LookupShardResponse
     { lookupShardResponseShardId    = shardId
     , lookupShardResponseServerNode = Just theNode
-    }
-
-{-# DEPRECATED lookupConnector "Use lookupResource instead" #-}
-lookupConnector
-  :: ServerContext
-  -> LookupConnectorRequest
-  -> IO LookupConnectorResponse
-lookupConnector sc req@LookupConnectorRequest{
-  lookupConnectorRequestName = name} = do
-  Log.info $ "receive lookupConnector request: " <> Log.buildString (show req)
-  theNode <- lookupResource' sc ResConnector name
-  return $ LookupConnectorResponse
-    { lookupConnectorResponseName = name
-    , lookupConnectorResponseServerNode     = Just theNode
     }
 
 {-# DEPRECATED lookupSubscription "Use lookupResource instead" #-}
