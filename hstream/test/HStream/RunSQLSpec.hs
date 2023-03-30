@@ -139,8 +139,8 @@ viewSpec =
     threadDelay 500000
     runInsertSql api $ "INSERT INTO " <> source1 <> " (a) VALUES (2);"
     threadDelay 10000000
-    runQuerySimple api ("SELECT * FROM " <> viewName <> " WHERE b = 1;")
-      `grpcShouldReturn` mkViewResponse (mkStruct [ ("SUM(a)", Aeson.Number 3)
+    runViewQuerySql api ("SELECT * FROM " <> viewName <> " WHERE b = 1;")
+      `shouldReturn` mkViewResponse (mkStruct [ ("SUM(a)", Aeson.Number 3)
                                                   , ("b", Aeson.Number 1)
                                                   ])
 
@@ -149,7 +149,7 @@ viewSpec =
     threadDelay 500000
     runInsertSql api $ "INSERT INTO " <> source1 <> " (a) VALUES (4);"
     threadDelay 10000000
-    runQuerySimple api ("SELECT * FROM " <> viewName <> " WHERE b = 1;")
-      `grpcShouldReturn` mkViewResponse (mkStruct [ ("SUM(a)", Aeson.Number 10)
+    runViewQuerySql api ("SELECT * FROM " <> viewName <> " WHERE b = 1;")
+      `shouldReturn` mkViewResponse (mkStruct [ ("SUM(a)", Aeson.Number 10)
                                                   , ("b", Aeson.Number 1)
                                                   ])

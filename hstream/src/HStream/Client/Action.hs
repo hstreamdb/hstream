@@ -37,7 +37,9 @@ module HStream.Client.Action
   , lookupResource
   , describeCluster
 
-  ,retry
+  , executeViewQuery
+
+  , retry
   ) where
 
 import           Control.Concurrent               (threadDelay)
@@ -203,6 +205,9 @@ getStream sName HStreamApi{..} = hstreamApiGetStream $ mkClientNormalRequest' de
 
 getSubscription :: T.Text -> Action GetSubscriptionResponse
 getSubscription sid HStreamApi{..} = hstreamApiGetSubscription $ mkClientNormalRequest' def { getSubscriptionRequestId = sid }
+
+executeViewQuery :: String -> Action ExecuteViewQueryResponse
+executeViewQuery sql HStreamApi{..} = hstreamApiExecuteViewQuery $ mkClientNormalRequest' def { executeViewQueryRequestSql = T.pack sql }
 
 --------------------------------------------------------------------------------
 

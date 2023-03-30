@@ -32,8 +32,9 @@ import           HStream.Client.Action            (createConnector,
                                                    createStream,
                                                    createStreamBySelect,
                                                    createStreamBySelectWithCustomQueryName,
-                                                   dropAction, insertIntoStream,
-                                                   listShards, pauseConnector,
+                                                   dropAction, executeViewQuery,
+                                                   insertIntoStream, listShards,
+                                                   pauseConnector,
                                                    resumeConnector, retry,
                                                    terminateQueries)
 import           HStream.Client.Execute           (execute, executeShowPlan,
@@ -130,6 +131,7 @@ commandExec HStreamSqlContext{hstreamCliContext = cliCtx@HStreamCliContext{..},.
       RQCreate RCreateAs {} -> do
         qName <-  ("cli_generated_" <>) <$> newRandomText 10
         executeWithLookupResource_ cliCtx (Resource ResQuery qName) (createStreamBySelectWithCustomQueryName xs qName)
+      RQSelect {} -> execute_ cliCtx $ executeViewQuery xs
       rSql' -> hstreamCodegen rSql' >>= \case
         ShowPlan showObj      -> executeShowPlan cliCtx showObj
         -- FIXME: add lookup after supporting lookup stream and lookup view

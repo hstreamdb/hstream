@@ -105,25 +105,7 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
         Core.createView' sc view ins out builder accumulation commandQueryStmtText
       pure $ API.CommandQueryResponse (mkVectorStruct queryId "view_query_id")
 #else
-    SelectPlan sources sink builder persist -> do
-      roles_m <- mapM (findIdentifierRole sc) sources
-      case all (== Just RoleView) roles_m of
-        False -> do
-          Log.warning "Can not perform non-pushing SELECT on streams."
-          throwIO $ HE.InvalidSqlStatement "Can not perform non-pushing SELECT on streams."
-        True  -> do
-          hm <- readIORef P.groupbyStores
-          let mats = L.map ((HM.!) hm) sources
-
-          sinkRecords_m <- newIORef []
-          let sinkConnector = HStore.memorySinkConnector sinkRecords_m
-          HP.runImmTask (sources `zip` mats) sinkConnector builder () () Just Just
-          sinkRecords <- readIORef sinkRecords_m
-
-          let flowObjects = (L.map (fromJust . Aeson.decode . snkValue) sinkRecords) :: [FlowObject]
-          case flowObjects of
-            [] -> sendResp mempty
-            _  -> sendResp (V.fromList $ flowObjectToJsonObject <$> flowObjects)
+    SelectPlan {} -> discard "ExecuteViewQuery"
     CreateViewPlan sources sink view builder persist -> do
       validateNameAndThrow sink
       validateNameAndThrow view

@@ -90,6 +90,7 @@ handlers serverContext@ServerContext{..} =
         hstreamApiGetView = getViewHandler serverContext,
         hstreamApiListViews = listViewsHandler serverContext,
         hstreamApiDeleteView = deleteViewHandler serverContext,
+        hstreamApiExecuteViewQuery = executeViewQueryHandler serverContext,
 
         -- Cluster
         hstreamApiDescribeCluster    = describeClusterHandler serverContext,

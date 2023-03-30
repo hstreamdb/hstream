@@ -91,8 +91,8 @@ spec = aroundAll provideHstreamApi $
       threadDelay 500000
       runInsertSql api "INSERT INTO s6 (key1, key2, key3) VALUES (4, \"hello_00000000000000000000\", true);"
     threadDelay 20000000
-    runQuerySimple api "SELECT * FROM v6 WHERE key3 = FALSE;"
-      `grpcShouldReturn` mkViewResponse (mkStruct [ ("SUM(key1)", Aeson.Number 4)
+    runViewQuerySql api "SELECT * FROM v6 WHERE key3 = FALSE;"
+      `shouldReturn` mkViewResponse (mkStruct [ ("SUM(key1)", Aeson.Number 4)
                                                   , ("key2", Aeson.String "hello_00000000000000000001")
                                                   , ("key3", Aeson.Bool False)]
                                         )
