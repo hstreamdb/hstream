@@ -31,6 +31,7 @@ import           Text.RawString.QQ                (r)
 import           HStream.Client.Action            (createConnector,
                                                    createStream,
                                                    createStreamBySelect,
+                                                   createStreamBySelectWithCustomQueryName,
                                                    dropAction, insertIntoStream,
                                                    listShards, pauseConnector,
                                                    resumeConnector, retry,
@@ -69,7 +70,8 @@ import           HStream.Utils                    (HStreamClientApi,
                                                    ResourceType (..),
                                                    formatCommandQueryResponse,
                                                    formatResult,
-                                                   mkGRPCClientConfWithSSL)
+                                                   mkGRPCClientConfWithSSL,
+                                                   newRandomText)
 
 -- and this needs to be optimized. This could be done with a grpc client pool.
 interactiveSQLApp :: HStreamSqlContext -> Maybe FilePath -> IO ()
@@ -125,8 +127,9 @@ commandExec HStreamSqlContext{hstreamCliContext = cliCtx@HStreamCliContext{..},.
     rSQL <- parseAndRefine $ T.pack xs
     case rSQL of
       RQPushSelect{} -> cliFetch cliCtx xs
-      RQCreate RCreateAs {} ->
-        execute_ cliCtx $ createStreamBySelect xs
+      RQCreate RCreateAs {} -> do
+        qName <-  ("cli_generated_" <>) <$> newRandomText 10
+        executeWithLookupResource_ cliCtx (Resource ResQuery qName) (createStreamBySelectWithCustomQueryName xs qName)
       rSql' -> hstreamCodegen rSql' >>= \case
         ShowPlan showObj      -> executeShowPlan cliCtx showObj
         -- FIXME: add lookup after supporting lookup stream and lookup view
