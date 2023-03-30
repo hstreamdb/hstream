@@ -171,12 +171,10 @@ renderConnectorsToTable :: [API.Connector] -> String
 renderConnectorsToTable connectors = showTable titles rows
   where
     titles = ["Name", "Status"]
-    formatRow API.Connector {connectorInfo=Just info} =
-      [ [maybe "Nothing" toString $ A.lookup "name" infoJson]
-      , [maybe "Nothing" toString $ A.lookup "status" infoJson]
+    formatRow API.Connector {..} =
+      [ [T.unpack connectorName]
+      , [T.unpack connectorStatus]
       ]
-      where infoJson = structToJsonObject info
-            toString (A.String v) = T.unpack v
     rows = map formatRow connectors
 
 renderStreamsToTable :: [API.Stream] -> String

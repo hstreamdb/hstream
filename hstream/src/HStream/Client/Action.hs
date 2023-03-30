@@ -150,10 +150,13 @@ createStreamBySelectWithCustomQueryName sql qName API.HStreamApi{..} = do
   hstreamApiCreateQuery (mkClientNormalRequest' def
     { API.createQueryRequestSql = T.pack sql, API.createQueryRequestQueryName = qName })
 
-createConnector :: String -> Action API.Connector
-createConnector sql API.HStreamApi{..} =
+createConnector :: T.Text -> T.Text -> T.Text -> T.Text -> Action API.Connector
+createConnector name typ target cfg API.HStreamApi{..} =
   hstreamApiCreateConnector (mkClientNormalRequest' def
-    { API.createConnectorRequestSql = T.pack sql})
+    { API.createConnectorRequestName = name
+    , API.createConnectorRequestType = typ
+    , API.createConnectorRequestTarget = target
+    , API.createConnectorRequestConfig = cfg })
 
 
 listShards :: T.Text -> Action API.ListShardsResponse

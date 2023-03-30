@@ -61,6 +61,8 @@ import           HStream.SQL.Codegen              (DropObject (..))
 #else
 import           HStream.SQL.Codegen.V1           (DropObject (..))
 #endif
+import qualified Data.Aeson.Text                  as J
+import qualified Data.Text.Lazy                   as TL
 import           HStream.SQL.Exception            (SomeSQLException,
                                                    formatSomeSQLException,
                                                    isEOF)
@@ -145,7 +147,9 @@ commandExec HStreamSqlContext{hstreamCliContext = cliCtx@HStreamCliContext{..},.
                   Nothing  -> putStrLn "Failed to calculate shard id"
                   Just sid -> executeWithLookupResource_ cliCtx (Resource ResShard (T.pack $ show sid)) (retry retryLimit retryInterval $ insertIntoStream sName sid insertType payload)
               Nothing -> putStrLn "No shards found"
-        CreateConnectorPlan _ cName _ _ _  -> executeWithLookupResource_ cliCtx (Resource ResConnector cName) (createConnector xs)
+        CreateConnectorPlan cType cName cTarget _ cfg  -> do
+          let cfgText = TL.toStrict (J.encodeToLazyText cfg)
+          executeWithLookupResource_ cliCtx (Resource ResConnector cName) (createConnector cName cType cTarget cfgText)
         PausePlan  (PauseObjectConnector cName) -> executeWithLookupResource_ cliCtx (Resource ResConnector cName) (pauseConnector cName)
         ResumePlan (ResumeObjectConnector cName) -> executeWithLookupResource_ cliCtx (Resource ResConnector cName) (resumeConnector cName)
         _ -> do

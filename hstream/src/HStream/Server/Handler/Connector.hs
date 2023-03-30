@@ -2,7 +2,6 @@
 {-# LANGUAGE CPP                 #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
-{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -12,6 +11,7 @@ module HStream.Server.Handler.Connector
     createConnectorHandler
   , listConnectorsHandler
   , getConnectorHandler
+  , getConnectorSpecHandler
   , deleteConnectorHandler
   , resumeConnectorHandler
   , pauseConnectorHandler
@@ -19,11 +19,10 @@ module HStream.Server.Handler.Connector
   , handleCreateConnector
   , handleListConnectors
   , handleGetConnector
+  , handleGetConnectorSpec
   , handleDeleteConnector
   , handleResumeConnector
   , handlePauseConnector
-
-  , createIOTaskFromSql
   ) where
 
 import           Control.Exception                (throwIO)
@@ -36,6 +35,7 @@ import qualified Data.Vector                      as V
 import qualified HsGrpc.Server                    as G
 import           Network.GRPC.HighLevel.Generated
 
+import qualified Data.Text.Encoding               as T
 import qualified HStream.Exception                as HE
 import qualified HStream.IO.Types                 as IO
 import qualified HStream.IO.Worker                as IO
@@ -45,28 +45,23 @@ import           HStream.Server.Exception         (catchDefaultEx,
                                                    defaultExceptionHandle)
 import           HStream.Server.HStreamApi
 import           HStream.Server.Types
-#ifdef HStreamUseV2Engine
-import qualified HStream.SQL.Codegen              as CG
-#else
-import qualified HStream.SQL.Codegen.V1           as CG
-#endif
 import           HStream.ThirdParty.Protobuf      (Empty (..))
 import           HStream.Utils                    (ResourceType (..),
                                                    returnResp,
                                                    validateNameAndThrow)
+import qualified HStream.Utils                    as Utils
 
 createConnectorHandler
   :: ServerContext
   -> ServerRequest 'Normal CreateConnectorRequest Connector
   -> IO (ServerResponse 'Normal Connector)
-createConnectorHandler sc
-  (ServerNormalRequest _ CreateConnectorRequest{..}) = defaultExceptionHandle $ do
-    Log.debug "Receive Create Sink Connector Request"
-    createIOTaskFromSql sc createConnectorRequestSql >>= returnResp
+createConnectorHandler sc (ServerNormalRequest _ req) = defaultExceptionHandle $ do
+    Log.debug "Receive Create Connector Request"
+    createIOTaskFromRequest sc req >>= returnResp
 
 handleCreateConnector :: ServerContext -> G.UnaryHandler CreateConnectorRequest Connector
-handleCreateConnector sc _ CreateConnectorRequest{..} = catchDefaultEx $
-  createIOTaskFromSql sc createConnectorRequestSql
+handleCreateConnector sc _ req = catchDefaultEx $
+  createIOTaskFromRequest sc req
 
 listConnectorsHandler
   :: ServerContext
@@ -90,15 +85,24 @@ getConnectorHandler ServerContext{..}
   (ServerNormalRequest _metadata GetConnectorRequest{..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive Get Connector Request. "
     <> "Connector Name: " <> Log.buildString (T.unpack getConnectorRequestName)
-  IO.showIOTask scIOWorker getConnectorRequestName >>= \case
-    Nothing -> throwIO $ HE.ConnectorNotFound "ConnectorNotFound"
-    Just c  -> returnResp c
+  IO.showIOTask_ scIOWorker getConnectorRequestName >>= returnResp
 
 handleGetConnector :: ServerContext -> G.UnaryHandler GetConnectorRequest Connector
 handleGetConnector ServerContext{..} _ GetConnectorRequest{..} = catchDefaultEx $ do
-  IO.showIOTask scIOWorker getConnectorRequestName >>= \case
-    Nothing -> throwIO $ HE.ConnectorNotFound "ConnectorNotFound"
-    Just c  -> pure c
+  IO.showIOTask_ scIOWorker getConnectorRequestName
+
+getConnectorSpecHandler
+  :: ServerContext
+  -> ServerRequest 'Normal GetConnectorSpecRequest GetConnectorSpecResponse
+  -> IO (ServerResponse 'Normal GetConnectorSpecResponse)
+getConnectorSpecHandler ServerContext{..}
+  (ServerNormalRequest _metadata GetConnectorSpecRequest{..}) = defaultExceptionHandle $ do
+    spec <- IO.getSpec scIOWorker getConnectorSpecRequestType getConnectorSpecRequestTarget
+    returnResp $ GetConnectorSpecResponse spec
+
+handleGetConnectorSpec :: ServerContext -> G.UnaryHandler GetConnectorSpecRequest GetConnectorSpecResponse
+handleGetConnectorSpec ServerContext{..} _ GetConnectorSpecRequest{..} = catchDefaultEx $ do
+  GetConnectorSpecResponse <$> IO.getSpec scIOWorker getConnectorSpecRequestType getConnectorSpecRequestTarget
 
 deleteConnectorHandler
   :: ServerContext
@@ -163,32 +167,39 @@ handlePauseConnector sc@ServerContext{..} _ PauseConnectorRequest{..} = catchDef
     throwIO $ HE.WrongServer "Connector is bound to a different node"
   IO.stopIOTask scIOWorker pauseConnectorRequestName False False >> pure Empty
 
-createIOTaskFromSql :: ServerContext -> T.Text -> IO Connector
-createIOTaskFromSql sc@ServerContext{scIOWorker = worker@IO.Worker{..}, ..} sql = do
-  (CG.CreateConnectorPlan cType cName cTarget ifNotExist cfg) <- CG.streamCodegen sql
-  validateNameAndThrow cName
-  ServerNode{..} <- lookupResource' sc ResConnector cName
+-- uncurry
+createIOTaskFromRequest :: ServerContext -> CreateConnectorRequest -> IO Connector
+createIOTaskFromRequest sc CreateConnectorRequest{..} = do
+  createIOTask sc createConnectorRequestName createConnectorRequestType createConnectorRequestTarget  createConnectorRequestConfig
+
+createIOTask :: ServerContext -> T.Text -> T.Text -> T.Text -> T.Text -> IO Connector
+createIOTask sc@ServerContext{scIOWorker = worker@IO.Worker{..}, ..} name typ target cfg = do
+  validateNameAndThrow name
+  ServerNode{..} <- lookupResource' sc ResConnector name
   unless (serverNodeId == serverID) $
     throwIO $ HE.WrongServer "Connector is bound to a different node"
   Log.info $ "CreateConnector CodeGen"
-           <> ", connector type: " <> Log.build cType
-           <> ", connector name: " <> Log.build cName
-           <> ", config: "         <> Log.buildString (show cfg)
+           <> ", connector type: " <> Log.build typ
+           <> ", connector name: " <> Log.build name
+           <> ", connector targe: " <> Log.build target
+           <> ", config: "         <> Log.build cfg
   taskId <- UUID.toText <$> UUID.nextRandom
+  createdTime <- Utils.getProtoTimestamp
   let IO.IOOptions {..} = options
-      taskType = if cType == "SOURCE" then IO.SOURCE else IO.SINK
-      image = IO.makeImage taskType cTarget options
+      taskType = IO.ioTaskTypeFromText typ
+      image = IO.makeImage taskType target options
       connectorConfig =
         A.object
           [ "hstream" A..= IO.toTaskJson hsConfig taskId
-          , "connector" A..= cfg
+          , "connector" A..= (A.decodeStrict $ T.encodeUtf8 cfg :: Maybe A.Object)
           ]
       taskInfo = IO.TaskInfo
-        { taskName = cName
-        , taskType = if cType == "SOURCE" then IO.SOURCE else IO.SINK
+        { taskName = name
+        , taskType = taskType
+        , taskTarget = target
+        , taskCreatedTime = createdTime
         , taskConfig = IO.TaskConfig image optTasksNetwork
         , connectorConfig = connectorConfig
-        , originSql = sql
         }
   IO.createIOTask worker taskId taskInfo
-  return $ IO.mkConnector cName (IO.ioTaskStatusToText IO.NEW)
+  IO.showIOTask_ worker name

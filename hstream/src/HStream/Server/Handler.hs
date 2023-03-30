@@ -80,6 +80,7 @@ handlers serverContext@ServerContext{..} =
         -- Connector
         hstreamApiCreateConnector = createConnectorHandler serverContext,
         hstreamApiGetConnector = getConnectorHandler serverContext,
+        hstreamApiGetConnectorSpec = getConnectorSpecHandler serverContext,
         hstreamApiListConnectors = listConnectorsHandler serverContext,
         hstreamApiDeleteConnector = deleteConnectorHandler serverContext,
         hstreamApiPauseConnector = pauseConnectorHandler serverContext,
@@ -96,7 +97,6 @@ handlers serverContext@ServerContext{..} =
         hstreamApiLookupShard        = lookupShardHandler serverContext,
         hstreamApiLookupSubscription = lookupSubscriptionHandler serverContext,
         hstreamApiLookupShardReader  = lookupShardReaderHandler serverContext,
-        hstreamApiLookupConnector    = lookupConnectorHandler serverContext,
 
         -- Admin
         hstreamApiSendAdminCommand = adminCommandHandler serverContext
