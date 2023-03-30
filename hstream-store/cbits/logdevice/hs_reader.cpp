@@ -159,15 +159,14 @@ WAIT_ONLY_WHEN_NO_DATA(ld_ckp_reader_wait_only_when_no_data,
     if (nread >= 0) {                                                          \
       size_t i = 0;                                                            \
       for (auto& record_ptr : data) {                                          \
-        const facebook::logdevice::Payload& payload = record_ptr->payload;     \
-        const facebook::logdevice::DataRecordAttributes& attrs =               \
-            record_ptr->attrs;                                                 \
+        const ld::Payload& payload = record_ptr->payload;                      \
+        const ld::DataRecordAttributes& attrs = record_ptr->attrs;             \
         logid_t& logid = record_ptr->logid;                                    \
         data_out[i].logid = logid.val_;                                        \
         data_out[i].lsn = attrs.lsn;                                           \
         data_out[i].timestamp = attrs.timestamp.count();                       \
         data_out[i].batch_offset = attrs.batch_offset;                         \
-        data_out[i].payload = copyString(payload.toString());                  \
+        data_out[i].payload = copyString<ld::Payload>(payload);                \
         data_out[i].payload_len = payload.size();                              \
         data_out[i].byte_offset =                                              \
             attrs.offsets.getCounter(facebook::logdevice::BYTE_OFFSET);        \

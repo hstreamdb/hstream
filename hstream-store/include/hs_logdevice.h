@@ -83,7 +83,7 @@ using facebook::logdevice::client::LogGroup;
 using LogDirectory = facebook::logdevice::client::Directory;
 
 std::string* new_hs_std_string(std::string&& str);
-char* copyString(const std::string& str);
+template <typename T> char* copyString(const T& str);
 
 template <typename Container>
 std::vector<std::string>* getKeys(const Container& container) {
