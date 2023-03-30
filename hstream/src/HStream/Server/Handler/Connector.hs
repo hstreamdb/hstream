@@ -35,6 +35,7 @@ import qualified Data.Vector                      as V
 import qualified HsGrpc.Server                    as G
 import           Network.GRPC.HighLevel.Generated
 
+import qualified Data.Aeson.KeyMap                as A
 import qualified Data.Text.Encoding               as T
 import qualified HStream.Exception                as HE
 import qualified HStream.IO.Types                 as IO
@@ -189,7 +190,7 @@ createIOTask sc@ServerContext{scIOWorker = worker@IO.Worker{..}, ..} name typ ta
       taskType = IO.ioTaskTypeFromText typ
       image = IO.makeImage taskType target options
       connectorConfig =
-        A.object
+        A.fromList
           [ "hstream" A..= IO.toTaskJson hsConfig taskId
           , "connector" A..= (A.decodeStrict $ T.encodeUtf8 cfg :: Maybe A.Object)
           ]
