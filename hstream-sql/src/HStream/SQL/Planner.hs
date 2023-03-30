@@ -274,12 +274,19 @@ instance Decouple RSelect where
         -- GROUP BY
         aggs = getAggregates sel ++ getAggregates hav
         projectItems   = rSelToProjectItems sel
-        aggs' = L.map
-                  (\(c, e) ->
-                      case L.lookup c projectItems of
-                        Nothing -> (c, e)
-                        Just a  -> (a, e)
+        (aggs', projectItems') = L.foldl'
+                  (\(ags, pis) (c, e) ->
+                      case L.lookup c pis of
+                        Nothing -> (ags ++ [(c, e)], pis)
+                        Just a  -> (ags ++ [(a, e)],
+                                      L.map
+                                        (\(it, alias) ->
+                                            if it == c
+                                            then (alias, alias)
+                                            else (it, alias))
+                                        pis)
                   )
+                  ([], projectItems)
                   aggs
         projectStreams = rSelToProjectStreams sel
         grped = case grp of
@@ -297,9 +304,9 @@ instance Decouple RSelect where
                        RHavingEmpty -> grped
                        RHaving expr -> Filter grped (decouple expr)
         -- SELECT(project items)
-        projected = if L.null projectItems && L.null projectStreams then
+        projected = if L.null projectItems' && L.null projectStreams then
                       filtered_2 else
-                      Project filtered_2 projectItems projectStreams
+                      Project filtered_2 projectItems' projectStreams
      in projected
 
 --------------------------------------------------------------------------------
