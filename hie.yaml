@@ -317,3 +317,6 @@ cradle:
 
     - path: "hstream-gossip/src"
       component: "lib:hstream-gossip"
+
+    - path: "hstream-processing/src"
+      component: "lib:hstream-processing"
