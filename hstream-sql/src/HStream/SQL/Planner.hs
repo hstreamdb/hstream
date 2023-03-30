@@ -224,42 +224,30 @@ instance Decouple RTableRef where
      in case alias_m of
           Nothing    -> windowed
           Just alias -> StreamRename windowed alias
-#else
-  decouple (RTableRefCrossJoin ref1 ref2 t alias_m) =
-    let base_1 = decouple ref1
-        base_2 = decouple ref2
-        joined = CrossJoin base_1 base_2 (calendarDiffTimeToMs t)
-     in case alias_m of
-          Nothing    -> joined
-          Just alias -> StreamRename joined alias
-  decouple (RTableRefNaturalJoin ref1 typ ref2 t alias_m) =
-    let base_1 = decouple ref1
-        base_2 = decouple ref2
-        joined = LoopJoinNatural base_1 base_2 typ (calendarDiffTimeToMs t)
-     in case alias_m of
-          Nothing    -> joined
-          Just alias -> StreamRename joined alias
-  decouple (RTableRefJoinOn ref1 typ ref2 expr t alias_m) =
-    let base_1 = decouple ref1
-        base_2 = decouple ref2
-        scalar = decouple expr
-        joined = LoopJoinOn base_1 base_2 scalar typ (calendarDiffTimeToMs t)
-     in case alias_m of
-          Nothing    -> joined
-          Just alias -> StreamRename joined alias
-  decouple (RTableRefJoinUsing ref1 typ ref2 cols t alias_m) =
-    let base_1 = decouple ref1
-        base_2 = decouple ref2
-        joined = LoopJoinUsing base_1 base_2 cols typ (calendarDiffTimeToMs t)
-     in case alias_m of
-          Nothing    -> joined
-          Just alias -> StreamRename joined alias
-#endif
   decouple (RTableRefSubquery select alias_m) =
     let base = decouple select
      in case alias_m of
           Nothing    -> base
           Just alias -> StreamRename base alias
+#else
+  decouple (RTableRefCrossJoin ref1 ref2 t) =
+    let base_1 = decouple ref1
+        base_2 = decouple ref2
+    in  CrossJoin base_1 base_2 (calendarDiffTimeToMs t)
+  decouple (RTableRefNaturalJoin ref1 typ ref2 t) =
+    let base_1 = decouple ref1
+        base_2 = decouple ref2
+     in LoopJoinNatural base_1 base_2 typ (calendarDiffTimeToMs t)
+  decouple (RTableRefJoinOn ref1 typ ref2 expr t) =
+    let base_1 = decouple ref1
+        base_2 = decouple ref2
+        scalar = decouple expr
+     in LoopJoinOn base_1 base_2 scalar typ (calendarDiffTimeToMs t)
+  decouple (RTableRefJoinUsing ref1 typ ref2 cols t) =
+    let base_1 = decouple ref1
+        base_2 = decouple ref2
+     in LoopJoinUsing base_1 base_2 cols typ (calendarDiffTimeToMs t)
+#endif
 
 type instance DecoupledType RFrom = RelationExpr
 instance Decouple RFrom where

@@ -178,8 +178,8 @@ instance HavePos TableRef where
   getPos ref = case ref of
     TableRefIdent pos _             -> pos
     TableRefAs     pos _ _          -> pos
-    TableRefSubquery pos _          -> pos
 #ifdef HStreamUseV2Engine
+    TableRefSubquery pos _          -> pos
     TableRefCrossJoin pos _ _ _     -> pos
     TableRefNaturalJoin pos _ _ _   -> pos
     TableRefJoinOn pos _ _ _ _      -> pos

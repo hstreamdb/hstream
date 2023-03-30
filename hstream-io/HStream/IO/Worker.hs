@@ -54,7 +54,7 @@ createIOTask :: HasCallStack => Worker -> T.Text -> TaskInfo -> IO ()
 createIOTask worker@Worker{..} taskId taskInfo@TaskInfo {..} = do
   getIOTask worker taskName >>= \case
     Nothing -> pure ()
-    Just _ -> throwIO $ HE.ConnectorExists taskName
+    Just _  -> throwIO $ HE.ConnectorExists taskName
   let taskPath = optTasksPath options <> "/" <> taskId
   task <- IOTask.newIOTask taskId workerHandle taskInfo taskPath
   IOTask.initIOTask task
