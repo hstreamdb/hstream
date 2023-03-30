@@ -19,6 +19,7 @@ import qualified System.Process.Typed        as TP
 import           ZooKeeper.Types             (ZHandle)
 
 import qualified Control.Exception           as E
+import qualified Data.Aeson.KeyMap           as J
 import qualified Data.Aeson.Text             as J
 import qualified Data.Text.Lazy              as TL
 import qualified HStream.Exception           as E
@@ -44,7 +45,7 @@ data TaskInfo = TaskInfo
   , taskTarget      :: T.Text
   , taskCreatedTime :: Grpc.Timestamp
   , taskConfig      :: TaskConfig
-  , connectorConfig :: J.Value
+  , connectorConfig :: J.Object
   }
   deriving (Show)
 $(JT.deriveJSON JT.defaultOptions ''TaskInfo)
@@ -170,8 +171,9 @@ convertTaskMeta addConfig TaskMeta {..} =
     (ioTaskStatusToText taskStateMeta)
     cfg
   where
+    Just connectorCfg = J.lookup "connector" $ connectorConfig taskInfoMeta
     cfg = if addConfig
-      then TL.toStrict . J.encodeToLazyText $ taskConfig taskInfoMeta
+      then TL.toStrict $ J.encodeToLazyText connectorCfg
       else ""
 
 ioTaskStatusToText :: IOTaskStatus -> T.Text
