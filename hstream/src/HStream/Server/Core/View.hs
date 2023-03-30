@@ -156,4 +156,5 @@ hstreamViewToView h P.ViewInfo{viewQuery = P.QueryInfo{..},..} = do
     , viewCreatedTime = queryCreatedTime
     , viewSchema = mempty
     , viewSql = querySql
+    , viewQueryName = queryId
     }
