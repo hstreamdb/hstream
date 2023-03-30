@@ -101,7 +101,7 @@ data ShardReader = ShardReader
   , readerReadTimeout :: Word32
   } deriving (Show, Generic, FromJSON, ToJSON)
 
-data TaskAllocation = TaskAllocation Word32 ServerID
+data TaskAllocation = TaskAllocation { taskAllocationEpoch :: Word32, taskAllocationServerId :: ServerID}
   deriving (Show, Generic, FromJSON, ToJSON)
 
 rootPath :: Text

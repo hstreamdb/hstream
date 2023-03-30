@@ -34,7 +34,7 @@ type ServerUrl = Text
 type Epoch     = Word32
 type Incarnation = Word32
 type LamportTime = Word64
-
+type StateEventHandler = ServerState -> I.ServerNode -> IO ()
 -- The Server list for the library user
 type ServerList  = (Epoch, Map ServerId ServerStatus)
 type DeadServers = Map ServerId I.ServerNode
@@ -60,31 +60,32 @@ type BroadcastPool = [(G.Message, Word32)]
 
 data GossipContext = GossipContext
   { -- Server Context
-    serverSelf    :: I.ServerNode
-  , incarnation   :: TVar Word32
-  , eventLpTime   :: TVar Word32
-  , randomGen     :: StdGen
-  , gossipOpts    :: GossipOpts
+    serverSelf        :: I.ServerNode
+  , incarnation       :: TVar Word32
+  , eventLpTime       :: TVar Word32
+  , randomGen         :: StdGen
+  , gossipOpts        :: GossipOpts
+  , stateEventHandler :: Maybe StateEventHandler
 
   -- Server List and Probe Context
-  , serverList    :: TVar ServerList
-  , workers       :: TVar Workers
-  , deadServers   :: TVar DeadServers
-  , actionChan    :: TChan RequestAction
+  , serverList        :: TVar ServerList
+  , workers           :: TVar Workers
+  , deadServers       :: TVar DeadServers
+  , actionChan        :: TChan RequestAction
 
   -- Event Context
-  , eventHandlers :: EventHandlers
-  , broadcastPool :: TVar BroadcastPool
-  , seenEvents    :: TVar SeenEvents
-  , eventPool     :: TQueue G.EventMessage
-  , statePool     :: TQueue G.StateMessage
+  , eventHandlers     :: EventHandlers
+  , broadcastPool     :: TVar BroadcastPool
+  , seenEvents        :: TVar SeenEvents
+  , eventPool         :: TQueue G.EventMessage
+  , statePool         :: TQueue G.StateMessage
 
   -- Bootstrap Context
-  , clusterReady  :: MVar ()
-  , clusterInited :: MVar InitType
-  , seedsInfo     :: MVar (Bool, [(ByteString, Int)], Bool)
-  , seeds         :: [(ByteString, Int)]
-  , numInited     :: MVar (Maybe (TVar Int))
+  , clusterReady      :: MVar ()
+  , clusterInited     :: MVar InitType
+  , seedsInfo         :: MVar (Bool, [(ByteString, Int)], Bool)
+  , seeds             :: [(ByteString, Int)]
+  , numInited         :: MVar (Maybe (TVar Int))
   }
 
 data StateAction = Join ServerId | Leave ServerId

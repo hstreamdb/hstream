@@ -44,11 +44,13 @@ import           HStream.Gossip                   (GossipContext (..),
                                                    defaultGossipOpts,
                                                    initGossipContext,
                                                    startGossip, waitGossipBoot)
-import           HStream.Gossip.Types             (Epoch, InitType (Gossip))
+import           HStream.Gossip.Types             (Epoch, InitType (Gossip),
+                                                   ServerState (..))
 import           HStream.Gossip.Utils             (getMemberListWithEpochSTM)
 import qualified HStream.Logger                   as Log
-import           HStream.MetaStore.Types          (MetaHandle (..),
-                                                   MetaStore (..), RHandle (..))
+import           HStream.MetaStore.Types          as M (MetaHandle (..),
+                                                        MetaStore (..),
+                                                        RHandle (..))
 import           HStream.Server.Config            (AdvertisedListeners,
                                                    ListenersSecurityProtocolMap,
                                                    MetaStoreAddr (..),
@@ -56,6 +58,7 @@ import           HStream.Server.Config            (AdvertisedListeners,
                                                    ServerOpts (..), TlsConfig,
                                                    advertisedListenersToPB,
                                                    getConfig)
+import           HStream.Server.Core.Common       (parseAllocationKey)
 import           HStream.Server.Handler           (handlers)
 import qualified HStream.Server.HsGrpcHandler     as HsGrpc
 import           HStream.Server.HStreamApi        (NodeState (..),
@@ -66,16 +69,17 @@ import           HStream.Server.Initialization    (closeRocksDBHandle,
                                                    initializeTlsConfig,
                                                    openRocksDBHandle,
                                                    readTlsPemFile)
-import           HStream.Server.MetaData          (TaskAllocation,
+import           HStream.Server.MetaData          (TaskAllocation (..),
                                                    clusterStartTimeId,
                                                    initializeAncestors,
                                                    initializeFile,
                                                    initializeTables)
-import           HStream.Server.Types             (ServerContext (..),
-                                                   ServerState)
+import           HStream.Server.MetaData          as P
+import           HStream.Server.Types             (ServerContext (..))
 import qualified HStream.Store.Logger             as Log
 import qualified HStream.ThirdParty.Protobuf      as Proto
-import           HStream.Utils                    (getProtoTimestamp,
+import           HStream.Utils                    (ResourceType (..),
+                                                   getProtoTimestamp,
                                                    pattern EnumPB,
                                                    setupSigsegvHandler)
 
@@ -111,7 +115,7 @@ app config@ServerOpts{..} = do
                          , serverNodeGossipAddress = encodeUtf8 . T.pack $ _serverGossipAddress
                          , serverNodeAdvertisedListeners = advertisedListenersToPB _serverAdvertisedListeners
                          }
-      gossipContext <- initGossipContext defaultGossipOpts mempty serverNode _seedNodes
+      gossipContext <- initGossipContext defaultGossipOpts mempty (Just $ nodeChangeEventHandler h) serverNode _seedNodes
 
       serverContext <- initializeServer config gossipContext h db_m
       void . forkIO $ updateHashRing gossipContext (loadBalanceHashRing serverContext)
@@ -123,7 +127,14 @@ app config@ServerOpts{..} = do
         Async.link2Only (const True) a a1
         waitGossipBoot gossipContext
         Async.wait a
-
+    nodeChangeEventHandler :: MetaHandle -> ServerState -> I.ServerNode -> IO ()
+    nodeChangeEventHandler h ServerDead I.ServerNode {..} = do
+      allocations <- M.getAllMeta @TaskAllocation h
+      let taskIds = map parseAllocationKey . Map.keys . Map.filter ((== serverNodeId) . taskAllocationServerId) $ allocations
+      let queryIds = [qid | Right (ResQuery, qid) <- taskIds ]
+      Log.debug $ "The following queries were aborted along with the death of node " <> Log.buildString' serverNodeId <> ":" <> Log.buildString' queryIds
+      mapM_ (\qid -> M.updateMeta qid P.QueryAbort Nothing h) queryIds
+    nodeChangeEventHandler _ _ _ = return ()
 serve :: ByteString
       -> Word16
       -> SecurityProtocolMap

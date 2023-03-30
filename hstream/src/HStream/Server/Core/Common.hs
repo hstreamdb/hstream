@@ -1,12 +1,15 @@
-{-# LANGUAGE CPP #-}
+{-# LANGUAGE CPP             #-}
+{-# LANGUAGE PatternSynonyms #-}
 
 module HStream.Server.Core.Common where
 
+import           Control.Applicative              ((<|>))
 import           Control.Concurrent
 import           Control.Concurrent.STM           (readTVarIO)
 import           Control.Exception                (SomeException (..), throwIO,
                                                    try)
 import           Control.Monad
+import qualified Data.Attoparsec.Text             as AP
 import qualified Data.ByteString                  as BS
 import           Data.Foldable                    (foldrM)
 import qualified Data.HashMap.Strict              as HM
@@ -32,7 +35,8 @@ import           HStream.SQL.Codegen
 import           HStream.SQL.Codegen.V1
 #endif
 import qualified HStream.Store                    as HS
-import           HStream.Utils                    (decodeByteStringBatch,
+import           HStream.Utils                    (ResourceType (..),
+                                                   decodeByteStringBatch,
                                                    textToCBytes)
 
 insertAckedRecordId
@@ -193,6 +197,23 @@ handleQueryTerminate ServerContext{..} (ManyQueries qids) = do
 
 mkAllocationKey :: ResourceType -> T.Text -> T.Text
 mkAllocationKey rtype rid = T.pack (show rtype) <> "_" <> rid
+
+parseAllocationKey :: T.Text -> Either String (ResourceType, T.Text)
+parseAllocationKey = AP.parseOnly allocationKeyP
+
+allocationKeyP :: AP.Parser (ResourceType, T.Text)
+allocationKeyP = do
+  rtype <- (ResStream       <$ AP.string (T.pack $ show ResStream))
+       <|> (ResStream       <$ AP.string (T.pack $ show ResStream))
+       <|> (ResSubscription <$ AP.string (T.pack $ show ResSubscription))
+       <|> (ResShard        <$ AP.string (T.pack $ show ResShard))
+       <|> (ResShardReader  <$ AP.string (T.pack $ show ResShardReader))
+       <|> (ResConnector    <$ AP.string (T.pack $ show ResConnector))
+       <|> (ResQuery        <$ AP.string (T.pack $ show ResQuery))
+       <|> (ResView         <$ AP.string (T.pack $ show ResView))
+  AP.char '_'
+  rid <- AP.takeWhile (const True)
+  return (rtype, rid)
 
 lookupResource' :: ServerContext -> ResourceType -> Text -> IO ServerNode
 lookupResource' sc@ServerContext{..} rtype rid = do
