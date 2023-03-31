@@ -273,14 +273,30 @@ instance Decouple RSelect where
                        _  -> Affiliate filtered_1 affiliateItems
         -- GROUP BY
         aggs = getAggregates sel ++ getAggregates hav
+        projectItems   = rSelToProjectItems sel
+        (aggs', projectItems') = L.foldl'
+                  (\(ags, pis) (c, e) ->
+                      case L.lookup c pis of
+                        Nothing -> (ags ++ [(c, e)], pis)
+                        Just a  -> (ags ++ [(a, e)],
+                                      L.map
+                                        (\(it, alias) ->
+                                            if it == c
+                                            then (alias, alias)
+                                            else (it, alias))
+                                        pis)
+                  )
+                  ([], projectItems)
+                  aggs
+        projectStreams = rSelToProjectStreams sel
         grped = case grp of
                   RGroupByEmpty -> affiliated
 #ifdef HStreamUseV2Engine
-                  RGroupBy _    -> Reduce affiliated (decouple grp) aggs
+                  RGroupBy _    -> Reduce affiliated (decouple grp) aggs'
 #else
                   RGroupBy _ _  ->
                     let (tups, win_m) = decouple grp
-                     in Reduce affiliated tups aggs win_m
+                     in Reduce affiliated tups aggs' win_m
 #endif
 
         -- HAVING
@@ -288,11 +304,9 @@ instance Decouple RSelect where
                        RHavingEmpty -> grped
                        RHaving expr -> Filter grped (decouple expr)
         -- SELECT(project items)
-        projectItems   = rSelToProjectItems sel
-        projectStreams = rSelToProjectStreams sel
-        projected = if L.null projectItems && L.null projectStreams then
+        projected = if L.null projectItems' && L.null projectStreams then
                       filtered_2 else
-                      Project filtered_2 projectItems projectStreams
+                      Project filtered_2 projectItems' projectStreams
      in projected
 
 --------------------------------------------------------------------------------
