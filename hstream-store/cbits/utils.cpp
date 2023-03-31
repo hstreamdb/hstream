@@ -13,10 +13,23 @@ std::string* new_hs_std_string(std::string&& str) {
 // Note that
 // 1. this will not append the "\0" to the end of the memory.
 // 2. you need to free the result manually.
-char* copyString(const std::string& str) {
-  char* result = reinterpret_cast<char*>(malloc(sizeof(char) * str.size()));
-  memcpy(result, str.data(), sizeof(char) * str.size());
-  return result;
+
+// Explicitly instantiate
+template char* copyString(const ld::Payload& payload);
+template char* copyString(const std::string& payload);
+
+template <typename T> char* copyString(const T& payload) {
+  char* data_copy = nullptr;
+  auto data_ = payload.data();
+  auto size_ = payload.size();
+  if (data_ && size_ > 0) {
+    data_copy = reinterpret_cast<char*>(malloc(size_));
+    if (!data_copy) {
+      throw std::bad_alloc();
+    }
+    memcpy(data_copy, data_, size_);
+  }
+  return data_copy;
 }
 
 extern "C" {
