@@ -4,37 +4,45 @@ module HStream.Server.Core.View
   ( deleteView
   , getView
   , listViews
+  , executeViewQuery
   , createView
   , createView'
   ) where
 
-import           Control.Exception             (throw, throwIO)
-import qualified Data.HashMap.Strict           as HM
-import           Data.IORef                    (atomicModifyIORef')
-import qualified Data.Text                     as T
-import           GHC.Stack                     (HasCallStack)
-
 import           Control.Concurrent            (MVar)
+import           Control.Exception             (throw, throwIO)
 import           Control.Monad                 (unless)
+import qualified Data.Aeson                    as Aeson
 import           Data.Functor                  ((<&>))
+import qualified Data.HashMap.Strict           as HM
+import           Data.IORef                    (atomicModifyIORef', newIORef,
+                                                readIORef)
 import qualified Data.List                     as L
 import           Data.Maybe                    (fromJust, isJust)
+import qualified Data.Text                     as T
+import qualified Data.Vector                   as V
+import           GHC.Stack                     (HasCallStack)
 import           HStream.Exception             (ViewNotFound (..))
 import qualified HStream.Exception             as HE
 import qualified HStream.Logger                as Log
 import           HStream.MetaStore.Types       (MetaStore (insertMeta))
 import qualified HStream.MetaStore.Types       as M
+import           HStream.Processing.Type       (SinkRecord (..))
 import           HStream.Server.Core.Common    (handleQueryTerminate)
 import           HStream.Server.Handler.Common (IdentifierRole (..),
                                                 findIdentifierRole,
                                                 handleCreateAsSelect)
+import qualified HStream.Server.HStore         as SH
 import qualified HStream.Server.HStreamApi     as API
 import qualified HStream.Server.MetaData       as P
 import           HStream.Server.MetaData.Types (ViewInfo (viewName))
 import           HStream.Server.Types
-import           HStream.SQL                   (FlowObject)
-import           HStream.ThirdParty.Protobuf   (Empty (..))
-import           HStream.Utils                 (TaskStatus (..), newRandomText)
+import           HStream.SQL                   (FlowObject,
+                                                flowObjectToJsonObject)
+import           HStream.ThirdParty.Protobuf   (Empty (..), Struct)
+import           HStream.Utils                 (TaskStatus (..),
+                                                jsonObjectToStruct,
+                                                newRandomText)
 #ifdef HStreamUseV2Engine
 import           DiffFlow.Graph                (GraphBuilder)
 import           DiffFlow.Types                (DataChangeBatch)
@@ -144,6 +152,27 @@ getView ServerContext{..} viewId = do
       Log.warning $ "Cannot Find View with Name: " <> Log.buildString (T.unpack viewId)
       throwIO $ ViewNotFound viewId
 
+executeViewQuery :: ServerContext -> T.Text -> IO (V.Vector Struct)
+executeViewQuery sc@ServerContext{..} sql = do
+  plan <- streamCodegen sql
+  case plan of
+    SelectPlan sources sink builder persist -> do
+      roles_m <- mapM (findIdentifierRole sc) sources
+      case all (== Just RoleView) roles_m of
+        False -> do
+          Log.warning "Can not perform non-pushing SELECT on streams."
+          throwIO $ HE.InvalidSqlStatement "Can not perform non-pushing SELECT on streams."
+        True  -> do
+          hm <- readIORef P.groupbyStores
+          let mats = L.map (hm HM.!) sources
+          sinkRecords_m <- newIORef []
+          let sinkConnector = SH.memorySinkConnector sinkRecords_m
+          HP.runImmTask (sources `zip` mats) sinkConnector builder () () Just Just
+          sinkRecords <- readIORef sinkRecords_m
+          return . V.fromList $ jsonObjectToStruct . flowObjectToJsonObject
+                              . fromJust . Aeson.decode @FlowObject . snkValue <$> sinkRecords
+    _ -> throw $ HE.InvalidSqlStatement "Invalid SQL statement for running view query"
+
 listViews :: HasCallStack => ServerContext -> IO [API.View]
 listViews ServerContext{..} = mapM (hstreamViewToView metaHandle) =<< M.listMeta metaHandle
 
@@ -156,4 +185,5 @@ hstreamViewToView h P.ViewInfo{viewQuery = P.QueryInfo{..},..} = do
     , viewCreatedTime = queryCreatedTime
     , viewSchema = mempty
     , viewSql = querySql
+    , viewQueryName = queryId
     }

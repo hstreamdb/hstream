@@ -114,6 +114,9 @@ instance Format API.AppendResponse where
 instance Format API.TerminateQueriesResponse where
   formatResult = const "Done.\n"
 
+instance Format API.ExecuteViewQueryResponse where
+  formatResult = concatMap ((<> "\n") . TL.unpack . A.encodeToLazyText . structToJsonObject ) . API.executeViewQueryResponseResults
+
 instance Format PB.Struct where
   formatResult s@(PB.Struct kv) =
     case M.toList kv of

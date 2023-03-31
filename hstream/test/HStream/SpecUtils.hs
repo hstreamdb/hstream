@@ -210,8 +210,8 @@ appendRequest HStreamApi{..} streamName shardId records =
 mkStruct :: [(Text, Aeson.Value)] -> Struct
 mkStruct = jsonObjectToStruct . AesonComp.fromList . (map $ first AesonComp.fromText)
 
-mkViewResponse :: Struct -> CommandQueryResponse
-mkViewResponse = CommandQueryResponse . V.singleton . structToStruct "SELECTVIEW"
+mkViewResponse :: Struct -> ExecuteViewQueryResponse
+mkViewResponse = ExecuteViewQueryResponse . V.singleton
 
 runFetchSql :: T.Text -> IO [Struct]
 runFetchSql sql = withGRPCClient clientConfig $ \client -> do
@@ -278,3 +278,7 @@ runDropSql :: HStreamClientApi -> T.Text -> Expectation
 runDropSql api sql = do
   DropPlan checkIfExists dropObj <- streamCodegen sql
   dropAction checkIfExists dropObj api `grpcShouldReturn` Empty
+
+runViewQuerySql ::  HStreamClientApi -> T.Text -> IO ExecuteViewQueryResponse
+runViewQuerySql api sql =
+  getServerResp =<< executeViewQuery (T.unpack sql) api
