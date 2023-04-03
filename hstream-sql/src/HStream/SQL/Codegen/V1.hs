@@ -404,7 +404,7 @@ relationExprToGraph relation builder = case relation of
                   >>= HTW.aggregate aggregateInit
                                     aggregateR
                                     HM.union
-                                    (timeWindowFlowObjectSerde $ calendarDiffTimeToMs i)
+                                    timeWindowFlowObjectSerde
                                     (timeWindowSerde $ calendarDiffTimeToMs i)
                                     flowObjectSerde
                                     materialized
@@ -415,7 +415,7 @@ relationExprToGraph relation builder = case relation of
                   >>= HTW.aggregate aggregateInit
                                     aggregateR
                                     HM.union
-                                    (timeWindowFlowObjectSerde $ calendarDiffTimeToMs i1)
+                                    timeWindowFlowObjectSerde
                                     (timeWindowSerde $ calendarDiffTimeToMs i1)
                                     flowObjectSerde
                                     materialized
