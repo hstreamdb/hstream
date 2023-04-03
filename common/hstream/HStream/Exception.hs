@@ -1,9 +1,7 @@
-{-# LANGUAGE CPP                #-}
-{-# LANGUAGE GADTs              #-}
-{-# LANGUAGE RankNTypes         #-}
+{-# LANGUAGE CPP        #-}
+{-# LANGUAGE GADTs      #-}
+{-# LANGUAGE RankNTypes #-}
 {-# OPTIONS_GHC -pgmPcpphs -optP--cpp #-}
-{-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE TemplateHaskell    #-}
 
 module HStream.Exception
   ( SomeHStreamException
@@ -171,8 +169,8 @@ module HStream.Exception
   , hServerExHandlers
   , zkExHandlers
 
-  , -- * Re-export
-  E.Handler
+    -- * Re-export
+  , E.Handler
   ) where
 
 import           Control.Exception             (Exception (..))
@@ -248,7 +246,7 @@ a##SUB_E##ToException = E.toException . SUB_E;                                 \
 a##SUB_E##FromException :: Exception e => E.SomeException -> Maybe e;          \
 a##SUB_E##FromException x = do SUB_E a <- E.fromException x; cast a;
 
-#define MAKE_STD_EX_0(ExCls, Name, TCode) \
+#define MAKE_EX_0(ExCls, Name, TCode) \
 data Name = Name deriving (Show);                                \
 instance Exception Name where                                       \
 { toException = a##ExCls##ToException;                              \
@@ -256,7 +254,7 @@ instance Exception Name where                                       \
   displayException Name = errBodyToStr $ ErrBody TCode #Name J.Null;\
 };                                                                  \
 
-#define MAKE_STD_EX_0_WITH_MSG(ExCls, Name, TCode, TMsg) \
+#define MAKE_EX_0_WITH_MSG(ExCls, Name, TCode, TMsg) \
 data Name = Name deriving (Show);                                \
 instance Exception Name where                                       \
 { toException = a##ExCls##ToException;                              \
@@ -264,7 +262,7 @@ instance Exception Name where                                       \
   displayException Name = errBodyToStr $ ErrBody TCode TMsg J.Null; \
 };                                                                  \
 
-#define MAKE_STD_EX_1(ExCls, Name, Ty, TCode) \
+#define MAKE_EX_1(ExCls, Name, Ty, TCode) \
 newtype Name = Name Ty deriving (Show);                                       \
 instance Exception Name where                                                 \
 { toException = a##ExCls##ToException;                                        \
@@ -272,7 +270,7 @@ instance Exception Name where                                                 \
   displayException (Name s) = errBodyToStr $ ErrBody TCode #Name (J.toJSON s);\
 };                                                                            \
 
-#define MAKE_STD_EX_1_WITH_MSG(ExCls, Name, Ty, TCode, TMsg) \
+#define MAKE_EX_1_WITH_MSG(ExCls, Name, Ty, TCode, TMsg) \
 newtype Name = Name Ty deriving (Show);                                       \
 instance Exception Name where                                                 \
 { toException = a##ExCls##ToException;                                        \
@@ -292,9 +290,9 @@ MAKE_SUB_EX(SomeHStreamException, SomeHServerException)
 -- The operation was cancelled, typically by the caller.
 MAKE_SUB_EX(SomeHServerException, SomeCancelled)
 
-MAKE_STD_EX_1(SomeCancelled, StreamReadError, String, API.ErrorCodeInternalError)
-MAKE_STD_EX_1(SomeCancelled, StreamReadClose, String, API.ErrorCodeInternalError)
-MAKE_STD_EX_1(SomeCancelled, StreamWriteError, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeCancelled, StreamReadError, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeCancelled, StreamReadClose, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeCancelled, StreamWriteError, String, API.ErrorCodeInternalError)
 
 -------------------------------------------------------------------------------
 -- Exception: SomeUnknown
@@ -307,7 +305,7 @@ MAKE_STD_EX_1(SomeCancelled, StreamWriteError, String, API.ErrorCodeInternalErro
 -- enough error information may be converted to this error.
 MAKE_SUB_EX(SomeHServerException, SomeUnknown)
 
-MAKE_STD_EX_1(SomeUnknown, UnknownPushQueryStatus, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeUnknown, UnknownPushQueryStatus, String, API.ErrorCodeInternalError)
 
 -------------------------------------------------------------------------------
 -- Exception: SomeInvalidArgument
@@ -319,24 +317,24 @@ MAKE_STD_EX_1(SomeUnknown, UnknownPushQueryStatus, String, API.ErrorCodeInternal
 -- system.
 MAKE_SUB_EX(SomeHServerException, SomeInvalidArgument)
 
-MAKE_STD_EX_1(SomeInvalidArgument, InvalidReplicaFactor, String, API.ErrorCodeStreamInvalidReplicaFactor)
-MAKE_STD_EX_1(SomeInvalidArgument, InvalidObjectIdentifier, String, API.ErrorCodeStreamInvalidObjectIdentifier)
-MAKE_STD_EX_1(SomeInvalidArgument, InvalidShardCount, String, API.ErrorCodeStreamInvalidShardCount)
-MAKE_STD_EX_0_WITH_MSG(SomeInvalidArgument, EmptyBatchedRecord, API.ErrorCodeStreamEmptyBatchedRecord,
+MAKE_EX_1(SomeInvalidArgument, InvalidReplicaFactor, String, API.ErrorCodeStreamInvalidReplicaFactor)
+MAKE_EX_1(SomeInvalidArgument, InvalidObjectIdentifier, String, API.ErrorCodeStreamInvalidObjectIdentifier)
+MAKE_EX_1(SomeInvalidArgument, InvalidShardCount, String, API.ErrorCodeStreamInvalidShardCount)
+MAKE_EX_0_WITH_MSG(SomeInvalidArgument, EmptyBatchedRecord, API.ErrorCodeStreamEmptyBatchedRecord,
     "BatchedRecord shouldn't be Nothing")
-MAKE_STD_EX_1_WITH_MSG(SomeInvalidArgument, InvalidRecordSize, Int, API.ErrorCodeStreamInvalidRecordSize,
+MAKE_EX_1_WITH_MSG(SomeInvalidArgument, InvalidRecordSize, Int, API.ErrorCodeStreamInvalidRecordSize,
     "Record size exceeds the maximum size limit")
-MAKE_STD_EX_1(SomeInvalidArgument, InvalidResourceType, String, API.ErrorCodeInternalError)
-MAKE_STD_EX_1(SomeInvalidArgument, InvalidShardOffset, String, API.ErrorCodeInternalError)
-MAKE_STD_EX_0(SomeInvalidArgument, InvalidSubscriptionOffset, API.ErrorCodeSubscriptionInvalidOffset)
-MAKE_STD_EX_1(SomeInvalidArgument, DecodeHStreamRecordErr, String, API.ErrorCodeInternalError)
-MAKE_STD_EX_0_WITH_MSG(SomeInvalidArgument, NoRecordHeader, API.ErrorCodeInternalError,
+MAKE_EX_1(SomeInvalidArgument, InvalidResourceType, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeInvalidArgument, InvalidShardOffset, String, API.ErrorCodeInternalError)
+MAKE_EX_0(SomeInvalidArgument, InvalidSubscriptionOffset, API.ErrorCodeSubscriptionInvalidOffset)
+MAKE_EX_1(SomeInvalidArgument, DecodeHStreamRecordErr, String, API.ErrorCodeInternalError)
+MAKE_EX_0_WITH_MSG(SomeInvalidArgument, NoRecordHeader, API.ErrorCodeInternalError,
     "HStreamRecord doesn't have a header.")
-MAKE_STD_EX_0(SomeInvalidArgument, UnknownCompressionType, API.ErrorCodeInternalError)
-MAKE_STD_EX_1(SomeInvalidArgument, InvalidStatsType, String, API.ErrorCodeInternalError)
-MAKE_STD_EX_1(SomeInvalidArgument, InvalidStatsInterval, String, API.ErrorCodeInternalError)
-MAKE_STD_EX_1(SomeInvalidArgument, InvalidSqlStatement, String, API.ErrorCodeInternalError)
-MAKE_STD_EX_1(SomeInvalidArgument, InvalidConnectorType, Text, API.ErrorCodeConnectorInvalidType)
+MAKE_EX_0(SomeInvalidArgument, UnknownCompressionType, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeInvalidArgument, InvalidStatsType, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeInvalidArgument, InvalidStatsInterval, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeInvalidArgument, InvalidSqlStatement, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeInvalidArgument, InvalidConnectorType, Text, API.ErrorCodeConnectorInvalidType)
 
 -------------------------------------------------------------------------------
 -- Exception: SomeDeadlineExceeded
@@ -362,17 +360,17 @@ MAKE_SUB_EX(SomeHServerException, SomeDeadlineExceeded)
 -- such as user-based access control, PermissionDenied must be used.
 MAKE_SUB_EX(SomeHServerException, SomeNotFound)
 
-MAKE_STD_EX_1(SomeNotFound, NodesNotFound, Text, API.ErrorCodeInternalError)
-MAKE_STD_EX_1(SomeNotFound, StreamNotFound, Text, API.ErrorCodeStreamNotFound)
-MAKE_STD_EX_1(SomeNotFound, SubscriptionNotFound, Text, API.ErrorCodeSubscriptionNotFound)
-MAKE_STD_EX_1(SomeNotFound, ConnectorNotFound, Text, API.ErrorCodeConnectorNotFound)
-MAKE_STD_EX_1(SomeNotFound, ViewNotFound, Text, API.ErrorCodeInternalError)
-MAKE_STD_EX_1(SomeNotFound, ShardNotFound, Text, API.ErrorCodeInternalError)
-MAKE_STD_EX_1(SomeNotFound, QueryNotFound, Text, API.ErrorCodeQueryNotFound)
-MAKE_STD_EX_1(SomeNotFound, RQLiteTableNotFound, String, API.ErrorCodeInternalError)
-MAKE_STD_EX_1(SomeNotFound, RQLiteRowNotFound, String, API.ErrorCodeInternalError)
-MAKE_STD_EX_1(SomeNotFound, LocalMetaStoreTableNotFound, String, API.ErrorCodeInternalError)
-MAKE_STD_EX_1(SomeNotFound, LocalMetaStoreObjectNotFound, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeNotFound, NodesNotFound, Text, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeNotFound, StreamNotFound, Text, API.ErrorCodeStreamNotFound)
+MAKE_EX_1(SomeNotFound, SubscriptionNotFound, Text, API.ErrorCodeSubscriptionNotFound)
+MAKE_EX_1(SomeNotFound, ConnectorNotFound, Text, API.ErrorCodeConnectorNotFound)
+MAKE_EX_1(SomeNotFound, ViewNotFound, Text, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeNotFound, ShardNotFound, Text, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeNotFound, QueryNotFound, Text, API.ErrorCodeQueryNotFound)
+MAKE_EX_1(SomeNotFound, RQLiteTableNotFound, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeNotFound, RQLiteRowNotFound, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeNotFound, LocalMetaStoreTableNotFound, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeNotFound, LocalMetaStoreObjectNotFound, String, API.ErrorCodeInternalError)
 
 -------------------------------------------------------------------------------
 -- Exception: SomeAlreadyExists
@@ -382,16 +380,16 @@ MAKE_STD_EX_1(SomeNotFound, LocalMetaStoreObjectNotFound, String, API.ErrorCodeI
 -- The entity that a client attempted to create (e.g., stream) already exists.
 MAKE_SUB_EX(SomeHServerException, SomeAlreadyExists)
 
-MAKE_STD_EX_1(SomeAlreadyExists, StreamExists, Text, API.ErrorCodeStreamExists)
-MAKE_STD_EX_1(SomeAlreadyExists, SubscriptionExists, Text, API.ErrorCodeSubscriptionExists)
-MAKE_STD_EX_1(SomeAlreadyExists, ConsumerExists, String, API.ErrorCodeInternalError)
-MAKE_STD_EX_1(SomeAlreadyExists, ShardReaderExists, Text, API.ErrorCodeInternalError)
-MAKE_STD_EX_1(SomeAlreadyExists, RQLiteTableAlreadyExists, String, API.ErrorCodeInternalError)
-MAKE_STD_EX_1(SomeAlreadyExists, RQLiteRowAlreadyExists, String, API.ErrorCodeInternalError)
-MAKE_STD_EX_1(SomeAlreadyExists, LocalMetaStoreTableAlreadyExists, String, API.ErrorCodeInternalError)
-MAKE_STD_EX_1(SomeAlreadyExists, LocalMetaStoreObjectAlreadyExists, String, API.ErrorCodeInternalError)
-MAKE_STD_EX_1(SomeAlreadyExists, PushQueryCreated, String, API.ErrorCodeInternalError)
-MAKE_STD_EX_1(SomeAlreadyExists, ConnectorExists, Text, API.ErrorCodeConnectorExists)
+MAKE_EX_1(SomeAlreadyExists, StreamExists, Text, API.ErrorCodeStreamExists)
+MAKE_EX_1(SomeAlreadyExists, SubscriptionExists, Text, API.ErrorCodeSubscriptionExists)
+MAKE_EX_1(SomeAlreadyExists, ConsumerExists, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeAlreadyExists, ShardReaderExists, Text, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeAlreadyExists, RQLiteTableAlreadyExists, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeAlreadyExists, RQLiteRowAlreadyExists, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeAlreadyExists, LocalMetaStoreTableAlreadyExists, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeAlreadyExists, LocalMetaStoreObjectAlreadyExists, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeAlreadyExists, PushQueryCreated, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeAlreadyExists, ConnectorExists, Text, API.ErrorCodeConnectorExists)
 
 -------------------------------------------------------------------------------
 -- Exception: SomePermissionDenied
@@ -439,17 +437,17 @@ MAKE_SUB_EX(SomeHServerException, SomeResourceExhausted)
 --     client should not retry unless the files are deleted from the directory.
 MAKE_SUB_EX(SomeHServerException, SomeFailedPrecondition)
 
-MAKE_STD_EX_0_WITH_MSG(SomeFailedPrecondition, FoundSubscription, API.ErrorCodeStreamFoundSubscription,
+MAKE_EX_0_WITH_MSG(SomeFailedPrecondition, FoundSubscription, API.ErrorCodeStreamFoundSubscription,
     "Stream still has subscription")
-MAKE_STD_EX_1(SomeFailedPrecondition, EmptyShardReader, String, API.ErrorCodeInternalError)
-MAKE_STD_EX_1(SomeFailedPrecondition, EmptyStream, Text, API.ErrorCodeSubscriptionCreationOnEmptyStream)
-MAKE_STD_EX_1(SomeFailedPrecondition, WrongServer, String, API.ErrorCodeInternalError)
-MAKE_STD_EX_1(SomeFailedPrecondition, WrongExecutionPlan, String, API.ErrorCodeInternalError)
-MAKE_STD_EX_1(SomeFailedPrecondition, FoundActiveConsumers, String, API.ErrorCodeInternalError)
-MAKE_STD_EX_1(SomeFailedPrecondition, ShardCanNotSplit, String, API.ErrorCodeInternalError)
-MAKE_STD_EX_1(SomeFailedPrecondition, ShardCanNotMerge, String, API.ErrorCodeInternalError)
-MAKE_STD_EX_1(SomeFailedPrecondition, RQLiteRowBadVersion, String, API.ErrorCodeInternalError)
-MAKE_STD_EX_1(SomeFailedPrecondition, LocalMetaStoreObjectBadVersion, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeFailedPrecondition, EmptyShardReader, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeFailedPrecondition, EmptyStream, Text, API.ErrorCodeSubscriptionCreationOnEmptyStream)
+MAKE_EX_1(SomeFailedPrecondition, WrongServer, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeFailedPrecondition, WrongExecutionPlan, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeFailedPrecondition, FoundActiveConsumers, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeFailedPrecondition, ShardCanNotSplit, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeFailedPrecondition, ShardCanNotMerge, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeFailedPrecondition, RQLiteRowBadVersion, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeFailedPrecondition, LocalMetaStoreObjectBadVersion, String, API.ErrorCodeInternalError)
 
 -------------------------------------------------------------------------------
 -- Exception: SomeAborted
@@ -461,12 +459,12 @@ MAKE_STD_EX_1(SomeFailedPrecondition, LocalMetaStoreObjectBadVersion, String, AP
 -- deciding between 'FailedPrecondition', 'Aborted', and 'Unavailable'.
 MAKE_SUB_EX(SomeHServerException, SomeAborted)
 
-MAKE_STD_EX_1(SomeAborted, SubscriptionIsDeleting, String, API.ErrorCodeInternalError)
-MAKE_STD_EX_1(SomeAborted, SubscriptionOnDifferentNode, String, API.ErrorCodeInternalError)
-MAKE_STD_EX_1(SomeAborted, SubscriptionInvalidError, String, API.ErrorCodeInternalError)
-MAKE_STD_EX_1(SomeAborted, ConsumerInvalidError, String, API.ErrorCodeInternalError)
-MAKE_STD_EX_1(SomeAborted, TerminateQueriesError, String, API.ErrorCodeInternalError)
-MAKE_STD_EX_1(SomeAborted, PushQueryTerminated, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeAborted, SubscriptionIsDeleting, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeAborted, SubscriptionOnDifferentNode, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeAborted, SubscriptionInvalidError, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeAborted, ConsumerInvalidError, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeAborted, TerminateQueriesError, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeAborted, PushQueryTerminated, String, API.ErrorCodeInternalError)
 
 -------------------------------------------------------------------------------
 -- Exception: SomeOutOfRange
@@ -494,15 +492,15 @@ MAKE_SUB_EX(SomeHServerException, SomeOutOfRange)
 -- system have been broken. This error code is reserved for serious errors.
 MAKE_SUB_EX(SomeHServerException, SomeInternal)
 
-MAKE_STD_EX_1(SomeInternal, UnexpectedError, String, API.ErrorCodeInternalError)
-MAKE_STD_EX_1(SomeInternal, WrongOffset, String, API.ErrorCodeInternalError)
-MAKE_STD_EX_1(SomeInternal, ZstdCompresstionErr, String, API.ErrorCodeInternalError)
-MAKE_STD_EX_1(SomeInternal, RQLiteNetworkErr, String, API.ErrorCodeInternalError)
-MAKE_STD_EX_1(SomeInternal, RQLiteDecodeErr, String, API.ErrorCodeInternalError)
-MAKE_STD_EX_1(SomeInternal, RQLiteUnspecifiedErr, String, API.ErrorCodeInternalError)
-MAKE_STD_EX_1(SomeInternal, LocalMetaStoreInternalErr, String, API.ErrorCodeInternalError)
-MAKE_STD_EX_1(SomeInternal, DiscardedMethod, String, API.ErrorCodeInternalError)
-MAKE_STD_EX_1(SomeInternal, PushQuerySendError, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeInternal, UnexpectedError, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeInternal, WrongOffset, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeInternal, ZstdCompresstionErr, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeInternal, RQLiteNetworkErr, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeInternal, RQLiteDecodeErr, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeInternal, RQLiteUnspecifiedErr, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeInternal, LocalMetaStoreInternalErr, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeInternal, DiscardedMethod, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeInternal, PushQuerySendError, String, API.ErrorCodeInternalError)
 
 -------------------------------------------------------------------------------
 -- Exception: SomeUnavailable
@@ -515,8 +513,8 @@ MAKE_STD_EX_1(SomeInternal, PushQuerySendError, String, API.ErrorCodeInternalErr
 -- Note that it is not always safe to retry non-idempotent operations.
 MAKE_SUB_EX(SomeHServerException, SomeUnavailable)
 
-MAKE_STD_EX_0_WITH_MSG(SomeUnavailable, ServerNotAvailable, API.ErrorCodeInternalError, "ServerNotAvailable")
-MAKE_STD_EX_1(SomeUnavailable, ResourceAllocationException, String, API.ErrorCodeInternalError)
+MAKE_EX_0_WITH_MSG(SomeUnavailable, ServerNotAvailable, API.ErrorCodeInternalError, "ServerNotAvailable")
+MAKE_EX_1(SomeUnavailable, ResourceAllocationException, String, API.ErrorCodeInternalError)
 
 -------------------------------------------------------------------------------
 -- Exception: SomeDataLoss
@@ -538,7 +536,7 @@ MAKE_SUB_EX(SomeHServerException, SomeDataLoss)
 -- etc.)
 MAKE_SUB_EX(SomeHServerException, SomeUnauthenticated)
 
-MAKE_STD_EX_1(SomeUnauthenticated, RQLiteNoAuth, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeUnauthenticated, RQLiteNoAuth, String, API.ErrorCodeInternalError)
 
 -------------------------------------------------------------------------------
 -- Exception: SomeUnimplemented
@@ -548,7 +546,7 @@ MAKE_STD_EX_1(SomeUnauthenticated, RQLiteNoAuth, String, API.ErrorCodeInternalEr
 -- The operation is not implemented or is not supported/enabled in this service.
 MAKE_SUB_EX(SomeHServerException, SomeUnimplemented)
 
-MAKE_STD_EX_1(SomeUnimplemented, ExecPlanUnimplemented, String, API.ErrorCodeInternalError)
+MAKE_EX_1(SomeUnimplemented, ExecPlanUnimplemented, String, API.ErrorCodeInternalError)
 
 -------------------------------------------------------------------------------
 -- Handlers
