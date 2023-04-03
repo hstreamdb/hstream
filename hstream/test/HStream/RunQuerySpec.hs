@@ -73,18 +73,6 @@ terminateQuery qid = withGRPCClient clientConfig $ \client -> do
       return False
     _ -> return False
 
-restartQuery :: T.Text -> IO Bool
-restartQuery qid = withGRPCClient clientConfig $ \client -> do
-  HStreamApi{..} <- hstreamApiClient client
-  let restartQueryRequest = RestartQueryRequest { restartQueryRequestId = qid }
-  resp <- hstreamApiRestartQuery (ClientNormalRequest restartQueryRequest 100 (MetadataMap Map.empty))
-  case resp of
-    ClientNormalResponse _ _meta1 _meta2 StatusOk _details -> return True
-    ClientErrorResponse clientError -> do
-      putStrLn $ "Restart Query Client Error: " <> show clientError
-      return False
-    _ -> return False
-
 spec :: Spec
 spec = aroundAll provideHstreamApi $
   describe "HStream.RunQuerySpec" $ do
@@ -127,20 +115,11 @@ spec = aroundAll provideHstreamApi $
         let (Just thisQuery) = V.find (\x -> queryQueryText x == sql) queries
         _ <- terminateQuery (queryId thisQuery)
         query <- getQuery (queryId thisQuery)
-        let terminated = getPBStatus Terminated
+        let terminated = getPBStatus Paused
         case query of
           Just Query {..} -> return (queryStatus == terminated)
           _               -> return False
     ) `shouldReturn` True
-
-  -- it "restart query" $ \_ ->
-  --   ( do
-  --       _ <- restartQuery queryname1
-  --       query <- getQuery queryname1
-  --       case query of
-  --         Just (Query _ P.Running _ _ ) -> return True
-  --         _                             -> return False
-  --   ) `shouldReturn` True
 
   it "delete query" $ \_ ->
     ( do

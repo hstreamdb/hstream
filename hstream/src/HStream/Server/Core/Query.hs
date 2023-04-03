@@ -15,7 +15,7 @@ module HStream.Server.Core.Query
 
   , hstreamQueryToQuery
 
-  , restoreQuery
+  , resumeQuery
   ) where
 
 import           Control.Concurrent
@@ -151,14 +151,13 @@ sendToClient
   -> IO ()
 sendToClient metaHandle qid streamName SourceConnectorWithoutCkp{..} streamSend = do
   M.getMeta @P.QueryStatus qid metaHandle >>= \case
-    Just Terminated -> throwIO $ HE.PushQueryTerminated ""
-    Just Created -> throwIO $ HE.PushQueryCreated ""
-    Just Running -> do
-      withReadRecordsWithoutCkp streamName Just Just $ \sourceRecords -> do
-        let (objects' :: [Maybe Aeson.Object]) = Aeson.decode' . srcValue <$> sourceRecords
-            structs = jsonObjectToStruct . fromJust <$> filter isJust objects'
-        return (void $ streamSendMany structs, return ())
-    _ -> throwIO $ HE.UnknownPushQueryStatus ""
+    Just Running -> withReadRecordsWithoutCkp streamName Just Just $ \sourceRecords -> do
+      let (objects' :: [Maybe Aeson.Object]) = Aeson.decode' . srcValue <$> sourceRecords
+          structs = jsonObjectToStruct . fromJust <$> filter isJust objects'
+      return (void $ streamSendMany structs, return ())
+    Just _   -> throwIO $ HE.QueryIsNotRunning ""
+    _        -> throwIO $ HE.UnknownPushQueryStatus ""
+
     . (P.queryState <$>)
   where
     streamSendMany = \case
@@ -204,7 +203,7 @@ createQueryWithNamespace'
             createStreamWithShard scLDClient (transToStreamName sink) "query" factor
             let relatedStreams = (sources, sink)
             -- FIXME: pass custom query name
-            handleCreateAsSelect sc sink (ins `zip` L.map fromJust roles_m) (out, RoleStream) builder createQueryRequestSql relatedStreams
+            createQueryAndRun sc sink (ins `zip` L.map fromJust roles_m) (out, RoleStream) builder createQueryRequestSql relatedStreams
             >>= hstreamQueryToQuery metaHandle
       _ -> throw $ HE.WrongExecutionPlan "Create query only support select / create stream as select statements"
 #else
@@ -228,7 +227,12 @@ createQueryWithNamespace'
             , streamShardCount = 1
             }
           let relatedStreams = (sources, sink)
-          handleCreateAsSelect sc builder createQueryRequestQueryName createQueryRequestSql relatedStreams True
+          createQueryAndRun sc QueryRunner {
+              qRTaskBuilder = builder
+            , qRQueryName   = createQueryRequestQueryName
+            , qRQueryString = createQueryRequestSql
+            , qRWhetherToHStore = True }
+            relatedStreams
           >>= hstreamQueryToQuery metaHandle
         _ -> throw $ HE.WrongExecutionPlan "Create query only support select / create stream as select statements"
       _ -> throw $ HE.WrongExecutionPlan "Create query only support select / create stream as select statements"
@@ -289,18 +293,24 @@ deleteQuery ServerContext{..} DeleteQueryRequest{..} =
 
 ----
 -- Warning: may throw exceptions if restoration fails
-restoreQuery :: ServerContext -> T.Text -> IO ()
-restoreQuery ctx@ServerContext{..} queryId = do
-  getMeta @P.QueryInfo queryId metaHandle >>= \case
+#ifndef HStreamUseV2Engine
+resumeQuery :: ServerContext -> T.Text -> IO ()
+resumeQuery ctx@ServerContext{..} qRQueryName = do
+  getMeta @P.QueryInfo qRQueryName metaHandle >>= \case
     Just qInfo@P.QueryInfo{..} -> do
-      plan <- streamCodegen querySql
-      case plan of
-        CreateBySelectPlan sources sink builder _ _ ->
-          void $ handleCreateAsSelect ctx builder queryId querySql queryStreams True
-        CreateViewPlan sources sink view builder _ ->
-          void $ handleCreateAsSelect ctx builder queryId querySql queryStreams False
+      (qRTaskBuilder, qRWhetherToHStore) <- streamCodegen querySql >>= \case
+        CreateBySelectPlan sources sink builder _ _ -> checkSources sources >> return (builder, True)
+        CreateViewPlan sources sink view builder _  -> checkSources sources >> return (builder, False)
         _ -> throwIO $ HE.UnexpectedError ("Query " <> T.unpack queryId <> "should not be like \"" <> T.unpack querySql <> "\". What happened?")
-    Nothing -> throwIO $ HE.QueryNotFound ("Query " <> queryId <> "does not exist")
+      restoreStateAndRun ctx QueryRunner {qRQueryString = querySql, ..}
+    Nothing -> throwIO $ HE.QueryNotFound ("Query " <> qRQueryName <> "does not exist")
+  where
+    checkSources sources = do
+      roles_m <- mapM (amIStream ctx) sources
+      unless (and roles_m) $ do
+        Log.warning $ "At least one of the streams/views do not exist: " <> Log.buildString' sources
+        throwIO $ HE.StreamNotFound $ "At least one of the streams/views do not exist: " <> T.pack (show sources)
+#endif
 
 -------------------------------------------------------------------------------
 

@@ -72,6 +72,7 @@ import           HStream.Processing.Store
 import           HStream.SQL.Codegen.V1
 #endif
 
+--------------------------------------------------------------------------------
 #ifdef HStreamUseV2Engine
 --------------------------------------------------------------------------------
 applyTempFilter :: DiffFlow.Shard Row Int64 -> In -> DiffFlow.DataChange Row Int64 -> IO ()
@@ -110,7 +111,6 @@ applyTempFilter shard In{..} dataChange = do
       DiffFlow.pushInput shard inNode negatedDataChange -- negated update
     _ -> return ()
 
---------------------------------------------------------------------------------
 runTask :: ServerContext
         -> Text
         -> Text
@@ -257,11 +257,8 @@ runImmTask ctx@ServerContext{..} insWithRole out out_m graphBuilder = do
   putMVar stop_m ()
   wait task_async
 
---------------------------------------------------------------------------------
--- GRPC Handler Helper
-
 -- TODO: return info in a more maintainable way
-handleCreateAsSelect :: ServerContext
+createQueryAndRun :: ServerContext
                      -> Text
                      -> [(In, IdentifierRole)]
                      -> (Out, IdentifierRole)
@@ -269,7 +266,7 @@ handleCreateAsSelect :: ServerContext
                      -> Text
                      -> P.RelatedStreams
                      -> IO P.QueryInfo
-handleCreateAsSelect ctx@ServerContext{..} sink insWithRole outWithRole builder commandQueryStmtText related = do
+createQueryAndRun ctx@ServerContext{..} sink insWithRole outWithRole builder commandQueryStmtText related = do
   taskName <- newRandomText 10
   qInfo@P.QueryInfo{..} <- P.createInsertQueryInfo
                       taskName commandQueryStmtText related metaHandle
@@ -294,11 +291,21 @@ handleCreateAsSelect ctx@ServerContext{..} sink insWithRole outWithRole builder 
                     Log.warning . Log.buildString
                        $ "CREATE AS SELECT: query " <> show qid
                       <> " died because of " <> show e
-                    M.updateMeta qid P.QueryAbort Nothing metaHandle
+                    M.updateMeta qid P.QueryAborted Nothing metaHandle
                     void $ releasePid qid)
       ]
     releasePid qid = modifyMVar_ runningQueries (return . HM.delete qid)
+
+--------------------------------------------------------------------------------
 #else
+--------------------------------------------------------------------------------
+
+data QueryRunner = QueryRunner {
+    qRTaskBuilder     :: TaskBuilder
+  , qRQueryName       :: Text
+  , qRWhetherToHStore :: Bool
+  , qRQueryString     :: Text
+  }
 
 ---- store processing node states (changelog)
 -- do nothing
@@ -397,105 +404,111 @@ runTaskWrapper ctx@ServerContext{..} taskBuilder logId writeToHStore = do
               transKSnk
               transVSnk
 
-handleCreateAsSelect :: ServerContext
-                     -> TaskBuilder
-                     -> Text
-                     -> Text
-                     -> P.RelatedStreams
-                     -> Bool
-                     -> IO P.QueryInfo
-handleCreateAsSelect ctx@ServerContext{..} taskBuilder queryId commandQueryStmtText related writeToHStore = do
-  ---- check if the query exists and try to recover it ----
-  M.getMeta @P.QueryInfo queryId metaHandle >>= \case
-    Just qInfo@P.QueryInfo{..} -> M.getMeta @P.QueryStatus queryId metaHandle >>= \case
-      Just P.QueryTerminated -> restoreStateAndRun >> return qInfo
-      Just P.QueryAbort      -> restoreStateAndRun >> return qInfo
-      Just P.QueryRunning    -> throwIO $ HE.UnexpectedError ("Query " <> T.unpack queryId <> " is already running") -- FIXME: which exception should it throw?
-      Just P.QueryCreated    -> throwIO $ HE.UnexpectedError ("Query " <> T.unpack queryId <> " has state CREATED") -- FIXME: do what?
-      _                      -> throwIO $ HE.UnexpectedError ("Query " <> T.unpack queryId <> " has unknown state")
-    Nothing    -> do
-      -- state store(changelog)
-      let streamId = transToTempStreamName queryId
-      let attrs = S.def { S.logReplicationFactor = S.defAttr1 1 }
-      S.createStream scLDClient streamId attrs
-      logId <- S.createStreamPartition scLDClient streamId Nothing mempty
-      -- update metadata
-      qInfo@P.QueryInfo{..} <- P.createInsertQueryInfo
-                          queryId commandQueryStmtText related metaHandle
-      M.updateMeta queryId P.QueryRunning Nothing metaHandle
-      tid <- forkIO $ catches (action queryId taskBuilder logId) (cleanup queryId)
-      modifyMVar_ runningQueries (return . HM.insert queryId tid)
-      return qInfo
-  where
-    restoreStateAndRun = do
-      (builder_1, lsn_1) <- case querySnapshotter of
-        Nothing -> do
-          Log.warning "Snapshotting is not available. Roll back to changelog-based restoration..."
-          return (taskBuilder, S.LSN_MIN)
-        Just db ->
-          foldlM (\(acc_builder,acc_lsn) storeName -> do
-                     let key = StateStoreSnapshotKey
-                             { snapshotQueryId = queryId
-                             , snapshotStoreName = storeName
-                             }
-                         keySer = BL.toStrict $ Aeson.encode key
-                     RocksDB.get db def keySer >>= \case
+createQueryAndRun
+  :: ServerContext -> QueryRunner -> P.RelatedStreams
+  -> IO P.QueryInfo
+createQueryAndRun ctx@ServerContext{..} qRunner@QueryRunner{..} related = do
+  qInfo <- P.createInsertQueryInfo qRQueryName qRQueryString related metaHandle
+  let streamId = transToTempStreamName qRQueryName
+  let attrs = S.def { S.logReplicationFactor = S.defAttr1 1 }
+  logId <- do
+    try @SomeException (S.createStream scLDClient streamId attrs
+      >> S.createStreamPartition scLDClient streamId Nothing mempty)
+    >>= \case Right logId -> return logId
+              Left  err   -> P.deleteQueryInfo qRQueryName metaHandle
+                          >> throwIO err
+  -- update metadata
+  runQuery ctx qRunner logId
+  return qInfo
+
+restoreStateAndRun :: ServerContext -> QueryRunner -> IO ()
+restoreStateAndRun ctx@ServerContext{..} qRunner@QueryRunner{..} = do
+  M.updateMeta qRQueryName P.QueryResuming Nothing metaHandle
+  (newBuilder, logId) <- try @SomeException (restoreState ctx qRunner) >>= \case
+    Right x  -> return x
+    Left err -> M.updateMeta qRQueryName P.QueryAborted Nothing metaHandle
+             >> throwIO err
+  runQuery ctx qRunner {qRTaskBuilder = newBuilder} logId
+
+restoreState :: ServerContext -> QueryRunner -> IO (TaskBuilder, S.C_LogID)
+restoreState ServerContext{..} qRunner@QueryRunner{..} = do
+  (builder_1, lsn_1) <- case querySnapshotter of
+    Nothing -> do
+      Log.warning "Snapshot is not available. Roll back to changelog-based restoration..."
+      return (qRTaskBuilder, S.LSN_MIN)
+    Just db ->
+      foldlM (\(acc_builder,acc_lsn) storeName -> do
+                 let key = StateStoreSnapshotKey
+                         { snapshotQueryId = qRQueryName
+                         , snapshotStoreName = storeName
+                         }
+                     keySer = BL.toStrict $ Aeson.encode key
+                 RocksDB.get db def keySer >>= \case
+                   Nothing       -> return (acc_builder,acc_lsn)
+                   Just valueSer -> do
+                     let (sv :: StateStoreSnapshotValue S.LSN K V Ser) =
+                           fromJust (Aeson.decode $ BL.fromStrict valueSer)
+                     (builder_m, i) <- applyStateStoreSnapshot acc_builder key sv
+                     case builder_m of
                        Nothing       -> return (acc_builder,acc_lsn)
-                       Just valueSer -> do
-                         let (sv :: StateStoreSnapshotValue S.LSN K V Ser) =
-                               fromJust (Aeson.decode $ BL.fromStrict valueSer)
-                         (builder_m, i) <- applyStateStoreSnapshot acc_builder key sv
-                         case builder_m of
-                           Nothing       -> return (acc_builder,acc_lsn)
-                           Just builder' -> return (builder',i)
-                 ) (taskBuilder, S.LSN_MIN) (HM.keys $ stores taskBuilder)
-      -- changelog
-      let streamId = transToTempStreamName queryId
-      logId <- S.getUnderlyingLogId scLDClient streamId Nothing
-      tailLSN <- S.getTailLSN scLDClient logId
-      reader <- S.newLDReader scLDClient 1 Nothing
-      S.readerStartReading reader logId lsn_1 tailLSN
-      newBuilder <-
-        fix $ \go -> S.readerRead reader 10 >>= \dataRecords -> do
-          (curBuilder, curLSN) <-
-            foldlM (\(acc_builder,acc_lsn) dr@S.DataRecord{..} -> do
-                       let (cl :: StateStoreChangelog K V Ser) = fromJust (Aeson.decode $ BL.fromStrict recordPayload)
-                       builder' <- applyStateStoreChangelog acc_builder cl
-                       return (builder', S.recordLSN dr)
-                   ) (builder_1, lsn_1) dataRecords
-          if curLSN >= tailLSN
-            then return curBuilder
-            else go
-      -- update metadata and run task
-      M.updateMeta queryId P.QueryRunning Nothing metaHandle
-      tid <- forkIO $ catches (action queryId newBuilder logId) (cleanup queryId)
-      modifyMVar_ runningQueries (return . HM.insert queryId tid)
-    action qid builder logId = do
-      Log.debug . Log.buildString
-        $ "CREATE AS SELECT: query " <> show qid
-       <> " has stared working on " <> show commandQueryStmtText
-      runTaskWrapper ctx builder logId writeToHStore
-    cleanup qid =
+                       Just builder' -> return (builder',i)
+             ) (qRTaskBuilder, S.LSN_MIN) (HM.keys $ stores qRTaskBuilder)
+  -- changelog
+  Log.debug $ "Snapshot restoration for query with name" <> Log.build qRQueryName
+           <> " completed, restoring the rest of the computation from changelog"
+  let streamId = transToTempStreamName qRQueryName
+  logId <- S.getUnderlyingLogId scLDClient streamId Nothing
+  tailLSN <- S.getTailLSN scLDClient logId
+  reader <- S.newLDReader scLDClient 1 Nothing
+  S.readerStartReading reader logId lsn_1 tailLSN
+  newBuilder <- fix (\f (builder, lsn)-> do
+                       new@(newBuilder, endLsn) <- reconstruct reader builder
+                       if endLsn >= tailLSN then return newBuilder else f new)
+                    (builder_1, lsn_1)
+  Log.info $ "Computation restored for query with name" <> Log.build qRQueryName
+  return (newBuilder, logId)
+  where
+    reconstruct reader oldBuilder = S.readerReadAllowGap reader 10 >>= \case
+      Right dataRecords ->
+        foldlM (\(acc_builder, acc_lsn) dr@S.DataRecord{..} -> do
+                 let (cl :: StateStoreChangelog K V Ser) = fromJust (Aeson.decode $ BL.fromStrict recordPayload)
+                 builder' <- applyStateStoreChangelog acc_builder cl
+                 return (builder', S.recordLSN dr)
+           ) (oldBuilder, S.LSN_MIN) dataRecords
+      Left gp@S.GapRecord{..} -> return (oldBuilder, gapHiLSN)
+
+runQuery :: ServerContext -> QueryRunner -> S.C_LogID-> IO ()
+runQuery ctx@ServerContext{..} QueryRunner{..} logId = do
+  M.updateMeta qRQueryName P.QueryRunning Nothing metaHandle
+  tid <- forkIO $ catches action cleanup
+  modifyMVar_ runningQueries (return . HM.insert qRQueryName tid)
+  where
+    action = do
+      Log.debug $ "Start Query " <> Log.build qRQueryString
+                <> "with name: " <> Log.build qRQueryName
+      runTaskWrapper ctx qRTaskBuilder logId qRWhetherToHStore
+    cleanup =
       [ Handler (\(e :: AsyncException) -> do
                     Log.debug . Log.buildString
-                       $ "CREATE AS SELECT: query " <> show qid
+                       $ "CREATE AS SELECT: query " <> show qRQueryName
                       <> " is killed because of " <> show e
-                    M.updateMeta qid P.QueryTerminated Nothing metaHandle
-                    void $ releasePid qid
+                    M.updateMeta qRQueryName P.QueryPaused Nothing metaHandle
+                    releasePid
                 )
       , Handler (\(e :: SomeException) -> do
                     Log.warning . Log.buildString
-                       $ "CREATE AS SELECT: query " <> show qid
+                       $ "CREATE AS SELECT: query " <> show qRQueryName
                       <> " died because of " <> show e
-                    M.updateMeta qid P.QueryAbort Nothing metaHandle
-                    void $ releasePid qid
+                    M.updateMeta qRQueryName P.QueryAborted Nothing metaHandle
+                    releasePid
                 )
       ]
-    releasePid qid = modifyMVar_ runningQueries (return . HM.delete qid)
+    releasePid = modifyMVar_ runningQueries (return . HM.delete qRQueryName)
 
+--------------------------------------------------------------------------------
 #endif
-
 -------------------------------------------------------------------------------
+
 data IdentifierRole = RoleStream | RoleView deriving (Eq, Show)
 
 findIdentifierRole :: ServerContext -> Text -> IO (Maybe IdentifierRole)
@@ -509,14 +522,10 @@ findIdentifierRole ServerContext{..} name = do
         Nothing -> return Nothing
         Just _  -> return (Just RoleView)
 
---------------------------------------------------------------------------------
+amIStream :: ServerContext -> Text -> IO Bool
+amIStream ServerContext{..} name = S.doesStreamExist scLDClient (transToStreamName name)
 
-handlePushQueryCanceled :: ServerCall () -> IO () -> IO ()
-handlePushQueryCanceled ServerCall{..} handle = do
-  x <- runOps unsafeSC callCQ [OpRecvCloseOnServer]
-  case x of
-    Left err   -> print err
-    Right []   -> putStrLn "GRPCIOInternalUnexpectedRecv"
-    Right [OpRecvCloseOnServerResult b]
-      -> when b handle
-    _ -> putStrLn "impossible happened"
+amIView :: ServerContext -> Text -> IO Bool
+amIView ServerContext{..} name = do
+  hm <- readIORef P.groupbyStores
+  return $ HM.member name hm

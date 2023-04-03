@@ -80,7 +80,7 @@ handlers sc =
   , unary (GRPC :: GRPC P.HStreamApi "createQueryWithNamespace") (H.handleCreateQueryWithNamespace sc)
   , unary (GRPC :: GRPC P.HStreamApi "listQueries") (H.handleListQueries sc)
   , unary (GRPC :: GRPC P.HStreamApi "deleteQuery") (H.handleDeleteQuery sc)
-  , unary (GRPC :: GRPC P.HStreamApi "restartQuery") (H.handleRestartQuery sc)
+  , unary (GRPC :: GRPC P.HStreamApi "resumeQuery") (H.handleResumeQuery sc)
   ]
 
 handleEcho :: UnaryHandler A.EchoRequest A.EchoResponse
