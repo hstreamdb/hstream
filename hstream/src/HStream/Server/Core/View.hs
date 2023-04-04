@@ -9,7 +9,6 @@ module HStream.Server.Core.View
   , createView'
   ) where
 
-import           Control.Concurrent            (MVar)
 import           Control.Exception             (throw, throwIO)
 import           Control.Monad                 (unless)
 import qualified Data.Aeson                    as Aeson
@@ -156,7 +155,7 @@ executeViewQuery :: ServerContext -> T.Text -> IO (V.Vector Struct)
 executeViewQuery sc@ServerContext{..} sql = do
   plan <- streamCodegen sql
   case plan of
-    SelectPlan sources sink builder persist -> do
+    SelectPlan sources sink builder persist (groupBykeys, keysAdded) -> do
       roles_m <- mapM (findIdentifierRole sc) sources
       case all (== Just RoleView) roles_m of
         False -> do
@@ -169,8 +168,23 @@ executeViewQuery sc@ServerContext{..} sql = do
           let sinkConnector = SH.memorySinkConnector sinkRecords_m
           HP.runImmTask (sources `zip` mats) sinkConnector builder () () Just Just
           sinkRecords <- readIORef sinkRecords_m
+          let flowObjects = L.map (fromJust . Aeson.decode . snkValue) sinkRecords :: [FlowObject]
+          let res =
+                if L.null groupBykeys
+                then flowObjects
+                else
+                  let compactedRes =
+                        L.foldl'
+                          (
+                            \m fo ->
+                              let values = L.map (fo HM.!) groupBykeys
+                               in  HM.insert values fo m
+                          )
+                          HM.empty
+                          flowObjects
+                   in L.map (HM.filterWithKey (\ k _ -> L.notElem k keysAdded)) (HM.elems compactedRes)
           return . V.fromList $ jsonObjectToStruct . flowObjectToJsonObject
-                              . fromJust . Aeson.decode @FlowObject . snkValue <$> sinkRecords
+                              <$> res
     _ -> throw $ HE.InvalidSqlStatement "Invalid SQL statement for running view query"
 
 listViews :: HasCallStack => ServerContext -> IO [API.View]
