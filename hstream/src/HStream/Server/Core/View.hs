@@ -5,6 +5,7 @@ module HStream.Server.Core.View
   , getView
   , listViews
   , executeViewQuery
+  , executeViewQueryWithNamespace
   , createView
   , createView'
   ) where
@@ -27,7 +28,8 @@ import qualified HStream.Logger                as Log
 import           HStream.MetaStore.Types       (MetaStore (insertMeta))
 import qualified HStream.MetaStore.Types       as M
 import           HStream.Processing.Type       (SinkRecord (..))
-import           HStream.Server.Core.Common    (handleQueryTerminate)
+import           HStream.Server.Core.Common    (handleQueryTerminate,
+                                                modifySelect)
 import           HStream.Server.Handler.Common (IdentifierRole (..),
                                                 QueryRunner (..), amIView,
                                                 createQueryAndRun,
@@ -37,8 +39,9 @@ import qualified HStream.Server.HStreamApi     as API
 import qualified HStream.Server.MetaData       as P
 import           HStream.Server.MetaData.Types (ViewInfo (viewName))
 import           HStream.Server.Types
-import           HStream.SQL                   (FlowObject,
-                                                flowObjectToJsonObject)
+import           HStream.SQL                   (FlowObject, RSQL (..),
+                                                flowObjectToJsonObject,
+                                                parseAndRefine)
 import           HStream.ThirdParty.Protobuf   (Empty (..), Struct)
 import           HStream.Utils                 (TaskStatus (..),
                                                 jsonObjectToStruct,
@@ -158,15 +161,17 @@ getView ServerContext{..} viewId = do
       throwIO $ ViewNotFound viewId
 
 executeViewQuery :: ServerContext -> T.Text -> IO (V.Vector Struct)
-executeViewQuery sc@ServerContext{..} sql = do
-  plan <- streamCodegen sql
-  case plan of
+executeViewQuery ctx sql = executeViewQueryWithNamespace ctx sql ""
+
+executeViewQueryWithNamespace :: ServerContext -> T.Text -> T.Text -> IO (V.Vector Struct)
+executeViewQueryWithNamespace sc@ServerContext{..} sql namespace = parseAndRefine sql >>= \case
+  RQSelect select -> hstreamCodegen (RQSelect (modifySelect namespace select)) >>= \case
     SelectPlan sources sink builder persist (groupBykeys, keysAdded) -> do
       isViews <- mapM (amIView sc) sources
       case and isViews of
         False -> do
-          Log.warning "Can not perform non-pushing SELECT on streams."
-          throwIO $ HE.InvalidSqlStatement "Can not perform non-pushing SELECT on streams."
+          Log.warning "View not found"
+          throwIO $ HE.ViewNotFound "View not found"
         True  -> do
           hm <- readIORef P.groupbyStores
           let mats = L.map (hm HM.!) sources
@@ -192,6 +197,7 @@ executeViewQuery sc@ServerContext{..} sql = do
           return . V.fromList $ jsonObjectToStruct . flowObjectToJsonObject
                               <$> res
     _ -> throw $ HE.InvalidSqlStatement "Invalid SQL statement for running view query"
+  _ -> throw $ HE.InvalidSqlStatement "Invalid SQL statement for running view query"
 
 listViews :: HasCallStack => ServerContext -> IO [API.View]
 listViews ServerContext{..} = mapM (hstreamViewToView metaHandle) =<< M.listMeta metaHandle

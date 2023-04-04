@@ -11,11 +11,13 @@ module HStream.Server.Handler.View
   , getViewHandler
   , deleteViewHandler
   , executeViewQueryHandler
+  , executeViewQueryWithNamespaceHandler
     -- * For hs-grpc-server
   , handleListView
   , handleGetView
   , handleDeleteView
   , handleExecuteViewQuery
+  , handleExecuteViewQueryWithNamespace
   ) where
 
 import qualified Data.ByteString.Lazy             as BL
@@ -90,3 +92,22 @@ handleExecuteViewQuery sc _ ExecuteViewQueryRequest{..} = catchDefaultEx $ do
   Log.debug $ "Receive Execute View Query Request. "
            <> "SQL Statement:" <> Log.build executeViewQueryRequestSql
   ExecuteViewQueryResponse <$> Core.executeViewQuery sc executeViewQueryRequestSql
+
+executeViewQueryWithNamespaceHandler
+  :: ServerContext -> ServerRequest 'Normal ExecuteViewQueryWithNamespaceRequest ExecuteViewQueryResponse
+  -> IO (ServerResponse 'Normal ExecuteViewQueryResponse)
+executeViewQueryWithNamespaceHandler sc (ServerNormalRequest _metadata ExecuteViewQueryWithNamespaceRequest{..}) = defaultExceptionHandle $ do
+  Log.debug $ "Receive Execute View Query Request. "
+           <> "SQL Statement:" <> Log.build executeViewQueryWithNamespaceRequestSql
+  returnResp . ExecuteViewQueryResponse =<<
+    Core.executeViewQueryWithNamespace sc executeViewQueryWithNamespaceRequestSql
+                                          executeViewQueryWithNamespaceRequestNamespace
+
+handleExecuteViewQueryWithNamespace
+  :: ServerContext -> G.UnaryHandler ExecuteViewQueryWithNamespaceRequest ExecuteViewQueryResponse
+handleExecuteViewQueryWithNamespace sc _ ExecuteViewQueryWithNamespaceRequest{..} = catchDefaultEx $ do
+  Log.debug $ "Receive Execute View Query Request. "
+           <> "SQL Statement:" <> Log.build executeViewQueryWithNamespaceRequestSql
+  ExecuteViewQueryResponse <$>
+    Core.executeViewQueryWithNamespace sc executeViewQueryWithNamespaceRequestSql
+                                          executeViewQueryWithNamespaceRequestNamespace
