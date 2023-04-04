@@ -59,7 +59,8 @@ import qualified HStream.Processing.Stream.SessionWindowedStream as HSW
 import           HStream.Processing.Stream.SessionWindows        (mkSessionWindows,
                                                                   sessionWindowKeySerde)
 import qualified HStream.Processing.Stream.TimeWindowedStream    as HTW
-import           HStream.Processing.Stream.TimeWindows           (TimeWindowKey (..),
+import           HStream.Processing.Stream.TimeWindows           (TimeWindow (..),
+                                                                  TimeWindowKey (..),
                                                                   mkHoppingWindow,
                                                                   mkTumblingWindow,
                                                                   timeWindowKeySerde)
@@ -405,7 +406,12 @@ relationExprToGraph relation builder = case relation of
             s' <- HG.timeWindowedBy (mkTumblingWindow (calendarDiffTimeToMs i)) groupedStream
                   >>= HTW.aggregate aggregateInit
                                     aggregateR
-                                    HM.union
+                                    (\a k TimeWindow{..} ->
+                                        let winStart = [(ColumnCatalog winStartText Nothing, jsonValueToFlowValue . Aeson.Number $ scientific (toInteger tWindowStart) 0)]
+                                            winEnd   = [(ColumnCatalog winEndText Nothing, jsonValueToFlowValue . Aeson.Number $ scientific (toInteger tWindowEnd  ) 0)]
+                                            win      = HM.fromList $ winStart ++ winEnd
+                                         in HM.union (HM.union a k) win
+                                    )
                                     timeWindowFlowObjectSerde
                                     (timeWindowSerde $ calendarDiffTimeToMs i)
                                     flowObjectSerde
@@ -416,7 +422,12 @@ relationExprToGraph relation builder = case relation of
             s' <- HG.timeWindowedBy (mkHoppingWindow (calendarDiffTimeToMs i1) (calendarDiffTimeToMs i2)) groupedStream
                   >>= HTW.aggregate aggregateInit
                                     aggregateR
-                                    HM.union
+                                    (\a k TimeWindow{..} ->
+                                        let winStart = [(ColumnCatalog winStartText Nothing, jsonValueToFlowValue . Aeson.Number $ scientific (toInteger tWindowStart) 0)]
+                                            winEnd   = [(ColumnCatalog winEndText Nothing, jsonValueToFlowValue . Aeson.Number $ scientific (toInteger tWindowEnd  ) 0)]
+                                            win      = HM.fromList $ winStart ++ winEnd
+                                         in HM.union (HM.union a k) win
+                                    )
                                     timeWindowFlowObjectSerde
                                     (timeWindowSerde $ calendarDiffTimeToMs i1)
                                     flowObjectSerde
