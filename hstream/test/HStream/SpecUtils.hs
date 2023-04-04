@@ -262,7 +262,7 @@ runInsertSql api sql = do
 runCreateWithSelectSql :: HStreamClientApi -> T.Text -> Expectation
 runCreateWithSelectSql api sql = do
   resp <- getServerResp =<< createStreamBySelect (T.unpack sql) api
-  resp `shouldSatisfy` \Query{..} -> queryQueryText == sql
+  resp `shouldSatisfy` \(CreateQueryResponse (Just (CreateQueryResponseInfoQuery QueryInfo{..})) )-> queryInfoSql == sql
 
 runShowStreamsSql :: HStreamClientApi -> T.Text -> IO String
 runShowStreamsSql api sql = do

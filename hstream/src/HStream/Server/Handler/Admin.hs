@@ -252,10 +252,10 @@ runView :: ServerContext -> AT.ViewCommand -> IO Text
 runView serverContext AT.ViewCmdList = do
   let headers = ["id" :: Text, "status", "createdTime"]
   views <- HC.listViews serverContext
-  rows <- forM views $ \view -> do
-    return [ API.viewViewId view
-           , Text.pack . formatStatus . API.viewStatus $ view
-           , Text.pack . show . API.viewCreatedTime $ view
+  rows <- forM views $ \API.View{ viewInfo = Just API.ViewInfo {viewInfoQueryInfo = Just API.QueryInfo{..}, ..}, .. } -> do
+    return [ viewInfoName
+           , Text.pack . formatStatus $ viewStatus
+           , Text.pack . show $ queryInfoCreatedAt
            ]
   let content = Aeson.object ["headers" .= headers, "rows" .= rows]
   return $ tableResponse content

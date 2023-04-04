@@ -32,6 +32,7 @@ module HStream.Server.Handler.Query
 
 import           Control.Exception                (Handler (..), catches)
 import qualified Data.ByteString.Char8            as BS
+import           Data.Functor                     ((<&>))
 import qualified Data.HashMap.Strict              as HM
 import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as Map
@@ -68,41 +69,41 @@ handleExecuteQuery sc _ req = catchQueryEx $ Core.executeQuery sc req
 
 createQueryHandler
   :: ServerContext
-  -> ServerRequest 'Normal API.CreateQueryRequest API.Query
-  -> IO (ServerResponse 'Normal API.Query)
+  -> ServerRequest 'Normal API.CreateQueryRequest API.CreateQueryResponse
+  -> IO (ServerResponse 'Normal API.CreateQueryResponse)
 createQueryHandler ctx (ServerNormalRequest _metadata req@API.CreateQueryRequest{..}) =
   queryExceptionHandle $ do
     Log.debug $ "Receive Create Query Request with statement: " <> Log.build createQueryRequestSql
              <> "and query name: " <> Log.build createQueryRequestQueryName
     validateNameAndThrow createQueryRequestQueryName
-    Core.createQuery ctx req >>= returnResp
+    Core.createQuery ctx req >>= returnResp . API.CreateQueryResponse . Just
 
 handleCreateQuery
-  :: ServerContext -> G.UnaryHandler API.CreateQueryRequest API.Query
+  :: ServerContext -> G.UnaryHandler API.CreateQueryRequest API.CreateQueryResponse
 handleCreateQuery ctx _ req@API.CreateQueryRequest{..} = catchQueryEx $ do
   Log.debug $ "Receive Create Query Request with statement: " <> Log.build createQueryRequestSql
            <> "and query name: " <> Log.build createQueryRequestQueryName
   validateNameAndThrow createQueryRequestQueryName
-  Core.createQuery ctx req
+  Core.createQuery ctx req <&> API.CreateQueryResponse . Just
 
 createQueryWithNamespaceHandler
   :: ServerContext
-  -> ServerRequest 'Normal API.CreateQueryWithNamespaceRequest API.Query
-  -> IO (ServerResponse 'Normal API.Query)
+  -> ServerRequest 'Normal API.CreateQueryWithNamespaceRequest API.CreateQueryResponse
+  -> IO (ServerResponse 'Normal API.CreateQueryResponse)
 createQueryWithNamespaceHandler ctx (ServerNormalRequest _metadata req@API.CreateQueryWithNamespaceRequest{..}) =
   queryExceptionHandle $ do
     Log.debug $ "Receive Create Query Request with statement: " <> Log.build createQueryWithNamespaceRequestSql
              <> "and query name: " <> Log.build createQueryWithNamespaceRequestQueryName
     validateNameAndThrow createQueryWithNamespaceRequestQueryName
-    Core.createQueryWithNamespace ctx req >>= returnResp
+    Core.createQueryWithNamespace ctx req >>= returnResp . API.CreateQueryResponse . Just
 
 handleCreateQueryWithNamespace
-  :: ServerContext -> G.UnaryHandler API.CreateQueryWithNamespaceRequest API.Query
+  :: ServerContext -> G.UnaryHandler API.CreateQueryWithNamespaceRequest API.CreateQueryResponse
 handleCreateQueryWithNamespace ctx _ req@API.CreateQueryWithNamespaceRequest{..} = catchQueryEx $ do
   Log.debug $ "Receive Create Query Request with statement: " <> Log.build createQueryWithNamespaceRequestSql
            <> "and query name: " <> Log.build createQueryWithNamespaceRequestQueryName
   validateNameAndThrow createQueryWithNamespaceRequestQueryName
-  Core.createQueryWithNamespace ctx req
+  Core.createQueryWithNamespace ctx req <&> API.CreateQueryResponse . Just
 
 listQueriesHandler
   :: ServerContext

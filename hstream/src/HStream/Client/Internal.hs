@@ -75,14 +75,15 @@ cliFetch' handleResult ctx sql = do
   (sName, newSql) <- genRandomSinkStreamSQL (T.pack . removeEmitChanges . words $ sql)
   subId <- genRandomSubscriptionId
   qName <-  ("cli_generated_" <>) <$> newRandomText 10
-  API.Query {..} <- getServerResp =<< executeWithLookupResource ctx (Resource ResQuery qName)
+  API.CreateQueryResponse (Just (API.CreateQueryResponseInfoQuery API.QueryInfo{..}))
+    <- getServerResp =<< executeWithLookupResource ctx (Resource ResQuery qName)
     (createStreamBySelectWithCustomQueryName (T.unpack newSql) qName)
   void . execute ctx $ createSubscription subId sName
   executeWithLookupResource_ ctx (Resource ResSubscription subId)
     (case handleResult of Nothing -> streamingFetch subId
                           Just h  -> streamingFetch' h subId)
   executeWithLookupResource_ ctx (Resource ResSubscription subId) (void . deleteSubscription subId True)
-  executeWithLookupResource_ ctx (Resource ResQuery qName) (terminateQueries (OneQuery queryId))
+  executeWithLookupResource_ ctx (Resource ResQuery qName) (terminateQueries (OneQuery queryInfoName))
   executeWithLookupResource_ ctx (Resource ResStream sName) (void . dropAction False (DStream sName))
 
 genRandomSubscriptionId :: IO T.Text

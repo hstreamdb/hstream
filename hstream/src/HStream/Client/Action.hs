@@ -142,12 +142,12 @@ insertIntoStream sName shardId insertType payload API.HStreamApi{..} = do
     , API.appendRequestRecords    = Just record
     })
 
-createStreamBySelect :: String -> Action API.Query
+createStreamBySelect :: String -> Action API.CreateQueryResponse
 createStreamBySelect sql api  = do
   qName <- newRandomText 10
   createStreamBySelectWithCustomQueryName sql ("cli_generated_" <> qName) api
 
-createStreamBySelectWithCustomQueryName :: String -> T.Text -> Action API.Query
+createStreamBySelectWithCustomQueryName :: String -> T.Text -> Action API.CreateQueryResponse
 createStreamBySelectWithCustomQueryName sql qName API.HStreamApi{..} = do
   hstreamApiCreateQuery (mkClientNormalRequest' def
     { API.createQueryRequestSql = T.pack sql, API.createQueryRequestQueryName = qName })

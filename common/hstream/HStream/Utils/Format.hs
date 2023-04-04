@@ -54,7 +54,10 @@ instance Format API.Stream where
   formatResult = renderStreamsToTable . (:[])
 
 instance Format API.View where
-  formatResult = show . API.viewViewId
+  formatResult = renderViewsToTable . (:[])
+
+instance Format API.ViewInfo where
+  formatResult = renderViewInfosToTable . (:[])
 
 instance Format [API.Stream] where
   formatResult = renderStreamsToTable
@@ -62,8 +65,14 @@ instance Format [API.Stream] where
 instance Format [API.View] where
   formatResult = renderViewsToTable
 
+instance Format [API.ViewInfo] where
+  formatResult = renderViewInfosToTable
+
 instance Format API.Query where
   formatResult = renderQueriesToTable . (:[])
+
+instance Format API.QueryInfo where
+  formatResult = renderQueryInfosToTable . (:[])
 
 instance Format API.Connector where
   formatResult = renderConnectorsToTable . (:[])
@@ -73,6 +82,9 @@ instance Format API.Subscription where
 
 instance Format [API.Query] where
   formatResult = renderQueriesToTable
+
+instance Format [API.QueryInfo] where
+  formatResult = renderQueryInfosToTable
 
 instance Format [API.Connector] where
   formatResult = renderConnectorsToTable
@@ -107,6 +119,13 @@ instance Format API.GetStreamResponse where
   formatResult = formatResult . maybeToList . API.getStreamResponseStream
 instance Format API.GetSubscriptionResponse where
   formatResult = formatResult . maybeToList . API.getSubscriptionResponseSubscription
+
+instance Format API.CreateQueryResponse where
+  formatResult = (\case Just x -> formatResult x; Nothing -> "" ). API.createQueryResponseInfo
+
+instance Format API.CreateQueryResponseInfo where
+  formatResult (API.CreateQueryResponseInfoQuery x) = formatResult x
+  formatResult (API.CreateQueryResponseInfoView x)  = formatResult x
 
 instance Format API.AppendResponse where
   formatResult = const "Done.\n"
@@ -146,11 +165,22 @@ renderQueriesToTable :: [API.Query] -> String
 renderQueriesToTable queries = showTable titles rows
   where
     titles = ["Query ID", "Status", "Created Time", "SQL Text"]
-    formatRow API.Query {..} =
-      [ [T.unpack queryId]
+    formatRow API.Query {queryInfo = Just API.QueryInfo{..}, ..} =
+      [ [T.unpack queryInfoName]
       , [formatStatus queryStatus]
-      , [formatTime queryCreatedTime]
-      , [T.unpack queryQueryText]
+      , [formatTime queryInfoCreatedAt]
+      , [T.unpack queryInfoSql]
+      ]
+    rows = map formatRow queries
+
+renderQueryInfosToTable :: [API.QueryInfo] -> String
+renderQueryInfosToTable queries = showTable titles rows
+  where
+    titles = ["Query ID", "Created Time", "SQL Text"]
+    formatRow API.QueryInfo{..} =
+      [ [T.unpack queryInfoName]
+      , [formatTime queryInfoCreatedAt]
+      , [T.unpack queryInfoSql]
       ]
     rows = map formatRow queries
 
@@ -202,11 +232,24 @@ renderViewsToTable views = showTable titles rows
              , "Status"
              , "Created Time"
              , "Schema"]
-    formatRow API.View {..} =
-      [ [T.unpack viewViewId]
+    formatRow API.View {viewInfo = Just API.ViewInfo{viewInfoQueryInfo = Just API.QueryInfo{..}, ..}, ..} =
+      [ [T.unpack viewInfoName]
       , [formatStatus viewStatus]
-      , [formatTime viewCreatedTime]
-      , [show viewSchema]
+      , [formatTime queryInfoCreatedAt]
+      , [show viewInfoSchema]
+      ]
+    rows = map formatRow views
+
+renderViewInfosToTable :: [API.ViewInfo] -> String
+renderViewInfosToTable views = showTable titles rows
+  where
+    titles = [ "View Name"
+             , "Created Time"
+             , "Schema"]
+    formatRow API.ViewInfo{viewInfoQueryInfo = Just API.QueryInfo{..}, ..} =
+      [ [T.unpack viewInfoName]
+      , [formatTime queryInfoCreatedAt]
+      , [show viewInfoSchema]
       ]
     rows = map formatRow views
 

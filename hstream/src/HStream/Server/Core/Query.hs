@@ -23,6 +23,7 @@ import           Control.Concurrent.Async         (async, cancel, wait)
 import           Control.Exception                (throw, throwIO)
 import           Control.Monad
 import qualified Data.Aeson                       as Aeson
+import           Data.Functor                     ((<&>))
 import qualified Data.HashMap.Strict              as HM
 import           Data.IORef                       (atomicModifyIORef',
                                                    readIORef)
@@ -109,9 +110,9 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
     CreateViewPlan sources sink view builder persist -> do
       validateNameAndThrow sink
       validateNameAndThrow view
-      P.ViewInfo{viewQuery=P.QueryInfo{..}} <-
+      P.ViewInfo{viewInfoQueryInfo = Just P.QueryInfo{..}} <-
         Core.createView' sc view sources sink builder persist commandQueryStmtText
-      pure $ API.CommandQueryResponse (mkVectorStruct queryId "view_query_id")
+      pure $ API.CommandQueryResponse (mkVectorStruct queryInfoName "view_query_id")
 #endif
     ExplainPlan plan -> pure $ API.CommandQueryResponse (mkVectorStruct plan "explain")
     PausePlan (PauseObjectConnector name) -> do
@@ -159,7 +160,7 @@ sendToClient metaHandle qid streamName SourceConnectorWithoutCkp{..} streamSend 
             structs = jsonObjectToStruct . fromJust <$> filter isJust objects'
         return (void $ streamSendMany structs, return ())
     _ -> throwIO $ HE.UnknownPushQueryStatus ""
-    . (P.queryState <$>)
+    . (P.queryStatus <$>)
   where
     streamSendMany = \case
       []        -> pure ()
@@ -171,11 +172,11 @@ sendToClient metaHandle qid streamName SourceConnectorWithoutCkp{..} streamSend 
           Right _ -> streamSendMany xs'
 
 -- NOTE: createQueryWithNameSpace may be modified in future.
-createQuery :: ServerContext -> CreateQueryRequest -> IO Query
+createQuery :: ServerContext -> CreateQueryRequest -> IO CreateQueryResponseInfo
 createQuery sc req = createQueryWithNamespace' sc req ""
 
 createQueryWithNamespace ::
-  ServerContext -> CreateQueryWithNamespaceRequest -> IO Query
+  ServerContext -> CreateQueryWithNamespaceRequest -> IO CreateQueryResponseInfo
 createQueryWithNamespace
   sc@ServerContext {..} CreateQueryWithNamespaceRequest {..} =
   createQueryWithNamespace' sc CreateQueryRequest{
@@ -183,7 +184,7 @@ createQueryWithNamespace
     , createQueryRequestQueryName = createQueryWithNamespaceRequestQueryName } createQueryWithNamespaceRequestNamespace
 
 createQueryWithNamespace' ::
-  ServerContext -> CreateQueryRequest -> T.Text -> IO Query
+  ServerContext -> CreateQueryRequest -> T.Text -> IO CreateQueryResponseInfo
 createQueryWithNamespace'
   sc@ServerContext {..} CreateQueryRequest {..} namespace = do
 #ifdef HStreamUseV2Engine
@@ -229,9 +230,16 @@ createQueryWithNamespace'
             }
           let relatedStreams = (sources, sink)
           handleCreateAsSelect sc builder createQueryRequestQueryName createQueryRequestSql relatedStreams True
-          >>= hstreamQueryToQuery metaHandle
-        _ -> throw $ HE.WrongExecutionPlan "Create query only support select / create stream as select statements"
-      _ -> throw $ HE.WrongExecutionPlan "Create query only support select / create stream as select statements"
+          <&> CreateQueryResponseInfoQuery
+        _ -> throw $ HE.WrongExecutionPlan "Create query only support create stream/view <name> as select statements"
+      RQCreate (RCreateView view select) -> hstreamCodegen (RQCreate (RCreateView (addNamespace view) (modifySelect select))) >>= \case
+        CreateViewPlan sources sink view builder persist -> do
+          validateNameAndThrow sink
+          validateNameAndThrow view
+          Core.createView' sc view sources sink builder persist createQueryRequestSql
+          <&> CreateQueryResponseInfoView
+        _ -> throw $ HE.WrongExecutionPlan "Create query only support create stream/view <name> as select statements"
+      _ -> throw $ HE.WrongExecutionPlan "Create query only support create stream/view <name> as select statements"
   where
     addNamespace = (namespace <>)
     modifySelect :: RSelect -> RSelect
@@ -260,7 +268,7 @@ getQuery' :: ServerContext -> GetQueryRequest -> IO (Maybe Query)
 getQuery' ServerContext{..} GetQueryRequest{..} = do
   queries <- M.listMeta metaHandle
   hstreamQueryToQuery metaHandle `traverse`
-    L.find (\P.QueryInfo{..} -> queryId == getQueryRequestId) queries
+    L.find (\P.QueryInfo{..} -> queryInfoName == getQueryRequestId) queries
 
 terminateQueries
   :: ServerContext -> TerminateQueriesRequest -> IO TerminateQueriesResponse
@@ -293,29 +301,25 @@ restoreQuery :: ServerContext -> T.Text -> IO ()
 restoreQuery ctx@ServerContext{..} queryId = do
   getMeta @P.QueryInfo queryId metaHandle >>= \case
     Just qInfo@P.QueryInfo{..} -> do
-      plan <- streamCodegen querySql
+      plan <- streamCodegen queryInfoSql
       case plan of
         CreateBySelectPlan sources sink builder _ _ ->
-          void $ handleCreateAsSelect ctx builder queryId querySql queryStreams True
+          void $ handleCreateAsSelect ctx builder queryInfoName queryInfoSql (P.getQuerySources qInfo,queryInfoSink) True
         CreateViewPlan sources sink view builder _ ->
-          void $ handleCreateAsSelect ctx builder queryId querySql queryStreams False
-        _ -> throwIO $ HE.UnexpectedError ("Query " <> T.unpack queryId <> "should not be like \"" <> T.unpack querySql <> "\". What happened?")
+          void $ handleCreateAsSelect ctx builder queryInfoName queryInfoSql (P.getQuerySources qInfo,queryInfoSink) False
+        _ -> throwIO $ HE.UnexpectedError ("Query " <> T.unpack queryId <> "should not be like \"" <> T.unpack queryInfoSql <> "\". What happened?")
     Nothing -> throwIO $ HE.QueryNotFound ("Query " <> queryId <> "does not exist")
 
 -------------------------------------------------------------------------------
 
 hstreamQueryToQuery :: MetaHandle -> P.QueryInfo -> IO Query
-hstreamQueryToQuery h P.QueryInfo{..} = do
-  state <- getMeta @P.QueryStatus queryId h >>= \case
+hstreamQueryToQuery h qInfo@P.QueryInfo{..} = do
+  status <- getMeta @P.QueryStatus queryInfoName h >>= \case
     Nothing                -> return Unknown
-    Just P.QueryStatus{..} -> return queryState
+    Just P.QueryStatus{..} -> return queryStatus
   return Query
-    { queryId = queryId
-    , queryQueryText = querySql
-    , queryStatus = getPBStatus state
-    , queryCreatedTime = queryCreatedTime
-    , querySources = V.fromList $ fst queryStreams
-    , querySink = snd queryStreams
+    { queryInfo = Just qInfo
+    , queryStatus = getPBStatus status
     }
 
 -------------------------------------------------------------------------------

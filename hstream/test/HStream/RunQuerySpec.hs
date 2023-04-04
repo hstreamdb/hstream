@@ -20,7 +20,8 @@ import           HStream.Utils                    (TaskStatus (..),
                                                    setupSigsegvHandler)
 
 getQueryResponseIdIs :: T.Text -> Query -> Bool
-getQueryResponseIdIs targetId Query {..} = queryId == targetId
+getQueryResponseIdIs targetId Query{queryInfo = Just QueryInfo {..}, ..} = queryInfoName == targetId
+getQueryResponseIdIs targetId _ = False
 
 listQueries :: IO (Maybe ListQueriesResponse)
 listQueries = withGRPCClient clientConfig $ \client -> do
@@ -114,8 +115,8 @@ spec = aroundAll provideHstreamApi $
   it "get query" $ \_ ->
     ( do
         Just ListQueriesResponse {listQueriesResponseQueries = queries} <- listQueries
-        let (Just thisQuery) = V.find (\x -> queryQueryText x == sql) queries
-        query <- getQuery (queryId thisQuery)
+        let (Just Query{ queryInfo = Just QueryInfo {..}}) = V.find (\Query {queryInfo = Just QueryInfo{..}} -> queryInfoSql == sql) queries
+        query <- getQuery queryInfoName
         case query of
           Just _ -> return True
           _      -> return False
@@ -124,9 +125,9 @@ spec = aroundAll provideHstreamApi $
   it "terminate query" $ \_ ->
     ( do
         Just ListQueriesResponse {listQueriesResponseQueries = queries} <- listQueries
-        let (Just thisQuery) = V.find (\x -> queryQueryText x == sql) queries
-        _ <- terminateQuery (queryId thisQuery)
-        query <- getQuery (queryId thisQuery)
+        let (Just Query{ queryInfo = Just QueryInfo {..}}) = V.find (\Query {queryInfo = Just QueryInfo{..}} -> queryInfoSql == sql) queries
+        _ <- terminateQuery queryInfoName
+        query <- getQuery queryInfoName
         let terminated = getPBStatus Terminated
         case query of
           Just Query {..} -> return (queryStatus == terminated)
@@ -145,10 +146,10 @@ spec = aroundAll provideHstreamApi $
   it "delete query" $ \_ ->
     ( do
         Just ListQueriesResponse {listQueriesResponseQueries = queries} <- listQueries
-        let (Just thisQuery) = V.find (\x -> queryQueryText x == sql) queries
-        _ <- terminateQuery (queryId thisQuery)
-        _ <- deleteQuery (queryId thisQuery)
-        query <- getQuery (queryId thisQuery)
+        let (Just Query{ queryInfo = Just QueryInfo {..}}) = V.find (\Query {queryInfo = Just QueryInfo{..}} -> queryInfoSql == sql) queries
+        _ <- terminateQuery queryInfoName
+        _ <- deleteQuery queryInfoName
+        query <- getQuery queryInfoName
         case query of
           Just Query{} -> return True
           _            -> return False

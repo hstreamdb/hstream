@@ -155,7 +155,7 @@ decodeRecordBatch dataRecord = do
 terminateRelatedQueries :: ServerContext -> T.Text -> IO ()
 terminateRelatedQueries sc@ServerContext{..} name = do
   queries <- M.listMeta metaHandle
-  let getRelatedQueries = [P.queryId query | query <- queries, name `elem` P.getQuerySources query]
+  let getRelatedQueries = [P.queryInfoName query | query <- queries, name `elem` P.getQuerySources query]
   Log.debug . Log.buildString
      $ "TERMINATE: the queries related to the terminating stream " <> show name
     <> ": " <> show getRelatedQueries

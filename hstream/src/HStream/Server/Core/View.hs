@@ -35,7 +35,7 @@ import           HStream.Server.Handler.Common (IdentifierRole (..),
 import qualified HStream.Server.HStore         as SH
 import qualified HStream.Server.HStreamApi     as API
 import qualified HStream.Server.MetaData       as P
-import           HStream.Server.MetaData.Types (ViewInfo (viewName))
+import           HStream.Server.MetaData.Types (ViewInfo (..))
 import           HStream.Server.Types
 import           HStream.SQL                   (FlowObject,
                                                 flowObjectToJsonObject)
@@ -79,7 +79,7 @@ createView' sc@ServerContext{..} view ins out builder accumulation sql = do
         sink (ins `zip` L.map fromJust roles_m) (out, RoleView)
         builder sql relatedStreams
       atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert sink accumulation hm, ()))
-      let vInfo = P.ViewInfo{ viewName = view, viewQuery = qInfo }
+      let vInfo = P.ViewInfo{ viewName = view, viewInfoQueryInfo = Just qInfo , viewInfoSchema = mempty}
       -- FIXME: this should be inserted as the same time as the query
       insertMeta view vInfo metaHandle
       return vInfo
@@ -120,7 +120,7 @@ createView' sc@ServerContext{..} view srcs sink builder persist sql = do
           qInfo <- handleCreateAsSelect sc builder queryId sql relatedStreams False -- Do not write to any sink stream
           let accumulation = L.head (snd persist)
           atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert view accumulation hm, ()))
-          let vInfo = P.ViewInfo{ viewName = view, viewQuery = qInfo }
+          let vInfo = P.ViewInfo{ viewInfoName = view, viewInfoQueryInfo = Just qInfo, viewInfoSchema = mempty}
           -- FIXME: this should be inserted as the same time as the query
           insertMeta view vInfo metaHandle
           return vInfo
@@ -134,11 +134,11 @@ createView' sc@ServerContext{..} view srcs sink builder persist sql = do
 deleteView :: ServerContext -> T.Text -> Bool -> IO Empty
 deleteView sc@ServerContext{..} name checkIfExist = do
   M.getMeta @ViewInfo name metaHandle >>= \case
-    Just P.ViewInfo{viewQuery = P.QueryInfo {..}} -> do
-      handleQueryTerminate sc (OneQuery queryId) >>= \case
+    Just P.ViewInfo{viewInfoQueryInfo = Just P.QueryInfo {..}} -> do
+      handleQueryTerminate sc (OneQuery queryInfoName) >>= \case
         [] -> throwIO $ HE.UnexpectedError "Failed to view related query for some unknown reason"
         _  -> do
-          M.metaMulti [ M.deleteMetaOp @P.QueryInfo queryId Nothing metaHandle
+          M.metaMulti [ M.deleteMetaOp @P.QueryInfo queryInfoName Nothing metaHandle
                       , M.deleteMetaOp @ViewInfo name Nothing metaHandle] metaHandle
           atomicModifyIORef' P.groupbyStores (\hm -> (HM.delete name hm, ()))
           return Empty
@@ -177,13 +177,9 @@ listViews :: HasCallStack => ServerContext -> IO [API.View]
 listViews ServerContext{..} = mapM (hstreamViewToView metaHandle) =<< M.listMeta metaHandle
 
 hstreamViewToView :: M.MetaHandle -> ViewInfo -> IO API.View
-hstreamViewToView h P.ViewInfo{viewQuery = P.QueryInfo{..},..} = do
-  state <- M.getMeta @P.QueryStatus queryId h <&> maybe Unknown P.queryState
+hstreamViewToView h vInfo@P.ViewInfo{viewInfoQueryInfo = Just P.QueryInfo{..},..} = do
+  status <- M.getMeta @P.QueryStatus queryInfoName h <&> maybe Unknown P.queryStatus
   return API.View {
-      viewViewId = viewName
-    , viewStatus = getPBStatus state
-    , viewCreatedTime = queryCreatedTime
-    , viewSchema = mempty
-    , viewSql = querySql
-    , viewQueryName = queryId
+      viewInfo = Just vInfo
+    , viewStatus = getPBStatus status
     }

@@ -13,8 +13,8 @@
 
 module HStream.Server.MetaData.Types
   ( RelatedStreams
-  , QueryInfo (..)
   , ViewInfo (..)
+  , QueryInfo(..)
   , QueryStatus (QueryTerminated, QueryRunning, QueryCreated, QueryAbort, ..)
   , ShardReader (..)
   , TaskAllocation (..)
@@ -35,6 +35,7 @@ import           Data.Maybe                    (fromJust)
 import           Data.Text                     (Text)
 import           Data.Time.Clock.System        (SystemTime (MkSystemTime),
                                                 getSystemTime)
+import qualified Data.Vector                   as V
 import           Data.Word                     (Word32, Word64)
 import           GHC.Generics                  (Generic)
 import           GHC.IO                        (unsafePerformIO)
@@ -46,8 +47,10 @@ import           HStream.MetaStore.Types       (FHandle, HasPath (..),
                                                 MetaStore (..), MetaType,
                                                 RHandle)
 import qualified HStream.Server.ConnectorTypes as HCT
-import           HStream.Server.HStreamApi     (ServerNode (..),
-                                                Subscription (..))
+import           HStream.Server.HStreamApi     (QueryInfo (..), ServerNode (..),
+                                                Subscription (..),
+                                                ViewInfo (..))
+import qualified HStream.Server.HStreamApi     as API
 import           HStream.Server.Types          (ServerID, SubscriptionWrap (..))
 import qualified HStream.SQL.AST               as AST
 import qualified HStream.Store                 as S
@@ -61,29 +64,22 @@ import           HStream.SQL.Codegen.V1
 #endif
 --------------------------------------------------------------------------------
 
-data QueryInfo = QueryInfo
-  { queryId          :: Text
-  , querySql         :: Text
-  , queryCreatedTime :: Int64
-  , queryStreams     :: RelatedStreams
-  } deriving (Generic, Show, FromJSON, ToJSON)
-
-data QueryStatus = QueryStatus { queryState :: TaskStatus }
+data QueryStatus = QueryStatus { queryStatus :: TaskStatus }
   deriving (Generic, Show, FromJSON, ToJSON)
 
 pattern QueryTerminated :: QueryStatus
-pattern QueryTerminated = QueryStatus { queryState = Terminated }
+pattern QueryTerminated = QueryStatus { queryStatus = Terminated }
 pattern QueryCreated :: QueryStatus
-pattern QueryCreated = QueryStatus { queryState = Created }
+pattern QueryCreated = QueryStatus { queryStatus = Created }
 pattern QueryRunning :: QueryStatus
-pattern QueryRunning = QueryStatus { queryState = Running }
+pattern QueryRunning = QueryStatus { queryStatus = Running }
 pattern QueryAbort :: QueryStatus
-pattern QueryAbort = QueryStatus { queryState = Abort }
+pattern QueryAbort = QueryStatus { queryStatus = Abort }
 
-data ViewInfo = ViewInfo {
-    viewName  :: Text
-  , viewQuery :: QueryInfo
-} deriving (Generic, Show, FromJSON, ToJSON)
+--    ViewInfo {
+--     viewName  :: Text
+--   , viewQuery :: QueryInfo
+-- } deriving (Generic, Show, FromJSON, ToJSON)
 
 type SourceStreams  = [Text]
 type SinkStream     = Text
@@ -155,8 +151,8 @@ instance HasPath TaskAllocation FHandle where
 insertQuery :: (MetaType QueryInfo handle, MetaType QueryStatus handle, MetaMulti handle)
   => QueryInfo -> handle -> IO ()
 insertQuery qInfo@QueryInfo{..} h = do
-  metaMulti [ insertMetaOp queryId qInfo h
-            , insertMetaOp queryId QueryCreated h]
+  metaMulti [ insertMetaOp queryInfoName qInfo h
+            , insertMetaOp queryInfoName QueryCreated h]
             h
 
 getSubscriptionWithStream :: MetaType SubscriptionWrap handle => handle -> Text -> IO [SubscriptionWrap]
@@ -167,14 +163,16 @@ getSubscriptionWithStream zk sName = do
 --------------------------------------------------------------------------------
 
 getQuerySink :: QueryInfo -> SinkStream
-getQuerySink QueryInfo{..} = snd queryStreams
+getQuerySink QueryInfo{..} = queryInfoSink
 
 getQuerySources :: QueryInfo -> SourceStreams
-getQuerySources QueryInfo{..} = fst queryStreams
+getQuerySources QueryInfo{..} = V.toList queryInfoSources
 
 createInsertQueryInfo :: Text -> Text -> RelatedStreams -> MetaHandle -> IO QueryInfo
-createInsertQueryInfo queryId querySql queryStreams h = do
-  MkSystemTime queryCreatedTime _ <- getSystemTime
+createInsertQueryInfo queryInfoName queryInfoSql queryStreams h = do
+  let querySources = fst queryStreams
+  let querySink = snd queryStreams
+  MkSystemTime queryInfoCreatedAt _ <- getSystemTime
   let qInfo = QueryInfo {..}
   insertQuery qInfo h
   return qInfo
