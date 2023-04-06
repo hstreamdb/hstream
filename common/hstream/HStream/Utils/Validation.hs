@@ -4,7 +4,7 @@ import           Control.Exception         (throwIO)
 import           Data.Char                 (isAlphaNum, isLetter)
 import qualified Data.Text                 as T
 
-import           HStream.Exception         (InvalidObjectIdentifier (..))
+import           HStream.Exception         (invalidIdentifier)
 import           HStream.Logger            as Log
 import qualified HStream.Server.HStreamApi as API
 
@@ -13,12 +13,12 @@ import qualified HStream.Server.HStreamApi as API
 validMarks :: String
 validMarks = "-_"
 
-validateNameAndThrow :: T.Text -> IO ()
-validateNameAndThrow n =
+validateNameAndThrow :: API.ResourceType -> T.Text -> IO ()
+validateNameAndThrow rType n =
   case validateNameText n of
     Left s   -> do
       Log.warning $ "Invalid Object Identifier:" <> Log.build s
-      throwIO (InvalidObjectIdentifier API.ErrorCodeStreamInvalidObjectIdentifier s)
+      throwIO (invalidIdentifier rType s)
     Right () -> return ()
 
 validateChar :: Char -> Either String ()

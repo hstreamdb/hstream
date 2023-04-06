@@ -175,7 +175,7 @@ createIOTaskFromRequest sc CreateConnectorRequest{..} = do
 
 createIOTask :: ServerContext -> T.Text -> T.Text -> T.Text -> T.Text -> IO Connector
 createIOTask sc@ServerContext{scIOWorker = worker@IO.Worker{..}, ..} name typ target cfg = do
-  validateNameAndThrow name
+  validateNameAndThrow ResConnector name
   ServerNode{..} <- lookupResource' sc ResConnector name
   unless (serverNodeId == serverID) $
     throwIO $ HE.WrongServer "Connector is bound to a different node"

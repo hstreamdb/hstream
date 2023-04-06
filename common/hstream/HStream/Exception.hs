@@ -33,6 +33,7 @@ module HStream.Exception
   , SomeInvalidArgument
   , InvalidReplicaFactor (InvalidReplicaFactor)
   , InvalidObjectIdentifier (InvalidObjectIdentifier)
+  , invalidIdentifier
   , InvalidShardCount (InvalidShardCount)
   , EmptyBatchedRecord (EmptyBatchedRecord)
   , InvalidRecordSize (InvalidRecordSize)
@@ -81,6 +82,8 @@ module HStream.Exception
   , LocalMetaStoreTableAlreadyExists (LocalMetaStoreTableAlreadyExists)
   , LocalMetaStoreObjectAlreadyExists (LocalMetaStoreObjectAlreadyExists)
   , ConnectorExists (ConnectorExists)
+  , QueryExists (QueryExists)
+  , ViewExists (ViewExists)
 
     -- * Exception: SomePermissionDenied
     --
@@ -98,7 +101,7 @@ module HStream.Exception
   , SomeFailedPrecondition
   , FoundSubscription (FoundSubscription)
   , EmptyShardReader (EmptyShardReader)
-  , EmptyStream (EmptyStream)
+  , NonExistentStream (NonExistentStream)
   , WrongServer (WrongServer)
   , WrongExecutionPlan (WrongExecutionPlan)
   , FoundActiveConsumers (FoundActiveConsumers)
@@ -107,7 +110,7 @@ module HStream.Exception
   , RQLiteRowBadVersion (RQLiteRowBadVersion)
   , LocalMetaStoreObjectBadVersion (LocalMetaStoreObjectBadVersion)
   , ResourceAllocationException (ResourceAllocationException)
-  , QueryIsNotTerminated (QueryIsNotTerminated)
+  , QueryNotTerminated (QueryNotTerminated)
   , FoundAssociatedView (FoundAssociatedView)
 
     -- * Exception: SomeAborted
@@ -118,8 +121,7 @@ module HStream.Exception
   , SubscriptionOnDifferentNode (SubscriptionOnDifferentNode)
   , SubscriptionInvalidError (SubscriptionInvalidError)
   , ConsumerInvalidError (ConsumerInvalidError)
-  , TerminateQueryError (TerminateQueryError)
-  , QueryIsNotRunning (QueryIsNotRunning)
+  , QueryNotRunning (QueryNotRunning)
 
     -- * Exception: SomeOutOfRange
     --
@@ -179,7 +181,7 @@ module HStream.Exception
   , E.Handler
   ) where
 
-import           Control.Exception             (Exception (..))
+import           Control.Exception             (Exception (..), SomeException)
 import qualified Control.Exception             as E
 import           Data.Aeson                    ((.=))
 import qualified Data.Aeson                    as Aeson
@@ -413,6 +415,15 @@ MAKE_EX_1_DEFMSG(SomeInvalidArgument, InvalidStatsInterval, String, API.ErrorCod
 MAKE_EX_1_DEFMSG(SomeInvalidArgument, InvalidSqlStatement, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeInvalidArgument, InvalidConnectorType, Text, API.ErrorCodeConnectorInvalidType)
 
+invalidIdentifier :: API.ResourceType -> String -> InvalidObjectIdentifier
+invalidIdentifier API.ResourceTypeResStream       = InvalidObjectIdentifier API.ErrorCodeStreamInvalidObjectIdentifier
+invalidIdentifier API.ResourceTypeResSubscription = InvalidObjectIdentifier API.ErrorCodeSubscriptionInvalidObjectIdentifier
+invalidIdentifier API.ResourceTypeResShard        = InvalidObjectIdentifier API.ErrorCodeInternalError
+invalidIdentifier API.ResourceTypeResShardReader  = InvalidObjectIdentifier API.ErrorCodeStreamShardReaderInvalidObjectIdentifier
+invalidIdentifier API.ResourceTypeResConnector    = InvalidObjectIdentifier API.ErrorCodeConnectorInvalidObjectIdentifier
+invalidIdentifier API.ResourceTypeResQuery        = InvalidObjectIdentifier API.ErrorCodeQueryInvalidObjectIdentifier
+invalidIdentifier API.ResourceTypeResView         = InvalidObjectIdentifier API.ErrorCodeViewInvalidObjectIdentifier
+
 -------------------------------------------------------------------------------
 -- Exception: SomeDeadlineExceeded
 
@@ -440,7 +451,7 @@ MAKE_EX_1_DEFMSG(SomeNotFound, NodesNotFound, Text, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeNotFound, StreamNotFound, Text, API.ErrorCodeStreamNotFound)
 MAKE_EX_1_DEFMSG(SomeNotFound, SubscriptionNotFound, Text, API.ErrorCodeSubscriptionNotFound)
 MAKE_EX_1_DEFMSG(SomeNotFound, ConnectorNotFound, Text, API.ErrorCodeConnectorNotFound)
-MAKE_EX_1_DEFMSG(SomeNotFound, ViewNotFound, Text, API.ErrorCodeInternalError)
+MAKE_EX_1_DEFMSG(SomeNotFound, ViewNotFound, Text, API.ErrorCodeQueryNotFound)
 MAKE_EX_1_DEFMSG(SomeNotFound, ShardNotFound, Text, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeNotFound, QueryNotFound, Text, API.ErrorCodeQueryNotFound)
 MAKE_EX_1_DEFMSG(SomeNotFound, RQLiteTableNotFound, String, API.ErrorCodeInternalError)
@@ -458,6 +469,8 @@ MAKE_SUB_EX(SomeHServerException, SomeAlreadyExists)
 
 MAKE_EX_1_DEFMSG(SomeAlreadyExists, StreamExists, Text, API.ErrorCodeStreamExists)
 MAKE_EX_1_DEFMSG(SomeAlreadyExists, SubscriptionExists, Text, API.ErrorCodeSubscriptionExists)
+MAKE_EX_1_DEFMSG(SomeAlreadyExists, QueryExists, Text, API.ErrorCodeQueryExists)
+MAKE_EX_1_DEFMSG(SomeAlreadyExists, ViewExists, Text, API.ErrorCodeViewExists)
 MAKE_EX_1_DEFMSG(SomeAlreadyExists, ConsumerExists, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeAlreadyExists, ShardReaderExists, Text, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeAlreadyExists, RQLiteTableAlreadyExists, String, API.ErrorCodeInternalError)
@@ -515,16 +528,16 @@ MAKE_SUB_EX(SomeHServerException, SomeFailedPrecondition)
 MAKE_EX_0(SomeFailedPrecondition, FoundSubscription, API.ErrorCodeStreamFoundSubscription,
     "Stream still has subscription")
 MAKE_EX_1_DEFMSG(SomeFailedPrecondition, EmptyShardReader, String, API.ErrorCodeInternalError)
-MAKE_EX_1_DEFMSG(SomeFailedPrecondition, EmptyStream, Text, API.ErrorCodeSubscriptionCreationOnEmptyStream)
-MAKE_EX_1_DEFMSG(SomeFailedPrecondition, WrongServer, String, API.ErrorCodeInternalError)
+MAKE_EX_1_DEFMSG(SomeFailedPrecondition, NonExistentStream, Text, API.ErrorCodeSubscriptionCreationOnNonExistentStream)
+MAKE_EX_1_DEFMSG(SomeFailedPrecondition, WrongServer, String, API.ErrorCodeWrongServer)
 MAKE_EX_1_DEFMSG(SomeFailedPrecondition, WrongExecutionPlan, String, API.ErrorCodeInternalError)
-MAKE_EX_1_DEFMSG(SomeFailedPrecondition, FoundActiveConsumers, String, API.ErrorCodeInternalError)
+MAKE_EX_1_DEFMSG(SomeFailedPrecondition, FoundActiveConsumers, String, API.ErrorCodeSubscriptionFoundActiveConsumers)
 MAKE_EX_1_DEFMSG(SomeFailedPrecondition, ShardCanNotSplit, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeFailedPrecondition, ShardCanNotMerge, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeFailedPrecondition, RQLiteRowBadVersion, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeFailedPrecondition, LocalMetaStoreObjectBadVersion, String, API.ErrorCodeInternalError)
-MAKE_EX_1_DEFMSG(SomeFailedPrecondition, QueryIsNotTerminated, Text, API.ErrorCodeInternalError)
-MAKE_EX_1_DEFMSG(SomeFailedPrecondition, FoundAssociatedView, Text, API.ErrorCodeInternalError)
+MAKE_EX_1_DEFMSG(SomeFailedPrecondition, QueryNotTerminated, Text, API.ErrorCodeQueryNotTerminated)
+MAKE_EX_1_DEFMSG(SomeFailedPrecondition, FoundAssociatedView, Text, API.ErrorCodeQueryFoundAssociatedView)
 
 -------------------------------------------------------------------------------
 -- Exception: SomeAborted
@@ -540,8 +553,7 @@ MAKE_EX_1_DEFMSG(SomeAborted, SubscriptionIsDeleting, String, API.ErrorCodeInter
 MAKE_EX_1_DEFMSG(SomeAborted, SubscriptionOnDifferentNode, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeAborted, SubscriptionInvalidError, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeAborted, ConsumerInvalidError, String, API.ErrorCodeInternalError)
-MAKE_EX_1_DEFMSG(SomeAborted, TerminateQueryError, String, API.ErrorCodeInternalError)
-MAKE_EX_1_DEFMSG(SomeAborted, QueryIsNotRunning, String, API.ErrorCodeInternalError)
+MAKE_EX_1_DEFMSG(SomeAborted, QueryNotRunning, String, API.ErrorCodeQueryNotRunning)
 
 -------------------------------------------------------------------------------
 -- Exception: SomeOutOfRange
