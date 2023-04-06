@@ -96,8 +96,12 @@ data ShowObject = SStreams | SQueries | SConnectors | SViews
 data DropObject = DStream Text | DView Text | DConnector Text
 data TerminationSelection = AllQueries | OneQuery Text | ManyQueries [Text]
 data InsertType = JsonFormat | RawFormat
-data PauseObject = PauseObjectConnector Text
-data ResumeObject = ResumeObjectConnector Text
+data PauseObject
+  = PauseObjectConnector Text
+  | PauseObjectQuery Text
+data ResumeObject
+  =  ResumeObjectConnector Text
+  | ResumeObjectQuery Text
 
 type Persist = ([HS.StreamJoined K V K V Ser], [HS.Materialized K V V])
 
@@ -164,7 +168,9 @@ hstreamCodegen = \case
     let relationExpr = decouple rselect
     return $ ExplainPlan (PP.renderStrict $ PP.layoutPretty PP.defaultLayoutOptions (PP.pretty relationExpr))
   RQPause (RPauseConnector name)     -> return $ PausePlan (PauseObjectConnector name)
+  RQPause (RPauseQuery name)         -> return $ PausePlan (PauseObjectQuery name)
   RQResume (RResumeConnector name)   -> return $ ResumePlan (ResumeObjectConnector name)
+  RQResume (RResumeQuery name)       -> return $ ResumePlan (ResumeObjectQuery name)
 
 --------------------------------------------------------------------------------
 

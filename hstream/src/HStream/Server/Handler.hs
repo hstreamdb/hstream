@@ -75,7 +75,7 @@ handlers serverContext@ServerContext{..} =
         hstreamApiCreateQueryWithNamespace = createQueryWithNamespaceHandler serverContext,
         hstreamApiListQueries = listQueriesHandler serverContext,
         hstreamApiDeleteQuery = deleteQueryHandler serverContext,
-        hstreamApiRestartQuery = restartQueryHandler serverContext,
+        hstreamApiResumeQuery = resumeQueryHandler serverContext,
 
         -- Connector
         hstreamApiCreateConnector = createConnectorHandler serverContext,

@@ -773,6 +773,7 @@ instance Validate ConnectorOption where
 
 instance Validate Pause where
   validate pause@(PauseConnector _ hIdent) = validate hIdent >> return pause
+  validate pause@(PauseQuery _ hIdent)     = validate hIdent >> return pause
 
 instance Validate Resume where
   validate resume@(ResumeConnector _ hIdent) = validate hIdent >> return resume

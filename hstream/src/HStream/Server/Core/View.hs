@@ -29,8 +29,9 @@ import qualified HStream.MetaStore.Types       as M
 import           HStream.Processing.Type       (SinkRecord (..))
 import           HStream.Server.Core.Common    (handleQueryTerminate)
 import           HStream.Server.Handler.Common (IdentifierRole (..),
-                                                findIdentifierRole,
-                                                handleCreateAsSelect)
+                                                QueryRunner (..), amIView,
+                                                createQueryAndRun,
+                                                findIdentifierRole)
 import qualified HStream.Server.HStore         as SH
 import qualified HStream.Server.HStreamApi     as API
 import qualified HStream.Server.MetaData       as P
@@ -74,7 +75,7 @@ createView' sc@ServerContext{..} view ins out builder accumulation sql = do
   case all isJust roles_m of
     True -> do
       let relatedStreams = (sources, sink)
-      qInfo <- handleCreateAsSelect sc
+      qInfo <- createQueryAndRun sc
         sink (ins `zip` L.map fromJust roles_m) (out, RoleView)
         builder sql relatedStreams
       atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert sink accumulation hm, ()))
@@ -116,7 +117,12 @@ createView' sc@ServerContext{..} view srcs sink builder persist sql = do
         True  -> do
           let relatedStreams = (srcs, sink)
           queryId <- newRandomText 10
-          qInfo <- handleCreateAsSelect sc builder queryId sql relatedStreams False -- Do not write to any sink stream
+          qInfo <- createQueryAndRun sc QueryRunner {
+              qRTaskBuilder = builder
+            , qRQueryName   = queryId
+            , qRQueryString = sql
+            , qRWhetherToHStore = False }
+            relatedStreams
           let accumulation = L.head (snd persist)
           atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert view accumulation hm, ()))
           let vInfo = P.ViewInfo{ viewName = view, viewQuery = qInfo }
@@ -156,8 +162,8 @@ executeViewQuery sc@ServerContext{..} sql = do
   plan <- streamCodegen sql
   case plan of
     SelectPlan sources sink builder persist (groupBykeys, keysAdded) -> do
-      roles_m <- mapM (findIdentifierRole sc) sources
-      case all (== Just RoleView) roles_m of
+      isViews <- mapM (amIView sc) sources
+      case and isViews of
         False -> do
           Log.warning "Can not perform non-pushing SELECT on streams."
           throwIO $ HE.InvalidSqlStatement "Can not perform non-pushing SELECT on streams."

@@ -954,22 +954,28 @@ instance Refine Terminate where
 type instance RefinedType Terminate = RTerminate
 
 ---- Pause
-newtype RPause = RPauseConnector Text
+data RPause
+  = RPauseConnector Text
+  | RPauseQuery Text
   deriving (Eq, Show)
 
 type instance RefinedType Pause = RPause
 
 instance Refine Pause where
   refine (PauseConnector _ name) = RPauseConnector (refine name)
+  refine (PauseQuery _ name)     = RPauseQuery (refine name)
 
 ---- Resume
-newtype RResume = RResumeConnector Text
+data RResume
+  = RResumeConnector Text
+  | RResumeQuery Text
   deriving (Eq, Show)
 
 type instance RefinedType Resume = RResume
 
 instance Refine Resume where
   refine (ResumeConnector _ name) = RResumeConnector (refine name)
+  refine (ResumeQuery _ name)     = RResumeQuery (refine name)
 
 ---- SQL
 data RSQL = RQSelect      RSelect

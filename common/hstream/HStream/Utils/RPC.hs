@@ -29,7 +29,7 @@ module HStream.Utils.RPC
 
   , pattern EnumPB
   , showNodeStatus
-  , TaskStatus (Created, Creating, Running, CreationAbort, Abort, Unknown, Terminated, ..)
+  , TaskStatus (Creating, Running, Resuming, Aborted, Unknown, Paused, ..)
   , ResourceType (ResStream, ResSubscription, ResShard, ResShardReader, ResConnector, ResQuery, ResView, ..)
   ) where
 
@@ -162,48 +162,14 @@ instance JSON TaskStatusPB
 instance ToJSON (PB.Enumerated TaskStatusPB)
 instance FromJSON (PB.Enumerated TaskStatusPB)
 
--- | A task for running connectors, views, and queries has one of the following
--- states:
---
--- * Running: The task is running on a working thread
---
--- * Terminated: The task has stopped as per user request and the thread running
--- the task is killed
---
--- * Abort: The task has stopped due to an error occurred when the
--- thread is running, e.g. the execution of a SQL command by the connector
--- failed
---
--- The rest of the states are specific to connectors:
---
--- * Creating: The server has received the task and started connecting to the
--- external database system
---
--- * Created: The connection with the external database system has been
--- established but the worker thread has not started running yet
---
--- * CreationAbort: An error occurred when connecting to the external database
+pattern Running, Resuming, Creating, Aborted, Paused, Unknown :: TaskStatus
 
-pattern Running :: TaskStatus
-pattern Running = TaskStatus (PB.Enumerated (Right TaskStatusPBTASK_RUNNING))
-
-pattern Terminated :: TaskStatus
-pattern Terminated = TaskStatus (PB.Enumerated (Right TaskStatusPBTASK_TERMINATED))
-
-pattern Creating :: TaskStatus
+pattern Running  = TaskStatus (PB.Enumerated (Right TaskStatusPBTASK_RUNNING))
 pattern Creating = TaskStatus (PB.Enumerated (Right TaskStatusPBTASK_CREATING))
-
-pattern Created :: TaskStatus
-pattern Created = TaskStatus (PB.Enumerated (Right TaskStatusPBTASK_CREATED))
-
-pattern CreationAbort :: TaskStatus
-pattern CreationAbort = TaskStatus (PB.Enumerated (Right TaskStatusPBTASK_CREATION_ABORT))
-
-pattern Unknown :: TaskStatus
-pattern Unknown = TaskStatus (PB.Enumerated (Right TaskStatusPBTASK_UNKNOWN))
-
-pattern Abort :: TaskStatus
-pattern Abort = TaskStatus (PB.Enumerated (Right TaskStatusPBTASK_ABORT))
+pattern Paused   = TaskStatus (PB.Enumerated (Right TaskStatusPBTASK_PAUSED))
+pattern Resuming = TaskStatus (PB.Enumerated (Right TaskStatusPBTASK_RESUMING))
+pattern Aborted  = TaskStatus (PB.Enumerated (Right TaskStatusPBTASK_ABORTED))
+pattern Unknown  = TaskStatus (PB.Enumerated (Right TaskStatusPBTASK_UNKNOWN))
 
 pattern ResStream, ResSubscription, ResShard, ResConnector, ResShardReader, ResQuery, ResView :: ResourceType
 pattern ResStream       = ResourceTypeResStream

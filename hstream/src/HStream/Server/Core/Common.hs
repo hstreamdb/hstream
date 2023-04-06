@@ -165,7 +165,7 @@ handleQueryTerminate :: ServerContext -> TerminationSelection -> IO [T.Text]
 handleQueryTerminate ServerContext{..} (OneQuery qid) = do
   hmapQ <- readMVar runningQueries
   case HM.lookup qid hmapQ of Just tid -> killThread tid; _ -> pure ()
-  M.updateMeta qid P.QueryTerminated Nothing metaHandle
+  M.updateMeta qid P.QueryPaused Nothing metaHandle
   void $ swapMVar runningQueries (HM.delete qid hmapQ)
   Log.debug . Log.buildString $ "TERMINATE: terminated query: " <> show qid
   return [qid]
@@ -183,7 +183,7 @@ handleQueryTerminate ServerContext{..} (ManyQueries qids) = do
         case HM.lookup x hm of
           Just tid -> do
             killThread tid
-            M.updateMeta x P.QueryTerminated Nothing metaHandle
+            M.updateMeta x P.QueryPaused Nothing metaHandle
             void $ swapMVar runningQueries (HM.delete x hm)
           _        ->
             Log.debug $ "query id " <> Log.buildString' x <> " not found"

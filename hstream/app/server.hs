@@ -133,7 +133,7 @@ app config@ServerOpts{..} = do
       let taskIds = map parseAllocationKey . Map.keys . Map.filter ((== serverNodeId) . taskAllocationServerId) $ allocations
       let queryIds = [qid | Right (ResQuery, qid) <- taskIds ]
       Log.debug $ "The following queries were aborted along with the death of node " <> Log.buildString' serverNodeId <> ":" <> Log.buildString' queryIds
-      mapM_ (\qid -> M.updateMeta qid P.QueryAbort Nothing h) queryIds
+      mapM_ (\qid -> M.updateMeta qid P.QueryAborted Nothing h) queryIds
     nodeChangeEventHandler _ _ _ = return ()
 serve :: ByteString
       -> Word16

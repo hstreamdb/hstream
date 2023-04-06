@@ -80,7 +80,6 @@ module HStream.Exception
   , RQLiteRowAlreadyExists (RQLiteRowAlreadyExists)
   , LocalMetaStoreTableAlreadyExists (LocalMetaStoreTableAlreadyExists)
   , LocalMetaStoreObjectAlreadyExists (LocalMetaStoreObjectAlreadyExists)
-  , PushQueryCreated (PushQueryCreated)
   , ConnectorExists (ConnectorExists)
 
     -- * Exception: SomePermissionDenied
@@ -118,7 +117,7 @@ module HStream.Exception
   , SubscriptionInvalidError (SubscriptionInvalidError)
   , ConsumerInvalidError (ConsumerInvalidError)
   , TerminateQueriesError (TerminateQueriesError)
-  , PushQueryTerminated (PushQueryTerminated)
+  , QueryIsNotRunning (QueryIsNotRunning)
 
     -- * Exception: SomeOutOfRange
     --
@@ -422,7 +421,6 @@ MAKE_EX_1_DEFMSG(SomeAlreadyExists, RQLiteTableAlreadyExists, String, API.ErrorC
 MAKE_EX_1_DEFMSG(SomeAlreadyExists, RQLiteRowAlreadyExists, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeAlreadyExists, LocalMetaStoreTableAlreadyExists, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeAlreadyExists, LocalMetaStoreObjectAlreadyExists, String, API.ErrorCodeInternalError)
-MAKE_EX_1_DEFMSG(SomeAlreadyExists, PushQueryCreated, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeAlreadyExists, ConnectorExists, Text, API.ErrorCodeConnectorExists)
 
 -------------------------------------------------------------------------------
@@ -498,7 +496,7 @@ MAKE_EX_1_DEFMSG(SomeAborted, SubscriptionOnDifferentNode, String, API.ErrorCode
 MAKE_EX_1_DEFMSG(SomeAborted, SubscriptionInvalidError, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeAborted, ConsumerInvalidError, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeAborted, TerminateQueriesError, String, API.ErrorCodeInternalError)
-MAKE_EX_1_DEFMSG(SomeAborted, PushQueryTerminated, String, API.ErrorCodeInternalError)
+MAKE_EX_1_DEFMSG(SomeAborted, QueryIsNotRunning, String, API.ErrorCodeInternalError)
 
 -------------------------------------------------------------------------------
 -- Exception: SomeOutOfRange
