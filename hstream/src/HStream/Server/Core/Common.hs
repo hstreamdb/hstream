@@ -29,6 +29,7 @@ import qualified HStream.MetaStore.Types          as M
 import           HStream.Server.HStreamApi
 import qualified HStream.Server.MetaData          as P
 import           HStream.Server.Types
+import           HStream.SQL
 #ifdef HStreamUseV2Engine
 import           HStream.SQL.Codegen
 #else
@@ -265,3 +266,13 @@ listSubscriptions ServerContext{..} sName = do
      archived <- HS.isArchiveStreamName (textToCBytes subscriptionStreamName)
      if archived then return sub {subscriptionStreamName = "__deleted_stream__"}
                  else return sub
+
+modifySelect :: Text -> RSelect -> RSelect
+modifySelect namespace (RSelect a (RFrom t) b c d) = RSelect a (RFrom (modifyTableRef t)) b c d
+  where
+    modifyTableRef :: RTableRef -> RTableRef
+    modifyTableRef (RTableRefSimple                   x my) = RTableRefSimple      (namespace <> x) ((namespace <>) <$> my)
+    modifyTableRef (RTableRefCrossJoin          t1 t2 i) = RTableRefCrossJoin   (modifyTableRef t1) (modifyTableRef t2) i
+    modifyTableRef (RTableRefNaturalJoin      t1 j t2 i) = RTableRefNaturalJoin (modifyTableRef t1) j (modifyTableRef t2) i
+    modifyTableRef (RTableRefJoinOn         t1 j t2 v i) = RTableRefJoinOn      (modifyTableRef t1) j (modifyTableRef t2) v i
+    modifyTableRef (RTableRefJoinUsing   t1 j t2 cols i) = RTableRefJoinUsing   (modifyTableRef t1) j (modifyTableRef t2) cols i

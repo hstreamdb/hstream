@@ -207,9 +207,8 @@ createQueryWithNamespace'
             >>= hstreamQueryToQuery metaHandle
       _ -> throw $ HE.WrongExecutionPlan "Create query only support select / create stream as select statements"
 #else
-    ast <- parseAndRefine createQueryRequestSql
-    case ast of
-      RQCreate (RCreateAs stream select rOptions) -> hstreamCodegen (RQCreate (RCreateAs (addNamespace stream) (modifySelect select) rOptions)) >>= \case
+    parseAndRefine createQueryRequestSql >>= \case
+      RQCreate (RCreateAs stream select rOptions) -> hstreamCodegen (RQCreate (RCreateAs (namespace <> stream) (modifySelect namespace select) rOptions)) >>= \case
         CreateBySelectPlan sources sink builder factor persist -> do
           validateNameAndThrow sink
           roles_m <- mapM (findIdentifierRole sc) sources
@@ -236,18 +235,6 @@ createQueryWithNamespace'
           >>= hstreamQueryToQuery metaHandle
         _ -> throw $ HE.WrongExecutionPlan "Create query only support select / create stream as select statements"
       _ -> throw $ HE.WrongExecutionPlan "Create query only support select / create stream as select statements"
-  where
-    addNamespace = (namespace <>)
-    modifySelect :: RSelect -> RSelect
-    modifySelect (RSelect a (RFrom t) b c d) = RSelect a (RFrom (modifyTableRef t)) b c d
-    modifyTableRef :: RTableRef -> RTableRef
-    modifyTableRef (RTableRefSimple                   x my) = RTableRefSimple      (addNamespace x) (addNamespace <$> my)
-    -- modifyTableRef (RTableRefSubquery            select mx) = RTableRefSubquery    (modifySelect select)
-    modifyTableRef (RTableRefCrossJoin          t1 t2 i) = RTableRefCrossJoin   (modifyTableRef t1) (modifyTableRef t2) i
-    modifyTableRef (RTableRefNaturalJoin      t1 j t2 i) = RTableRefNaturalJoin (modifyTableRef t1) j (modifyTableRef t2) i
-    modifyTableRef (RTableRefJoinOn         t1 j t2 v i) = RTableRefJoinOn      (modifyTableRef t1) j (modifyTableRef t2) v i
-    modifyTableRef (RTableRefJoinUsing   t1 j t2 cols i) = RTableRefJoinUsing   (modifyTableRef t1) j (modifyTableRef t2) cols i
-
 #endif
 
 listQueries :: ServerContext -> IO [Query]
