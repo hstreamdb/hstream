@@ -233,8 +233,15 @@ createQueryWithNamespace'
             , qRWhetherToHStore = True }
             relatedStreams
           >>= hstreamQueryToQuery metaHandle
-        _ -> throw $ HE.WrongExecutionPlan "Create query only support select / create stream as select statements"
-      _ -> throw $ HE.WrongExecutionPlan "Create query only support select / create stream as select statements"
+        _ -> throw $ HE.WrongExecutionPlan "Create query only support create stream/view <name> as select statements"
+      RQCreate (RCreateView view select) -> hstreamCodegen (RQCreate (RCreateView (namespace <> view) (modifySelect namespace select))) >>= \case
+        CreateViewPlan sources sink view builder persist -> do
+          validateNameAndThrow sink
+          validateNameAndThrow view
+          Core.createView' sc view sources sink builder persist createQueryRequestSql
+          >>= hstreamQueryToQuery metaHandle . P.viewQuery
+        _ -> throw $ HE.WrongExecutionPlan "Create query only support create stream/view <name> as select statements"
+      _ -> throw $ HE.WrongExecutionPlan "Create query only support create stream/view <name> as select statements"
 #endif
 
 listQueries :: ServerContext -> IO [Query]
