@@ -186,7 +186,7 @@ import qualified Data.ByteString.Char8         as BSC
 import qualified Data.ByteString.Lazy.Char8    as BSLC
 import           Data.Text                     (Text)
 import qualified Data.Text                     as Text
-import           Data.Typeable                 (cast)
+import           Data.Typeable                 (Typeable, cast)
 import           GHC.Stack                     (CallStack, HasCallStack,
                                                 callStack, prettyCallStack)
 import qualified HsGrpc.Server.Types           as HsGrpc
@@ -277,17 +277,58 @@ displayExInfo :: Aeson.ToJSON a => (ExInfo a) -> String
 displayExInfo = BSLC.unpack . Aeson.encode
 
 #define MAKE_EX(ExCls, Ex, Ty) \
-  newtype Ex = Ex (ExInfo Ty) deriving (Show);        \
-  instance Exception Ex where                         \
-  { toException = a##ExCls##ToException;              \
-    fromException = a##ExCls##FromException;          \
-    displayException (Ex info) = displayExInfo info;  \
-  };
+  newtype Ex = Ex##_ (ExInfo Ty) deriving (Show);                     \
+  instance Exception Ex where                                         \
+  { toException = a##ExCls##ToException;                              \
+    fromException = a##ExCls##FromException;                          \
+    displayException (Ex##_ info) = displayExInfo info;               \
+  };                                                                  \
+  {-# COMPLETE Ex #-};                                                \
+  pattern Ex :: HasCallStack => API.ErrorCode -> Text -> Ty -> Ex;    \
+  pattern Ex ec emsg extra <- Ex##_ (ExInfo ec emsg extra _) where    \
+    Ex ec emsg extra = Ex##_ (ExInfo ec emsg extra callStack);
+
+#define MAKE_EX_DEFMSG(ExCls, Ex, Ty) \
+  newtype Ex = Ex##_ (ExInfo Ty) deriving (Show);                     \
+  instance Exception Ex where                                         \
+  { toException = a##ExCls##ToException;                              \
+    fromException = a##ExCls##FromException;                          \
+    displayException (Ex##_ info) = displayExInfo info;               \
+  };                                                                  \
+  {-# COMPLETE Ex #-};                                                \
+  pattern Ex :: HasCallStack => API.ErrorCode -> Ty -> Ex;            \
+  pattern Ex ec extra <- Ex##_ (ExInfo ec _ extra _) where            \
+    Ex ec extra = Ex##_ (ExInfo ec #Ex extra callStack);
+
+-- A generic version of MAKE_EX
+#define MAKE_EX_G(ExCls, Ex) \
+  newtype Ex a = Ex##_ (ExInfo a) deriving (Show);                             \
+  instance (Typeable a, Show a, Aeson.ToJSON a) => Exception (Ex a) where      \
+  { toException = a##ExCls##ToException;                                       \
+    fromException = a##ExCls##FromException;                                   \
+    displayException (Ex##_ info) = displayExInfo info;                        \
+  };                                                                           \
+  {-# COMPLETE Ex #-};                                                         \
+  pattern Ex :: HasCallStack => API.ErrorCode -> Text -> a -> Ex a;            \
+  pattern Ex ec emsg extra <- Ex##_ (ExInfo ec emsg extra _) where             \
+    Ex ec emsg extra = Ex##_ (ExInfo ec emsg extra callStack);
+
+#define MAKE_EX_G_DEFMSG(ExCls, Ex) \
+  newtype Ex a = Ex##_ (ExInfo a) deriving (Show);                             \
+  instance (Typeable a, Show a, Aeson.ToJSON a) => Exception (Ex a) where      \
+  { toException = a##ExCls##ToException;                                       \
+    fromException = a##ExCls##FromException;                                   \
+    displayException (Ex##_ info) = displayExInfo info;                        \
+  };                                                                           \
+  {-# COMPLETE Ex #-};                                                         \
+  pattern Ex :: HasCallStack => API.ErrorCode -> a -> Ex a;                    \
+  pattern Ex ec extra <- Ex##_ (ExInfo ec _ extra _) where                     \
+    Ex ec extra = Ex##_ (ExInfo ec #Ex extra callStack);
 
 -- Constructor has 0 argument
 #define MAKE_EX_0(ExCls, Ex, ECode, EMsg) \
   data Ex = Ex##_ (ExInfo Aeson.Value) deriving (Show);   \
-  instance Exception  Ex where                            \
+  instance Exception Ex where                             \
   { toException = a##ExCls##ToException;                  \
     fromException = a##ExCls##FromException;              \
     displayException (Ex##_ info) = displayExInfo info;   \
@@ -352,7 +393,7 @@ MAKE_EX_1_DEFMSG(SomeUnknown, UnknownPushQueryStatus, String, API.ErrorCodeInter
 MAKE_SUB_EX(SomeHServerException, SomeInvalidArgument)
 
 MAKE_EX_1_DEFMSG(SomeInvalidArgument, InvalidReplicaFactor, String, API.ErrorCodeStreamInvalidReplicaFactor)
-MAKE_EX_1_DEFMSG(SomeInvalidArgument, InvalidObjectIdentifier, String, API.ErrorCodeStreamInvalidObjectIdentifier)
+MAKE_EX_DEFMSG(SomeInvalidArgument, InvalidObjectIdentifier, String)
 MAKE_EX_1_DEFMSG(SomeInvalidArgument, InvalidShardCount, String, API.ErrorCodeStreamInvalidShardCount)
 MAKE_EX_0(SomeInvalidArgument, EmptyBatchedRecord, API.ErrorCodeStreamEmptyBatchedRecord,
     "BatchedRecord shouldn't be Nothing")
