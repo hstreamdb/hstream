@@ -939,6 +939,9 @@ class QuickBuildDevImageCommand:
         p.add_argument("--use-grpc-haskell", default=False, action="store_true")
         p.add_argument("--donot-rename-exe", default=False, action="store_true")
         p.add_argument("--debug", default=False, action="store_true")
+        p.add_argument(
+            "--enable-debug-info", default=False, action="store_true"
+        )
         p.add_argument("--fast", default=False, action="store_true")
         p.add_argument("--only-hstream", default=False, action="store_true")
         p.add_argument("--project-file", default="cabal.project")
@@ -955,6 +958,7 @@ class QuickBuildDevImageCommand:
         use_grpc_haskell=False,
         donot_rename_exe=False,
         debug=False,
+        enable_debug_info=False,
         fast=False,
         only_hstream=False,
         project_file="cabal.project",
@@ -962,7 +966,8 @@ class QuickBuildDevImageCommand:
         extra_sys_deps="",
         **kargs,
     ):
-        debug_arg = "--enable-debug-info --ghc-options=-debug" if debug else ""
+        debug_arg = "--enable-debug-info" if enable_debug_info else ""
+        debug_arg += " --ghc-options=-debug" if debug else ""
         hsgrpc_arg = (
             " ".join(
                 [
