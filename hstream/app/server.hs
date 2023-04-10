@@ -81,6 +81,7 @@ import           HStream.Server.MetaData          (TaskAllocation (..),
                                                    initializeFile,
                                                    initializeTables)
 import           HStream.Server.MetaData          as P
+import           HStream.Server.QueryWorker       (QueryWorker (QueryWorker))
 import           HStream.Server.Types             (ServerContext (..), ServerID,
                                                    TaskManager (recoverTask, resourceType),
                                                    resourceType)
@@ -169,7 +170,11 @@ serve host port securityMap sc@ServerContext{..} listeners listenerSecurityMap =
               getProtoTimestamp >>= \x -> upsertMeta @Proto.Timestamp clusterStartTimeId x metaHandle
               handle (\(_ :: RQLiteRowNotFound) -> return ()) $ deleteAllMeta @TaskAllocation metaHandle
           -- recover tasks
-          Cluster.recoverTasks [scIOWorker] metaHandle serverID
+          Log.info "recovering local io tasks"
+          Cluster.recoverTasks scIOWorker metaHandle serverID
+          Log.info "recovering local query tasks"
+          Cluster.recoverTasks (QueryWorker sc) metaHandle serverID
+          Log.info "recovered tasks"
 
 #ifdef HStreamUseGrpcHaskell
   let sslOpts = initializeTlsConfig <$> join (Map.lookup "tls" securityMap)

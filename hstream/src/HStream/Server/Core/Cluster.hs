@@ -39,6 +39,7 @@ import qualified HStream.Server.HStreamApi      as API
 import qualified HStream.Server.HStreamInternal as I
 import qualified HStream.Server.MetaData        as Meta
 import           HStream.Server.MetaData.Value  (clusterStartTimeId)
+import           HStream.Server.QueryWorker     (QueryWorker (QueryWorker))
 import           HStream.Server.Types           (ServerContext (..))
 import qualified HStream.Server.Types           as Types
 import qualified HStream.ThirdParty.Protobuf    as Proto
@@ -119,14 +120,8 @@ nodeChangeEventHandler :: MVar ServerContext -> Goosip.ServerState -> I.ServerNo
 nodeChangeEventHandler scMVar Goosip.ServerDead I.ServerNode {..} = do
   Log.info $ "handle Server Dead event: " <> Log.buildString' serverNodeId
   withMVar scMVar $ \sc@ServerContext{..} -> do
-    forM_ [scIOWorker] $ \tm -> do
-      tasks <- getNodeResouces metaHandle (Types.resourceType tm) serverNodeId
-      forM_ tasks $ \task -> do
-        taskNode <- lookupResource' sc (Types.resourceType tm) task
-        when (serverID == API.serverNodeId taskNode) $ Types.recoverTask tm task
-    -- queryIds <- getNodeResouces metaHandle ResQuery serverNodeId
-    -- Log.debug $ "The following queries were aborted along with the death of node " <> Log.buildString' serverNodeId <> ":" <> Log.buildString' queryIds
-    -- mapM_ (\qid -> M.updateMeta qid P.QueryAbort Nothing metaHandle) queryIds
+    recoverDeadNodeTasks sc scIOWorker serverNodeId
+    recoverDeadNodeTasks sc (QueryWorker sc) serverNodeId
 nodeChangeEventHandler _ _ _ = return ()
 
 getNodeResouces :: Meta.MetaHandle -> ResourceType -> Types.ServerID -> IO [T.Text]
@@ -135,11 +130,15 @@ getNodeResouces h rt nodeId = do
   let taskIds = map parseAllocationKey . Map.keys . Map.filter ((== nodeId) . Meta.taskAllocationServerId) $ allocations
   return [tid | Right (rt', tid) <- taskIds, rt == rt']
 
-recoverTasks :: Types.TaskManager a => [a] -> Meta.MetaHandle -> Types.ServerID -> IO ()
-recoverTasks tms metaHandle serverID = do
-  Log.info "recovering tasks"
-  forM_ tms $ \tm -> do
-    tasks <- getNodeResouces metaHandle (Types.resourceType tm) serverID
-    mapM_ (Types.recoverTask tm) tasks
-  Log.info "recovered tasks"
+recoverDeadNodeTasks :: Types.TaskManager a => ServerContext -> a -> Types.ServerID -> IO ()
+recoverDeadNodeTasks sc@ServerContext{..} tm deadNodeId = do
+  tasks <- getNodeResouces metaHandle (Types.resourceType tm) deadNodeId
+  forM_ tasks $ \task -> do
+    taskNode <- lookupResource' sc (Types.resourceType tm) task
+    when (serverID == API.serverNodeId taskNode) $ Types.recoverTask tm task
+
+recoverTasks :: Types.TaskManager a => a -> Meta.MetaHandle -> Types.ServerID -> IO ()
+recoverTasks tm metaHandle serverID = do
+  tasks <- getNodeResouces metaHandle (Types.resourceType tm) serverID
+  mapM_ (Types.recoverTask tm) tasks
 

@@ -70,6 +70,7 @@ library
     HStream.Server.HStore
     HStream.Server.Initialization
     HStream.Server.MetaData
+    HStream.Server.QueryWorker
     HStream.Server.Shard
     HStream.Server.Types
 

@@ -42,7 +42,7 @@ import           HStream.Server.Shard             (ShardKey, SharedShardMap)
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as HS
 import qualified HStream.Store                    as S
-import           HStream.Utils                    (ResourceType (ResConnector),
+import           HStream.Utils                    (ResourceType (ResConnector, ResQuery),
                                                    textToCBytes)
 
 
