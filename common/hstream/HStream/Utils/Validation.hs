@@ -1,11 +1,12 @@
 module HStream.Utils.Validation where
 
-import           Control.Exception (throwIO)
-import           Data.Char         (isAlphaNum, isLetter)
-import qualified Data.Text         as T
+import           Control.Exception         (throwIO)
+import           Data.Char                 (isAlphaNum, isLetter)
+import qualified Data.Text                 as T
 
-import           HStream.Exception (InvalidObjectIdentifier (..))
-import           HStream.Logger    as Log
+import           HStream.Exception         (InvalidObjectIdentifier (..))
+import           HStream.Logger            as Log
+import qualified HStream.Server.HStreamApi as API
 
 -- FIXME: Currently CLI does not support
 -- parsing "." or "-" in the stream name
@@ -17,7 +18,7 @@ validateNameAndThrow n =
   case validateNameText n of
     Left s   -> do
       Log.warning $ "Invalid Object Identifier:" <> Log.build s
-      throwIO (InvalidObjectIdentifier s)
+      throwIO (InvalidObjectIdentifier API.ErrorCodeStreamInvalidObjectIdentifier s)
     Right () -> return ()
 
 validateChar :: Char -> Either String ()

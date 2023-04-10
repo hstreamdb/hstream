@@ -34,9 +34,9 @@ import           HStream.Client.Action            (createConnector,
                                                    createStreamBySelectWithCustomQueryName,
                                                    dropAction, executeViewQuery,
                                                    insertIntoStream, listShards,
-                                                   pauseConnector,
-                                                   resumeConnector, retry,
-                                                   terminateQueries)
+                                                   pauseConnector, pauseQuery,
+                                                   resumeConnector, resumeQuery,
+                                                   retry, terminateQueries)
 import           HStream.Client.Execute           (execute, executeShowPlan,
                                                    executeWithLookupResource_,
                                                    execute_, updateClusterInfo)
@@ -154,6 +154,8 @@ commandExec HStreamSqlContext{hstreamCliContext = cliCtx@HStreamCliContext{..},.
           executeWithLookupResource_ cliCtx (Resource ResConnector cName) (createConnector cName cType cTarget cfgText)
         PausePlan  (PauseObjectConnector cName) -> executeWithLookupResource_ cliCtx (Resource ResConnector cName) (pauseConnector cName)
         ResumePlan (ResumeObjectConnector cName) -> executeWithLookupResource_ cliCtx (Resource ResConnector cName) (resumeConnector cName)
+        PausePlan  (PauseObjectQuery cName) -> executeWithLookupResource_ cliCtx (Resource ResQuery cName) (pauseQuery cName)
+        ResumePlan (ResumeObjectQuery cName) -> executeWithLookupResource_ cliCtx (Resource ResQuery cName) (resumeQuery cName)
         _ -> do
           addr <- readMVar currentServer
           withGRPCClient (HStream.Utils.mkGRPCClientConfWithSSL addr sslConfig)

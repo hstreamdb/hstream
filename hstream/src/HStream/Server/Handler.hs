@@ -75,7 +75,7 @@ handlers serverContext@ServerContext{..} =
         hstreamApiCreateQueryWithNamespace = createQueryWithNamespaceHandler serverContext,
         hstreamApiListQueries = listQueriesHandler serverContext,
         hstreamApiDeleteQuery = deleteQueryHandler serverContext,
-        hstreamApiRestartQuery = restartQueryHandler serverContext,
+        hstreamApiResumeQuery = resumeQueryHandler serverContext,
 
         -- Connector
         hstreamApiCreateConnector = createConnectorHandler serverContext,
@@ -91,6 +91,7 @@ handlers serverContext@ServerContext{..} =
         hstreamApiListViews = listViewsHandler serverContext,
         hstreamApiDeleteView = deleteViewHandler serverContext,
         hstreamApiExecuteViewQuery = executeViewQueryHandler serverContext,
+        hstreamApiExecuteViewQueryWithNamespace = executeViewQueryWithNamespaceHandler serverContext,
 
         -- Cluster
         hstreamApiDescribeCluster    = describeClusterHandler serverContext,

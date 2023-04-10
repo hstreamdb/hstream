@@ -15,10 +15,12 @@ module HStream.Server.MetaData.Types
   ( RelatedStreams
   , QueryInfo (..)
   , ViewInfo (..)
-  , QueryStatus (QueryTerminated, QueryRunning, QueryCreated, QueryAbort, ..)
+  , QueryStatus (QueryRunning, QueryCreating
+               , QueryAborted, QueryResuming, QueryPaused, ..)
   , ShardReader (..)
   , TaskAllocation (..)
   , createInsertQueryInfo
+  , deleteQueryInfo
   , getSubscriptionWithStream
   , groupbyStores
   , rootPath
@@ -71,14 +73,12 @@ data QueryInfo = QueryInfo
 data QueryStatus = QueryStatus { queryState :: TaskStatus }
   deriving (Generic, Show, FromJSON, ToJSON)
 
-pattern QueryTerminated :: QueryStatus
-pattern QueryTerminated = QueryStatus { queryState = Terminated }
-pattern QueryCreated :: QueryStatus
-pattern QueryCreated = QueryStatus { queryState = Created }
-pattern QueryRunning :: QueryStatus
-pattern QueryRunning = QueryStatus { queryState = Running }
-pattern QueryAbort :: QueryStatus
-pattern QueryAbort = QueryStatus { queryState = Abort }
+pattern QueryCreating, QueryRunning, QueryResuming, QueryAborted, QueryPaused :: QueryStatus
+pattern QueryCreating = QueryStatus { queryState = Creating }
+pattern QueryRunning  = QueryStatus { queryState = Running }
+pattern QueryResuming = QueryStatus { queryState = Resuming }
+pattern QueryAborted  = QueryStatus { queryState = Aborted }
+pattern QueryPaused   = QueryStatus { queryState = Paused }
 
 data ViewInfo = ViewInfo {
     viewName  :: Text
@@ -156,7 +156,16 @@ insertQuery :: (MetaType QueryInfo handle, MetaType QueryStatus handle, MetaMult
   => QueryInfo -> handle -> IO ()
 insertQuery qInfo@QueryInfo{..} h = do
   metaMulti [ insertMetaOp queryId qInfo h
-            , insertMetaOp queryId QueryCreated h]
+            , insertMetaOp queryId QueryCreating h
+            ]
+            h
+
+deleteQueryInfo :: (MetaType QueryInfo handle, MetaType QueryStatus handle, MetaMulti handle)
+  => Text -> handle -> IO ()
+deleteQueryInfo qid h = do
+  metaMulti [ deleteMetaOp @QueryInfo qid Nothing h
+            , deleteMetaOp @QueryStatus qid Nothing h
+            ]
             h
 
 getSubscriptionWithStream :: MetaType SubscriptionWrap handle => handle -> Text -> IO [SubscriptionWrap]

@@ -59,7 +59,8 @@ import qualified HStream.Processing.Stream.SessionWindowedStream as HSW
 import           HStream.Processing.Stream.SessionWindows        (mkSessionWindows,
                                                                   sessionWindowKeySerde)
 import qualified HStream.Processing.Stream.TimeWindowedStream    as HTW
-import           HStream.Processing.Stream.TimeWindows           (TimeWindowKey (..),
+import           HStream.Processing.Stream.TimeWindows           (TimeWindow (..),
+                                                                  TimeWindowKey (..),
                                                                   mkHoppingWindow,
                                                                   mkTumblingWindow,
                                                                   timeWindowKeySerde)
@@ -70,6 +71,7 @@ import           HStream.SQL.Codegen.ColumnCatalog
 import           HStream.SQL.Codegen.Common
 import           HStream.SQL.Codegen.Utils
 import           HStream.SQL.Codegen.V1.Boilerplate
+import           HStream.SQL.Codegen.V1.Transform
 import           HStream.SQL.Exception                           (SomeSQLException (..),
                                                                   throwSQLException)
 import           HStream.SQL.Parse                               (parseAndRefine)
@@ -94,8 +96,12 @@ data ShowObject = SStreams | SQueries | SConnectors | SViews
 data DropObject = DStream Text | DView Text | DConnector Text
 data TerminationSelection = AllQueries | OneQuery Text | ManyQueries [Text]
 data InsertType = JsonFormat | RawFormat
-data PauseObject = PauseObjectConnector Text
-data ResumeObject = ResumeObjectConnector Text
+data PauseObject
+  = PauseObjectConnector Text
+  | PauseObjectQuery Text
+data ResumeObject
+  =  ResumeObjectConnector Text
+  | ResumeObjectQuery Text
 
 type Persist = ([HS.StreamJoined K V K V Ser], [HS.Materialized K V V])
 
@@ -109,7 +115,7 @@ data HStreamPlan
   | ExplainPlan         Text
   | PausePlan           PauseObject
   | ResumePlan          ResumeObject
-  | SelectPlan          [StreamName] StreamName TaskBuilder Persist
+  | SelectPlan          [StreamName] StreamName TaskBuilder Persist ([ColumnCatalog], [ColumnCatalog])
   | PushSelectPlan      [StreamName] StreamName TaskBuilder Persist
   | CreateBySelectPlan  [StreamName] StreamName TaskBuilder Int Persist
   | CreateViewPlan      [StreamName] StreamName ViewName TaskBuilder Persist
@@ -122,8 +128,9 @@ hstreamCodegen :: HasCallStack => RSQL -> IO HStreamPlan
 hstreamCodegen = \case
   RQSelect select -> do
     tName <- genTaskName
-    (builder, srcs, sink, persist) <- elabRSelect tName Nothing select
-    return $ SelectPlan srcs sink (HS.build builder) persist
+    let (select', keys, keysAdded) = addGroupByKeysToProjectItems select
+    (builder, srcs, sink, persist) <- elabRSelect tName Nothing select'
+    return $ SelectPlan srcs sink (HS.build builder) persist (keys, keysAdded)
   RQPushSelect select -> do
     tName <- genTaskName
     (builder, srcs, sink, persist) <- elabRSelect tName Nothing select
@@ -161,7 +168,9 @@ hstreamCodegen = \case
     let relationExpr = decouple rselect
     return $ ExplainPlan (PP.renderStrict $ PP.layoutPretty PP.defaultLayoutOptions (PP.pretty relationExpr))
   RQPause (RPauseConnector name)     -> return $ PausePlan (PauseObjectConnector name)
+  RQPause (RPauseQuery name)         -> return $ PausePlan (PauseObjectQuery name)
   RQResume (RResumeConnector name)   -> return $ ResumePlan (ResumeObjectConnector name)
+  RQResume (RResumeQuery name)       -> return $ ResumePlan (ResumeObjectQuery name)
 
 --------------------------------------------------------------------------------
 
@@ -403,7 +412,12 @@ relationExprToGraph relation builder = case relation of
             s' <- HG.timeWindowedBy (mkTumblingWindow (calendarDiffTimeToMs i)) groupedStream
                   >>= HTW.aggregate aggregateInit
                                     aggregateR
-                                    HM.union
+                                    (\a k TimeWindow{..} ->
+                                        let winStart = [(ColumnCatalog winStartText Nothing, jsonValueToFlowValue . Aeson.Number $ scientific (toInteger tWindowStart) 0)]
+                                            winEnd   = [(ColumnCatalog winEndText Nothing, jsonValueToFlowValue . Aeson.Number $ scientific (toInteger tWindowEnd  ) 0)]
+                                            win      = HM.fromList $ winStart ++ winEnd
+                                         in HM.union (HM.union a k) win
+                                    )
                                     timeWindowFlowObjectSerde
                                     (timeWindowSerde $ calendarDiffTimeToMs i)
                                     flowObjectSerde
@@ -414,7 +428,12 @@ relationExprToGraph relation builder = case relation of
             s' <- HG.timeWindowedBy (mkHoppingWindow (calendarDiffTimeToMs i1) (calendarDiffTimeToMs i2)) groupedStream
                   >>= HTW.aggregate aggregateInit
                                     aggregateR
-                                    HM.union
+                                    (\a k TimeWindow{..} ->
+                                        let winStart = [(ColumnCatalog winStartText Nothing, jsonValueToFlowValue . Aeson.Number $ scientific (toInteger tWindowStart) 0)]
+                                            winEnd   = [(ColumnCatalog winEndText Nothing, jsonValueToFlowValue . Aeson.Number $ scientific (toInteger tWindowEnd  ) 0)]
+                                            win      = HM.fromList $ winStart ++ winEnd
+                                         in HM.union (HM.union a k) win
+                                    )
                                     timeWindowFlowObjectSerde
                                     (timeWindowSerde $ calendarDiffTimeToMs i1)
                                     flowObjectSerde

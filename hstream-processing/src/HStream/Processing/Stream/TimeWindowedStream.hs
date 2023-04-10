@@ -37,7 +37,7 @@ aggregate ::
   (Typeable k, Typeable v, Ord k, Typeable a, Ord s1, Ord s2, Typeable s1, Serialized s1, Typeable s2, Serialized s2, Aeson.ToJSON s1) =>
   a ->
   (a -> Record k v -> a) ->
-  (a -> k -> a) ->
+  (a -> k -> TimeWindow -> a) ->
   Serde TimeWindow s1 ->
   Serde TimeWindow s2 ->
   Serde a s2 ->
@@ -69,7 +69,7 @@ count ::
   Serde Int s ->
   TimeWindowedStream k v s ->
   IO (Table (TimeWindowKey k) Int s)
-count mat twSerde1 twSerde2 intSerde = aggregate 0 aggF const twSerde1 twSerde2 intSerde mat
+count mat twSerde1 twSerde2 intSerde = aggregate 0 aggF (\ v _ _ -> v) twSerde1 twSerde2 intSerde mat
   where
     aggF :: Int -> Record k v -> Int
     aggF acc _ = acc + 1
@@ -79,7 +79,7 @@ aggregateProcessor ::
   T.Text ->
   a ->
   (a -> Record k v -> a) ->
-  (a -> k -> a) ->
+  (a -> k -> TimeWindow -> a) ->
   Serde k s ->
   Serde a s ->
   Serde TimeWindow s ->
@@ -106,7 +106,7 @@ aggregateProcessor storeName initialValue aggF outputF keySerde accSerde twSerde
             liftIO $ ksPut key sNewAcc store
             let changeLog = CLKSPut @_ @_ @BL.ByteString storeName key sNewAcc
             liftIO $ logChangelog tcChangeLogger (Aeson.encode changeLog)
-            forward r {recordKey = Just windowKey, recordValue = outputF newAcc (fromJust recordKey)}
+            forward r {recordKey = Just windowKey, recordValue = outputF newAcc (fromJust recordKey) tw}
           else logWarn "Skipping record for expired window."
     )
 

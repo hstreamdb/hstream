@@ -32,6 +32,8 @@ module HStream.Client.Action
   , listQueries
   , listViews
   , terminateQueries
+  , pauseQuery
+  , resumeQuery
 
   , dropAction
   , lookupResource
@@ -184,6 +186,14 @@ pauseConnector cid HStreamApi{..} = hstreamApiPauseConnector $
 resumeConnector :: T.Text -> Action Empty
 resumeConnector cid HStreamApi{..} = hstreamApiResumeConnector $
   mkClientNormalRequest' def { resumeConnectorRequestName = cid }
+
+pauseQuery :: T.Text -> Action Empty
+pauseQuery qid HStreamApi{..} = hstreamApiPauseQuery $
+  mkClientNormalRequest' def { pauseQueryRequestId = qid }
+
+resumeQuery :: T.Text -> Action Empty
+resumeQuery qid HStreamApi{..} = hstreamApiResumeQuery $
+  mkClientNormalRequest' def { resumeQueryRequestId = qid }
 
 createSubscription :: T.Text -> T.Text -> Action Subscription
 createSubscription subId sName = createSubscription' (subscriptionWithDefaultSetting subId sName)
