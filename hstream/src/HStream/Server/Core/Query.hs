@@ -109,8 +109,9 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
     CreateViewPlan sources sink view builder persist -> do
       validateNameAndThrow sink
       validateNameAndThrow view
+      queryId <- newRandomText 10
       P.ViewInfo{viewQuery=P.QueryInfo{..}} <-
-        Core.createView' sc view sources sink builder persist commandQueryStmtText
+        Core.createView' sc view sources sink builder persist commandQueryStmtText queryId
       pure $ API.CommandQueryResponse (mkVectorStruct queryId "view_query_id")
 #endif
     ExplainPlan plan -> pure $ API.CommandQueryResponse (mkVectorStruct plan "explain")
@@ -238,7 +239,7 @@ createQueryWithNamespace'
         CreateViewPlan sources sink view builder persist -> do
           validateNameAndThrow sink
           validateNameAndThrow view
-          Core.createView' sc view sources sink builder persist createQueryRequestSql
+          Core.createView' sc view sources sink builder persist createQueryRequestSql createQueryRequestQueryName
           >>= hstreamQueryToQuery metaHandle . P.viewQuery
         _ -> throw $ HE.WrongExecutionPlan "Create query only support create stream/view <name> as select statements"
       _ -> throw $ HE.WrongExecutionPlan "Create query only support create stream/view <name> as select statements"

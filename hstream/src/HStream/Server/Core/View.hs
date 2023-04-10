@@ -92,12 +92,12 @@ createView' sc@ServerContext{..} view ins out builder accumulation sql = do
       -- FIXME: use another exception or find which resource doesn't exist
       throwIO $ HE.StreamNotFound $ "At least one of the streams/views do not exist: " <> T.pack (show sources)
 #else
-createView :: ServerContext -> T.Text -> IO P.ViewInfo
-createView sc sql = do
+createView :: ServerContext -> T.Text -> T.Text -> IO P.ViewInfo
+createView sc sql queryName = do
   plan <- streamCodegen sql
   case plan of
     CreateViewPlan srcs sink view builder persist -> do
-      createView' sc view srcs sink builder persist sql
+      createView' sc view srcs sink builder persist sql queryName
     _ ->  throw $ HE.WrongExecutionPlan "Create query only support create view as select statements"
 
 createView' :: ServerContext
@@ -107,8 +107,9 @@ createView' :: ServerContext
             -> HP.TaskBuilder
             -> Persist
             -> T.Text
+            -> T.Text
             -> IO ViewInfo
-createView' sc@ServerContext{..} view srcs sink builder persist sql = do
+createView' sc@ServerContext{..} view srcs sink builder persist sql queryName = do
   roles_m <- mapM (findIdentifierRole sc) srcs
   case all isJust roles_m of
     True -> do
@@ -119,10 +120,9 @@ createView' sc@ServerContext{..} view srcs sink builder persist sql = do
           throwIO $ HE.InvalidSqlStatement "CREATE VIEW only supports sources of stream type"
         True  -> do
           let relatedStreams = (srcs, sink)
-          queryId <- newRandomText 10
           qInfo <- createQueryAndRun sc QueryRunner {
               qRTaskBuilder = builder
-            , qRQueryName   = queryId
+            , qRQueryName   = queryName
             , qRQueryString = sql
             , qRWhetherToHStore = False }
             relatedStreams
