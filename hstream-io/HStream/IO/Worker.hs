@@ -7,7 +7,7 @@ module HStream.IO.Worker where
 
 import qualified Control.Concurrent        as C
 import           Control.Exception         (catch, throw, throwIO)
-import           Control.Monad             (forM_)
+import           Control.Monad             (forM_, when)
 import qualified Data.HashMap.Strict       as HM
 import           Data.IORef                (newIORef, readIORef)
 import qualified Data.IORef                as C
@@ -15,6 +15,8 @@ import           Data.Maybe                (fromMaybe)
 import qualified Data.Text                 as T
 import           GHC.Stack                 (HasCallStack)
 
+import qualified Data.Aeson                as J
+import qualified Data.Aeson.KeyMap         as J
 import qualified HStream.Exception         as HE
 import qualified HStream.IO.IOTask         as IOTask
 import qualified HStream.IO.Meta           as M
@@ -50,16 +52,16 @@ monitor worker@Worker{..} = do
       ioTasks <- C.readMVar ioTasksM
       forM_ ioTasks IOTask.checkProcess
 
-createIOTask :: HasCallStack => Worker -> T.Text -> TaskInfo -> IO ()
-createIOTask worker@Worker{..} taskId taskInfo@TaskInfo {..} = do
+createIOTask :: HasCallStack => Worker -> T.Text -> TaskInfo -> Bool -> Bool -> IO ()
+createIOTask worker@Worker{..} taskId taskInfo@TaskInfo {..} cleanIfExists createMetaData = do
   getIOTask worker taskName >>= \case
     Nothing -> pure ()
     Just _  -> throwIO $ HE.ConnectorExists taskName
   let taskPath = optTasksPath options <> "/" <> taskId
   task <- IOTask.newIOTask taskId workerHandle taskInfo taskPath
-  IOTask.initIOTask task
+  IOTask.initIOTask task cleanIfExists
   IOTask.checkIOTask task
-  M.createIOTaskMeta workerHandle taskName taskId taskInfo
+  when createMetaData $ M.createIOTaskMeta workerHandle taskName taskId taskInfo
   C.modifyMVar_ ioTasksM $ \ioTasks -> do
     case HM.lookup taskName ioTasks of
       Just _ -> throwIO $ HE.ConnectorExists taskName
@@ -89,6 +91,15 @@ stopIOTask worker name ifIsRunning force = do
 startIOTask :: Worker -> T.Text -> IO ()
 startIOTask worker name = do
   getIOTask_ worker name >>= IOTask.startIOTask
+
+recoverTask :: Worker -> T.Text -> IO ()
+recoverTask worker@Worker{..} name = do
+  Log.info $ "recovering task:" <> Log.buildString' name
+  M.getIOTaskFromName workerHandle name >>= \case
+    Nothing -> throwIO $ HE.ConnectorNotFound name
+    Just (taskId, TaskMeta{taskInfoMeta=taskInfo@TaskInfo{..}}) -> do
+      let newConnCfg = J.insert "hstream" (J.toJSON hsConfig) connectorConfig
+      createIOTask worker taskId taskInfo{connectorConfig=newConnCfg} True False
 
 getIOTask :: Worker -> T.Text -> IO (Maybe IOTask)
 getIOTask Worker{..} name = HM.lookup name <$> C.readMVar ioTasksM

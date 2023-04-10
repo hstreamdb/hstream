@@ -62,6 +62,7 @@ library
     HStream.Server.Config
     HStream.Server.ConnectorTypes
     HStream.Server.Core.Common
+    HStream.Server.Core.Cluster
     HStream.Server.Exception
     HStream.Server.Handler
     HStream.Server.Handler.Common
@@ -69,11 +70,11 @@ library
     HStream.Server.HStore
     HStream.Server.Initialization
     HStream.Server.MetaData
+    HStream.Server.QueryWorker
     HStream.Server.Shard
     HStream.Server.Types
 
   other-modules:
-    HStream.Server.Core.Cluster
     HStream.Server.Core.Query
     HStream.Server.Core.Stream
     HStream.Server.Core.Subscription

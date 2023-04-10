@@ -9,62 +9,74 @@ import qualified Data.Text           as T
 
 import qualified HStream.Utils.Aeson as A
 
+
+-- ============ Connector -> Server
+newtype KvGetMessage
+  = KvGetMessage
+    { kgKey    :: T.Text
+    } deriving (Show)
+$(JT.deriveJSON
+    JT.defaultOptions
+      { JT.fieldLabelModifier = map toLower . drop 2 }
+    ''KvGetMessage)
+
+data KvSetMessage
+  = KvSetMessage
+    { ksKey   :: T.Text
+    , ksValue :: T.Text
+    } deriving (Show)
+$(JT.deriveJSON
+    JT.defaultOptions
+      { JT.fieldLabelModifier = map toLower . drop 2 }
+    ''KvSetMessage)
+
+data ConnectorMessage
+  = KvGet KvGetMessage
+  | KvSet KvSetMessage
+  | Report
+  deriving (Show)
+
+data ConnectorRequest
+  = ConnectorRequest
+    { crId      :: T.Text
+    , crMessage :: ConnectorMessage
+    } deriving (Show)
+
+instance J.FromJSON ConnectorRequest where
+  parseJSON = J.withObject "ConnectorRequest" $ \v -> ConnectorRequest
+    <$> v J..: "id"
+    <*> (v J..: "name" >>= \case
+          ("KvGet" :: T.Text) -> KvGet <$> (v J..: "body")
+          "KvSet" -> KvSet <$> (v J..: "body")
+          "Report" -> pure Report
+          name -> fail $ "Unknown Connector Request:" ++ T.unpack name
+        )
+
+data ConnectorResponse = ConnectorResponse
+  { ccrId      :: T.Text
+  , ccrMessage :: J.Value
+  } deriving (Show)
+
+instance J.ToJSON ConnectorResponse where
+  toJSON ConnectorResponse{..} =
+    J.object [ A.fromText "name" J..= ("ConnectorResponse" :: T.Text)
+             , A.fromText "id" J..= ccrId
+             , A.fromText "body" J..= ccrMessage
+             ]
+
+-- ========== Server -> Connector
 data InputCommand
   = InputCommandStop
   deriving (Show, Eq)
 
 instance J.ToJSON InputCommand where
-  toJSON InputCommandStop = J.object [(A.fromText "type") J..= ("stop" :: T.Text)]
+  toJSON InputCommandStop = J.object [A.fromText "name" J..= ("stop" :: T.Text)]
+
+-- =========
 
 data CheckResult
   = CheckResult
     { result  :: Bool
     , message :: T.Text
     }
-
 $(JT.deriveJSON JT.defaultOptions ''CheckResult)
-
-data ConnectorMessageType
-  = CONNECTOR_CALL
-  | CONNECTOR_SEND
-  deriving (Show)
-
-$(JT.deriveJSON
-    JT.defaultOptions { JT.constructorTagModifier = map toLower }
-    ''ConnectorMessageType)
-
-data KvMessage
-  = KvMessage
-    { kmAction :: T.Text
-    , kmKey    :: T.Text
-    , kmValue  :: Maybe T.Text
-    } deriving (Show)
-
-$(JT.deriveJSON
-    JT.defaultOptions
-      { JT.fieldLabelModifier = map toLower . drop 2 }
-    ''KvMessage)
-
-data ConnectorMessage
-  = ConnectorMessage
-    { cmType    :: ConnectorMessageType
-    , cmId      :: T.Text
-    , cmMessage :: KvMessage
-    } deriving (Show)
-
-$(JT.deriveJSON
-    JT.defaultOptions
-      { JT.fieldLabelModifier = map toLower . drop 2 }
-    ''ConnectorMessage)
-
-data ConnectorCallResponse = ConnectorCallResponse
-  { ccrId      :: T.Text
-  , ccrMessage :: J.Value
-  } deriving (Show)
-
-instance J.ToJSON ConnectorCallResponse where
-  toJSON ConnectorCallResponse{..} =
-    J.object [ (A.fromText "type") J..= CONNECTOR_CALL
-             , (A.fromText "id") J..= ccrId
-             , (A.fromText "message") J..= ccrMessage
-             ]

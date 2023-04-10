@@ -30,17 +30,20 @@ import qualified HStream.Admin.Store.API          as AA
 import           HStream.Common.ConsistentHashing (HashRing)
 import           HStream.Gossip.Types             (Epoch, GossipContext)
 import qualified HStream.IO.Types                 as IO
+import qualified HStream.IO.Worker                as IO
 import           HStream.MetaStore.Types          (MetaHandle)
 import           HStream.Server.Config
 import           HStream.Server.ConnectorTypes    as HCT
-import           HStream.Server.HStreamApi        (NodeState, SpecialOffset,
+import           HStream.Server.HStreamApi        (NodeState, ResourceType,
+                                                   SpecialOffset,
                                                    StreamingFetchResponse,
                                                    Subscription)
 import           HStream.Server.Shard             (ShardKey, SharedShardMap)
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as HS
 import qualified HStream.Store                    as S
-import           HStream.Utils                    (textToCBytes)
+import           HStream.Utils                    (ResourceType (ResConnector, ResQuery),
+                                                   textToCBytes)
 
 
 protocolVersion :: Text
@@ -197,6 +200,15 @@ printAckedRanges :: Map.Map ShardRecordId ShardRecordIdRange -> String
 printAckedRanges mp = show (Map.elems mp)
 
 type ConsumerName = T.Text
+
+-- Task Manager
+class TaskManager tm where
+  resourceType :: tm -> ResourceType
+  recoverTask :: tm -> T.Text -> IO ()
+
+instance TaskManager IO.Worker where
+  resourceType = const ResConnector
+  recoverTask = IO.recoverTask
 
 --------------------------------------------------------------------------------
 

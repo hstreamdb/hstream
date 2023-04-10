@@ -9,8 +9,9 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
 
-import           Control.Concurrent               (MVar, forkIO, newMVar,
-                                                   readMVar, swapMVar)
+import           Control.Concurrent               (MVar, forkIO, newEmptyMVar,
+                                                   newMVar, putMVar, readMVar,
+                                                   swapMVar)
 import qualified Control.Concurrent.Async         as Async
 import           Control.Concurrent.STM           (TVar, atomically, retry,
                                                    writeTVar)
@@ -28,7 +29,8 @@ import qualified Network.GRPC.HighLevel.Client    as GRPC
 import qualified Network.GRPC.HighLevel.Generated as GRPC
 import           Network.HTTP.Client              (defaultManagerSettings,
                                                    newManager)
-import           System.IO                        (hPutStrLn, stderr)
+import           System.IO                        (BufferMode (NoBuffering),
+                                                   hPutStrLn, stderr)
 import           Text.RawString.QQ                (r)
 import           Z.Data.CBytes                    (CBytes)
 import           ZooKeeper                        (withResource,
@@ -58,11 +60,15 @@ import           HStream.Server.Config            (AdvertisedListeners,
                                                    ServerOpts (..), TlsConfig,
                                                    advertisedListenersToPB,
                                                    getConfig)
-import           HStream.Server.Core.Common       (parseAllocationKey)
+import qualified HStream.Server.Core.Cluster      as Cluster
+import           HStream.Server.Core.Common       (lookupResource',
+                                                   parseAllocationKey)
 import           HStream.Server.Handler           (handlers)
 import qualified HStream.Server.HsGrpcHandler     as HsGrpc
 import           HStream.Server.HStreamApi        (NodeState (..),
+                                                   ServerNode (ServerNode),
                                                    hstreamApiServer)
+import qualified HStream.Server.HStreamApi        as API
 import qualified HStream.Server.HStreamInternal   as I
 import           HStream.Server.Initialization    (closeRocksDBHandle,
                                                    initializeServer,
@@ -75,13 +81,17 @@ import           HStream.Server.MetaData          (TaskAllocation (..),
                                                    initializeFile,
                                                    initializeTables)
 import           HStream.Server.MetaData          as P
-import           HStream.Server.Types             (ServerContext (..))
+import           HStream.Server.QueryWorker       (QueryWorker (QueryWorker))
+import           HStream.Server.Types             (ServerContext (..), ServerID,
+                                                   TaskManager (recoverTask, resourceType),
+                                                   resourceType)
 import qualified HStream.Store.Logger             as Log
 import qualified HStream.ThirdParty.Protobuf      as Proto
 import           HStream.Utils                    (ResourceType (..),
                                                    getProtoTimestamp,
                                                    pattern EnumPB,
                                                    setupSigsegvHandler)
+
 
 main :: IO ()
 main = getConfig >>= app
@@ -115,9 +125,13 @@ app config@ServerOpts{..} = do
                          , serverNodeGossipAddress = encodeUtf8 . T.pack $ _serverGossipAddress
                          , serverNodeAdvertisedListeners = advertisedListenersToPB _serverAdvertisedListeners
                          }
-      gossipContext <- initGossipContext defaultGossipOpts mempty (Just $ nodeChangeEventHandler h) serverNode _seedNodes
+
+      scMVar <- newEmptyMVar
+      gossipContext <- initGossipContext defaultGossipOpts mempty (Just $ Cluster.nodeChangeEventHandler scMVar) serverNode _seedNodes
 
       serverContext <- initializeServer config gossipContext h db_m
+      putMVar scMVar serverContext
+
       void . forkIO $ updateHashRing gossipContext (loadBalanceHashRing serverContext)
 
       Async.withAsync
@@ -127,14 +141,7 @@ app config@ServerOpts{..} = do
         Async.link2Only (const True) a a1
         waitGossipBoot gossipContext
         Async.wait a
-    nodeChangeEventHandler :: MetaHandle -> ServerState -> I.ServerNode -> IO ()
-    nodeChangeEventHandler h ServerDead I.ServerNode {..} = do
-      allocations <- M.getAllMeta @TaskAllocation h
-      let taskIds = map parseAllocationKey . Map.keys . Map.filter ((== serverNodeId) . taskAllocationServerId) $ allocations
-      let queryIds = [qid | Right (ResQuery, qid) <- taskIds ]
-      Log.debug $ "The following queries were aborted along with the death of node " <> Log.buildString' serverNodeId <> ":" <> Log.buildString' queryIds
-      mapM_ (\qid -> M.updateMeta qid P.QueryAborted Nothing h) queryIds
-    nodeChangeEventHandler _ _ _ = return ()
+
 serve :: ByteString
       -> Word16
       -> SecurityProtocolMap
@@ -162,6 +169,12 @@ serve host port securityMap sc@ServerContext{..} listeners listenerSecurityMap =
             _ -> do
               getProtoTimestamp >>= \x -> upsertMeta @Proto.Timestamp clusterStartTimeId x metaHandle
               handle (\(_ :: RQLiteRowNotFound) -> return ()) $ deleteAllMeta @TaskAllocation metaHandle
+          -- recover tasks
+          Log.info "recovering local io tasks"
+          Cluster.recoverTasks scIOWorker metaHandle serverID
+          Log.info "recovering local query tasks"
+          Cluster.recoverTasks (QueryWorker sc) metaHandle serverID
+          Log.info "recovered tasks"
 
 #ifdef HStreamUseGrpcHaskell
   let sslOpts = initializeTlsConfig <$> join (Map.lookup "tls" securityMap)
