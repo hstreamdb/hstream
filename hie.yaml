@@ -1,6 +1,6 @@
 cradle:
   cabal:
-    - path: "common/."
+    - path: "common/hstream/."
       component: "lib:hstream-common"
 
     - path: "common/base/."
@@ -9,7 +9,7 @@ cradle:
     - path: "common/api/."
       component: "lib:hstream-api-hs"
 
-    - path: "common/test"
+    - path: "common/hstream/test/."
       component: "hstream-common:test:hstream-common-test"
 
     - path: "common/stats/."
@@ -21,7 +21,7 @@ cradle:
     - path: "common/stats/bench/stats.hs"
       component: "hstream-common-stats:bench:common-bench-stats"
 
-    - path: "common/bench"
+    - path: "common/hstream/bench"
       component: "hstream-common:bench:codec-bench"
 
     - path: "external/gRPC-haskell/core/src"
