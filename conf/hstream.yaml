@@ -116,15 +116,17 @@ hserver:
     tasks-network: host
     # source images
     source-images:
-      mysql: hstreamdb/source-mysql:v0.2.3
-      postgresql: hstreamdb/source-postgresql:v0.2.3
-      sqlserver: hstreamdb/source-sqlserver:v0.2.3
-      mongodb: hstreamdb/source-mongodb:v0.2.3
+      mysql: hstreamdb/source-mysql:latest
+      postgresql: hstreamdb/source-postgresql:latest
+      sqlserver: hstreamdb/source-sqlserver:latest
+      mongodb: hstreamdb/source-mongodb:latest
+      generator: hstreamdb/source-generator:latest
     # sink images
     sink-images:
-      mysql: hstreamdb/sink-mysql:v0.2.3
-      postgresql: hstreamdb/sink-postgresql:v0.2.3
-      mongodb: hstreamdb/sink-mongodb:v0.2.3
+      mysql: hstreamdb/sink-mysql:latest
+      postgresql: hstreamdb/sink-postgresql:latest
+      mongodb: hstreamdb/sink-mongodb:latest
+      blackhole: hstreamdb/sink-blackhole:latest
 
 # Configuration for HStream Store
 # The configuration for hstore is **Optional**. When the values are not provided,

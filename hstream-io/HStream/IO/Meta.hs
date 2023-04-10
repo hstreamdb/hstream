@@ -2,6 +2,7 @@
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE TupleSections         #-}
 
 module HStream.IO.Meta where
 
@@ -25,6 +26,12 @@ listIOTaskMeta h = do
 
 getIOTaskMeta :: MetaHandle -> T.Text -> IO (Maybe TaskMeta)
 getIOTaskMeta h tid = getMeta tid h
+
+getIOTaskFromName :: MetaHandle -> T.Text -> IO (Maybe (T.Text, TaskMeta))
+getIOTaskFromName h name = do
+  getMeta @TaskIdMeta name h >>= \case
+    Nothing -> pure Nothing
+    Just TaskIdMeta{..} -> fmap (taskIdMeta, ) <$> getIOTaskMeta h taskIdMeta
 
 updateStatusInMeta :: MetaHandle -> T.Text -> IOTaskStatus -> IO ()
 updateStatusInMeta h taskId status =

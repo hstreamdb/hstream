@@ -16,7 +16,8 @@ import           Data.IORef                 (newIORef, readIORef, writeIORef)
 import qualified Data.Text                  as T
 import qualified Data.Text.Lazy             as TL
 import qualified GHC.IO.Handle              as IO
-import           System.Directory           (createDirectoryIfMissing)
+import           System.Directory           (createDirectoryIfMissing,
+                                             removeDirectoryRecursive)
 import qualified System.Process.Typed       as TP
 
 import qualified Control.Concurrent.Async   as Async
@@ -35,8 +36,9 @@ newIOTask taskId taskHandle taskInfo path = do
   let taskPath = T.unpack path
   return IOTask {..}
 
-initIOTask :: IOTask -> IO ()
-initIOTask IOTask{..} = do
+initIOTask :: IOTask -> Bool -> IO ()
+initIOTask task@IOTask{..} clean = do
+  when clean $ cleanLocalIOTask task
   let configPath = taskPath ++ "/config.json"
       TaskInfo{..} = taskInfo
   -- create task files
@@ -82,32 +84,19 @@ handleStdout ioTask@IOTask{..} hStdout hStdin = forever $ do
     Left _ -> pure () -- Log.info $ "decode err:" <> Log.buildString err
     Right msg -> do
       Log.info $ "connectorMsg:" <> Log.buildString (show msg)
-      respM <- handleConnectorMessage ioTask msg
-      Log.info $ "ConnectorRes:" <> Log.buildString (show respM)
-      case respM of
-        Nothing -> pure ()
-        Just resp -> do
-          BSLC.hPutStrLn hStdin (J.encode resp)
-          IO.hFlush hStdin
+      resp <- handleConnectorRequest ioTask msg
+      Log.info $ "ConnectorRes:" <> Log.buildString (show resp)
+      BSLC.hPutStrLn hStdin (J.encode resp)
+      IO.hFlush hStdin
 
-handleConnectorMessage :: IOTask -> MSG.ConnectorMessage -> IO (Maybe MSG.ConnectorCallResponse)
-handleConnectorMessage ioTask MSG.ConnectorMessage{..} = do
-  case cmType of
-    MSG.CONNECTOR_SEND -> do
-      Log.warning "unsupported connector send"
-      pure Nothing
-    MSG.CONNECTOR_CALL -> do
-      result <- handleKvMessage ioTask cmMessage
-      return $ Just (MSG.ConnectorCallResponse cmId result)
+handleConnectorRequest :: IOTask -> MSG.ConnectorRequest -> IO MSG.ConnectorResponse
+handleConnectorRequest ioTask MSG.ConnectorRequest{..} = do
+  MSG.ConnectorResponse crId <$> handleConnectorMessage ioTask crMessage
 
-handleKvMessage :: IOTask -> MSG.KvMessage -> IO J.Value
-handleKvMessage IOTask{..} kvMsg@MSG.KvMessage {..} = do
-  case (kmAction, kmValue) of
-    ("get", _) -> J.toJSON <$> M.getTaskKv taskHandle taskId kmKey
-    ("set", Just val) -> J.Null <$ M.setTaskKv taskHandle taskId kmKey val
-    _ -> do
-      Log.warning $ "invalid kv msg:" <> Log.buildString (show kvMsg)
-      pure J.Null
+handleConnectorMessage :: IOTask -> MSG.ConnectorMessage -> IO J.Value
+handleConnectorMessage IOTask{..} (MSG.KvGet MSG.KvGetMessage{..}) = J.toJSON <$> M.getTaskKv taskHandle taskId kgKey
+handleConnectorMessage IOTask{..} (MSG.KvSet MSG.KvSetMessage{..}) = J.Null <$ M.setTaskKv taskHandle taskId ksKey ksValue
+handleConnectorMessage _ MSG.Report = pure J.Null
 
 -- runIOTaskWithRetry :: IOTask -> IO ()
 -- runIOTaskWithRetry task@IOTask{..} =
@@ -139,20 +128,24 @@ stopIOTask task@IOTask{..} ifIsRunning force = do
       if force
       then do
         readIORef process' >>= maybe (pure ()) TP.stopProcess
-        void $ TP.runProcess killProcessConfig
+        killIOTask task
       else do
         Just tp <- readIORef process'
         let stdin = TP.getStdin tp
         BSLC.hPutStrLn stdin (J.encode MSG.InputCommandStop <> "\n")
         IO.hFlush stdin
         result <- tryWaitProcessWithTimeout tp 10
-        when (isNothing result) $ void $ TP.runProcess killProcessConfig
+        when (isNothing result) $ killIOTask task
         TP.stopProcess tp
         writeIORef process' Nothing
       return STOPPED
     s -> do
       unless ifIsRunning $ throwIO (InvalidStatusException s)
       return s
+
+killIOTask :: IOTask -> IO ()
+killIOTask IOTask{..} = do
+  void $ TP.runProcess killProcessConfig
   where
     killDockerCmd = "docker kill " ++ T.unpack (getDockerName taskId)
     killProcessConfig = TP.shell killDockerCmd
@@ -244,3 +237,8 @@ getSpec img = do
     specCmd = T.unpack $ "docker run --rm " <> img <> " spec"
     timeoutSec = 15
     delay = C.threadDelay $ timeoutSec * 1000000
+
+cleanLocalIOTask :: IOTask -> IO ()
+cleanLocalIOTask task@IOTask{..} = do
+  killIOTask task
+  removeDirectoryRecursive taskPath

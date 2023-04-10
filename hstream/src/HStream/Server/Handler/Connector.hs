@@ -191,7 +191,7 @@ createIOTask sc@ServerContext{scIOWorker = worker@IO.Worker{..}, ..} name typ ta
       image = IO.makeImage taskType target options
       connectorConfig =
         A.fromList
-          [ "hstream" A..= IO.toTaskJson hsConfig taskId
+          [ "hstream" A..= A.toJSON hsConfig
           , "connector" A..= (A.decodeStrict $ T.encodeUtf8 cfg :: Maybe A.Object)
           ]
       taskInfo = IO.TaskInfo
@@ -202,5 +202,5 @@ createIOTask sc@ServerContext{scIOWorker = worker@IO.Worker{..}, ..} name typ ta
         , taskConfig = IO.TaskConfig image optTasksNetwork
         , connectorConfig = connectorConfig
         }
-  IO.createIOTask worker taskId taskInfo
+  IO.createIOTask worker taskId taskInfo False True
   IO.showIOTask_ worker name

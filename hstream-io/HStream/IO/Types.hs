@@ -85,9 +85,10 @@ data ConnectorMetaConfig
   = ZkKvConfig  ZkUrl Path
   | FileKvConfig FilePath
 
-data HStreamConfig = HStreamConfig
+newtype HStreamConfig = HStreamConfig
   { serviceUrl :: T.Text
   } deriving (Show)
+$(JT.deriveJSON JT.defaultOptions ''HStreamConfig)
 
 data Worker = Worker
   { hsConfig     :: HStreamConfig
@@ -141,25 +142,6 @@ instance HasPath TaskIdMeta FHandle where
 
 instance HasPath TaskKvMeta FHandle where
   myRootPath = "ioTaskKvs"
-
-class TaskJson cm where
-  toTaskJson :: cm -> T.Text -> J.Value
-
-instance TaskJson ConnectorMetaConfig where
-  toTaskJson (ZkKvConfig zkUrl rootPath) taskId =
-    J.object
-      [ "type" J..= ("zk" :: T.Text)
-      , "url" J..= zkUrl
-      , "rootPath" J..= (rootPath <> "/kv/" <> taskId)
-      ]
-  toTaskJson (FileKvConfig filePath) _ =
-    J.object
-      [ "type" J..= ("file" :: T.Text)
-      , "filePath" J..= filePath
-      ]
-
-instance TaskJson HStreamConfig where
-  toTaskJson HStreamConfig {..} _ = J.object [ "serviceUrl" J..= serviceUrl]
 
 convertTaskMeta :: Bool -> TaskMeta -> API.Connector
 convertTaskMeta addConfig TaskMeta {..} =

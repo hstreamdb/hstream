@@ -90,6 +90,8 @@ initializeServer opts@ServerOpts{..} gossipContext hh db_m = do
   shardTable <- newMVar HM.empty
   shardReaderMap <- newMVar HM.empty
 
+  -- recovery tasks
+
   return
     ServerContext
       { metaHandle                 = hh
