@@ -53,6 +53,16 @@ import           HStream.Server.Exception          (defaultExHandlers,
                                                     defaultServerStreamExceptionHandle)
 import qualified HStream.Server.HStreamApi         as API
 import           HStream.Server.MetaData.Exception
+import           HStream.Exception                (EmptyQuerySql (EmptyQuerySql),
+                                                   InvalidQueryId (InvalidQueryId),
+                                                   UnexpectedError (UnexpectedError))
+import qualified HStream.Exception                as HE
+import qualified HStream.Logger                   as Log
+import           HStream.Server.Core.Common       (lookupResource')
+import qualified HStream.Server.Core.Query        as Core
+import           HStream.Server.Exception         (defaultExHandlers,
+                                                   defaultHandlers)
+import qualified HStream.Server.HStreamApi        as API
 import           HStream.Server.Types
 import           HStream.SQL.Exception             (SomeSQLException,
                                                     formatSomeSQLException)
@@ -79,20 +89,28 @@ createQueryHandler ctx (ServerNormalRequest _metadata req@API.CreateQueryRequest
   queryExceptionHandle $ do
     Log.debug $ "Receive Create Query Request with statement: " <> Log.build createQueryRequestSql
              <> "and query name: " <> Log.build createQueryRequestQueryName
-    validateNameAndThrow ResQuery createQueryRequestQueryName
+--    validateNameAndThrow ResQuery createQueryRequestQueryName
+    req' <- case validateCreateQuery req of
+      Left (QueryNameValidateErr s) -> throwIO (InvalidQueryId s)
+      Left (SQLStatementValidateErr s) -> throwIO (EmptyQuerySql s)
+      Left _ -> throwIO (UnexpectedError "unexpected error type")
+      Right s -> pure s
     validateQueryAllocation ctx createQueryRequestQueryName
-
-    Core.createQuery ctx req
-    >>= returnResp
+    Core.createQuery ctx req' >>= returnResp
 
 handleCreateQuery
   :: ServerContext -> G.UnaryHandler API.CreateQueryRequest API.Query
 handleCreateQuery ctx _ req@API.CreateQueryRequest{..} = catchQueryEx $ do
   Log.debug $ "Receive Create Query Request with statement: " <> Log.build createQueryRequestSql
            <> "and query name: " <> Log.build createQueryRequestQueryName
-  validateNameAndThrow ResQuery createQueryRequestQueryName
+--  validateNameAndThrow ResQuery createQueryRequestQueryName
+  req' <- case validateCreateQuery req of
+    Right s -> pure s
+    Left (QueryNameValidateErr s) -> throwIO (InvalidQueryId s)
+    Left (SQLStatementValidateErr s) -> throwIO (EmptyQuerySql s)
+    Left _ -> throwIO (UnexpectedError "unexpected error type")
   validateQueryAllocation ctx createQueryRequestQueryName
-  Core.createQuery ctx req
+  Core.createQuery ctx req'
 
 createQueryWithNamespaceHandler
   :: ServerContext
@@ -102,19 +120,28 @@ createQueryWithNamespaceHandler ctx (ServerNormalRequest _metadata req@API.Creat
   queryExceptionHandle $ do
     Log.debug $ "Receive Create Query Request with statement: " <> Log.build createQueryWithNamespaceRequestSql
              <> "and query name: " <> Log.build createQueryWithNamespaceRequestQueryName
-    validateNameAndThrow ResQuery createQueryWithNamespaceRequestQueryName
+--    validateNameAndThrow ResQuery createQueryWithNamespaceRequestQueryName
+    req' <- case validateCreateQueryWithNamespace req of
+      Left (QueryNameValidateErr s) -> throwIO (InvalidQueryId s)
+      Left (SQLStatementValidateErr s) -> throwIO (EmptyQuerySql s)
+      Left _ -> throwIO (UnexpectedError "unexpected error type")
+      Right s -> pure s
     validateQueryAllocation ctx createQueryWithNamespaceRequestQueryName
-    Core.createQueryWithNamespace ctx req
-    >>= returnResp
+    Core.createQueryWithNamespace ctx req' >>= returnResp
 
 handleCreateQueryWithNamespace
   :: ServerContext -> G.UnaryHandler API.CreateQueryWithNamespaceRequest API.Query
 handleCreateQueryWithNamespace ctx _ req@API.CreateQueryWithNamespaceRequest{..} = catchQueryEx $ do
   Log.debug $ "Receive Create Query Request with statement: " <> Log.build createQueryWithNamespaceRequestSql
            <> "and query name: " <> Log.build createQueryWithNamespaceRequestQueryName
-  validateNameAndThrow ResQuery createQueryWithNamespaceRequestQueryName
+--  validateNameAndThrow ResQuery createQueryWithNamespaceRequestQueryName
+  req' <- case validateCreateQueryWithNamespace req of
+    Left (QueryNameValidateErr s) -> throwIO (InvalidQueryId s)
+    Left (SQLStatementValidateErr s) -> throwIO (EmptyQuerySql s)
+    Left _ -> throwIO (UnexpectedError "unexpected error type")
+    Right s -> pure s
   validateQueryAllocation ctx createQueryWithNamespaceRequestQueryName
-  Core.createQueryWithNamespace ctx req
+  Core.createQueryWithNamespace ctx req'
 
 listQueriesHandler
   :: ServerContext
@@ -136,7 +163,7 @@ getQueryHandler
   -> IO (ServerResponse 'Normal API.Query)
 getQueryHandler ctx (ServerNormalRequest _metadata req@API.GetQueryRequest{..}) =
   queryExceptionHandle $ do
-    validateNameAndThrow ResQuery getQueryRequestId
+--    validateNameAndThrow ResQuery getQueryRequestId
     validateQueryAllocation ctx getQueryRequestId
     Log.debug $ "Receive Get Query Request. "
              <> "Query ID: " <> Log.build getQueryRequestId
@@ -146,7 +173,7 @@ handleGetQuery :: ServerContext -> G.UnaryHandler API.GetQueryRequest API.Query
 handleGetQuery ctx _ req@API.GetQueryRequest{..} = catchQueryEx $ do
   Log.debug $ "Receive Get Query Request. "
            <> "Query ID: " <> Log.build getQueryRequestId
-  validateNameAndThrow ResQuery getQueryRequestId
+--  validateNameAndThrow ResQuery getQueryRequestId
   validateQueryAllocation ctx getQueryRequestId
   Core.getQuery ctx req
 
@@ -157,18 +184,17 @@ terminateQueryHandler
 terminateQueryHandler ctx (ServerNormalRequest _metadata API.TerminateQueryRequest{..}) = queryExceptionHandle $ do
   Log.debug $ "Receive Terminate Query Request. "
     <> "Query ID: " <> Log.buildString (show terminateQueryRequestQueryId)
-  validateNameAndThrow ResQuery terminateQueryRequestQueryId
+--  validateNameAndThrow ResQuery terminateQueryRequestQueryId
   validateQueryAllocation ctx terminateQueryRequestQueryId
   Core.terminateQuery ctx terminateQueryRequestQueryId
   returnResp Empty
-
 
 handleTerminateQuery
   :: ServerContext -> G.UnaryHandler API.TerminateQueryRequest Empty
 handleTerminateQuery ctx _ API.TerminateQueryRequest{..} = catchQueryEx $ do
   Log.debug $ "Receive Terminate Query Request. "
     <> "Query ID: " <> Log.buildString (show terminateQueryRequestQueryId)
-  validateNameAndThrow ResQuery terminateQueryRequestQueryId
+--  validateNameAndThrow ResQuery terminateQueryRequestQueryId
   validateQueryAllocation ctx terminateQueryRequestQueryId
   Core.terminateQuery ctx terminateQueryRequestQueryId
   return Empty
@@ -181,7 +207,7 @@ deleteQueryHandler ctx (ServerNormalRequest _metadata req@API.DeleteQueryRequest
   queryExceptionHandle $ do
     Log.debug $ "Receive Delete Query Request. "
       <> "Query ID: " <> Log.build deleteQueryRequestId
-    validateNameAndThrow ResQuery deleteQueryRequestId
+--    validateNameAndThrow ResQuery deleteQueryRequestId
     validateQueryAllocation ctx deleteQueryRequestId
     Core.deleteQuery ctx req
     returnResp Empty
@@ -202,7 +228,7 @@ resumeQueryHandler
 resumeQueryHandler ctx (ServerNormalRequest _metadata req@API.ResumeQueryRequest{..}) = queryExceptionHandle $ do
   Log.debug $ "Received resume query request. "
            <> "query name: " <> Log.build resumeQueryRequestId
-  validateNameAndThrow ResQuery resumeQueryRequestId
+--  validateNameAndThrow ResQuery resumeQueryRequestId
   validateQueryAllocation ctx resumeQueryRequestId
   Core.resumeQuery ctx resumeQueryRequestId >> returnResp Empty
 
@@ -211,7 +237,7 @@ handleResumeQuery
 handleResumeQuery ctx _ req@API.ResumeQueryRequest{..} = catchQueryEx $ do
   Log.debug $ "Received resume query request. "
            <> "query name: " <> Log.build resumeQueryRequestId
-  validateNameAndThrow ResQuery resumeQueryRequestId
+--  validateNameAndThrow ResQuery resumeQueryRequestId
   validateQueryAllocation ctx resumeQueryRequestId
   Core.resumeQuery ctx resumeQueryRequestId
   return Empty

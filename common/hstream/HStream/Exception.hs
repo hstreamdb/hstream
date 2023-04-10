@@ -31,6 +31,7 @@ module HStream.Exception
     --
     -- $invalidArgument
   , SomeInvalidArgument
+  , InvalidStreamName (InvalidStreamName)
   , InvalidReplicaFactor (InvalidReplicaFactor)
   , InvalidObjectIdentifier (InvalidObjectIdentifier)
   , invalidIdentifier
@@ -40,6 +41,7 @@ module HStream.Exception
   , InvalidResourceType (InvalidResourceType)
   , InvalidShardOffset (InvalidShardOffset)
   , InvalidSubscriptionOffset (InvalidSubscriptionOffset)
+  , InvalidSubscriptionId (InvalidSubscriptionId)
   , DecodeHStreamRecordErr (DecodeHStreamRecordErr)
   , NoRecordHeader (NoRecordHeader)
   , UnknownCompressionType (UnknownCompressionType)
@@ -47,6 +49,10 @@ module HStream.Exception
   , InvalidStatsInterval (InvalidStatsInterval)
   , InvalidSqlStatement (InvalidSqlStatement)
   , InvalidConnectorType (InvalidConnectorType)
+  , InvalidConnectorName (InvalidConnectorName)
+  , InvalidShardReaderId (InvalidShardReaderId)
+  , InvalidQueryId (InvalidQueryId)
+  , EmptyQuerySql (EmptyQuerySql)
   , SQLNotSupportedByParseSQL(SQLNotSupportedByParseSQL)
 
     -- * Exception: SomeDeadlineExceeded
@@ -399,6 +405,8 @@ MAKE_SUB_EX(SomeHServerException, SomeInvalidArgument)
 
 MAKE_EX_1_DEFMSG(SomeInvalidArgument, InvalidReplicaFactor, String, API.ErrorCodeStreamInvalidReplicaFactor)
 MAKE_EX_DEFMSG(SomeInvalidArgument, InvalidObjectIdentifier, String)
+MAKE_EX_1_DEFMSG(SomeInvalidArgument, InvalidStreamName, String, API.ErrorCodeStreamInvalidObjectIdentifier)
+MAKE_EX_1_DEFMSG(SomeInvalidArgument, InvalidShardReaderId, String, API.ErrorCodeShardReaderInvalidReaderId)
 MAKE_EX_1_DEFMSG(SomeInvalidArgument, InvalidShardCount, String, API.ErrorCodeStreamInvalidShardCount)
 MAKE_EX_0(SomeInvalidArgument, EmptyBatchedRecord, API.ErrorCodeStreamEmptyBatchedRecord,
     "BatchedRecord shouldn't be Nothing")
@@ -408,6 +416,7 @@ MAKE_EX_1_DEFMSG(SomeInvalidArgument, InvalidResourceType, String, API.ErrorCode
 MAKE_EX_1_DEFMSG(SomeInvalidArgument, InvalidShardOffset, String, API.ErrorCodeInternalError)
 MAKE_EX_0_DEFMSG(SomeInvalidArgument, InvalidSubscriptionOffset, API.ErrorCodeSubscriptionInvalidOffset)
 MAKE_EX_1_DEFMSG(SomeInvalidArgument, DecodeHStreamRecordErr, String, API.ErrorCodeInternalError)
+MAKE_EX_1_DEFMSG(SomeInvalidArgument, InvalidSubscriptionId, String, API.ErrorCodeSubscriptionInvalidSubId)
 MAKE_EX_0(SomeInvalidArgument, NoRecordHeader, API.ErrorCodeInternalError,
     "HStreamRecord doesn't have a header.")
 MAKE_EX_0_DEFMSG(SomeInvalidArgument, UnknownCompressionType, API.ErrorCodeInternalError)
@@ -416,6 +425,9 @@ MAKE_EX_1_DEFMSG(SomeInvalidArgument, InvalidStatsInterval, String, API.ErrorCod
 MAKE_EX_1_DEFMSG(SomeInvalidArgument, InvalidSqlStatement, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeInvalidArgument, InvalidConnectorType, Text, API.ErrorCodeConnectorInvalidType)
 MAKE_EX_1_DEFMSG(SomeInvalidArgument, SQLNotSupportedByParseSQL, Text, API.ErrorCodeInternalError)
+MAKE_EX_1_DEFMSG(SomeInvalidArgument, InvalidConnectorName, String, API.ErrorCodeConnectorInvalidName)
+MAKE_EX_1_DEFMSG(SomeInvalidArgument, EmptyQuerySql, String, API.ErrorCodeQueryEmptySqlStatement)
+MAKE_EX_1_DEFMSG(SomeInvalidArgument, InvalidQueryId, String, API.ErrorCodeQueryInvalidObjectIdentifier)
 
 invalidIdentifier :: API.ResourceType -> String -> InvalidObjectIdentifier
 invalidIdentifier API.ResourceTypeResStream       = InvalidObjectIdentifier API.ErrorCodeStreamInvalidObjectIdentifier

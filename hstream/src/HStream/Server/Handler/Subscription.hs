@@ -50,8 +50,10 @@ import           HStream.Server.HStreamApi
 import           HStream.Server.Types
 import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils                    (ResourceType (ResSubscription),
+                                                   ValidationError (SubscriptionIdValidateErr),
                                                    returnResp,
-                                                   validateNameAndThrow)
+                                                   validateNameAndThrow,
+                                                   validateSubscription)
 
 -------------------------------------------------------------------------------
 
@@ -61,12 +63,20 @@ createSubscriptionHandler
   -> IO (ServerResponse 'Normal Subscription)
 createSubscriptionHandler ctx (ServerNormalRequest _metadata sub) = defaultExceptionHandle $ do
   Log.debug $ "Receive createSubscription request: " <> Log.buildString' sub
-  validateNameAndThrow ResSubscription $ subscriptionSubscriptionId sub
-  Core.createSubscription ctx sub >>= returnResp
+--  validateNameAndThrow ResSubscription $ subscriptionSubscriptionId sub
+  sub' <- case validateSubscription sub of
+    Left (SubscriptionIdValidateErr s) -> throwIO (HE.InvalidSubscriptionId s)
+    Left _ -> throwIO (HE.UnexpectedError "unexpected error type")
+    Right s -> pure s
+  Core.createSubscription ctx sub' >>= returnResp
 
 handleCreateSubscription :: ServerContext -> G.UnaryHandler Subscription Subscription
-handleCreateSubscription sc _ sub = catchDefaultEx $
-  Core.createSubscription sc sub
+handleCreateSubscription sc _ sub = catchDefaultEx $ do
+  sub' <- case validateSubscription sub of
+    Left (SubscriptionIdValidateErr s) -> throwIO (HE.InvalidSubscriptionId s)
+    Left _ -> throwIO (HE.UnexpectedError "unexpected error type")
+    Right s -> pure s
+  Core.createSubscription sc sub'
 
 -------------------------------------------------------------------------------
 
@@ -97,7 +107,7 @@ handleGetSubscription ctx@ServerContext{..} _ req = catchDefaultEx $ do
 listConsumersHandler :: ServerContext -> ServerRequest 'Normal ListConsumersRequest ListConsumersResponse -> IO (ServerResponse 'Normal ListConsumersResponse)
 listConsumersHandler ctx@ServerContext{..} (ServerNormalRequest _metadata req) = defaultExceptionHandle $ do
   let subId = listConsumersRequestSubscriptionId req
-  validateNameAndThrow ResSubscription subId
+--  validateNameAndThrow ResSubscription subId
   ServerNode{..} <- lookupResource' ctx ResSubscription subId
   unless (serverNodeId == serverID) $
     throwIO $ HE.SubscriptionOnDifferentNode "Subscription is bound to a different node"
@@ -106,7 +116,7 @@ listConsumersHandler ctx@ServerContext{..} (ServerNormalRequest _metadata req) =
 handleListConsumers :: ServerContext -> G.UnaryHandler ListConsumersRequest ListConsumersResponse
 handleListConsumers ctx@ServerContext{..} _ req = catchDefaultEx $ do
   let subId = listConsumersRequestSubscriptionId req
-  validateNameAndThrow ResSubscription subId
+--  validateNameAndThrow ResSubscription subId
   ServerNode{..} <- lookupResource' ctx ResSubscription subId
   unless (serverNodeId == serverID) $
     throwIO $ HE.SubscriptionOnDifferentNode "Subscription is bound to a different node"
@@ -121,7 +131,7 @@ deleteSubscriptionHandler
 deleteSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata req) = defaultExceptionHandle $ do
   Log.debug $ "Receive deleteSubscription request: " <> Log.buildString' req
   let subId = deleteSubscriptionRequestSubscriptionId req
-  validateNameAndThrow ResSubscription subId
+--  validateNameAndThrow ResSubscription subId
   ServerNode{..} <- lookupResource' ctx ResSubscription subId
   unless (serverNodeId == serverID) $
     throwIO $ HE.SubscriptionOnDifferentNode "Subscription is bound to a different node"
@@ -133,7 +143,7 @@ deleteSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata r
 handleDeleteSubscription :: ServerContext -> G.UnaryHandler DeleteSubscriptionRequest Empty
 handleDeleteSubscription ctx@ServerContext{..} _ req = catchDefaultEx $ do
   let subId = deleteSubscriptionRequestSubscriptionId req
-  validateNameAndThrow ResSubscription subId
+--  validateNameAndThrow ResSubscription subId
   ServerNode{..} <- lookupResource' ctx ResSubscription subId
   unless (serverNodeId == serverID) $
     throwIO $ HE.SubscriptionOnDifferentNode "Subscription is bound to a different node"

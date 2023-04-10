@@ -36,6 +36,8 @@ import           HStream.Server.MetaData.Exception
 import           HStream.Server.Types
 import           HStream.ThirdParty.Protobuf       (Empty (..), Struct)
 import           HStream.Utils
+import           HStream.ThirdParty.Protobuf      (Empty (..))
+import           HStream.Utils                    (returnResp)
 
 listViewsHandler
   :: ServerContext

@@ -37,6 +37,7 @@ import           Network.GRPC.HighLevel.Generated
 
 import qualified Data.Aeson.KeyMap                as A
 import qualified Data.Text.Encoding               as T
+import           HStream.Exception                (UnexpectedError (UnexpectedError))
 import qualified HStream.Exception                as HE
 import qualified HStream.IO.Types                 as IO
 import qualified HStream.IO.Worker                as IO
@@ -48,7 +49,9 @@ import           HStream.Server.HStreamApi
 import           HStream.Server.Types
 import           HStream.ThirdParty.Protobuf      (Empty (..))
 import           HStream.Utils                    (ResourceType (..),
+                                                   ValidationError (ConnectorNameValidateErr),
                                                    returnResp,
+                                                   validateCreateConnector,
                                                    validateNameAndThrow)
 import qualified HStream.Utils                    as Utils
 
@@ -58,11 +61,19 @@ createConnectorHandler
   -> IO (ServerResponse 'Normal Connector)
 createConnectorHandler sc (ServerNormalRequest _ req) = defaultExceptionHandle $ do
     Log.debug "Receive Create Connector Request"
-    createIOTaskFromRequest sc req >>= returnResp
+    req' <- case validateCreateConnector req of
+        Left (ConnectorNameValidateErr s) -> throwIO (HE.InvalidConnectorName s)
+        Left _ -> throwIO (UnexpectedError "unexpected error type")
+        Right s -> pure s
+    createIOTaskFromRequest sc req' >>= returnResp
 
 handleCreateConnector :: ServerContext -> G.UnaryHandler CreateConnectorRequest Connector
-handleCreateConnector sc _ req = catchDefaultEx $
-  createIOTaskFromRequest sc req
+handleCreateConnector sc _ req = catchDefaultEx $ do
+  req' <- case validateCreateConnector req of
+      Left (ConnectorNameValidateErr s) -> throwIO (HE.InvalidConnectorName s)
+      Left _ -> throwIO (UnexpectedError "unexpected error type")
+      Right s -> pure s
+  createIOTaskFromRequest sc req'
 
 listConnectorsHandler
   :: ServerContext
