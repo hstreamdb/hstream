@@ -36,11 +36,28 @@ import           HStream.Server.Types
 import           HStream.ThirdParty.Protobuf      (Empty (..), Struct)
 import           HStream.Utils                    (returnResp)
 
+createViewHandler
+  :: ServerContext
+  -> ServerRequest 'Normal CreateViewRequest View
+  -> IO (ServerResponse 'Normal View)
+createViewHandler sc (ServerNormalRequest _metadata CreateViewRequest{..}) = defaultExceptionHandle $ do
+  Log.debug $ "Receive Create View Request with statement: " <> Log.build createViewRequestSql
+           <> "and query name: " <> Log.build createViewRequestQueryName
+  Core.createView sc createViewRequestSql createViewRequestQueryName
+  >>= Core.hstreamViewToView (metaHandle sc) >>= returnResp
+
+handleCreateView :: ServerContext -> G.UnaryHandler CreateViewRequest View
+handleCreateView sc _ CreateViewRequest{..} = catchDefaultEx $ do
+  Log.debug $ "Receive Create View Request with statement: " <> Log.build createViewRequestSql
+           <> "and query name: " <> Log.build createViewRequestQueryName
+  Core.createView sc createViewRequestSql createViewRequestQueryName
+  >>= Core.hstreamViewToView (metaHandle sc)
+
 listViewsHandler
   :: ServerContext
   -> ServerRequest 'Normal ListViewsRequest ListViewsResponse
   -> IO (ServerResponse 'Normal ListViewsResponse)
-listViewsHandler serverContext (ServerNormalRequest _metadata _) = do
+listViewsHandler serverContext (ServerNormalRequest _metadata _) = defaultExceptionHandle $ do
   Log.debug "Receive List View Request"
   Core.listViews serverContext >>= returnResp . ListViewsResponse . V.fromList
 

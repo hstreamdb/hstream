@@ -30,7 +30,7 @@ getIOTaskMeta h tid = getMeta tid h
 getIOTaskFromName :: MetaHandle -> T.Text -> IO (Maybe (T.Text, TaskMeta))
 getIOTaskFromName h name = do
   getMeta @TaskIdMeta name h >>= \case
-    Nothing -> pure Nothing
+    Nothing             -> pure Nothing
     Just TaskIdMeta{..} -> fmap (taskIdMeta, ) <$> getIOTaskMeta h taskIdMeta
 
 updateStatusInMeta :: MetaHandle -> T.Text -> IOTaskStatus -> IO ()
