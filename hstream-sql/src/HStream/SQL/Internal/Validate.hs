@@ -740,7 +740,12 @@ instance Validate Create where
   validate create@(CreateSinkConnectorIf _ i1 i2 options) =
     validate i1 >> validate i2 >>
     validate (ConnectorOptions options) >> return create
-  validate create@(CreateView _ hIdent select@(DSelect _ _ _ _ grp _)) =
+  validate create@(CreateView _ hIdent select@(DSelect _ _ _ _ grp _)) = do
+#ifndef HStreamUseV2Engine
+    case grp of
+      DGroupByEmpty pos -> Left $ buildSQLException ParseException pos "Create View requires a group by clause"
+      _ -> pure ()
+#endif
     validate hIdent >> validate select >> return create
 
 instance Validate StreamOption where
