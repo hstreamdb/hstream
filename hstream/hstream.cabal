@@ -61,8 +61,8 @@ library
     HStream.Client.Utils
     HStream.Server.Config
     HStream.Server.ConnectorTypes
-    HStream.Server.Core.Common
     HStream.Server.Core.Cluster
+    HStream.Server.Core.Common
     HStream.Server.Exception
     HStream.Server.Handler
     HStream.Server.Handler.Common

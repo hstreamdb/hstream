@@ -227,13 +227,13 @@ createQueryWithNamespace'
             , streamShardCount = 1
             }
           let relatedStreams = (sources, sink)
+          qInfo <- P.createInsertQueryInfo createQueryRequestQueryName createQueryRequestSql relatedStreams metaHandle
           createQueryAndRun sc QueryRunner {
               qRTaskBuilder = builder
             , qRQueryName   = createQueryRequestQueryName
             , qRQueryString = createQueryRequestSql
             , qRWhetherToHStore = True }
-            relatedStreams
-          >>= hstreamQueryToQuery metaHandle
+          hstreamQueryToQuery metaHandle qInfo
         _ -> throw $ HE.WrongExecutionPlan "Create query only support create stream/view <name> as select statements"
       RQCreate (RCreateView view select) -> hstreamCodegen (RQCreate (RCreateView (namespace <> view) (modifySelect namespace select))) >>= \case
         CreateViewPlan sources sink view builder persist -> do

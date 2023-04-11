@@ -20,6 +20,7 @@ module HStream.Server.MetaData.Types
   , ShardReader (..)
   , TaskAllocation (..)
   , createInsertQueryInfo
+  , createInsertViewQueryInfo
   , deleteQueryInfo
   , getSubscriptionWithStream
   , groupbyStores
@@ -160,6 +161,15 @@ insertQuery qInfo@QueryInfo{..} h = do
             ]
             h
 
+insertViewQuery :: (MetaType QueryInfo handle, MetaType QueryStatus handle, MetaType ViewInfo handle, MetaMulti handle)
+  => ViewInfo -> handle -> IO ()
+insertViewQuery vInfo@ViewInfo{..} h = do
+  metaMulti [ insertMetaOp (queryId viewQuery) viewQuery h
+            , insertMetaOp (queryId viewQuery) QueryCreating h
+            , insertMetaOp viewName vInfo h
+            ]
+            h
+
 deleteQueryInfo :: (MetaType QueryInfo handle, MetaType QueryStatus handle, MetaMulti handle)
   => Text -> handle -> IO ()
 deleteQueryInfo qid h = do
@@ -187,6 +197,13 @@ createInsertQueryInfo queryId querySql queryStreams h = do
   let qInfo = QueryInfo {..}
   insertQuery qInfo h
   return qInfo
+
+createInsertViewQueryInfo :: Text -> Text -> RelatedStreams -> Text -> MetaHandle -> IO ViewInfo
+createInsertViewQueryInfo queryId querySql queryStreams viewName h = do
+  MkSystemTime queryCreatedTime _ <- getSystemTime
+  let vInfo = ViewInfo{ viewName = viewName, viewQuery = QueryInfo{..} }
+  insertViewQuery vInfo h
+  return vInfo
 
 #ifdef HStreamUseV2Engine
 groupbyStores :: IORef (HM.HashMap Text (MVar (DataChangeBatch AST.FlowObject HCT.Timestamp)))

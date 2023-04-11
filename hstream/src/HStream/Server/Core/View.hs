@@ -8,6 +8,7 @@ module HStream.Server.Core.View
   , executeViewQueryWithNamespace
   , createView
   , createView'
+  , hstreamViewToView
   ) where
 
 import           Control.Exception             (throw, throwIO)
@@ -120,17 +121,14 @@ createView' sc@ServerContext{..} view srcs sink builder persist sql queryName = 
           throwIO $ HE.InvalidSqlStatement "CREATE VIEW only supports sources of stream type"
         True  -> do
           let relatedStreams = (srcs, sink)
-          qInfo <- createQueryAndRun sc QueryRunner {
+          vInfo <- P.createInsertViewQueryInfo queryName sql relatedStreams view metaHandle
+          createQueryAndRun sc QueryRunner {
               qRTaskBuilder = builder
             , qRQueryName   = queryName
             , qRQueryString = sql
             , qRWhetherToHStore = False }
-            relatedStreams
           let accumulation = L.head (snd persist)
           atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert view accumulation hm, ()))
-          let vInfo = P.ViewInfo{ viewName = view, viewQuery = qInfo }
-          -- FIXME: this should be inserted as the same time as the query
-          insertMeta view vInfo metaHandle
           return vInfo
     False  -> do
       Log.warning $ "At least one of the streams/views do not exist: "

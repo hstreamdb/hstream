@@ -404,11 +404,8 @@ runTaskWrapper ctx@ServerContext{..} taskBuilder logId writeToHStore = do
               transKSnk
               transVSnk
 
-createQueryAndRun
-  :: ServerContext -> QueryRunner -> P.RelatedStreams
-  -> IO P.QueryInfo
-createQueryAndRun ctx@ServerContext{..} qRunner@QueryRunner{..} related = do
-  qInfo <- P.createInsertQueryInfo qRQueryName qRQueryString related metaHandle
+createQueryAndRun :: ServerContext -> QueryRunner -> IO ()
+createQueryAndRun ctx@ServerContext{..} qRunner@QueryRunner{..} = do
   let streamId = transToTempStreamName qRQueryName
   let attrs = S.def { S.logReplicationFactor = S.defAttr1 1 }
   logId <- do
@@ -419,7 +416,6 @@ createQueryAndRun ctx@ServerContext{..} qRunner@QueryRunner{..} related = do
                           >> throwIO err
   -- update metadata
   runQuery ctx qRunner logId
-  return qInfo
 
 restoreStateAndRun :: ServerContext -> QueryRunner -> IO ()
 restoreStateAndRun ctx@ServerContext{..} qRunner@QueryRunner{..} = do
@@ -477,7 +473,7 @@ restoreState ServerContext{..} qRunner@QueryRunner{..} = do
            ) (oldBuilder, S.LSN_MIN) dataRecords
       Left gp@S.GapRecord{..} -> return (oldBuilder, gapHiLSN)
 
-runQuery :: ServerContext -> QueryRunner -> S.C_LogID-> IO ()
+runQuery :: ServerContext -> QueryRunner -> S.C_LogID -> IO ()
 runQuery ctx@ServerContext{..} QueryRunner{..} logId = do
   M.updateMeta qRQueryName P.QueryRunning Nothing metaHandle
   tid <- forkIO $ catches action cleanup
