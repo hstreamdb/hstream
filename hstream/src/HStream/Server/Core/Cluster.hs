@@ -9,7 +9,7 @@ module HStream.Server.Core.Cluster
   , lookupShardReader
 
   , nodeChangeEventHandler
-  , recoverTasks
+  , recoverLocalTasks
   ) where
 
 import           Control.Concurrent             (MVar, modifyMVar_, tryReadMVar,
@@ -137,8 +137,10 @@ recoverDeadNodeTasks sc@ServerContext{..} tm deadNodeId = do
     taskNode <- lookupResource' sc (Types.resourceType tm) task
     when (serverID == API.serverNodeId taskNode) $ Types.recoverTask tm task
 
-recoverTasks :: Types.TaskManager a => a -> Meta.MetaHandle -> Types.ServerID -> IO ()
-recoverTasks tm metaHandle serverID = do
-  tasks <- getNodeResouces metaHandle (Types.resourceType tm) serverID
-  mapM_ (Types.recoverTask tm) tasks
-
+-- only for restarting
+recoverLocalTasks :: Types.TaskManager a => ServerContext -> a -> IO ()
+recoverLocalTasks sc@ServerContext{..} tm = do
+  tasks <- Types.listResources tm
+  forM_ tasks $ \task -> do
+    taskNode <- lookupResource' sc (Types.resourceType tm) task
+    when (serverID == API.serverNodeId taskNode) $ Types.recoverTask tm task

@@ -92,6 +92,9 @@ startIOTask :: Worker -> T.Text -> IO ()
 startIOTask worker name = do
   getIOTask_ worker name >>= IOTask.startIOTask
 
+listResources :: Worker -> IO [T.Text]
+listResources worker = fmap API.connectorName <$> listIOTasks worker
+
 recoverTask :: Worker -> T.Text -> IO ()
 recoverTask worker@Worker{..} name = do
   Log.info $ "recovering task:" <> Log.buildString' name
