@@ -86,6 +86,11 @@ data ViewInfo = ViewInfo {
   , viewQuery :: QueryInfo
 } deriving (Generic, Show, FromJSON, ToJSON)
 
+data QVRelation = QVRelation {
+    qvRelationQueryName :: Text
+  , qvRelationViewName  :: Text
+} deriving (Generic, Show, FromJSON, ToJSON)
+
 type SourceStreams  = [Text]
 type SinkStream     = Text
 type RelatedStreams = (SourceStreams, SinkStream)
@@ -122,6 +127,8 @@ instance HasPath Proto.Timestamp ZHandle where
   myRootPath = rootPath <> "/timestamp"
 instance HasPath TaskAllocation ZHandle where
   myRootPath = rootPath <> "/taskAllocations"
+instance HasPath QVRelation ZHandle where
+  myRootPath = rootPath <> "/qvRelation"
 
 instance HasPath ShardReader RHandle where
   myRootPath = "readers"
@@ -137,6 +144,8 @@ instance HasPath Proto.Timestamp RHandle where
   myRootPath = "timestamp"
 instance HasPath TaskAllocation RHandle where
   myRootPath = "taskAllocations"
+instance HasPath QVRelation RHandle where
+  myRootPath = "qvRelation"
 
 instance HasPath ShardReader FHandle where
   myRootPath = "readers"
@@ -152,6 +161,8 @@ instance HasPath Proto.Timestamp FHandle where
   myRootPath = "timestamp"
 instance HasPath TaskAllocation FHandle where
   myRootPath = "taskAllocations"
+instance HasPath QVRelation FHandle where
+  myRootPath = "qvRelation"
 
 insertQuery :: (MetaType QueryInfo handle, MetaType QueryStatus handle, MetaMulti handle)
   => QueryInfo -> handle -> IO ()
@@ -164,9 +175,12 @@ insertQuery qInfo@QueryInfo{..} h = do
 insertViewQuery :: (MetaType QueryInfo handle, MetaType QueryStatus handle, MetaType ViewInfo handle, MetaMulti handle)
   => ViewInfo -> handle -> IO ()
 insertViewQuery vInfo@ViewInfo{..} h = do
-  metaMulti [ insertMetaOp (queryId viewQuery) viewQuery h
-            , insertMetaOp (queryId viewQuery) QueryCreating h
+  let qid = queryId viewQuery
+  metaMulti [ insertMetaOp qid viewQuery h
+            , insertMetaOp qid QueryCreating h
             , insertMetaOp viewName vInfo h
+            , insertMetaOp qid QVRelation{ qvRelationQueryName = qid
+                                         , qvRelationViewName  = viewName} h
             ]
             h
 
