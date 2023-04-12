@@ -5,6 +5,7 @@
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications    #-}
 
 module HStream.Server.Handler.Common where
 
@@ -522,6 +523,4 @@ amIStream :: ServerContext -> Text -> IO Bool
 amIStream ServerContext{..} name = S.doesStreamExist scLDClient (transToStreamName name)
 
 amIView :: ServerContext -> Text -> IO Bool
-amIView ServerContext{..} name = do
-  hm <- readIORef P.groupbyStores
-  return $ HM.member name hm
+amIView ServerContext{..} name = M.checkMetaExists @P.ViewInfo name metaHandle

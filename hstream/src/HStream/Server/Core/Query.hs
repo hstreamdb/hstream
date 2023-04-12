@@ -294,7 +294,11 @@ resumeQuery ctx@ServerContext{..} qRQueryName = do
     Just qInfo@P.QueryInfo{..} -> do
       (qRTaskBuilder, qRWhetherToHStore) <- streamCodegen querySql >>= \case
         CreateBySelectPlan sources sink builder _ _ -> checkSources sources >> return (builder, True)
-        CreateViewPlan sources sink view builder _  -> checkSources sources >> return (builder, False)
+        CreateViewPlan sources sink view builder persist  -> do
+          checkSources sources
+          let accumulation = L.head (snd persist)
+          atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert view accumulation hm, ()))
+          return (builder, False)
         _ -> throwIO $ HE.UnexpectedError ("Query " <> T.unpack queryId <> "should not be like \"" <> T.unpack querySql <> "\". What happened?")
       restoreStateAndRun ctx QueryRunner {qRQueryString = querySql, ..}
     Nothing -> throwIO $ HE.QueryNotFound ("Query " <> qRQueryName <> "does not exist")

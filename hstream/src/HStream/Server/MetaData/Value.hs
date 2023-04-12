@@ -21,10 +21,11 @@ paths = [ textToCBytes rootPath
         , textToCBytes $ myRootPath @ShardReader      @ZHandle
         , textToCBytes $ myRootPath @QueryInfo        @ZHandle
         , textToCBytes $ myRootPath @QueryStatus      @ZHandle
-        , textToCBytes $ myRootPath @ViewInfo      @ZHandle
+        , textToCBytes $ myRootPath @ViewInfo         @ZHandle
         , textToCBytes $ myRootPath @SubscriptionWrap @ZHandle
         , textToCBytes $ myRootPath @Proto.Timestamp  @ZHandle
         , textToCBytes $ myRootPath @TaskAllocation   @ZHandle
+        , textToCBytes $ myRootPath @QVRelation       @ZHandle
         ]
 
 tables :: [Text]
@@ -32,12 +33,13 @@ tables = [
     myRootPath @TaskMeta         @RHandle
   , myRootPath @TaskIdMeta       @RHandle
   , myRootPath @QueryInfo        @RHandle
-  , myRootPath @QueryStatus       @RHandle
-  , myRootPath @ViewInfo        @RHandle
+  , myRootPath @QueryStatus      @RHandle
+  , myRootPath @ViewInfo         @RHandle
   , myRootPath @ShardReader      @RHandle
   , myRootPath @SubscriptionWrap @RHandle
   , myRootPath @Proto.Timestamp  @RHandle
-  , myRootPath @TaskAllocation @RHandle
+  , myRootPath @TaskAllocation   @RHandle
+  , myRootPath @QVRelation       @RHandle
   ]
 
 fileTables :: [Text]
@@ -45,12 +47,13 @@ fileTables = [
     myRootPath @TaskMeta         @FHandle
   , myRootPath @TaskIdMeta       @FHandle
   , myRootPath @QueryInfo        @FHandle
-  , myRootPath @QueryStatus       @FHandle
-  , myRootPath @ViewInfo        @FHandle
+  , myRootPath @QueryStatus      @FHandle
+  , myRootPath @ViewInfo         @FHandle
   , myRootPath @ShardReader      @FHandle
   , myRootPath @SubscriptionWrap @FHandle
   , myRootPath @Proto.Timestamp  @FHandle
-  , myRootPath @TaskAllocation @FHandle
+  , myRootPath @TaskAllocation   @FHandle
+  , myRootPath @QVRelation       @FHandle
   ]
 
 clusterStartTimeId :: Text
