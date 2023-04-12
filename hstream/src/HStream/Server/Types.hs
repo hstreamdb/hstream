@@ -204,10 +204,12 @@ type ConsumerName = T.Text
 -- Task Manager
 class TaskManager tm where
   resourceType :: tm -> ResourceType
+  listResources :: tm -> IO [T.Text]
   recoverTask :: tm -> T.Text -> IO ()
 
 instance TaskManager IO.Worker where
   resourceType = const ResConnector
+  listResources = IO.listResources
   recoverTask = IO.recoverTask
 
 --------------------------------------------------------------------------------

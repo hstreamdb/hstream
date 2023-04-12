@@ -171,9 +171,9 @@ serve host port securityMap sc@ServerContext{..} listeners listenerSecurityMap =
               handle (\(_ :: RQLiteRowNotFound) -> return ()) $ deleteAllMeta @TaskAllocation metaHandle
           -- recover tasks
           Log.info "recovering local io tasks"
-          Cluster.recoverTasks scIOWorker metaHandle serverID
+          Cluster.recoverLocalTasks sc scIOWorker
           Log.info "recovering local query tasks"
-          Cluster.recoverTasks (QueryWorker sc) metaHandle serverID
+          Cluster.recoverLocalTasks sc (QueryWorker sc)
           Log.info "recovered tasks"
 
 #ifdef HStreamUseGrpcHaskell
