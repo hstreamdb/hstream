@@ -218,9 +218,9 @@ allocationKeyP = do
 
 lookupResource' :: ServerContext -> ResourceType -> Text -> IO ServerNode
 lookupResource' sc@ServerContext{..} ResView rid = do
-  M.getMeta @P.QVRelation rid meta >>= \case
-    Nothing -> throwIO $ ViewNotFound rid
-    Just P.QVRelation{..} -> lookupResource' sc ResQuery qvRelationQueryName
+  M.getMeta @P.ViewInfo rid metaHandle >>= \case
+    Nothing             -> throwIO $ HE.ViewNotFound rid
+    Just P.ViewInfo{..} -> lookupResource' sc ResQuery (P.queryId viewQuery)
 lookupResource' sc@ServerContext{..} rtype rid = do
   let metaId = mkAllocationKey rtype rid
   -- FIXME: it will insert the results of lookup no matter the resource exists or not

@@ -131,7 +131,6 @@ commandExec HStreamSqlContext{hstreamCliContext = cliCtx@HStreamCliContext{..},.
       RQCreate RCreateAs {} -> do
         qName <-  ("cli_generated_" <>) <$> newRandomText 10
         executeWithLookupResource_ cliCtx (Resource ResQuery qName) (createStreamBySelectWithCustomQueryName xs qName)
-      RQSelect {} -> execute_ cliCtx $ executeViewQuery xs
       rSql' -> hstreamCodegen rSql' >>= \case
         ShowPlan showObj      -> executeShowPlan cliCtx showObj
         -- FIXME: add lookup after supporting lookup stream and lookup view
@@ -156,6 +155,7 @@ commandExec HStreamSqlContext{hstreamCliContext = cliCtx@HStreamCliContext{..},.
         ResumePlan (ResumeObjectConnector cName) -> executeWithLookupResource_ cliCtx (Resource ResConnector cName) (resumeConnector cName)
         PausePlan  (PauseObjectQuery cName) -> executeWithLookupResource_ cliCtx (Resource ResQuery cName) (pauseQuery cName)
         ResumePlan (ResumeObjectQuery cName) -> executeWithLookupResource_ cliCtx (Resource ResQuery cName) (resumeQuery cName)
+        SelectPlan sources _ _ _ _ -> executeWithLookupResource_ cliCtx (Resource ResView (head sources)) (executeViewQuery xs)
         _ -> do
           addr <- readMVar currentServer
           withGRPCClient (HStream.Utils.mkGRPCClientConfWithSSL addr sslConfig)

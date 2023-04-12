@@ -15,6 +15,7 @@ module HStream.Server.MetaData.Types
   ( RelatedStreams
   , QueryInfo (..)
   , ViewInfo (..)
+  , QVRelation (..)
   , QueryStatus (QueryRunning, QueryCreating
                , QueryAborted, QueryResuming, QueryPaused, ..)
   , ShardReader (..)
@@ -172,7 +173,12 @@ insertQuery qInfo@QueryInfo{..} h = do
             ]
             h
 
-insertViewQuery :: (MetaType QueryInfo handle, MetaType QueryStatus handle, MetaType ViewInfo handle, MetaMulti handle)
+insertViewQuery
+  :: ( MetaType QueryInfo handle
+     , MetaType QueryStatus handle
+     , MetaType ViewInfo handle
+     , MetaType QVRelation handle
+     , MetaMulti handle)
   => ViewInfo -> handle -> IO ()
 insertViewQuery vInfo@ViewInfo{..} h = do
   let qid = queryId viewQuery
