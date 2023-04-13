@@ -116,7 +116,7 @@ module HStream.Exception
   , SubscriptionOnDifferentNode (SubscriptionOnDifferentNode)
   , SubscriptionInvalidError (SubscriptionInvalidError)
   , ConsumerInvalidError (ConsumerInvalidError)
-  , TerminateQueriesError (TerminateQueriesError)
+  , TerminateQueryError (TerminateQueryError)
   , QueryIsNotRunning (QueryIsNotRunning)
 
     -- * Exception: SomeOutOfRange
@@ -536,7 +536,7 @@ MAKE_EX_1_DEFMSG(SomeAborted, SubscriptionIsDeleting, String, API.ErrorCodeInter
 MAKE_EX_1_DEFMSG(SomeAborted, SubscriptionOnDifferentNode, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeAborted, SubscriptionInvalidError, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeAborted, ConsumerInvalidError, String, API.ErrorCodeInternalError)
-MAKE_EX_1_DEFMSG(SomeAborted, TerminateQueriesError, String, API.ErrorCodeInternalError)
+MAKE_EX_1_DEFMSG(SomeAborted, TerminateQueryError, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeAborted, QueryIsNotRunning, String, API.ErrorCodeInternalError)
 
 -------------------------------------------------------------------------------

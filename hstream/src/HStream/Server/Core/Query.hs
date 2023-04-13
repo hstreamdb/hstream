@@ -5,7 +5,6 @@
 
 module HStream.Server.Core.Query
   ( executeQuery
-  , terminateQueries
 
   , createQuery
   , createQueryWithNamespace
@@ -16,6 +15,9 @@ module HStream.Server.Core.Query
   , hstreamQueryToQuery
 
   , resumeQuery
+
+  -- re-export
+  , terminateQuery
   ) where
 
 import           Control.Concurrent
@@ -23,6 +25,7 @@ import           Control.Concurrent.Async         (async, cancel, wait)
 import           Control.Exception                (throw, throwIO)
 import           Control.Monad
 import qualified Data.Aeson                       as Aeson
+import           Data.Functor                     ((<&>))
 import qualified Data.HashMap.Strict              as HM
 import           Data.IORef                       (atomicModifyIORef',
                                                    readIORef)
@@ -37,6 +40,7 @@ import           Network.GRPC.HighLevel.Server    (ServerCallMetadata)
 import           Proto3.Suite.Class               (def)
 import qualified Proto3.Suite.JSONPB              as PB
 import qualified Z.Data.CBytes                    as CB
+
 
 import qualified HStream.Exception                as HE
 import qualified HStream.IO.Worker                as IO
@@ -78,6 +82,7 @@ import           HStream.SQL.Codegen.V1           as HSC
 #endif
 
 -------------------------------------------------------------------------------
+
 executeQuery :: ServerContext -> CommandQuery -> IO CommandQueryResponse
 executeQuery sc@ServerContext{..} CommandQuery{..} = do
   Log.debug $ "Receive Query Request: " <> Log.build commandQueryStmtText
@@ -239,7 +244,7 @@ createQueryWithNamespace'
         CreateViewPlan sources sink view builder persist -> do
           validateNameAndThrow view
           Core.createView' sc view sources sink builder persist createQueryRequestSql createQueryRequestQueryName
-          >>= hstreamQueryToQuery metaHandle . P.viewQuery
+          >>= hstreamViewToQuery metaHandle
         _ -> throw $ HE.WrongExecutionPlan "Create query only support create stream/view <name> as select statements"
       _ -> throw $ HE.WrongExecutionPlan "Create query only support create stream/view <name> as select statements"
 #endif
@@ -259,27 +264,6 @@ getQuery' ServerContext{..} GetQueryRequest{..} = do
   queries <- M.listMeta metaHandle
   hstreamQueryToQuery metaHandle `traverse`
     L.find (\P.QueryInfo{..} -> queryId == getQueryRequestId) queries
-
-terminateQueries
-  :: ServerContext -> TerminateQueriesRequest -> IO TerminateQueriesResponse
-terminateQueries ctx req = terminateQueries' ctx req >>= \case
-  Left terminatedQids ->
-    let x = "Only the following queries are terminated " <> show terminatedQids
-     in throwIO $ HE.TerminateQueriesError x
-  Right r -> pure r
-
-terminateQueries'
-  :: ServerContext
-  -> TerminateQueriesRequest
-  -> IO (Either [T.Text] TerminateQueriesResponse)
-terminateQueries' ctx@ServerContext{..} TerminateQueriesRequest{..} = do
-  qids <- if terminateQueriesRequestAll
-          then HM.keys <$> readMVar runningQueries
-          else return . V.toList $ terminateQueriesRequestQueryId
-  terminatedQids <- handleQueryTerminate ctx (HSC.ManyQueries qids)
-  if length terminatedQids < length qids
-    then return (Left terminatedQids)
-    else return (Right $ TerminateQueriesResponse (V.fromList terminatedQids))
 
 deleteQuery :: ServerContext -> DeleteQueryRequest -> IO ()
 deleteQuery ServerContext{..} DeleteQueryRequest{..} =
@@ -319,11 +303,25 @@ hstreamQueryToQuery h P.QueryInfo{..} = do
     Just P.QueryStatus{..} -> return queryState
   return Query
     { queryId = queryId
-    , queryQueryText = querySql
     , queryStatus = getPBStatus state
     , queryCreatedTime = queryCreatedTime
+    , queryQueryText = querySql
     , querySources = V.fromList $ fst queryStreams
-    , querySink = snd queryStreams
+    , queryResultName = snd queryStreams
+    , queryType = QueryCreateStream
+    }
+
+hstreamViewToQuery :: M.MetaHandle -> P.ViewInfo -> IO API.Query
+hstreamViewToQuery h P.ViewInfo{viewQuery = P.QueryInfo{..},..} = do
+  state <- M.getMeta @P.QueryStatus queryId h <&> maybe Unknown P.queryState
+  return API.Query
+    { queryId = queryId
+    , queryStatus = getPBStatus state
+    , queryCreatedTime = queryCreatedTime
+    , queryQueryText = querySql
+    , querySources = V.fromList $ fst queryStreams
+    , queryResultName = viewName
+    , queryType = QueryCreateView
     }
 
 -------------------------------------------------------------------------------

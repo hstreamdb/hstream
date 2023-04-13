@@ -36,7 +36,7 @@ import           HStream.Client.Action            (createConnector,
                                                    insertIntoStream, listShards,
                                                    pauseConnector, pauseQuery,
                                                    resumeConnector, resumeQuery,
-                                                   retry, terminateQueries)
+                                                   retry, terminateQuery)
 import           HStream.Client.Execute           (execute, executeShowPlan,
                                                    executeWithLookupResource_,
                                                    execute_, updateClusterInfo)
@@ -55,6 +55,7 @@ import           HStream.SQL                      (HStreamPlan (..),
                                                    PauseObject (..),
                                                    RCreate (..), RSQL (..),
                                                    ResumeObject (..),
+                                                   TerminateObject (..),
                                                    hstreamCodegen,
                                                    parseAndRefine)
 #ifdef HStreamUseV2Engine
@@ -139,7 +140,7 @@ commandExec HStreamSqlContext{hstreamCliContext = cliCtx@HStreamCliContext{..},.
         DropPlan checkIfExists dropObj -> executeWithLookupResource_ cliCtx (dropPlanToResType dropObj) $ dropAction checkIfExists dropObj
         CreatePlan sName rFac -> execute_ cliCtx $ createStream sName rFac
         -- FIXME: requires lookup
-        TerminatePlan termSel -> execute_ cliCtx $ terminateQueries termSel
+        TerminatePlan (TQuery qName) -> execute_ cliCtx $ terminateQuery qName
         InsertPlan sName insertType payload -> do
             result <- execute cliCtx $ listShards sName
             case result of

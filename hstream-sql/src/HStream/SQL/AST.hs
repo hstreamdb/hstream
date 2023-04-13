@@ -946,11 +946,9 @@ type instance RefinedType DropOption = RDropOption
 ---- Terminate
 data RTerminate
   = RTerminateQuery Text
-  | RTerminateAll
   deriving (Eq, Show)
 instance Refine Terminate where
   refine (TerminateQuery _ x) = RTerminateQuery (refine x)
-  refine (TerminateAll   _  ) = RTerminateAll
 type instance RefinedType Terminate = RTerminate
 
 ---- Pause

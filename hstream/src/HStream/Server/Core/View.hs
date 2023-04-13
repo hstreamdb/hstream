@@ -23,14 +23,14 @@ import           Data.Maybe                    (fromJust, isJust)
 import qualified Data.Text                     as T
 import qualified Data.Vector                   as V
 import           GHC.Stack                     (HasCallStack)
+
 import           HStream.Exception             (ViewNotFound (..))
 import qualified HStream.Exception             as HE
 import qualified HStream.Logger                as Log
 import           HStream.MetaStore.Types       (MetaStore (insertMeta))
 import qualified HStream.MetaStore.Types       as M
 import           HStream.Processing.Type       (SinkRecord (..))
-import           HStream.Server.Core.Common    (handleQueryTerminate,
-                                                modifySelect)
+import           HStream.Server.Core.Common    (modifySelect, terminateQuery)
 import           HStream.Server.Handler.Common (IdentifierRole (..),
                                                 QueryRunner (..), amIView,
                                                 createQueryAndRun,
@@ -141,13 +141,10 @@ deleteView :: ServerContext -> T.Text -> Bool -> IO Empty
 deleteView sc@ServerContext{..} name checkIfExist = do
   M.getMeta @ViewInfo name metaHandle >>= \case
     Just P.ViewInfo{viewQuery = P.QueryInfo {..}} -> do
-      handleQueryTerminate sc (OneQuery queryId) >>= \case
-        [] -> throwIO $ HE.UnexpectedError "Failed to view related query for some unknown reason"
-        _  -> do
-          M.metaMulti [ M.deleteMetaOp @P.QueryInfo queryId Nothing metaHandle
-                      , M.deleteMetaOp @ViewInfo name Nothing metaHandle] metaHandle
-          atomicModifyIORef' P.groupbyStores (\hm -> (HM.delete name hm, ()))
-          return Empty
+      terminateQuery sc queryId
+      P.deleteViewQuery name queryId metaHandle
+      atomicModifyIORef' P.groupbyStores (\hm -> (HM.delete name hm, ()))
+      return Empty
     Nothing -> do unless checkIfExist $ throwIO $ HE.ViewNotFound name; return Empty
 
 getView :: ServerContext -> T.Text -> IO API.View

@@ -92,7 +92,6 @@ DropView.      DropOption ::= "VIEW"      ;
 
 -- Terminate Query
 TerminateQuery. Terminate ::= "TERMINATE" "QUERY" HIdent ;
-TerminateAll. Terminate ::= "TERMINATE" "ALL";
 
 ---- Explain
 ExplainSelect. Explain ::= "EXPLAIN" Select ;

@@ -31,7 +31,7 @@ module HStream.Client.Action
 
   , listQueries
   , listViews
-  , terminateQueries
+  , terminateQuery
   , pauseQuery
   , resumeQuery
 
@@ -70,7 +70,7 @@ import           HStream.SQL.Codegen              (DropObject (..),
 #else
 import           HStream.SQL.Codegen.V1           (DropObject (..),
                                                    InsertType (..),
-                                                   TerminationSelection (..))
+                                                   TerminateObject (..))
 #endif
 import           HStream.ThirdParty.Protobuf      (Empty (..))
 import           HStream.Utils
@@ -96,19 +96,11 @@ listConnectors API.HStreamApi{..} = hstreamApiListConnectors clientDefaultReques
 listSubscriptions :: Action API.ListSubscriptionsResponse
 listSubscriptions API.HStreamApi{..} = hstreamApiListSubscriptions clientDefaultRequest
 
-terminateQueries :: TerminationSelection
+terminateQuery :: T.Text
   -> HStreamClientApi
-  -> IO (ClientResult 'Normal API.TerminateQueriesResponse )
-terminateQueries (OneQuery qid) API.HStreamApi{..} =
-  hstreamApiTerminateQueries
-    (mkClientNormalRequest' def{API.terminateQueriesRequestQueryId = V.singleton qid})
-terminateQueries AllQueries API.HStreamApi{..} =
-  hstreamApiTerminateQueries
-    (mkClientNormalRequest' def{API.terminateQueriesRequestAll = True})
-terminateQueries (ManyQueries qids) API.HStreamApi{..} =
-  hstreamApiTerminateQueries
-    (mkClientNormalRequest'
-      def {API.terminateQueriesRequestQueryId = V.fromList qids})
+  -> IO (ClientResult 'Normal Empty )
+terminateQuery qid API.HStreamApi{..} = hstreamApiTerminateQuery
+  (mkClientNormalRequest' def {API.terminateQueryRequestQueryId = qid})
 
 dropAction :: Bool -> DropObject -> Action Empty
 dropAction ignoreNonExist dropObject API.HStreamApi{..}  = do

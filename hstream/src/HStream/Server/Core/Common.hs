@@ -19,6 +19,7 @@ import           Data.Text                        (Text)
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import           Data.Word                        (Word32, Word64)
+import           HStream.ThirdParty.Protobuf
 
 import           HStream.Common.ConsistentHashing
 import           HStream.Common.Types             (fromInternalServerNodeWithKey)
@@ -153,48 +154,23 @@ decodeRecordBatch dataRecord = do
 --------------------------------------------------------------------------------
 -- Query
 
-terminateRelatedQueries :: ServerContext -> T.Text -> IO ()
-terminateRelatedQueries sc@ServerContext{..} name = do
-  queries <- M.listMeta metaHandle
-  let getRelatedQueries = [P.queryId query | query <- queries, name `elem` P.getQuerySources query]
-  Log.debug . Log.buildString
-     $ "TERMINATE: the queries related to the terminating stream " <> show name
-    <> ": " <> show getRelatedQueries
-  mapM_ (handleQueryTerminate sc . OneQuery) getRelatedQueries
+-- FIXME: this should be done via client / gossip event handler
+-- terminateRelatedQueries :: ServerContext -> T.Text -> IO ()
+-- terminateRelatedQueries sc@ServerContext{..} name = do
+--   queries <- M.listMeta metaHandle
+--   let getRelatedQueries = [P.queryId query | query <- queries, name `elem` P.getQuerySources query]
+--   Log.debug . Log.buildString
+--      $ "TERMINATE: the queries related to the terminating stream " <> show name
+--     <> ": " <> show getRelatedQueries
+--   mapM_ (terminateQuery sc) getRelatedQueries
 
-handleQueryTerminate :: ServerContext -> TerminationSelection -> IO [T.Text]
-handleQueryTerminate ServerContext{..} (OneQuery qid) = do
+terminateQuery :: ServerContext -> Text -> IO ()
+terminateQuery ServerContext{..} qid = do
   hmapQ <- readMVar runningQueries
-  case HM.lookup qid hmapQ of Just tid -> killThread tid; _ -> pure ()
-  M.updateMeta qid P.QueryPaused Nothing metaHandle
+  mapM_ killThread (HM.lookup qid hmapQ)
+  M.updateMeta qid P.QueryTerminated Nothing metaHandle
   void $ swapMVar runningQueries (HM.delete qid hmapQ)
-  Log.debug . Log.buildString $ "TERMINATE: terminated query: " <> show qid
-  return [qid]
-handleQueryTerminate sc@ServerContext{..} AllQueries = do
-  hmapQ <- readMVar runningQueries
-  handleQueryTerminate sc (ManyQueries $ HM.keys hmapQ)
-handleQueryTerminate ServerContext{..} (ManyQueries qids) = do
-  hmapQ <- readMVar runningQueries
-  qids' <- foldrM (action hmapQ) [] qids
-  Log.debug . Log.buildString $ "TERMINATE: terminated queries: " <> show qids'
-  return qids'
-  where
-    action hm x terminatedQids = do
-      result <- try $ do
-        case HM.lookup x hm of
-          Just tid -> do
-            killThread tid
-            M.updateMeta x P.QueryPaused Nothing metaHandle
-            void $ swapMVar runningQueries (HM.delete x hm)
-          _        ->
-            Log.debug $ "query id " <> Log.buildString' x <> " not found"
-      case result of
-        Left (e ::SomeException) -> do
-          Log.warning . Log.buildString
-            $ "TERMINATE: unable to terminate query: " <> show x
-           <> "because of " <> show e
-          return terminatedQids
-        Right _                  -> return (x:terminatedQids)
+  Log.debug $ "Terminated query: " <> Log.build qid
 
 mkAllocationKey :: ResourceType -> T.Text -> T.Text
 mkAllocationKey rtype rid = T.pack (show rtype) <> "_" <> rid
