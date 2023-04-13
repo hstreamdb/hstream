@@ -107,6 +107,8 @@ module HStream.Exception
   , RQLiteRowBadVersion (RQLiteRowBadVersion)
   , LocalMetaStoreObjectBadVersion (LocalMetaStoreObjectBadVersion)
   , ResourceAllocationException (ResourceAllocationException)
+  , QueryIsNotTerminated (QueryIsNotTerminated)
+  , FoundAssociatedView (FoundAssociatedView)
 
     -- * Exception: SomeAborted
     --
@@ -521,6 +523,8 @@ MAKE_EX_1_DEFMSG(SomeFailedPrecondition, ShardCanNotSplit, String, API.ErrorCode
 MAKE_EX_1_DEFMSG(SomeFailedPrecondition, ShardCanNotMerge, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeFailedPrecondition, RQLiteRowBadVersion, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeFailedPrecondition, LocalMetaStoreObjectBadVersion, String, API.ErrorCodeInternalError)
+MAKE_EX_1_DEFMSG(SomeFailedPrecondition, QueryIsNotTerminated, Text, API.ErrorCodeInternalError)
+MAKE_EX_1_DEFMSG(SomeFailedPrecondition, FoundAssociatedView, Text, API.ErrorCodeInternalError)
 
 -------------------------------------------------------------------------------
 -- Exception: SomeAborted

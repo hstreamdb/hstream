@@ -12,7 +12,7 @@ module HStream.Server.Core.View
   ) where
 
 import           Control.Exception             (throw, throwIO)
-import           Control.Monad                 (unless)
+import           Control.Monad                 (unless, when)
 import qualified Data.Aeson                    as Aeson
 import           Data.Functor                  ((<&>))
 import qualified Data.HashMap.Strict           as HM
@@ -139,9 +139,12 @@ createView' sc@ServerContext{..} view srcs sink builder persist sql queryName = 
 -- TODO: refactor this function after the meta data has been reorganized
 deleteView :: ServerContext -> T.Text -> Bool -> IO Empty
 deleteView sc@ServerContext{..} name checkIfExist = do
-  M.getMeta @ViewInfo name metaHandle >>= \case
+  M.getMeta @P.ViewInfo name metaHandle >>= \case
     Just P.ViewInfo{viewQuery = P.QueryInfo {..}} -> do
-      terminateQuery sc queryId
+      M.getMeta @P.QueryStatus queryId metaHandle >>= \case
+        Nothing -> throwIO $ HE.QueryNotFound $ "Query " <> queryId <> " associated with view " <> name <> " is not found"
+        Just P.QueryStatus{..} -> when (queryState /= Terminated) $ do
+           throwIO $ HE.QueryIsNotTerminated $ "Query " <> queryId <> " associated with view " <> name <> " is not terminated"
       P.deleteViewQuery name queryId metaHandle
       atomicModifyIORef' P.groupbyStores (\hm -> (HM.delete name hm, ()))
       return Empty

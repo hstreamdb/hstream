@@ -159,9 +159,11 @@ hstreamCodegen = \case
   RQDrop (RDrop RDropConnector x)    -> return $ DropPlan False (DConnector x)
   RQDrop (RDrop RDropStream x)       -> return $ DropPlan False (DStream x)
   RQDrop (RDrop RDropView x)         -> return $ DropPlan False (DView x)
+  RQDrop (RDrop RDropQuery x)        -> return $ DropPlan False (DQuery x)
   RQDrop (RDropIf RDropConnector x)  -> return $ DropPlan True (DConnector x)
   RQDrop (RDropIf RDropStream x)     -> return $ DropPlan True (DStream x)
   RQDrop (RDropIf RDropView x)       -> return $ DropPlan True (DView x)
+  RQDrop (RDropIf RDropQuery x)      -> return $ DropPlan True (DQuery x)
   RQTerminate (RTerminateQuery qid)  -> return $ TerminatePlan (TQuery qid)
   RQExplain rselect                  -> do
     let relationExpr = decouple rselect

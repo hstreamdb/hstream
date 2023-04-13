@@ -935,12 +935,14 @@ data RDropOption
   = RDropConnector
   | RDropStream
   | RDropView
+  | RDropQuery
   deriving (Eq, Show)
 
 instance Refine DropOption where
   refine (DropConnector _) = RDropConnector
   refine (DropStream _)    = RDropStream
   refine (DropView   _)    = RDropView
+  refine (DropQuery   _)   = RDropQuery
 type instance RefinedType DropOption = RDropOption
 
 ---- Terminate

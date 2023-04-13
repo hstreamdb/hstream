@@ -120,6 +120,9 @@ dropAction ignoreNonExist dropObject API.HStreamApi{..}  = do
                       { API.deleteConnectorRequestName = txt
                       -- , API.deleteConnectorRequestIgnoreNonExist = checkIfExist
                       })
+    DQuery txt -> hstreamApiDeleteQuery (mkClientNormalRequest' def
+                      { API.deleteQueryRequestId = txt
+                      })
 
 insertIntoStream
   :: StreamName -> Word64 -> InsertType -> BS.ByteString

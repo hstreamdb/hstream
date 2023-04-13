@@ -266,8 +266,14 @@ getQuery' ServerContext{..} GetQueryRequest{..} = do
     L.find (\P.QueryInfo{..} -> queryId == getQueryRequestId) queries
 
 deleteQuery :: ServerContext -> DeleteQueryRequest -> IO ()
-deleteQuery ServerContext{..} DeleteQueryRequest{..} =
-  M.deleteMeta @P.QueryInfo deleteQueryRequestId Nothing metaHandle
+deleteQuery ServerContext{..} DeleteQueryRequest{..} = do
+  getMeta @P.QueryStatus deleteQueryRequestId metaHandle >>= \case
+    Nothing -> throwIO $ HE.QueryNotFound deleteQueryRequestId
+    Just P.QueryStatus{..} -> when (queryState /= Terminated) $
+      throwIO $ HE.QueryIsNotTerminated deleteQueryRequestId
+  getMeta @P.QVRelation deleteQueryRequestId metaHandle >>= \case
+    Nothing               -> P.deleteQueryInfo deleteQueryRequestId metaHandle
+    Just P.QVRelation{..} -> throwIO $ HE.FoundAssociatedView qvRelationViewName
 
 ----
 -- Warning: may throw exceptions if restoration fails

@@ -134,13 +134,9 @@ commandExec HStreamSqlContext{hstreamCliContext = cliCtx@HStreamCliContext{..},.
         executeWithLookupResource_ cliCtx (Resource ResQuery qName) (createStreamBySelectWithCustomQueryName xs qName)
       rSql' -> hstreamCodegen rSql' >>= \case
         ShowPlan showObj      -> executeShowPlan cliCtx showObj
-        -- FIXME: add lookup after supporting lookup stream and lookup view
-        DropPlan checkIfExists dropObj@DStream{} -> execute_ cliCtx $ dropAction checkIfExists dropObj
-        DropPlan checkIfExists dropObj@DView{} -> execute_ cliCtx $ dropAction checkIfExists dropObj
         DropPlan checkIfExists dropObj -> executeWithLookupResource_ cliCtx (dropPlanToResType dropObj) $ dropAction checkIfExists dropObj
         CreatePlan sName rFac -> execute_ cliCtx $ createStream sName rFac
-        -- FIXME: requires lookup
-        TerminatePlan (TQuery qName) -> execute_ cliCtx $ terminateQuery qName
+        TerminatePlan (TQuery qName) -> executeWithLookupResource_ cliCtx (Resource ResQuery qName) $ terminateQuery qName
         InsertPlan sName insertType payload -> do
             result <- execute cliCtx $ listShards sName
             case result of
@@ -154,8 +150,8 @@ commandExec HStreamSqlContext{hstreamCliContext = cliCtx@HStreamCliContext{..},.
           executeWithLookupResource_ cliCtx (Resource ResConnector cName) (createConnector cName cType cTarget cfgText)
         PausePlan  (PauseObjectConnector cName) -> executeWithLookupResource_ cliCtx (Resource ResConnector cName) (pauseConnector cName)
         ResumePlan (ResumeObjectConnector cName) -> executeWithLookupResource_ cliCtx (Resource ResConnector cName) (resumeConnector cName)
-        PausePlan  (PauseObjectQuery cName) -> executeWithLookupResource_ cliCtx (Resource ResQuery cName) (pauseQuery cName)
-        ResumePlan (ResumeObjectQuery cName) -> executeWithLookupResource_ cliCtx (Resource ResQuery cName) (resumeQuery cName)
+        PausePlan  (PauseObjectQuery qName) -> executeWithLookupResource_ cliCtx (Resource ResQuery qName) (pauseQuery qName)
+        ResumePlan (ResumeObjectQuery qName) -> executeWithLookupResource_ cliCtx (Resource ResQuery qName) (resumeQuery qName)
         SelectPlan sources _ _ _ _ -> executeWithLookupResource_ cliCtx (Resource ResView (head sources)) (executeViewQuery xs)
         _ -> do
           addr <- readMVar currentServer

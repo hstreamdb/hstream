@@ -489,7 +489,7 @@ runQuery ctx@ServerContext{..} QueryRunner{..} logId = do
                     Log.debug . Log.buildString
                        $ "CREATE AS SELECT: query " <> show qRQueryName
                       <> " is killed because of " <> show e
-                    M.updateMeta qRQueryName P.QueryPaused Nothing metaHandle
+                    M.updateMeta qRQueryName P.QueryTerminated Nothing metaHandle
                     releasePid
                 )
       , Handler (\(e :: SomeException) -> do
