@@ -813,7 +813,6 @@ instance Validate Drop where
 ------------------------------------- Terminate --------------------------------
 instance Validate Terminate where
   validate t@(TerminateQuery _ hIdent) = validate hIdent >> return t
-  validate t@(TerminateAll _)          = return t
 
 ------------------------------------- SQL --------------------------------------
 instance Validate SQL where

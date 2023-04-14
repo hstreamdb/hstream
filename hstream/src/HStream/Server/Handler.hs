@@ -67,7 +67,7 @@ handlers serverContext@ServerContext{..} =
         hstreamApiGetStats = H.getStatsHandler scStatsHolder,
 
         -- Query
-        hstreamApiTerminateQueries = terminateQueriesHandler serverContext,
+        hstreamApiTerminateQuery = terminateQueryHandler serverContext,
         hstreamApiExecuteQuery = executeQueryHandler serverContext,
         -- FIXME:
         hstreamApiGetQuery = getQueryHandler serverContext,

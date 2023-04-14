@@ -16,13 +16,14 @@ module HStream.Server.MetaData.Types
   , QueryInfo (..)
   , ViewInfo (..)
   , QVRelation (..)
-  , QueryStatus (QueryRunning, QueryCreating
+  , QueryStatus (QueryRunning, QueryCreating, QueryTerminated
                , QueryAborted, QueryResuming, QueryPaused, ..)
   , ShardReader (..)
   , TaskAllocation (..)
   , createInsertQueryInfo
   , createInsertViewQueryInfo
   , deleteQueryInfo
+  , deleteViewQuery
   , getSubscriptionWithStream
   , groupbyStores
   , rootPath
@@ -75,12 +76,13 @@ data QueryInfo = QueryInfo
 data QueryStatus = QueryStatus { queryState :: TaskStatus }
   deriving (Generic, Show, FromJSON, ToJSON)
 
-pattern QueryCreating, QueryRunning, QueryResuming, QueryAborted, QueryPaused :: QueryStatus
+pattern QueryCreating, QueryRunning, QueryResuming, QueryAborted, QueryPaused, QueryTerminated :: QueryStatus
 pattern QueryCreating = QueryStatus { queryState = Creating }
 pattern QueryRunning  = QueryStatus { queryState = Running }
 pattern QueryResuming = QueryStatus { queryState = Resuming }
 pattern QueryAborted  = QueryStatus { queryState = Aborted }
 pattern QueryPaused   = QueryStatus { queryState = Paused }
+pattern QueryTerminated   = QueryStatus { queryState = Terminated }
 
 data ViewInfo = ViewInfo {
     viewName  :: Text
@@ -195,6 +197,21 @@ deleteQueryInfo :: (MetaType QueryInfo handle, MetaType QueryStatus handle, Meta
 deleteQueryInfo qid h = do
   metaMulti [ deleteMetaOp @QueryInfo qid Nothing h
             , deleteMetaOp @QueryStatus qid Nothing h
+            ]
+            h
+
+deleteViewQuery
+  :: ( MetaType QueryInfo handle
+     , MetaType QueryStatus handle
+     , MetaType ViewInfo handle
+     , MetaType QVRelation handle
+     , MetaMulti handle)
+  => Text -> Text -> handle -> IO ()
+deleteViewQuery vName qName h = do
+  metaMulti [ deleteMetaOp @QueryInfo   qName Nothing h
+            , deleteMetaOp @QueryStatus qName Nothing h
+            , deleteMetaOp @ViewInfo    vName Nothing h
+            , deleteMetaOp @QVRelation  qName Nothing h
             ]
             h
 

@@ -93,8 +93,8 @@ type CheckIfExist  = Bool
 type ViewSchema = [String]
 
 data ShowObject = SStreams | SQueries | SConnectors | SViews
-data DropObject = DStream Text | DView Text | DConnector Text
-data TerminationSelection = AllQueries | OneQuery Text | ManyQueries [Text]
+data DropObject = DStream Text | DView Text | DConnector Text | DQuery Text
+data TerminateObject = TQuery Text
 data InsertType = JsonFormat | RawFormat
 data PauseObject
   = PauseObjectConnector Text
@@ -111,7 +111,7 @@ data HStreamPlan
   | InsertPlan          StreamName InsertType ByteString
   | DropPlan            CheckIfExist DropObject
   | ShowPlan            ShowObject
-  | TerminatePlan       TerminationSelection
+  | TerminatePlan       TerminateObject
   | ExplainPlan         Text
   | PausePlan           PauseObject
   | ResumePlan          ResumeObject
@@ -159,11 +159,12 @@ hstreamCodegen = \case
   RQDrop (RDrop RDropConnector x)    -> return $ DropPlan False (DConnector x)
   RQDrop (RDrop RDropStream x)       -> return $ DropPlan False (DStream x)
   RQDrop (RDrop RDropView x)         -> return $ DropPlan False (DView x)
+  RQDrop (RDrop RDropQuery x)        -> return $ DropPlan False (DQuery x)
   RQDrop (RDropIf RDropConnector x)  -> return $ DropPlan True (DConnector x)
   RQDrop (RDropIf RDropStream x)     -> return $ DropPlan True (DStream x)
   RQDrop (RDropIf RDropView x)       -> return $ DropPlan True (DView x)
-  RQTerminate (RTerminateQuery qid)  -> return $ TerminatePlan (OneQuery qid)
-  RQTerminate RTerminateAll          -> return $ TerminatePlan AllQueries
+  RQDrop (RDropIf RDropQuery x)      -> return $ DropPlan True (DQuery x)
+  RQTerminate (RTerminateQuery qid)  -> return $ TerminatePlan (TQuery qid)
   RQExplain rselect                  -> do
     let relationExpr = decouple rselect
     return $ ExplainPlan (PP.renderStrict $ PP.layoutPretty PP.defaultLayoutOptions (PP.pretty relationExpr))

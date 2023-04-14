@@ -27,7 +27,7 @@ import           HStream.SQL.Codegen              (DropObject (..),
                                                    TerminationSelection (..))
 #else
 import           HStream.SQL.Codegen.V1           (DropObject (..),
-                                                   TerminationSelection (..))
+                                                   TerminateObject (..))
 #endif
 import qualified HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils                    (ResourceType (..),
@@ -82,7 +82,7 @@ cliFetch' handleResult ctx sql = do
     (case handleResult of Nothing -> streamingFetch subId
                           Just h  -> streamingFetch' h subId)
   executeWithLookupResource_ ctx (Resource ResSubscription subId) (void . deleteSubscription subId True)
-  executeWithLookupResource_ ctx (Resource ResQuery qName) (terminateQueries (OneQuery queryId))
+  executeWithLookupResource_ ctx (Resource ResQuery qName) (terminateQuery queryId)
   executeWithLookupResource_ ctx (Resource ResStream sName) (void . dropAction False (DStream sName))
 
 genRandomSubscriptionId :: IO T.Text

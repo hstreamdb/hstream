@@ -89,10 +89,10 @@ DropIf. Drop ::= "DROP" DropOption HIdent "IF" "EXISTS" ;
 DropConnector. DropOption ::= "CONNECTOR" ;
 DropStream.    DropOption ::= "STREAM"    ;
 DropView.      DropOption ::= "VIEW"      ;
+DropQuery.     DropOption ::= "QUERY"      ;
 
 -- Terminate Query
 TerminateQuery. Terminate ::= "TERMINATE" "QUERY" HIdent ;
-TerminateAll. Terminate ::= "TERMINATE" "ALL";
 
 ---- Explain
 ExplainSelect. Explain ::= "EXPLAIN" Select ;

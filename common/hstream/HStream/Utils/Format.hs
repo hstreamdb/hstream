@@ -111,9 +111,6 @@ instance Format API.GetSubscriptionResponse where
 instance Format API.AppendResponse where
   formatResult = const "Done.\n"
 
-instance Format API.TerminateQueriesResponse where
-  formatResult = const "Done.\n"
-
 instance Format API.ExecuteViewQueryResponse where
   formatResult = concatMap ((<> "\n") . TL.unpack . A.encodeToLazyText . structToJsonObject ) . API.executeViewQueryResponseResults
 
@@ -245,6 +242,7 @@ formatStatus (PB.Enumerated (Right API.TaskStatusPBTASK_ABORTED)) = "ABORTED"
 formatStatus (PB.Enumerated (Right API.TaskStatusPBTASK_CREATING)) = "CREATING"
 formatStatus (PB.Enumerated (Right API.TaskStatusPBTASK_PAUSED)) = "PAUSED"
 formatStatus (PB.Enumerated (Right API.TaskStatusPBTASK_RESUMING)) = "RESUMING"
+formatStatus (PB.Enumerated (Right API.TaskStatusPBTASK_TERMINATED)) = "TERMINATED"
 formatStatus (PB.Enumerated (Right API.TaskStatusPBTASK_UNKNOWN)) = "UNKNOWN"
 formatStatus _ = "Unknown Status"
 

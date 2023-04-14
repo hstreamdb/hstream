@@ -63,9 +63,8 @@ deleteQuery qid = withGRPCClient clientConfig $ \client -> do
 terminateQuery :: T.Text -> IO Bool
 terminateQuery qid = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
-  let terminateQueryRequest = TerminateQueriesRequest { terminateQueriesRequestQueryId = V.singleton qid,
-                                                        terminateQueriesRequestAll = False }
-  resp <- hstreamApiTerminateQueries (ClientNormalRequest terminateQueryRequest 100 (MetadataMap Map.empty))
+  let terminateQueryRequest = TerminateQueryRequest { terminateQueryRequestQueryId = qid}
+  resp <- hstreamApiTerminateQuery (ClientNormalRequest terminateQueryRequest 100 (MetadataMap Map.empty))
   case resp of
     ClientNormalResponse _ _meta1 _meta2 StatusOk _details -> return True
     ClientErrorResponse clientError -> do
@@ -115,7 +114,7 @@ spec = aroundAll provideHstreamApi $
         let (Just thisQuery) = V.find (\x -> queryQueryText x == sql) queries
         _ <- terminateQuery (queryId thisQuery)
         query <- getQuery (queryId thisQuery)
-        let terminated = getPBStatus Paused
+        let terminated = getPBStatus Terminated
         case query of
           Just Query {..} -> return (queryStatus == terminated)
           _               -> return False

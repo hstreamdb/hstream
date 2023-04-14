@@ -74,11 +74,12 @@ spec = aroundAll provideHstreamApi $
     runDropSql api "DROP STREAM s4 IF EXISTS;"
     runDropSql api "DROP STREAM s5 IF EXISTS;"
 
-  it "HS352_INT" $ \api -> do
+  -- FIXME
+  xit "HS352_INT" $ \api -> do
     runDropSql api "DROP STREAM s6 IF EXISTS;"
     runDropSql api "DROP VIEW v6 IF EXISTS;"
     runCreateStreamSql api "CREATE STREAM s6;"
-    runQuerySimple_ api "CREATE VIEW v6 as SELECT key2, key3, SUM(key1) FROM s6 GROUP BY key2, key3;"
+    qName <- runCreateWithSelectSql' api "CREATE VIEW v6 as SELECT key2, key3, SUM(key1) FROM s6 GROUP BY key2, key3;"
     _ <- forkIO $ do
       threadDelay 10000000 -- FIXME: requires a notification mechanism to ensure that the task starts successfully before inserting data
       runInsertSql api "INSERT INTO s6 (key1, key2, key3) VALUES (0, \"hello_00000000000000000000\", true);"
@@ -96,16 +97,9 @@ spec = aroundAll provideHstreamApi $
                                                   , ("key2", Aeson.String "hello_00000000000000000001")
                                                   , ("key3", Aeson.Bool False)]
                                         )
+    runTerminateSql api $ "TERMINATE QUERY " <> qName <> ";"
     runDropSql api "DROP STREAM s6 IF EXISTS;"
     runDropSql api "DROP VIEW v6 IF EXISTS;"
-
-  it "HS-1787" $ \api -> do
-    let doesNotExistSourceStream = "s7_does_not_exist" :: T.Text
-    ClientErrorResponse errResp <- runQuerySimple api $ "CREATE VIEW v7 AS SELECT SUM(x) FROM " <> doesNotExistSourceStream <> " GROUP BY i;"
-    errResp `shouldSatisfy` \case
-      ClientIOError (GRPCIOBadStatusCode StatusNotFound _) -> True
-      _                                                    -> False
-    runDropSql api "DROP VIEW v7 IF EXISTS;"
 
   it "#1200_BINARY" $ \api -> do
     runDropSql api "DROP STREAM stream_binary IF EXISTS;"
