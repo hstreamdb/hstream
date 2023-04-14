@@ -104,18 +104,6 @@ provideRunTest
 provideRunTest setup clean runTest api =
   bracket (setup api) (clean api) (runTest . (api,))
 
-mkQueryReqSimple :: T.Text -> ClientRequest 'Normal CommandQuery a
-mkQueryReqSimple sql =
-  let req = CommandQuery{ commandQueryStmtText = sql }
-   in ClientNormalRequest req 10 (MetadataMap Map.empty)
-
-runQuerySimple :: HStreamClientApi -> T.Text -> IO (ClientResult 'Normal CommandQueryResponse)
-runQuerySimple HStreamApi{..} sql = hstreamApiExecuteQuery $ mkQueryReqSimple sql
-
-runQuerySimple_ :: HStreamClientApi -> T.Text -> IO ()
-runQuerySimple_ HStreamApi{..} sql = do
-  void $ hstreamApiExecuteQuery (mkQueryReqSimple sql) >>= getServerResp
-
 querySuccessResp :: CommandQueryResponse
 querySuccessResp = CommandQueryResponse V.empty
 
@@ -264,6 +252,12 @@ runCreateWithSelectSql api sql = do
   resp <- getServerResp =<< createStreamBySelect (T.unpack sql) api
   resp `shouldSatisfy` \Query{..} -> queryQueryText == sql
 
+runCreateWithSelectSql' :: HStreamClientApi -> T.Text -> IO T.Text
+runCreateWithSelectSql' api sql = do
+  Query{..} <- getServerResp =<< createStreamBySelect (T.unpack sql) api
+  queryQueryText `shouldBe` sql
+  return queryId
+
 runShowStreamsSql :: HStreamClientApi -> T.Text -> IO String
 runShowStreamsSql api sql = do
   ShowPlan SStreams <- streamCodegen sql
@@ -278,6 +272,11 @@ runDropSql :: HStreamClientApi -> T.Text -> Expectation
 runDropSql api sql = do
   DropPlan checkIfExists dropObj <- streamCodegen sql
   dropAction checkIfExists dropObj api `grpcShouldReturn` Empty
+
+runTerminateSql :: HStreamClientApi -> T.Text -> Expectation
+runTerminateSql api sql = do
+  TerminatePlan (TQuery qName) <- streamCodegen sql
+  terminateQuery qName api `grpcShouldReturn` Empty
 
 runViewQuerySql ::  HStreamClientApi -> T.Text -> IO ExecuteViewQueryResponse
 runViewQuerySql api sql =

@@ -11,7 +11,7 @@
 module HStream.Server.Handler.Query
   ( -- * For grpc-haskell
     executeQueryHandler
-  , terminateQueriesHandler
+  , terminateQueryHandler
   , getQueryHandler
   , listQueriesHandler
   , deleteQueryHandler
@@ -24,7 +24,7 @@ module HStream.Server.Handler.Query
   , handleCreateQueryWithNamespace
   , handleListQueries
   , handleGetQuery
-  , handleTerminateQueries
+  , handleTerminateQuery
   , handleDeleteQuery
   , handleResumeQuery
   ) where
@@ -146,25 +146,28 @@ handleGetQuery ctx _ req@API.GetQueryRequest{..} = catchQueryEx $ do
   validateQueryAllocation ctx getQueryRequestId
   Core.getQuery ctx req
 
-terminateQueriesHandler
+terminateQueryHandler
   :: ServerContext
-  -> ServerRequest 'Normal API.TerminateQueriesRequest API.TerminateQueriesResponse
-  -> IO (ServerResponse 'Normal API.TerminateQueriesResponse)
-terminateQueriesHandler ctx (ServerNormalRequest _metadata req@API.TerminateQueriesRequest{..}) = queryExceptionHandle $ do
+  -> ServerRequest 'Normal API.TerminateQueryRequest Empty
+  -> IO (ServerResponse 'Normal Empty)
+terminateQueryHandler ctx (ServerNormalRequest _metadata API.TerminateQueryRequest{..}) = queryExceptionHandle $ do
   Log.debug $ "Receive Terminate Query Request. "
-    <> "Query ID: " <> Log.buildString (show terminateQueriesRequestQueryId)
-  mapM_ validateNameAndThrow terminateQueriesRequestQueryId
-  mapM_ (validateQueryAllocation ctx) terminateQueriesRequestQueryId
-  returnResp =<< Core.terminateQueries ctx req
+    <> "Query ID: " <> Log.buildString (show terminateQueryRequestQueryId)
+  validateNameAndThrow terminateQueryRequestQueryId
+  validateQueryAllocation ctx terminateQueryRequestQueryId
+  Core.terminateQuery ctx terminateQueryRequestQueryId
+  returnResp Empty
 
-handleTerminateQueries
-  :: ServerContext -> G.UnaryHandler API.TerminateQueriesRequest API.TerminateQueriesResponse
-handleTerminateQueries ctx _ req@API.TerminateQueriesRequest{..} = catchQueryEx $ do
+
+handleTerminateQuery
+  :: ServerContext -> G.UnaryHandler API.TerminateQueryRequest Empty
+handleTerminateQuery ctx _ API.TerminateQueryRequest{..} = catchQueryEx $ do
   Log.debug $ "Receive Terminate Query Request. "
-    <> "Query ID: " <> Log.buildString (show terminateQueriesRequestQueryId)
-  mapM_ validateNameAndThrow terminateQueriesRequestQueryId
-  mapM_ (validateQueryAllocation ctx) terminateQueriesRequestQueryId
-  Core.terminateQueries ctx req
+    <> "Query ID: " <> Log.buildString (show terminateQueryRequestQueryId)
+  validateNameAndThrow terminateQueryRequestQueryId
+  validateQueryAllocation ctx terminateQueryRequestQueryId
+  Core.terminateQuery ctx terminateQueryRequestQueryId
+  return Empty
 
 deleteQueryHandler
   :: ServerContext

@@ -107,6 +107,8 @@ module HStream.Exception
   , RQLiteRowBadVersion (RQLiteRowBadVersion)
   , LocalMetaStoreObjectBadVersion (LocalMetaStoreObjectBadVersion)
   , ResourceAllocationException (ResourceAllocationException)
+  , QueryIsNotTerminated (QueryIsNotTerminated)
+  , FoundAssociatedView (FoundAssociatedView)
 
     -- * Exception: SomeAborted
     --
@@ -116,7 +118,7 @@ module HStream.Exception
   , SubscriptionOnDifferentNode (SubscriptionOnDifferentNode)
   , SubscriptionInvalidError (SubscriptionInvalidError)
   , ConsumerInvalidError (ConsumerInvalidError)
-  , TerminateQueriesError (TerminateQueriesError)
+  , TerminateQueryError (TerminateQueryError)
   , QueryIsNotRunning (QueryIsNotRunning)
 
     -- * Exception: SomeOutOfRange
@@ -521,6 +523,8 @@ MAKE_EX_1_DEFMSG(SomeFailedPrecondition, ShardCanNotSplit, String, API.ErrorCode
 MAKE_EX_1_DEFMSG(SomeFailedPrecondition, ShardCanNotMerge, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeFailedPrecondition, RQLiteRowBadVersion, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeFailedPrecondition, LocalMetaStoreObjectBadVersion, String, API.ErrorCodeInternalError)
+MAKE_EX_1_DEFMSG(SomeFailedPrecondition, QueryIsNotTerminated, Text, API.ErrorCodeInternalError)
+MAKE_EX_1_DEFMSG(SomeFailedPrecondition, FoundAssociatedView, Text, API.ErrorCodeInternalError)
 
 -------------------------------------------------------------------------------
 -- Exception: SomeAborted
@@ -536,7 +540,7 @@ MAKE_EX_1_DEFMSG(SomeAborted, SubscriptionIsDeleting, String, API.ErrorCodeInter
 MAKE_EX_1_DEFMSG(SomeAborted, SubscriptionOnDifferentNode, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeAborted, SubscriptionInvalidError, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeAborted, ConsumerInvalidError, String, API.ErrorCodeInternalError)
-MAKE_EX_1_DEFMSG(SomeAborted, TerminateQueriesError, String, API.ErrorCodeInternalError)
+MAKE_EX_1_DEFMSG(SomeAborted, TerminateQueryError, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeAborted, QueryIsNotRunning, String, API.ErrorCodeInternalError)
 
 -------------------------------------------------------------------------------

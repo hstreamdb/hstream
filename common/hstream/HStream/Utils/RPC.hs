@@ -29,8 +29,9 @@ module HStream.Utils.RPC
 
   , pattern EnumPB
   , showNodeStatus
-  , TaskStatus (Creating, Running, Resuming, Aborted, Unknown, Paused, ..)
+  , TaskStatus (Creating, Running, Resuming, Terminated, Aborted, Unknown, Paused, ..)
   , ResourceType (ResStream, ResSubscription, ResShard, ResShardReader, ResConnector, ResQuery, ResView, ..)
+  , pattern QueryCreateStream, pattern QueryCreateView
   ) where
 
 import           Control.Monad
@@ -163,13 +164,13 @@ instance ToJSON (PB.Enumerated TaskStatusPB)
 instance FromJSON (PB.Enumerated TaskStatusPB)
 
 pattern Running, Resuming, Creating, Aborted, Paused, Unknown :: TaskStatus
-
 pattern Running  = TaskStatus (PB.Enumerated (Right TaskStatusPBTASK_RUNNING))
 pattern Creating = TaskStatus (PB.Enumerated (Right TaskStatusPBTASK_CREATING))
 pattern Paused   = TaskStatus (PB.Enumerated (Right TaskStatusPBTASK_PAUSED))
 pattern Resuming = TaskStatus (PB.Enumerated (Right TaskStatusPBTASK_RESUMING))
 pattern Aborted  = TaskStatus (PB.Enumerated (Right TaskStatusPBTASK_ABORTED))
 pattern Unknown  = TaskStatus (PB.Enumerated (Right TaskStatusPBTASK_UNKNOWN))
+pattern Terminated = TaskStatus (PB.Enumerated (Right TaskStatusPBTASK_TERMINATED))
 
 pattern ResStream, ResSubscription, ResShard, ResConnector, ResShardReader, ResQuery, ResView :: ResourceType
 pattern ResStream       = ResourceTypeResStream
@@ -179,3 +180,8 @@ pattern ResShardReader  = ResourceTypeResShardReader
 pattern ResConnector    = ResourceTypeResConnector
 pattern ResQuery        = ResourceTypeResQuery
 pattern ResView         = ResourceTypeResView
+
+type QType = PB.Enumerated QueryType
+pattern QueryCreateStream, QueryCreateView :: PB.Enumerated QueryType
+pattern QueryCreateStream = PB.Enumerated (Right QueryTypeCreateStreamAs)
+pattern QueryCreateView   = PB.Enumerated (Right QueryTypeCreateViewAs)

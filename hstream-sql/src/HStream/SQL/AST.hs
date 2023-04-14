@@ -935,22 +935,22 @@ data RDropOption
   = RDropConnector
   | RDropStream
   | RDropView
+  | RDropQuery
   deriving (Eq, Show)
 
 instance Refine DropOption where
   refine (DropConnector _) = RDropConnector
   refine (DropStream _)    = RDropStream
   refine (DropView   _)    = RDropView
+  refine (DropQuery   _)   = RDropQuery
 type instance RefinedType DropOption = RDropOption
 
 ---- Terminate
 data RTerminate
   = RTerminateQuery Text
-  | RTerminateAll
   deriving (Eq, Show)
 instance Refine Terminate where
   refine (TerminateQuery _ x) = RTerminateQuery (refine x)
-  refine (TerminateAll   _  ) = RTerminateAll
 type instance RefinedType Terminate = RTerminate
 
 ---- Pause

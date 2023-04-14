@@ -116,9 +116,10 @@ calculateShardId key (API.Shard{..}:ss) =
 calculateShardId _ _ = Nothing
 
 dropPlanToResType :: DropObject -> Resource
-dropPlanToResType (DConnector cid ) = Resource ResConnector cid
-dropPlanToResType DView{}           = undefined
-dropPlanToResType DStream{}         = undefined
+dropPlanToResType (DConnector x) = Resource ResConnector x
+dropPlanToResType (DView x)      = Resource ResView x
+dropPlanToResType (DStream x)    = Resource ResStream x
+dropPlanToResType (DQuery x)     = Resource ResQuery x
 
 genClientId :: IO T.Text
 genClientId = genUnique <&> (("hstream_cli_client_" <>) . T.pack . show)
