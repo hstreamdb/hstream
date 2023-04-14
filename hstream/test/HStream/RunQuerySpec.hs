@@ -114,7 +114,7 @@ spec = aroundAll provideHstreamApi $
         let (Just thisQuery) = V.find (\x -> queryQueryText x == sql) queries
         _ <- terminateQuery (queryId thisQuery)
         query <- getQuery (queryId thisQuery)
-        let terminated = getPBStatus Paused
+        let terminated = getPBStatus Terminated
         case query of
           Just Query {..} -> return (queryStatus == terminated)
           _               -> return False
