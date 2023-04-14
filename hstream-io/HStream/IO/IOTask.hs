@@ -99,8 +99,8 @@ handleConnectorMessage :: IOTask -> MSG.ConnectorMessage -> IO J.Value
 handleConnectorMessage IOTask{..} (MSG.KvGet MSG.KvGetMessage{..}) = J.toJSON <$> M.getTaskKv taskHandle taskId kgKey
 handleConnectorMessage IOTask{..} (MSG.KvSet MSG.KvSetMessage{..}) = J.Null <$ M.setTaskKv taskHandle taskId ksKey ksValue
 handleConnectorMessage IOTask{..} (MSG.Report MSG.ReportMessage{..}) = do
-  Stats.connector_stat_add_delivered_in_records taskStatsHolder cTaskName (fromIntegral rmDeliveredRecords)
-  Stats.connector_stat_add_delivered_in_bytes taskStatsHolder cTaskName (fromIntegral rmDeliveredBytes)
+  Stats.connector_stat_add_delivered_in_records taskStatsHolder cTaskName (fromIntegral rmdeliveredRecords)
+  Stats.connector_stat_add_delivered_in_bytes taskStatsHolder cTaskName (fromIntegral rmdeliveredBytes)
   pure J.Null
   where cTaskName = Utils.textToCBytes (taskName taskInfo)
 

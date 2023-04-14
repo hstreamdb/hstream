@@ -31,13 +31,13 @@ $(JT.deriveJSON
     ''KvSetMessage)
 
 data ReportMessage = ReportMessage
-  { rmDeliveredRecords :: Int
-  , rmDeliveredBytes   :: Int
+  { rmdeliveredRecords :: Int
+  , rmdeliveredBytes   :: Int
   -- , rmOffsets :: [J.Object]
   } deriving (Show)
 $(JT.deriveJSON
     JT.defaultOptions
-      { JT.fieldLabelModifier = map toLower . drop 2 }
+      { JT.fieldLabelModifier = drop 2 }
     ''ReportMessage)
 
 data ConnectorMessage
