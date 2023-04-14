@@ -193,6 +193,7 @@ createIOTask sc@ServerContext{scIOWorker = worker@IO.Worker{..}, ..} name typ ta
         A.fromList
           [ "hstream" A..= A.toJSON hsConfig
           , "connector" A..= (A.decodeStrict $ T.encodeUtf8 cfg :: Maybe A.Object)
+          , "task" A..= taskId
           ]
       taskInfo = IO.TaskInfo
         { taskName = name

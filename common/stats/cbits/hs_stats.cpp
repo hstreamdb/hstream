@@ -30,6 +30,16 @@ void setPerStreamStatsMember(const char* stat_name,
 #include "per_stream_stats.inc"
 }
 
+void setPerConnectorStatsMember(const char* stat_name,
+                                StatsCounter PerConnectorStats::*& member_ptr) {
+#define STAT_DEFINE(name, _)                                                   \
+  if (#name == std::string(stat_name)) {                                       \
+    member_ptr = &PerConnectorStats::name##_counter;                           \
+  }
+#include "per_connector_stats.inc"
+}
+
+
 void setPerSubscriptionTimeSeriesMember(
     const char* stat_name, std::shared_ptr<PerSubscriptionTimeSeries>
                                PerSubscriptionStats::*& member_ptr) {
@@ -64,6 +74,8 @@ void setPerHandleTimeSeriesMember(
   }
 #include "per_handle_time_series.inc"
 }
+
+
 
 // ----------------------------------------------------------------------------
 
@@ -132,6 +144,21 @@ int stream_time_series_getall_by_name(
       stats_holder, stat_name, setPerStreamTimeSeriesMember,
       &Stats::per_stream_stats, interval_size, ms_intervals, len, keys_ptr,
       values_ptr, keys_, values_);
+}
+
+// ----------------------------------------------------------------------------
+// PerConnectorStats
+#define STAT_DEFINE(name, _)                                                   \
+  PER_X_STAT_DEFINE(connector_stat_, per_connector_stats, PerConnectorStats, name)
+#include "per_connector_stats.inc"
+
+int connector_stat_getall(StatsHolder* stats_holder, const char* stat_name,
+                       HsInt* len, std::string** keys_ptr, int64_t** values_ptr,
+                       std::vector<std::string>** keys_,
+                       std::vector<int64_t>** values_) {
+  return perXStatsGetall<PerConnectorStats>(
+      stats_holder, &Stats::per_connector_stats, stat_name,
+      setPerConnectorStatsMember, len, keys_ptr, values_ptr, keys_, values_);
 }
 
 // ----------------------------------------------------------------------------

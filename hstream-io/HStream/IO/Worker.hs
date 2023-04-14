@@ -24,9 +24,10 @@ import           HStream.IO.Types
 import qualified HStream.Logger            as Log
 import           HStream.MetaStore.Types   (MetaHandle (..))
 import qualified HStream.Server.HStreamApi as API
+import qualified HStream.Stats             as Stats
 
-newWorker :: MetaHandle -> HStreamConfig -> IOOptions -> IO Worker
-newWorker mHandle hsConfig options = do
+newWorker :: MetaHandle  -> Stats.StatsHolder -> HStreamConfig -> IOOptions -> IO Worker
+newWorker mHandle statsHolder hsConfig options = do
   Log.info $ "new Worker with hsConfig:" <> Log.buildString (show hsConfig)
   ioTasksM <- C.newMVar HM.empty
   monitorTid <- newIORef undefined
@@ -58,7 +59,7 @@ createIOTask worker@Worker{..} taskId taskInfo@TaskInfo {..} cleanIfExists creat
     Nothing -> pure ()
     Just _  -> throwIO $ HE.ConnectorExists taskName
   let taskPath = optTasksPath options <> "/" <> taskId
-  task <- IOTask.newIOTask taskId workerHandle taskInfo taskPath
+  task <- IOTask.newIOTask taskId workerHandle statsHolder taskInfo taskPath
   IOTask.initIOTask task cleanIfExists
   IOTask.checkIOTask task
   when createMetaData $ M.createIOTaskMeta workerHandle taskName taskId taskInfo

@@ -72,6 +72,9 @@ foreign import ccall unsafe "hs_stats.h prefix##getall_##name"                 \
 #define STAT_DEFINE(name, _) PER_X_STAT_DEFINE(stream_stat_, name)
 #include "../include/per_stream_stats.inc"
 
+#define STAT_DEFINE(name, _) PER_X_STAT_DEFINE(connector_stat_, name)
+#include "../include/per_connector_stats.inc"
+
 #define STAT_DEFINE(name, _) PER_X_STAT_DEFINE(subscription_stat_, name)
 #include "../include/per_subscription_stats.inc"
 

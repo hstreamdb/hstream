@@ -30,10 +30,20 @@ $(JT.deriveJSON
       { JT.fieldLabelModifier = map toLower . drop 2 }
     ''KvSetMessage)
 
+data ReportMessage = ReportMessage
+  { rmDeliveredRecords :: Int
+  , rmDeliveredBytes   :: Int
+  -- , rmOffsets :: [J.Object]
+  } deriving (Show)
+$(JT.deriveJSON
+    JT.defaultOptions
+      { JT.fieldLabelModifier = map toLower . drop 2 }
+    ''ReportMessage)
+
 data ConnectorMessage
   = KvGet KvGetMessage
   | KvSet KvSetMessage
-  | Report
+  | Report ReportMessage
   deriving (Show)
 
 data ConnectorRequest
@@ -48,7 +58,7 @@ instance J.FromJSON ConnectorRequest where
     <*> (v J..: "name" >>= \case
           ("KvGet" :: T.Text) -> KvGet <$> (v J..: "body")
           "KvSet" -> KvSet <$> (v J..: "body")
-          "Report" -> pure Report
+          "Report" -> Report <$> (v J..: "body")
           name -> fail $ "Unknown Connector Request:" ++ T.unpack name
         )
 
