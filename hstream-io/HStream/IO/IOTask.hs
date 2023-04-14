@@ -28,9 +28,11 @@ import qualified HStream.IO.Meta            as M
 import           HStream.IO.Types
 import qualified HStream.Logger             as Log
 import qualified HStream.MetaStore.Types    as M
+import qualified HStream.Stats              as Stats
+import qualified HStream.Utils              as Utils
 
-newIOTask :: T.Text -> M.MetaHandle -> TaskInfo -> T.Text -> IO IOTask
-newIOTask taskId taskHandle taskInfo path = do
+newIOTask :: T.Text -> M.MetaHandle -> Stats.StatsHolder -> TaskInfo -> T.Text -> IO IOTask
+newIOTask taskId taskHandle taskStatsHolder taskInfo path = do
   process' <- newIORef Nothing
   statusM  <- C.newMVar NEW
   let taskPath = T.unpack path
@@ -96,7 +98,11 @@ handleConnectorRequest ioTask MSG.ConnectorRequest{..} = do
 handleConnectorMessage :: IOTask -> MSG.ConnectorMessage -> IO J.Value
 handleConnectorMessage IOTask{..} (MSG.KvGet MSG.KvGetMessage{..}) = J.toJSON <$> M.getTaskKv taskHandle taskId kgKey
 handleConnectorMessage IOTask{..} (MSG.KvSet MSG.KvSetMessage{..}) = J.Null <$ M.setTaskKv taskHandle taskId ksKey ksValue
-handleConnectorMessage _ MSG.Report = pure J.Null
+handleConnectorMessage IOTask{..} (MSG.Report MSG.ReportMessage{..}) = do
+  Stats.connector_stat_add_delivered_in_records taskStatsHolder cTaskName (fromIntegral rmdeliveredRecords)
+  Stats.connector_stat_add_delivered_in_bytes taskStatsHolder cTaskName (fromIntegral rmdeliveredBytes)
+  pure J.Null
+  where cTaskName = Utils.textToCBytes (taskName taskInfo)
 
 -- runIOTaskWithRetry :: IOTask -> IO ()
 -- runIOTaskWithRetry task@IOTask{..} =

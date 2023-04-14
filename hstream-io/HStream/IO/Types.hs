@@ -26,6 +26,7 @@ import qualified HStream.Exception           as E
 import           HStream.MetaStore.Types     (FHandle, HasPath (..), MetaHandle,
                                               RHandle (..))
 import qualified HStream.Server.HStreamApi   as API
+import qualified HStream.Stats               as Stats
 import qualified HStream.ThirdParty.Protobuf as Grpc
 
 data IOTaskType = SOURCE | SINK
@@ -70,12 +71,13 @@ data IOOptions = IOOptions
 type TaskProcess = TP.Process IO.Handle IO.Handle IO.Handle
 
 data IOTask = IOTask
-  { taskId     :: T.Text
-  , taskInfo   :: TaskInfo
-  , taskPath   :: FilePath
-  , taskHandle :: MetaHandle
-  , process'   :: IORef (Maybe TaskProcess)
-  , statusM    :: C.MVar IOTaskStatus
+  { taskId          :: T.Text
+  , taskInfo        :: TaskInfo
+  , taskPath        :: FilePath
+  , taskHandle      :: MetaHandle
+  , process'        :: IORef (Maybe TaskProcess)
+  , statusM         :: C.MVar IOTaskStatus
+  , taskStatsHolder :: Stats.StatsHolder
   }
 
 type ZkUrl = T.Text
@@ -96,6 +98,7 @@ data Worker = Worker
   , ioTasksM     :: C.MVar (HM.HashMap T.Text IOTask)
   , monitorTid   :: IORef C.ThreadId
   , workerHandle :: MetaHandle
+  , statsHolder  :: Stats.StatsHolder
   }
 
 data TaskMeta = TaskMeta {

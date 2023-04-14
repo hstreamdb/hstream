@@ -69,6 +69,11 @@ module HStream.Stats
   , serverHistogramAdd
   , serverHistogramEstimatePercentiles
   , serverHistogramEstimatePercentile
+
+    -- * PerConnectorStats
+    -- ** Counter
+  , CounterExports(connector, delivered_in_records)
+  , CounterExports(connector, delivered_in_bytes)
   ) where
 
 import           Control.Monad            (forM_, when)
@@ -227,6 +232,13 @@ stream_time_series_getall (StatsHolder holder) name intervals =
                   else do Log.fatal "stream_time_series_getall failed!"
                           pure Map.empty
     cfun = I.c_stream_time_series_getall_by_name
+
+-- Connector
+#define STAT_DEFINE(name, _)                                                   \
+PER_X_STAT_ADD(connector_stat_, name)                                          \
+PER_X_STAT_GET(connector_stat_, name)                                          \
+PER_X_STAT_GETALL_SEP(connector_stat_, name)
+#include "../include/per_connector_stats.inc"
 
 #define STAT_DEFINE(name, _)                                                   \
 PER_X_STAT_ADD(subscription_stat_, name)                                       \

@@ -83,6 +83,7 @@ initializeServer opts@ServerOpts{..} gossipContext hh db_m = do
   ioWorker <-
     IO.newWorker
       hh
+      statsHolder
       (IO.HStreamConfig (cBytesToText ("hstream://" <> CB.pack _serverAddress <> ":" <> CB.pack (show _serverPort))))
       _ioOptions
 

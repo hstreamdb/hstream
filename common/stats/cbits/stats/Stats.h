@@ -85,6 +85,22 @@ struct PerStreamStats {
 };
 
 // ----------------------------------------------------------------------------
+// PerConnectorStats
+//
+struct PerConnectorStats {
+#define STAT_DEFINE(name, _) StatsCounter name##_counter{};
+#include "per_connector_stats.inc"
+  void aggregate(PerConnectorStats const& other, StatsAggOptional agg_override);
+  // Show all per_connector_stats to a json formatted string.
+  folly::dynamic toJsonObj();
+  std::string toJson();
+
+  // Mutex almost exclusively locked by one thread since PerConnectorStats
+  // objects are contained in thread-local stats
+  std::mutex mutex;
+};
+
+// ----------------------------------------------------------------------------
 // PerSubscriptionStats
 
 using PerSubscriptionTimeSeries = MultiLevelTimeSeriesWrapper<int64_t>;
@@ -238,6 +254,11 @@ struct Stats {
   folly::Synchronized<
       std::unordered_map<std::string, std::shared_ptr<PerStreamStats>>>
       per_stream_stats;
+
+  // Per-connector stats
+  folly::Synchronized<
+      std::unordered_map<std::string, std::shared_ptr<PerConnectorStats>>>
+      per_connector_stats;
 
   // Per-subscription stats
   folly::Synchronized<

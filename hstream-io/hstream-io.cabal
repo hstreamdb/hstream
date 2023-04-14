@@ -60,6 +60,7 @@ library
     , hstream-api-hs
     , hstream-common
     , hstream-common-base
+    , hstream-common-stats
     , hstream-sql
     , scientific
     , stm
