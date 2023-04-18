@@ -105,19 +105,13 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
             _  -> do
               sendResp $ V.map (flowObjectToJsonObject . dcRow) (V.fromList dcbChanges)
     CreateViewPlan view ins out builder accumulation -> do
-      validateNameAndThrow view
+      validateNameAndThrow ResView view
       P.ViewInfo{viewQuery=P.QueryInfo{..}} <-
         Core.createView' sc view ins out builder accumulation commandQueryStmtText
       pure $ API.CommandQueryResponse (mkVectorStruct queryId "view_query_id")
 #else
     SelectPlan {} -> discard "ExecuteViewQuery"
-    CreateViewPlan sources sink view builder persist -> do
-      validateNameAndThrow sink
-      validateNameAndThrow view
-      queryId <- newRandomText 10
-      P.ViewInfo{viewQuery=P.QueryInfo{..}} <-
-        Core.createView' sc view sources sink builder persist commandQueryStmtText queryId
-      pure $ API.CommandQueryResponse (mkVectorStruct queryId "view_query_id")
+    CreateViewPlan sources sink view builder persist -> discard "CreateQuery"
 #endif
     ExplainPlan plan -> pure $ API.CommandQueryResponse (mkVectorStruct plan "explain")
     PausePlan (PauseObjectConnector name) -> do
@@ -161,7 +155,7 @@ sendToClient metaHandle qid streamName SourceConnectorWithoutCkp{..} streamSend 
       let (objects' :: [Maybe Aeson.Object]) = Aeson.decode' . srcValue <$> sourceRecords
           structs = jsonObjectToStruct . fromJust <$> filter isJust objects'
       return (void $ streamSendMany structs, return ())
-    Just _   -> throwIO $ HE.QueryIsNotRunning ""
+    Just _   -> throwIO $ HE.QueryNotRunning ""
     _        -> throwIO $ HE.UnknownPushQueryStatus ""
 
     . (P.queryState <$>)
@@ -195,7 +189,6 @@ createQueryWithNamespace'
     plan <- streamCodegen createQueryRequestSql
     case plan of
       CreateBySelectPlan stream ins out builder factor -> do
-        validateNameAndThrow stream
         let sources = addNamespace . inStream <$> ins  -- namespace
             sink    = addNamespace stream              -- namespace
         roles_m <- mapM (findIdentifierRole sc) sources
@@ -216,7 +209,8 @@ createQueryWithNamespace'
     parseAndRefine createQueryRequestSql >>= \case
       RQCreate (RCreateAs stream select rOptions) -> hstreamCodegen (RQCreate (RCreateAs (namespace <> stream) (modifySelect namespace select) rOptions)) >>= \case
         CreateBySelectPlan sources sink builder factor persist -> do
-          validateNameAndThrow sink
+          mapM_ (validateNameAndThrow ResStream) sources
+          validateNameAndThrow ResStream sink
           roles_m <- mapM (findIdentifierRole sc) sources
           unless (all isJust roles_m) $ do
             Log.warning $ "At least one of the streams/views do not exist: "
@@ -242,7 +236,7 @@ createQueryWithNamespace'
         _ -> throw $ HE.WrongExecutionPlan "Create query only support create stream/view <name> as select statements"
       RQCreate (RCreateView view select) -> hstreamCodegen (RQCreate (RCreateView (namespace <> view) (modifySelect namespace select))) >>= \case
         CreateViewPlan sources sink view builder persist -> do
-          validateNameAndThrow view
+          validateNameAndThrow ResView view
           Core.createView' sc view sources sink builder persist createQueryRequestSql createQueryRequestQueryName
           >>= hstreamViewToQuery metaHandle
         _ -> throw $ HE.WrongExecutionPlan "Create query only support create stream/view <name> as select statements"
@@ -270,7 +264,7 @@ deleteQuery ServerContext{..} DeleteQueryRequest{..} = do
   getMeta @P.QueryStatus deleteQueryRequestId metaHandle >>= \case
     Nothing -> throwIO $ HE.QueryNotFound deleteQueryRequestId
     Just P.QueryStatus{..} -> when (queryState /= Terminated) $
-      throwIO $ HE.QueryIsNotTerminated deleteQueryRequestId
+      throwIO $ HE.QueryNotTerminated deleteQueryRequestId
   getMeta @P.QVRelation deleteQueryRequestId metaHandle >>= \case
     Nothing               -> P.deleteQueryInfo deleteQueryRequestId metaHandle
     Just P.QVRelation{..} -> throwIO $ HE.FoundAssociatedView qvRelationViewName

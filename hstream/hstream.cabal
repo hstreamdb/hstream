@@ -87,6 +87,7 @@ library
     HStream.Server.Handler.Stream
     HStream.Server.Handler.Subscription
     HStream.Server.Handler.View
+    HStream.Server.MetaData.Exception
     HStream.Server.MetaData.Types
     HStream.Server.MetaData.Utils
     HStream.Server.MetaData.Value

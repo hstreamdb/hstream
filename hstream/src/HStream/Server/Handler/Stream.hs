@@ -59,12 +59,12 @@ createStreamHandler
   -> IO (ServerResponse 'Normal Stream)
 createStreamHandler sc (ServerNormalRequest _metadata stream) = defaultExceptionHandle $ do
   Log.debug $ "Receive Create Stream Request: " <> Log.buildString' stream
-  validateNameAndThrow $ streamStreamName stream
+  validateNameAndThrow ResStream $ streamStreamName stream
   C.createStream sc stream >>= returnResp
 
 handleCreateStream :: ServerContext -> G.UnaryHandler Stream Stream
 handleCreateStream sc _ stream = catchDefaultEx $ do
-  validateNameAndThrow $ streamStreamName stream
+  validateNameAndThrow ResStream $ streamStreamName stream
   C.createStream sc stream
 
 
@@ -82,13 +82,13 @@ deleteStreamHandler
   -> IO (ServerResponse 'Normal Empty)
 deleteStreamHandler sc (ServerNormalRequest _metadata request) = defaultExceptionHandle $ do
   Log.debug $ "Receive Delete Stream Request: " <> Log.buildString' request
-  validateNameAndThrow $ deleteStreamRequestStreamName request
+  validateNameAndThrow ResStream $ deleteStreamRequestStreamName request
   C.deleteStream sc request
   returnResp Empty
 
 handleDeleteStream :: ServerContext -> G.UnaryHandler DeleteStreamRequest Empty
 handleDeleteStream sc _ req = catchDefaultEx $ do
-  validateNameAndThrow $ deleteStreamRequestStreamName req
+  validateNameAndThrow ResStream $ deleteStreamRequestStreamName req
   C.deleteStream sc req >> pure Empty
 
 getStreamHandler
@@ -97,12 +97,12 @@ getStreamHandler
   -> IO (ServerResponse 'Normal GetStreamResponse)
 getStreamHandler sc (ServerNormalRequest _metadata request) = defaultExceptionHandle $ do
   Log.debug $ "Receive Get Stream Request: " <> Log.buildString' request
-  validateNameAndThrow $ getStreamRequestName request
+  validateNameAndThrow ResShardReader $ getStreamRequestName request
   C.getStream sc request >>= returnResp
 
 handleGetStream :: ServerContext -> G.UnaryHandler GetStreamRequest GetStreamResponse
 handleGetStream sc _ req = catchDefaultEx $ do
-  validateNameAndThrow $ getStreamRequestName req
+  validateNameAndThrow ResShardReader $ getStreamRequestName req
   C.getStream sc req
 
 listStreamsHandler
@@ -181,14 +181,14 @@ createShardReaderHandler
   -> IO (ServerResponse 'Normal CreateShardReaderResponse)
 createShardReaderHandler sc@ServerContext{..} (ServerNormalRequest _metadata request) = defaultExceptionHandle $ do
   Log.debug $ "Receive Create ShardReader Request" <> Log.buildString' (show request)
-  validateNameAndThrow $ createShardReaderRequestReaderId request
+  validateNameAndThrow ResShardReader $ createShardReaderRequestReaderId request
   C.createShardReader sc request >>= returnResp
 
 handleCreateShardReader
   :: ServerContext
   -> G.UnaryHandler CreateShardReaderRequest CreateShardReaderResponse
 handleCreateShardReader sc@ServerContext{..} _ req = catchDefaultEx $ do
-  validateNameAndThrow $ createShardReaderRequestReaderId req
+  validateNameAndThrow ResShardReader $ createShardReaderRequestReaderId req
   C.createShardReader sc req
 
 deleteShardReaderHandler
@@ -197,7 +197,7 @@ deleteShardReaderHandler
   -> IO (ServerResponse 'Normal Empty)
 deleteShardReaderHandler sc@ServerContext{..} (ServerNormalRequest _metadata request) = defaultExceptionHandle $ do
   Log.debug $ "Receive Delete ShardReader Request" <> Log.buildString' (show request)
-  validateNameAndThrow $ deleteShardReaderRequestReaderId request
+  validateNameAndThrow ResShardReader $ deleteShardReaderRequestReaderId request
   ServerNode{..} <- lookupResource' sc ResShardReader (deleteShardReaderRequestReaderId request)
   unless (serverNodeId == serverID) $
     throwIO $ HE.WrongServer "ShardReader is bound to a different node"
@@ -207,6 +207,7 @@ handleDeleteShardReader
   :: ServerContext
   -> G.UnaryHandler DeleteShardReaderRequest Empty
 handleDeleteShardReader sc@ServerContext{..} _ req = catchDefaultEx $ do
+  validateNameAndThrow ResShardReader $ deleteShardReaderRequestReaderId req
   ServerNode{..} <- lookupResource' sc ResShardReader (deleteShardReaderRequestReaderId req)
   unless (serverNodeId == serverID) $
     throwIO $ HE.WrongServer "ShardReader is bound to a different node"
@@ -217,6 +218,7 @@ readShardHandler
   -> ServerRequest 'Normal ReadShardRequest ReadShardResponse
   -> IO (ServerResponse 'Normal ReadShardResponse)
 readShardHandler sc (ServerNormalRequest _metadata request) = defaultExceptionHandle $ do
+  validateNameAndThrow ResShardReader $ readShardRequestReaderId request
   Log.debug $ "Receive read shard Request: " <> Log.buildString (show request)
   C.readShard sc request >>= returnResp . ReadShardResponse
 
@@ -224,6 +226,7 @@ handleReadShard
   :: ServerContext
   -> G.UnaryHandler ReadShardRequest ReadShardResponse
 handleReadShard sc _ req = catchDefaultEx $ do
+  validateNameAndThrow ResShardReader $ readShardRequestReaderId req
   ReadShardResponse <$> C.readShard sc req
 
 --------------------------------------------------------------------------------

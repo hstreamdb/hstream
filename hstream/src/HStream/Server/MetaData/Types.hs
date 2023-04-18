@@ -32,36 +32,39 @@ module HStream.Server.MetaData.Types
   ) where
 
 import           Control.Concurrent
-import           Data.Aeson                    (FromJSON (..), ToJSON (..))
-import qualified Data.HashMap.Strict           as HM
-import           Data.Int                      (Int64)
+import           Control.Exception                 (catches)
+import           Data.Aeson                        (FromJSON (..), ToJSON (..))
+import qualified Data.HashMap.Strict               as HM
+import           Data.Int                          (Int64)
 import           Data.IORef
-import           Data.Maybe                    (fromJust)
-import           Data.Text                     (Text)
-import           Data.Time.Clock.System        (SystemTime (MkSystemTime),
-                                                getSystemTime)
-import           Data.Word                     (Word32, Word64)
-import           GHC.Generics                  (Generic)
-import           GHC.IO                        (unsafePerformIO)
-import           ZooKeeper.Types               (ZHandle)
+import           Data.Maybe                        (fromJust)
+import           Data.Text                         (Text)
+import           Data.Time.Clock.System            (SystemTime (MkSystemTime),
+                                                    getSystemTime)
+import           Data.Word                         (Word32, Word64)
+import           GHC.Generics                      (Generic)
+import           GHC.IO                            (unsafePerformIO)
+import           ZooKeeper.Types                   (ZHandle)
 
-import           HStream.MetaStore.Types       (FHandle, HasPath (..),
-                                                MetaHandle,
-                                                MetaMulti (metaMulti),
-                                                MetaStore (..), MetaType,
-                                                RHandle)
-import qualified HStream.Server.ConnectorTypes as HCT
-import           HStream.Server.HStreamApi     (ServerNode (..),
-                                                Subscription (..))
-import           HStream.Server.Types          (ServerID, SubscriptionWrap (..))
-import qualified HStream.SQL.AST               as AST
-import qualified HStream.Store                 as S
-import qualified HStream.ThirdParty.Protobuf   as Proto
-import           HStream.Utils                 (TaskStatus (..), cBytesToText)
+import           HStream.MetaStore.Types           (FHandle, HasPath (..),
+                                                    MetaHandle,
+                                                    MetaMulti (metaMulti),
+                                                    MetaStore (..), MetaType,
+                                                    RHandle)
+import qualified HStream.Server.ConnectorTypes     as HCT
+import           HStream.Server.HStreamApi         (ServerNode (..),
+                                                    Subscription (..))
+import           HStream.Server.MetaData.Exception
+import           HStream.Server.Types              (ServerID,
+                                                    SubscriptionWrap (..))
+import qualified HStream.SQL.AST                   as AST
+import qualified HStream.Store                     as S
+import qualified HStream.ThirdParty.Protobuf       as Proto
+import           HStream.Utils
 #ifdef HStreamUseV2Engine
 import           DiffFlow.Types
 #else
-import qualified HStream.Processing.Stream     as HS
+import qualified HStream.Processing.Stream         as HS
 import           HStream.SQL.Codegen.V1
 #endif
 --------------------------------------------------------------------------------
@@ -118,14 +121,19 @@ rootPath = "/hstream"
 
 instance HasPath ShardReader ZHandle where
   myRootPath = rootPath <> "/shardReader"
+  myExceptionHandler = zkExceptionHandlers ResShardReader
 instance HasPath SubscriptionWrap ZHandle where
   myRootPath = rootPath <> "/subscriptions"
+  myExceptionHandler = zkExceptionHandlers ResSubscription
 instance HasPath QueryInfo ZHandle where
   myRootPath = rootPath <> "/queries"
+  myExceptionHandler = zkExceptionHandlers ResQuery
 instance HasPath ViewInfo ZHandle where
   myRootPath = rootPath <> "/views"
+  myExceptionHandler = zkExceptionHandlers ResView
 instance HasPath QueryStatus ZHandle where
   myRootPath = rootPath <> "/queryStatus"
+  myExceptionHandler = zkExceptionHandlers ResQuery
 instance HasPath Proto.Timestamp ZHandle where
   myRootPath = rootPath <> "/timestamp"
 instance HasPath TaskAllocation ZHandle where
@@ -135,14 +143,19 @@ instance HasPath QVRelation ZHandle where
 
 instance HasPath ShardReader RHandle where
   myRootPath = "readers"
+  myExceptionHandler = rqExceptionHandlers ResShardReader
 instance HasPath SubscriptionWrap RHandle where
   myRootPath = "subscriptions"
+  myExceptionHandler = rqExceptionHandlers ResSubscription
 instance HasPath QueryInfo RHandle where
   myRootPath = "queries"
+  myExceptionHandler = rqExceptionHandlers ResQuery
 instance HasPath ViewInfo RHandle where
   myRootPath = "views"
+  myExceptionHandler = rqExceptionHandlers ResView
 instance HasPath QueryStatus RHandle where
   myRootPath = "queryStatus"
+  myExceptionHandler = rqExceptionHandlers ResQuery
 instance HasPath Proto.Timestamp RHandle where
   myRootPath = "timestamp"
 instance HasPath TaskAllocation RHandle where
@@ -174,6 +187,7 @@ insertQuery qInfo@QueryInfo{..} h = do
             , insertMetaOp queryId QueryCreating h
             ]
             h
+    `catches` (rqExceptionHandlers ResQuery queryId ++ zkExceptionHandlers ResQuery queryId)
 
 insertViewQuery
   :: ( MetaType QueryInfo handle
@@ -191,6 +205,7 @@ insertViewQuery vInfo@ViewInfo{..} h = do
                                          , qvRelationViewName  = viewName} h
             ]
             h
+    `catches` (rqExceptionHandlers ResView viewName ++ zkExceptionHandlers ResView viewName)
 
 deleteQueryInfo :: (MetaType QueryInfo handle, MetaType QueryStatus handle, MetaMulti handle)
   => Text -> handle -> IO ()
@@ -199,6 +214,7 @@ deleteQueryInfo qid h = do
             , deleteMetaOp @QueryStatus qid Nothing h
             ]
             h
+    `catches` (rqExceptionHandlers ResView qid ++ zkExceptionHandlers ResView qid)
 
 deleteViewQuery
   :: ( MetaType QueryInfo handle
@@ -214,6 +230,7 @@ deleteViewQuery vName qName h = do
             , deleteMetaOp @QVRelation  qName Nothing h
             ]
             h
+    `catches` (rqExceptionHandlers ResView vName ++ zkExceptionHandlers ResView vName)
 
 getSubscriptionWithStream :: MetaType SubscriptionWrap handle => handle -> Text -> IO [SubscriptionWrap]
 getSubscriptionWithStream zk sName = do

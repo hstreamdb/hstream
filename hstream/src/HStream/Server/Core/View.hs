@@ -144,7 +144,7 @@ deleteView sc@ServerContext{..} name checkIfExist = do
       M.getMeta @P.QueryStatus queryId metaHandle >>= \case
         Nothing -> throwIO $ HE.QueryNotFound $ "Query " <> queryId <> " associated with view " <> name <> " is not found"
         Just P.QueryStatus{..} -> when (queryState /= Terminated) $ do
-           throwIO $ HE.QueryIsNotTerminated $ "Query " <> queryId <> " associated with view " <> name <> " is not terminated"
+           throwIO $ HE.QueryNotTerminated $ "Query " <> queryId <> " associated with view " <> name <> " is not terminated"
       P.deleteViewQuery name queryId metaHandle
       atomicModifyIORef' P.groupbyStores (\hm -> (HM.delete name hm, ()))
       return Empty

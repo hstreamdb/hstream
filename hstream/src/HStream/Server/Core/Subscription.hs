@@ -98,7 +98,7 @@ createSubscription ServerContext {..} sub@Subscription{..} = do
   unless streamExists $ do
     Log.debug $ "Try to create a subscription to a nonexistent stream. Stream Name: "
               <> Log.buildString' streamName
-    throwIO $ HE.EmptyStream subscriptionStreamName
+    throwIO $ HE.NonExistentStream subscriptionStreamName
   shards <- getShards scLDClient subscriptionStreamName
   startOffsets <- case subscriptionOffset of
     (Enumerated (Right SpecialOffsetEARLIEST)) -> return $ foldl' (\acc logId -> HM.insert logId S.LSN_MIN acc) HM.empty shards

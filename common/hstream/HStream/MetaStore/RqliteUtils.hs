@@ -285,6 +285,7 @@ throwRqHttpErrMsg txt msg = do
 debug :: Show a => a -> IO ()
 debug = Log.debug . Log.buildString'
 
+-- WARNING: PLEASE DO NOT EDIT FOLLOWING LINES
 tableNotFound :: T.Text
 tableNotFound = "not such table:"
 
