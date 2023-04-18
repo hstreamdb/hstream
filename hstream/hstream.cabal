@@ -82,6 +82,7 @@ library
     HStream.Server.Handler.Admin
     HStream.Server.Handler.Cluster
     HStream.Server.Handler.Connector
+    HStream.Server.Handler.Extra
     HStream.Server.Handler.Query
     HStream.Server.Handler.Stats
     HStream.Server.Handler.Stream

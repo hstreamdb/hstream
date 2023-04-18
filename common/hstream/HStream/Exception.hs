@@ -47,6 +47,7 @@ module HStream.Exception
   , InvalidStatsInterval (InvalidStatsInterval)
   , InvalidSqlStatement (InvalidSqlStatement)
   , InvalidConnectorType (InvalidConnectorType)
+  , SQLNotSupportedByParseSQL(SQLNotSupportedByParseSQL)
 
     -- * Exception: SomeDeadlineExceeded
     --
@@ -414,6 +415,7 @@ MAKE_EX_1_DEFMSG(SomeInvalidArgument, InvalidStatsType, String, API.ErrorCodeInt
 MAKE_EX_1_DEFMSG(SomeInvalidArgument, InvalidStatsInterval, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeInvalidArgument, InvalidSqlStatement, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeInvalidArgument, InvalidConnectorType, Text, API.ErrorCodeConnectorInvalidType)
+MAKE_EX_1_DEFMSG(SomeInvalidArgument, SQLNotSupportedByParseSQL, Text, API.ErrorCodeInternalError)
 
 invalidIdentifier :: API.ResourceType -> String -> InvalidObjectIdentifier
 invalidIdentifier API.ResourceTypeResStream       = InvalidObjectIdentifier API.ErrorCodeStreamInvalidObjectIdentifier
