@@ -37,6 +37,7 @@ import           Network.GRPC.HighLevel.Generated
 
 import qualified Data.Aeson.KeyMap                as A
 import qualified Data.Text.Encoding               as T
+import           HStream.Exception                (invalidIdentifier)
 import qualified HStream.Exception                as HE
 import qualified HStream.IO.Types                 as IO
 import qualified HStream.IO.Worker                as IO
@@ -46,12 +47,12 @@ import           HStream.Server.Exception         (catchDefaultEx,
                                                    defaultExceptionHandle)
 import           HStream.Server.HStreamApi
 import           HStream.Server.Types
+import           HStream.Server.Validation        (ValidationError (ConnectorNameValidateErr),
+                                                   validateCreateConnector)
 import           HStream.ThirdParty.Protobuf      (Empty (..))
 import           HStream.Utils                    (ResourceType (..),
-                                                   ValidationError (ConnectorNameValidateErr),
                                                    returnResp,
-                                                   validateCreateConnector,
-                                                   validateNameAndThrowSpecificExp)
+                                                   validateNameAndThrow)
 import qualified HStream.Utils                    as Utils
 
 createConnectorHandler
@@ -61,17 +62,17 @@ createConnectorHandler
 createConnectorHandler sc (ServerNormalRequest _ req) = defaultExceptionHandle $ do
     Log.debug "Receive Create Connector Request"
     req' <- case validateCreateConnector req of
-        Left (ConnectorNameValidateErr s) -> throwIO (HE.InvalidConnectorName s)
-        Left _ -> throwIO (HE.UnexpectedError "unexpected error type")
-        Right s -> pure s
+        Left (ConnectorNameValidateErr s) -> throwIO (invalidIdentifier ResConnector s)
+        Left _                            -> throwIO (HE.UnexpectedError "unexpected validation error type")
+        Right s                           -> pure s
     createIOTaskFromRequest sc req' >>= returnResp
 
 handleCreateConnector :: ServerContext -> G.UnaryHandler CreateConnectorRequest Connector
 handleCreateConnector sc _ req = catchDefaultEx $ do
   req' <- case validateCreateConnector req of
-      Left (ConnectorNameValidateErr s) -> throwIO (HE.InvalidConnectorName s)
-      Left _ -> throwIO (HE.UnexpectedError "unexpected error type")
-      Right s -> pure s
+      Left (ConnectorNameValidateErr s) -> throwIO (invalidIdentifier ResConnector s)
+      Left _                            -> throwIO (HE.UnexpectedError "unexpected validation error type")
+      Right s                           -> pure s
   createIOTaskFromRequest sc req'
 
 listConnectorsHandler
@@ -123,7 +124,7 @@ deleteConnectorHandler sc@ServerContext{..}
   (ServerNormalRequest _metadata DeleteConnectorRequest{..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive Delete Connector Request. "
     <> "Connector Name: " <> Log.build deleteConnectorRequestName
-  validateNameAndThrowSpecificExp deleteConnectorRequestName HE.InvalidConnectorName
+  validateNameAndThrow ResConnector deleteConnectorRequestName
   ServerNode{..} <- lookupResource' sc ResConnector deleteConnectorRequestName
   unless (serverNodeId == serverID) $
     throwIO $ HE.WrongServer "Connector is bound to a different node"
@@ -134,7 +135,7 @@ handleDeleteConnector :: ServerContext -> G.UnaryHandler DeleteConnectorRequest 
 handleDeleteConnector sc@ServerContext{..} _ DeleteConnectorRequest{..} = catchDefaultEx $ do
   Log.debug $ "Receive Delete Connector Request. "
     <> "Connector Name: " <> Log.build deleteConnectorRequestName
-  validateNameAndThrowSpecificExp deleteConnectorRequestName HE.InvalidConnectorName
+  validateNameAndThrow ResConnector deleteConnectorRequestName
   ServerNode{..} <- lookupResource' sc ResConnector deleteConnectorRequestName
   unless (serverNodeId == serverID) $
     throwIO $ HE.WrongServer "Connector is bound to a different node"
@@ -189,9 +190,8 @@ createIOTaskFromRequest sc CreateConnectorRequest{..} = do
 
 createIOTask :: ServerContext -> T.Text -> T.Text -> T.Text -> T.Text -> IO Connector
 createIOTask sc@ServerContext{scIOWorker = worker@IO.Worker{..}, ..} name typ target cfg = do
---  validateNameAndThrow ResConnector name
   -- FIXME: Can we remove this validation ?
-  validateNameAndThrowSpecificExp name HE.InvalidConnectorName
+  validateNameAndThrow ResConnector name
   ServerNode{..} <- lookupResource' sc ResConnector name
   unless (serverNodeId == serverID) $
     throwIO $ HE.WrongServer "Connector is bound to a different node"

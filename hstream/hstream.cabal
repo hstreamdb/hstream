@@ -73,6 +73,7 @@ library
     HStream.Server.QueryWorker
     HStream.Server.Shard
     HStream.Server.Types
+    HStream.Server.Validation
 
   other-modules:
     HStream.Server.Core.Query

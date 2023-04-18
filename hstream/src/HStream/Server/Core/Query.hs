@@ -20,26 +20,18 @@ module HStream.Server.Core.Query
   , terminateQuery
   ) where
 
-import           Control.Concurrent
-import           Control.Concurrent.Async         (async, cancel, wait)
 import           Control.Exception                (throw, throwIO)
 import           Control.Monad
 import qualified Data.Aeson                       as Aeson
 import           Data.Functor                     ((<&>))
 import qualified Data.HashMap.Strict              as HM
-import           Data.IORef                       (atomicModifyIORef',
-                                                   readIORef)
 import qualified Data.List                        as L
-import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (fromJust, isJust)
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
-import           Network.GRPC.HighLevel           (StreamSend)
 import           Network.GRPC.HighLevel.Generated (GRPCIOError)
-import           Network.GRPC.HighLevel.Server    (ServerCallMetadata)
 import           Proto3.Suite.Class               (def)
 import qualified Proto3.Suite.JSONPB              as PB
-import qualified Z.Data.CBytes                    as CB
 
 import qualified HStream.Exception                as HE
 import qualified HStream.IO.Worker                as IO
@@ -50,20 +42,15 @@ import           HStream.Server.Core.Common
 import qualified HStream.Server.Core.Stream       as Core
 import qualified HStream.Server.Core.View         as Core
 import           HStream.Server.Handler.Common
-import           HStream.Server.Handler.Connector
-import qualified HStream.Server.HStore            as HStore
 import           HStream.Server.HStreamApi
 import qualified HStream.Server.HStreamApi        as API
 import qualified HStream.Server.MetaData
 import qualified HStream.Server.MetaData          as P
-import qualified HStream.Server.Shard             as Shard
 import           HStream.Server.Types
 import           HStream.SQL
-import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils
 import qualified HStream.Utils.Aeson              as AesonComp
-import           HStream.Utils.Validation         (validateNameAndThrow)
 #ifdef HStreamUseV2Engine
 import           DiffFlow.Types                   (DataChange (..),
                                                    DataChangeBatch (..),
@@ -74,10 +61,7 @@ import qualified HStream.SQL.Codegen              as HSC
 #else
 import           Data.IORef
 import           HStream.Processing.Connector
-import qualified HStream.Processing.Processor     as HP
 import           HStream.Processing.Type
-import           HStream.SQL.Codegen.V1
-import           HStream.SQL.Codegen.V1           as HSC
 #endif
 
 -------------------------------------------------------------------------------
