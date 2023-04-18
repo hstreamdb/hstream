@@ -165,13 +165,35 @@ decodeRecordBatch dataRecord = do
 --   mapM_ (terminateQuery sc) getRelatedQueries
 
 terminateQuery :: ServerContext -> Text -> IO ()
-terminateQuery ServerContext{..} qid = do
+terminateQuery sc@ServerContext{..} qid = do
   hmapQ <- readMVar runningQueries
   -- FIXME: add version and compare state when terminating
-  mapM_ killThread (HM.lookup qid hmapQ)
-  M.updateMeta qid P.QueryTerminated Nothing metaHandle
-  void $ swapMVar runningQueries (HM.delete qid hmapQ)
-  Log.debug $ "Terminated query: " <> Log.build qid
+  mQStatus <- M.getMetaWithVer @P.QueryStatus qid metaHandle
+  case (mQStatus, HM.lookup qid hmapQ) of
+    (Nothing, Nothing) -> throwIO $ HE.QueryNotFound qid
+    (Nothing, Just tid) -> do
+      Log.warning $ "Query " <> Log.build qid
+                 <> "has been deleted from meta store for some unknown reason, "
+                 <> "the query thread will now be killed"
+      killThread tid
+    (Just (P.QueryRunning, ver), Just tid) -> do
+      try @SomeException (M.updateMeta qid P.QueryTerminated (Just ver) metaHandle) >>= \case
+        Right _ -> killThread tid >> void (swapMVar runningQueries (HM.delete qid hmapQ))
+        Left _  -> case HM.lookup qid hmapQ of
+          Just tid -> terminateQuery sc qid
+          Nothing  -> throwIO $ HE.QueryAlreadyTerminated qid
+    (Just (P.QueryRunning, ver), Nothing) -> do
+        M.getMetaWithVer @P.QueryStatus qid metaHandle >>= \case
+          Just (P.QueryTerminated, ver') -> throwIO $ HE.QueryAlreadyTerminated qid
+          Just (_, ver') -> do
+            Log.warning $ "Inconsistent state for query " <> Log.build qid <> " , and the state will be set to Terminated"
+            M.updateMeta qid P.QueryTerminated (Just ver') metaHandle
+          Nothing -> throwIO $ HE.QueryNotFound qid
+    (Just (P.QueryTerminated, ver), Just tid) -> do
+      Log.warning $ "Inconsistent state for query " <> Log.build qid <> " and thread id " <> Log.buildString' tid
+                 <> " will be killed and removed."
+      killThread tid >> void (swapMVar runningQueries (HM.delete qid hmapQ))
+    _ -> throwIO $ HE.QueryNotRunning qid
 
 mkAllocationKey :: ResourceType -> T.Text -> T.Text
 mkAllocationKey rtype rid = T.pack (show rtype) <> "_" <> rid

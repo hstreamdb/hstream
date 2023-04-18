@@ -114,6 +114,8 @@ module HStream.Exception
   , ResourceAllocationException (ResourceAllocationException)
   , QueryNotTerminated (QueryNotTerminated)
   , FoundAssociatedView (FoundAssociatedView)
+  , QueryAlreadyTerminated(QueryAlreadyTerminated)
+  , QueryNotAborted(QueryNotAborted)
 
     -- * Exception: SomeAborted
     --
@@ -541,7 +543,9 @@ MAKE_EX_1_DEFMSG(SomeFailedPrecondition, ShardCanNotMerge, String, API.ErrorCode
 MAKE_EX_1_DEFMSG(SomeFailedPrecondition, RQLiteRowBadVersion, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeFailedPrecondition, LocalMetaStoreObjectBadVersion, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeFailedPrecondition, QueryNotTerminated, Text, API.ErrorCodeQueryNotTerminated)
+MAKE_EX_1_DEFMSG(SomeFailedPrecondition, QueryNotAborted, Text, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeFailedPrecondition, FoundAssociatedView, Text, API.ErrorCodeQueryFoundAssociatedView)
+MAKE_EX_1_DEFMSG(SomeFailedPrecondition, QueryAlreadyTerminated, Text, API.ErrorCodeQueryAlreadyTerminated)
 
 -------------------------------------------------------------------------------
 -- Exception: SomeAborted
@@ -557,7 +561,7 @@ MAKE_EX_1_DEFMSG(SomeAborted, SubscriptionIsDeleting, String, API.ErrorCodeInter
 MAKE_EX_1_DEFMSG(SomeAborted, SubscriptionOnDifferentNode, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeAborted, SubscriptionInvalidError, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeAborted, ConsumerInvalidError, String, API.ErrorCodeInternalError)
-MAKE_EX_1_DEFMSG(SomeAborted, QueryNotRunning, String, API.ErrorCodeQueryNotRunning)
+MAKE_EX_1_DEFMSG(SomeAborted, QueryNotRunning, Text, API.ErrorCodeQueryNotRunning)
 
 -------------------------------------------------------------------------------
 -- Exception: SomeOutOfRange
