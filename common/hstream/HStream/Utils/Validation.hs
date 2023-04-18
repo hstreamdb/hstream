@@ -2,7 +2,7 @@
 
 module HStream.Utils.Validation where
 
-import           Control.Exception         (throwIO)
+import           Control.Exception         (Exception, throwIO)
 import           Data.Char                 (isAlphaNum, isLetter)
 import qualified Data.Text                 as T
 
@@ -35,6 +35,14 @@ validateNameAndThrow rType n =
     Left s   -> do
       Log.warning $ "Invalid Object Identifier:" <> Log.build s
       throwIO (invalidIdentifier rType s)
+    Right _ -> return ()
+
+validateNameAndThrowSpecificExp :: Exception e => T.Text -> (String -> e) -> IO ()
+validateNameAndThrowSpecificExp txt excp =
+  case validateNameText txt of
+    Left s  -> do
+      Log.warning $ "{" <> Log.buildString' txt <> "} is a Invalid Object Identifier:" <> Log.build s
+      throwIO (excp s)
     Right _ -> return ()
 
 validateStream :: API.Stream -> Either ValidationError API.Stream

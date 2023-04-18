@@ -52,7 +52,7 @@ import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils                    (ResourceType (ResSubscription),
                                                    ValidationError (SubscriptionIdValidateErr),
                                                    returnResp,
-                                                   validateNameAndThrow,
+                                                   validateNameAndThrowSpecificExp,
                                                    validateSubscription)
 
 -------------------------------------------------------------------------------
@@ -90,13 +90,13 @@ getSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata req)
   ServerNode{..} <- lookupResource' ctx ResSubscription subId
   unless (serverNodeId == serverID) $
     throwIO $ HE.SubscriptionOnDifferentNode "Subscription is bound to a different node"
-  validateNameAndThrow ResSubscription $ getSubscriptionRequestId req
+--  validateNameAndThrow ResSubscription $ getSubscriptionRequestId req
   Core.getSubscription ctx req >>= returnResp
 
 handleGetSubscription :: ServerContext -> G.UnaryHandler GetSubscriptionRequest GetSubscriptionResponse
 handleGetSubscription ctx@ServerContext{..} _ req = catchDefaultEx $ do
   let subId = getSubscriptionRequestId req
-  validateNameAndThrow ResSubscription $ getSubscriptionRequestId req
+--  validateNameAndThrow ResSubscription $ getSubscriptionRequestId req
   ServerNode{..} <- lookupResource' ctx ResSubscription subId
   unless (serverNodeId == serverID) $
     throwIO $ HE.SubscriptionOnDifferentNode "Subscription is bound to a different node"
@@ -132,6 +132,7 @@ deleteSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata r
   Log.debug $ "Receive deleteSubscription request: " <> Log.buildString' req
   let subId = deleteSubscriptionRequestSubscriptionId req
 --  validateNameAndThrow ResSubscription subId
+  validateNameAndThrowSpecificExp subId HE.InvalidSubscriptionId
   ServerNode{..} <- lookupResource' ctx ResSubscription subId
   unless (serverNodeId == serverID) $
     throwIO $ HE.SubscriptionOnDifferentNode "Subscription is bound to a different node"
@@ -144,6 +145,7 @@ handleDeleteSubscription :: ServerContext -> G.UnaryHandler DeleteSubscriptionRe
 handleDeleteSubscription ctx@ServerContext{..} _ req = catchDefaultEx $ do
   let subId = deleteSubscriptionRequestSubscriptionId req
 --  validateNameAndThrow ResSubscription subId
+  validateNameAndThrowSpecificExp subId HE.InvalidSubscriptionId
   ServerNode{..} <- lookupResource' ctx ResSubscription subId
   unless (serverNodeId == serverID) $
     throwIO $ HE.SubscriptionOnDifferentNode "Subscription is bound to a different node"

@@ -27,17 +27,19 @@ import qualified HsGrpc.Server                     as G
 import           Network.GRPC.HighLevel.Generated
 import qualified Proto3.Suite                      as PT
 
-import qualified HStream.Logger                    as Log
-import qualified HStream.Server.Core.View          as Core
-import           HStream.Server.Exception          (catchDefaultEx,
-                                                    defaultExceptionHandle)
+import           HStream.Exception                (InvalidViewId (InvalidViewId))
+import qualified HStream.Logger                   as Log
+import qualified HStream.Server.Core.View         as Core
+import           HStream.Server.Exception         (catchDefaultEx,
+                                                   defaultExceptionHandle)
 import           HStream.Server.HStreamApi
 import           HStream.Server.MetaData.Exception
 import           HStream.Server.Types
 import           HStream.ThirdParty.Protobuf       (Empty (..), Struct)
 import           HStream.Utils
 import           HStream.ThirdParty.Protobuf      (Empty (..))
-import           HStream.Utils                    (returnResp)
+import           HStream.Utils                    (returnResp,
+                                                   validateNameAndThrowSpecificExp)
 
 listViewsHandler
   :: ServerContext
@@ -73,12 +75,14 @@ deleteViewHandler
 deleteViewHandler sc (ServerNormalRequest _metadata DeleteViewRequest{..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive Delete View Request. "
            <> "View ID:" <> Log.buildString (T.unpack deleteViewRequestViewId)
+  validateNameAndThrowSpecificExp deleteViewRequestViewId InvalidViewId
   returnResp =<< Core.deleteView sc deleteViewRequestViewId deleteViewRequestIgnoreNonExist
 
 handleDeleteView :: ServerContext -> G.UnaryHandler DeleteViewRequest Empty
 handleDeleteView sc _ DeleteViewRequest{..} = catchDefaultEx $ do
   Log.debug $ "Receive Delete View Request. "
            <> "View ID:" <> Log.buildString (T.unpack deleteViewRequestViewId)
+  validateNameAndThrowSpecificExp deleteViewRequestViewId InvalidViewId
   Core.deleteView sc deleteViewRequestViewId deleteViewRequestIgnoreNonExist
 
 executeViewQueryHandler

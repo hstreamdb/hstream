@@ -185,6 +185,7 @@ terminateQueryHandler ctx (ServerNormalRequest _metadata API.TerminateQueryReque
   Log.debug $ "Receive Terminate Query Request. "
     <> "Query ID: " <> Log.buildString (show terminateQueryRequestQueryId)
 --  validateNameAndThrow ResQuery terminateQueryRequestQueryId
+  validateNameAndThrowSpecificExp terminateQueryRequestQueryId HE.InvalidQueryId
   validateQueryAllocation ctx terminateQueryRequestQueryId
   Core.terminateQuery ctx terminateQueryRequestQueryId
   returnResp Empty
@@ -195,6 +196,7 @@ handleTerminateQuery ctx _ API.TerminateQueryRequest{..} = catchQueryEx $ do
   Log.debug $ "Receive Terminate Query Request. "
     <> "Query ID: " <> Log.buildString (show terminateQueryRequestQueryId)
 --  validateNameAndThrow ResQuery terminateQueryRequestQueryId
+  validateNameAndThrowSpecificExp terminateQueryRequestQueryId HE.InvalidQueryId
   validateQueryAllocation ctx terminateQueryRequestQueryId
   Core.terminateQuery ctx terminateQueryRequestQueryId
   return Empty
@@ -208,6 +210,7 @@ deleteQueryHandler ctx (ServerNormalRequest _metadata req@API.DeleteQueryRequest
     Log.debug $ "Receive Delete Query Request. "
       <> "Query ID: " <> Log.build deleteQueryRequestId
 --    validateNameAndThrow ResQuery deleteQueryRequestId
+    validateNameAndThrowSpecificExp deleteQueryRequestId HE.InvalidQueryId
     validateQueryAllocation ctx deleteQueryRequestId
     Core.deleteQuery ctx req
     returnResp Empty
@@ -217,6 +220,7 @@ handleDeleteQuery ctx _ req@API.DeleteQueryRequest{..} = catchQueryEx $ do
   Log.debug $ "Receive Delete Query Request. "
            <> "Query ID: " <> Log.build deleteQueryRequestId
   validateNameAndThrow ResQuery deleteQueryRequestId
+  validateNameAndThrowSpecificExp deleteQueryRequestId HE.InvalidQueryId
   validateQueryAllocation ctx deleteQueryRequestId
   Core.deleteQuery ctx req
   pure Empty
