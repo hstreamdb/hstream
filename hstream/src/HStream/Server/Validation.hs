@@ -1,6 +1,15 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module HStream.Server.Validation where
+module HStream.Server.Validation
+  ( ValidationError (..)
+  , validateStream
+  , validateSubscription
+  , validateCreateShardReader
+  , validateCreateConnector
+  , validateCreateQuery
+  , validateCreateQueryWithNamespace
+  )
+where
 
 import qualified Data.Text                 as T
 
@@ -63,39 +72,33 @@ validateCreateQueryWithNamespace API.CreateQueryWithNamespaceRequest{..} = do
                                       <*> validateQueryName createQueryWithNamespaceRequestQueryName
                                       <*> Right createQueryWithNamespaceRequestNamespace
 
-validateSql :: T.Text -> Either ValidationError T.Text
-validateSql x = if T.length x > 0 then Right x else Left . SQLStatementValidateErr $ "Empty Sql statement."
+--------------------------------------------------------------------------------------------------------------------------------
 
-validateShardReaderId :: T.Text -> Either ValidationError T.Text
-validateShardReaderId x = case validateNameText x of
+validateIdentifier :: (String -> ValidationError) -> T.Text -> Either ValidationError T.Text
+validateIdentifier err x = case validateNameText x of
   Right res -> Right res
-  Left s    -> Left (ShardReaderIdValidateErr s)
+  Left s    -> Left (err s)
 
 validateStreamName :: T.Text -> Either ValidationError T.Text
-validateStreamName x = case validateNameText x of
-  Right res -> Right res
-  Left s    -> Left (StreamNameValidateErr s)
+validateStreamName = validateIdentifier StreamNameValidateErr
+
+validateSubscriptionId :: T.Text -> Either ValidationError T.Text
+validateSubscriptionId = validateIdentifier SubscriptionIdValidateErr
+
+validateShardReaderId :: T.Text -> Either ValidationError T.Text
+validateShardReaderId = validateIdentifier ShardReaderIdValidateErr
+
+validateConnectorName :: T.Text -> Either ValidationError T.Text
+validateConnectorName = validateIdentifier ConnectorNameValidateErr
+
+validateQueryName :: T.Text -> Either ValidationError T.Text
+validateQueryName = validateIdentifier QueryNameValidateErr
 
 validateReplica :: Word32 -> Either ValidationError Word32
 validateReplica rep = if rep > 0 then Right rep else Left . ReplicationFactorValidateErr $ "Stream replication factor should greater than zero."
 
 validateShardCnt :: Word32 -> Either ValidationError Word32
 validateShardCnt cnt = if cnt > 0 then Right cnt else Left . ShardCountValidateErr $ "Stream replication factor should greater than zero."
-
-validateSubscriptionId :: T.Text -> Either ValidationError T.Text
-validateSubscriptionId x = case validateNameText x of
-  Right res -> Right res
-  Left s    -> Left (SubscriptionIdValidateErr s)
-
-validateConnectorName :: T.Text -> Either ValidationError T.Text
-validateConnectorName x = case validateNameText x of
-  Right res -> Right res
-  Left s    -> Left (ConnectorNameValidateErr s)
-
-validateQueryName :: T.Text -> Either ValidationError T.Text
-validateQueryName x = case validateNameText x of
-  Right res -> Right res
-  Left s    -> Left (QueryNameValidateErr s)
 
 validateShardOffset :: Maybe API.ShardOffset -> Either ValidationError (Maybe API.ShardOffset)
 validateShardOffset offset =
@@ -106,3 +109,6 @@ validateShardOffset offset =
    offsetShouldNotBeNone :: Maybe API.ShardOffset -> Bool
    offsetShouldNotBeNone (Just offset') = isJust . API.shardOffsetOffset $ offset'
    offsetShouldNotBeNone Nothing = False
+
+validateSql :: T.Text -> Either ValidationError T.Text
+validateSql x = if T.length x > 0 then Right x else Left . SQLStatementValidateErr $ "Empty Sql statement."
