@@ -1,8 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module HStream.Server.Validation
-  ( ValidationError (..)
-  , validateStream
+  ( validateStream
+  , validateAppendRequest
   , validateSubscription
   , validateCreateShardReader
   , validateCreateConnector
@@ -11,104 +11,72 @@ module HStream.Server.Validation
   )
 where
 
-import qualified Data.Text                 as T
-
+import           Control.Exception         (Exception, throwIO)
+import           Control.Monad             (when)
+import qualified Data.ByteString           as BS
 import           Data.Maybe                (isJust)
+import qualified Data.Text                 as T
 import           Data.Word                 (Word32)
+import qualified HStream.Exception         as HE
 import qualified HStream.Server.HStreamApi as API
-import           HStream.Utils             (validateNameText)
+import           HStream.Utils             (ResourceType (ResConnector, ResQuery, ResShardReader, ResStream, ResSubscription),
+                                            validateNameAndThrow)
 
-data ValidationError = StreamNameValidateErr String
-                     | ReplicationFactorValidateErr String
-                     | ShardCountValidateErr String
-                     | ShardOffsetValidateErr String
-                     | ShardReaderIdValidateErr String
-                     | SubscriptionIdValidateErr String
-                     | ConnectorNameValidateErr String
-                     | QueryNameValidateErr String
-                     | ViewNameValidateErr String
-                     | SQLStatementValidateErr String
-
-validateStream :: API.Stream -> Either ValidationError API.Stream
+validateStream :: API.Stream -> IO ()
 validateStream API.Stream{..} = do
-  API.Stream <$> validateStreamName streamStreamName
-             <*> validateReplica streamReplicationFactor
-             <*> Right streamBacklogDuration
-             <*> validateShardCnt streamShardCount
-             <*> Right streamCreationTime
+  validateNameAndThrow ResStream streamStreamName >> validateReplica streamReplicationFactor
+    >> validateShardCnt streamShardCount
 
-validateCreateShardReader :: API.CreateShardReaderRequest -> Either ValidationError API.CreateShardReaderRequest
+validateAppendRequest :: API.AppendRequest -> IO ()
+validateAppendRequest API.AppendRequest{..} = do
+  validateAppendRequestPayload appendRequestRecords
+
+validateCreateShardReader :: API.CreateShardReaderRequest -> IO ()
 validateCreateShardReader API.CreateShardReaderRequest{..} = do
-  API.CreateShardReaderRequest <$> validateStreamName createShardReaderRequestStreamName
-                               <*> Right createShardReaderRequestShardId
-                               <*> validateShardOffset createShardReaderRequestShardOffset
-                               <*> validateShardReaderId createShardReaderRequestReaderId
-                               <*> Right createShardReaderRequestTimeout
+  validateNameAndThrow ResShardReader createShardReaderRequestReaderId
+  >> validateNameAndThrow ResStream createShardReaderRequestStreamName
+  >> validateShardOffset createShardReaderRequestShardOffset
 
-validateSubscription :: API.Subscription -> Either ValidationError API.Subscription
+validateSubscription :: API.Subscription -> IO ()
 validateSubscription API.Subscription{..} = do
-  API.Subscription <$> validateSubscriptionId subscriptionSubscriptionId
-                   <*> validateStreamName subscriptionStreamName
-                   <*> Right subscriptionAckTimeoutSeconds
-                   <*> Right subscriptionMaxUnackedRecords
-                   <*> Right subscriptionOffset
-                   <*> Right subscriptionCreationTime
+  validateNameAndThrow ResSubscription subscriptionSubscriptionId
+  >> validateNameAndThrow ResStream subscriptionStreamName
 
-validateCreateConnector :: API.CreateConnectorRequest -> Either ValidationError API.CreateConnectorRequest
+validateCreateConnector :: API.CreateConnectorRequest -> IO ()
 validateCreateConnector API.CreateConnectorRequest{..} = do
-  API.CreateConnectorRequest <$> validateConnectorName createConnectorRequestName
-                             <*> Right createConnectorRequestType
-                             <*> Right createConnectorRequestTarget
-                             <*> Right createConnectorRequestConfig
+  validateNameAndThrow ResConnector createConnectorRequestName
 
-validateCreateQuery :: API.CreateQueryRequest -> Either ValidationError API.CreateQueryRequest
+validateCreateQuery :: API.CreateQueryRequest -> IO ()
 validateCreateQuery API.CreateQueryRequest{..} = do
-  API.CreateQueryRequest <$> validateSql createQueryRequestSql
-                         <*> validateQueryName createQueryRequestQueryName
+  validateNameAndThrow ResQuery createQueryRequestQueryName
+  >> validateSql HE.InvalidQuerySql createQueryRequestSql
 
-validateCreateQueryWithNamespace :: API.CreateQueryWithNamespaceRequest-> Either ValidationError API.CreateQueryWithNamespaceRequest
+validateCreateQueryWithNamespace :: API.CreateQueryWithNamespaceRequest -> IO ()
 validateCreateQueryWithNamespace API.CreateQueryWithNamespaceRequest{..} = do
-  API.CreateQueryWithNamespaceRequest <$> validateSql createQueryWithNamespaceRequestSql
-                                      <*> validateQueryName createQueryWithNamespaceRequestQueryName
-                                      <*> Right createQueryWithNamespaceRequestNamespace
+  validateNameAndThrow ResQuery createQueryWithNamespaceRequestQueryName
+  >> validateSql HE.InvalidQuerySql createQueryWithNamespaceRequestSql
 
 --------------------------------------------------------------------------------------------------------------------------------
 
-validateIdentifier :: (String -> ValidationError) -> T.Text -> Either ValidationError T.Text
-validateIdentifier err x = case validateNameText x of
-  Right res -> Right res
-  Left s    -> Left (err s)
+validateReplica :: Word32 -> IO ()
+validateReplica rep = if rep > 0 then pure () else throwIO $ HE.InvalidReplicaFactor "Stream replication factor should greater than zero."
 
-validateStreamName :: T.Text -> Either ValidationError T.Text
-validateStreamName = validateIdentifier StreamNameValidateErr
+validateShardCnt :: Word32 -> IO ()
+validateShardCnt cnt = if cnt > 0 then pure () else throwIO $ HE.InvalidShardCount "Stream replication factor should greater than zero."
 
-validateSubscriptionId :: T.Text -> Either ValidationError T.Text
-validateSubscriptionId = validateIdentifier SubscriptionIdValidateErr
-
-validateShardReaderId :: T.Text -> Either ValidationError T.Text
-validateShardReaderId = validateIdentifier ShardReaderIdValidateErr
-
-validateConnectorName :: T.Text -> Either ValidationError T.Text
-validateConnectorName = validateIdentifier ConnectorNameValidateErr
-
-validateQueryName :: T.Text -> Either ValidationError T.Text
-validateQueryName = validateIdentifier QueryNameValidateErr
-
-validateReplica :: Word32 -> Either ValidationError Word32
-validateReplica rep = if rep > 0 then Right rep else Left . ReplicationFactorValidateErr $ "Stream replication factor should greater than zero."
-
-validateShardCnt :: Word32 -> Either ValidationError Word32
-validateShardCnt cnt = if cnt > 0 then Right cnt else Left . ShardCountValidateErr $ "Stream replication factor should greater than zero."
-
-validateShardOffset :: Maybe API.ShardOffset -> Either ValidationError (Maybe API.ShardOffset)
-validateShardOffset offset =
+validateShardOffset :: Maybe API.ShardOffset -> IO ()
+validateShardOffset offset = do
   if offsetShouldNotBeNone offset
-    then Right offset
-    else Left . ShardOffsetValidateErr $ "Invalid shard offset"
+    then pure ()
+    else throwIO $ HE.InvalidShardOffset "Invalid shard offset"
  where
    offsetShouldNotBeNone :: Maybe API.ShardOffset -> Bool
    offsetShouldNotBeNone (Just offset') = isJust . API.shardOffsetOffset $ offset'
    offsetShouldNotBeNone Nothing = False
 
-validateSql :: T.Text -> Either ValidationError T.Text
-validateSql x = if T.length x > 0 then Right x else Left . SQLStatementValidateErr $ "Empty Sql statement."
+validateSql :: Exception e => (String -> e) -> T.Text -> IO ()
+validateSql err x = if T.length x > 0 then pure () else throwIO $ err "Empty Sql statement."
+
+validateAppendRequestPayload :: Maybe API.BatchedRecord -> IO ()
+validateAppendRequestPayload Nothing = throwIO HE.EmptyBatchedRecord
+validateAppendRequestPayload (Just API.BatchedRecord{..}) = when (batchedRecordBatchSize == 0 || BS.null batchedRecordPayload) $ throwIO HE.EmptyBatchedRecord

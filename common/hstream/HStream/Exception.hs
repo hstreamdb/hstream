@@ -47,8 +47,7 @@ module HStream.Exception
   , InvalidStatsInterval (InvalidStatsInterval)
   , InvalidSqlStatement (InvalidSqlStatement)
   , InvalidConnectorType (InvalidConnectorType)
-  , EmptyQuerySql (EmptyQuerySql)
-  , InvalidViewId (InvalidViewId)
+  , InvalidQuerySql (InvalidQuerySql)
   , SQLNotSupportedByParseSQL(SQLNotSupportedByParseSQL)
 
     -- * Exception: SomeDeadlineExceeded
@@ -418,10 +417,7 @@ MAKE_EX_1_DEFMSG(SomeInvalidArgument, InvalidStatsInterval, String, API.ErrorCod
 MAKE_EX_1_DEFMSG(SomeInvalidArgument, InvalidSqlStatement, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeInvalidArgument, InvalidConnectorType, Text, API.ErrorCodeConnectorInvalidType)
 MAKE_EX_1_DEFMSG(SomeInvalidArgument, SQLNotSupportedByParseSQL, Text, API.ErrorCodeInternalError)
-MAKE_EX_1_DEFMSG(SomeInvalidArgument, InvalidConnectorName, String, API.ErrorCodeConnectorInvalidName)
-MAKE_EX_1_DEFMSG(SomeInvalidArgument, EmptyQuerySql, String, API.ErrorCodeQueryEmptySqlStatement)
-MAKE_EX_1_DEFMSG(SomeInvalidArgument, InvalidQueryId, String, API.ErrorCodeQueryInvalidObjectIdentifier)
-MAKE_EX_1_DEFMSG(SomeInvalidArgument, InvalidViewId, String, API.ErrorCodeViewInvalidObjectIdentifier)
+MAKE_EX_1_DEFMSG(SomeInvalidArgument, InvalidQuerySql, String, API.ErrorCodeQueryInvalidSQL)
 
 invalidIdentifier :: API.ResourceType -> String -> InvalidObjectIdentifier
 invalidIdentifier API.ResourceTypeResStream       = InvalidObjectIdentifier API.ErrorCodeStreamInvalidObjectIdentifier

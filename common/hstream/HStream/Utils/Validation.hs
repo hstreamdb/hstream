@@ -19,7 +19,7 @@ validateNameAndThrow :: API.ResourceType -> T.Text -> IO ()
 validateNameAndThrow rType n =
   case validateNameText n of
     Left s   -> do
-      Log.warning $ "{" <> Log.buildString' n <> "} is a Invalid Object Identifier:" <> Log.build s
+      Log.warning $ "{" <> Log.build n <> "} is a Invalid Object Identifier:" <> Log.build s
       throwIO (invalidIdentifier rType s)
     Right _ -> return ()
 

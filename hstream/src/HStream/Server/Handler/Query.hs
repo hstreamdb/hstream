@@ -73,26 +73,18 @@ createQueryHandler ctx (ServerNormalRequest _metadata req@API.CreateQueryRequest
   queryExceptionHandle $ do
     Log.debug $ "Receive Create Query Request with statement: " <> Log.build createQueryRequestSql
              <> "and query name: " <> Log.build createQueryRequestQueryName
-    req' <- case validateCreateQuery req of
-      Left (QueryNameValidateErr s)    -> throwIO (HE.invalidIdentifier ResQuery s)
-      Left (SQLStatementValidateErr s) -> throwIO (HE.EmptyQuerySql s)
-      Left _                           -> throwIO (HE.UnexpectedError "unexpected validation error type")
-      Right s                          -> pure s
+    validateCreateQuery req
     validateQueryAllocation ctx createQueryRequestQueryName
-    Core.createQuery ctx req' >>= returnResp
+    Core.createQuery ctx req >>= returnResp
 
 handleCreateQuery
   :: ServerContext -> G.UnaryHandler API.CreateQueryRequest API.Query
 handleCreateQuery ctx _ req@API.CreateQueryRequest{..} = catchQueryEx $ do
   Log.debug $ "Receive Create Query Request with statement: " <> Log.build createQueryRequestSql
            <> "and query name: " <> Log.build createQueryRequestQueryName
-  req' <- case validateCreateQuery req of
-      Left (QueryNameValidateErr s)    -> throwIO (HE.invalidIdentifier ResQuery s)
-      Left (SQLStatementValidateErr s) -> throwIO (HE.EmptyQuerySql s)
-      Left _                           -> throwIO (HE.UnexpectedError "unexpected validation error type")
-      Right s                          -> pure s
+  validateCreateQuery req
   validateQueryAllocation ctx createQueryRequestQueryName
-  Core.createQuery ctx req'
+  Core.createQuery ctx req
 
 createQueryWithNamespaceHandler
   :: ServerContext
@@ -102,26 +94,18 @@ createQueryWithNamespaceHandler ctx (ServerNormalRequest _metadata req@API.Creat
   queryExceptionHandle $ do
     Log.debug $ "Receive Create Query Request with statement: " <> Log.build createQueryWithNamespaceRequestSql
              <> "and query name: " <> Log.build createQueryWithNamespaceRequestQueryName
-    req' <- case validateCreateQueryWithNamespace req of
-      Left (QueryNameValidateErr s)    -> throwIO (HE.invalidIdentifier ResQuery s)
-      Left (SQLStatementValidateErr s) -> throwIO (HE.EmptyQuerySql s)
-      Left _                           -> throwIO (HE.UnexpectedError "unexpected validation error type")
-      Right s                          -> pure s
+    validateCreateQueryWithNamespace req
     validateQueryAllocation ctx createQueryWithNamespaceRequestQueryName
-    Core.createQueryWithNamespace ctx req' >>= returnResp
+    Core.createQueryWithNamespace ctx req >>= returnResp
 
 handleCreateQueryWithNamespace
   :: ServerContext -> G.UnaryHandler API.CreateQueryWithNamespaceRequest API.Query
 handleCreateQueryWithNamespace ctx _ req@API.CreateQueryWithNamespaceRequest{..} = catchQueryEx $ do
   Log.debug $ "Receive Create Query Request with statement: " <> Log.build createQueryWithNamespaceRequestSql
            <> "and query name: " <> Log.build createQueryWithNamespaceRequestQueryName
-  req' <- case validateCreateQueryWithNamespace req of
-      Left (QueryNameValidateErr s)    -> throwIO (HE.invalidIdentifier ResQuery s)
-      Left (SQLStatementValidateErr s) -> throwIO (HE.EmptyQuerySql s)
-      Left _                           -> throwIO (HE.UnexpectedError "unexpected validation error type")
-      Right s                          -> pure s
+  validateCreateQueryWithNamespace req
   validateQueryAllocation ctx createQueryWithNamespaceRequestQueryName
-  Core.createQueryWithNamespace ctx req'
+  Core.createQueryWithNamespace ctx req
 
 listQueriesHandler
   :: ServerContext
@@ -143,6 +127,7 @@ getQueryHandler
   -> IO (ServerResponse 'Normal API.Query)
 getQueryHandler ctx (ServerNormalRequest _metadata req@API.GetQueryRequest{..}) =
   queryExceptionHandle $ do
+    validateNameAndThrow ResQuery getQueryRequestId
     validateQueryAllocation ctx getQueryRequestId
     Log.debug $ "Receive Get Query Request. "
              <> "Query ID: " <> Log.build getQueryRequestId
@@ -152,6 +137,7 @@ handleGetQuery :: ServerContext -> G.UnaryHandler API.GetQueryRequest API.Query
 handleGetQuery ctx _ req@API.GetQueryRequest{..} = catchQueryEx $ do
   Log.debug $ "Receive Get Query Request. "
            <> "Query ID: " <> Log.build getQueryRequestId
+  validateNameAndThrow ResQuery getQueryRequestId
   validateQueryAllocation ctx getQueryRequestId
   Core.getQuery ctx req
 

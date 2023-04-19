@@ -38,6 +38,7 @@ import qualified Proto3.Suite               as PT
 import qualified Z.Data.CBytes              as CB
 import           ZooKeeper.Exception        (ZNONODE (..))
 
+import           Data.Word                  (Word64)
 import qualified HStream.Exception          as HE
 import qualified HStream.Logger             as Log
 import qualified HStream.MetaStore.Types    as M
@@ -163,12 +164,14 @@ getStreamInfo ServerContext{..} stream = do
 
 append :: HasCallStack
        => ServerContext
-       -> AppendArguments
+       -> T.Text                 -- streamName
+       -> Word64                 -- shardId
+       -> API.BatchedRecord      -- payload
        -> IO API.AppendResponse
-append sc@ServerContext{..} request@AppendArguments{..} = do
+append sc@ServerContext{..} streamName shardId payload = do
   !recv_time <- getPOSIXTime
   Log.debug $ "Receive Append Request: StreamName {"
-           <> Log.build targetStream
+           <> Log.build streamName
            <> "(shardId: "
            <> Log.build shardId
            <> ")}"
@@ -178,18 +181,20 @@ append sc@ServerContext{..} request@AppendArguments{..} = do
   Stats.stream_time_series_add_append_in_requests scStatsHolder cStreamName 1
 
   !append_start <- getPOSIXTime
-  resp <- appendStream sc request
+  resp <- appendStream sc streamName shardId payload
   Stats.serverHistogramAdd scStatsHolder Stats.SHL_AppendLatency =<< msecSince append_start
   Stats.serverHistogramAdd scStatsHolder Stats.SHL_AppendRequestLatency =<< msecSince recv_time
   return resp
   where
-    cStreamName = textToCBytes targetStream
+    cStreamName = textToCBytes streamName
 
 appendStream :: HasCallStack
              => ServerContext
-             -> AppendArguments
+             -> T.Text
+             -> Word64
+             -> API.BatchedRecord
              -> IO API.AppendResponse
-appendStream ServerContext{..} AppendArguments {..} = do
+appendStream ServerContext{..} streamName shardId payload = do
   let record@API.BatchedRecord{batchedRecordBatchSize=recordSize} = payload
   timestamp <- getProtoTimestamp
   let payload' = encodBatchRecord . updateRecordTimestamp timestamp $ record
@@ -202,11 +207,11 @@ appendStream ServerContext{..} AppendArguments {..} = do
   Stats.stream_time_series_add_append_in_records scStatsHolder cStreamName (fromIntegral recordSize)
   let rids = V.zipWith (API.RecordId shardId) (V.replicate (fromIntegral recordSize) appendCompLSN) (V.fromList [0..])
   return $ API.AppendResponse {
-      appendResponseStreamName = targetStream
+      appendResponseStreamName = streamName
     , appendResponseShardId    = shardId
     , appendResponseRecordIds  = rids }
   where
-    cStreamName = textToCBytes targetStream
+    cStreamName = textToCBytes streamName
 
 --------------------------------------------------------------------------------
 

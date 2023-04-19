@@ -55,12 +55,14 @@ getViewHandler
 getViewHandler sc (ServerNormalRequest _metadata GetViewRequest{..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive Get View Request. "
            <> "View ID:" <> Log.build getViewRequestViewId
+  validateNameAndThrow ResView getViewRequestViewId
   returnResp =<< Core.getView sc getViewRequestViewId
 
 handleGetView :: ServerContext -> G.UnaryHandler GetViewRequest View
 handleGetView sc _ GetViewRequest{..} = catchDefaultEx $ do
   Log.debug $ "Receive Get View Request. "
            <> "View ID:" <> Log.build getViewRequestViewId
+  validateNameAndThrow ResView getViewRequestViewId
   Core.getView sc getViewRequestViewId
 
 deleteViewHandler
