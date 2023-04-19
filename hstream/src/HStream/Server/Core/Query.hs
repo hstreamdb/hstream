@@ -41,7 +41,6 @@ import           Proto3.Suite.Class               (def)
 import qualified Proto3.Suite.JSONPB              as PB
 import qualified Z.Data.CBytes                    as CB
 
-
 import qualified HStream.Exception                as HE
 import qualified HStream.IO.Worker                as IO
 import qualified HStream.Logger                   as Log
