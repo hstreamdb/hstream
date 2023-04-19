@@ -81,6 +81,7 @@ handlers serverContext@ServerContext{..} =
         hstreamApiCreateConnector = createConnectorHandler serverContext,
         hstreamApiGetConnector = getConnectorHandler serverContext,
         hstreamApiGetConnectorSpec = getConnectorSpecHandler serverContext,
+        hstreamApiGetConnectorLogs = getConnectorLogsHandler serverContext,
         hstreamApiListConnectors = listConnectorsHandler serverContext,
         hstreamApiDeleteConnector = deleteConnectorHandler serverContext,
         hstreamApiPauseConnector = pauseConnectorHandler serverContext,

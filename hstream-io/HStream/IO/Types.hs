@@ -22,12 +22,14 @@ import qualified Control.Exception           as E
 import qualified Data.Aeson.KeyMap           as J
 import qualified Data.Aeson.Text             as J
 import qualified Data.Text.Lazy              as TL
+import qualified Data.Vector                 as Vector
 import qualified HStream.Exception           as E
 import           HStream.MetaStore.Types     (FHandle, HasPath (..), MetaHandle,
                                               RHandle (..))
 import qualified HStream.Server.HStreamApi   as API
 import qualified HStream.Stats               as Stats
 import qualified HStream.ThirdParty.Protobuf as Grpc
+import qualified HStream.ThirdParty.Protobuf as PB
 
 data IOTaskType = SOURCE | SINK
   deriving (Show, Eq)
@@ -78,6 +80,7 @@ data IOTask = IOTask
   , process'        :: IORef (Maybe TaskProcess)
   , statusM         :: C.MVar IOTaskStatus
   , taskStatsHolder :: Stats.StatsHolder
+  , taskOffsetsM    :: C.MVar (Vector.Vector PB.Struct)
   }
 
 type ZkUrl = T.Text
@@ -155,6 +158,7 @@ convertTaskMeta addConfig TaskMeta {..} =
     (Just . taskCreatedTime $ taskInfoMeta)
     (ioTaskStatusToText taskStateMeta)
     cfg
+    Vector.empty
   where
     Just connectorCfg = J.lookup "connector" $ connectorConfig taskInfoMeta
     cfg = if addConfig
