@@ -14,7 +14,7 @@ import           HStream.Utils.Validation (validateChar, validateNameText)
 spec :: Spec
 spec = describe "HStream.ValidationSpec" $ do
   prop "test Validation function" $ do
-    forAll validText (\x -> validateNameText x === Right ())
+    forAll validText (\x -> validateNameText x === Right x)
   prop "test Validation function on invalid char" $ do
     forAll invalidHead (isLeft . validateNameText)
   prop "test Validation function on invalid head" $ do

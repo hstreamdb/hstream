@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module HStream.Utils.Validation where
 
 import           Control.Exception         (throwIO)
@@ -17,9 +19,9 @@ validateNameAndThrow :: API.ResourceType -> T.Text -> IO ()
 validateNameAndThrow rType n =
   case validateNameText n of
     Left s   -> do
-      Log.warning $ "Invalid Object Identifier:" <> Log.build s
+      Log.warning $ "{" <> Log.build n <> "} is a Invalid Object Identifier:" <> Log.build s
       throwIO (invalidIdentifier rType s)
-    Right () -> return ()
+    Right _ -> return ()
 
 validateChar :: Char -> Either String ()
 validateChar c
@@ -40,6 +42,7 @@ validateReserved x
 reservedName :: [T.Text]
 reservedName = ["zookeeper"]
 
-validateNameText :: T.Text -> Either String ()
+validateNameText :: T.Text -> Either String T.Text
 validateNameText x = validateLength x >> validateHead x
-  >> T.foldr ((>>) . validateChar) (Right ()) x
+  >> T.foldr ((>>) . validateChar) (Right x) x
+

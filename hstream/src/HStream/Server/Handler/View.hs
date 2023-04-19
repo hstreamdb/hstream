@@ -20,22 +20,21 @@ module HStream.Server.Handler.View
   , handleExecuteViewQueryWithNamespace
   ) where
 
-import qualified Data.ByteString.Lazy              as BL
-import qualified Data.Text                         as T
-import qualified Data.Vector                       as V
-import qualified HsGrpc.Server                     as G
+import qualified Data.Text                        as T
+import qualified Data.Vector                      as V
+import qualified HsGrpc.Server                    as G
 import           Network.GRPC.HighLevel.Generated
-import qualified Proto3.Suite                      as PT
 
-import qualified HStream.Logger                    as Log
-import qualified HStream.Server.Core.View          as Core
-import           HStream.Server.Exception          (catchDefaultEx,
-                                                    defaultExceptionHandle)
+import qualified HStream.Logger                   as Log
+import qualified HStream.Server.Core.View         as Core
+import           HStream.Server.Exception         (catchDefaultEx,
+                                                   defaultExceptionHandle)
 import           HStream.Server.HStreamApi
-import           HStream.Server.MetaData.Exception
 import           HStream.Server.Types
-import           HStream.ThirdParty.Protobuf       (Empty (..), Struct)
-import           HStream.Utils
+import           HStream.ThirdParty.Protobuf      (Empty (..))
+import           HStream.Utils                    (ResourceType (ResView),
+                                                   returnResp,
+                                                   validateNameAndThrow)
 
 listViewsHandler
   :: ServerContext
@@ -56,12 +55,14 @@ getViewHandler
 getViewHandler sc (ServerNormalRequest _metadata GetViewRequest{..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive Get View Request. "
            <> "View ID:" <> Log.build getViewRequestViewId
+  validateNameAndThrow ResView getViewRequestViewId
   returnResp =<< Core.getView sc getViewRequestViewId
 
 handleGetView :: ServerContext -> G.UnaryHandler GetViewRequest View
 handleGetView sc _ GetViewRequest{..} = catchDefaultEx $ do
   Log.debug $ "Receive Get View Request. "
            <> "View ID:" <> Log.build getViewRequestViewId
+  validateNameAndThrow ResView getViewRequestViewId
   Core.getView sc getViewRequestViewId
 
 deleteViewHandler
@@ -71,12 +72,14 @@ deleteViewHandler
 deleteViewHandler sc (ServerNormalRequest _metadata DeleteViewRequest{..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive Delete View Request. "
            <> "View ID:" <> Log.buildString (T.unpack deleteViewRequestViewId)
+  validateNameAndThrow ResView deleteViewRequestViewId
   returnResp =<< Core.deleteView sc deleteViewRequestViewId deleteViewRequestIgnoreNonExist
 
 handleDeleteView :: ServerContext -> G.UnaryHandler DeleteViewRequest Empty
 handleDeleteView sc _ DeleteViewRequest{..} = catchDefaultEx $ do
   Log.debug $ "Receive Delete View Request. "
            <> "View ID:" <> Log.buildString (T.unpack deleteViewRequestViewId)
+  validateNameAndThrow ResView deleteViewRequestViewId
   Core.deleteView sc deleteViewRequestViewId deleteViewRequestIgnoreNonExist
 
 executeViewQueryHandler

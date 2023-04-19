@@ -27,22 +27,25 @@ import qualified Proto3.Suite                     as PB
 #if __GLASGOW_HASKELL__ < 902
 import qualified HStream.Admin.Store.API          as AA
 #endif
+import           Control.Exception                (throw)
 import           HStream.Common.ConsistentHashing (HashRing)
+import           HStream.Exception                (EmptyBatchedRecord (EmptyBatchedRecord))
 import           HStream.Gossip.Types             (Epoch, GossipContext)
 import qualified HStream.IO.Types                 as IO
 import qualified HStream.IO.Worker                as IO
 import           HStream.MetaStore.Types          (MetaHandle)
 import           HStream.Server.Config
 import           HStream.Server.ConnectorTypes    as HCT
-import           HStream.Server.HStreamApi        (NodeState, ResourceType,
-                                                   SpecialOffset,
+import           HStream.Server.HStreamApi        (AppendRequest (..),
+                                                   BatchedRecord, NodeState,
+                                                   ResourceType, SpecialOffset,
                                                    StreamingFetchResponse,
                                                    Subscription)
 import           HStream.Server.Shard             (ShardKey, SharedShardMap)
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as HS
 import qualified HStream.Store                    as S
-import           HStream.Utils                    (ResourceType (ResConnector, ResQuery),
+import           HStream.Utils                    (ResourceType (ResConnector),
                                                    textToCBytes)
 
 
@@ -222,3 +225,21 @@ transToTempStreamName = S.mkStreamId S.StreamTypeTemp . textToCBytes
 
 transToViewStreamName :: HCT.StreamName -> S.StreamId
 transToViewStreamName = S.mkStreamId S.StreamTypeView . textToCBytes
+
+--------------------------------------------------------------------------------
+
+data AppendArguments = AppendArguments
+  { targetStream :: Text
+  , shardId      :: Word64
+  , payload      :: BatchedRecord
+  } deriving(Show)
+
+appendArgumentsFromRequest :: AppendRequest -> AppendArguments
+appendArgumentsFromRequest AppendRequest{..} = do
+  case appendRequestRecords of
+    Just payload -> AppendArguments
+      { targetStream = appendRequestStreamName
+      , shardId = appendRequestShardId
+      , payload = payload
+      }
+    Nothing -> throw EmptyBatchedRecord

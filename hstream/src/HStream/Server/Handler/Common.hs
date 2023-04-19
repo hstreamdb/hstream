@@ -10,48 +10,31 @@
 module HStream.Server.Handler.Common where
 
 import           Control.Concurrent
-import           Control.Concurrent.Async
 import           Control.Exception                     (Handler (Handler),
                                                         SomeException (..),
-                                                        bracket, catches,
-                                                        onException, throw,
-                                                        throwIO, try)
+                                                        catches, throwIO, try)
 import           Control.Exception.Base                (AsyncException (..))
 import           Control.Monad
 import qualified Data.Aeson                            as Aeson
-import qualified Data.ByteString                       as BS
 import qualified Data.ByteString.Lazy                  as BL
 import           Data.Default                          (def)
 import           Data.Foldable                         (foldlM)
 import           Data.Function                         (fix)
-import           Data.Functor                          ((<&>))
 import qualified Data.HashMap.Strict                   as HM
-import           Data.Int                              (Int64)
 import           Data.IORef
-import qualified Data.List                             as L
-import           Data.Maybe                            (catMaybes, fromJust)
+import           Data.Maybe                            (fromJust)
 import           Data.Text                             (Text)
-import qualified Data.Text                             as T
-import qualified Data.Time                             as Time
 import qualified Database.RocksDB                      as RocksDB
-import           Network.GRPC.HighLevel.Generated
-import           Network.GRPC.LowLevel.Op              (Op (OpRecvCloseOnServer),
-                                                        OpRecvResult (OpRecvCloseOnServerResult),
-                                                        runOps)
 
-import qualified HStream.Exception                     as HE
 import qualified HStream.Logger                        as Log
 import qualified HStream.MetaStore.Types               as M
 import qualified HStream.Server.HStore                 as HStore
-import           HStream.Server.HStreamApi
 import qualified HStream.Server.MetaData               as P
 import           HStream.Server.Types
 import           HStream.SQL.AST
 import qualified HStream.Store                         as S
-import           HStream.Utils                         (TaskStatus (..),
-                                                        cBytesToText,
+import           HStream.Utils                         (cBytesToText,
                                                         lazyByteStringToBytes,
-                                                        newRandomText,
                                                         textToCBytes)
 
 #ifdef HStreamUseV2Engine
@@ -66,7 +49,6 @@ import           HStream.Server.ConnectorTypes         (SinkConnector (..),
 import qualified HStream.Server.ConnectorTypes         as HCT
 import           HStream.SQL.Codegen
 #else
-import           HStream.Processing.Connector
 import           HStream.Processing.Processor
 import           HStream.Processing.Processor.Snapshot
 import           HStream.Processing.Store

@@ -47,6 +47,7 @@ module HStream.Exception
   , InvalidStatsInterval (InvalidStatsInterval)
   , InvalidSqlStatement (InvalidSqlStatement)
   , InvalidConnectorType (InvalidConnectorType)
+  , InvalidQuerySql (InvalidQuerySql)
   , SQLNotSupportedByParseSQL(SQLNotSupportedByParseSQL)
 
     -- * Exception: SomeDeadlineExceeded
@@ -416,12 +417,13 @@ MAKE_EX_1_DEFMSG(SomeInvalidArgument, InvalidStatsInterval, String, API.ErrorCod
 MAKE_EX_1_DEFMSG(SomeInvalidArgument, InvalidSqlStatement, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeInvalidArgument, InvalidConnectorType, Text, API.ErrorCodeConnectorInvalidType)
 MAKE_EX_1_DEFMSG(SomeInvalidArgument, SQLNotSupportedByParseSQL, Text, API.ErrorCodeInternalError)
+MAKE_EX_1_DEFMSG(SomeInvalidArgument, InvalidQuerySql, String, API.ErrorCodeQueryInvalidSQL)
 
 invalidIdentifier :: API.ResourceType -> String -> InvalidObjectIdentifier
 invalidIdentifier API.ResourceTypeResStream       = InvalidObjectIdentifier API.ErrorCodeStreamInvalidObjectIdentifier
 invalidIdentifier API.ResourceTypeResSubscription = InvalidObjectIdentifier API.ErrorCodeSubscriptionInvalidObjectIdentifier
 invalidIdentifier API.ResourceTypeResShard        = InvalidObjectIdentifier API.ErrorCodeInternalError
-invalidIdentifier API.ResourceTypeResShardReader  = InvalidObjectIdentifier API.ErrorCodeStreamShardReaderInvalidObjectIdentifier
+invalidIdentifier API.ResourceTypeResShardReader  = InvalidObjectIdentifier API.ErrorCodeShardReaderInvalidObjectIdentifier
 invalidIdentifier API.ResourceTypeResConnector    = InvalidObjectIdentifier API.ErrorCodeConnectorInvalidObjectIdentifier
 invalidIdentifier API.ResourceTypeResQuery        = InvalidObjectIdentifier API.ErrorCodeQueryInvalidObjectIdentifier
 invalidIdentifier API.ResourceTypeResView         = InvalidObjectIdentifier API.ErrorCodeViewInvalidObjectIdentifier

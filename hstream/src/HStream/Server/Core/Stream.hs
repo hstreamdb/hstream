@@ -20,7 +20,7 @@ module HStream.Server.Core.Stream
 
 import           Control.Concurrent         (modifyMVar_, newEmptyMVar, putMVar,
                                              readMVar, takeMVar, withMVar)
-import           Control.Exception          (bracket, catch, throw, throwIO)
+import           Control.Exception          (bracket, catch, throwIO)
 import           Control.Monad              (forM, unless, when)
 import qualified Data.ByteString            as BS
 import qualified Data.ByteString.Lazy       as BSL
@@ -38,6 +38,7 @@ import qualified Proto3.Suite               as PT
 import qualified Z.Data.CBytes              as CB
 import           ZooKeeper.Exception        (ZNONODE (..))
 
+import           Data.Word                  (Word64)
 import qualified HStream.Exception          as HE
 import qualified HStream.Logger             as Log
 import qualified HStream.MetaStore.Types    as M
@@ -49,7 +50,8 @@ import           HStream.Server.Shard       (Shard (..), createShard,
                                              devideKeySpace,
                                              mkShardWithDefaultId,
                                              mkSharedShardMapWithShards)
-import           HStream.Server.Types       (ServerContext (..),
+import           HStream.Server.Types       (AppendArguments (..),
+                                             ServerContext (..),
                                              transToStreamName)
 import qualified HStream.Stats              as Stats
 import qualified HStream.Store              as S
@@ -60,10 +62,6 @@ import           HStream.Utils
 createStream :: HasCallStack => ServerContext -> API.Stream -> IO API.Stream
 createStream ServerContext{..} stream@API.Stream{
   streamBacklogDuration = backlogSec, streamShardCount = shardCount, ..} = do
-
-  when (streamReplicationFactor == 0) $ throwIO (HE.InvalidReplicaFactor "Stream replicationFactor cannot be zero")
-  when (shardCount <= 0) $ throwIO (HE.InvalidShardCount "ShardCount should be a positive number")
-
   timeStamp <- getProtoTimestamp
   let extraAttr = M.fromList [("createTime", lazyByteStringToCBytes $ PT.toLazyByteString timeStamp)]
   let streamId = transToStreamName streamStreamName
@@ -165,13 +163,17 @@ getStreamInfo ServerContext{..} stream = do
        Right timestamp -> Just timestamp
 
 append :: HasCallStack
-       => ServerContext -> API.AppendRequest -> IO API.AppendResponse
-append sc@ServerContext{..} request@API.AppendRequest{..} = do
+       => ServerContext
+       -> T.Text                 -- streamName
+       -> Word64                 -- shardId
+       -> API.BatchedRecord      -- payload
+       -> IO API.AppendResponse
+append sc@ServerContext{..} streamName shardId payload = do
   !recv_time <- getPOSIXTime
   Log.debug $ "Receive Append Request: StreamName {"
-           <> Log.build appendRequestStreamName
+           <> Log.build streamName
            <> "(shardId: "
-           <> Log.build appendRequestShardId
+           <> Log.build shardId
            <> ")}"
 
   Stats.handle_time_series_add_queries_in scStatsHolder "append" 1
@@ -179,36 +181,37 @@ append sc@ServerContext{..} request@API.AppendRequest{..} = do
   Stats.stream_time_series_add_append_in_requests scStatsHolder cStreamName 1
 
   !append_start <- getPOSIXTime
-  resp <- appendStream sc request
+  resp <- appendStream sc streamName shardId payload
   Stats.serverHistogramAdd scStatsHolder Stats.SHL_AppendLatency =<< msecSince append_start
   Stats.serverHistogramAdd scStatsHolder Stats.SHL_AppendRequestLatency =<< msecSince recv_time
   return resp
   where
-    cStreamName = textToCBytes appendRequestStreamName
+    cStreamName = textToCBytes streamName
 
 appendStream :: HasCallStack
-             => ServerContext -> API.AppendRequest -> IO API.AppendResponse
-appendStream ServerContext{..} API.AppendRequest {appendRequestShardId = shardId,
-  appendRequestRecords = mbRecord, ..} = do
-  let record@API.BatchedRecord{batchedRecordBatchSize=recordSize} = case mbRecord of
-       Nothing -> throw $ HE.EmptyBatchedRecord
-       Just r  -> r
+             => ServerContext
+             -> T.Text
+             -> Word64
+             -> API.BatchedRecord
+             -> IO API.AppendResponse
+appendStream ServerContext{..} streamName shardId payload = do
+  let record@API.BatchedRecord{batchedRecordBatchSize=recordSize} = payload
   timestamp <- getProtoTimestamp
-  let payload = encodBatchRecord . updateRecordTimestamp timestamp $ record
-      payloadSize = BS.length payload
+  let payload' = encodBatchRecord . updateRecordTimestamp timestamp $ record
+      payloadSize = BS.length payload'
   when (payloadSize > scMaxRecordSize) $ throwIO $ HE.InvalidRecordSize payloadSize
-  S.AppendCompletion {..} <- S.appendCompressedBS scLDClient shardId payload cmpStrategy Nothing
+  S.AppendCompletion {..} <- S.appendCompressedBS scLDClient shardId payload' cmpStrategy Nothing
   Stats.stream_stat_add_append_in_bytes scStatsHolder cStreamName (fromIntegral payloadSize)
   Stats.stream_stat_add_append_in_records scStatsHolder cStreamName (fromIntegral recordSize)
   Stats.stream_time_series_add_append_in_bytes scStatsHolder cStreamName (fromIntegral payloadSize)
   Stats.stream_time_series_add_append_in_records scStatsHolder cStreamName (fromIntegral recordSize)
   let rids = V.zipWith (API.RecordId shardId) (V.replicate (fromIntegral recordSize) appendCompLSN) (V.fromList [0..])
   return $ API.AppendResponse {
-      appendResponseStreamName = appendRequestStreamName
+      appendResponseStreamName = streamName
     , appendResponseShardId    = shardId
     , appendResponseRecordIds  = rids }
   where
-    cStreamName = textToCBytes appendRequestStreamName
+    cStreamName = textToCBytes streamName
 
 --------------------------------------------------------------------------------
 

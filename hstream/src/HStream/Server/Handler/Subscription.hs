@@ -48,6 +48,7 @@ import qualified HStream.Server.Core.Subscription as Core
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
 import           HStream.Server.Types
+import           HStream.Server.Validation        (validateSubscription)
 import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils                    (ResourceType (ResSubscription),
                                                    returnResp,
@@ -61,11 +62,13 @@ createSubscriptionHandler
   -> IO (ServerResponse 'Normal Subscription)
 createSubscriptionHandler ctx (ServerNormalRequest _metadata sub) = defaultExceptionHandle $ do
   Log.debug $ "Receive createSubscription request: " <> Log.buildString' sub
-  validateNameAndThrow ResSubscription $ subscriptionSubscriptionId sub
+  validateSubscription sub
   Core.createSubscription ctx sub >>= returnResp
 
 handleCreateSubscription :: ServerContext -> G.UnaryHandler Subscription Subscription
-handleCreateSubscription sc _ sub = catchDefaultEx $
+handleCreateSubscription sc _ sub = catchDefaultEx $ do
+  Log.debug $ "Receive createSubscription request: " <> Log.buildString' sub
+  validateSubscription sub
   Core.createSubscription sc sub
 
 -------------------------------------------------------------------------------
@@ -77,16 +80,17 @@ getSubscriptionHandler
 getSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata req) = defaultExceptionHandle $ do
   Log.debug $ "Receive getSubscription request: " <> Log.buildString' req
   let subId = getSubscriptionRequestId req
+  validateNameAndThrow ResSubscription subId
   ServerNode{..} <- lookupResource' ctx ResSubscription subId
   unless (serverNodeId == serverID) $
     throwIO $ HE.SubscriptionOnDifferentNode "Subscription is bound to a different node"
-  validateNameAndThrow ResSubscription $ getSubscriptionRequestId req
   Core.getSubscription ctx req >>= returnResp
 
 handleGetSubscription :: ServerContext -> G.UnaryHandler GetSubscriptionRequest GetSubscriptionResponse
 handleGetSubscription ctx@ServerContext{..} _ req = catchDefaultEx $ do
+  Log.debug $ "Receive getSubscription request: " <> Log.buildString' req
   let subId = getSubscriptionRequestId req
-  validateNameAndThrow ResSubscription $ getSubscriptionRequestId req
+  validateNameAndThrow ResSubscription subId
   ServerNode{..} <- lookupResource' ctx ResSubscription subId
   unless (serverNodeId == serverID) $
     throwIO $ HE.SubscriptionOnDifferentNode "Subscription is bound to a different node"
@@ -125,19 +129,20 @@ deleteSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata r
   ServerNode{..} <- lookupResource' ctx ResSubscription subId
   unless (serverNodeId == serverID) $
     throwIO $ HE.SubscriptionOnDifferentNode "Subscription is bound to a different node"
-
   Core.deleteSubscription ctx req
   Log.info " ----------- successfully deleted subscription  -----------"
   returnResp Empty
 
 handleDeleteSubscription :: ServerContext -> G.UnaryHandler DeleteSubscriptionRequest Empty
 handleDeleteSubscription ctx@ServerContext{..} _ req = catchDefaultEx $ do
+  Log.debug $ "Receive deleteSubscription request: " <> Log.buildString' req
   let subId = deleteSubscriptionRequestSubscriptionId req
   validateNameAndThrow ResSubscription subId
   ServerNode{..} <- lookupResource' ctx ResSubscription subId
   unless (serverNodeId == serverID) $
     throwIO $ HE.SubscriptionOnDifferentNode "Subscription is bound to a different node"
   Core.deleteSubscription ctx req
+  Log.info " ----------- successfully deleted subscription  -----------"
   pure Empty
 
 -------------------------------------------------------------------------------
@@ -184,6 +189,7 @@ listSubscriptionsWithPrefixHandler
   -> IO (ServerResponse 'Normal ListSubscriptionsResponse)
 listSubscriptionsWithPrefixHandler sc (ServerNormalRequest _metadata ListSubscriptionsWithPrefixRequest{..}) = defaultExceptionHandle $ do
   Log.debug "Receive listSubscriptions request"
+  validateNameAndThrow ResSubscription listSubscriptionsWithPrefixRequestPrefix
   res <- ListSubscriptionsResponse <$> Core.listSubscriptionsWithPrefix sc listSubscriptionsWithPrefixRequestPrefix
   Log.debug $ Log.buildString "Result of listSubscriptions: " <> Log.buildString (show res)
   returnResp res
@@ -192,6 +198,8 @@ handleListSubscriptionsWithPrefix
   :: ServerContext
   -> G.UnaryHandler ListSubscriptionsWithPrefixRequest ListSubscriptionsResponse
 handleListSubscriptionsWithPrefix sc _ ListSubscriptionsWithPrefixRequest{..} = catchDefaultEx $ do
+  Log.debug "Receive listSubscriptions request"
+  validateNameAndThrow ResSubscription listSubscriptionsWithPrefixRequestPrefix
   ListSubscriptionsResponse <$> Core.listSubscriptionsWithPrefix sc listSubscriptionsWithPrefixRequestPrefix
 
 -------------------------------------------------------------------------------
