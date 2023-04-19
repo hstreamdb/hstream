@@ -156,7 +156,12 @@ commandExec HStreamSqlContext{hstreamCliContext = cliCtx@HStreamCliContext{..},.
         PausePlan  (PauseObjectQuery qName) -> executeWithLookupResource_ cliCtx (Resource ResQuery qName) (pauseQuery qName)
         ResumePlan (ResumeObjectQuery qName) -> executeWithLookupResource_ cliCtx (Resource ResQuery qName) (resumeQuery qName)
         SelectPlan sources _ _ _ _ -> executeWithLookupResource_ cliCtx (Resource ResView (head sources)) (executeViewQuery xs)
-        _ -> putStrLn "Unsupported SQL statement"
+        -- NOTE: EXPLAIN PLAN still uses the following path
+        _ -> do
+          addr <- readMVar currentServer
+          withGRPCClient (HStream.Utils.mkGRPCClientConfWithSSL addr sslConfig)
+            (hstreamApiClient >=> \api -> sqlAction api (T.pack xs))
+
 
 readToSQL :: T.Text -> RL.InputT IO (Maybe String)
 readToSQL acc = do
