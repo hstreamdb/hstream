@@ -1,7 +1,6 @@
 {-# LANGUAGE BlockArguments      #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
-{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedLists     #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
@@ -34,10 +33,6 @@ import           Control.Exception                (Handler (..), catches,
                                                    throwIO)
 import           Control.Monad                    (unless)
 import qualified Data.ByteString.Char8            as BS
-import qualified Data.HashMap.Strict              as HM
-import qualified Data.List                        as L
-import qualified Data.Map.Strict                  as Map
-import           Data.Maybe                       (fromJust, isJust)
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import qualified HsGrpc.Server                    as G
@@ -49,10 +44,10 @@ import qualified HStream.Logger                   as Log
 import           HStream.Server.Core.Common       (lookupResource')
 import qualified HStream.Server.Core.Query        as Core
 import           HStream.Server.Exception         (defaultExHandlers,
-                                                   defaultHandlers,
-                                                   defaultServerStreamExceptionHandle)
+                                                   defaultHandlers)
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.Server.Types
+import           HStream.Server.Validation
 import           HStream.SQL.Exception            (SomeSQLException,
                                                    formatSomeSQLException)
 import           HStream.ThirdParty.Protobuf      as PB
@@ -78,7 +73,7 @@ createQueryHandler ctx (ServerNormalRequest _metadata req@API.CreateQueryRequest
   queryExceptionHandle $ do
     Log.debug $ "Receive Create Query Request with statement: " <> Log.build createQueryRequestSql
              <> "and query name: " <> Log.build createQueryRequestQueryName
-    validateNameAndThrow createQueryRequestQueryName
+    validateCreateQuery req
     validateQueryAllocation ctx createQueryRequestQueryName
     Core.createQuery ctx req >>= returnResp
 
@@ -87,7 +82,7 @@ handleCreateQuery
 handleCreateQuery ctx _ req@API.CreateQueryRequest{..} = catchQueryEx $ do
   Log.debug $ "Receive Create Query Request with statement: " <> Log.build createQueryRequestSql
            <> "and query name: " <> Log.build createQueryRequestQueryName
-  validateNameAndThrow createQueryRequestQueryName
+  validateCreateQuery req
   validateQueryAllocation ctx createQueryRequestQueryName
   Core.createQuery ctx req
 
@@ -99,7 +94,7 @@ createQueryWithNamespaceHandler ctx (ServerNormalRequest _metadata req@API.Creat
   queryExceptionHandle $ do
     Log.debug $ "Receive Create Query Request with statement: " <> Log.build createQueryWithNamespaceRequestSql
              <> "and query name: " <> Log.build createQueryWithNamespaceRequestQueryName
-    validateNameAndThrow createQueryWithNamespaceRequestQueryName
+    validateCreateQueryWithNamespace req
     validateQueryAllocation ctx createQueryWithNamespaceRequestQueryName
     Core.createQueryWithNamespace ctx req >>= returnResp
 
@@ -108,7 +103,7 @@ handleCreateQueryWithNamespace
 handleCreateQueryWithNamespace ctx _ req@API.CreateQueryWithNamespaceRequest{..} = catchQueryEx $ do
   Log.debug $ "Receive Create Query Request with statement: " <> Log.build createQueryWithNamespaceRequestSql
            <> "and query name: " <> Log.build createQueryWithNamespaceRequestQueryName
-  validateNameAndThrow createQueryWithNamespaceRequestQueryName
+  validateCreateQueryWithNamespace req
   validateQueryAllocation ctx createQueryWithNamespaceRequestQueryName
   Core.createQueryWithNamespace ctx req
 
@@ -132,7 +127,7 @@ getQueryHandler
   -> IO (ServerResponse 'Normal API.Query)
 getQueryHandler ctx (ServerNormalRequest _metadata req@API.GetQueryRequest{..}) =
   queryExceptionHandle $ do
-    validateNameAndThrow getQueryRequestId
+    validateNameAndThrow ResQuery getQueryRequestId
     validateQueryAllocation ctx getQueryRequestId
     Log.debug $ "Receive Get Query Request. "
              <> "Query ID: " <> Log.build getQueryRequestId
@@ -142,7 +137,7 @@ handleGetQuery :: ServerContext -> G.UnaryHandler API.GetQueryRequest API.Query
 handleGetQuery ctx _ req@API.GetQueryRequest{..} = catchQueryEx $ do
   Log.debug $ "Receive Get Query Request. "
            <> "Query ID: " <> Log.build getQueryRequestId
-  validateNameAndThrow getQueryRequestId
+  validateNameAndThrow ResQuery getQueryRequestId
   validateQueryAllocation ctx getQueryRequestId
   Core.getQuery ctx req
 
@@ -153,18 +148,17 @@ terminateQueryHandler
 terminateQueryHandler ctx (ServerNormalRequest _metadata API.TerminateQueryRequest{..}) = queryExceptionHandle $ do
   Log.debug $ "Receive Terminate Query Request. "
     <> "Query ID: " <> Log.buildString (show terminateQueryRequestQueryId)
-  validateNameAndThrow terminateQueryRequestQueryId
+  validateNameAndThrow ResQuery terminateQueryRequestQueryId
   validateQueryAllocation ctx terminateQueryRequestQueryId
   Core.terminateQuery ctx terminateQueryRequestQueryId
   returnResp Empty
-
 
 handleTerminateQuery
   :: ServerContext -> G.UnaryHandler API.TerminateQueryRequest Empty
 handleTerminateQuery ctx _ API.TerminateQueryRequest{..} = catchQueryEx $ do
   Log.debug $ "Receive Terminate Query Request. "
     <> "Query ID: " <> Log.buildString (show terminateQueryRequestQueryId)
-  validateNameAndThrow terminateQueryRequestQueryId
+  validateNameAndThrow ResQuery terminateQueryRequestQueryId
   validateQueryAllocation ctx terminateQueryRequestQueryId
   Core.terminateQuery ctx terminateQueryRequestQueryId
   return Empty
@@ -177,7 +171,7 @@ deleteQueryHandler ctx (ServerNormalRequest _metadata req@API.DeleteQueryRequest
   queryExceptionHandle $ do
     Log.debug $ "Receive Delete Query Request. "
       <> "Query ID: " <> Log.build deleteQueryRequestId
-    validateNameAndThrow deleteQueryRequestId
+    validateNameAndThrow ResQuery deleteQueryRequestId
     validateQueryAllocation ctx deleteQueryRequestId
     Core.deleteQuery ctx req
     returnResp Empty
@@ -186,29 +180,26 @@ handleDeleteQuery :: ServerContext -> G.UnaryHandler API.DeleteQueryRequest Empt
 handleDeleteQuery ctx _ req@API.DeleteQueryRequest{..} = catchQueryEx $ do
   Log.debug $ "Receive Delete Query Request. "
            <> "Query ID: " <> Log.build deleteQueryRequestId
-  validateNameAndThrow deleteQueryRequestId
+  validateNameAndThrow ResQuery deleteQueryRequestId
   validateQueryAllocation ctx deleteQueryRequestId
   Core.deleteQuery ctx req
   pure Empty
 
--- FIXME: Incorrect implementation!
 resumeQueryHandler
   :: ServerContext
   -> ServerRequest 'Normal API.ResumeQueryRequest Empty
   -> IO (ServerResponse 'Normal Empty)
-resumeQueryHandler ctx (ServerNormalRequest _metadata req@API.ResumeQueryRequest{..}) = queryExceptionHandle $ do
+resumeQueryHandler ctx (ServerNormalRequest _metadata API.ResumeQueryRequest{..}) = queryExceptionHandle $ do
   Log.debug $ "Received resume query request. "
            <> "query name: " <> Log.build resumeQueryRequestId
-  validateNameAndThrow resumeQueryRequestId
   validateQueryAllocation ctx resumeQueryRequestId
   Core.resumeQuery ctx resumeQueryRequestId >> returnResp Empty
 
 handleResumeQuery
   :: ServerContext -> G.UnaryHandler API.ResumeQueryRequest Empty
-handleResumeQuery ctx _ req@API.ResumeQueryRequest{..} = catchQueryEx $ do
+handleResumeQuery ctx _ API.ResumeQueryRequest{..} = catchQueryEx $ do
   Log.debug $ "Received resume query request. "
            <> "query name: " <> Log.build resumeQueryRequestId
-  validateNameAndThrow resumeQueryRequestId
   validateQueryAllocation ctx resumeQueryRequestId
   Core.resumeQuery ctx resumeQueryRequestId
   return Empty

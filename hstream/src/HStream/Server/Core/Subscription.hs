@@ -11,8 +11,8 @@ module HStream.Server.Core.Subscription where
 import           Control.Concurrent
 import           Control.Concurrent.Async      (async, wait, withAsync)
 import           Control.Concurrent.STM
-import           Control.Exception             (catch, finally, handle,
-                                                onException, throwIO)
+import           Control.Exception             (catch, handle, onException,
+                                                throwIO)
 import           Control.Monad
 import qualified Data.ByteString               as BS
 import           Data.Foldable                 (foldl')
@@ -98,7 +98,7 @@ createSubscription ServerContext {..} sub@Subscription{..} = do
   unless streamExists $ do
     Log.debug $ "Try to create a subscription to a nonexistent stream. Stream Name: "
               <> Log.buildString' streamName
-    throwIO $ HE.EmptyStream subscriptionStreamName
+    throwIO $ HE.NonExistentStream subscriptionStreamName
   shards <- getShards scLDClient subscriptionStreamName
   startOffsets <- case subscriptionOffset of
     (Enumerated (Right SpecialOffsetEARLIEST)) -> return $ foldl' (\acc logId -> HM.insert logId S.LSN_MIN acc) HM.empty shards

@@ -11,7 +11,7 @@
 
 module HStream.MetaStore.Types where
 
-import           Control.Exception                (try)
+import           Control.Exception                (Handler (..), catches, try)
 import           Control.Monad                    (void)
 import           Data.Aeson                       (FromJSON, ToJSON)
 import qualified Data.Aeson                       as A
@@ -21,6 +21,7 @@ import           Data.Functor                     ((<&>))
 import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (catMaybes, isJust)
 import qualified Data.Text                        as T
+import           Data.Text.Encoding               (decodeUtf8)
 import           GHC.Stack                        (HasCallStack)
 import           Network.HTTP.Client              (Manager)
 import qualified Z.Foreign                        as ZF
@@ -29,7 +30,6 @@ import           ZooKeeper.Exception              (ZooException)
 import qualified ZooKeeper.Types                  as Z
 import           ZooKeeper.Types                  (ZHandle)
 
-import           Data.Text.Encoding               (decodeUtf8)
 import qualified HStream.MetaStore.FileUtils      as File
 import           HStream.MetaStore.RqliteUtils    (ROp (..), transaction)
 import qualified HStream.MetaStore.RqliteUtils    as RQ
@@ -64,6 +64,11 @@ data MetaOp
 
 class (ToJSON a, FromJSON a, Show a) => HasPath a handle where
   myRootPath :: T.Text
+  myExceptionHandler :: Key -> [Handler b]
+  myExceptionHandler = const []
+
+#define RETHROW(action, handle) \
+  catches (action) (myExceptionHandler @value @handle mid)
 
 class MetaStore value handle where
   myPath     :: HasPath value handle => T.Text -> T.Text
@@ -96,29 +101,39 @@ class MetaMulti handle where
 
 instance MetaStore value ZHandle where
   myPath mid = myRootPath @value @ZHandle <> "/" <> mid
-  insertMeta mid x zk    = createInsertZK zk (myPath @value @ZHandle mid) x
-  updateMeta mid x mv zk = setZkData      zk (myPath @value @ZHandle mid) x mv
-  upsertMeta mid x    zk = upsertZkData   zk (myPath @value @ZHandle mid) x
-  deleteMeta mid   mv zk = deleteZkPath   zk (myPath @value @ZHandle mid) mv
-  deleteAllMeta       zk = deleteZkChildren zk (myRootPath @value @ZHandle)
+  insertMeta mid x zk    = RETHROW(createInsertZK zk (myPath @value @ZHandle mid) x   ,ZHandle)
+  updateMeta mid x mv zk = RETHROW(setZkData      zk (myPath @value @ZHandle mid) x mv,ZHandle)
+  upsertMeta mid x    zk = RETHROW(upsertZkData   zk (myPath @value @ZHandle mid) x   ,ZHandle)
+  deleteMeta mid   mv zk = RETHROW(deleteZkPath   zk (myPath @value @ZHandle mid) mv  ,ZHandle)
+  deleteAllMeta       zk = RETHROW(deleteZkChildren zk (myRootPath @value @ZHandle)   ,ZHandle)
+    where
+      mid = "some of the meta when deleting"
 
-  checkMetaExists mid zk = isJust <$> Z.zooExists zk (textToCBytes (myPath @value @ZHandle mid))
-  getMeta         mid zk = decodeZNodeValue zk (myPath @value @ZHandle mid)
-  getMetaWithVer  mid zk = do
-    e_a <- try $ Z.zooGet zk (textToCBytes $ myPath @value @ZHandle mid)
-    case e_a of
-      Left (_ :: ZooException) -> return Nothing
-      Right a                  -> return $ (, fromIntegral . Z.statVersion . Z.dataCompletionStat $ a) <$> decodeDataCompletion a
+  checkMetaExists mid zk = RETHROW(isJust <$> Z.zooExists zk (textToCBytes (myPath @value @ZHandle mid)),ZHandle)
+  getMeta         mid zk = RETHROW(decodeZNodeValue zk (myPath @value @ZHandle mid),ZHandle)
+  getMetaWithVer  mid zk = RETHROW(action,ZHandle)
+    where
+      action = do
+        e_a <- try $ Z.zooGet zk (textToCBytes $ myPath @value @ZHandle mid)
+        case e_a of
+          Left (_ :: ZooException) -> return Nothing
+          Right a                  -> return $ (, fromIntegral . Z.statVersion . Z.dataCompletionStat $ a) <$> decodeDataCompletion a
 
-  getAllMeta          zk = do
-    let path = textToCBytes $ myRootPath @value @ZHandle
-    ids <- Z.unStrVec . Z.strsCompletionValues <$> Z.zooGetChildren zk path
-    idAndValues <- catMaybes <$> mapM (\x -> let x' = cBytesToText x in getMeta @value x' zk <&> fmap (x',)) ids
-    pure $ Map.fromList idAndValues
-  listMeta            zk = do
-    let path = textToCBytes $ myRootPath @value @ZHandle
-    ids <- Z.unStrVec . Z.strsCompletionValues <$> Z.zooGetChildren zk path
-    catMaybes <$> mapM (flip (getMeta @value) zk . cBytesToText) ids
+  getAllMeta          zk = RETHROW(action,ZHandle)
+    where
+      mid = "some of the meta when getting "
+      action = do
+        let path = textToCBytes $ myRootPath @value @ZHandle
+        ids <- Z.unStrVec . Z.strsCompletionValues <$> Z.zooGetChildren zk path
+        idAndValues <- catMaybes <$> mapM (\x -> let x' = cBytesToText x in getMeta @value x' zk <&> fmap (x',)) ids
+        pure $ Map.fromList idAndValues
+  listMeta            zk = RETHROW(action,ZHandle)
+    where
+      mid = "some of the meta when listing"
+      action = do
+        let path = textToCBytes $ myRootPath @value @ZHandle
+        ids <- Z.unStrVec . Z.strsCompletionValues <$> Z.zooGetChildren zk path
+        catMaybes <$> mapM (flip (getMeta @value) zk . cBytesToText) ids
 
 instance MetaMulti ZHandle where
   metaMulti ops zk = do
@@ -133,18 +148,19 @@ instance MetaMulti ZHandle where
 
 instance MetaStore value RHandle where
   myPath _ = myRootPath @value @RHandle
-  insertMeta mid x    (RHandle m url) = RQ.insertInto m url (myRootPath @value @RHandle) mid x
-  updateMeta mid x mv (RHandle m url) = RQ.updateSet  m url (myRootPath @value @RHandle) mid x mv
-  upsertMeta mid x    (RHandle m url) = RQ.upsert     m url (myRootPath @value @RHandle) mid x
-  deleteMeta mid   mv (RHandle m url) = RQ.deleteFrom m url (myRootPath @value @RHandle) (Just mid) mv
-  deleteAllMeta       (RHandle m url) = RQ.deleteFrom m url (myRootPath @value @RHandle) Nothing Nothing
-  checkMetaExists mid (RHandle m url) = RQ.selectFrom @value m url (myRootPath @value @RHandle) (Just mid)
-                                    <&> not . Map.null
-  getMeta         mid (RHandle m url) = fmap fst <$> getMetaWithVer mid  (RHandle m url)
-  getMetaWithVer  mid (RHandle m url) = RQ.selectFrom m url (myRootPath @value @RHandle) (Just mid)
-                                    <&> Map.lookup mid
-  getAllMeta          (RHandle m url) = fmap fst <$> RQ.selectFrom m url (myRootPath @value @RHandle) Nothing
-  listMeta            (RHandle m url) = Map.elems <$> getAllMeta (RHandle m url)
+  insertMeta mid x    (RHandle m url) = RETHROW(RQ.insertInto m url (myRootPath @value @RHandle) mid x                               ,RHandle)
+  updateMeta mid x mv (RHandle m url) = RETHROW(RQ.updateSet  m url (myRootPath @value @RHandle) mid x mv                            ,RHandle)
+  upsertMeta mid x    (RHandle m url) = RETHROW(RQ.upsert     m url (myRootPath @value @RHandle) mid x                               ,RHandle)
+  deleteMeta mid   mv (RHandle m url) = RETHROW(RQ.deleteFrom m url (myRootPath @value @RHandle) (Just mid) mv                       ,RHandle)
+  deleteAllMeta       (RHandle m url) = RETHROW(RQ.deleteFrom m url (myRootPath @value @RHandle) Nothing Nothing                     ,RHandle)
+    where mid = "some of the meta when deleting all"
+  checkMetaExists mid (RHandle m url) = RETHROW(RQ.selectFrom @value m url (myRootPath @value @RHandle) (Just mid) <&> not . Map.null,RHandle)
+  getMeta         mid (RHandle m url) = RETHROW(fmap fst <$> getMetaWithVer mid  (RHandle m url)                                     ,RHandle)
+  getMetaWithVer  mid (RHandle m url) = RETHROW(RQ.selectFrom m url (myRootPath @value @RHandle) (Just mid) <&> Map.lookup mid       ,RHandle)
+  getAllMeta          (RHandle m url) = RETHROW(fmap fst <$> RQ.selectFrom m url (myRootPath @value @RHandle) Nothing                ,RHandle)
+    where mid = "some of the meta when get all"
+  listMeta            (RHandle m url) = RETHROW(Map.elems <$> getAllMeta (RHandle m url)                                             ,RHandle)
+    where mid = "some of the meta when list all"
 
 instance MetaMulti RHandle where
   metaMulti ops (RHandle m url) = do

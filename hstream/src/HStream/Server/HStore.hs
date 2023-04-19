@@ -261,12 +261,7 @@ writeRecordToHStore ctx transK transV SinkRecord{..} = do
           payload = BL.toStrict . PB.toLazyByteString . jsonObjectToStruct . fromJust $ Aeson.decode v
           hsRecord = mkHStreamRecord header payload
           record = mkBatchedRecord (PB.Enumerated (Right API.CompressionTypeNone)) (Just timestamp) 1 (V.singleton hsRecord)
-      let req = API.AppendRequest
-                { appendRequestStreamName = snkStream
-                , appendRequestShardId = shardId
-                , appendRequestRecords = Just record
-                }
-      void $ Core.appendStream ctx req
+      void $ Core.appendStream ctx snkStream shardId record
 
 writeRecordToMemory :: IORef [SinkRecord]
                     -> (BL.ByteString -> Maybe BL.ByteString)

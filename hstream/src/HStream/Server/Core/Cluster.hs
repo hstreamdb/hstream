@@ -12,8 +12,7 @@ module HStream.Server.Core.Cluster
   , recoverLocalTasks
   ) where
 
-import           Control.Concurrent             (MVar, modifyMVar_, tryReadMVar,
-                                                 withMVar)
+import           Control.Concurrent             (MVar, tryReadMVar, withMVar)
 import           Control.Concurrent.STM         (readTVarIO)
 import           Control.Exception              (throwIO)
 import qualified Data.List                      as L
@@ -27,7 +26,6 @@ import           HStream.Common.Types           (fromInternalServerNodeWithKey)
 import qualified HStream.Exception              as HE
 import           HStream.Gossip                 (GossipContext (..),
                                                  getFailedNodes, getMemberList)
-import           HStream.Gossip.Types           (ServerStatus (..))
 import qualified HStream.Gossip.Types           as Goosip
 import qualified HStream.Logger                 as Log
 import           HStream.MetaStore.Types        (MetaStore (..))

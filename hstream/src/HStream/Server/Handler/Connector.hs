@@ -48,6 +48,7 @@ import           HStream.Server.Exception         (catchDefaultEx,
                                                    defaultExceptionHandle)
 import           HStream.Server.HStreamApi
 import           HStream.Server.Types
+import           HStream.Server.Validation        (validateCreateConnector)
 import           HStream.ThirdParty.Protobuf      (Empty (..))
 import           HStream.Utils                    (ResourceType (..),
                                                    returnResp,
@@ -60,10 +61,12 @@ createConnectorHandler
   -> IO (ServerResponse 'Normal Connector)
 createConnectorHandler sc (ServerNormalRequest _ req) = defaultExceptionHandle $ do
     Log.debug "Receive Create Connector Request"
+    validateCreateConnector req
     createIOTaskFromRequest sc req >>= returnResp
 
 handleCreateConnector :: ServerContext -> G.UnaryHandler CreateConnectorRequest Connector
-handleCreateConnector sc _ req = catchDefaultEx $
+handleCreateConnector sc _ req = catchDefaultEx $ do
+  validateCreateConnector req
   createIOTaskFromRequest sc req
 
 listConnectorsHandler
@@ -88,10 +91,14 @@ getConnectorHandler ServerContext{..}
   (ServerNormalRequest _metadata GetConnectorRequest{..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive Get Connector Request. "
     <> "Connector Name: " <> Log.buildString (T.unpack getConnectorRequestName)
+  validateNameAndThrow ResConnector getConnectorRequestName
   IO.showIOTask_ scIOWorker getConnectorRequestName >>= returnResp
 
 handleGetConnector :: ServerContext -> G.UnaryHandler GetConnectorRequest Connector
 handleGetConnector ServerContext{..} _ GetConnectorRequest{..} = catchDefaultEx $ do
+  Log.debug $ "Receive Get Connector Request. "
+    <> "Connector Name: " <> Log.buildString (T.unpack getConnectorRequestName)
+  validateNameAndThrow ResConnector getConnectorRequestName
   IO.showIOTask_ scIOWorker getConnectorRequestName
 
 getConnectorSpecHandler
@@ -134,6 +141,7 @@ deleteConnectorHandler sc@ServerContext{..}
   (ServerNormalRequest _metadata DeleteConnectorRequest{..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive Delete Connector Request. "
     <> "Connector Name: " <> Log.build deleteConnectorRequestName
+  validateNameAndThrow ResConnector deleteConnectorRequestName
   ServerNode{..} <- lookupResource' sc ResConnector deleteConnectorRequestName
   unless (serverNodeId == serverID) $
     throwIO $ HE.WrongServer "Connector is bound to a different node"
@@ -142,6 +150,9 @@ deleteConnectorHandler sc@ServerContext{..}
 
 handleDeleteConnector :: ServerContext -> G.UnaryHandler DeleteConnectorRequest Empty
 handleDeleteConnector sc@ServerContext{..} _ DeleteConnectorRequest{..} = catchDefaultEx $ do
+  Log.debug $ "Receive Delete Connector Request. "
+    <> "Connector Name: " <> Log.build deleteConnectorRequestName
+  validateNameAndThrow ResConnector deleteConnectorRequestName
   ServerNode{..} <- lookupResource' sc ResConnector deleteConnectorRequestName
   unless (serverNodeId == serverID) $
     throwIO $ HE.WrongServer "Connector is bound to a different node"
@@ -196,7 +207,8 @@ createIOTaskFromRequest sc CreateConnectorRequest{..} = do
 
 createIOTask :: ServerContext -> T.Text -> T.Text -> T.Text -> T.Text -> IO Connector
 createIOTask sc@ServerContext{scIOWorker = worker@IO.Worker{..}, ..} name typ target cfg = do
-  validateNameAndThrow name
+  -- FIXME: Can we remove this validation ?
+  validateNameAndThrow ResConnector name
   ServerNode{..} <- lookupResource' sc ResConnector name
   unless (serverNodeId == serverID) $
     throwIO $ HE.WrongServer "Connector is bound to a different node"

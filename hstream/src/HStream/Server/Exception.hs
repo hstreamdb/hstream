@@ -13,17 +13,22 @@ module HStream.Server.Exception
     -- * for hs-grpc-server
   , defaultExHandlers
   , catchDefaultEx
+  , someNotFound
+  , someAlreadyExists
   ) where
 
 import           Control.Concurrent.Async      (AsyncCancelled (..))
-import           Control.Exception             (Handler (Handler), IOException,
+import           Control.Exception             (Exception (..),
+                                                Handler (Handler), IOException,
                                                 SomeException, catches)
+import           Data.Text                     (Text)
 import qualified HsGrpc.Server.Types           as HsGrpc
 import           Network.GRPC.HighLevel.Client
 import           Network.GRPC.HighLevel.Server (ServerResponse (ServerBiDiResponse, ServerWriterResponse))
 
 import qualified HStream.Exception             as HE
 import qualified HStream.Logger                as Log
+import qualified HStream.Server.HStreamApi     as API
 import qualified HStream.Store                 as Store
 import           HStream.Utils                 (mkServerErrResp)
 
@@ -108,3 +113,21 @@ hStoreExHandlers =
       Log.fatal $ Log.buildString' err
       HsGrpc.throwGrpcError $ HE.mkGrpcStatus err HsGrpc.StatusInternal
   ]
+
+--------------------------------------------------------------------------------
+
+someNotFound :: API.ResourceType -> Text -> SomeException
+someNotFound API.ResourceTypeResStream       t = toException $ HE.StreamNotFound t
+someNotFound API.ResourceTypeResSubscription t = toException $ HE.SubscriptionNotFound t
+someNotFound API.ResourceTypeResShard        t = toException $ HE.ShardNotFound t
+someNotFound API.ResourceTypeResConnector    t = toException $ HE.ConnectorNotFound t
+someNotFound API.ResourceTypeResQuery        t = toException $ HE.QueryNotFound t
+someNotFound API.ResourceTypeResView         t = toException $ HE.ViewNotFound t
+
+someAlreadyExists :: API.ResourceType -> Text -> SomeException
+someAlreadyExists API.ResourceTypeResStream       t = toException $ HE.StreamExists t
+someAlreadyExists API.ResourceTypeResSubscription t = toException $ HE.SubscriptionExists t
+someAlreadyExists API.ResourceTypeResShardReader  t = toException $ HE.ShardReaderExists t
+someAlreadyExists API.ResourceTypeResConnector    t = toException $ HE.ConnectorExists t
+someAlreadyExists API.ResourceTypeResQuery        t = toException $ HE.QueryExists t
+someAlreadyExists API.ResourceTypeResView         t = toException $ HE.ViewExists t

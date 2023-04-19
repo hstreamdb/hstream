@@ -17,6 +17,7 @@ import           Network.GRPC.HighLevel.Generated
 import           HStream.Server.Handler.Admin
 import           HStream.Server.Handler.Cluster
 import           HStream.Server.Handler.Connector
+import           HStream.Server.Handler.Extra
 import           HStream.Server.Handler.Query
 import qualified HStream.Server.Handler.Stats        as H
 import           HStream.Server.Handler.Stream
@@ -102,7 +103,10 @@ handlers serverContext@ServerContext{..} =
         hstreamApiLookupShardReader  = lookupShardReaderHandler serverContext,
 
         -- Admin
-        hstreamApiSendAdminCommand = adminCommandHandler serverContext
+        hstreamApiSendAdminCommand = adminCommandHandler serverContext,
+
+        hstreamApiParseSql = parseSqlHandler serverContext
+
       }
 
 -------------------------------------------------------------------------------

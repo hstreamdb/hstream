@@ -8,6 +8,7 @@ import           HsGrpc.Server
 import qualified HStream.Server.Handler.Admin        as H
 import qualified HStream.Server.Handler.Cluster      as H
 import qualified HStream.Server.Handler.Connector    as H
+import qualified HStream.Server.Handler.Extra        as H
 import qualified HStream.Server.Handler.Query        as H
 import qualified HStream.Server.Handler.Stats        as H
 import qualified HStream.Server.Handler.Stream       as H
@@ -83,6 +84,7 @@ handlers sc =
   , unary (GRPC :: GRPC P.HStreamApi "listQueries") (H.handleListQueries sc)
   , unary (GRPC :: GRPC P.HStreamApi "deleteQuery") (H.handleDeleteQuery sc)
   , unary (GRPC :: GRPC P.HStreamApi "resumeQuery") (H.handleResumeQuery sc)
+  , unary (GRPC :: GRPC P.HStreamApi "parseSql") (H.handleParseSql sc)
   ]
 
 handleEcho :: UnaryHandler A.EchoRequest A.EchoResponse

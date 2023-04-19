@@ -27,10 +27,9 @@ import           GHC.Stack                     (HasCallStack)
 import           HStream.Exception             (ViewNotFound (..))
 import qualified HStream.Exception             as HE
 import qualified HStream.Logger                as Log
-import           HStream.MetaStore.Types       (MetaStore (insertMeta))
 import qualified HStream.MetaStore.Types       as M
 import           HStream.Processing.Type       (SinkRecord (..))
-import           HStream.Server.Core.Common    (modifySelect, terminateQuery)
+import           HStream.Server.Core.Common    (modifySelect)
 import           HStream.Server.Handler.Common (IdentifierRole (..),
                                                 QueryRunner (..), amIView,
                                                 createQueryAndRun,
@@ -45,8 +44,7 @@ import           HStream.SQL                   (FlowObject, RSQL (..),
                                                 parseAndRefine)
 import           HStream.ThirdParty.Protobuf   (Empty (..), Struct)
 import           HStream.Utils                 (TaskStatus (..),
-                                                jsonObjectToStruct,
-                                                newRandomText)
+                                                jsonObjectToStruct)
 #ifdef HStreamUseV2Engine
 import           DiffFlow.Graph                (GraphBuilder)
 import           DiffFlow.Types                (DataChangeBatch)
@@ -144,7 +142,7 @@ deleteView sc@ServerContext{..} name checkIfExist = do
       M.getMeta @P.QueryStatus queryId metaHandle >>= \case
         Nothing -> throwIO $ HE.QueryNotFound $ "Query " <> queryId <> " associated with view " <> name <> " is not found"
         Just P.QueryStatus{..} -> when (queryState /= Terminated) $ do
-           throwIO $ HE.QueryIsNotTerminated $ "Query " <> queryId <> " associated with view " <> name <> " is not terminated"
+           throwIO $ HE.QueryNotTerminated $ "Query " <> queryId <> " associated with view " <> name <> " is not terminated"
       P.deleteViewQuery name queryId metaHandle
       atomicModifyIORef' P.groupbyStores (\hm -> (HM.delete name hm, ()))
       return Empty

@@ -132,6 +132,9 @@ commandExec HStreamSqlContext{hstreamCliContext = cliCtx@HStreamCliContext{..},.
       RQCreate RCreateAs {} -> do
         qName <-  ("cli_generated_" <>) <$> newRandomText 10
         executeWithLookupResource_ cliCtx (Resource ResQuery qName) (createStreamBySelectWithCustomQueryName xs qName)
+      RQCreate RCreateView {} -> do
+        qName <-  ("cli_generated_" <>) <$> newRandomText 10
+        executeWithLookupResource_ cliCtx (Resource ResQuery qName) (createStreamBySelectWithCustomQueryName xs qName)
       rSql' -> hstreamCodegen rSql' >>= \case
         ShowPlan showObj      -> executeShowPlan cliCtx showObj
         DropPlan checkIfExists dropObj -> executeWithLookupResource_ cliCtx (dropPlanToResType dropObj) $ dropAction checkIfExists dropObj
@@ -153,10 +156,12 @@ commandExec HStreamSqlContext{hstreamCliContext = cliCtx@HStreamCliContext{..},.
         PausePlan  (PauseObjectQuery qName) -> executeWithLookupResource_ cliCtx (Resource ResQuery qName) (pauseQuery qName)
         ResumePlan (ResumeObjectQuery qName) -> executeWithLookupResource_ cliCtx (Resource ResQuery qName) (resumeQuery qName)
         SelectPlan sources _ _ _ _ -> executeWithLookupResource_ cliCtx (Resource ResView (head sources)) (executeViewQuery xs)
+        -- NOTE: EXPLAIN PLAN still uses the following path
         _ -> do
           addr <- readMVar currentServer
           withGRPCClient (HStream.Utils.mkGRPCClientConfWithSSL addr sslConfig)
             (hstreamApiClient >=> \api -> sqlAction api (T.pack xs))
+
 
 readToSQL :: T.Text -> RL.InputT IO (Maybe String)
 readToSQL acc = do

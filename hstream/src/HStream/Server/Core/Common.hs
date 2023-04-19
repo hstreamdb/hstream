@@ -167,6 +167,7 @@ decodeRecordBatch dataRecord = do
 terminateQuery :: ServerContext -> Text -> IO ()
 terminateQuery ServerContext{..} qid = do
   hmapQ <- readMVar runningQueries
+  -- FIXME: add version and compare state when terminating
   mapM_ killThread (HM.lookup qid hmapQ)
   M.updateMeta qid P.QueryTerminated Nothing metaHandle
   void $ swapMVar runningQueries (HM.delete qid hmapQ)
