@@ -264,7 +264,7 @@ DLabelledValueExpr. LabelledValueExpr ::= ValueExpr ":" ValueExpr ;
 separator LabelledValueExpr "," ;
 
 -- SubQuery
-ExprSubquery. ValueExpr7 ::= "(" Select ")" ;
+-- ExprSubquery. ValueExpr7 ::= "(" Select ")" ;
 
 -- Column Name
 ColNameSimple. ColName ::= ColumnIdent ;

@@ -177,7 +177,7 @@ instance HasName RValueExpr where
     RExprAccessJson  name _ _ _ -> name
     RExprBinOp       name _ _ _ -> name
     RExprUnaryOp     name _ _   -> name
-    RExprSubquery    name _     -> name
+    -- RExprSubquery    name _     -> name
 
 ----------------------------- Refinement details -------------------------------
 
@@ -498,7 +498,7 @@ data RValueExpr = RExprCast        ExprName RValueExpr RDataType
                 | RExprAccessJson  ExprName JsonOp RValueExpr RValueExpr
                 | RExprBinOp       ExprName BinaryOp RValueExpr RValueExpr
                 | RExprUnaryOp     ExprName UnaryOp  RValueExpr
-                | RExprSubquery    ExprName RSelect
+                -- | RExprSubquery    ExprName RSelect
                 deriving (Show, Eq)
 -- FIXME:
 instance Ord RValueExpr where
@@ -550,7 +550,7 @@ instance Refine ValueExpr where
     -- 7. Column access
     (ExprColName _ col) -> refine col
     -- 8. Subquery
-    (ExprSubquery _ select) -> RExprSubquery (trimSpacesPrint expr) (refine select)
+    -- (ExprSubquery _ select) -> RExprSubquery (trimSpacesPrint expr) (refine select)
 
 type instance RefinedType ScalarFunc = RValueExpr
 instance Refine ScalarFunc where
