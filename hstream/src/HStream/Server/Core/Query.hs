@@ -257,6 +257,14 @@ deleteQuery ServerContext{..} DeleteQueryRequest{..} = do
 #ifndef HStreamUseV2Engine
 resumeQuery :: ServerContext -> T.Text -> IO ()
 resumeQuery ctx@ServerContext{..} qRQueryName = do
+  getMeta @P.QueryStatus qRQueryName metaHandle >>= \case
+    Nothing -> throwIO $ HE.QueryNotFound ("Query " <> qRQueryName <> "does not exist")
+    Just P.QueryAborted -> return ()
+    -- NOTE: We don't have the state update from running to aborted
+    --     , so if the method is called it means the node was down
+    Just P.QueryRunning -> return ()
+    Just P.QueryTerminated -> throwIO $ HE.QueryAlreadyTerminated qRQueryName
+    Just state -> throwIO $ HE.QueryNotAborted (T.pack $ show state)
   getMeta @P.QueryInfo qRQueryName metaHandle >>= \case
     Just qInfo@P.QueryInfo{..} -> do
       (qRTaskBuilder, qRWhetherToHStore) <- streamCodegen querySql >>= \case
