@@ -53,6 +53,10 @@ import           HStream.Processing.Store
 import           HStream.Processing.Type
 import           HStream.Processing.Util
 import qualified HStream.Server.HStreamApi              as API
+import           HStream.Stats                          (StatsHolder,
+                                                         query_stat_add_total_input_records,
+                                                         query_stat_add_total_output_records)
+import           HStream.Utils                          (textToCBytes)
 import qualified Prelude                                as Prelude
 import qualified RIO                                    as RIO
 import           RIO
@@ -122,19 +126,22 @@ taskBuilderWithName builder taskName =
     { ttcName = taskName
     }
 
-runTask :: (ChangeLogger h1, Snapshotter h2) =>
-  SourceConnectorWithoutCkp ->
-  SinkConnector ->
-  TaskBuilder ->
-  h1 ->
-  h2 ->
-  (Task -> IO ()) ->
-  (T.Text -> BL.ByteString -> Maybe BL.ByteString) ->
-  (T.Text -> BL.ByteString -> Maybe BL.ByteString) ->
-  (BL.ByteString -> Maybe BL.ByteString) ->
-  (BL.ByteString -> Maybe BL.ByteString) ->
-  IO ()
-runTask SourceConnectorWithoutCkp {..} sinkConnector taskBuilder@TaskTopologyConfig {..} changeLogger snapshotter doSnapshot transKSrc transVSrc transKSnk transVSnk = do
+runTask
+  :: (ChangeLogger h1, Snapshotter h2)
+  => StatsHolder
+  -> T.Text
+  -> SourceConnectorWithoutCkp
+  -> SinkConnector
+  -> TaskBuilder
+  -> h1
+  -> h2
+  -> (Task -> IO ())
+  -> (T.Text -> BL.ByteString -> Maybe BL.ByteString)
+  -> (T.Text -> BL.ByteString -> Maybe BL.ByteString)
+  -> (BL.ByteString -> Maybe BL.ByteString)
+  -> (BL.ByteString -> Maybe BL.ByteString)
+  -> IO ()
+runTask statsHolder qid SourceConnectorWithoutCkp {..} sinkConnector taskBuilder@TaskTopologyConfig {..} changeLogger snapshotter doSnapshot transKSrc transVSrc transKSnk transVSnk = do
   -- build and add internalSinkProcessor
   let sinkProcessors =
         HM.map
@@ -173,7 +180,9 @@ runTask SourceConnectorWithoutCkp {..} sinkConnector taskBuilder@TaskTopologyCon
     f chan sourceStreamName =
       withReadRecordsWithoutCkp sourceStreamName (transKSrc sourceStreamName) (transVSrc sourceStreamName) $ \sourceRecords -> do
         mvar <- RIO.newEmptyMVar
-        let callback  = atomically $ writeTChan chan (sourceRecords, mvar)
+        let callback  = do
+              query_stat_add_total_input_records statsHolder (textToCBytes qid) 1
+              atomically $ writeTChan chan (sourceRecords, mvar)
             beforeAck = RIO.takeMVar mvar
         return (callback,beforeAck)
 
@@ -200,7 +209,9 @@ runTask SourceConnectorWithoutCkp {..} sinkConnector taskBuilder@TaskTopologyCon
             e' <- try $ runEP sourceEProcessor (mkERecord Record {recordKey = srcKey, recordValue = srcValue, recordTimestamp = srcTimestamp})
             case e' of
               Left (e :: SomeException) -> liftIO $ Log.fatal $ Log.buildString (Prelude.show e)
-              Right _ -> return ()
+              Right _ -> do
+                liftIO $ query_stat_add_total_output_records statsHolder (textToCBytes qid) 1
+                return ()
           RIO.putMVar mvar ()
 
 runImmTask ::

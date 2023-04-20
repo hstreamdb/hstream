@@ -97,6 +97,27 @@ std::string PerConnectorStats::toJson() {
   return folly::toJson(this->toJsonObj());
 }
 
+void PerQueryStats::aggregate(PerQueryStats const& other,
+                              StatsAggOptional agg_override) {
+#define STAT_DEFINE(name, agg)                                                 \
+  aggregateStat(StatsAgg::agg, agg_override, name##_counter,                   \
+                other.name##_counter);
+#include "per_query_stats.inc"
+}
+
+folly::dynamic PerQueryStats::toJsonObj() {
+  folly::dynamic map = folly::dynamic::object;
+#define STAT_DEFINE(name, _)                                                   \
+  /* we know that all names are unique */                                      \
+  map[#name] = name##_counter.load();
+#include "per_query_stats.inc"
+  return map;
+}
+
+std::string PerQueryStats::toJson() {
+  return folly::toJson(this->toJsonObj());
+}
+
 void PerSubscriptionStats::aggregate(PerSubscriptionStats const& other,
                                      StatsAggOptional agg_override) {
 #define STAT_DEFINE(name, agg)                                                 \
@@ -213,6 +234,7 @@ void Stats::aggregateCompoundStats(Stats const& other,
   // while we aggregate.
   _PER_STATS(per_stream_stats, PerStreamStats)
   _PER_STATS(per_connector_stats, PerConnectorStats)
+  _PER_STATS(per_query_stats, PerQueryStats)
   _PER_STATS(per_subscription_stats, PerSubscriptionStats)
 #undef _PER_STATS
 
@@ -228,6 +250,7 @@ void Stats::deriveStats() {}
 void Stats::reset() {
   per_stream_stats.wlock()->clear();
   per_connector_stats.wlock()->clear();
+  per_query_stats.wlock()->clear();
   per_subscription_stats.wlock()->clear();
   per_handle_stats.wlock()->clear();
 
@@ -252,6 +275,7 @@ folly::dynamic Stats::toJsonObj() {
 
   _PER_TO_JSON(per_stream_stats)
   _PER_TO_JSON(per_connector_stats)
+  _PER_TO_JSON(per_query_stats)
   _PER_TO_JSON(per_subscription_stats)
 #undef _PER_TO_JSON
 

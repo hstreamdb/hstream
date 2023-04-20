@@ -1,6 +1,7 @@
 {-# LANGUAGE BlockArguments      #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
+{-# LANGUAGE NamedFieldPuns      #-}
 {-# LANGUAGE OverloadedLists     #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
@@ -50,6 +51,8 @@ import           HStream.Server.Types
 import           HStream.Server.Validation
 import           HStream.SQL.Exception            (SomeSQLException,
                                                    formatSomeSQLException)
+import           HStream.Stats                    (query_stat_add_queries_alive,
+                                                   query_stat_add_queries_terminated)
 import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils
 
@@ -69,43 +72,51 @@ createQueryHandler
   :: ServerContext
   -> ServerRequest 'Normal API.CreateQueryRequest API.Query
   -> IO (ServerResponse 'Normal API.Query)
-createQueryHandler ctx (ServerNormalRequest _metadata req@API.CreateQueryRequest{..}) =
+createQueryHandler ctx@ServerContext{scStatsHolder} (ServerNormalRequest _metadata req@API.CreateQueryRequest{..}) =
   queryExceptionHandle $ do
     Log.debug $ "Receive Create Query Request with statement: " <> Log.build createQueryRequestSql
              <> "and query name: " <> Log.build createQueryRequestQueryName
     validateCreateQuery req
     validateQueryAllocation ctx createQueryRequestQueryName
-    Core.createQuery ctx req >>= returnResp
+    res <- Core.createQuery ctx req
+    query_stat_add_queries_alive scStatsHolder "alive" 1
+    returnResp res
 
 handleCreateQuery
   :: ServerContext -> G.UnaryHandler API.CreateQueryRequest API.Query
-handleCreateQuery ctx _ req@API.CreateQueryRequest{..} = catchQueryEx $ do
+handleCreateQuery ctx@ServerContext{scStatsHolder} _ req@API.CreateQueryRequest{..} = catchQueryEx $ do
   Log.debug $ "Receive Create Query Request with statement: " <> Log.build createQueryRequestSql
            <> "and query name: " <> Log.build createQueryRequestQueryName
   validateCreateQuery req
   validateQueryAllocation ctx createQueryRequestQueryName
-  Core.createQuery ctx req
+  res <- Core.createQuery ctx req
+  query_stat_add_queries_alive scStatsHolder "alive" 1
+  return res
 
 createQueryWithNamespaceHandler
   :: ServerContext
   -> ServerRequest 'Normal API.CreateQueryWithNamespaceRequest API.Query
   -> IO (ServerResponse 'Normal API.Query)
-createQueryWithNamespaceHandler ctx (ServerNormalRequest _metadata req@API.CreateQueryWithNamespaceRequest{..}) =
+createQueryWithNamespaceHandler ctx@ServerContext{scStatsHolder} (ServerNormalRequest _metadata req@API.CreateQueryWithNamespaceRequest{..}) =
   queryExceptionHandle $ do
     Log.debug $ "Receive Create Query Request with statement: " <> Log.build createQueryWithNamespaceRequestSql
              <> "and query name: " <> Log.build createQueryWithNamespaceRequestQueryName
     validateCreateQueryWithNamespace req
     validateQueryAllocation ctx createQueryWithNamespaceRequestQueryName
-    Core.createQueryWithNamespace ctx req >>= returnResp
+    res <- Core.createQueryWithNamespace ctx req
+    query_stat_add_queries_alive scStatsHolder "alive" 1
+    returnResp res
 
 handleCreateQueryWithNamespace
   :: ServerContext -> G.UnaryHandler API.CreateQueryWithNamespaceRequest API.Query
-handleCreateQueryWithNamespace ctx _ req@API.CreateQueryWithNamespaceRequest{..} = catchQueryEx $ do
+handleCreateQueryWithNamespace ctx@ServerContext{scStatsHolder} _ req@API.CreateQueryWithNamespaceRequest{..} = catchQueryEx $ do
   Log.debug $ "Receive Create Query Request with statement: " <> Log.build createQueryWithNamespaceRequestSql
            <> "and query name: " <> Log.build createQueryWithNamespaceRequestQueryName
   validateCreateQueryWithNamespace req
   validateQueryAllocation ctx createQueryWithNamespaceRequestQueryName
-  Core.createQueryWithNamespace ctx req
+  res <- Core.createQueryWithNamespace ctx req
+  query_stat_add_queries_alive scStatsHolder "alive" 1
+  return res
 
 listQueriesHandler
   :: ServerContext
@@ -145,63 +156,73 @@ terminateQueryHandler
   :: ServerContext
   -> ServerRequest 'Normal API.TerminateQueryRequest Empty
   -> IO (ServerResponse 'Normal Empty)
-terminateQueryHandler ctx (ServerNormalRequest _metadata API.TerminateQueryRequest{..}) = queryExceptionHandle $ do
+terminateQueryHandler ctx@ServerContext{scStatsHolder} (ServerNormalRequest _metadata API.TerminateQueryRequest{..}) = queryExceptionHandle $ do
   Log.debug $ "Receive Terminate Query Request. "
     <> "Query ID: " <> Log.buildString (show terminateQueryRequestQueryId)
   validateNameAndThrow ResQuery terminateQueryRequestQueryId
   validateQueryAllocation ctx terminateQueryRequestQueryId
   Core.terminateQuery ctx terminateQueryRequestQueryId
+  query_stat_add_queries_alive scStatsHolder "alive" (-1)
+  query_stat_add_queries_terminated scStatsHolder "terminated" 1
   returnResp Empty
 
 handleTerminateQuery
   :: ServerContext -> G.UnaryHandler API.TerminateQueryRequest Empty
-handleTerminateQuery ctx _ API.TerminateQueryRequest{..} = catchQueryEx $ do
+handleTerminateQuery ctx@ServerContext{scStatsHolder} _ API.TerminateQueryRequest{..} = catchQueryEx $ do
   Log.debug $ "Receive Terminate Query Request. "
     <> "Query ID: " <> Log.buildString (show terminateQueryRequestQueryId)
   validateNameAndThrow ResQuery terminateQueryRequestQueryId
   validateQueryAllocation ctx terminateQueryRequestQueryId
   Core.terminateQuery ctx terminateQueryRequestQueryId
+  query_stat_add_queries_alive scStatsHolder "alive" (-1)
+  query_stat_add_queries_terminated scStatsHolder "terminated" 1
   return Empty
 
 deleteQueryHandler
   :: ServerContext
   -> ServerRequest 'Normal API.DeleteQueryRequest Empty
   -> IO (ServerResponse 'Normal Empty)
-deleteQueryHandler ctx (ServerNormalRequest _metadata req@API.DeleteQueryRequest{..}) =
+deleteQueryHandler ctx@ServerContext{scStatsHolder} (ServerNormalRequest _metadata req@API.DeleteQueryRequest{..}) =
   queryExceptionHandle $ do
     Log.debug $ "Receive Delete Query Request. "
       <> "Query ID: " <> Log.build deleteQueryRequestId
     validateNameAndThrow ResQuery deleteQueryRequestId
     validateQueryAllocation ctx deleteQueryRequestId
     Core.deleteQuery ctx req
+    query_stat_add_queries_terminated scStatsHolder "terminated" (-1)
     returnResp Empty
 
 handleDeleteQuery :: ServerContext -> G.UnaryHandler API.DeleteQueryRequest Empty
-handleDeleteQuery ctx _ req@API.DeleteQueryRequest{..} = catchQueryEx $ do
+handleDeleteQuery ctx@ServerContext{scStatsHolder}_ req@API.DeleteQueryRequest{..} = catchQueryEx $ do
   Log.debug $ "Receive Delete Query Request. "
            <> "Query ID: " <> Log.build deleteQueryRequestId
   validateNameAndThrow ResQuery deleteQueryRequestId
   validateQueryAllocation ctx deleteQueryRequestId
   Core.deleteQuery ctx req
+  query_stat_add_queries_terminated scStatsHolder "terminated" (-1)
   pure Empty
 
 resumeQueryHandler
   :: ServerContext
   -> ServerRequest 'Normal API.ResumeQueryRequest Empty
   -> IO (ServerResponse 'Normal Empty)
-resumeQueryHandler ctx (ServerNormalRequest _metadata API.ResumeQueryRequest{..}) = queryExceptionHandle $ do
+resumeQueryHandler ctx@ServerContext{scStatsHolder} (ServerNormalRequest _metadata API.ResumeQueryRequest{..}) = queryExceptionHandle $ do
   Log.debug $ "Received resume query request. "
            <> "query name: " <> Log.build resumeQueryRequestId
   validateQueryAllocation ctx resumeQueryRequestId
+  query_stat_add_queries_terminated scStatsHolder "terminated" (-1)
+  query_stat_add_queries_alive scStatsHolder "alive" 1
   Core.resumeQuery ctx resumeQueryRequestId >> returnResp Empty
 
 handleResumeQuery
   :: ServerContext -> G.UnaryHandler API.ResumeQueryRequest Empty
-handleResumeQuery ctx _ API.ResumeQueryRequest{..} = catchQueryEx $ do
+handleResumeQuery ctx@ServerContext{scStatsHolder} _ API.ResumeQueryRequest{..} = catchQueryEx $ do
   Log.debug $ "Received resume query request. "
            <> "query name: " <> Log.build resumeQueryRequestId
   validateQueryAllocation ctx resumeQueryRequestId
   Core.resumeQuery ctx resumeQueryRequestId
+  query_stat_add_queries_terminated scStatsHolder "terminated" (-1)
+  query_stat_add_queries_alive scStatsHolder "alive" 1
   return Empty
 
 -- pauseQueryHandler
