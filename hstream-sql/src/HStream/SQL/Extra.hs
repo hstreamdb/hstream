@@ -60,7 +60,7 @@ extractRefNameFromExpr (ExprLEQ pos e1 e2) = extractRefNameFromExpr (ExprEQ pos 
 extractRefNameFromExpr (ExprGEQ pos e1 e2) = extractRefNameFromExpr (ExprEQ pos e1 e2)
 extractRefNameFromExpr (ExprAccessMap pos e1 e2) = extractRefNameFromExpr (ExprEQ pos e1 e2)
 extractRefNameFromExpr (ExprAccessArray _ e _) = extractRefNameFromExpr e
-extractRefNameFromExpr (ExprSubquery _ _) = (False, []) -- FIXME
+-- extractRefNameFromExpr (ExprSubquery _ _) = (False, []) -- FIXME
 
 extractRefNameFromExpr (ExprColName _ (ColNameSimple _ _)) = (True, [])
 extractRefNameFromExpr (ExprColName _ (ColNameStream _ hIdent _)) = (False, [extractHIdent hIdent])

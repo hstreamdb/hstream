@@ -211,7 +211,7 @@ instance Validate ValueExpr where
   validate expr@ExprGEQ{} = isBoolExpr expr
   validate expr@(ExprAccessMap _ e1 e2) = validate e1 >> validate e2 >> return expr
   validate expr@(ExprAccessArray _ e _) = validate e >> return expr
-  validate expr@(ExprSubquery _ select) = validate select >> return expr
+  -- validate expr@(ExprSubquery _ select) = validate select >> return expr
 
   validate expr@ExprAdd{}    = isNumExpr expr
   validate expr@ExprSub{}    = isNumExpr expr
@@ -245,7 +245,7 @@ isNumExpr expr = case expr of
   (ExprGEQ _ e1 e2) -> isOrdExpr e1 >> isOrdExpr e2 >> return expr
   (ExprAccessMap _ e1 e2) -> validate e1 >> validate e2 >> return expr
   (ExprAccessArray _ e _) -> validate e >> return expr
-  (ExprSubquery _ select) -> validate select >> return expr
+  -- (ExprSubquery _ select) -> validate select >> return expr
 
   (ExprAdd _ e1 e2)    -> isNumExpr e1 >> isNumExpr e2 >> return expr
   (ExprSub _ e1 e2)    -> isNumExpr e1 >> isNumExpr e2 >> return expr
@@ -296,7 +296,7 @@ isFloatExpr expr = case expr of
   (ExprGEQ _ e1 e2) -> isOrdExpr e1 >> isOrdExpr e2 >> return expr
   (ExprAccessMap _ e1 e2) -> validate e1 >> validate e2 >> return expr
   (ExprAccessArray _ e _) -> validate e >> return expr
-  (ExprSubquery _ select) -> validate select >> return expr
+  -- (ExprSubquery _ select) -> validate select >> return expr
 
   (ExprAdd _ e1 e2)    -> isFloatExpr e1 >> isFloatExpr e2 >> return expr
   (ExprSub _ e1 e2)    -> isFloatExpr e1 >> isFloatExpr e2 >> return expr
@@ -346,7 +346,7 @@ isOrdExpr expr = case expr of
   (ExprGEQ _ e1 e2) -> isOrdExpr e1 >> isOrdExpr e2 >> return expr
   (ExprAccessMap _ e1 e2) -> validate e1 >> validate e2 >> return expr
   (ExprAccessArray _ e _) -> validate e >> return expr
-  (ExprSubquery _ select) -> validate select >> return expr
+  -- (ExprSubquery _ select) -> validate select >> return expr
 
   ExprAdd{}    -> isNumExpr expr
   ExprSub{}    -> isNumExpr expr
@@ -402,7 +402,7 @@ isBoolExpr expr = case expr of
   (ExprGEQ _ e1 e2) -> isOrdExpr e1 >> isOrdExpr e2 >> return expr
   (ExprAccessMap _ e1 e2) -> validate e1 >> validate e2 >> return expr
   (ExprAccessArray _ e _) -> validate e >> return expr
-  (ExprSubquery _ select) -> validate select >> return expr
+  -- (ExprSubquery _ select) -> validate select >> return expr
 
   (ExprAdd pos _ _)  -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
   (ExprSub pos _ _)  -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
@@ -454,7 +454,7 @@ isIntExpr expr = case expr of
   (ExprGEQ _ e1 e2) -> isOrdExpr e1 >> isOrdExpr e2 >> return expr
   (ExprAccessMap _ e1 e2) -> validate e1 >> validate e2 >> return expr
   (ExprAccessArray _ e _) -> validate e >> return expr
-  (ExprSubquery _ select) -> validate select >> return expr
+  -- (ExprSubquery _ select) -> validate select >> return expr
 
   (ExprAdd _ e1 e2)    -> isIntExpr e1 >> isIntExpr e2 >> return expr
   (ExprSub _ e1 e2)    -> isIntExpr e1 >> isIntExpr e2 >> return expr
@@ -504,7 +504,7 @@ isStringExpr expr = case expr of
   (ExprGEQ _ e1 e2) -> isOrdExpr e1 >> isOrdExpr e2 >> return expr
   (ExprAccessMap _ e1 e2) -> validate e1 >> validate e2 >> return expr
   (ExprAccessArray _ e _) -> validate e >> return expr
-  (ExprSubquery _ select) -> validate select >> return expr
+  -- (ExprSubquery _ select) -> validate select >> return expr
 
   (ExprAdd pos _ _)    -> Left $ buildSQLException ParseException pos "Expected an String expression but got a numeric"
   (ExprSub pos _ _)    -> Left $ buildSQLException ParseException pos "Expected an String expression but got a numeric"
@@ -554,7 +554,7 @@ notAggregateExpr expr@(ExprLEQ _ e1 e2) = notAggregateExpr e1 >> notAggregateExp
 notAggregateExpr expr@(ExprGEQ _ e1 e2) = notAggregateExpr e1 >> notAggregateExpr e2 >> return expr
 notAggregateExpr expr@(ExprAccessMap _ e1 e2) = notAggregateExpr e1 >> notAggregateExpr e2 >> return expr
 notAggregateExpr expr@(ExprAccessArray _ e _) = notAggregateExpr e >> return expr
-notAggregateExpr expr@(ExprSubquery _ _) = return expr
+-- notAggregateExpr expr@(ExprSubquery _ _) = return expr
 
 notAggregateExpr (ExprSetFunc pos _) = Left $ buildSQLException ParseException pos "Aggregate functions are not allowed in WHERE clause, HAVING clause and JOIN condition"
 notAggregateExpr (ExprScalarFunc _ (ScalarFuncSin _ e)) = notAggregateExpr e
