@@ -22,7 +22,10 @@ import qualified System.Process.Typed       as TP
 
 import qualified Control.Concurrent.Async   as Async
 import qualified Data.Aeson.Text            as J
+import           Data.Int                   (Int32)
 import           Data.Maybe                 (isNothing)
+import qualified Data.Vector                as Vector
+import qualified HStream.IO.LineReader      as LR
 import qualified HStream.IO.Messages        as MSG
 import qualified HStream.IO.Meta            as M
 import           HStream.IO.Types
@@ -35,7 +38,9 @@ newIOTask :: T.Text -> M.MetaHandle -> Stats.StatsHolder -> TaskInfo -> T.Text -
 newIOTask taskId taskHandle taskStatsHolder taskInfo path = do
   process' <- newIORef Nothing
   statusM  <- C.newMVar NEW
+  taskOffsetsM <- C.newMVar Vector.empty
   let taskPath = T.unpack path
+  logReader <- LR.newLineReader (taskPath <> "/stdout.log")
   return IOTask {..}
 
 initIOTask :: IOTask -> Bool -> IO ()
@@ -99,8 +104,9 @@ handleConnectorMessage :: IOTask -> MSG.ConnectorMessage -> IO J.Value
 handleConnectorMessage IOTask{..} (MSG.KvGet MSG.KvGetMessage{..}) = J.toJSON <$> M.getTaskKv taskHandle taskId kgKey
 handleConnectorMessage IOTask{..} (MSG.KvSet MSG.KvSetMessage{..}) = J.Null <$ M.setTaskKv taskHandle taskId ksKey ksValue
 handleConnectorMessage IOTask{..} (MSG.Report MSG.ReportMessage{..}) = do
-  Stats.connector_stat_add_delivered_in_records taskStatsHolder cTaskName (fromIntegral rmdeliveredRecords)
-  Stats.connector_stat_add_delivered_in_bytes taskStatsHolder cTaskName (fromIntegral rmdeliveredBytes)
+  Stats.connector_stat_add_delivered_in_records taskStatsHolder cTaskName (fromIntegral deliveredRecords)
+  Stats.connector_stat_add_delivered_in_bytes taskStatsHolder cTaskName (fromIntegral deliveredBytes)
+  void $ C.swapMVar taskOffsetsM (Vector.map Utils.jsonObjectToStruct offsets)
   pure J.Null
   where cTaskName = Utils.textToCBytes (taskName taskInfo)
 
@@ -163,8 +169,8 @@ updateStatus IOTask{..} action = do
     when (ts /= status) $ M.updateStatusInMeta taskHandle taskId ts
     return ts
 
-checkProcess :: IOTask -> IO ()
-checkProcess ioTask@IOTask{..} = do
+monitorProcess :: IOTask -> IO ()
+monitorProcess ioTask@IOTask{..} = do
   updateStatus ioTask $ \status -> do
     case status of
       RUNNING -> do
@@ -243,6 +249,9 @@ getSpec img = do
     specCmd = T.unpack $ "docker run --rm " <> img <> " spec"
     timeoutSec = 15
     delay = C.threadDelay $ timeoutSec * 1000000
+
+getTaskLogs :: IOTask -> Int32 -> Int32 -> IO T.Text
+getTaskLogs IOTask{..} beg num = LR.readLines logReader (fromIntegral beg) (fromIntegral num)
 
 cleanLocalIOTask :: IOTask -> IO ()
 cleanLocalIOTask task@IOTask{..} = do

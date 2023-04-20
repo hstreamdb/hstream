@@ -7,6 +7,7 @@ import qualified Data.Aeson.TH       as JT
 import           Data.Char           (toLower)
 import qualified Data.Text           as T
 
+import qualified Data.Vector         as Vector
 import qualified HStream.Utils.Aeson as A
 
 
@@ -31,14 +32,11 @@ $(JT.deriveJSON
     ''KvSetMessage)
 
 data ReportMessage = ReportMessage
-  { rmdeliveredRecords :: Int
-  , rmdeliveredBytes   :: Int
-  -- , rmOffsets :: [J.Object]
+  { deliveredRecords :: Int
+  , deliveredBytes   :: Int
+  , offsets          :: Vector.Vector J.Object
   } deriving (Show)
-$(JT.deriveJSON
-    JT.defaultOptions
-      { JT.fieldLabelModifier = drop 2 }
-    ''ReportMessage)
+$(JT.deriveJSON JT.defaultOptions ''ReportMessage)
 
 data ConnectorMessage
   = KvGet KvGetMessage

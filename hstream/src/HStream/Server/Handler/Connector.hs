@@ -12,6 +12,7 @@ module HStream.Server.Handler.Connector
   , listConnectorsHandler
   , getConnectorHandler
   , getConnectorSpecHandler
+  , getConnectorLogsHandler
   , deleteConnectorHandler
   , resumeConnectorHandler
   , pauseConnectorHandler
@@ -20,6 +21,7 @@ module HStream.Server.Handler.Connector
   , handleListConnectors
   , handleGetConnector
   , handleGetConnectorSpec
+  , handleGetConnectorLogs
   , handleDeleteConnector
   , handleResumeConnector
   , handlePauseConnector
@@ -111,6 +113,25 @@ getConnectorSpecHandler ServerContext{..}
 handleGetConnectorSpec :: ServerContext -> G.UnaryHandler GetConnectorSpecRequest GetConnectorSpecResponse
 handleGetConnectorSpec ServerContext{..} _ GetConnectorSpecRequest{..} = catchDefaultEx $ do
   GetConnectorSpecResponse <$> IO.getSpec scIOWorker getConnectorSpecRequestType getConnectorSpecRequestTarget
+
+getConnectorLogsHandler
+  :: ServerContext
+  -> ServerRequest 'Normal GetConnectorLogsRequest GetConnectorLogsResponse
+  -> IO (ServerResponse 'Normal GetConnectorLogsResponse)
+getConnectorLogsHandler ServerContext{..}
+  (ServerNormalRequest _metadata GetConnectorLogsRequest{..}) = defaultExceptionHandle $ do
+    logs <-IO.getTaskLogs scIOWorker
+      getConnectorLogsRequestName
+      getConnectorLogsRequestBegin
+      getConnectorLogsRequestCount
+    returnResp $ GetConnectorLogsResponse logs
+
+handleGetConnectorLogs :: ServerContext -> G.UnaryHandler GetConnectorLogsRequest GetConnectorLogsResponse
+handleGetConnectorLogs ServerContext{..} _ GetConnectorLogsRequest{..} = catchDefaultEx $ do
+  GetConnectorLogsResponse <$> IO.getTaskLogs scIOWorker
+    getConnectorLogsRequestName
+    getConnectorLogsRequestBegin
+    getConnectorLogsRequestCount
 
 deleteConnectorHandler
   :: ServerContext

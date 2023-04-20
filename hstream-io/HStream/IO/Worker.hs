@@ -1,4 +1,3 @@
-
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE LambdaCase         #-}
 {-# LANGUAGE OverloadedStrings  #-}
@@ -17,6 +16,7 @@ import           GHC.Stack                 (HasCallStack)
 
 import qualified Data.Aeson                as J
 import qualified Data.Aeson.KeyMap         as J
+import           Data.Int                  (Int32)
 import qualified HStream.Exception         as HE
 import qualified HStream.IO.IOTask         as IOTask
 import qualified HStream.IO.Meta           as M
@@ -51,7 +51,7 @@ monitor worker@Worker{..} = do
   where
     monitorTasks = do
       ioTasks <- C.readMVar ioTasksM
-      forM_ ioTasks IOTask.checkProcess
+      forM_ ioTasks IOTask.monitorProcess
 
 createIOTask :: HasCallStack => Worker -> T.Text -> TaskInfo -> Bool -> Bool -> IO ()
 createIOTask worker@Worker{..} taskId taskInfo@TaskInfo {..} cleanIfExists createMetaData = do
@@ -74,12 +74,19 @@ getSpec :: Worker -> T.Text -> T.Text -> IO T.Text
 getSpec Worker{..} typ target = IOTask.getSpec img
   where img = makeImage (ioTaskTypeFromText typ) target options
 
+getTaskLogs :: Worker -> T.Text -> Int32 -> Int32 -> IO T.Text
+getTaskLogs worker name beg num = do
+  Log.info $ Log.buildString ("getTasksLog:" ++ T.unpack name)
+  ioTask <- getIOTask_ worker name
+  IOTask.getTaskLogs ioTask beg num
+
 showIOTask_ :: Worker -> T.Text -> IO API.Connector
 showIOTask_ worker@Worker{..} name = do
-  ioTask <- getIOTask_ worker name
-  M.getIOTaskMeta workerHandle (taskId ioTask) >>= \case
+  IOTask{..} <- getIOTask_ worker name
+  taskOffsets <- C.readMVar taskOffsetsM
+  M.getIOTaskMeta workerHandle taskId >>= \case
     Nothing -> throwIO $ HE.ConnectorNotFound name
-    Just c  -> return $ convertTaskMeta True c
+    Just c  -> return $ (convertTaskMeta True c) {API.connectorOffsets = taskOffsets}
 
 listIOTasks :: Worker -> IO [API.Connector]
 listIOTasks Worker{..} = M.listIOTaskMeta workerHandle

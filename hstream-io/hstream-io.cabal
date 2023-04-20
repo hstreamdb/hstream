@@ -47,6 +47,7 @@ library
     HStream.IO.Meta
     HStream.IO.Types
     HStream.IO.Worker
+    HStream.IO.LineReader
 
   build-depends:
     , aeson
