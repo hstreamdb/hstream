@@ -9,7 +9,10 @@ module HStream.Client.Internal
   , cliFetch'
   ) where
 
-import           Control.Monad                    (void)
+import           Control.Concurrent               (threadDelay)
+import           Control.Monad                    (void, when)
+import           Data.IORef                       (IORef (..), newIORef,
+                                                   readIORef, writeIORef)
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated (ClientRequest (..))
@@ -36,25 +39,27 @@ import           HStream.Utils                    (ResourceType (..),
                                                    newRandomText)
 
 
-streamingFetch :: T.Text -> API.HStreamApi ClientRequest response -> IO ()
-streamingFetch = streamingFetch' (putStr . formatResult @PB.Struct)
+streamingFetch :: HStreamCliContext -> T.Text -> API.HStreamApi ClientRequest response -> IO ()
+streamingFetch = streamingFetch' (putStr . formatResult @PB.Struct) False
 
-streamingFetch' :: (PB.Struct -> IO ()) -> T.Text -> API.HStreamApi ClientRequest response -> IO ()
-streamingFetch' handleResult subId API.HStreamApi{..} = do
+streamingFetch' :: (PB.Struct -> IO ()) -> Bool -> HStreamCliContext -> T.Text -> API.HStreamApi ClientRequest response -> IO ()
+streamingFetch' handleResult recovered ctx subId api@API.HStreamApi{..} = do
+  when recovered $ putStrLn "Query is recovered"
   clientId <- genClientId
   void $ hstreamApiStreamingFetch (ClientBiDiRequest 10000 mempty (action clientId))
   where
     action clientId _clientCall _meta streamRecv streamSend writesDone = do
       _ <- streamSend initReq
-      receiving
+      interruptSignal <- newIORef False
+      receiving interruptSignal
       where
         initReq = API.StreamingFetchRequest
           { API.streamingFetchRequestSubscriptionId = subId
           , API.streamingFetchRequestConsumerName   = clientId
           , API.streamingFetchRequestAckIds         = V.empty
           }
-        receiving :: IO ()
-        receiving = withInterrupt (void writesDone) $ streamRecv >>= \case
+        receiving :: IORef Bool ->  IO ()
+        receiving sig = withInterrupt (writeIORef sig True >> void writesDone) $ streamRecv >>= \case
           Left err -> print err
           Right (Just API.StreamingFetchResponse{streamingFetchResponseReceivedRecords = rs}) -> do
             let hRecords = maybe V.empty decompressBatchedRecord (API.receivedRecordRecord =<< rs)
@@ -63,8 +68,16 @@ streamingFetch' handleResult subId API.HStreamApi{..} = do
             let results = PB.fromByteString . API.hstreamRecordPayload <$> hRecords
             mapM_ (\case Right x -> handleResult x; Left x -> print x) results
             _ <- streamSend ackReq
-            receiving
-          Right Nothing -> putStrLn terminateMsg
+            receiving sig
+          Right Nothing -> do
+            interrupted <- readIORef sig
+            if interrupted
+              then putStrLn terminateMsg
+              else do
+                putStrLn "The original server is dead, recovering query..."
+                threadDelay 5000000
+                executeWithLookupResource_ ctx (Resource ResSubscription subId) $
+                  streamingFetch' handleResult True ctx subId
 
 cliFetch :: HStreamCliContext -> String -> IO ()
 cliFetch = cliFetch' Nothing
@@ -79,8 +92,8 @@ cliFetch' handleResult ctx sql = do
     (createStreamBySelectWithCustomQueryName (T.unpack newSql) qName)
   void . execute ctx $ createSubscription subId sName
   executeWithLookupResource_ ctx (Resource ResSubscription subId)
-    (case handleResult of Nothing -> streamingFetch subId
-                          Just h  -> streamingFetch' h subId)
+    (case handleResult of Nothing -> streamingFetch ctx subId
+                          Just h  -> streamingFetch' h False ctx subId)
   executeWithLookupResource_ ctx (Resource ResSubscription subId) (void . deleteSubscription subId True)
   executeWithLookupResource_ ctx (Resource ResQuery qName) (terminateQuery queryId)
   executeWithLookupResource_ ctx (Resource ResStream sName) (void . dropAction False (DStream sName))
