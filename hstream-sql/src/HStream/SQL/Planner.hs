@@ -83,7 +83,7 @@ instance Decouple RValueExpr where
     RExprMap _ m               -> ValueMap (Map.mapKeys decouple $ Map.map decouple m)
     RExprAccessArray _ e rhs   -> AccessArray (decouple e) rhs
     RExprAccessMap _ em ek     -> AccessMap (decouple em) (decouple ek)
-    RExprSubquery _ _          -> throwSQLException RefineException Nothing "subquery is not supported"
+    -- RExprSubquery _ _          -> throwSQLException RefineException Nothing "subquery is not supported"
 
 rSelToAffiliateItems :: RSel -> [(ColumnCatalog,ScalarExpr)]
 rSelToAffiliateItems (RSel items) =
@@ -331,7 +331,7 @@ instance HasAggregates RValueExpr where
     RExprAccessJson _ _ e1 e2 -> getAggregates e1 ++ getAggregates e2
     RExprBinOp _ _ e1 e2      -> getAggregates e1 ++ getAggregates e2
     RExprUnaryOp _ _ e        -> getAggregates e
-    RExprSubquery _ _         -> [] -- do not support subquery in SELECT/HAVING now
+    -- RExprSubquery _ _         -> [] -- do not support subquery in SELECT/HAVING now
 
 instance HasAggregates RSelectItem where
   getAggregates item = case item of
