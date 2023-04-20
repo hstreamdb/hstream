@@ -24,7 +24,6 @@ import qualified Control.Concurrent.Async   as Async
 import qualified Data.Aeson.Text            as J
 import           Data.Int                   (Int32)
 import           Data.Maybe                 (isNothing)
-import qualified Data.Text.Encoding         as T
 import qualified Data.Vector                as Vector
 import qualified HStream.IO.Messages        as MSG
 import qualified HStream.IO.Meta            as M
@@ -33,7 +32,7 @@ import qualified HStream.Logger             as Log
 import qualified HStream.MetaStore.Types    as M
 import qualified HStream.Stats              as Stats
 import qualified HStream.Utils              as Utils
-import           Text.Printf                (printf)
+import qualified HStream.IO.LineReader as LR
 
 newIOTask :: T.Text -> M.MetaHandle -> Stats.StatsHolder -> TaskInfo -> T.Text -> IO IOTask
 newIOTask taskId taskHandle taskStatsHolder taskInfo path = do
@@ -41,6 +40,7 @@ newIOTask taskId taskHandle taskStatsHolder taskInfo path = do
   statusM  <- C.newMVar NEW
   taskOffsetsM <- C.newMVar Vector.empty
   let taskPath = T.unpack path
+  logReader <- LR.newLineReader (taskPath <> "/stdout.log")
   return IOTask {..}
 
 initIOTask :: IOTask -> Bool -> IO ()
@@ -251,23 +251,7 @@ getSpec img = do
     delay = C.threadDelay $ timeoutSec * 1000000
 
 getTaskLogs :: IOTask -> Int32 -> Int32 -> IO T.Text
-getTaskLogs IOTask{..} beg num = do
-  Log.info $ Log.buildString ("get log cmd:" ++ cmd)
-  Async.race delay (TP.readProcess tpCfg) >>= \case
-    Left () -> throwIO (RunProcessTimeoutException timeoutSec)
-    Right (TP.ExitSuccess, out, _) -> pure . T.decodeUtf8 $ BSLC.toStrict out
-    Right (code, _, err) -> do
-      Log.warning $ Log.buildString ("spec process exited: " ++ show code)
-      Log.warning $ Log.buildString ("err:" ++ BSLC.unpack err)
-      E.throwIO (CheckFailedException "get logs process exited unexpectedly")
-  where logPath = taskPath <> "/stdout.log"
-        cmd = printf "sed -n '%d,%d p' %s" beg (num - 1) logPath
-        tpCfg = TP.setStdin TP.closed
-          . TP.setStdout TP.createPipe
-          . TP.setStderr TP.createPipe
-          $ TP.shell cmd
-        timeoutSec = 5
-        delay = C.threadDelay $ timeoutSec * 1000000
+getTaskLogs IOTask{..} beg num = LR.readLines logReader (fromIntegral beg) (fromIntegral num)
 
 cleanLocalIOTask :: IOTask -> IO ()
 cleanLocalIOTask task@IOTask{..} = do

@@ -30,6 +30,7 @@ import qualified HStream.Server.HStreamApi   as API
 import qualified HStream.Stats               as Stats
 import qualified HStream.ThirdParty.Protobuf as Grpc
 import qualified HStream.ThirdParty.Protobuf as PB
+import qualified HStream.IO.LineReader as LR
 
 data IOTaskType = SOURCE | SINK
   deriving (Show, Eq)
@@ -81,6 +82,7 @@ data IOTask = IOTask
   , statusM         :: C.MVar IOTaskStatus
   , taskStatsHolder :: Stats.StatsHolder
   , taskOffsetsM    :: C.MVar (Vector.Vector PB.Struct)
+  , logReader       :: LR.LineReader
   }
 
 type ZkUrl = T.Text
