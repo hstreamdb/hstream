@@ -25,6 +25,7 @@ import qualified Data.Aeson.Text            as J
 import           Data.Int                   (Int32)
 import           Data.Maybe                 (isNothing)
 import qualified Data.Vector                as Vector
+import qualified HStream.IO.LineReader      as LR
 import qualified HStream.IO.Messages        as MSG
 import qualified HStream.IO.Meta            as M
 import           HStream.IO.Types
@@ -32,7 +33,6 @@ import qualified HStream.Logger             as Log
 import qualified HStream.MetaStore.Types    as M
 import qualified HStream.Stats              as Stats
 import qualified HStream.Utils              as Utils
-import qualified HStream.IO.LineReader as LR
 
 newIOTask :: T.Text -> M.MetaHandle -> Stats.StatsHolder -> TaskInfo -> T.Text -> IO IOTask
 newIOTask taskId taskHandle taskStatsHolder taskInfo path = do

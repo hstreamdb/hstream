@@ -1,9 +1,9 @@
 module HStream.IO.LineReader where
 
+import qualified Data.ByteString.Lazy    as BSL
+import qualified Data.Text               as T
+import qualified Data.Text.Lazy          as TL
 import qualified Data.Text.Lazy.Encoding as TL
-import qualified Data.Text.Lazy as TL
-import qualified Data.Text as T
-import qualified Data.ByteString.Lazy as BSL
 
 -- TODO:
 -- + optimize sequential read(cache latest line offset)

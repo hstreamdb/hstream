@@ -24,13 +24,13 @@ import qualified Data.Aeson.Text             as J
 import qualified Data.Text.Lazy              as TL
 import qualified Data.Vector                 as Vector
 import qualified HStream.Exception           as E
+import qualified HStream.IO.LineReader       as LR
 import           HStream.MetaStore.Types     (FHandle, HasPath (..), MetaHandle,
                                               RHandle (..))
 import qualified HStream.Server.HStreamApi   as API
 import qualified HStream.Stats               as Stats
 import qualified HStream.ThirdParty.Protobuf as Grpc
 import qualified HStream.ThirdParty.Protobuf as PB
-import qualified HStream.IO.LineReader as LR
 
 data IOTaskType = SOURCE | SINK
   deriving (Show, Eq)
