@@ -25,6 +25,7 @@ module HStream.Utils.RPC
   , getServerResp
   , getServerRespPure
   , getProtoTimestamp
+  , msTimestampToProto
   , isSuccessful
 
   , pattern EnumPB
@@ -50,6 +51,7 @@ import           Network.GRPC.HighLevel.Server
 import qualified Proto3.Suite                     as PB
 import           Z.Data.JSON                      (JSON)
 
+import           Data.Int                         (Int64)
 import           HStream.Server.HStreamApi
 import           HStream.ThirdParty.Protobuf      (Struct (..), Timestamp (..))
 
@@ -137,6 +139,12 @@ getProtoTimestamp :: IO Timestamp
 getProtoTimestamp = do
   MkSystemTime sec nano <- getSystemTime
   return $ Timestamp sec (fromIntegral nano)
+
+msTimestampToProto :: Int64 -> Timestamp
+msTimestampToProto millis =
+  let (sec, remain) = millis `divMod` 1000
+      nano = remain * 1000000
+   in Timestamp sec (fromIntegral nano)
 
 isSuccessful :: ClientResult 'Normal a -> Bool
 isSuccessful (ClientNormalResponse _ _ _ StatusOk _) = True

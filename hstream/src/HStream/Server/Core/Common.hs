@@ -39,7 +39,9 @@ import           HStream.SQL.Codegen.V1
 import qualified HStream.Store                    as HS
 import           HStream.Utils                    (ResourceType (..),
                                                    decodeByteStringBatch,
-                                                   textToCBytes)
+                                                   msTimestampToProto,
+                                                   textToCBytes,
+                                                   updateRecordTimestamp)
 
 insertAckedRecordId
   :: ShardRecordId                        -- ^ recordId need to insert
@@ -143,7 +145,8 @@ decodeRecordBatch dataRecord = do
   let payload = HS.recordPayload dataRecord
       logId = HS.recordLogID dataRecord
       batchId = HS.recordLSN dataRecord
-  let batch = decodeByteStringBatch payload
+      publishTime = msTimestampToProto $ HS.recordTimestamp dataRecord
+  let batch = updateRecordTimestamp publishTime $ decodeByteStringBatch payload
       batchSize = batchedRecordBatchSize batch :: Word32
   Log.debug $ "Decoding BatchedRecord size: " <> Log.build batchSize
   let shardRecordIds = V.generate (fromIntegral batchSize) (ShardRecordId batchId . fromIntegral)
