@@ -12,48 +12,37 @@ module HStream.Server.Core.Stream
   , append
   , appendStream
   , listShards
-  , listShardReaders
-  , createShardReader
-  , deleteShardReader
-  , readShard
   ) where
 
-import           Control.Concurrent         (modifyMVar_, newEmptyMVar, putMVar,
-                                             readMVar, takeMVar, withMVar)
-import           Control.Exception          (bracket, catch, throwIO)
-import           Control.Monad              (forM, unless, when)
-import qualified Data.ByteString            as BS
-import qualified Data.ByteString.Lazy       as BSL
-import           Data.Foldable              (foldl')
-import           Data.Functor               ((<&>))
-import qualified Data.HashMap.Strict        as HM
-import qualified Data.Map.Strict            as M
-import           Data.Maybe                 (fromJust, fromMaybe)
-import qualified Data.Text                  as T
-import qualified Data.Vector                as V
-import           GHC.Stack                  (HasCallStack)
-import           Google.Protobuf.Timestamp  (Timestamp)
-import           Proto3.Suite               (Enumerated (Enumerated))
-import qualified Proto3.Suite               as PT
-import qualified Z.Data.CBytes              as CB
-import           ZooKeeper.Exception        (ZNONODE (..))
+import           Control.Concurrent        (modifyMVar_)
+import           Control.Exception         (catch, throwIO)
+import           Control.Monad             (forM, unless, when)
+import qualified Data.ByteString           as BS
+import qualified Data.ByteString.Lazy      as BSL
+import           Data.Foldable             (foldl')
+import qualified Data.HashMap.Strict       as HM
+import qualified Data.Map.Strict           as M
+import           Data.Maybe                (fromMaybe)
+import qualified Data.Text                 as T
+import qualified Data.Vector               as V
+import           GHC.Stack                 (HasCallStack)
+import           Google.Protobuf.Timestamp (Timestamp)
+import qualified Proto3.Suite              as PT
+import qualified Z.Data.CBytes             as CB
 
-import           Data.Word                  (Word64)
-import qualified HStream.Exception          as HE
-import qualified HStream.Logger             as Log
-import qualified HStream.MetaStore.Types    as M
-import           HStream.Server.Core.Common (decodeRecordBatch)
-import           HStream.Server.HStreamApi  (CreateShardReaderRequest (..))
-import qualified HStream.Server.HStreamApi  as API
-import qualified HStream.Server.MetaData    as P
-import           HStream.Server.Shard       (Shard (..), createShard,
-                                             devideKeySpace,
-                                             mkShardWithDefaultId,
-                                             mkSharedShardMapWithShards)
-import           HStream.Server.Types       (ServerContext (..),
-                                             transToStreamName)
-import qualified HStream.Stats              as Stats
-import qualified HStream.Store              as S
+import           Data.Word                 (Word64)
+import qualified HStream.Exception         as HE
+import qualified HStream.Logger            as Log
+import qualified HStream.Server.HStreamApi as API
+import qualified HStream.Server.MetaData   as P
+import           HStream.Server.Shard      (Shard (..), createShard,
+                                            devideKeySpace,
+                                            mkShardWithDefaultId,
+                                            mkSharedShardMapWithShards)
+import           HStream.Server.Types      (ServerContext (..),
+                                            transToStreamName)
+import qualified HStream.Stats             as Stats
+import qualified HStream.Store             as S
 import           HStream.Utils
 
 -------------------------------------------------------------------------------
@@ -105,10 +94,10 @@ deleteStream ServerContext{..} API.DeleteStreamRequest{deleteStreamRequestForce 
              _archivedStream <- S.archiveStream scLDClient streamId
              P.updateSubscription metaHandle sName (cBytesToText $ S.getArchivedStreamName _archivedStream)
            else
-             throwIO $ HE.FoundSubscription
+             throwIO HE.FoundSubscription
 
 getStream :: ServerContext -> API.GetStreamRequest -> IO API.GetStreamResponse
-getStream sc@ServerContext{..} API.GetStreamRequest{ getStreamRequestName = sName} = do
+getStream ServerContext{..} API.GetStreamRequest{ getStreamRequestName = sName} = do
   let streamId = transToStreamName sName
   storeExists <- S.doesStreamExist scLDClient streamId
   unless storeExists $ throwIO $ HE.StreamNotFound sName
@@ -213,61 +202,6 @@ appendStream ServerContext{..} streamName shardId record = do
 
 --------------------------------------------------------------------------------
 
-createShardReader
-  :: HasCallStack
-  => ServerContext
-  -> API.CreateShardReaderRequest
-  -> IO API.CreateShardReaderResponse
-createShardReader ServerContext{..} API.CreateShardReaderRequest{createShardReaderRequestStreamName=rStreamName,
-    createShardReaderRequestShardId=rShardId, createShardReaderRequestShardOffset=rOffset, createShardReaderRequestTimeout=rTimeout,
-    createShardReaderRequestReaderId=rId} = do
-  exist <- M.checkMetaExists @P.ShardReader rId metaHandle
-  when exist $ throwIO $ HE.ShardReaderExists $ "ShardReader with id " <> rId <> " already exists."
-  shardExists <- S.logIdHasGroup scLDClient rShardId
-  unless shardExists $ throwIO $ HE.ShardNotFound $ "Shard with id " <> T.pack (show rShardId) <> " is not found."
-  startLSN <- getStartLSN rShardId
-  let shardReader = mkShardReader startLSN
-  Log.info $ "create shardReader " <> Log.buildString' (show shardReader)
-  M.insertMeta rId shardReader metaHandle
-  return API.CreateShardReaderResponse
-    { API.createShardReaderResponseStreamName  = rStreamName
-    , API.createShardReaderResponseShardId     = rShardId
-    , API.createShardReaderResponseShardOffset = rOffset
-    , API.createShardReaderResponseReaderId    = rId
-    , API.createShardReaderResponseTimeout     = rTimeout
-    }
- where
-   mkShardReader offset = P.ShardReader rStreamName rShardId offset rId rTimeout
-
-   getStartLSN :: S.C_LogID -> IO S.LSN
-   getStartLSN logId =
-     case fromJust . API.shardOffsetOffset . fromJust $ rOffset of
-       API.ShardOffsetOffsetSpecialOffset (Enumerated (Right API.SpecialOffsetEARLIEST)) ->
-         return S.LSN_MIN
-       API.ShardOffsetOffsetSpecialOffset (Enumerated (Right API.SpecialOffsetLATEST)) ->
-         (+ 1) <$> S.getTailLSN scLDClient logId
-       API.ShardOffsetOffsetRecordOffset API.RecordId{..} ->
-         return recordIdBatchId
-       _ ->
-         throwIO $ HE.InvalidShardOffset "UnKnownShardOffset"
-
-deleteShardReader
-  :: HasCallStack
-  => ServerContext
-  -> API.DeleteShardReaderRequest
-  -> IO ()
-deleteShardReader ctx@ServerContext{..} API.DeleteShardReaderRequest{..} = do
-  isSuccess <- catch (M.deleteMeta @P.ShardReader deleteShardReaderRequestReaderId Nothing metaHandle >> return True) $
-      \ (_ :: ZNONODE) -> return False
-  modifyMVar_ shardReaderMap $ \mp -> do
-    case HM.lookup deleteShardReaderRequestReaderId mp of
-      Nothing -> return mp
-      Just _  -> return (HM.delete deleteShardReaderRequestReaderId mp)
-  unless isSuccess $ throwIO $ HE.EmptyShardReader "ShardReaderNotExists"
-
-listShardReaders :: HasCallStack => ServerContext -> API.ListShardReadersRequest -> IO (V.Vector T.Text)
-listShardReaders ctx@ServerContext{..} _req = M.listMeta @P.ShardReader metaHandle <&> V.fromList . map P.readerReaderId
-
 listShards
   :: HasCallStack
   => ServerContext
@@ -302,41 +236,3 @@ listShards ServerContext{..} API.ListShardsRequest{..} = do
      endHashRangeKey   <- cBytesToText <$> M.lookup endKey mp
      shardEpoch        <- read . CB.unpack <$> M.lookup epoch mp
      return (startHashRangeKey, endHashRangeKey, shardEpoch)
-
-readShard
-  :: HasCallStack
-  => ServerContext
-  -> API.ReadShardRequest
-  -> IO (V.Vector API.ReceivedRecord)
-readShard ServerContext{..} API.ReadShardRequest{..} = do
-  bracket getReader putReader readRecords
- where
-   ldReaderBufferSize = 10
-
-   getReader = do
-     mReader <- HM.lookup readShardRequestReaderId <$> readMVar shardReaderMap
-     case mReader of
-       Just readerMvar -> takeMVar readerMvar
-       Nothing         -> do
-         r@P.ShardReader{..} <- M.getMeta readShardRequestReaderId metaHandle >>= \case
-           Nothing     -> throwIO $ HE.EmptyShardReader "ShardReaderNotExists"
-           Just reader -> return reader
-         Log.info $ "get reader from persistence: " <> Log.buildString' (show r)
-         reader <- S.newLDReader scLDClient 1 (Just ldReaderBufferSize)
-         S.readerStartReading reader readerShardId readerShardOffset S.LSN_MAX
-         S.readerSetTimeout reader (fromIntegral readerReadTimeout)
-         readerMvar <- newEmptyMVar
-         modifyMVar_ shardReaderMap $ return . HM.insert readShardRequestReaderId readerMvar
-         return reader
-   putReader reader = do
-    withMVar shardReaderMap $ \mp -> do
-     case HM.lookup readShardRequestReaderId mp of
-       Nothing         -> pure ()
-       Just readerMvar -> putMVar readerMvar reader
-   readRecords reader = do
-     records <- S.readerRead reader (fromIntegral readShardRequestMaxRecords)
-     receivedRecordsVecs <- forM records decodeRecordBatch
-     let res = V.fromList $ map (\(_, _, _, record) -> record) receivedRecordsVecs
-     Log.debug $ "reader " <> Log.build readShardRequestReaderId
-              <> " read " <> Log.build (V.length res) <> " batchRecords"
-     return res

@@ -10,6 +10,7 @@ import qualified HStream.Server.Handler.Cluster      as H
 import qualified HStream.Server.Handler.Connector    as H
 import qualified HStream.Server.Handler.Extra        as H
 import qualified HStream.Server.Handler.Query        as H
+import qualified HStream.Server.Handler.ShardReader  as H
 import qualified HStream.Server.Handler.Stats        as H
 import qualified HStream.Server.Handler.Stream       as H
 import qualified HStream.Server.Handler.Subscription as H
@@ -52,6 +53,7 @@ handlers sc =
   , unary (GRPC :: GRPC P.HStreamApi "append") (H.handleAppend sc)
     -- Read
   , unary (GRPC :: GRPC P.HStreamApi "readShard") (H.handleReadShard sc)
+  , serverStream (GRPC :: GRPC P.HStreamApi "readShardStream") (H.handleReadShardStream sc)
     -- Subscribe
   , bidiStream (GRPC :: GRPC P.HStreamApi "streamingFetch") (H.handleStreamingFetch sc)
     -- Stats
