@@ -50,8 +50,7 @@ import           HStream.Server.Shard       (Shard (..), createShard,
                                              devideKeySpace,
                                              mkShardWithDefaultId,
                                              mkSharedShardMapWithShards)
-import           HStream.Server.Types       (AppendArguments (..),
-                                             ServerContext (..),
+import           HStream.Server.Types       (ServerContext (..),
                                              transToStreamName)
 import qualified HStream.Stats              as Stats
 import qualified HStream.Store              as S
@@ -194,13 +193,12 @@ appendStream :: HasCallStack
              -> Word64
              -> API.BatchedRecord
              -> IO API.AppendResponse
-appendStream ServerContext{..} streamName shardId payload = do
-  let record@API.BatchedRecord{batchedRecordBatchSize=recordSize} = payload
-  timestamp <- getProtoTimestamp
-  let payload' = encodBatchRecord . updateRecordTimestamp timestamp $ record
-      payloadSize = BS.length payload'
+appendStream ServerContext{..} streamName shardId record = do
+  let payload = encodBatchRecord record
+      recordSize = API.batchedRecordBatchSize record
+      payloadSize = BS.length payload
   when (payloadSize > scMaxRecordSize) $ throwIO $ HE.InvalidRecordSize payloadSize
-  S.AppendCompletion {..} <- S.appendCompressedBS scLDClient shardId payload' cmpStrategy Nothing
+  S.AppendCompletion {..} <- S.appendCompressedBS scLDClient shardId payload cmpStrategy Nothing
   Stats.stream_stat_add_append_in_bytes scStatsHolder cStreamName (fromIntegral payloadSize)
   Stats.stream_stat_add_append_in_records scStatsHolder cStreamName (fromIntegral recordSize)
   Stats.stream_time_series_add_append_in_bytes scStatsHolder cStreamName (fromIntegral payloadSize)
