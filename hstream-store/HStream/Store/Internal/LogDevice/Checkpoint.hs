@@ -138,10 +138,11 @@ foreign import ccall unsafe "hs_logdevice.h new_zookeeper_based_checkpoint_store
     :: Ptr LogDeviceClient
     -> IO (Ptr LogDeviceCheckpointStore)
 
-foreign import ccall unsafe "hs_logdevice.h free_checkpoint_store"
+foreign import ccall safe "hs_logdevice.h free_checkpoint_store"
   c_free_checkpoint_store :: Ptr LogDeviceCheckpointStore -> IO ()
 
-foreign import ccall unsafe "hs_logdevice.h &free_checkpoint_store"
+-- VersionedConfigStore::shutdown may block
+foreign import ccall safe "hs_logdevice.h &free_checkpoint_store"
   c_free_checkpoint_store_fun :: FunPtr (Ptr LogDeviceCheckpointStore -> IO ())
 
 foreign import ccall safe "hs_logdevice.h checkpoint_store_get_lsn_sync"
