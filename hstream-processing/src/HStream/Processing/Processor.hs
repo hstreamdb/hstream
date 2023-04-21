@@ -181,7 +181,7 @@ runTask statsHolder qid SourceConnectorWithoutCkp {..} sinkConnector taskBuilder
       withReadRecordsWithoutCkp sourceStreamName (transKSrc sourceStreamName) (transVSrc sourceStreamName) $ \sourceRecords -> do
         mvar <- RIO.newEmptyMVar
         let callback  = do
-              query_stat_add_total_input_records statsHolder (textToCBytes qid) 1
+              query_stat_add_total_input_records statsHolder (textToCBytes qid) (fromIntegral . length $ sourceRecords)
               atomically $ writeTChan chan (sourceRecords, mvar)
             beforeAck = RIO.takeMVar mvar
         return (callback,beforeAck)

@@ -77,8 +77,6 @@ module HStream.Stats
 
     -- * PerQueryStats
     -- ** Counter
-  , CounterExports(query, queries_alive)
-  , CounterExports(query, queries_terminated)
   , CounterExports(query, total_input_records)
   , CounterExports(query, total_output_records)
   ) where

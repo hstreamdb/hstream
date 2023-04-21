@@ -200,10 +200,6 @@ getQueryStatsInternal statsHolder (PS.Enumerated stats) = do
   Log.debug $ "request query stats: " <> Log.buildString' stats
   s <- Stats.newAggregateStats statsHolder
   case stats of
-    Right API.QueryStatsAlive ->
-      Stats.query_stat_getall_queries_alive s <&> Right
-    Right API.QueryStatsTerminated ->
-      Stats.query_stat_getall_queries_terminated s <&> Right
     Right API.QueryStatsTotalInputRecords ->
       Stats.query_stat_getall_total_input_records s <&> Right
     Right API.QueryStatsTotalOutputRecords ->
