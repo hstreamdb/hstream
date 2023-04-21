@@ -84,7 +84,12 @@ instance J.ToJSON InputCommand where
 
 data CheckResult
   = CheckResult
-    { result  :: Bool
-    , message :: T.Text
+    { crtResult  :: Bool
+    , crtType    :: Maybe T.Text
+    , crtMessage :: Maybe T.Text
+    , crtDetail  :: Maybe J.Value
     }
-$(JT.deriveJSON JT.defaultOptions ''CheckResult)
+$(JT.deriveJSON
+    JT.defaultOptions
+      { JT.fieldLabelModifier = map toLower . drop 3 }
+    ''CheckResult)

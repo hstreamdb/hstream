@@ -25,6 +25,7 @@ import qualified Data.Aeson.Text            as J
 import           Data.Int                   (Int32)
 import           Data.Maybe                 (isNothing)
 import qualified Data.Vector                as Vector
+import qualified HStream.Exception          as HE
 import qualified HStream.IO.LineReader      as LR
 import qualified HStream.IO.Messages        as MSG
 import qualified HStream.IO.Meta            as M
@@ -131,7 +132,7 @@ startIOTask task = do
     status | elem status [NEW, FAILED, STOPPED]  -> do
       runIOTask task
       return RUNNING
-    status -> throwIO $ InvalidStatusException status
+    status -> throwIO $ HE.ConnectorInvalidStatus (ioTaskStatusToText status)
 
 stopIOTask :: IOTask -> Bool -> Bool -> IO ()
 stopIOTask task@IOTask{..} ifIsRunning force = do
@@ -152,7 +153,7 @@ stopIOTask task@IOTask{..} ifIsRunning force = do
         writeIORef process' Nothing
       return STOPPED
     s -> do
-      unless ifIsRunning $ throwIO (InvalidStatusException s)
+      unless ifIsRunning $ throwIO (HE.ConnectorInvalidStatus $ ioTaskStatusToText s)
       return s
 
 killIOTask :: IOTask -> IO ()
@@ -193,19 +194,18 @@ checkIOTask IOTask{..} = do
   case checkResult of
     Left _ -> do
       Log.warning $ Log.buildString "run process timeout"
-      throwIO (RunProcessTimeoutException timeoutSec)
+      throwIO (HE.ConnectorProcessError $ "check process timeout, " ++ show timeoutSec)
     Right TP.ExitSuccess -> do
       checkOutput <- BSL.readFile checkLogPath
       let (result :: Maybe MSG.CheckResult) = msum . map J.decode $ BSLC.lines checkOutput
       case result of
         Nothing -> do
-          E.throwIO (CheckFailedException "check process didn't return correct result messsage")
-        Just MSG.CheckResult {result=False, message=msg} -> do
-          E.throwIO (CheckFailedException $ "check failed:" <> msg)
-        Just _ -> pure ()
+          E.throwIO (HE.ConnectorProcessError "check process didn't return correct result messsage")
+        Just crt@MSG.CheckResult {..} -> do
+          unless crtResult (E.throwIO . HE.ConnectorCheckFailed $ J.toJSON crt)
     Right exitCode -> do
       Log.warning $ Log.buildString ("check process exited: " ++ show exitCode)
-      E.throwIO (CheckFailedException "check process exited unexpectedly")
+      E.throwIO (HE.ConnectorProcessError "check process exited unexpectedly")
   where
     checkProcessConfig = TP.setStdin TP.closed
       . TP.setStdout TP.closed
@@ -232,15 +232,15 @@ getSpec img = do
   Async.race delay (TP.readProcess getSpecCfg) >>= \case
     Left () -> do
       Log.warning "run process timeout"
-      throwIO (RunProcessTimeoutException timeoutSec)
+      throwIO (HE.ConnectorProcessError $ "get spec process timeout, " ++ show timeoutSec)
     Right (TP.ExitSuccess, out, _) -> do
       case (msum . map J.decode $ BSLC.lines out :: Maybe J.Object) of
         Nothing -> do
-          E.throwIO (CheckFailedException "spec process didn't return correct result messsage")
+          E.throwIO (HE.ConnectorProcessError "spec process didn't return correct result messsage")
         Just val -> return . TL.toStrict $ J.encodeToLazyText val
     Right (exitCode, _, _) -> do
       Log.warning $ Log.buildString ("spec process exited: " ++ show exitCode)
-      E.throwIO (CheckFailedException "spec process exited unexpectedly")
+      E.throwIO (HE.ConnectorProcessError "spec process exited unexpectedly")
   where
     getSpecCfg = TP.setStdin TP.closed
       . TP.setStdout TP.createPipe

@@ -131,6 +131,6 @@ deleteIOTask worker@Worker{..} taskName = do
 makeImage :: IOTaskType -> T.Text -> IOOptions -> T.Text
 makeImage typ name IOOptions{..} =
   fromMaybe
-    (throw $ UnimplementedConnectorException name)
+    (throw $ HE.ConnectorUnimplemented name)
     (HM.lookup name images)
   where images = if typ == SOURCE then optSourceImages else optSinkImages

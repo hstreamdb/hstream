@@ -116,6 +116,8 @@ module HStream.Exception
   , FoundAssociatedView (FoundAssociatedView)
   , QueryAlreadyTerminated(QueryAlreadyTerminated)
   , QueryNotAborted(QueryNotAborted)
+  , ConnectorCheckFailed(ConnectorCheckFailed)
+  , ConnectorInvalidStatus(ConnectorInvalidStatus)
 
     -- * Exception: SomeAborted
     --
@@ -137,6 +139,7 @@ module HStream.Exception
     -- $unimplemented
   , SomeUnimplemented
   , ExecPlanUnimplemented (ExecPlanUnimplemented)
+  , ConnectorUnimplemented (ConnectorUnimplemented)
 
     -- * Exception: SomeInternal
     --
@@ -151,6 +154,7 @@ module HStream.Exception
   , LocalMetaStoreInternalErr (LocalMetaStoreInternalErr)
   , DiscardedMethod (DiscardedMethod)
   , PushQuerySendError (PushQuerySendError)
+  , ConnectorProcessError (ConnectorProcessError)
 
     -- * Exception: SomeUnavailable
   , SomeUnavailable
@@ -546,6 +550,8 @@ MAKE_EX_1_DEFMSG(SomeFailedPrecondition, QueryNotTerminated, Text, API.ErrorCode
 MAKE_EX_1_DEFMSG(SomeFailedPrecondition, QueryNotAborted, Text, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeFailedPrecondition, FoundAssociatedView, Text, API.ErrorCodeQueryFoundAssociatedView)
 MAKE_EX_1_DEFMSG(SomeFailedPrecondition, QueryAlreadyTerminated, Text, API.ErrorCodeQueryAlreadyTerminated)
+MAKE_EX_1_DEFMSG(SomeFailedPrecondition, ConnectorCheckFailed, Aeson.Value, API.ErrorCodeConnectorCheckFailed)
+MAKE_EX_1_DEFMSG(SomeFailedPrecondition, ConnectorInvalidStatus, Text, API.ErrorCodeInternalError)
 
 -------------------------------------------------------------------------------
 -- Exception: SomeAborted
@@ -598,6 +604,7 @@ MAKE_EX_1_DEFMSG(SomeInternal, RQLiteUnspecifiedErr, String, API.ErrorCodeIntern
 MAKE_EX_1_DEFMSG(SomeInternal, LocalMetaStoreInternalErr, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeInternal, DiscardedMethod, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeInternal, PushQuerySendError, String, API.ErrorCodeInternalError)
+MAKE_EX_1_DEFMSG(SomeInternal, ConnectorProcessError, String, API.ErrorCodeInternalError)
 
 -------------------------------------------------------------------------------
 -- Exception: SomeUnavailable
@@ -644,6 +651,7 @@ MAKE_EX_1_DEFMSG(SomeUnauthenticated, RQLiteNoAuth, String, API.ErrorCodeInterna
 MAKE_SUB_EX(SomeHServerException, SomeUnimplemented)
 
 MAKE_EX_1_DEFMSG(SomeUnimplemented, ExecPlanUnimplemented, String, API.ErrorCodeInternalError)
+MAKE_EX_1_DEFMSG(SomeUnimplemented, ConnectorUnimplemented, Text, API.ErrorCodeConnectorUnimplemented)
 
 -------------------------------------------------------------------------------
 -- Handlers

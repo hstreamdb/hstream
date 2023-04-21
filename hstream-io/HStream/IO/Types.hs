@@ -188,31 +188,3 @@ ioTaskTypeFromText typ = case T.toUpper typ of
 
 data StopWorkerException = StopWorkerException deriving Show
 instance Exception StopWorkerException
-
-newtype CheckFailedException = CheckFailedException T.Text
-  deriving Show
-instance Exception CheckFailedException
-
-newtype WrongNodeException = WrongNodeException T.Text
-  deriving Show
-instance Exception WrongNodeException
-
-newtype UnimplementedConnectorException = UnimplementedConnectorException T.Text
-  deriving Show
-instance Exception UnimplementedConnectorException
-
-newtype ConnectorExistedException = ConnectorExistedException T.Text
-  deriving Show
-instance Exception ConnectorExistedException
-
-newtype ConnectorNotExistException = ConnectorNotExistException T.Text
-  deriving Show
-instance Exception ConnectorNotExistException
-
-newtype InvalidStatusException = InvalidStatusException IOTaskStatus
-  deriving Show
-instance Exception InvalidStatusException
-
-newtype RunProcessTimeoutException = RunProcessTimeoutException Int
-  deriving Show
-instance Exception RunProcessTimeoutException
