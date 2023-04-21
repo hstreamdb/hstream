@@ -270,3 +270,21 @@ executable hstore-bench-writter
 
   default-language: Haskell2010
   ghc-options:      -threaded -rtsopts -with-rtsopts=-N
+
+executable hstore-bench-reader
+  import:           shared-properties
+  main-is:          readBench.hs
+  hs-source-dirs:   app
+  build-depends:
+      , base
+      , hstream-store
+      , bytestring
+      , optparse-applicative
+      , stm
+      , hstream-common
+      , hstream-common-base
+      , Z-Data
+      , async
+
+  default-language: Haskell2010
+  ghc-options:      -threaded -rtsopts "-with-rtsopts=-N -A64m -n4m -qg -qn1"
