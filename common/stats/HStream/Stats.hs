@@ -79,6 +79,7 @@ module HStream.Stats
     -- ** Counter
   , CounterExports(query, total_input_records)
   , CounterExports(query, total_output_records)
+  , CounterExports(query, total_execute_errors)
   ) where
 
 import           Control.Monad            (forM_, when)

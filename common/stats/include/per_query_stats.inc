@@ -7,6 +7,8 @@
 STAT_DEFINE(total_input_records, SUM)
 // Total number of records write to sink
 STAT_DEFINE(total_output_records, SUM)
+// Total number of query running errors
+STAT_DEFINE(total_execute_errors, SUM)
 
 #undef STAT_DEFINE
 
