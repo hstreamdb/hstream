@@ -108,7 +108,7 @@ library
     glog
     boost_context
 
-  cxx-options:        -std=c++17
+  cxx-options:        -std=c++17 -DHSTREAM_USE_SHARED_CHECKPOINT_STORE
   cpp-options:        -std=c++17
   cxx-sources:
     cbits/hs_logdevice.cpp

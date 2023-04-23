@@ -5,8 +5,6 @@ extern "C" {
 // ----------------------------------------------------------------------------
 // Checkpoint Store
 
-#define HSTREAM_USE_SHARED_CHECKPOINT_STORE
-
 // Note: it's not safe to have multiple FileBasedVersionedConfigStore
 // objects created from the `root_path' accessing configs with the same
 // `key' concurrently. For the best practice, use only one
