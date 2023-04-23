@@ -132,7 +132,6 @@ taskBuilderWithName builder taskName =
 runTask
   :: (ChangeLogger h1, Snapshotter h2)
   => StatsHolder
-  -> T.Text
   -> SourceConnectorWithoutCkp
   -> SinkConnector
   -> TaskBuilder
@@ -144,7 +143,7 @@ runTask
   -> (BL.ByteString -> Maybe BL.ByteString)
   -> (BL.ByteString -> Maybe BL.ByteString)
   -> IO ()
-runTask statsHolder qid SourceConnectorWithoutCkp {..} sinkConnector taskBuilder@TaskTopologyConfig {..} changeLogger snapshotter doSnapshot transKSrc transVSrc transKSnk transVSnk = do
+runTask statsHolder SourceConnectorWithoutCkp {..} sinkConnector taskBuilder@TaskTopologyConfig {..} changeLogger snapshotter doSnapshot transKSrc transVSrc transKSnk transVSnk = do
   -- build and add internalSinkProcessor
   let sinkProcessors =
         HM.map
@@ -173,15 +172,14 @@ runTask statsHolder qid SourceConnectorWithoutCkp {..} sinkConnector taskBuilder
 
     chan <- newTChanIO
 
-    withAsync (forConcurrently_ sourceStreamNames (f chan)) $ \a ->
+    withAsync (forConcurrently_ sourceStreamNames (f chan connectorClosed)) $ \a ->
       withAsync (g task ctx chan) $ \b -> do
-        waitEither_ a b
-        -- cleanup: source subscriptions
-        forM_ sourceStreamNames unSubscribeToStreamWithoutCkp
+        waitEither_ a b `finally` forM_ sourceStreamNames unSubscribeToStreamWithoutCkp
   where
-    f :: TChan ([SourceRecord], MVar ()) -> T.Text -> IO ()
-    f chan sourceStreamName =
-      withReadRecordsWithoutCkp sourceStreamName (transKSrc sourceStreamName) (transVSrc sourceStreamName) $ \sourceRecords -> do
+    qid = getTaskName taskBuilder
+    f :: TChan ([SourceRecord], MVar ()) -> TVar Bool -> T.Text -> IO ()
+    f chan consumerClosed sourceStreamName =
+      withReadRecordsWithoutCkp sourceStreamName (transKSrc sourceStreamName) (transVSrc sourceStreamName) consumerClosed $ \sourceRecords -> do
         mvar <- RIO.newEmptyMVar
         let callback  = do
               query_stat_add_total_input_records statsHolder (textToCBytes qid) (fromIntegral . length $ sourceRecords)

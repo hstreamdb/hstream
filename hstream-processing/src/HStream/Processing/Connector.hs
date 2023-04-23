@@ -38,8 +38,10 @@ data SourceConnectorWithoutCkp = SourceConnectorWithoutCkp
       StreamName ->
       (BL.ByteString -> Maybe BL.ByteString) ->
       (BL.ByteString -> Maybe BL.ByteString) ->
+      TVar Bool ->
       ([SourceRecord] -> IO (IO (), IO ())) ->
-      IO ()
+      IO (),
+    connectorClosed :: TVar Bool
   }
 
 data SinkConnector = SinkConnector

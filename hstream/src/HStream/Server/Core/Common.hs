@@ -5,7 +5,8 @@ module HStream.Server.Core.Common where
 
 import           Control.Applicative              ((<|>))
 import           Control.Concurrent
-import           Control.Concurrent.STM           (readTVarIO)
+import           Control.Concurrent.STM           (atomically, readTVarIO,
+                                                   writeTVar)
 import           Control.Exception                (SomeException (..), throwIO,
                                                    try)
 import           Control.Monad
@@ -174,14 +175,14 @@ terminateQuery sc@ServerContext{..} qid = do
   mQStatus <- M.getMetaWithVer @P.QueryStatus qid metaHandle
   case (mQStatus, HM.lookup qid hmapQ) of
     (Nothing, Nothing) -> throwIO $ HE.QueryNotFound qid
-    (Nothing, Just tid) -> do
+    (Nothing, Just (tid, consumerClosed)) -> do
       Log.warning $ "Query " <> Log.build qid
                  <> "has been deleted from meta store for some unknown reason, "
                  <> "the query thread will now be killed"
-      killThread tid
-    (Just (P.QueryRunning, ver), Just tid) -> do
+      atomically (writeTVar consumerClosed True)
+    (Just (P.QueryRunning, ver), Just (tid, consumerClosed)) -> do
       try @SomeException (M.updateMeta qid P.QueryTerminated (Just ver) metaHandle) >>= \case
-        Right _ -> killThread tid >> void (swapMVar runningQueries (HM.delete qid hmapQ))
+        Right _ -> atomically (writeTVar consumerClosed True) >> void (swapMVar runningQueries (HM.delete qid hmapQ))
         Left _  -> case HM.lookup qid hmapQ of
           Just tid -> terminateQuery sc qid
           Nothing  -> throwIO $ HE.QueryAlreadyTerminated qid
@@ -192,10 +193,10 @@ terminateQuery sc@ServerContext{..} qid = do
             Log.warning $ "Inconsistent state for query " <> Log.build qid <> " , and the state will be set to Terminated"
             M.updateMeta qid P.QueryTerminated (Just ver') metaHandle
           Nothing -> throwIO $ HE.QueryNotFound qid
-    (Just (P.QueryTerminated, ver), Just tid) -> do
+    (Just (P.QueryTerminated, ver), Just (tid, consumerClosed)) -> do
       Log.warning $ "Inconsistent state for query " <> Log.build qid <> " and thread id " <> Log.buildString' tid
                  <> " will be killed and removed."
-      killThread tid >> void (swapMVar runningQueries (HM.delete qid hmapQ))
+      atomically (writeTVar consumerClosed True) >> void (swapMVar runningQueries (HM.delete qid hmapQ))
     _ -> throwIO $ HE.QueryNotRunning qid
 
 mkAllocationKey :: ResourceType -> T.Text -> T.Text

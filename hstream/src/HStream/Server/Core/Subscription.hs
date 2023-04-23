@@ -212,12 +212,12 @@ type instance FetchCoreType 'FetchCoreInteractive a b
 -- TODO: use a datatype instead of tuple
   = (StreamSend a, StreamRecv b, Text, Text) -> IO ()
 type instance FetchCoreType 'FetchCoreDirect a b
-  = StreamingFetchRequest -> (Maybe ReceivedRecord -> IO (IO (), IO ())) -> IO ()
+  = StreamingFetchRequest -> TVar Bool -> (Maybe ReceivedRecord -> IO (IO (), IO ()))  -> IO ()
 
 streamingFetchCore :: ServerContext
                    -> SFetchCoreMode mode
                    -> FetchCoreType mode StreamingFetchResponse StreamingFetchRequest
-streamingFetchCore ctx SFetchCoreDirect = \initReq callbacksGen -> do
+streamingFetchCore ctx SFetchCoreDirect = \initReq consumerClosed callbacksGen -> do
   mockAckPool <- newTChanIO
   Stats.subscription_time_series_add_request_messages (scStatsHolder ctx) (textToCBytes (streamingFetchRequestSubscriptionId initReq)) 1
   Stats.subscription_stat_add_request_messages (scStatsHolder ctx) (textToCBytes (streamingFetchRequestSubscriptionId initReq)) 1
@@ -236,13 +236,20 @@ streamingFetchCore ctx SFetchCoreDirect = \initReq callbacksGen -> do
         return $ Right ()
   consumerCtx <- initConsumer scwContext (streamingFetchRequestConsumerName initReq) Nothing Nothing streamSend
   Log.debug "pass initConsumer"
-  let streamRecv = do
-        req <- atomically $ readTChan mockAckPool
-        return $ Right (Just req)
-  withAsync (recvAcks ctx scwState scwContext consumerCtx streamRecv) wait `onException` do
-    case tid_m of
-      Just tid -> killThread tid
-      Nothing  -> return ()
+  let streamRecv' =
+        (do isClosed <- readTVar consumerClosed
+            check isClosed
+            return (Right Nothing))
+        `orElse`
+        (tryReadTChan mockAckPool >>= \case
+            Nothing -> retry
+            req     -> return $ Right req)
+  let streamRecv = atomically streamRecv'
+  withAsync (recvAcks ctx scwState scwContext consumerCtx streamRecv) wait
+  -- `onException` do
+  --   case tid_m of
+  --     Just tid -> killThread tid
+  --     Nothing  -> return ()
   Log.debug "pass recvAcks"
 streamingFetchCore ctx SFetchCoreInteractive = \(streamSend, streamRecv, requestUri, userAgent) -> do
   StreamingFetchRequest {..} <- firstRecv streamRecv

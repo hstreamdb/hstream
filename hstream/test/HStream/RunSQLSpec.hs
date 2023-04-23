@@ -87,7 +87,7 @@ baseSpec = aroundAll provideHstreamApi $ aroundWith baseSpecAround $
 -- ViewSpec
 
 viewSpecAround
-  :: ActionWith (HStreamClientApi, (T.Text, T.Text, T.Text, T.Text))
+  :: ActionWith (HStreamClientApi, (T.Text, T.Text, T.Text, T.Text, T.Text))
   -> HStreamClientApi -> IO ()
 viewSpecAround = provideRunTest setup clean
   where
@@ -97,18 +97,19 @@ viewSpecAround = provideRunTest setup clean
       viewName <- ("runsql_view_view_"   <>)  <$> newRandomText 20
       runCreateStreamSql     api $ "CREATE STREAM " <> source1 <> ";"
       threadDelay 1000000
-      runCreateWithSelectSql api $ "CREATE STREAM " <> source2
+      qName1 <- runCreateWithSelectSql' api $ "CREATE STREAM " <> source2
                                 <> " AS SELECT a, 1 AS b FROM " <> source1
                                 <> ";"
       threadDelay 1000000
-      qName <- runCreateWithSelectSql' api $ "CREATE VIEW " <> viewName
+      qName2 <- runCreateWithSelectSql' api $ "CREATE VIEW " <> viewName
                          <> " AS SELECT SUM(a), b FROM " <> source2
                          <> " GROUP BY b;"
       -- FIXME: wait the SELECT task to be initialized.
       threadDelay 10000000
-      return (source1, source2, viewName, qName)
-    clean api (source1, source2, viewName, qName) = do
-      runTerminateSql api $ "TERMINATE QUERY " <> qName <> ";"
+      return (source1, source2, viewName, qName1, qName2)
+    clean api (source1, source2, viewName, qName1, qName2) = do
+      runTerminateSql api $ "TERMINATE QUERY " <> qName1 <> ";"
+      runTerminateSql api $ "TERMINATE QUERY " <> qName2 <> ";"
       runDropSql api $ "DROP VIEW " <> viewName <> " IF EXISTS;"
       runDropSql api $ "DROP STREAM " <> source2 <> " IF EXISTS;"
       runDropSql api $ "DROP STREAM " <> source1 <> " IF EXISTS;"
@@ -136,7 +137,7 @@ viewSpec =
   -- we stop waiting before the records reach the output node. See
   -- HStream.Server.Handler.Common.runImmTask for more information.
   -- FIXME: The Drop View semantics is updated, the test need to be fixed.
-  xit "select from view" $ \(api, (source1, _source2, viewName, _)) -> do
+  xit "select from view" $ \(api, (source1, _source2, viewName, _, _)) -> do
     runInsertSql api $ "INSERT INTO " <> source1 <> " (a) VALUES (1);"
     threadDelay 500000
     runInsertSql api $ "INSERT INTO " <> source1 <> " (a) VALUES (2);"
