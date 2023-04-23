@@ -72,7 +72,9 @@ library
     , containers
     , data-default
     , hstream-api-hs
+    , hstream-common
     , hstream-common-base
+    , hstream-common-stats
     , rio
     , scientific
     , template-haskell

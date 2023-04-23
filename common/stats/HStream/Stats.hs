@@ -74,6 +74,11 @@ module HStream.Stats
     -- ** Counter
   , CounterExports(connector, delivered_in_records)
   , CounterExports(connector, delivered_in_bytes)
+
+    -- * PerQueryStats
+    -- ** Counter
+  , CounterExports(query, total_input_records)
+  , CounterExports(query, total_output_records)
   ) where
 
 import           Control.Monad            (forM_, when)
@@ -239,6 +244,13 @@ PER_X_STAT_ADD(connector_stat_, name)                                          \
 PER_X_STAT_GET(connector_stat_, name)                                          \
 PER_X_STAT_GETALL_SEP(connector_stat_, name)
 #include "../include/per_connector_stats.inc"
+
+-- Query
+#define STAT_DEFINE(name, _)                                                   \
+PER_X_STAT_ADD(query_stat_, name)                                              \
+PER_X_STAT_GET(query_stat_, name)                                              \
+PER_X_STAT_GETALL_SEP(query_stat_, name)
+#include "../include/per_query_stats.inc"
 
 #define STAT_DEFINE(name, _)                                                   \
 PER_X_STAT_ADD(subscription_stat_, name)                                       \
