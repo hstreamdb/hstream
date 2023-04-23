@@ -108,8 +108,7 @@ handleReadShardStream
   -> G.ServerStreamHandler ReadShardStreamRequest ReadShardStreamResponse ()
 handleReadShardStream sc@ServerContext{..} _ req stream = catchDefaultEx $ do
   Log.debug $ "Receive read shard stream Request: " <> Log.build (show req)
-  (_, hashRing) <- readTVarIO loadBalanceHashRing
-  ServerNode{..} <- getResNode hashRing (readShardStreamRequestReaderId req) scAdvertisedListenersKey
+  ServerNode{..} <- lookupResource' sc ResShardReader $ readShardStreamRequestReaderId req
   unless (serverNodeId == serverID) $
     throwIO $ HE.WrongServer "The read shard stream is allocated to a different node"
   C.readShardStream sc req stream

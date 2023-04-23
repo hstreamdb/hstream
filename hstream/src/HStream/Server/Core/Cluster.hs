@@ -110,6 +110,7 @@ lookupSubscription sc req@LookupSubscriptionRequest{
     , lookupSubscriptionResponseServerNode     = Just theNode
     }
 
+{-# DEPRECATED lookupShardReader "Use lookupResource instead" #-}
 lookupShardReader :: ServerContext -> LookupShardReaderRequest -> IO LookupShardReaderResponse
 lookupShardReader ServerContext{..} req@LookupShardReaderRequest{lookupShardReaderRequestReaderId=readerId} = do
   (_, hashRing) <- readTVarIO loadBalanceHashRing

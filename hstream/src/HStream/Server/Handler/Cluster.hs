@@ -60,6 +60,7 @@ lookupSubscriptionHandler
 lookupSubscriptionHandler sc (ServerNormalRequest _meta req) =
   defaultExceptionHandle $ returnResp =<< C.lookupSubscription sc req
 
+{-# DEPRECATED lookupShardReaderHandler "Use lookupResourceHandler instead" #-}
 lookupShardReaderHandler
   :: ServerContext
   -> ServerRequest 'Normal LookupShardReaderRequest LookupShardReaderResponse
@@ -84,7 +85,7 @@ handleLookupSubscription
   -> G.UnaryHandler LookupSubscriptionRequest LookupSubscriptionResponse
 handleLookupSubscription sc _ req = catchDefaultEx $ C.lookupSubscription sc req
 
--- handleLookupShardReader should only be called before readShardStream request
+{-# DEPRECATED handleLookupShardReader "Use handleLookupResource instead" #-}
 handleLookupShardReader
   :: ServerContext
   -> G.UnaryHandler LookupShardReaderRequest LookupShardReaderResponse
