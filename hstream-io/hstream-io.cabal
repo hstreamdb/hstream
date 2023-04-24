@@ -43,11 +43,11 @@ library
   import:             shared-properties
   exposed-modules:
     HStream.IO.IOTask
+    HStream.IO.LineReader
     HStream.IO.Messages
     HStream.IO.Meta
     HStream.IO.Types
     HStream.IO.Worker
-    HStream.IO.LineReader
 
   build-depends:
     , aeson

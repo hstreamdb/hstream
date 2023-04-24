@@ -11,6 +11,7 @@ import           HStream.SQL.Abs               (SQL)
 import           HStream.SQL.AST               (RSQL, Refine (refine))
 import           HStream.SQL.Exception         (SomeSQLException (..),
                                                 throwSQLException)
+import           HStream.SQL.Internal.Check    (Check (check))
 import           HStream.SQL.Internal.Validate (Validate (validate))
 import           HStream.SQL.Lex               (tokens)
 import           HStream.SQL.Par               (pSQL)
@@ -28,4 +29,6 @@ parse input = do
         Right vsql     -> return vsql
 
 parseAndRefine :: HasCallStack => Text -> IO RSQL
-parseAndRefine input = parse input <&> refine
+parseAndRefine input = do
+  rsql <- parse input <&> refine
+  case check rsql of Left e -> throw e; Right _ -> return rsql
