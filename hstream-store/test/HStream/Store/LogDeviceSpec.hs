@@ -1,8 +1,5 @@
 module HStream.Store.LogDeviceSpec where
 
-import           Control.Exception                (bracket)
-import           Control.Monad                    (void)
-import           Data.Default                     (def)
 import           Data.List                        (sort)
 import qualified Data.Map.Strict                  as Map
 import           Test.Hspec
@@ -17,23 +14,12 @@ spec = do
   loggroupSpec
   logdirSpec
 
-logdirAround :: I.LogAttributes -> SpecWith CBytes -> Spec
-logdirAround attrs = aroundAll $ \runTest -> bracket setup clean runTest
-  where
-    setup = do
-      dirname <- ("/" <>) <$> newRandomName 10
-      lddir <- I.makeLogDirectory client dirname attrs False
-      void $ I.syncLogsConfigVersion client =<< I.logDirectoryGetVersion lddir
-      return dirname
-    clean dirname =
-      I.syncLogsConfigVersion client =<< I.removeLogDirectory client dirname True
-
 logdirSpec :: Spec
 logdirSpec = describe "LogDirectory" $ do
-  let attrs = def { I.logReplicationFactor = I.defAttr1 1
-                  , I.logBacklogDuration = I.defAttr1 (Just 60)
-                  , I.logAttrsExtras = Map.fromList [("A", "B")]
-                  }
+  let attrs = S.def{ I.logReplicationFactor = I.defAttr1 1
+                   , I.logBacklogDuration = I.defAttr1 (Just 60)
+                   , I.logAttrsExtras = Map.fromList [("A", "B")]
+                   }
 
   it "get log directory children name" $ do
     dirname <- ("/" <>) <$> newRandomName 10
@@ -80,7 +66,7 @@ logdirSpec = describe "LogDirectory" $ do
     I.syncLogsConfigVersion client =<< I.removeLogDirectory client dirname True
     I.getLogDirectory client dirname `shouldThrow` anyException
 
-  let attrs_ra = def { I.logReplicateAcross = I.defAttr1 [(S.NodeLocationScope_DATA_CENTER, 3)] }
+  let attrs_ra = S.def{ I.logReplicateAcross = I.defAttr1 [(S.NodeLocationScope_DATA_CENTER, 3)] }
   logdirAround attrs_ra $ it "attributes: logReplicateAcross" $ \dirname -> do
     dir <- I.getLogDirectory client dirname
     attrs_got <- I.logDirectoryGetAttrs dir
@@ -92,7 +78,7 @@ logdirSpec = describe "LogDirectory" $ do
         lgname = dirname <> "/A"
     _ <- I.makeLogDirectory client dirname attrs False
     I.syncLogsConfigVersion client =<< I.logGroupGetVersion
-                                   =<< I.makeLogGroup client lgname logid logid def False
+                                   =<< I.makeLogGroup client lgname logid logid S.def False
     lg <- I.getLogGroup client lgname
     attrs' <- I.logGroupGetAttrs lg
     I.logReplicationFactor attrs' `shouldBe` I.Attribute (Just 1) True
@@ -100,26 +86,20 @@ logdirSpec = describe "LogDirectory" $ do
     Map.lookup "A" (I.logAttrsExtras attrs') `shouldBe` Just "B"
     I.syncLogsConfigVersion client =<< I.removeLogDirectory client dirname True
 
-loggroupAround :: SpecWith (CBytes, S.C_LogID) -> Spec
-loggroupAround = aroundAll $ \runTest -> bracket setup clean runTest
-  where
-    setup = do
-      let attrs = def { I.logReplicationFactor = I.defAttr1 1
-                      , I.logBacklogDuration = I.defAttr1 (Just 60)
-                      , I.logSingleWriter = I.defAttr1 True
-                      , I.logSyncReplicationScope = I.defAttr1 S.NodeLocationScope_DATA_CENTER
-                      , I.logAttrsExtras = Map.fromList [("A", "B")]
-                      }
-          logid = 104
-          logname = "LogDeviceSpec_LogGroupSpec"
-      lg <- I.makeLogGroup client logname logid logid attrs False
-      void $ I.syncLogsConfigVersion client =<< I.logGroupGetVersion lg
-      return (logname, logid)
-    clean (logname, _logid) =
-      I.syncLogsConfigVersion client =<< I.removeLogGroup client logname
+loggroupAround' :: SpecWith (CBytes, S.C_LogID) -> Spec
+loggroupAround' =
+  let attrs = S.def{ I.logReplicationFactor = I.defAttr1 1
+                   , I.logBacklogDuration = I.defAttr1 (Just 60)
+                   , I.logSingleWriter = I.defAttr1 True
+                   , I.logSyncReplicationScope = I.defAttr1 S.NodeLocationScope_DATA_CENTER
+                   , I.logAttrsExtras = Map.fromList [("A", "B")]
+                   }
+      logid = 104
+      logname = "LogDeviceSpec_LogGroupSpec"
+   in loggroupAround logid logname attrs
 
 loggroupSpec :: Spec
-loggroupSpec = describe "LogGroup" $ loggroupAround $ parallel $ do
+loggroupSpec = describe "LogGroup" $ loggroupAround' $ parallel $ do
   it "log group get attrs" $ \(lgname, _logid) -> do
     lg <- I.getLogGroup client lgname
     attrs' <- I.logGroupGetAttrs lg

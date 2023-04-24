@@ -135,8 +135,6 @@ typedef struct logdevice_reader_t {
   std::unique_ptr<Reader> rep;
 } logdevice_reader_t;
 
-#define HSTREAM_USE_SHARED_CHECKPOINT_STORE
-
 #ifdef HSTREAM_USE_SHARED_CHECKPOINT_STORE
 
 typedef struct logdevice_checkpoint_store_t {
@@ -158,8 +156,6 @@ typedef struct logdevice_sync_checkpointed_reader_t {
 } logdevice_sync_checkpointed_reader_t;
 
 #endif
-
-#undef HSTREAM_USE_SHARED_CHECKPOINT_STORE
 
 typedef struct logdevice_loggroup_t logdevice_loggroup_t;
 typedef struct logdevice_logdirectory_t logdevice_logdirectory_t;

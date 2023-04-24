@@ -15,6 +15,8 @@ module HStream.Store
   , getClientSetting
   , getTailLSN
   , trim
+  , trimLast
+  , trimLastBefore
   , findTime
   , logIdHasGroup
 
@@ -29,6 +31,7 @@ module HStream.Store
 import           Control.Monad                    (forM_)
 import           Data.Map.Strict                  (Map)
 import qualified Data.Map.Strict                  as Map
+import           Data.Word                        (Word64)
 import           GHC.Stack                        (HasCallStack)
 import           Z.Data.CBytes                    (CBytes)
 
@@ -40,3 +43,13 @@ import           HStream.Store.Stream
 setClientSettings :: HasCallStack => LDClient -> Map CBytes CBytes -> IO ()
 setClientSettings client settings = forM_ (Map.toList settings) $ \(k, v) -> do
   setClientSetting client k v
+
+-- trimLast an empty log is OK
+trimLast :: HasCallStack => LDClient -> C_LogID -> IO ()
+trimLast = trimLastBefore 0
+
+trimLastBefore :: HasCallStack => Word64 -> LDClient -> C_LogID -> IO ()
+trimLastBefore offset client logid = do
+  lsn <- getTailLSN client logid
+  trim client logid (lsn - offset)
+{-# INLINABLE trimLastBefore #-}
