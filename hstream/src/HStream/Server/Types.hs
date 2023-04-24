@@ -27,18 +27,15 @@ import qualified Proto3.Suite                     as PB
 #if __GLASGOW_HASKELL__ < 902
 import qualified HStream.Admin.Store.API          as AA
 #endif
-import           Control.Exception                (throw)
 import           HStream.Common.ConsistentHashing (HashRing)
-import           HStream.Exception                (EmptyBatchedRecord (EmptyBatchedRecord))
 import           HStream.Gossip.Types             (Epoch, GossipContext)
 import qualified HStream.IO.Types                 as IO
 import qualified HStream.IO.Worker                as IO
 import           HStream.MetaStore.Types          (MetaHandle)
 import           HStream.Server.Config
 import           HStream.Server.ConnectorTypes    as HCT
-import           HStream.Server.HStreamApi        (AppendRequest (..),
-                                                   BatchedRecord, NodeState,
-                                                   ResourceType, SpecialOffset,
+import           HStream.Server.HStreamApi        (NodeState, ResourceType,
+                                                   SpecialOffset,
                                                    StreamingFetchResponse,
                                                    Subscription)
 import           HStream.Server.Shard             (ShardKey, SharedShardMap)
@@ -88,7 +85,7 @@ data ServerContext = ServerContext
     -- ^ streamName -> ShardMap, use to manipulate shards
   , shardTable               :: MVar (HM.HashMap Text ShardDict)
     -- ^ streamName -> Map startKey shardId, use to find target shard quickly when append
-  , shardReaderMap           :: MVar (HM.HashMap Text (MVar S.LDReader))
+  , shardReaderMap           :: MVar (HM.HashMap Text (MVar ShardReader))
   , querySnapshotPath        :: FilePath
   , querySnapshotter         :: Maybe RocksDB.DB
 }
@@ -215,6 +212,14 @@ instance TaskManager IO.Worker where
   listResources = IO.listResources
   recoverTask = IO.recoverTask
 
+data ShardReader = ShardReader
+  { reader          :: S.LDReader
+  , timestampOffset :: Maybe Int64
+  }
+
+mkShardReader :: S.LDReader -> Maybe Int64 -> ShardReader
+mkShardReader reader timestamp = ShardReader { reader = reader, timestampOffset = timestamp }
+
 --------------------------------------------------------------------------------
 
 transToStreamName :: HCT.StreamName -> S.StreamId
@@ -226,20 +231,3 @@ transToTempStreamName = S.mkStreamId S.StreamTypeTemp . textToCBytes
 transToViewStreamName :: HCT.StreamName -> S.StreamId
 transToViewStreamName = S.mkStreamId S.StreamTypeView . textToCBytes
 
---------------------------------------------------------------------------------
-
-data AppendArguments = AppendArguments
-  { targetStream :: Text
-  , shardId      :: Word64
-  , payload      :: BatchedRecord
-  } deriving(Show)
-
-appendArgumentsFromRequest :: AppendRequest -> AppendArguments
-appendArgumentsFromRequest AppendRequest{..} = do
-  case appendRequestRecords of
-    Just payload -> AppendArguments
-      { targetStream = appendRequestStreamName
-      , shardId = appendRequestShardId
-      , payload = payload
-      }
-    Nothing -> throw EmptyBatchedRecord
