@@ -19,6 +19,7 @@ import           HStream.Server.Handler.Cluster
 import           HStream.Server.Handler.Connector
 import           HStream.Server.Handler.Extra
 import           HStream.Server.Handler.Query
+import           HStream.Server.Handler.ShardReader
 import qualified HStream.Server.Handler.Stats        as H
 import           HStream.Server.Handler.Stream
 import           HStream.Server.Handler.Subscription

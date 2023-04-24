@@ -18,7 +18,7 @@ module HStream.Server.MetaData.Types
   , QVRelation (..)
   , QueryStatus (QueryRunning, QueryCreating, QueryTerminated
                , QueryAborted, QueryResuming, QueryPaused, ..)
-  , ShardReader (..)
+  , ShardReaderMeta (..)
   , TaskAllocation (..)
   , createInsertQueryInfo
   , createInsertViewQueryInfo
@@ -31,13 +31,11 @@ module HStream.Server.MetaData.Types
   , getQuerySources
   ) where
 
-import           Control.Concurrent
 import           Control.Exception                 (catches)
 import           Data.Aeson                        (FromJSON (..), ToJSON (..))
 import qualified Data.HashMap.Strict               as HM
 import           Data.Int                          (Int64)
 import           Data.IORef
-import           Data.Maybe                        (fromJust)
 import           Data.Text                         (Text)
 import           Data.Time.Clock.System            (SystemTime (MkSystemTime),
                                                     getSystemTime)
@@ -105,12 +103,14 @@ type RelatedStreams = (SourceStreams, SinkStream)
   --  | ViewQuery   RelatedStreams Text            -- ^ related streams and the view it creates
   --  deriving (Show, Eq, Generic, FromJSON, ToJSON)
 
-data ShardReader = ShardReader
+data ShardReaderMeta = ShardReaderMeta
   { readerStreamName  :: Text
   , readerShardId     :: Word64
   , readerShardOffset :: S.LSN
   , readerReaderId    :: Text
   , readerReadTimeout :: Word32
+  , startTimestamp    :: Maybe Int64
+    -- ^ use to record start time offset
   } deriving (Show, Generic, FromJSON, ToJSON)
 
 data TaskAllocation = TaskAllocation { taskAllocationEpoch :: Word32, taskAllocationServerId :: ServerID}
@@ -119,7 +119,7 @@ data TaskAllocation = TaskAllocation { taskAllocationEpoch :: Word32, taskAlloca
 rootPath :: Text
 rootPath = "/hstream"
 
-instance HasPath ShardReader ZHandle where
+instance HasPath ShardReaderMeta ZHandle where
   myRootPath = rootPath <> "/shardReader"
   myExceptionHandler = zkExceptionHandlers ResShardReader
 instance HasPath SubscriptionWrap ZHandle where
@@ -141,7 +141,7 @@ instance HasPath TaskAllocation ZHandle where
 instance HasPath QVRelation ZHandle where
   myRootPath = rootPath <> "/qvRelation"
 
-instance HasPath ShardReader RHandle where
+instance HasPath ShardReaderMeta RHandle where
   myRootPath = "readers"
   myExceptionHandler = rqExceptionHandlers ResShardReader
 instance HasPath SubscriptionWrap RHandle where
@@ -163,7 +163,7 @@ instance HasPath TaskAllocation RHandle where
 instance HasPath QVRelation RHandle where
   myRootPath = "qvRelation"
 
-instance HasPath ShardReader FHandle where
+instance HasPath ShardReaderMeta FHandle where
   myRootPath = "readers"
 instance HasPath SubscriptionWrap FHandle where
   myRootPath = "subscriptions"

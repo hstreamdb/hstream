@@ -4,8 +4,6 @@ extern "C" {
 // ----------------------------------------------------------------------------
 // Reader & SyncCheckpointedReader
 
-#define HSTREAM_USE_SHARED_CHECKPOINT_STORE
-
 logdevice_reader_t* new_logdevice_reader(logdevice_client_t* client,
                                          size_t max_logs, ssize_t buffer_size) {
   std::unique_ptr<Reader> reader;

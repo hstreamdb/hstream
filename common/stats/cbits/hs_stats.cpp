@@ -39,6 +39,14 @@ void setPerConnectorStatsMember(const char* stat_name,
 #include "per_connector_stats.inc"
 }
 
+void setPerQueryStatsMember(const char* stat_name,
+                                    StatsCounter PerQueryStats::*& member_ptr) {
+#define STAT_DEFINE(name, _)                                                   \
+  if (#name == std::string(stat_name)) {                                       \
+    member_ptr = &PerQueryStats::name##_counter;                               \
+  }
+#include "per_query_stats.inc"
+}
 
 void setPerSubscriptionTimeSeriesMember(
     const char* stat_name, std::shared_ptr<PerSubscriptionTimeSeries>
@@ -159,6 +167,21 @@ int connector_stat_getall(StatsHolder* stats_holder, const char* stat_name,
   return perXStatsGetall<PerConnectorStats>(
       stats_holder, &Stats::per_connector_stats, stat_name,
       setPerConnectorStatsMember, len, keys_ptr, values_ptr, keys_, values_);
+}
+
+// ----------------------------------------------------------------------------
+// PerQueryStats
+#define STAT_DEFINE(name, _)                                                   \
+  PER_X_STAT_DEFINE(query_stat_, per_query_stats, PerQueryStats, name)
+#include "per_query_stats.inc"
+
+int query_stat_getall(StatsHolder* stats_holder, const char* stat_name,
+                       HsInt* len, std::string** keys_ptr, int64_t** values_ptr,
+                       std::vector<std::string>** keys_,
+                       std::vector<int64_t>** values_) {
+  return perXStatsGetall<PerQueryStats>(
+      stats_holder, &Stats::per_query_stats, stat_name,
+      setPerQueryStatsMember, len, keys_ptr, values_ptr, keys_, values_);
 }
 
 // ----------------------------------------------------------------------------

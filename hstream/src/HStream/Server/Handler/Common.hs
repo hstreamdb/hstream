@@ -339,8 +339,8 @@ doSnapshot h1 h2 Task{..} = do
 
 --------------------------------------------------------------------------------
 
-runTaskWrapper :: ServerContext -> TaskBuilder -> S.C_LogID  -> Bool -> IO ()
-runTaskWrapper ctx@ServerContext{..} taskBuilder logId writeToHStore = do
+runTaskWrapper :: ServerContext -> TaskBuilder -> S.C_LogID -> Text  -> Bool -> IO ()
+runTaskWrapper ctx@ServerContext{..} taskBuilder logId queryName writeToHStore = do
   -- taskName: randomly generated in `Codegen.V1`
   let taskName = getTaskName taskBuilder
   let consumerName = textToCBytes taskName
@@ -365,7 +365,9 @@ runTaskWrapper ctx@ServerContext{..} taskBuilder logId writeToHStore = do
   case querySnapshotter of
     Nothing -> do
       Log.warning "Snapshotting is not available. Only changelog is working..."
-      runTask sourceConnector
+      runTask scStatsHolder
+              queryName
+              sourceConnector
               sinkConnector
               taskBuilder
               (scLDClient,logId)
@@ -376,7 +378,9 @@ runTaskWrapper ctx@ServerContext{..} taskBuilder logId writeToHStore = do
               transKSnk
               transVSnk
     Just db ->
-      runTask sourceConnector
+      runTask scStatsHolder
+              queryName
+              sourceConnector
               sinkConnector
               taskBuilder
               (scLDClient,logId)
@@ -465,7 +469,7 @@ runQuery ctx@ServerContext{..} QueryRunner{..} logId = do
     action = do
       Log.debug $ "Start Query " <> Log.build qRQueryString
                 <> "with name: " <> Log.build qRQueryName
-      runTaskWrapper ctx qRTaskBuilder logId qRWhetherToHStore
+      runTaskWrapper ctx qRTaskBuilder logId qRQueryName qRWhetherToHStore
     cleanup =
       [ Handler (\(e :: AsyncException) -> do
                     Log.debug . Log.buildString

@@ -4,11 +4,18 @@ import           Test.Hspec
 
 import qualified HStream.Store           as S
 import           HStream.Store.SpecUtils
+import           Z.Data.CBytes           (CBytes)
 
 spec :: Spec
 spec = describe "StoreSpec" $ do
   base
   except
+
+loggroupAround' :: SpecWith (CBytes, S.C_LogID) -> Spec
+loggroupAround' =
+  let logid = 201
+      logname = "StoreSpec"
+   in loggroupAround logid logname S.def{S.logReplicationFactor = S.defAttr1 1}
 
 base :: Spec
 base = describe "Base" $ do
@@ -26,6 +33,19 @@ base = describe "Base" $ do
     S.trim client logid sn0
     readPayload' logid (Just sn0) `shouldReturn` []
     readPayload logid (Just sn1) `shouldReturn` "world"
+
+  loggroupAround' $ do
+    it "trim last" $ \(_lgname, ranlogid) -> do
+      -- trim an empty log
+      S.trimLastBefore 1 client ranlogid `shouldReturn` ()
+      sn0 <- S.appendCompLSN <$> S.append client ranlogid "hello" Nothing
+      sn1 <- S.appendCompLSN <$> S.append client ranlogid "world" Nothing
+      readPayload ranlogid (Just sn0) `shouldReturn` "hello"
+      S.trimLastBefore 1 client ranlogid `shouldReturn` ()
+      -- nothing happened if we trimLast multi times
+      S.trimLastBefore 1 client ranlogid `shouldReturn` ()
+      readPayload' ranlogid (Just sn0) `shouldReturn` []
+      readPayload ranlogid (Just sn1) `shouldReturn` "world"
 
   it "find time with a timestamp of 0" $ do
     headSn <- S.findTime client logid 0 S.FindKeyStrict
