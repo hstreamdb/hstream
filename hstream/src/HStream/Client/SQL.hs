@@ -54,6 +54,7 @@ import qualified HStream.Server.HStreamApi        as API
 import           HStream.SQL                      (HStreamPlan (..),
                                                    PauseObject (..),
                                                    RCreate (..), RSQL (..),
+                                                   RStreamOptions (..),
                                                    ResumeObject (..),
                                                    TerminateObject (..),
                                                    hstreamCodegen,
@@ -138,7 +139,7 @@ commandExec HStreamSqlContext{hstreamCliContext = cliCtx@HStreamCliContext{..},.
       rSql' -> hstreamCodegen rSql' >>= \case
         ShowPlan showObj      -> executeShowPlan cliCtx showObj
         DropPlan checkIfExists dropObj -> executeWithLookupResource_ cliCtx (dropPlanToResType dropObj) $ dropAction checkIfExists dropObj
-        CreatePlan sName rFac -> execute_ cliCtx $ createStream sName rFac
+        CreatePlan sName rOptions -> execute_ cliCtx $ createStream sName (rRepFactor rOptions) (rBacklogDuration rOptions)
         TerminatePlan (TQuery qName) -> executeWithLookupResource_ cliCtx (Resource ResQuery qName) $ terminateQuery qName
         InsertPlan sName insertType payload -> do
             result <- execute cliCtx $ listShards sName

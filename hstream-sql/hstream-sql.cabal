@@ -91,6 +91,7 @@ library
     , binary
     , bytestring
     , containers
+    , data-default
     , diff-flow
     , extra
     , hashable

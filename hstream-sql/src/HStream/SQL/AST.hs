@@ -15,6 +15,7 @@ import qualified Data.Aeson            as Aeson
 import qualified Data.Aeson.Types      as Aeson
 import qualified Data.ByteString       as BS
 import qualified Data.ByteString.Char8 as BSC
+import           Data.Default
 import           Data.Hashable
 import qualified Data.HashMap.Strict   as HM
 import           Data.Int              (Int64)
@@ -30,6 +31,7 @@ import qualified Data.Time             as Time
 import           Data.Time.Compat      ()
 import           Data.Typeable         (Typeable)
 import qualified Data.Vector           as V
+import           Data.Word             (Word32)
 import           GHC.Generics
 import           GHC.Stack             (HasCallStack)
 import           HStream.SQL.Abs
@@ -844,8 +846,15 @@ instance Refine Explain where
 
 ---- CREATE
 data RStreamOptions = RStreamOptions
-  { rRepFactor    :: Int
+  { rRepFactor       :: Int
+  , rBacklogDuration :: Word32
   } deriving (Eq, Show)
+
+instance Default RStreamOptions where
+  def = RStreamOptions
+      { rRepFactor       = 1
+      , rBacklogDuration = 7 * 24 * 3600
+      }
 
 newtype RConnectorOptions = RConnectorOptions (HM.HashMap Text Aeson.Value)
   deriving (Eq, Show)
@@ -859,9 +868,26 @@ data RCreate = RCreate   Text RStreamOptions
 
 type instance RefinedType [StreamOption] = RStreamOptions
 instance Refine [StreamOption] where
-  refine [OptionRepFactor _ rep] = RStreamOptions (fromInteger $ refine rep)
-  refine [] = RStreamOptions 1
-  refine _ = throwSQLException RefineException Nothing "Impossible happened"
+  refine options =
+    let factor_m = L.find (\x -> case x of
+                                   OptionRepFactor{} -> True
+                                   _                 -> False
+                          ) options
+        duration_m = L.find (\x -> case x of
+                                   OptionDuration{} -> True
+                                   _                -> False
+                            ) options
+        factor = maybe (rRepFactor def)
+                       (\(OptionRepFactor _ n') -> fromInteger $ extractPNInteger n')
+                       factor_m
+        duration = maybe (rBacklogDuration def)
+                         (\(OptionDuration _ interval) ->
+                            fromIntegral (calendarDiffTimeToMs (refine (interval :: Interval))) `div` 1000
+                         )
+                         duration_m
+     in RStreamOptions { rRepFactor       = factor
+                       , rBacklogDuration = duration
+                       }
 
 type instance RefinedType [ConnectorOption] = RConnectorOptions
 instance Refine [ConnectorOption] where
