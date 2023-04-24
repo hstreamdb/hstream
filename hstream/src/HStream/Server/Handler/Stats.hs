@@ -133,6 +133,8 @@ getStatsInternal holder s@(StatTypeStatConnStat stats) = do
   getConnectorStatsInternal holder stats <&> convert s
 getStatsInternal holder s@(StatTypeStatQueryStat stats) = do
   getQueryStatsInternal holder stats <&> convert s
+getStatsInternal holder s@(StatTypeStatViewStat stats) = do
+  getViewStatsInternal holder stats <&> convert s
 
 getStreamStatsInternal
   :: Stats.StatsHolder
@@ -206,6 +208,18 @@ getQueryStatsInternal statsHolder (PS.Enumerated stats) = do
       Stats.query_stat_getall_total_output_records s <&> Right
     Right API.QueryStatsTotalExecuteErrors ->
       Stats.query_stat_getall_total_execute_errors s <&> Right
+    Left _ -> return . Left . T.pack $ "invalid stat type " <> show stats
+
+getViewStatsInternal
+  :: Stats.StatsHolder
+  -> PS.Enumerated API.ViewStats
+  -> IO (Either T.Text (Map CBytes Int64))
+getViewStatsInternal statsHolder (PS.Enumerated stats) = do
+  Log.debug $ "request view stats: " <> Log.buildString' stats
+  s <- Stats.newAggregateStats statsHolder
+  case stats of
+    Right API.ViewStatsTotalExecuteQueries ->
+      Stats.view_stat_getall_total_execute_queries s <&> Right
     Left _ -> return . Left . T.pack $ "invalid stat type " <> show stats
 
 convert :: StatTypeStat -> Either T.Text (Map CBytes Int64) -> Either StatError StatValue
