@@ -27,14 +27,17 @@ newLineReader filePath = do
 
 readLines :: LineReader -> Int -> Int -> IO T.Text
 readLines lr@LineReader{..} begin count = do
-  IO.withFile filePath IO.ReadMode $ \hdl -> do
-    seekToLineOffset lr hdl 0 (begin - 1) >>= \case
-      False -> return ""
-      True -> do
-        (result, gotCount) <- getLines hdl mempty 0 count
-        currentOffset <- IO.hTell hdl
-        _ <- C.swapMVar latestLineOffset (begin + gotCount, fromIntegral currentOffset)
-        return . TL.toStrict $ T.toLazyText result
+  if begin < 1 || count < 1 then
+    return ""
+  else
+    IO.withFile filePath IO.ReadMode $ \hdl -> do
+      seekToLineOffset lr hdl 0 (begin - 1) >>= \case
+        False -> return ""
+        True -> do
+          (result, gotCount) <- getLines hdl mempty 0 count
+          currentOffset <- IO.hTell hdl
+          _ <- C.swapMVar latestLineOffset (begin + gotCount, fromIntegral currentOffset)
+          return . TL.toStrict $ T.toLazyText result
 
 seekToLineOffset :: LineReader -> IO.Handle -> Int -> Int -> IO Bool
 seekToLineOffset LineReader{..} hdl begin count = do
