@@ -204,6 +204,8 @@ getQueryStatsInternal statsHolder (PS.Enumerated stats) = do
       Stats.query_stat_getall_total_input_records s <&> Right
     Right API.QueryStatsTotalOutputRecords ->
       Stats.query_stat_getall_total_output_records s <&> Right
+    Right API.QueryStatsTotalExecuteErrors ->
+      Stats.query_stat_getall_total_execute_errors s <&> Right
     Left _ -> return . Left . T.pack $ "invalid stat type " <> show stats
 
 convert :: StatTypeStat -> Either T.Text (Map CBytes Int64) -> Either StatError StatValue

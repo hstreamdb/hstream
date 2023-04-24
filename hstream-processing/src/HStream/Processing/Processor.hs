@@ -54,6 +54,7 @@ import           HStream.Processing.Type
 import           HStream.Processing.Util
 import qualified HStream.Server.HStreamApi              as API
 import           HStream.Stats                          (StatsHolder,
+                                                         query_stat_add_total_execute_errors,
                                                          query_stat_add_total_input_records,
                                                          query_stat_add_total_output_records)
 import           HStream.Utils                          (textToCBytes)
@@ -208,7 +209,9 @@ runTask statsHolder qid SourceConnectorWithoutCkp {..} sinkConnector taskBuilder
             liftIO $ updateTimestampInTaskContext ctx srcTimestamp
             e' <- try $ runEP sourceEProcessor (mkERecord Record {recordKey = srcKey, recordValue = srcValue, recordTimestamp = srcTimestamp})
             case e' of
-              Left (e :: SomeException) -> liftIO $ Log.fatal $ Log.buildString (Prelude.show e)
+              Left (e :: SomeException) -> liftIO $ do
+                Log.fatal $ Log.buildString (Prelude.show e)
+                query_stat_add_total_execute_errors statsHolder (textToCBytes qid) 1
               Right _ -> do
                 liftIO $ query_stat_add_total_output_records statsHolder (textToCBytes qid) 1
                 return ()
