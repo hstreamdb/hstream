@@ -32,6 +32,9 @@ import           GHC.Stack                     (HasCallStack)
 import           Network.GRPC.HighLevel        (StreamRecv, StreamSend)
 import           Proto3.Suite                  (Enumerated (Enumerated), def)
 
+import           HStream.Base.Timer            (startCompactedWorker,
+                                                stopCompactedWorker,
+                                                triggerCompactedWorker)
 import qualified HStream.Exception             as HE
 import qualified HStream.Logger                as Log
 import qualified HStream.MetaStore.Types       as M
@@ -71,15 +74,22 @@ listConsumers sc@ServerContext{..} ListConsumersRequest{listConsumersRequestSubs
     makeRpcConsumer ConsumerContext{..} = def {consumerName = ccConsumerName, consumerUri = fromMaybe "" ccConsumerUri, consumerUserAgent = fromMaybe "" ccConsumerAgent}
 
 getSubscription :: ServerContext -> GetSubscriptionRequest -> IO GetSubscriptionResponse
-getSubscription ServerContext{ ..} GetSubscriptionRequest{ getSubscriptionRequestId = subId} = do
+getSubscription ServerContext{..} GetSubscriptionRequest{getSubscriptionRequestId = subId} = do
   shardIds <- fmap HM.keys $ atomically $
     readTVar scSubscribeContexts
     >>= maybe (return mempty) (readTMVar . scnwContext
                            >=> readTVar . subShardContexts)
      .  HM.lookup subId
+
+  -- TODO: improvements
+  -- 1. We can get the LSN from subLdCkpReader directly if there is a cpp api.
+  -- 2. Maybe we can have a ckpStoreGetAllLSN method
+  let readerName = textToCBytes subId
+  ckpStoreId <- S.getSubscrCheckpointId scLDClient readerName
+  store <- S.newRSMBasedCheckpointStore scLDClient ckpStoreId 5000
   offsets <- forM shardIds (\x -> do
     lsn <- handle (\(e::S.SomeHStoreException) -> return 0) $
-      S.ckpStoreGetLSN scCkpStore (textToCBytes subId) x
+      S.ckpStoreGetLSN store (textToCBytes subId) x
     return $ SubscriptionOffset {
       subscriptionOffsetShardId = x,
       subscriptionOffsetBatchId = lsn
@@ -155,7 +165,11 @@ deleteSubscription ServerContext{..} DeleteSubscriptionRequest { deleteSubscript
       atomically $ waitingStopped subCtx subState
       Log.info "Subscription stopped, start deleting "
       atomically removeSubFromCtx
-      S.removeAllCheckpoints subLdCkpReader
+      -- NOTE: For each CheckpointedReader we have a unique CheckpointStore(logid),
+      -- so that we do not need to call: S.removeAllCheckpoints subLdCkpReader
+      -- to update the checkpoints in memory.
+      S.freeSubscrCheckpointId scLDClient (textToCBytes subId)
+      stopCompactedWorker subLdTrimCkpWorker
       doRemove
     CanNotDelete -> throwIO $ HE.FoundActiveConsumers "Subscription still has active consumers"
     Signaled     -> throwIO $ HE.SubscriptionIsDeleting "Subscription is being deleted, please wait a while"
@@ -325,14 +339,21 @@ doSubInit ServerContext{..} subId = do
       -- see: https://logdevice.io/api/classfacebook_1_1logdevice_1_1_client.html#a797d6ebcb95ace4b95a198a293215103
       let ldReaderBufferSize = 10
       -- create a ldCkpReader for reading new records
+      Log.info $ "Create a checkpoint store reader for " <> Log.build subId
+      ckpStoreId <- S.allocSubscrCheckpointId scLDClient readerName
       ldCkpReader <-
-        S.newLDRsmCkpReader' scLDClient readerName scCkpStore maxReadLogs (Just ldReaderBufferSize)
+        S.newLDRsmCkpReader scLDClient readerName ckpStoreId 5000 maxReadLogs
+                            (Just ldReaderBufferSize)
       S.ckpReaderSetTimeout ldCkpReader 10  -- 10 milliseconds
       -- create a ldReader for rereading unacked records
+      Log.info $ "Create a reader for " <> Log.build subId
       reader <- S.newLDReader scLDClient maxReadLogs (Just ldReaderBufferSize)
       S.readerSetTimeout reader 10 -- 10 milliseconds
       ldReader <- newMVar reader
-      Log.debug $ "created a ldReader for subscription {" <> Log.build subId <> "}"
+
+      trimCkpWorker <- startCompactedWorker (60 * 1000000){- 60s -} $ do
+        Log.info $ "Compacting checkpoint store of " <> Log.build subId
+        S.trimLastBefore 1 scLDClient ckpStoreId
 
       unackedRecords <- newTVarIO 0
       consumerContexts <- newTVarIO HM.empty
@@ -343,21 +364,22 @@ doSubInit ServerContext{..} subId = do
       checkListIndex <- newTVarIO Map.empty
       let emptySubCtx =
             SubscribeContext
-              { subSubscriptionId = subId,
-                subStreamName = subscriptionStreamName ,
-                subAckTimeoutSeconds = subscriptionAckTimeoutSeconds,
-                subMaxUnackedRecords = fromIntegral subscriptionMaxUnackedRecords,
-                subLdCkpReader = ldCkpReader,
-                subLdReader = ldReader,
-                subUnackedRecords = unackedRecords,
-                subConsumerContexts = consumerContexts,
-                subShardContexts = shardContexts,
-                subAssignment = assignment,
-                subCurrentTime = curTime,
-                subWaitingCheckedRecordIds = checkList,
-                subWaitingCheckedRecordIdsIndex = checkListIndex,
-                subStartOffsets = subOffsets,
-                subStartOffset = subscriptionOffset
+              { subSubscriptionId = subId
+              , subStreamName = subscriptionStreamName
+              , subAckTimeoutSeconds = subscriptionAckTimeoutSeconds
+              , subMaxUnackedRecords = fromIntegral subscriptionMaxUnackedRecords
+              , subLdCkpReader = ldCkpReader
+              , subLdTrimCkpWorker = trimCkpWorker
+              , subLdReader = ldReader
+              , subUnackedRecords = unackedRecords
+              , subConsumerContexts = consumerContexts
+              , subShardContexts = shardContexts
+              , subAssignment = assignment
+              , subCurrentTime = curTime
+              , subWaitingCheckedRecordIds = checkList
+              , subWaitingCheckedRecordIdsIndex = checkListIndex
+              , subStartOffsets = subOffsets
+              , subStartOffset = subscriptionOffset
               }
       addNewShardsToSubCtx emptySubCtx (HM.toList subOffsets)
       return emptySubCtx
@@ -983,7 +1005,7 @@ doAck
   -> S.C_LogID
   -> V.Vector RecordId
   -> IO ()
-doAck ldclient subCtx@SubscribeContext {..} logId recordIds= do
+doAck ldclient subCtx@SubscribeContext{..} logId recordIds= do
   res <- atomically $ do
     scs <- readTVar subShardContexts
     let SubscribeShardContext {sscAckWindow = AckWindow{..}} = scs HM.! logId
@@ -1016,6 +1038,7 @@ doAck ldclient subCtx@SubscribeContext {..} logId recordIds= do
     Just lsn -> do
         Log.debug $ "[stream " <> Log.build logId <> "] commit checkpoint = " <> Log.buildString (show lsn)
         S.writeCheckpoints subLdCkpReader (Map.singleton logId lsn) 10{-retries-}
+        triggerCompactedWorker subLdTrimCkpWorker
     Nothing  -> return ()
 
 invalidConsumer :: SubscribeContext -> ConsumerName -> STM ()

@@ -110,7 +110,7 @@ library
 
   -- Add this -DHSTREAM_USE_SHARED_CHECKPOINT_STORE to cxx-options to enable
   -- shared CheckpointStore
-  cxx-options:        -std=c++17 -DHSTREAM_USE_SHARED_CHECKPOINT_STORE
+  cxx-options:        -std=c++17
   cpp-options:        -std=c++17
   cxx-sources:
     cbits/hs_logdevice.cpp
