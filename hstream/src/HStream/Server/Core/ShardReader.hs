@@ -135,8 +135,7 @@ readShardStream
   -> OutStream API.ReadShardStreamResponse
   -> IO ()
 readShardStream ServerContext{..} API.ReadShardStreamRequest{readShardStreamRequestReaderId=rReaderId,
-    readShardStreamRequestShardId=rShardId, readShardStreamRequestShardOffset=rOffset,
-    readShardStreamRequestTimeout=rTimeout} stream = do
+    readShardStreamRequestShardId=rShardId, readShardStreamRequestShardOffset=rOffset} stream = do
   bracket createReader deleteReader readRecords
  where
    ldReaderBufferSize = 10
@@ -148,7 +147,6 @@ readShardStream ServerContext{..} API.ReadShardStreamRequest{readShardStreamRequ
      (startLSN, timestamp) <- getStartLSN scLDClient rShardId rOffset
      reader <- S.newLDReader scLDClient 1 (Just ldReaderBufferSize)
      S.readerStartReading reader rShardId startLSN S.LSN_MAX
-     S.readerSetTimeout reader (fromIntegral rTimeout)
      Log.info $ "create shardReader for shard " <> Log.build rShardId <> " success, offset = " <> Log.build (show rOffset)
      return $ mkShardReader reader timestamp
 

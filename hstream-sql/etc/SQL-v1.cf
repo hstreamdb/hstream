@@ -49,6 +49,7 @@ CreateAsOp. Create ::= "CREATE" "STREAM" HIdent "AS" Select "WITH" "(" [StreamOp
 -- OptionTopic.  StreamOption ::= "TOPIC"  "=" String ;
 -- OptionFormat. StreamOption ::= "FORMAT" "=" String ;
 OptionRepFactor. StreamOption ::= "REPLICATE" "=" PNInteger ;
+OptionDuration.  StreamOption ::= "DURATION" "=" Interval ;
 
 CreateSourceConnector. Create ::= "CREATE" "SOURCE" "CONNECTOR" HIdent "FROM" HIdent "WITH" "(" [ConnectorOption] ")" ;
 CreateSourceConnectorIf. Create ::= "CREATE" "SOURCE" "CONNECTOR" HIdent "FROM" HIdent "IF" "NOT" "EXIST" "WITH" "(" [ConnectorOption] ")" ;
