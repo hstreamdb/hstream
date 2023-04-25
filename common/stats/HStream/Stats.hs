@@ -80,6 +80,10 @@ module HStream.Stats
   , CounterExports(query, total_input_records)
   , CounterExports(query, total_output_records)
   , CounterExports(query, total_execute_errors)
+
+    -- * PerViewStats
+    -- ** Counter
+  , CounterExports(view, total_execute_queries)
   ) where
 
 import           Control.Monad            (forM_, when)
@@ -252,6 +256,13 @@ PER_X_STAT_ADD(query_stat_, name)                                              \
 PER_X_STAT_GET(query_stat_, name)                                              \
 PER_X_STAT_GETALL_SEP(query_stat_, name)
 #include "../include/per_query_stats.inc"
+
+-- View
+#define STAT_DEFINE(name, _)                                                   \
+PER_X_STAT_ADD(view_stat_, name)                                               \
+PER_X_STAT_GET(view_stat_, name)                                               \
+PER_X_STAT_GETALL_SEP(view_stat_, name)
+#include "../include/per_view_stats.inc"
 
 #define STAT_DEFINE(name, _)                                                   \
 PER_X_STAT_ADD(subscription_stat_, name)                                       \

@@ -12,7 +12,7 @@ module HStream.Server.Core.View
   ) where
 
 import           Control.Exception             (throw, throwIO)
-import           Control.Monad                 (unless, when)
+import           Control.Monad                 (forM_, unless, when)
 import qualified Data.Aeson                    as Aeson
 import           Data.Functor                  ((<&>))
 import qualified Data.HashMap.Strict           as HM
@@ -44,7 +44,8 @@ import           HStream.SQL                   (FlowObject, RSQL (..),
                                                 parseAndRefine)
 import           HStream.ThirdParty.Protobuf   (Empty (..), Struct)
 import           HStream.Utils                 (TaskStatus (..),
-                                                jsonObjectToStruct)
+                                                jsonObjectToStruct,
+                                                textToCBytes)
 #ifdef HStreamUseV2Engine
 import           DiffFlow.Graph                (GraphBuilder)
 import           DiffFlow.Types                (DataChangeBatch)
@@ -55,6 +56,7 @@ import           HStream.SQL.Codegen           (HStreamPlan (..), In (..),
 #else
 import qualified HStream.Processing.Processor  as HP
 import           HStream.SQL.Codegen.V1
+import           HStream.Stats                 (view_stat_add_total_execute_queries)
 #endif
 
 #ifdef HStreamUseV2Engine
@@ -190,6 +192,7 @@ executeViewQueryWithNamespace sc@ServerContext{..} sql namespace = parseAndRefin
                           HM.empty
                           flowObjects
                    in L.map (HM.filterWithKey (\ k _ -> L.notElem k keysAdded)) (HM.elems compactedRes)
+          forM_ sources $ \viewName -> view_stat_add_total_execute_queries scStatsHolder (textToCBytes viewName) 1
           return . V.fromList $ jsonObjectToStruct . flowObjectToJsonObject
                               <$> res
     _ -> throw $ HE.InvalidSqlStatement "Invalid SQL statement for running view query"

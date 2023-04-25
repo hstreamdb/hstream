@@ -117,6 +117,22 @@ struct PerQueryStats {
 };
 
 // ----------------------------------------------------------------------------
+// PerViewStats
+//
+struct PerViewStats {
+#define STAT_DEFINE(name, _) StatsCounter name##_counter{};
+#include "per_view_stats.inc"
+  void aggregate(PerViewStats const& other, StatsAggOptional agg_override);
+  // Show all per_query_stats to a json formatted string.
+  folly::dynamic toJsonObj();
+  std::string toJson();
+
+  // Mutex almost exclusively locked by one thread since PerQueryStats
+  // objects are contained in thread-local stats
+  std::mutex mutex;
+};
+
+// ----------------------------------------------------------------------------
 // PerSubscriptionStats
 
 using PerSubscriptionTimeSeries = MultiLevelTimeSeriesWrapper<int64_t>;
@@ -280,6 +296,11 @@ struct Stats {
   folly::Synchronized<
       std::unordered_map<std::string, std::shared_ptr<PerQueryStats>>>
       per_query_stats;
+
+  // Per-view stats
+  folly::Synchronized<
+      std::unordered_map<std::string, std::shared_ptr<PerViewStats>>>
+      per_view_stats;
 
   // Per-subscription stats
   folly::Synchronized<
