@@ -185,6 +185,7 @@ data SubscriptionCommand
   = SubscriptionCmdList
   | SubscriptionCmdCreate API.Subscription
   | SubscriptionCmdDelete Text Bool
+  | SubscriptionCmdDeleteAll Bool
   | SubscriptionCmdDescribe Text
   deriving (Show)
 
@@ -200,8 +201,12 @@ subscriptionCmdParser = O.hsubparser
                                                                       <> O.help "The ID of the subscription")
                                                       <*> O.switch ( O.long "force"
                                                                   <> O.short 'f' ))
-                               (O.progDesc "Delete a subscription")
+                               (O.progDesc "Delete a subscription. NOTE: make sure you send the request to the right server")
                        )
+ <> O.command "deleteall" (O.info (SubscriptionCmdDeleteAll
+                                    <$> O.switch (O.long "force" <> O.short 'f'))
+                                  (O.progDesc "Delete all subscriptions. NOTE: make sure you send the request to the right server")
+                          )
   )
 
 instance Read API.SpecialOffset where

@@ -9,7 +9,6 @@
 {-# LANGUAGE TypeApplications    #-}
 {-# OPTIONS_GHC -Werror=incomplete-patterns #-}
 
-
 module Main where
 
 import           Control.Concurrent               (threadDelay)
@@ -31,8 +30,7 @@ import           System.Timeout                   (timeout)
 import           Text.RawString.QQ                (r)
 
 import qualified HStream.Admin.Server.Command     as Admin
-import           HStream.Admin.Server.Types       (StreamCommand (..),
-                                                   SubscriptionCommand (..))
+import           HStream.Admin.Server.Types       (StreamCommand (..))
 import           HStream.Client.Action            (createSubscription',
                                                    deleteStream,
                                                    deleteSubscription,
@@ -52,7 +50,9 @@ import           HStream.Client.Types             (CliConnOpts (..),
                                                    HStreamSqlContext (..),
                                                    HStreamSqlOpts (..),
                                                    RefinedCliConnOpts (..),
-                                                   Resource (..), commandParser,
+                                                   Resource (..),
+                                                   SubscriptionCommand (..),
+                                                   commandParser,
                                                    refineCliConnOpts)
 import           HStream.Client.Utils             (mkClientNormalRequest',
                                                    printResult)
@@ -78,7 +78,7 @@ main = runCommand =<<
                      )
 
 runCommand :: HStreamCommand -> IO ()
-runCommand HStreamCommand {..} = do
+runCommand HStreamCommand{..} = do
   rConnOpts <- refineCliConnOpts cliConnOpts
   case cliCommand of
     HStreamNodes  opts       -> hstreamNodes  rConnOpts opts
