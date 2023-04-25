@@ -81,6 +81,11 @@ module HStream.Store.Stream
   , LD.ckpStoreUpdateLSN
   , LD.ckpStoreRemoveCheckpoints
   , LD.ckpStoreRemoveAllCheckpoints
+    --
+  , initSubscrCheckpointDir
+  , allocSubscrCheckpointId
+  , getSubscrCheckpointId
+  , freeSubscrCheckpointId
 
     -- * Logdevice Reader
   , FFI.RecordByteOffset (..)
@@ -133,7 +138,7 @@ module HStream.Store.Stream
   , def
   ) where
 
-import           Control.Exception                (try)
+import           Control.Exception                (catch, try)
 import           Control.Monad                    (filterM, forM, (<=<))
 import           Data.Bifunctor                   (bimap, second)
 import           Data.Bits                        (bit)
@@ -205,6 +210,9 @@ gloStreamSettings = unsafePerformIO . newIORef $
 
 updateGloStreamSettings :: (StreamSettings -> StreamSettings)-> IO ()
 updateGloStreamSettings f = atomicModifyIORef' gloStreamSettings $ \s -> (f s, ())
+
+subscriptionCheckpointDir :: CBytes
+subscriptionCheckpointDir = "/hstream/subscription/checkpoint"
 
 -------------------------------------------------------------------------------
 
@@ -600,6 +608,8 @@ getStreamIdFromLogId client logid = do
 -- bit: 00...1...00
 initCheckpointStoreLogID :: FFI.LDClient -> LD.LogAttributes -> IO FFI.C_LogID
 initCheckpointStoreLogID client attrs = do
+  -- FIXME: First get and then create is NOT suitable for multiple concurrent
+  -- server. This may throw EXISTS exception.
   r <- try $ LD.getLogGroupByID client checkpointStoreLogID
   case r of
     Left (_ :: E.NOTFOUND) -> do
@@ -609,6 +619,31 @@ initCheckpointStoreLogID client attrs = do
 
 checkpointStoreLogID :: FFI.C_LogID
 checkpointStoreLogID = bit 56
+
+initSubscrCheckpointDir :: FFI.LDClient -> LD.LogAttributes -> IO ()
+initSubscrCheckpointDir client attrs = catch f (\(_ :: E.EXISTS) -> return ())
+  where
+    f = do
+      dir <- LD.makeLogDirectory client subscriptionCheckpointDir attrs True
+      LD.syncLogsConfigVersion client =<< LD.logDirectoryGetVersion dir
+
+allocSubscrCheckpointId :: FFI.LDClient -> CBytes -> IO FFI.C_LogID
+allocSubscrCheckpointId client key = do
+  r <- try $ getSubscrCheckpointId client key
+  case r of
+    Left (_ :: E.NOTFOUND) ->
+      createRandomLogGroup client (subscriptionCheckpointDir <> "/" <> key) def
+    Right logid -> return logid
+
+getSubscrCheckpointId :: FFI.LDClient -> CBytes -> IO FFI.C_LogID
+getSubscrCheckpointId client key = do
+  let logpath = subscriptionCheckpointDir <> "/" <> key
+  fst <$> (LD.logGroupGetRange =<< LD.getLogGroup client logpath)
+
+freeSubscrCheckpointId :: FFI.LDClient -> CBytes -> IO ()
+freeSubscrCheckpointId client key = do
+  let logpath = subscriptionCheckpointDir <> "/" <> key
+  LD.syncLogsConfigVersion client =<< LD.removeLogGroup client logpath
 
 -------------------------------------------------------------------------------
 -- Reader
@@ -653,9 +688,9 @@ newLDRsmCkpReader client name logid timeout max_logs m_buffer_size = do
 
 newLDRsmCkpReader'
   :: FFI.LDClient
-  -> FFI.LDCheckpointStore
   -> CBytes
   -- ^ CheckpointedReader name
+  -> FFI.LDCheckpointStore
   -> CSize
   -- ^ maximum number of logs that can be read from
   -- this Reader at the same time
@@ -663,7 +698,7 @@ newLDRsmCkpReader'
   -- ^ specify the read buffer size for this client, fallback
   -- to the value in settings if it is Nothing.
   -> IO FFI.LDSyncCkpReader
-newLDRsmCkpReader' client store name max_logs m_buffer_size = do
+newLDRsmCkpReader' client name store max_logs m_buffer_size = do
   reader <- LD.newLDReader client max_logs m_buffer_size
   LD.newLDSyncCkpReader name reader store
 

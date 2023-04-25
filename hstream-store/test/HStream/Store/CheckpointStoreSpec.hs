@@ -2,6 +2,7 @@
 
 module HStream.Store.CheckpointStoreSpec (spec) where
 
+import           Control.Monad           (void)
 import qualified Data.Vector.Primitive   as VP
 import           Test.Hspec
 
@@ -20,6 +21,8 @@ fileBased = context "FileBasedCheckpointStore" $ do
 
 rsmBased :: Spec
 rsmBased = context "RSMBasedCheckpointedReader" $ do
+  let attrs = S.def { S.logReplicationFactor = S.defAttr1 1 }
+  void $ runIO $ S.initCheckpointStoreLogID client attrs
   storeSpec $ S.newRSMBasedCheckpointStore client S.checkpointStoreLogID 5000
 
 storeSpec :: IO S.LDCheckpointStore -> Spec
