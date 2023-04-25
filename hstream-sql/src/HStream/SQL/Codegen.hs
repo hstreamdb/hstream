@@ -57,7 +57,7 @@ data InsertType = JsonFormat | RawFormat
 data PauseObject = PauseObjectConnector Text
 data ResumeObject = ResumeObjectConnector Text
 data HStreamPlan
-  = CreatePlan          StreamName Int
+  = CreatePlan          StreamName RStreamOptions
   | CreateConnectorPlan ConnectorType ConnectorName Text Bool (HM.HashMap Text Value)
   | InsertPlan          StreamName InsertType ByteString
   | DropPlan            CheckIfExist DropObject
@@ -68,7 +68,7 @@ data HStreamPlan
   | ResumePlan          ResumeObject
   | SelectPlan          [In] Out (GraphBuilder Row)
   | PushSelectPlan      [In] Out (GraphBuilder Row)
-  | CreateBySelectPlan  StreamName [In] Out (GraphBuilder Row) Int -- FIXME
+  | CreateBySelectPlan  StreamName [In] Out (GraphBuilder Row) RStreamOptions -- FIXME
   | CreateViewPlan      ViewName [In] Out (GraphBuilder Row) (MVar (DataChangeBatch Row Int64)) -- FIXME
 
 --------------------------------------------------------------------------------
@@ -91,14 +91,14 @@ hstreamCodegen = \case
     let subgraph = Subgraph 0
     let (startBuilder, _) = addSubgraph emptyGraphBuilder subgraph
     (endBuilder, ins, out) <- elabRSelectWithOut select startBuilder subgraph
-    return $ CreateBySelectPlan stream ins out endBuilder (rRepFactor rOptions)
+    return $ CreateBySelectPlan stream ins out endBuilder rOptions
   RQCreate (RCreateView view select) -> do
     let subgraph = Subgraph 0
     let (startBuilder, _) = addSubgraph emptyGraphBuilder subgraph
     (endBuilder, ins, out) <- elabRSelectWithOut select startBuilder subgraph
     accumulation <- newMVar emptyDataChangeBatch
     return $ CreateViewPlan view ins out endBuilder accumulation
-  RQCreate (RCreate stream rOptions) -> return $ CreatePlan stream (rRepFactor rOptions)
+  RQCreate (RCreate stream rOptions) -> return $ CreatePlan stream rOptions
   RQCreate (RCreateConnector cType cName cTarget ifNotExist (RConnectorOptions cOptions)) ->
     return $ CreateConnectorPlan cType cName cTarget ifNotExist cOptions
   RQInsert (RInsert stream tuples)   -> do
