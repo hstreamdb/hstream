@@ -17,6 +17,9 @@ import           GHC.Stack                 (HasCallStack)
 import qualified Data.Aeson                as J
 import qualified Data.Aeson.KeyMap         as J
 import           Data.Int                  (Int32)
+import qualified Data.Text.Encoding        as T
+import qualified Data.UUID                 as UUID
+import qualified Data.UUID.V4              as UUID
 import qualified HStream.Exception         as HE
 import qualified HStream.IO.IOTask         as IOTask
 import qualified HStream.IO.Meta           as M
@@ -25,6 +28,7 @@ import qualified HStream.Logger            as Log
 import           HStream.MetaStore.Types   (MetaHandle (..))
 import qualified HStream.Server.HStreamApi as API
 import qualified HStream.Stats             as Stats
+import qualified HStream.Utils             as Utils
 
 newWorker :: MetaHandle  -> Stats.StatsHolder -> HStreamConfig -> IOOptions -> IO Worker
 newWorker mHandle statsHolder hsConfig options = do
@@ -53,8 +57,32 @@ monitor worker@Worker{..} = do
       ioTasks <- C.readMVar ioTasksM
       forM_ ioTasks IOTask.monitorProcess
 
-createIOTask :: HasCallStack => Worker -> T.Text -> TaskInfo -> Bool -> Bool -> IO ()
-createIOTask worker@Worker{..} taskId taskInfo@TaskInfo {..} cleanIfExists createMetaData = do
+createIOTask :: Worker -> T.Text -> T.Text -> T.Text -> T.Text -> IO API.Connector
+createIOTask worker@Worker{..} name typ target cfg = do
+  taskId <- UUID.toText <$> UUID.nextRandom
+  createdTime <- Utils.getProtoTimestamp
+  let IOOptions {..} = options
+      taskType = ioTaskTypeFromText typ
+      image = makeImage taskType target options
+      connectorConfig =
+        J.fromList
+          [ "hstream" J..= J.toJSON hsConfig
+          , "connector" J..= (J.decodeStrict $ T.encodeUtf8 cfg :: Maybe J.Object)
+          , "task" J..= taskId
+          ]
+      taskInfo = TaskInfo
+        { taskName = name
+        , taskType = taskType
+        , taskTarget = target
+        , taskCreatedTime = createdTime
+        , taskConfig = TaskConfig image optTasksNetwork
+        , connectorConfig = connectorConfig
+        }
+  createIOTaskFromTaskInfo worker taskId taskInfo False True
+  showIOTask_ worker name
+
+createIOTaskFromTaskInfo :: HasCallStack => Worker -> T.Text -> TaskInfo -> Bool -> Bool -> IO ()
+createIOTaskFromTaskInfo worker@Worker{..} taskId taskInfo@TaskInfo {..} cleanIfExists createMetaData = do
   getIOTask worker taskName >>= \case
     Nothing -> pure ()
     Just _  -> throwIO $ HE.ConnectorExists taskName
@@ -110,7 +138,7 @@ recoverTask worker@Worker{..} name = do
     Nothing -> throwIO $ HE.ConnectorNotFound name
     Just (taskId, TaskMeta{taskInfoMeta=taskInfo@TaskInfo{..}}) -> do
       let newConnCfg = J.insert "hstream" (J.toJSON hsConfig) connectorConfig
-      createIOTask worker taskId taskInfo{connectorConfig=newConnCfg} True False
+      createIOTaskFromTaskInfo worker taskId taskInfo{connectorConfig=newConnCfg} True False
 
 getIOTask :: Worker -> T.Text -> IO (Maybe IOTask)
 getIOTask Worker{..} name = HM.lookup name <$> C.readMVar ioTasksM
