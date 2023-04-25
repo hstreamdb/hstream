@@ -68,6 +68,7 @@ library
     HStream.SQL.Codegen.V1.Boilerplate
     HStream.SQL.Codegen.V1.Transform
     HStream.SQL.Exception
+    HStream.SQL.Internal.Check
     HStream.SQL.Internal.Validate
     HStream.SQL.Parse
     HStream.SQL.Planner
@@ -90,6 +91,7 @@ library
     , binary
     , bytestring
     , containers
+    , data-default
     , diff-flow
     , extra
     , hashable

@@ -77,12 +77,13 @@ import           HStream.Utils
 
 type Action a = HStreamClientApi -> IO (ClientResult 'Normal a)
 
-createStream :: StreamName -> Int
+createStream :: StreamName -> Int -> Word32
   -> Action API.Stream
-createStream sName rFac API.HStreamApi{..} =
+createStream sName rFac rDuration API.HStreamApi{..} =
   hstreamApiCreateStream (mkClientNormalRequest' def
     { API.streamStreamName        = sName
     , API.streamReplicationFactor = fromIntegral rFac
+    , API.streamBacklogDuration   = rDuration
     , API.streamShardCount        = 1})
 
 listStreams :: Action API.ListStreamsResponse

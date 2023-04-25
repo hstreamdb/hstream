@@ -230,12 +230,13 @@ runFetchSql sql = withGRPCClient clientConfig $ \client -> do
 
 runCreateStreamSql :: HStreamClientApi -> T.Text -> Expectation
 runCreateStreamSql api sql = do
-  CreatePlan sName rFac <- streamCodegen sql
-  res <- getServerResp =<< createStream sName rFac api
+  CreatePlan sName rOptions <- streamCodegen sql
+  res <- getServerResp =<< createStream sName (rRepFactor rOptions) (rBacklogDuration rOptions) api
   res `shouldSatisfy` isJust . streamCreationTime
   res{streamCreationTime = Nothing} `shouldBe`
     def { streamStreamName        = sName
-        , streamReplicationFactor = fromIntegral rFac
+        , streamReplicationFactor = fromIntegral (rRepFactor rOptions)
+        , streamBacklogDuration   = rBacklogDuration rOptions
         , streamShardCount        = 1
         }
 
