@@ -77,20 +77,20 @@ library
 
   other-modules:
     HStream.Server.Core.Query
+    HStream.Server.Core.ShardReader
     HStream.Server.Core.Stream
     HStream.Server.Core.Subscription
     HStream.Server.Core.View
-    HStream.Server.Core.ShardReader
     HStream.Server.Handler.Admin
     HStream.Server.Handler.Cluster
     HStream.Server.Handler.Connector
     HStream.Server.Handler.Extra
     HStream.Server.Handler.Query
+    HStream.Server.Handler.ShardReader
     HStream.Server.Handler.Stats
     HStream.Server.Handler.Stream
     HStream.Server.Handler.Subscription
     HStream.Server.Handler.View
-    HStream.Server.Handler.ShardReader
     HStream.Server.MetaData.Exception
     HStream.Server.MetaData.Types
     HStream.Server.MetaData.Utils

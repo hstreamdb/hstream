@@ -753,16 +753,13 @@ instance Validate StreamOption where
     let n = extractPNInteger n'
     unless (n > 0) (Left $ buildSQLException ParseException pos "Replicate factor can only be positive integers")
     return op
+  validate op@(OptionDuration pos interval) = validate interval >> return op
 
 newtype StreamOptions = StreamOptions [StreamOption]
 
 instance Validate StreamOptions where
-  validate (StreamOptions options) = do
-    mapM_ validate options
-    case options of
-      [OptionRepFactor{}] -> return $ StreamOptions options
-      _                                   ->
-        Left $ buildSQLException ParseException Nothing "There should be one and only one REPLICATE option"
+  validate ops@(StreamOptions options) =
+    mapM_ validate options >> return ops
 
 newtype ConnectorOptions = ConnectorOptions [ConnectorOption]
 

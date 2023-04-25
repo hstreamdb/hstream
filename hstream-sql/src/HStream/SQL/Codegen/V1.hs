@@ -106,7 +106,7 @@ data ResumeObject
 type Persist = ([HS.StreamJoined K V K V Ser], [HS.Materialized K V V])
 
 data HStreamPlan
-  = CreatePlan          StreamName Int
+  = CreatePlan          StreamName RStreamOptions
   | CreateConnectorPlan ConnectorType ConnectorName Text Bool (HM.HashMap Text Value)
   | InsertPlan          StreamName InsertType ByteString
   | DropPlan            CheckIfExist DropObject
@@ -117,7 +117,7 @@ data HStreamPlan
   | ResumePlan          ResumeObject
   | SelectPlan          [StreamName] StreamName TaskBuilder Persist ([ColumnCatalog], [ColumnCatalog])
   | PushSelectPlan      [StreamName] StreamName TaskBuilder Persist
-  | CreateBySelectPlan  [StreamName] StreamName TaskBuilder Int Persist
+  | CreateBySelectPlan  [StreamName] StreamName TaskBuilder RStreamOptions Persist
   | CreateViewPlan      [StreamName] StreamName ViewName TaskBuilder Persist
 
 --------------------------------------------------------------------------------
@@ -138,12 +138,12 @@ hstreamCodegen = \case
   RQCreate (RCreateAs stream select rOptions) -> do
     tName <- genTaskName
     (builder, srcs, sink, persist) <- elabRSelect tName (Just stream) select
-    return $ CreateBySelectPlan srcs sink (HS.build builder) (rRepFactor rOptions) persist
+    return $ CreateBySelectPlan srcs sink (HS.build builder) rOptions persist
   RQCreate (RCreateView view select) -> do
     tName <- genTaskName
     (builder, srcs, sink, persist) <- elabRSelect tName (Just $ view <> "_view") select
     return $ CreateViewPlan srcs sink view (HS.build builder) persist
-  RQCreate (RCreate stream rOptions) -> return $ CreatePlan stream (rRepFactor rOptions)
+  RQCreate (RCreate stream rOptions) -> return $ CreatePlan stream rOptions
   RQCreate (RCreateConnector cType cName cTarget ifNotExist (RConnectorOptions cOptions)) ->
     return $ CreateConnectorPlan cType cName cTarget ifNotExist cOptions
   RQInsert (RInsert stream tuples)   -> do
