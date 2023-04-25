@@ -27,6 +27,7 @@ import qualified Proto3.Suite                     as PB
 #if __GLASGOW_HASKELL__ < 902
 import qualified HStream.Admin.Store.API          as AA
 #endif
+import           HStream.Base.Timer               (CompactedWorker)
 import           HStream.Common.ConsistentHashing (HashRing)
 import           HStream.Gossip.Types             (Epoch, GossipContext)
 import qualified HStream.IO.Types                 as IO
@@ -71,7 +72,6 @@ data ServerContext = ServerContext
   , metaHandle               :: MetaHandle
   , runningQueries           :: MVar (HM.HashMap Text ThreadId)
   , scSubscribeContexts      :: TVar (HM.HashMap SubscriptionId SubscribeContextNewWrapper)
-  , scCkpStore               :: HS.LDCheckpointStore
   , cmpStrategy              :: HS.Compression
 #if __GLASGOW_HASKELL__ < 902
   , headerConfig             :: AA.HeaderConfig AA.AdminAPI
@@ -108,21 +108,22 @@ data SubscribeState
   deriving (Eq, Show)
 
 data SubscribeContext = SubscribeContext
-  { subSubscriptionId    :: T.Text,
-    subStreamName        :: T.Text,
-    subAckTimeoutSeconds :: Int32,
-    subMaxUnackedRecords :: Word32,
-    subStartOffset       :: PB.Enumerated SpecialOffset,
-    subLdCkpReader       :: HS.LDSyncCkpReader,
-    subLdReader          :: MVar HS.LDReader,
-    subUnackedRecords    :: TVar Word32,
-    subConsumerContexts  :: TVar (HM.HashMap ConsumerName ConsumerContext),
-    subShardContexts     :: TVar (HM.HashMap HS.C_LogID SubscribeShardContext),
-    subAssignment        :: Assignment,
-    subCurrentTime ::  TVar Word64, -- unit: ms
-    subWaitingCheckedRecordIds :: TVar [CheckedRecordIds],
-    subWaitingCheckedRecordIdsIndex :: TVar (Map.Map CheckedRecordIdsKey CheckedRecordIds),
-    subStartOffsets       :: HM.HashMap S.C_LogID S.LSN
+  { subSubscriptionId    :: !T.Text
+  , subStreamName        :: !T.Text
+  , subAckTimeoutSeconds :: !Int32
+  , subMaxUnackedRecords :: !Word32
+  , subStartOffset       :: !(PB.Enumerated SpecialOffset)
+  , subLdCkpReader       :: !HS.LDSyncCkpReader
+  , subLdTrimCkpWorker   :: !CompactedWorker
+  , subLdReader          :: !(MVar HS.LDReader)
+  , subUnackedRecords    :: !(TVar Word32)
+  , subConsumerContexts  :: !(TVar (HM.HashMap ConsumerName ConsumerContext))
+  , subShardContexts     :: !(TVar (HM.HashMap HS.C_LogID SubscribeShardContext))
+  , subAssignment        :: !Assignment
+  , subCurrentTime       :: !(TVar Word64) -- unit: ms
+  , subWaitingCheckedRecordIds      :: !(TVar [CheckedRecordIds])
+  , subWaitingCheckedRecordIdsIndex :: !(TVar (Map.Map CheckedRecordIdsKey CheckedRecordIds))
+  , subStartOffsets      :: !(HM.HashMap S.C_LogID S.LSN)
   }
 
 data CheckedRecordIds = CheckedRecordIds {
@@ -230,4 +231,3 @@ transToTempStreamName = S.mkStreamId S.StreamTypeTemp . textToCBytes
 
 transToViewStreamName :: HCT.StreamName -> S.StreamId
 transToViewStreamName = S.mkStreamId S.StreamTypeView . textToCBytes
-

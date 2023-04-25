@@ -65,12 +65,10 @@ initializeServer opts@ServerOpts{..} gossipContext hh db_m = do
   ldclient <- S.newLDClient _ldConfigPath
   let attrs = S.def{S.logReplicationFactor = S.defAttr1 _ckpRepFactor}
   Log.debug $ "checkpoint replication factor: " <> Log.build _ckpRepFactor
-  _ <- catch (void $ S.initCheckpointStoreLogID ldclient attrs)
-             (\(_ :: S.EXISTS) -> return ())
+  S.initSubscrCheckpointDir ldclient attrs
 #if __GLASGOW_HASKELL__ < 902
   let headerConfig = AA.HeaderConfig _ldAdminHost _ldAdminPort _ldAdminProtocolId _ldAdminConnTimeout _ldAdminSendTimeout _ldAdminRecvTimeout
 #endif
-  ckpStore <- S.newRSMBasedCheckpointStore ldclient S.checkpointStoreLogID 5000
 
   -- XXX: Should we add a server option to toggle Stats?
   statsHolder <- newServerStatsHolder
@@ -103,7 +101,6 @@ initializeServer opts@ServerOpts{..} gossipContext hh db_m = do
       , scMaxRecordSize          = _maxRecordSize
       , runningQueries           = runningQs
       , scSubscribeContexts      = subCtxs
-      , scCkpStore               = ckpStore
       , cmpStrategy              = _compression
 #if __GLASGOW_HASKELL__ < 902
       , headerConfig             = headerConfig

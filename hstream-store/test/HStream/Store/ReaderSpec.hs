@@ -130,7 +130,9 @@ rsmBased = context "RSMBasedCheckpointedReader" $ do
              (S.newLDRsmCkpReader client readerName S.checkpointStoreLogID 5000 1 Nothing)
              (S.newRSMBasedCheckpointStore client S.checkpointStoreLogID 5000)
 
-  it "Sharing CheckpointStore" $ do
+  -- Now, we don't need to use shared_ptr, and we are using unique_ptr for
+  -- performance improvement.
+  xit "Sharing CheckpointStore" $ do
     store <- S.newRSMBasedCheckpointStore client S.checkpointStoreLogID 5000
     reader1 <- S.newLDRsmCkpReader' client "sharing_store_1" store 1 Nothing
     reader2 <- S.newLDRsmCkpReader' client "sharing_store_2" store 1 Nothing
