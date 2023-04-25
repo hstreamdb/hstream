@@ -103,8 +103,10 @@ retryWhileAgain f retries = do
     C_OK -> return r
     C_AGAIN
       | retries == 0 -> Log.warning "Run out of retries!" >> E.throwStreamError errno callStack
-      | retries < 0 -> threadDelay 5000 >> (retryWhileAgain f $! (-1))
-      | retries > 0 -> threadDelay 5000 >> (retryWhileAgain f $! retries - 1)
+      | retries < 0 -> do Log.warning $ "Again: remain retries " <> Log.build retries
+                          threadDelay 500000 >> (retryWhileAgain f $! (-1))
+      | retries > 0 -> do Log.warning $ "Again: remain retries " <> Log.build retries
+                          threadDelay 500000 >> (retryWhileAgain f $! retries - 1)
     _ -> E.throwStreamError errno callStack
 
 withForeignPtrList :: [ForeignPtr a] -> (Ptr (Ptr a) -> Int -> IO b) -> IO b

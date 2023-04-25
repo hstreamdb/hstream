@@ -132,8 +132,8 @@ rsmBased = context "RSMBasedCheckpointedReader" $ do
 
   it "Sharing CheckpointStore" $ do
     store <- S.newRSMBasedCheckpointStore client S.checkpointStoreLogID 5000
-    reader1 <- S.newLDRsmCkpReader' client store "sharing_store_1" 1 Nothing
-    reader2 <- S.newLDRsmCkpReader' client store "sharing_store_2" 1 Nothing
+    reader1 <- S.newLDRsmCkpReader' client "sharing_store_1" store 1 Nothing
+    reader2 <- S.newLDRsmCkpReader' client "sharing_store_2" store 1 Nothing
     _ <- S.append client logid "hello" Nothing
     until_lsn <- S.getTailLSN client logid
 
@@ -141,6 +141,35 @@ rsmBased = context "RSMBasedCheckpointedReader" $ do
     S.ckpStoreGetLSN store "sharing_store_1" logid `shouldReturn` until_lsn
     S.writeCheckpoints reader2 (Map.fromList [(logid, until_lsn)]) 10
     S.ckpStoreGetLSN store "sharing_store_1" logid `shouldReturn` until_lsn
+
+  it "Compact checkpoint of CheckpointedReader" $ do
+    S.initSubscrCheckpointDir client S.def{S.logReplicationFactor = S.defAttr1 1}
+    ckp_logid <- S.allocSubscrCheckpointId client "subid"
+    S.getSubscrCheckpointId client "subid" `shouldReturn` ckp_logid
+    reader <- S.newLDRsmCkpReader client "subid" ckp_logid 5000 1 Nothing
+    S.writeCheckpoints reader (Map.fromList [(100, 100)]) 10
+    S.writeCheckpoints reader (Map.fromList [(101, 100)]) 10
+    S.writeCheckpoints reader (Map.fromList [(102, 100)]) 10
+    -- Construct a new CheckpointStore
+    store <- S.newRSMBasedCheckpointStore client ckp_logid 5000
+    S.ckpStoreGetLSN store "subid" 100 `shouldReturn` 100
+    S.ckpStoreGetLSN store "subid" 101 `shouldReturn` 100
+    S.ckpStoreGetLSN store "subid" 102 `shouldReturn` 100
+    -- Trim (but last)
+    S.trimLastBefore 1 client ckp_logid
+    -- Construct a new CheckpointStore
+    store' <- S.newRSMBasedCheckpointStore client ckp_logid 5000
+    S.ckpStoreGetLSN store' "subid" 100 `shouldReturn` 100
+    S.ckpStoreGetLSN store' "subid" 101 `shouldReturn` 100
+    S.ckpStoreGetLSN store' "subid" 102 `shouldReturn` 100
+    -- Trim all
+    S.trimLast client ckp_logid
+    store'' <- S.newRSMBasedCheckpointStore client ckp_logid 5000
+    S.ckpStoreGetLSN store'' "subid" 100 `shouldThrow` S.isNOTFOUND
+    S.ckpStoreGetLSN store'' "subid" 101 `shouldThrow` S.isNOTFOUND
+    S.ckpStoreGetLSN store'' "subid" 102 `shouldThrow` S.isNOTFOUND
+    -- clean
+    S.freeSubscrCheckpointId client "subid"
 
 misc :: Spec
 misc = do

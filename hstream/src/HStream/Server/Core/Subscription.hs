@@ -326,7 +326,7 @@ doSubInit ServerContext{..} subId = do
       let ldReaderBufferSize = 10
       -- create a ldCkpReader for reading new records
       ldCkpReader <-
-        S.newLDRsmCkpReader' scLDClient scCkpStore readerName maxReadLogs (Just ldReaderBufferSize)
+        S.newLDRsmCkpReader' scLDClient readerName scCkpStore maxReadLogs (Just ldReaderBufferSize)
       S.ckpReaderSetTimeout ldCkpReader 10  -- 10 milliseconds
       -- create a ldReader for rereading unacked records
       reader <- S.newLDReader scLDClient maxReadLogs (Just ldReaderBufferSize)
