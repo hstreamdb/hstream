@@ -48,6 +48,16 @@ void setPerQueryStatsMember(const char* stat_name,
 #include "per_query_stats.inc"
 }
 
+void setPerViewStatsMember(const char* stat_name,
+                                    StatsCounter PerViewStats::*& member_ptr) {
+#define STAT_DEFINE(name, _)                                                   \
+  if (#name == std::string(stat_name)) {                                       \
+    member_ptr = &PerViewStats::name##_counter;                                \
+  }
+#include "per_view_stats.inc"
+}
+
+
 void setPerSubscriptionTimeSeriesMember(
     const char* stat_name, std::shared_ptr<PerSubscriptionTimeSeries>
                                PerSubscriptionStats::*& member_ptr) {
@@ -182,6 +192,21 @@ int query_stat_getall(StatsHolder* stats_holder, const char* stat_name,
   return perXStatsGetall<PerQueryStats>(
       stats_holder, &Stats::per_query_stats, stat_name,
       setPerQueryStatsMember, len, keys_ptr, values_ptr, keys_, values_);
+}
+
+// ----------------------------------------------------------------------------
+// PerViewStats
+#define STAT_DEFINE(name, _)                                                   \
+  PER_X_STAT_DEFINE(view_stat_, per_view_stats, PerViewStats, name)
+#include "per_view_stats.inc"
+
+int view_stat_getall(StatsHolder* stats_holder, const char* stat_name,
+                      HsInt* len, std::string** keys_ptr, int64_t** values_ptr,
+                      std::vector<std::string>** keys_,
+                      std::vector<int64_t>** values_) {
+  return perXStatsGetall<PerViewStats>(
+      stats_holder, &Stats::per_view_stats, stat_name,
+      setPerViewStatsMember, len, keys_ptr, values_ptr, keys_, values_);
 }
 
 // ----------------------------------------------------------------------------

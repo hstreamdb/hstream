@@ -206,7 +206,7 @@ createIOTaskFromRequest sc CreateConnectorRequest{..} = do
   createIOTask sc createConnectorRequestName createConnectorRequestType createConnectorRequestTarget  createConnectorRequestConfig
 
 createIOTask :: ServerContext -> T.Text -> T.Text -> T.Text -> T.Text -> IO Connector
-createIOTask sc@ServerContext{scIOWorker = worker@IO.Worker{..}, ..} name typ target cfg = do
+createIOTask sc@ServerContext{..} name typ target cfg = do
   -- FIXME: Can we remove this validation ?
   validateNameAndThrow ResConnector name
   ServerNode{..} <- lookupResource' sc ResConnector name
@@ -217,24 +217,4 @@ createIOTask sc@ServerContext{scIOWorker = worker@IO.Worker{..}, ..} name typ ta
            <> ", connector name: " <> Log.build name
            <> ", connector targe: " <> Log.build target
            <> ", config: "         <> Log.build cfg
-  taskId <- UUID.toText <$> UUID.nextRandom
-  createdTime <- Utils.getProtoTimestamp
-  let IO.IOOptions {..} = options
-      taskType = IO.ioTaskTypeFromText typ
-      image = IO.makeImage taskType target options
-      connectorConfig =
-        A.fromList
-          [ "hstream" A..= A.toJSON hsConfig
-          , "connector" A..= (A.decodeStrict $ T.encodeUtf8 cfg :: Maybe A.Object)
-          , "task" A..= taskId
-          ]
-      taskInfo = IO.TaskInfo
-        { taskName = name
-        , taskType = taskType
-        , taskTarget = target
-        , taskCreatedTime = createdTime
-        , taskConfig = IO.TaskConfig image optTasksNetwork
-        , connectorConfig = connectorConfig
-        }
-  IO.createIOTask worker taskId taskInfo False True
-  IO.showIOTask_ worker name
+  IO.createIOTask scIOWorker name typ target cfg
