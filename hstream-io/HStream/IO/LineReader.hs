@@ -31,7 +31,7 @@ readLines lr@LineReader{..} begin count = do
     return ""
   else
     IO.withFile filePath IO.ReadMode $ \hdl -> do
-      seekToLineOffset lr hdl 0 (begin - 1) >>= \case
+      seekToLineOffset lr hdl begin >>= \case
         False -> return ""
         True -> do
           (result, gotCount) <- getLines hdl mempty 0 count
@@ -39,31 +39,31 @@ readLines lr@LineReader{..} begin count = do
           _ <- C.swapMVar latestLineOffset (begin + gotCount, fromIntegral currentOffset)
           return . TL.toStrict $ T.toLazyText result
 
-seekToLineOffset :: LineReader -> IO.Handle -> Int -> Int -> IO Bool
-seekToLineOffset LineReader{..} hdl begin count = do
+seekToLineOffset :: LineReader -> IO.Handle -> Int -> IO Bool
+seekToLineOffset LineReader{..} hdl begin = do
   (lineNum, fileOffset) <- C.readMVar latestLineOffset
   if lineNum == begin then do
     IO.hSeek hdl IO.AbsoluteSeek (fromIntegral fileOffset)
     return True
   else
-    dropLines hdl begin count
+    dropLines hdl 0 (begin - 1)
 
 dropLines :: IO.Handle -> Int -> Int -> IO Bool
-dropLines hdl count total = do
-  if count < total then
+dropLines hdl n total = do
+  if n < total then
     E.try (T.hGetLine hdl) >>= \case
       Left (_ :: E.SomeException) -> return False
-      Right _ -> dropLines hdl (count + 1) total
+      Right _ -> dropLines hdl (n + 1) total
   else
     return True
 
 getLines :: IO.Handle -> T.Builder -> Int -> Int -> IO (T.Builder, Int)
-getLines hdl builder count total = do
-  if count < total then
+getLines hdl builder n total = do
+  if n < total then
     E.try (T.hGetLine hdl) >>= \case
-      Left (_ :: E.SomeException) -> return (builder, count)
+      Left (_ :: E.SomeException) -> return (builder, n)
       Right line -> do
-        let newBuilder = builder <> "\n" <> T.fromText line
-        getLines hdl newBuilder (count + 1) total
+        let newBuilder = builder <> T.fromText line <> "\n"
+        getLines hdl newBuilder (n + 1) total
   else
     return (builder, total)
