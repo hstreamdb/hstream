@@ -52,6 +52,7 @@ library
     HStream.Base.Bytes
     HStream.Base.Table
     HStream.Base.Time
+    HStream.Base.Timer
     HStream.Foreign
     HStream.Logger
 
