@@ -198,12 +198,14 @@ renderViewsToTable views = showTable titles rows
     titles = [ "View Name"
              , "Status"
              , "Created Time"
-             , "Schema"]
+             , "Schema"
+             , "Query Name"]
     formatRow API.View {..} =
       [ [T.unpack viewViewId]
       , [formatStatus viewStatus]
       , [formatTime viewCreatedTime]
       , [show viewSchema]
+      , [T.unpack viewQueryName]
       ]
     rows = map formatRow views
 
