@@ -53,7 +53,7 @@ dropLines hdl n total = do
   if n < total then
     E.try (T.hGetLine hdl) >>= \case
       Left (_ :: E.SomeException) -> return False
-      Right _ -> dropLines hdl (n + 1) total
+      Right _                     -> dropLines hdl (n + 1) total
   else
     return True
 

@@ -56,25 +56,25 @@ finalExceptionHandlers :: [Handler (StatusCode, StatusDetails)]
 finalExceptionHandlers = [
   Handler $ \(err :: IOException) -> do
     Log.fatal $ Log.buildString' err
-    return (StatusInternal, HE.mkStatusDetails err)
+    return (StatusInternal, HE.mkStatusDetails $ HE.SomeServerInternal $ displayException err)
   ,
   Handler $ \(_ :: AsyncCancelled) -> do
-    return (StatusOk, "")
+    return (StatusOk, HE.mkStatusDetails $ HE.SomeServerInternal "")
   ,
   Handler $ \(err :: SomeException) -> do
     Log.fatal $ Log.buildString' err
-    return (StatusUnknown, "UnKnown exception: " <> HE.mkStatusDetails err)
+    return (StatusUnknown, HE.mkStatusDetails $ HE.SomeServerInternal $ "UnKnown exception: " <> displayException err)
   ]
 
 storeExceptionHandlers :: [Handler (StatusCode, StatusDetails)]
 storeExceptionHandlers = [
   Handler $ \(err :: Store.EXISTS) -> do
     Log.warning $ Log.buildString' err
-    return (StatusAlreadyExists, "Stream or view with same name already exists in store")
+    return (StatusAlreadyExists, HE.mkStatusDetails $ HE.SomeStoreInternal "Stream or view with same name already exists in store")
   ,
   Handler $ \(err :: Store.SomeHStoreException) -> do
     Log.warning $ Log.buildString' err
-    return (StatusInternal, HE.mkStatusDetails err)
+    return (StatusInternal, HE.mkStatusDetails (HE.SomeStoreInternal (displayException err)))
   ]
 
 --------------------------------------------------------------------------------
