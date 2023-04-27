@@ -22,7 +22,7 @@ createIOTaskMeta h taskName taskId taskInfo = do
 
 listIOTaskMeta :: MetaHandle -> IO [API.Connector]
 listIOTaskMeta h = do
-  map (convertTaskMeta False) . filter (\TaskMeta{..} -> taskStateMeta /= DELETED) <$> listMeta @TaskMeta h
+  map convertTaskMeta . filter (\TaskMeta{..} -> taskStateMeta /= DELETED) <$> listMeta @TaskMeta h
 
 getIOTaskMeta :: MetaHandle -> T.Text -> IO (Maybe TaskMeta)
 getIOTaskMeta h tid = getMeta tid h

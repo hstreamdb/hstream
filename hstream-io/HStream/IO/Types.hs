@@ -151,21 +151,16 @@ instance HasPath TaskIdMeta FHandle where
 instance HasPath TaskKvMeta FHandle where
   myRootPath = "ioTaskKvs"
 
-convertTaskMeta :: Bool -> TaskMeta -> API.Connector
-convertTaskMeta addConfig TaskMeta {..} =
+convertTaskMeta :: TaskMeta -> API.Connector
+convertTaskMeta TaskMeta {..} =
   API.Connector
     (taskName taskInfoMeta)
     (ioTaskTypeToText . taskType $ taskInfoMeta)
     (taskTarget taskInfoMeta)
     (Just . taskCreatedTime $ taskInfoMeta)
     (ioTaskStatusToText taskStateMeta)
-    cfg
+    (TL.toStrict . J.encodeToLazyText . J.lookup "connector" $ connectorConfig taskInfoMeta)
     Vector.empty
-  where
-    Just connectorCfg = J.lookup "connector" $ connectorConfig taskInfoMeta
-    cfg = if addConfig
-      then TL.toStrict $ J.encodeToLazyText connectorCfg
-      else ""
 
 ioTaskStatusToText :: IOTaskStatus -> T.Text
 ioTaskStatusToText = T.pack . show

@@ -114,7 +114,7 @@ showIOTask_ worker@Worker{..} name = do
   taskOffsets <- C.readMVar taskOffsetsM
   M.getIOTaskMeta workerHandle taskId >>= \case
     Nothing -> throwIO $ HE.ConnectorNotFound name
-    Just c  -> return $ (convertTaskMeta True c) {API.connectorOffsets = taskOffsets}
+    Just c  -> return $ (convertTaskMeta c) {API.connectorOffsets = taskOffsets}
 
 listIOTasks :: Worker -> IO [API.Connector]
 listIOTasks Worker{..} = M.listIOTaskMeta workerHandle
