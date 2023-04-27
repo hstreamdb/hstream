@@ -246,7 +246,7 @@ deleteQuery :: ServerContext -> DeleteQueryRequest -> IO ()
 deleteQuery ServerContext{..} DeleteQueryRequest{..} = do
   getMeta @P.QueryStatus deleteQueryRequestId metaHandle >>= \case
     Nothing -> throwIO $ HE.QueryNotFound deleteQueryRequestId
-    Just P.QueryStatus{..} -> when (queryState /= Terminated) $
+    Just P.QueryStatus{..} -> when (queryState /= Terminated && queryState /= Aborted) $
       throwIO $ HE.QueryNotTerminated deleteQueryRequestId
   getMeta @P.QVRelation deleteQueryRequestId metaHandle >>= \case
     Nothing               -> P.deleteQueryInfo deleteQueryRequestId metaHandle
