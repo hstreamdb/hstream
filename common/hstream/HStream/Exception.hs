@@ -155,6 +155,8 @@ module HStream.Exception
   , DiscardedMethod (DiscardedMethod)
   , PushQuerySendError (PushQuerySendError)
   , ConnectorProcessError (ConnectorProcessError)
+  , SomeStoreInternal (SomeStoreInternal)
+  , SomeServerInternal (SomeServerInternal)
 
     -- * Exception: SomeUnavailable
   , SomeUnavailable
@@ -605,6 +607,8 @@ MAKE_EX_1_DEFMSG(SomeInternal, LocalMetaStoreInternalErr, String, API.ErrorCodeI
 MAKE_EX_1_DEFMSG(SomeInternal, DiscardedMethod, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeInternal, PushQuerySendError, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeInternal, ConnectorProcessError, String, API.ErrorCodeInternalError)
+MAKE_EX_1_DEFMSG(SomeInternal, SomeStoreInternal, String, API.ErrorCodeInternalError)
+MAKE_EX_1_DEFMSG(SomeInternal, SomeServerInternal, String, API.ErrorCodeInternalError)
 
 -------------------------------------------------------------------------------
 -- Exception: SomeUnavailable

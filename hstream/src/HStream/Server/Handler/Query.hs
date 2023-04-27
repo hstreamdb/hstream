@@ -26,6 +26,9 @@ module HStream.Server.Handler.Query
   , handleTerminateQuery
   , handleDeleteQuery
   , handleResumeQuery
+
+  , queryExceptionHandle
+  , catchQueryEx
   ) where
 
 
@@ -238,15 +241,14 @@ sqlExceptionHandlers :: [HE.Handler (StatusCode, StatusDetails)]
 sqlExceptionHandlers = [
   Handler (\(err :: SomeSQLException) -> do
     Log.fatal $ Log.buildString' err
-    return (StatusInvalidArgument, StatusDetails . BS.pack . formatSomeSQLException $ err))
+    return (StatusInvalidArgument, HE.mkStatusDetails (HE.InvalidQuerySql $ formatSomeSQLException err)))
   ]
 
 sqlExHandlers :: [Handler a]
 sqlExHandlers =
   [ Handler $ \(err :: SomeSQLException) -> do
       Log.warning $ Log.buildString' err
-      let errmsg = BS.pack . formatSomeSQLException $ err
-      G.throwGrpcError $ G.GrpcStatus G.StatusInvalidArgument (Just errmsg) Nothing
+      G.throwGrpcError $ G.GrpcStatus G.StatusInvalidArgument (HE.mkStatusMsg (HE.InvalidQuerySql $ formatSomeSQLException err)) Nothing
   ]
 
 queryExceptionHandle :: HE.ExceptionHandle (ServerResponse 'Normal a)
