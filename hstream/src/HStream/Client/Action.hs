@@ -109,7 +109,7 @@ dropAction ignoreNonExist dropObject API.HStreamApi{..}  = do
     DStream    txt -> hstreamApiDeleteStream (mkClientNormalRequest' def
                       { API.deleteStreamRequestStreamName     = txt
                       , API.deleteStreamRequestIgnoreNonExist = ignoreNonExist
-                      , API.deleteStreamRequestForce          = True
+                      , API.deleteStreamRequestForce          = False
                       })
 
     DView      txt -> hstreamApiDeleteView (mkClientNormalRequest' def

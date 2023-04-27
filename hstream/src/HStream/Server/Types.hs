@@ -69,7 +69,7 @@ data ServerContext = ServerContext
   , scDefaultStreamRepFactor :: Int
   , scMaxRecordSize          :: Int
   , metaHandle               :: MetaHandle
-  , runningQueries           :: MVar (HM.HashMap Text ThreadId)
+  , runningQueries           :: MVar (HM.HashMap Text (ThreadId, TVar Bool))
   , scSubscribeContexts      :: TVar (HM.HashMap SubscriptionId SubscribeContextNewWrapper)
   , scCkpStore               :: HS.LDCheckpointStore
   , cmpStrategy              :: HS.Compression

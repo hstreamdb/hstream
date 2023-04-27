@@ -45,6 +45,7 @@ spec = aroundAll provideHstreamApi $
         [ ("SUM(s1.a)", Aeson.Number 1)
         , ("SUM(s2.a)", Aeson.Number 2)
         , ("b"     , Aeson.Number 3)]]
+    threadDelay 500000
     runDropSql api "DROP STREAM s1 IF EXISTS;"
     runDropSql api "DROP STREAM s2 IF EXISTS;"
 
@@ -52,7 +53,7 @@ spec = aroundAll provideHstreamApi $
     runDropSql api "DROP STREAM s4 IF EXISTS;"
     runDropSql api "DROP STREAM s5 IF EXISTS;"
     runCreateStreamSql api "CREATE STREAM s4;"
-    runCreateWithSelectSql api "CREATE STREAM s5 AS SELECT SUM(a), COUNT(*) AS result, b FROM s4 GROUP BY b;"
+    qName <- runCreateWithSelectSql' api "CREATE STREAM s5 AS SELECT SUM(a), COUNT(*) AS result, b FROM s4 GROUP BY b;"
     _ <- forkIO $ do
       threadDelay 10000000 -- FIXME: requires a notification mechanism to ensure that the task starts successfully before inserting data
       runInsertSql api "INSERT INTO s4 (a, b) VALUES (1, 4);"
@@ -71,8 +72,10 @@ spec = aroundAll provideHstreamApi $
                   , mkStruct [("cnt", Aeson.Number 3), ("b", Aeson.Number 4), ("SUM(a)", Aeson.Number 3)]
                   , mkStruct [("cnt", Aeson.Number 4), ("b", Aeson.Number 4), ("SUM(a)", Aeson.Number 4)]])
           )
-    runDropSql api "DROP STREAM s4 IF EXISTS;"
+    threadDelay 500000
+    runTerminateSql api $ "TERMINATE QUERY " <> qName <> " ;"
     runDropSql api "DROP STREAM s5 IF EXISTS;"
+    runDropSql api "DROP STREAM s4 IF EXISTS;"
 
   -- FIXME
   xit "HS352_INT" $ \api -> do
@@ -98,6 +101,7 @@ spec = aroundAll provideHstreamApi $
                                                   , ("key3", Aeson.Bool False)]
                                         )
     runTerminateSql api $ "TERMINATE QUERY " <> qName <> ";"
+    threadDelay 500000
     runDropSql api "DROP STREAM s6 IF EXISTS;"
     runDropSql api "DROP VIEW v6 IF EXISTS;"
 
@@ -120,4 +124,5 @@ spec = aroundAll provideHstreamApi $
                        , ("c", Aeson.Number 2)
                        ]
                      ]
+    threadDelay 500000
     runDropSql api "DROP STREAM stream_binary IF EXISTS;"

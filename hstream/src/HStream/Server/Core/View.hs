@@ -11,6 +11,7 @@ module HStream.Server.Core.View
   , hstreamViewToView
   ) where
 
+import           Control.Concurrent.STM        (newTVarIO)
 import           Control.Exception             (throw, throwIO)
 import           Control.Monad                 (forM_, unless, when)
 import qualified Data.Aeson                    as Aeson
@@ -122,11 +123,14 @@ createView' sc@ServerContext{..} view srcs sink builder persist sql queryName = 
         True  -> do
           let relatedStreams = (srcs, sink)
           vInfo <- P.createInsertViewQueryInfo queryName sql relatedStreams view metaHandle
+          consumerClosed <- newTVarIO False
           createQueryAndRun sc QueryRunner {
               qRTaskBuilder = builder
             , qRQueryName   = queryName
             , qRQueryString = sql
-            , qRWhetherToHStore = False }
+            , qRWhetherToHStore = False
+            , qRQuerySources = srcs
+            , qRConsumerClosed = consumerClosed}
           let accumulation = L.head (snd persist)
           atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert view accumulation hm, ()))
           return vInfo

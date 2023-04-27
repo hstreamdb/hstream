@@ -15,6 +15,7 @@ module HStream.Server.HStore
 where
 
 import           Control.Concurrent               (modifyMVar)
+import           Control.Concurrent.STM           (TVar)
 import           Control.Exception                (catch, throwIO)
 import           Control.Monad
 import qualified Data.Aeson                       as Aeson
@@ -67,11 +68,12 @@ hstoreSourceConnector ldclient reader streamType = SourceConnector {
       (S.mkStreamId streamType (textToCBytes streamName))
 }
 
-hstoreSourceConnectorWithoutCkp :: ServerContext -> T.Text -> SourceConnectorWithoutCkp
-hstoreSourceConnectorWithoutCkp ctx consumerName = SourceConnectorWithoutCkp {
+hstoreSourceConnectorWithoutCkp :: ServerContext -> T.Text -> TVar Bool -> SourceConnectorWithoutCkp
+hstoreSourceConnectorWithoutCkp ctx consumerName consumerClosed = SourceConnectorWithoutCkp {
   subscribeToStreamWithoutCkp = subscribeToHStoreStream' ctx consumerName,
   unSubscribeToStreamWithoutCkp = unSubscribeToHStoreStream' ctx consumerName,
-  withReadRecordsWithoutCkp = withReadRecordsFromHStore' ctx consumerName
+  withReadRecordsWithoutCkp = withReadRecordsFromHStore' ctx consumerName,
+  connectorClosed = consumerClosed
 }
 
 hstoreSinkConnector :: ServerContext -> SinkConnector
@@ -202,15 +204,16 @@ withReadRecordsFromHStore' :: ServerContext
                            -> HCT.StreamName
                            -> (BL.ByteString -> Maybe BL.ByteString)
                            -> (BL.ByteString -> Maybe BL.ByteString)
+                           -> TVar Bool
                            -> ([SourceRecord] -> IO (IO (), IO ()))
                            -> IO ()
-withReadRecordsFromHStore' ctx consumerName streamName transK transV actionGen = do
+withReadRecordsFromHStore' ctx consumerName streamName transK transV consumerClosed actionGen = do
   let req = API.StreamingFetchRequest
             { API.streamingFetchRequestSubscriptionId = hstoreSubscriptionPrefix <> streamName <> "_" <> consumerName
             , API.streamingFetchRequestConsumerName = hstoreConsumerPrefix <> consumerName
             , API.streamingFetchRequestAckIds = V.empty
             }
-  Core.streamingFetchCore ctx Core.SFetchCoreDirect req actionGen'
+  Core.streamingFetchCore ctx Core.SFetchCoreDirect req consumerClosed actionGen'
   where
     actionGen' :: Maybe API.ReceivedRecord -> IO (IO (), IO ())
     actionGen' receivedRecords = do

@@ -10,9 +10,12 @@
 module HStream.Server.Handler.Common where
 
 import           Control.Concurrent
+import           Control.Concurrent.STM                (TVar, atomically,
+                                                        newTVarIO, writeTVar)
 import           Control.Exception                     (Handler (Handler),
                                                         SomeException (..),
-                                                        catches, throwIO, try)
+                                                        catches, finally,
+                                                        throwIO, try)
 import           Control.Exception.Base                (AsyncException (..))
 import           Control.Monad
 import qualified Data.Aeson                            as Aeson
@@ -26,6 +29,7 @@ import           Data.Maybe                            (fromJust)
 import           Data.Text                             (Text)
 import qualified Database.RocksDB                      as RocksDB
 
+import qualified HStream.Exception                     as HE
 import qualified HStream.Logger                        as Log
 import qualified HStream.MetaStore.Types               as M
 import qualified HStream.Server.HStore                 as HStore
@@ -49,6 +53,7 @@ import           HStream.Server.ConnectorTypes         (SinkConnector (..),
 import qualified HStream.Server.ConnectorTypes         as HCT
 import           HStream.SQL.Codegen
 #else
+import           HStream.Processing.Connector
 import           HStream.Processing.Processor
 import           HStream.Processing.Processor.Snapshot
 import           HStream.Processing.Store
@@ -288,6 +293,8 @@ data QueryRunner = QueryRunner {
   , qRQueryName       :: Text
   , qRWhetherToHStore :: Bool
   , qRQueryString     :: Text
+  , qRQuerySources    :: [Text]
+  , qRConsumerClosed  :: TVar Bool
   }
 
 ---- store processing node states (changelog)
@@ -339,18 +346,8 @@ doSnapshot h1 h2 Task{..} = do
 
 --------------------------------------------------------------------------------
 
-runTaskWrapper :: ServerContext -> TaskBuilder -> S.C_LogID -> Text  -> Bool -> IO ()
-runTaskWrapper ctx@ServerContext{..} taskBuilder logId queryName writeToHStore = do
-  -- taskName: randomly generated in `Codegen.V1`
-  let taskName = getTaskName taskBuilder
-  let consumerName = textToCBytes taskName
-
-  -- create a new sourceConnector
-  let sourceConnector = HStore.hstoreSourceConnectorWithoutCkp ctx (cBytesToText consumerName)
-  -- create a new sinkConnector
-  let sinkConnector = if writeToHStore
-                         then HStore.hstoreSinkConnector ctx
-                         else HStore.blackholeSinkConnector
+runTaskWrapper :: ServerContext -> SourceConnectorWithoutCkp -> SinkConnector -> TaskBuilder -> S.C_LogID -> IO ()
+runTaskWrapper ctx@ServerContext{..} sourceConnector sinkConnector taskBuilder logId = do
   -- RUN TASK
   let transKSrc = \s bl -> case Aeson.decode bl of
                           Nothing -> Nothing
@@ -366,7 +363,6 @@ runTaskWrapper ctx@ServerContext{..} taskBuilder logId queryName writeToHStore =
     Nothing -> do
       Log.warning "Snapshotting is not available. Only changelog is working..."
       runTask scStatsHolder
-              queryName
               sourceConnector
               sinkConnector
               taskBuilder
@@ -379,7 +375,6 @@ runTaskWrapper ctx@ServerContext{..} taskBuilder logId queryName writeToHStore =
               transVSnk
     Just db ->
       runTask scStatsHolder
-              queryName
               sourceConnector
               sinkConnector
               taskBuilder
@@ -464,15 +459,18 @@ runQuery :: ServerContext -> QueryRunner -> S.C_LogID -> IO ()
 runQuery ctx@ServerContext{..} QueryRunner{..} logId = do
   M.updateMeta qRQueryName P.QueryRunning Nothing metaHandle
   tid <- forkIO $ catches action cleanup
-  modifyMVar_ runningQueries (return . HM.insert qRQueryName tid)
+  modifyMVar_ runningQueries (return . HM.insert qRQueryName (tid, qRConsumerClosed))
   where
+    sinkConnector = if qRWhetherToHStore then HStore.hstoreSinkConnector ctx
+                                         else HStore.blackholeSinkConnector
+    sourceConnector = HStore.hstoreSourceConnectorWithoutCkp ctx qRQueryName qRConsumerClosed
     action = do
       Log.debug $ "Start Query " <> Log.build qRQueryString
                 <> "with name: " <> Log.build qRQueryName
-      runTaskWrapper ctx qRTaskBuilder logId qRQueryName qRWhetherToHStore
+      runTaskWrapper ctx sourceConnector sinkConnector qRTaskBuilder logId
     cleanup =
-      [ Handler (\(e :: AsyncException) -> do
-                    Log.debug . Log.buildString
+      [ Handler (\(e :: HE.StreamReadClose) -> do
+                    Log.info . Log.buildString
                        $ "CREATE AS SELECT: query " <> show qRQueryName
                       <> " is killed because of " <> show e
                     M.updateMeta qRQueryName P.QueryTerminated Nothing metaHandle

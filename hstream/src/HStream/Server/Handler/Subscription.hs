@@ -90,7 +90,7 @@ handleGetSubscription :: ServerContext -> G.UnaryHandler GetSubscriptionRequest 
 handleGetSubscription ctx@ServerContext{..} _ req = catchDefaultEx $ do
   Log.debug $ "Receive getSubscription request: " <> Log.buildString' req
   let subId = getSubscriptionRequestId req
-  validateNameAndThrow ResSubscription subId
+  -- validateNameAndThrow ResSubscription subId
   ServerNode{..} <- lookupResource' ctx ResSubscription subId
   unless (serverNodeId == serverID) $
     throwIO $ HE.SubscriptionOnDifferentNode "Subscription is bound to a different node"
@@ -110,7 +110,7 @@ listConsumersHandler ctx@ServerContext{..} (ServerNormalRequest _metadata req) =
 handleListConsumers :: ServerContext -> G.UnaryHandler ListConsumersRequest ListConsumersResponse
 handleListConsumers ctx@ServerContext{..} _ req = catchDefaultEx $ do
   let subId = listConsumersRequestSubscriptionId req
-  validateNameAndThrow ResSubscription subId
+  -- validateNameAndThrow ResSubscription subId
   ServerNode{..} <- lookupResource' ctx ResSubscription subId
   unless (serverNodeId == serverID) $
     throwIO $ HE.SubscriptionOnDifferentNode "Subscription is bound to a different node"

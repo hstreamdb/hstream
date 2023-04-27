@@ -20,6 +20,7 @@ module HStream.Server.Core.Query
   , terminateQuery
   ) where
 
+import           Control.Concurrent.STM           (newTVarIO)
 import           Control.Exception                (throw, throwIO)
 import           Control.Monad
 import qualified Data.Aeson                       as Aeson
@@ -125,33 +126,6 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
       let object = AesonComp.fromList [(label, PB.toAesonValue a)]
        in V.singleton (jsonObjectToStruct object)
 
-sendToClient
-  :: MetaHandle
-  -> T.Text
-  -> T.Text
-  -> SourceConnectorWithoutCkp
-  -> (Struct -> IO (Either GRPCIOError ()))
-  -> IO ()
-sendToClient metaHandle qid streamName SourceConnectorWithoutCkp{..} streamSend = do
-  M.getMeta @P.QueryStatus qid metaHandle >>= \case
-    Just Running -> withReadRecordsWithoutCkp streamName Just Just $ \sourceRecords -> do
-      let (objects' :: [Maybe Aeson.Object]) = Aeson.decode' . srcValue <$> sourceRecords
-          structs = jsonObjectToStruct . fromJust <$> filter isJust objects'
-      return (void $ streamSendMany structs, return ())
-    Just _   -> throwIO $ HE.QueryNotRunning ""
-    _        -> throwIO $ HE.UnknownPushQueryStatus ""
-
-    . (P.queryState <$>)
-  where
-    streamSendMany = \case
-      []        -> pure ()
-      (x : xs') ->
-        streamSend (structToStruct "SELECT" x) >>= \case
-          Left err -> do
-            Log.warning $ "Send Stream Error: " <> Log.buildString (show err)
-            throwIO $ HE.PushQuerySendError (show err)
-          Right _ -> streamSendMany xs'
-
 -- NOTE: createQueryWithNameSpace may be modified in future.
 createQuery :: ServerContext -> CreateQueryRequest -> IO Query
 createQuery sc req = createQueryWithNamespace' sc req ""
@@ -210,11 +184,14 @@ createQueryWithNamespace'
             }
           let relatedStreams = (sources, sink)
           qInfo <- P.createInsertQueryInfo createQueryRequestQueryName createQueryRequestSql relatedStreams metaHandle
+          consumerClosed <- newTVarIO False
           createQueryAndRun sc QueryRunner {
               qRTaskBuilder = builder
             , qRQueryName   = createQueryRequestQueryName
             , qRQueryString = createQueryRequestSql
-            , qRWhetherToHStore = True }
+            , qRWhetherToHStore = True
+            , qRQuerySources = sources
+            , qRConsumerClosed =  consumerClosed}
           hstreamQueryToQuery metaHandle qInfo
         _ -> throw $ HE.WrongExecutionPlan "Create query only support create stream/view <name> as select statements"
       RQCreate (RCreateView view select) -> hstreamCodegen (RQCreate (RCreateView (namespace <> view) (modifySelect namespace select))) >>= \case
@@ -267,14 +244,15 @@ resumeQuery ctx@ServerContext{..} qRQueryName = do
     Just state -> throwIO $ HE.QueryNotAborted (T.pack $ show state)
   getMeta @P.QueryInfo qRQueryName metaHandle >>= \case
     Just qInfo@P.QueryInfo{..} -> do
-      (qRTaskBuilder, qRWhetherToHStore) <- streamCodegen querySql >>= \case
-        CreateBySelectPlan sources sink builder _ _ -> checkSources sources >> return (builder, True)
+      (qRTaskBuilder, qRWhetherToHStore, qRQuerySources) <- streamCodegen querySql >>= \case
+        CreateBySelectPlan sources sink builder _ _ -> checkSources sources >> return (builder, True, sources)
         CreateViewPlan sources sink view builder persist  -> do
           checkSources sources
           let accumulation = L.head (snd persist)
           atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert view accumulation hm, ()))
-          return (builder, False)
+          return (builder, False, sources)
         _ -> throwIO $ HE.UnexpectedError ("Query " <> T.unpack queryId <> "should not be like \"" <> T.unpack querySql <> "\". What happened?")
+      qRConsumerClosed <- newTVarIO False
       restoreStateAndRun ctx QueryRunner {qRQueryString = querySql, ..}
     Nothing -> throwIO $ HE.QueryNotFound ("Query " <> qRQueryName <> "does not exist")
   where
