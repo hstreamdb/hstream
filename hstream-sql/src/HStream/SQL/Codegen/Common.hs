@@ -101,13 +101,20 @@ composeAggs :: [AggregateComponent] -> AggregateComponent
 composeAggs aggs =
   AggregateComponent
   { aggregateInit = HM.unions (L.map aggregateInit aggs)
-  , aggregateF = \acc row -> do
-      accs <- mapM (\agg -> aggregateF agg acc row) aggs
-      return $ HM.unions accs
-  , aggregateMergeF = \k o1 o2 -> do
-      accs <- mapM (\agg -> aggregateMergeF agg k o1 o2) aggs
-      return $ HM.unions accs
+  , aggregateF = \acc row ->
+      let accs_m = map (\agg -> aggregateF agg acc row) aggs
+       in foldl1 folder accs_m
+  , aggregateMergeF = \k o1 o2 ->
+      let accs_m = map (\agg -> aggregateMergeF agg k o1 o2) aggs
+       in foldl1 folder accs_m
   }
+  where folder cur x = case cur of
+          Left (e,v) -> case x of
+            Left (e',v') -> Left (e, HM.union v v') -- FIXME: e <> e'
+            Right v'     -> Left (e, HM.union v v')
+          Right v    -> case x of
+            Left (e',v') -> Left (e', HM.union v v')
+            Right v'     -> Right $ HM.union v v'
 
 genAggregateComponent :: Aggregate ScalarExpr
                       -> ColumnCatalog

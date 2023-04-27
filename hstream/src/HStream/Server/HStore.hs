@@ -15,7 +15,7 @@ module HStream.Server.HStore
 where
 
 import           Control.Concurrent               (modifyMVar)
-import           Control.Exception                (throwIO)
+import           Control.Exception                (catch, throwIO)
 import           Control.Monad
 import qualified Data.Aeson                       as Aeson
 import qualified Data.ByteString.Lazy             as BL
@@ -34,7 +34,8 @@ import           Proto3.Suite                     (Enumerated (..))
 import qualified Proto3.Suite                     as PB
 import           Z.Data.Vector                    (Bytes)
 
-import           HStream.Exception                (WrongOffset (..))
+import           HStream.Exception                (StreamNotFound (..),
+                                                   WrongOffset (..))
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Stream       as Core
 import qualified HStream.Server.Core.Subscription as Core
@@ -261,7 +262,7 @@ writeRecordToHStore ctx transK transV SinkRecord{..} = do
           payload = BL.toStrict . PB.toLazyByteString . jsonObjectToStruct . fromJust $ Aeson.decode v
           hsRecord = mkHStreamRecord header payload
           record = mkBatchedRecord (PB.Enumerated (Right API.CompressionTypeNone)) (Just timestamp) 1 (V.singleton hsRecord)
-      void $ Core.appendStream ctx snkStream shardId record
+      void $ Core.appendStream ctx snkStream shardId record `catch` \(_:: S.NOTFOUND) -> throwIO $ StreamNotFound snkStream
 
 writeRecordToMemory :: IORef [SinkRecord]
                     -> (BL.ByteString -> Maybe BL.ByteString)
