@@ -11,6 +11,7 @@ module HStream.Server.Core.ShardReader
 where
 
 import           Data.Functor               ((<&>))
+import           Data.IORef
 import           Proto3.Suite               (Enumerated (Enumerated))
 import           ZooKeeper.Exception        (ZNONODE (..), throwIO)
 
@@ -136,10 +137,10 @@ readShardStream
   -> IO ()
 readShardStream ServerContext{..} API.ReadShardStreamRequest{readShardStreamRequestReaderId=rReaderId,
     readShardStreamRequestShardId=rShardId, readShardStreamRequestShardOffset=rOffset} stream = do
-  bracket createReader deleteReader readRecords
+  maxReadBatch <- newIORef 10
+  bracket createReader deleteReader (readRecords maxReadBatch)
  where
    ldReaderBufferSize = 10
-   maxReadBatch = 10
 
    createReader = do
      shardExists <- S.logIdHasGroup scLDClient rShardId
@@ -153,17 +154,32 @@ readShardStream ServerContext{..} API.ReadShardStreamRequest{readShardStreamRequ
    deleteReader ShardReader{..} = do
      S.readerStopReading reader rShardId
 
-   readRecords ShardReader{..} = do
+   readRecords maxReadBatch ShardReader{..}  = do
      whileM $ do
-       records <- S.readerRead reader (fromIntegral maxReadBatch)
-       records' <- case timestampOffset of
-         Just startOffset -> return $ filterRecordBeforeTimestamp records startOffset
-         Nothing -> return records
-       receivedRecordsVecs <- forM records' decodeRecordBatch
-       let res = V.fromList $ map (\(_, _, _, record) -> record) receivedRecordsVecs
-       Log.debug $ "reader " <> Log.build rReaderId
-                <> " read " <> Log.build (V.length res) <> " batchRecords"
-       isRight <$> streamWrite stream (Just . API.ReadShardStreamResponse $ res)
+       maxBatch <- readIORef maxReadBatch
+       records <- S.readerRead reader (fromIntegral maxBatch)
+       if null records
+          then do
+            -- set read timeout to unlimited to avoid busy loop
+            S.readerSetTimeout reader (-1)
+            modifyIORef' maxReadBatch (const 1)
+            Log.info $ "reader " <> Log.build rReaderId
+              <> " read empty records, set tiemout to unlimited."
+            return True
+          else do
+            batch <- readIORef maxReadBatch
+            when (batch == 1) $ do
+              S.readerSetTimeout reader 10
+              modifyIORef' maxReadBatch (const 10)
+              Log.info $ "resume read timeout for reader " <> Log.build rReaderId
+            records' <- case timestampOffset of
+              Just startOffset -> return $ filterRecordBeforeTimestamp records startOffset
+              Nothing -> return records
+            receivedRecordsVecs <- forM records' decodeRecordBatch
+            let res = V.fromList $ map (\(_, _, _, record) -> record) receivedRecordsVecs
+            Log.debug $ "reader " <> Log.build rReaderId
+                     <> " read " <> Log.build (V.length res) <> " batchRecords"
+            isRight <$> streamWrite stream (Just . API.ReadShardStreamResponse $ res)
      Log.info $ "shard reader " <> Log.build rReaderId <> " read stream done."
 
 -- Remove all values with timestamps less than the given starting timestamp
