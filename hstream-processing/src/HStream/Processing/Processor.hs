@@ -42,6 +42,18 @@ import           Control.Exception                      (throw)
 import qualified Data.Aeson                             as Aeson
 import           Data.Maybe
 import           Data.Typeable
+import qualified Prelude
+import qualified RIO
+import           RIO
+import qualified RIO.ByteString.Lazy                    as BL
+import qualified RIO.HashMap                            as HM
+import           RIO.HashMap.Partial                    as HM'
+import qualified RIO.HashSet                            as HS
+import qualified RIO.List                               as L
+import qualified RIO.Map                                as Map
+import qualified RIO.Text                               as T
+
+import qualified HStream.Exception                      as HE
 import qualified HStream.Logger                         as Log
 import           HStream.Processing.Connector
 import           HStream.Processing.Encoding
@@ -58,16 +70,6 @@ import           HStream.Stats                          (StatsHolder,
                                                          query_stat_add_total_input_records,
                                                          query_stat_add_total_output_records)
 import           HStream.Utils                          (textToCBytes)
-import qualified Prelude                                as Prelude
-import qualified RIO                                    as RIO
-import           RIO
-import qualified RIO.ByteString.Lazy                    as BL
-import qualified RIO.HashMap                            as HM
-import           RIO.HashMap.Partial                    as HM'
-import qualified RIO.HashSet                            as HS
-import qualified RIO.List                               as L
-import qualified RIO.Map                                as Map
-import qualified RIO.Text                               as T
 
 data Materialized k v s = Materialized
   { mKeySerde   :: Serde k s,
@@ -207,15 +209,14 @@ runTask statsHolder qid SourceConnectorWithoutCkp {..} sinkConnector taskBuilder
             let acSourceName = iSourceName (taskSourceConfig HM'.! srcStream)
             let (sourceEProcessor, _) = taskTopologyForward HM'.! acSourceName
             liftIO $ updateTimestampInTaskContext ctx srcTimestamp
-            e' <- try $ runEP sourceEProcessor (mkERecord Record {recordKey = srcKey, recordValue = srcValue, recordTimestamp = srcTimestamp})
-            case e' of
-              Left (e :: SomeException) -> liftIO $ do
-                Log.fatal $ Log.buildString (Prelude.show e)
-                query_stat_add_total_execute_errors statsHolder (textToCBytes qid) 1
-              Right _ -> do
-                liftIO $ query_stat_add_total_output_records statsHolder (textToCBytes qid) 1
-                return ()
-          RIO.putMVar mvar ()
+            catches (runEP sourceEProcessor (mkERecord Record {recordKey = srcKey, recordValue = srcValue, recordTimestamp = srcTimestamp}))
+              [ Handler $ \(err :: HE.StreamNotFound) -> do
+                liftIO $ query_stat_add_total_execute_errors statsHolder (textToCBytes qid) 1
+                throw err
+              , Handler $ \(err :: SomeException) -> do
+                liftIO $ Log.warning $ Log.buildString' err
+              ]
+            liftIO $ query_stat_add_total_output_records statsHolder (textToCBytes qid) 1
 
 runImmTask ::
   (Ord t, Semigroup t, Aeson.FromJSON t, Aeson.ToJSON t, Typeable t, ChangeLogger h1, Snapshotter h2) =>
@@ -261,7 +262,7 @@ runImmTask srcTups sinkConnector taskBuilder@TaskTopologyConfig {..} changeLogge
         liftIO $ updateTimestampInTaskContext ctx srcTimestamp
         e' <- try $ runEP sourceEProcessor (mkERecord Record {recordKey = srcKey, recordValue = srcValue, recordTimestamp = srcTimestamp})
         case e' of
-          Left (e :: SomeException) -> liftIO $ Log.fatal $ Log.buildString (Prelude.show e)
+          Left (e :: SomeException) -> liftIO $ Log.warning $ Log.buildString (Prelude.show e)
           Right _ -> return ()
     loop :: (Ord t, Semigroup t, Aeson.FromJSON t, Aeson.ToJSON t, Typeable t)
          => Task
