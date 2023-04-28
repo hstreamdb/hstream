@@ -1,6 +1,6 @@
 module HStream.Utils.Common
   ( maybeToEither
-  , setupSigsegvHandler
+  , setupFatalSignalHandler
   , newRandomText
   ) where
 
@@ -13,8 +13,8 @@ import           System.Random
 maybeToEither :: b -> Maybe a -> Either b a
 maybeToEither errmsg = maybe (Left errmsg) Right
 
-foreign import ccall unsafe "hs_common.h setup_sigsegv_handler"
-  setupSigsegvHandler :: IO ()
+foreign import ccall unsafe "hs_common.h setup_fatal_signal_handler"
+  setupFatalSignalHandler :: IO ()
 
 newRandomText :: Int -> IO Text
 newRandomText n = Text.pack . take n . randomRs ('a', 'z') <$> newStdGen

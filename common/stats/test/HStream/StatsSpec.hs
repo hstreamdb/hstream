@@ -9,13 +9,13 @@ import           Test.Hspec
 
 import           HStream.Stats
 import           HStream.StatsSpecUtils (mkTimeSeriesTest)
-import           HStream.Utils          (runConc, setupSigsegvHandler)
+import           HStream.Utils          (runConc, setupFatalSignalHandler)
 
 {-# ANN module ("HLint: ignore Use head" :: String) #-}
 
 spec :: Spec
 spec = do
-  runIO setupSigsegvHandler
+  runIO setupFatalSignalHandler
 
   statsSpec
   threadedStatsSpec

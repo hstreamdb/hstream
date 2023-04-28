@@ -23,7 +23,7 @@ import qualified HStream.Utils.Aeson              as Aeson
 
 spec :: Spec
 spec = describe "HStream.AdminCommnadSpec" $ do
-  runIO setupSigsegvHandler
+  runIO setupFatalSignalHandler
   runIO $ setLogDeviceDbgLevel C_DBG_ERROR
 
   adminCommandStatsSpec

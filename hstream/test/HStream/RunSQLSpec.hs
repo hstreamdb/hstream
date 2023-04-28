@@ -18,7 +18,7 @@ import           HStream.Utils        hiding (newRandomText)
 
 spec :: Spec
 spec = describe "HStream.RunSQLSpec" $ do
-  runIO setupSigsegvHandler
+  runIO setupFatalSignalHandler
   runIO $ setLogDeviceDbgLevel C_DBG_ERROR
 
   baseSpec
