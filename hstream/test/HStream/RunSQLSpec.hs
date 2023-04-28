@@ -110,6 +110,8 @@ viewSpecAround = provideRunTest setup clean
     clean api (source1, source2, viewName, qName1, qName2) = do
       runTerminateSql api $ "TERMINATE QUERY " <> qName1 <> ";"
       runTerminateSql api $ "TERMINATE QUERY " <> qName2 <> ";"
+      -- FIXME: wait the query terminated
+      threadDelay 10000000
       runDropSql api $ "DROP VIEW " <> viewName <> " IF EXISTS;"
       runDropSql api $ "DROP STREAM " <> source2 <> " IF EXISTS;"
       runDropSql api $ "DROP STREAM " <> source1 <> " IF EXISTS;"
