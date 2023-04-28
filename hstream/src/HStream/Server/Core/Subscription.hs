@@ -352,7 +352,9 @@ doSubInit ServerContext{..} subId = do
       -- create a ldReader for rereading unacked records
       Log.info $ "Create a reader for " <> Log.build subId
       reader <- S.newLDReader scLDClient maxReadLogs (Just ldReaderBufferSize)
-      S.readerSetTimeout reader 10 -- 10 milliseconds
+      -- reader reads the data and delivers it immediately, otherwise it waits up to 1s
+      S.readerSetTimeout reader 1000 -- 1 seconds
+      S.readerSetWaitOnlyWhenNoData reader
       ldReader <- newMVar reader
 
       trimCkpWorker <- startCompactedWorker (60 * 1000000){- 60s -} $ do
@@ -732,11 +734,12 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
                  <> ", logId=" <> Log.build logId  <> ", batchId=" <> Log.build batchId
         dataRecord <- withMVar subLdReader $ \reader -> do
           S.readerStartReading reader logId batchId batchId
-          readLoop reader 3
-        if length dataRecord /= 1
+          S.readerRead reader 1
+        if null dataRecord
         then do
-          Log.fatal $ "read error on `readerRead`. Expect 1 record but got " <> Log.build (length dataRecord)
-                   <> ", logId " <> Log.build logId <> ", batchId " <> Log.build batchId
+          Log.info $ "sub resend reader read empty records from log "
+                  <> Log.build logId <> ", batchId " <> Log.build batchId
+                  <> ", retry next time"
         else do
           (_, _, _, ReceivedRecord{..}) <- decodeRecordBatch $ head dataRecord
           let batchRecords@BatchedRecord{..} = fromJust receivedRecordRecord
@@ -753,16 +756,6 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
               resendBatch = mkBatchedRecord batchedRecordCompressionType batchedRecordPublishTime (fromIntegral $ V.length records) records
               resendRecords = ReceivedRecord ids (Just resendBatch)
           void $ sendReceivedRecords logId batchId resendRecordIds resendRecords True
-     where
-      readLoop reader n
-        | n == 0 = return []
-        | otherwise = do
-          res <- S.readerRead reader 1
-          if null res
-             then do
-               Log.warning $ "reader read got empty result, logId " <> Log.build logId <> ", batchId " <> Log.build batchId <> ", retry."
-               readLoop reader (n - 1)
-             else return res
 
     filterUnackedRecordIds recordIds ackedRanges windowLowerBound =
       flip V.filter recordIds $ \recordId ->
