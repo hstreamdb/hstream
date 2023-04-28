@@ -147,6 +147,12 @@ readShardStream ServerContext{..} API.ReadShardStreamRequest{readShardStreamRequ
      (startLSN, timestamp) <- getStartLSN scLDClient rShardId rOffset
      reader <- S.newLDReader scLDClient 1 (Just ldReaderBufferSize)
      S.readerStartReading reader rShardId startLSN S.LSN_MAX
+     -- When there is data, reader read will return immediately, the maximum number of returned data is maxReadBatch,
+     -- If there is no data, it will wait up to 1min and return 0.
+     -- Setting the timeout to 1min instead of infinite is to give us some information on whether
+     -- the current reader is still alive or not.
+     S.readerSetTimeout reader 60000
+     S.readerSetWaitOnlyWhenNoData reader
      Log.info $ "create shardReader for shard " <> Log.build rShardId <> " success, offset = " <> Log.build (show rOffset)
      return $ mkShardReader reader timestamp
 
