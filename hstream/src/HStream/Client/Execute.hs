@@ -43,7 +43,7 @@ import           HStream.Utils                    (Format, HStreamClientApi,
                                                    getServerResp,
                                                    mkGRPCClientConfWithSSL,
                                                    serverNodeToSocketAddr,
-                                                   setupSigsegvHandler)
+                                                   setupFatalSignalHandler)
 
 executeShowPlan :: HStreamCliContext -> ShowObject -> IO ()
 executeShowPlan ctx showObject =
@@ -147,7 +147,7 @@ initCliContext RefinedCliConnOpts{..} = do
   currentServer    <- newMVar addr
   let sslConfig = clientSSLConfig clientConfig
   let ctx = HStreamCliContext {..}
-  setupSigsegvHandler
+  setupFatalSignalHandler
   connected <- waitForServerToStart (retryTimeout * 1000000) addr sslConfig
   case connected of
     Nothing -> errorWithoutStackTrace "Connection timed out. Please check the server URI and try again."

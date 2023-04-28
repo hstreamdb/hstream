@@ -90,7 +90,7 @@ import qualified HStream.ThirdParty.Protobuf      as Proto
 import           HStream.Utils                    (ResourceType (..),
                                                    getProtoTimestamp,
                                                    pattern EnumPB,
-                                                   setupSigsegvHandler)
+                                                   setupFatalSignalHandler)
 
 
 main :: IO ()
@@ -98,7 +98,7 @@ main = getConfig >>= app
 
 app :: ServerOpts -> IO ()
 app config@ServerOpts{..} = do
-  setupSigsegvHandler
+  setupFatalSignalHandler
   Log.setDefaultLogger _serverLogLevel _serverLogWithColor Log.LogStderr
   Log.setLogDeviceDbgLevel' _ldLogLevel
 

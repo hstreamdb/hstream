@@ -66,6 +66,7 @@ library
     hs_cpp_lib.h
 
   cxx-sources:
+    cbits/fatalsignal.cpp
     cbits/hs_struct.cpp
     cbits/hs_utils.cpp
 
