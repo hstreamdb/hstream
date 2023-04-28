@@ -72,6 +72,7 @@ hstoreSourceConnectorWithoutCkp :: ServerContext -> T.Text -> TVar Bool -> Sourc
 hstoreSourceConnectorWithoutCkp ctx consumerName consumerClosed = SourceConnectorWithoutCkp {
   subscribeToStreamWithoutCkp = subscribeToHStoreStream' ctx consumerName,
   unSubscribeToStreamWithoutCkp = unSubscribeToHStoreStream' ctx consumerName,
+  isSubscribedToStreamWithoutCkp = isSubscribedToHStoreStream' ctx consumerName,
   withReadRecordsWithoutCkp = withReadRecordsFromHStore' ctx consumerName,
   connectorClosed = consumerClosed
 }
@@ -133,6 +134,13 @@ unSubscribeToHStoreStream' ctx consumerName streamName = do
             , deleteSubscriptionRequestForce = True
             }
   Core.deleteSubscription ctx req
+
+isSubscribedToHStoreStream' :: ServerContext
+                            -> T.Text
+                            -> HCT.StreamName
+                            -> IO Bool
+isSubscribedToHStoreStream' ctx consumerName streamName =
+  Core.checkSubscriptionExist ctx (hstoreSubscriptionPrefix <> streamName <> "_" <> consumerName)
 
 dataRecordToSourceRecord :: S.LDClient -> Payload -> IO SourceRecord
 dataRecordToSourceRecord ldclient Payload {..} = do

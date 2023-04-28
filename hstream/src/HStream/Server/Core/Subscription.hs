@@ -54,6 +54,10 @@ import           HStream.Utils                 (decompressBatchedRecord,
 
 --------------------------------------------------------------------------------
 
+checkSubscriptionExist :: ServerContext -> Text -> IO Bool
+checkSubscriptionExist ServerContext{..} sid =
+  M.checkMetaExists @SubscriptionWrap sid metaHandle
+
 listSubscriptions :: ServerContext -> IO (V.Vector Subscription)
 listSubscriptions sc = CC.listSubscriptions sc Nothing
 

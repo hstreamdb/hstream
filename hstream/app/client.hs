@@ -67,7 +67,7 @@ import           HStream.Utils                    (ResourceType (..),
                                                    formatResult,
                                                    mkGRPCClientConfWithSSL,
                                                    pattern EnumPB,
-                                                   setupSigsegvHandler)
+                                                   setupFatalSignalHandler)
 import qualified HStream.Utils.Aeson              as AesonComp
 
 main :: IO ()

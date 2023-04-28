@@ -16,7 +16,7 @@ import           Test.Hspec
 import           HStream.SpecUtils
 import           HStream.Store.Logger          (pattern C_DBG_ERROR,
                                                 setLogDeviceDbgLevel)
-import           HStream.Utils                 (setupSigsegvHandler)
+import           HStream.Utils                 (setupFatalSignalHandler)
 
 import           Network.GRPC.HighLevel.Client
 import           Network.GRPC.LowLevel
@@ -24,7 +24,7 @@ import           Network.GRPC.LowLevel
 spec :: Spec
 spec = aroundAll provideHstreamApi $
   describe "HStream.RegressionSpec" $ do
-  runIO setupSigsegvHandler
+  runIO setupFatalSignalHandler
   runIO $ setLogDeviceDbgLevel C_DBG_ERROR
 
   it "#391_JOIN" $ \api -> do

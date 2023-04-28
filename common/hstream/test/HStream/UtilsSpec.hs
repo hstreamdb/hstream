@@ -22,4 +22,4 @@ timeIntervalSpec = describe "TimeInterval" $ do
 utilsSpec :: Spec
 utilsSpec = describe "HStream.Utils" $ do
   -- TODO
-  it "setupSigsegvHandler" $ setupSigsegvHandler `shouldReturn` ()
+  it "setupFatalSignalHandler" $ setupFatalSignalHandler `shouldReturn` ()

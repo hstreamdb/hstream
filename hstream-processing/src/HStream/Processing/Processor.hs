@@ -167,14 +167,19 @@ runTask statsHolder SourceConnectorWithoutCkp {..} sinkConnector taskBuilder@Tas
   logOptions <- logOptionsHandle stderr True
   withLogFunc logOptions $ \lf -> do
     ctx <- buildTaskContext task lf changeLogger snapshotter
-    let offset = API.SpecialOffsetLATEST
-    forM_ sourceStreamNames (flip subscribeToStreamWithoutCkp offset)
+    forM_ sourceStreamNames $ \stream -> do
+      isSubscribedToStreamWithoutCkp stream >>= \case
+        True  -> return ()
+        False -> subscribeToStreamWithoutCkp stream API.SpecialOffsetLATEST
 
     chan <- newTChanIO
-
     withAsync (forConcurrently_ sourceStreamNames (f chan connectorClosed)) $ \a ->
-      withAsync (g task ctx chan) $ \b -> do
-        waitEither_ a b `finally` forM_ sourceStreamNames unSubscribeToStreamWithoutCkp
+      withAsync (g task ctx chan) $ \b ->
+        waitEither_ a b `finally` do
+          forM_ sourceStreamNames (\stream -> do
+            isSubscribedToStreamWithoutCkp stream >>= \case
+              True  -> unSubscribeToStreamWithoutCkp stream
+              False -> return ()  )
   where
     qid = getTaskName taskBuilder
     f :: TChan ([SourceRecord], MVar ()) -> TVar Bool -> T.Text -> IO ()
