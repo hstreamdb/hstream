@@ -15,7 +15,7 @@ import           HStream.Utils
 
 spec :: Spec
 spec = describe "HStream.StatsIntegrationTest" $ do
-  runIO setupSigsegvHandler
+  runIO setupFatalSignalHandler
   runIO $ setLogDeviceDbgLevel C_DBG_ERROR
 
   perStreamTimeSeriesSpec

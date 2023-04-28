@@ -17,7 +17,7 @@ import           HStream.SpecUtils
 import           HStream.Store.Logger             (pattern C_DBG_ERROR,
                                                    setLogDeviceDbgLevel)
 import           HStream.Utils                    (TaskStatus (..),
-                                                   setupSigsegvHandler)
+                                                   setupFatalSignalHandler)
 
 getQueryResponseIdIs :: T.Text -> Query -> Bool
 getQueryResponseIdIs targetId Query {..} = queryId == targetId
@@ -75,7 +75,7 @@ terminateQuery qid = withGRPCClient clientConfig $ \client -> do
 spec :: Spec
 spec = aroundAll provideHstreamApi $
   describe "HStream.RunQuerySpec" $ do
-  runIO setupSigsegvHandler
+  runIO setupFatalSignalHandler
   runIO $ setLogDeviceDbgLevel C_DBG_ERROR
 
   source1 <- runIO $ newRandomText 20
