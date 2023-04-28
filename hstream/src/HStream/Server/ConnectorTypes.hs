@@ -81,6 +81,7 @@ data SourceConnector = SourceConnector
 data SourceConnectorWithoutCkp = SourceConnectorWithoutCkp
   { subscribeToStreamWithoutCkp :: StreamName -> API.SpecialOffset -> IO (),
     unSubscribeToStreamWithoutCkp :: StreamName -> IO (),
+    isSubscribedToStreamWithoutCkp :: StreamName -> IO Bool,
     --readRecordsWithoutCkp :: StreamName -> IO [SourceRecord]
     withReadRecordsWithoutCkp :: StreamName
                               -> (BL.ByteString -> Maybe BL.ByteString)
