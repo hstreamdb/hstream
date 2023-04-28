@@ -74,6 +74,7 @@ spec = aroundAll provideHstreamApi $
           )
     threadDelay 500000
     runTerminateSql api $ "TERMINATE QUERY " <> qName <> " ;"
+    threadDelay 500000
     runDropSql api "DROP STREAM s5 IF EXISTS;"
     runDropSql api "DROP STREAM s4 IF EXISTS;"
 
