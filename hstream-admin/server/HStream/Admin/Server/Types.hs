@@ -95,6 +95,7 @@ data AdminCommand
   | AdminStreamCommand StreamCommand
   | AdminSubscriptionCommand SubscriptionCommand
   | AdminViewCommand ViewCommand
+  | AdminQueryCommand QueryCommand
   | AdminStatusCommand
   | AdminInitCommand
   | AdminCheckReadyCommand
@@ -113,6 +114,8 @@ adminCommandParser = O.hsubparser
                                (O.progDesc "Subscription command"))
  <> O.command "view"   (O.info (AdminViewCommand <$> viewCmdParser)
                                (O.progDesc "View command"))
+ <> O.command "query"  (O.info (AdminQueryCommand <$> queryCmdParser)
+                               (O.progDesc "Query command"))
  <> O.command "status" (O.info (pure AdminStatusCommand)
                                (O.progDesc "Get the status of the HServer cluster"))
  <> O.command "init"   (O.info (pure AdminInitCommand)
@@ -236,6 +239,19 @@ data ViewCommand
 viewCmdParser :: O.Parser ViewCommand
 viewCmdParser = O.subparser
   ( O.command "list" (O.info (pure ViewCmdList) (O.progDesc "Get all views"))
+  )
+
+-------------------------------------------------------------------------------
+
+data QueryCommand
+  = QueryCmdStatus Text
+  deriving Show
+
+queryCmdParser :: O.Parser QueryCommand
+queryCmdParser = O.subparser
+  ( O.command "status" (O.info (QueryCmdStatus <$> O.strArgument ( O.metavar "QUERY_ID"
+                                                                <> O.help "The ID of the query"))
+                               (O.progDesc "Get the status of a query"))
   )
 
 -------------------------------------------------------------------------------

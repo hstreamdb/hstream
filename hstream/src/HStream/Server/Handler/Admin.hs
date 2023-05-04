@@ -9,7 +9,8 @@ module HStream.Server.Handler.Admin
   , handleAdminCommand
   ) where
 
-import           Control.Concurrent               (tryReadMVar)
+import           Control.Concurrent               (readMVar, tryReadMVar)
+import           Control.Concurrent.STM.TVar      (readTVarIO)
 import           Control.Monad                    (forM, void)
 import           Data.Aeson                       ((.=))
 import qualified Data.Aeson                       as Aeson
@@ -21,6 +22,7 @@ import qualified Data.Text                        as Text
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Text.Lazy.Encoding          as TL
 import qualified Data.Vector                      as V
+import           GHC.Conc                         (threadStatus)
 import qualified GHC.IO.Exception                 as E
 import qualified HsGrpc.Server                    as G
 import           Network.GRPC.HighLevel.Generated
@@ -93,6 +95,7 @@ runAdminCommand sc@ServerContext{..} cmd = do
     AT.AdminStreamCommand c       -> runStream sc c
     AT.AdminSubscriptionCommand c -> runSubscription sc c
     AT.AdminViewCommand c         -> runView sc c
+    AT.AdminQueryCommand c        -> runQuery sc c
     AT.AdminStatusCommand         -> runStatus sc
     AT.AdminInitCommand           -> runInit sc
     AT.AdminCheckReadyCommand     -> runCheckReady sc
@@ -259,6 +262,22 @@ runView serverContext AT.ViewCmdList = do
            ]
   let content = Aeson.object ["headers" .= headers, "rows" .= rows]
   return $ tableResponse content
+
+-------------------------------------------------------------------------------
+-- Admin Query Command
+
+runQuery :: ServerContext -> AT.QueryCommand -> IO Text
+runQuery ServerContext{..} (AT.QueryCmdStatus qid) = do
+  queries <- readMVar runningQueries
+  case HM.lookup qid queries of
+    Nothing -> return $ errorResponse $ "Query " <> Text.pack (show qid) <> " not found, or already dead"
+    Just (tid,closed_m) -> do
+      closed <- readTVarIO closed_m
+      status <- threadStatus tid
+      let headers = ["id" :: Text, "thread_status", "consumer_closed"]
+          rows = [[qid, Text.pack (show status), Text.pack (show closed)]]
+          content = Aeson.object ["headers" .= headers, "rows" .= rows]
+      return $ tableResponse content
 
 -------------------------------------------------------------------------------
 -- Admin Status Command
