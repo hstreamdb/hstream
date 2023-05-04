@@ -348,7 +348,8 @@ doSubInit ServerContext{..} subId = do
       ldCkpReader <-
         S.newLDRsmCkpReader scLDClient readerName ckpStoreId 5000 maxReadLogs
                             (Just ldReaderBufferSize)
-      S.ckpReaderSetTimeout ldCkpReader 10  -- 10 milliseconds
+      -- ckpReader is used to deliver the subscription records. If there are no records to be delivered, just wait
+      S.ckpReaderSetWaitOnlyWhenNoData ldCkpReader
       -- create a ldReader for rereading unacked records
       Log.info $ "Create a reader for " <> Log.build subId
       reader <- S.newLDReader scLDClient maxReadLogs (Just ldReaderBufferSize)
