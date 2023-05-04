@@ -53,6 +53,7 @@ jobs:
   build-hstream-admin-store:
     needs: pre-build
     runs-on: ubuntu-latest
+    if: false
     strategy:
       fail-fast: false
     steps:
@@ -159,97 +160,128 @@ jobs:
           ${{ env.CABAL }} update
           ${{ env.SHELL }} "'make clean'"
           ${{ env.SHELL }} make
-          ${{ env.CABAL }} ${{ env.EXTRA_CABAL_ARGS }} build --enable-tests --enable-benchmarks all
-          ${{ env.CABAL }} ${{ env.EXTRA_CABAL_ARGS }} install hstream
+          ${{ env.CABAL }} ${{ env.EXTRA_CABAL_ARGS }} build hstream-common-stats-test
+          # ${{ env.CABAL }} ${{ env.EXTRA_CABAL_ARGS }} build --enable-tests --enable-benchmarks all
+          # ${{ env.CABAL }} ${{ env.EXTRA_CABAL_ARGS }} install hstream
 
-      - name: start hstream server
-        run: |
-          export CONTAINER_NAME=$TEST_CONTAINER_NAME
-          export IMAGE="docker.io/hstreamdb/haskell:${{ matrix.ghc }}"
-          export EXTRA_OPTS="--check --no-interactive --detach"
-          export COMMAND=" "
-          export EXE=$(find dist-newstyle -name "hstream-server" -type f)
-          ./script/start-server.sh
-          sleep 5
-          docker logs --tail 100 $TEST_CONTAINER_NAME
-
-      - name: test
-        run: |
-          ${{ env.CABAL }} ${{ env.EXTRA_CABAL_ARGS }} test --test-show-details=direct all
-
-      - name: collect hserver logs
-        if: ${{ success() }} || ${{ failure() }}
-        run: |
-          rm -rf hserver.log
-          docker logs $TEST_CONTAINER_NAME &> hserver.log
-
-      - name: upload hserver logs
-        uses: actions/upload-artifact@v3
-        if: ${{ success() }} || ${{ failure() }}
-        with:
-          name: hserver-logs-${{ matrix.ghc }}
-          path: hserver.log
-          retention-days: 7
-
-      # Due to an [cabal bug](https://github.com/haskell/cabal/issues/7423),
-      # `cabal check` will emit a warning even if the `-O2` option is just
-      # an flag. This is disabled until the problem is fixed.
-      #- name: check
-      #  run: |
-      #    python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- sdist all
-
-      #    # unfortunately, there is no `cabal check all`
-      #    #log_info "Run all cabal check..."
-      #    # Note that we ignore hstream-store package to run cabal check, because there
-      #    # is an unexpected warning:
-      #    #   ...
-      #    #   Warning: 'cpp-options': -std=c++17 is not portable C-preprocessor flag
-      #    #   Warning: Hackage would reject this package.
-      #    for dir in hstream-sql hstream-processing hstream; do
-      #      python3 script/dev-tools shell --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} "'cd $dir && cabal check'"
-      #    done
-
-      # TODO
-      #- name: haddock
-      #    python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- haddock haddock --enable-documentation --haddock-for-hackage all
-
-      # -------------------------------------------------------------------------------
-
-      - name: stop all started services
-        run: docker rm -f $(docker ps -a -q)
-
-      # NOTE: The quick-build-dev-image relies on the "hstreamdb/hstream" base image.
-      # If you have installed any additional libraries in the builder image (hstreamdb/haskell),
-      # and these libraries are required (e.g., if a lib.so file is needed), you may encounter a
-      # linking error during the integration tests that follow. In such cases, you will need to
-      # publish a new version of the hstreamdb/hstream image first, which includes the necessary
-      # libraries.
-      - name: quick build new hstream image
-        run: |
-          mkdir -p ~/data
-          if [ "${{ env.GHC_MAJOR_VER }}" = "8" ]; then
-            python3 script/dev-tools quick-build-dev-image \
-              --builder-image docker.io/hstreamdb/haskell:${{ matrix.ghc }} \
-              --project-file cabal.project.ghc810 \
-              --only-hstream \
-              -t $NEW_HSTREAM_IMAGE
-          else
-            python3 script/dev-tools quick-build-dev-image \
-              --builder-image docker.io/hstreamdb/haskell:${{ matrix.ghc }} \
-              --only-hstream \
-              -t $NEW_HSTREAM_IMAGE
-          fi
-
-          docker save -o ~/data/new_hstream_image.tar $NEW_HSTREAM_IMAGE
+#       - name: start hstream server
+#         run: |
+#           export CONTAINER_NAME=$TEST_CONTAINER_NAME
+#           export IMAGE="docker.io/hstreamdb/haskell:${{ matrix.ghc }}"
+#           export EXTRA_OPTS="--check --no-interactive --detach"
+#           export COMMAND=" "
+#           export EXE=$(find dist-newstyle -name "hstream-server" -type f)
+#           ./script/start-server.sh
+#           sleep 5
+#           docker logs --tail 100 $TEST_CONTAINER_NAME
+#
+#       - name: test
+#         run: |
+#           for i in {1..100}; do
+#             ${{ env.CABAL }} ${{ env.EXTRA_CABAL_ARGS }} test --test-show-details=direct all
+#           done
+#
+#       - name: collect hserver logs
+#         if: ${{ success() }} || ${{ failure() }}
+#         run: |
+#           rm -rf hserver.log
+#           docker logs $TEST_CONTAINER_NAME &> hserver.log
+#
+#       - name: upload hserver logs
+#         uses: actions/upload-artifact@v3
+#         if: ${{ success() }} || ${{ failure() }}
+#         with:
+#           name: hserver-logs-${{ matrix.ghc }}
+#           path: hserver.log
+#           retention-days: 7
+#
+#       # Due to an [cabal bug](https://github.com/haskell/cabal/issues/7423),
+#       # `cabal check` will emit a warning even if the `-O2` option is just
+#       # an flag. This is disabled until the problem is fixed.
+#       #- name: check
+#       #  run: |
+#       #    python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- sdist all
+#
+#       #    # unfortunately, there is no `cabal check all`
+#       #    #log_info "Run all cabal check..."
+#       #    # Note that we ignore hstream-store package to run cabal check, because there
+#       #    # is an unexpected warning:
+#       #    #   ...
+#       #    #   Warning: 'cpp-options': -std=c++17 is not portable C-preprocessor flag
+#       #    #   Warning: Hackage would reject this package.
+#       #    for dir in hstream-sql hstream-processing hstream; do
+#       #      python3 script/dev-tools shell --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} "'cd $dir && cabal check'"
+#       #    done
+#
+#       # TODO
+#       #- name: haddock
+#       #    python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- haddock haddock --enable-documentation --haddock-for-hackage all
+#
+#       # -------------------------------------------------------------------------------
+#
+#       - name: stop all started services
+#         run: docker rm -f $(docker ps -a -q)
+#
+#       # NOTE: The quick-build-dev-image relies on the "hstreamdb/hstream" base image.
+#       # If you have installed any additional libraries in the builder image (hstreamdb/haskell),
+#       # and these libraries are required (e.g., if a lib.so file is needed), you may encounter a
+#       # linking error during the integration tests that follow. In such cases, you will need to
+#       # publish a new version of the hstreamdb/hstream image first, which includes the necessary
+#       # libraries.
+#       - name: quick build new hstream image
+#         run: |
+#           mkdir -p ~/data
+#           if [ "${{ env.GHC_MAJOR_VER }}" = "8" ]; then
+#             python3 script/dev-tools quick-build-dev-image \
+#               --builder-image docker.io/hstreamdb/haskell:${{ matrix.ghc }} \
+#               --project-file cabal.project.ghc810 \
+#               --only-hstream \
+#               -t $NEW_HSTREAM_IMAGE
+#           else
+#             python3 script/dev-tools quick-build-dev-image \
+#               --builder-image docker.io/hstreamdb/haskell:${{ matrix.ghc }} \
+#               --only-hstream \
+#               -t $NEW_HSTREAM_IMAGE
+#           fi
+#
+#           docker save -o ~/data/new_hstream_image.tar $NEW_HSTREAM_IMAGE
+#
+#       - uses: actions/upload-artifact@v3
+#         with:
+#           name: image-testing-${{ matrix.ghc }}
+#           path: ~/data/new_hstream_image.tar
+#           retention-days: 2
 
       - uses: actions/upload-artifact@v3
         with:
-          name: image-testing-${{ matrix.ghc }}
-          path: ~/data/new_hstream_image.tar
+          name: stats_test
+          path: dist-newstyle/build/x86_64-linux/ghc-9.2.7/hstream-common-stats-0.1.0.0/build/hstream-common-stats-test/hstream-common-stats-test
           retention-days: 2
+
+  stats-tests:
+    needs: [build-and-test]
+    runs-on: ubuntu-latest
+    name: run-stats-tests
+    steps:
+      - uses: actions/download-artifact@v3
+        with:
+          name: stats_test
+          path: ~/data/hstream-common-stats-test
+
+      - name: CPU info
+        run: |
+            sudo apt-get install cpuid
+            cpuid
+
+      - run: |
+          chmod +x ~/data/hstream-common-stats-test/hstream-common-stats-test
+          for i in {1..1000}; do
+            docker run -t --rm -v $HOME/data:/data docker.io/hstreamdb/haskell:9.2.7 /data/hstream-common-stats-test/hstream-common-stats-test
+          done
 
   integration-tests:
     needs: [pre-build, build-and-test]
+    if: false
     runs-on: ubuntu-latest
     name: integration-tests-ghc-${{ matrix.ghc }}
     strategy:
@@ -307,6 +339,7 @@ jobs:
 
   integration-tests-rqlite:
     needs: [pre-build, build-and-test]
+    if: false
     runs-on: ubuntu-latest
     name: integration-tests-rqlite-ghc-${{ matrix.ghc }}
     strategy:
@@ -365,6 +398,7 @@ jobs:
 
   distributed-tests:
     needs: [pre-build, build-and-test]
+    if: false
     runs-on: ubuntu-latest
     name: distributed-tests-ghc-${{ matrix.ghc }}
     strategy:

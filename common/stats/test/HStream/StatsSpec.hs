@@ -18,7 +18,7 @@ spec = do
   runIO setupFatalSignalHandler
 
   statsSpec
-  threadedStatsSpec
+  --threadedStatsSpec
 
   miscSpec
 

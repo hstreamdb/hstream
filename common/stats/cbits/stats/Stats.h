@@ -7,6 +7,7 @@
 #include <folly/small_vector.h>
 #include <folly/stats/BucketedTimeSeries.h>
 #include <folly/stats/MultiLevelTimeSeries.h>
+#include <iostream>
 #include <logdevice/common/UpdateableSharedPtr.h>
 #include <logdevice/common/checks.h>
 #include <logdevice/common/stats/Stats.h>
@@ -59,6 +60,7 @@ template <typename VT, typename CT>
 void MultiLevelTimeSeriesWrapper<VT, CT>::addValue(const ValueType& n) {
   auto now = std::chrono::duration_cast<Duration>(
       std::chrono::steady_clock::now().time_since_epoch());
+  std::cout << "-> Add value: " << now.count() << std::endl;
   folly::MultiLevelTimeSeries<VT, CT>::addValue(now, n);
 }
 
@@ -523,6 +525,7 @@ int perXTimeSeriesGet(
     folly::Synchronized<Map> Stats::*stats_member_map,
     //
     HsInt interval_size, HsInt* ms_intervals, HsDouble* aggregate_vals) {
+  printf("-> key: %s\n", key);
   using Duration = typename PerXTimeSeries::Duration;
   using TimePoint = typename PerXTimeSeries::TimePoint;
 
@@ -535,12 +538,14 @@ int perXTimeSeriesGet(
 
   bool has_found = false;
   stats_holder->runForEach([&](Stats& s) {
+    printf("-> each stats\n");
     // Use synchronizedCopy() so we do not have to hold a read lock on
     // per_x_stats map while we iterate over individual entries.
     for (auto& entry : s.synchronizedCopy(stats_member_map)) {
       std::lock_guard<std::mutex> guard(entry.second->mutex);
 
       std::string& key_ = entry.first;
+      printf("-> key_: %s\n", key_.c_str());
       auto time_series = entry.second.get()->*member_ptr;
       if (!time_series) {
         continue;
@@ -572,6 +577,7 @@ int perXTimeSeriesGet(
           // Duration may not be seconds, convert to seconds
           aggregate_vals[i] += rate_per_time_type * Duration::period::den /
                                Duration::period::num;
+          printf("-> aggregate_vals %d:%f\n", i, aggregate_vals[i]);
         }
 
         // We have aggregated the stat from this Stats, because stream name
