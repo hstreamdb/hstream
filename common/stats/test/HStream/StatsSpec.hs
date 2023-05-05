@@ -24,7 +24,7 @@ spec = do
 
 statsSpec :: Spec
 statsSpec = describe "HStream.Stats" $ do
-  it "pre stream stats counter" $ do
+  it "per stream stats counter" $ do
     h <- newStatsHolder True
     stream_stat_add_append_in_bytes h "topic_1" 100
     stream_stat_add_append_in_bytes h "topic_1" 100
@@ -49,14 +49,14 @@ statsSpec = describe "HStream.Stats" $ do
     stream_stat_get_append_total s "/topic_1" `shouldReturn` 2
     stream_stat_get_append_total s "/topic_2" `shouldReturn` 1
 
-  it "pre stream stats time series" $ do
+  it "per stream stats time series" $ do
     h <- newStatsHolder True
     let intervals = [5 * 1000, 10 * 1000] -- 5, 10 sec
     let mkTest name stats_add = mkTimeSeriesTest h intervals name stats_add stream_time_series_get stream_time_series_getall
 
     mkTest "appends" stream_time_series_add_append_in_bytes
 
-  it "pre subscription stats counter" $ do
+  it "per subscription stats counter" $ do
     h <- newStatsHolder True
     subscription_stat_add_resend_records h "subid_1" 1
     subscription_stat_add_resend_records h "subid_1" 2
@@ -70,7 +70,7 @@ statsSpec = describe "HStream.Stats" $ do
     Map.lookup "subid_1" m `shouldBe` Just 3
     Map.lookup "subid_2" m `shouldBe` Just 1
 
-  it "pre subscription stats time series" $ do
+  it "per subscription stats time series" $ do
     h <- newStatsHolder True
     let intervals = [5 * 1000, 10 * 1000] -- 5, 10 sec
     let mkTest name stats_add = mkTimeSeriesTest h intervals name stats_add subscription_time_series_get subscription_time_series_getall
@@ -118,7 +118,7 @@ threadedStatsSpec :: Spec
 threadedStatsSpec = describe "HStream.Stats (threaded)" $ do
   h <- runIO $ newStatsHolder True
 
-  it "pre stream stats counter (threaded)" $ do
+  it "per stream stats counter (threaded)" $ do
     runConc 10 $ runConc 1000 $ do
       stream_stat_add_append_in_bytes h "a_stream" 1
       stream_stat_add_append_in_bytes h "b_stream" 1
@@ -141,7 +141,7 @@ threadedStatsSpec = describe "HStream.Stats (threaded)" $ do
     Map.lookup "a_stream" m' `shouldBe` Just 10000
     Map.lookup "b_stream" m' `shouldBe` Just 10000
 
-  it "pre stream stats time series (threaded)" $ do
+  it "per stream stats time series (threaded)" $ do
     runConc 10 $ runConc 1000 $ do
       stream_time_series_add_append_in_bytes h "a_stream" 1000
       stream_time_series_add_append_in_bytes h "b_stream" 1000
@@ -158,7 +158,7 @@ threadedStatsSpec = describe "HStream.Stats (threaded)" $ do
     Just rate <- stream_time_series_get h "appends" "a_stream" max_intervals
     rate `shouldSatisfy` (\s -> head s > 0)
 
-  it "pre subscription stats counter (threaded)" $ do
+  it "per subscription stats counter (threaded)" $ do
     runConc 10 $ runConc 1000 $ do
       subscription_stat_add_resend_records h "a_stream" 1
       subscription_stat_add_resend_records h "b_stream" 1
@@ -171,7 +171,7 @@ threadedStatsSpec = describe "HStream.Stats (threaded)" $ do
     Map.lookup "a_stream" m `shouldBe` Just 10000
     Map.lookup "b_stream" m `shouldBe` Just 10000
 
-  it "pre subscription stats time series (threaded)" $ do
+  it "per subscription stats time series (threaded)" $ do
     runConc 10 $ runConc 1000 $ do
       subscription_time_series_add_send_out_bytes h "a_stream" 1000
       subscription_time_series_add_send_out_bytes h "b_stream" 1000
