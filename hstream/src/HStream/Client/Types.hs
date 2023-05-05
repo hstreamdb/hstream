@@ -16,10 +16,9 @@ import qualified Options.Applicative           as O
 import           System.Exit                   (exitFailure)
 import           Text.Read                     (readMaybe)
 
-import           HStream.Admin.Server.Types    (StreamCommand,
-                                                SubscriptionCommand,
-                                                streamCmdParser,
-                                                subscriptionCmdParser)
+import           HStream.Admin.Server.Types    (StreamCommand, streamCmdParser,
+                                                subscriptionParser)
+import qualified HStream.Server.HStreamApi     as API
 import           HStream.Server.Types          (ServerID)
 import           HStream.Utils                 (ResourceType, SocketAddr (..),
                                                 mkGRPCClientConfWithSSL)
@@ -35,8 +34,31 @@ data Command
   = HStreamSql HStreamSqlOpts
   | HStreamNodes HStreamNodes
   | HStreamInit HStreamInitOpts
-  | HStreamStream StreamCommand
+  | HStreamStream StreamCommand   -- TODO: do NOT use HStream.Admin.Server.Types.StreamCommand
   | HStreamSubscription SubscriptionCommand
+
+data SubscriptionCommand
+  = SubscriptionCmdList
+  | SubscriptionCmdCreate API.Subscription
+  | SubscriptionCmdDelete Text Bool
+  | SubscriptionCmdDescribe Text
+  deriving (Show)
+
+subscriptionCmdParser :: O.Parser SubscriptionCommand
+subscriptionCmdParser = O.hsubparser
+  ( O.command "list" (O.info (pure SubscriptionCmdList) (O.progDesc "Get all subscriptions"))
+ <> O.command "create" (O.info (SubscriptionCmdCreate <$> subscriptionParser)
+                               (O.progDesc "Create a subscription"))
+ <> O.command "describe" (O.info (SubscriptionCmdDescribe <$> O.strArgument ( O.metavar "SUB_ID"
+                                                                           <> O.help "The ID of the subscription"))
+                                 (O.progDesc "Get the details of a subscription"))
+ <> O.command "delete" (O.info (SubscriptionCmdDelete <$> O.strArgument ( O.metavar "SUB_ID"
+                                                                      <> O.help "The ID of the subscription")
+                                                      <*> O.switch ( O.long "force"
+                                                                  <> O.short 'f' ))
+                               (O.progDesc "Delete a subscription")
+                       )
+  )
 
 commandParser :: O.Parser HStreamCommand
 commandParser = HStreamCommand

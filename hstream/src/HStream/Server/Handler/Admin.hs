@@ -237,6 +237,16 @@ runSubscription ctx (AT.SubscriptionCmdDelete sid force) = do
             }
   HC.deleteSubscription ctx req
   return $ plainResponse "OK"
+runSubscription ctx (AT.SubscriptionCmdDeleteAll force) = do
+  subs <- HC.listSubscriptions ctx
+  V.forM_ subs $ \sub -> do
+    let sid = API.subscriptionSubscriptionId sub
+        req = API.DeleteSubscriptionRequest
+              { deleteSubscriptionRequestSubscriptionId = sid
+              , deleteSubscriptionRequestForce = force
+              }
+    HC.deleteSubscription ctx req
+  return $ plainResponse "OK"
 runSubscription ctx (AT.SubscriptionCmdCreate sub) = do
   HC.createSubscription ctx sub
   return $ plainResponse "OK"
