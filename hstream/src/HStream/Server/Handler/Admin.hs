@@ -111,20 +111,23 @@ handleParseResult (O.CompletionInvoked compl) = throwParsingErr =<< O.execComple
 -------------------------------------------------------------------------------
 -- Admin Stats Command
 
--- NOTE: the heasers name must match defines in hstream-admin/server/cbits/query/tables
+-- NOTE: the headers name must match defines in hstream-admin/server/cbits/query/tables
 runStats :: Stats.StatsHolder -> AT.StatsCommand -> IO Text
 runStats statsHolder AT.StatsCommand{..} = do
   case statsCategory of
-    AT.PerStreamStats -> doPerStreamStats statsName
+    AT.PerStreamStats -> doStats Stats.stream_stat_getall "stream_name"
     AT.PerStreamTimeSeries -> doPerStreamTimeSeries statsName statsIntervals
-    AT.PerSubscriptionStats -> doPerSubscriptionStats statsName
+    AT.PerSubscriptionStats -> doStats Stats.subscription_stat_getall "subscription_id"
     AT.PerSubscriptionTimeSeries -> doPerSubscriptionTimeSeries statsName statsIntervals
     AT.PerHandleTimeSeries -> doPerHandleTimeSeries statsName statsIntervals
+    AT.PerConnectorStats -> doStats Stats.connector_stat_getall "task_name"
+    AT.PerQueryStats -> doStats Stats.query_stat_getall "query_name"
+    AT.PerViewStats -> doStats Stats.view_stat_getall "view_name"
     AT.ServerHistogram -> doServerHistogram statsName
   where
-    doPerStreamStats name = do
-      m <- Stats.stream_stat_getall statsHolder name
-      let headers = ["stream_name", name]
+    doStats getstats label = do
+      m <- getstats statsHolder statsName
+      let headers = [label, statsName]
           rows = Map.foldMapWithKey (\k v -> [[CB.unpack k, show v]]) m
           content = Aeson.object ["headers" .= headers, "rows" .= rows]
       return $ tableResponse content
@@ -133,13 +136,6 @@ runStats statsHolder AT.StatsCommand{..} = do
     doPerStreamTimeSeries name intervals =
       let cfun = Stats.stream_time_series_getall statsHolder
        in doTimeSeries name "stream_name" intervals cfun
-
-    doPerSubscriptionStats name = do
-      m <- Stats.subscription_stat_getall statsHolder name
-      let headers = ["subscription_id", name]
-          rows = Map.foldMapWithKey (\k v -> [[CB.unpack k, show v]]) m
-          content = Aeson.object ["headers" .= headers, "rows" .= rows]
-      return $ tableResponse content
 
     doPerSubscriptionTimeSeries :: CBytes -> [Interval] -> IO Text
     doPerSubscriptionTimeSeries name intervals =

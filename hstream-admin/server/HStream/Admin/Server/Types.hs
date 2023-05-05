@@ -261,13 +261,16 @@ queryCmdParser = O.subparser
 
 -------------------------------------------------------------------------------
 
--- TODO
+-- TODO: auto generate from commom/stats/include/*.inc
 data StatsCategory
   = PerStreamStats
   | PerStreamTimeSeries
   | PerSubscriptionStats
   | PerSubscriptionTimeSeries
   | PerHandleTimeSeries
+  | PerConnectorStats
+  | PerQueryStats
+  | PerViewStats
   | ServerHistogram
   deriving (Show, Eq)
 
@@ -281,6 +284,9 @@ instance Read StatsCategory where
         Read.Ident "subscription_counter" -> PerSubscriptionStats
         Read.Ident "subscription" -> PerSubscriptionTimeSeries
         Read.Ident "handle" -> PerHandleTimeSeries
+        Read.Ident "connector_counter" -> PerConnectorStats
+        Read.Ident "query_counter" -> PerQueryStats
+        Read.Ident "view_counter" -> PerViewStats
         Read.Ident "server_histogram" -> ServerHistogram
         x -> errorWithoutStackTrace $ "cannot parse StatsCategory: " <> show x
 
@@ -294,7 +300,7 @@ data StatsCommand = StatsCommand
 statsCmdParser :: O.Parser StatsCommand
 statsCmdParser = StatsCommand
   <$> O.argument O.auto ( O.metavar "STATS"
-                       <> O.help "the stats category, e.g. stream, subscription"
+                       <> O.help "the stats category, e.g. stream_counter, stream"
                         )
   <*> O.strArgument ( O.metavar "NAME"
                    <> O.help "the stats name to be collected, e.g. appends,sends"

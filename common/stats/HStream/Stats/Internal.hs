@@ -49,6 +49,9 @@ foreign import ccall unsafe "hs_stats.h prefix##getall"                        \
 
 PER_X_STAT_GETALL(stream_stat_)
 PER_X_STAT_GETALL(subscription_stat_)
+PER_X_STAT_GETALL(connector_stat_)
+PER_X_STAT_GETALL(query_stat_)
+PER_X_STAT_GETALL(view_stat_)
 
 #define PER_X_STAT_DEFINE(prefix, name) \
 foreign import ccall unsafe "hs_stats.h prefix##add_##name"                    \

@@ -24,11 +24,11 @@ module HStream.Stats
 
     -- * PerStreamStats
     -- ** Counters
+  , stream_stat_getall
   , CounterExports(stream, append_total)
   , CounterExports(stream, append_failed)
   , CounterExports(stream, append_in_bytes)
   , CounterExports(stream, append_in_records)
-  , stream_stat_getall
     -- ** Time series
   , stream_time_series_add_append_in_bytes
   , stream_time_series_add_append_in_records
@@ -40,6 +40,7 @@ module HStream.Stats
 
     -- * PerSubscriptionStats
     -- ** Counters
+  , subscription_stat_getall
   , CounterExports(subscription, send_out_bytes)
   , CounterExports(subscription, send_out_records)
   , CounterExports(subscription, send_out_records_failed)
@@ -48,7 +49,6 @@ module HStream.Stats
   , CounterExports(subscription, received_acks)
   , CounterExports(subscription, request_messages)
   , CounterExports(subscription, response_messages)
-  , subscription_stat_getall
     -- ** Time series
   , subscription_time_series_add_send_out_bytes
   , subscription_time_series_add_send_out_records
@@ -71,18 +71,21 @@ module HStream.Stats
   , serverHistogramEstimatePercentile
 
     -- * PerConnectorStats
-    -- ** Counter
+    -- ** Counters
+  , connector_stat_getall
   , CounterExports(connector, delivered_in_records)
   , CounterExports(connector, delivered_in_bytes)
 
     -- * PerQueryStats
-    -- ** Counter
+    -- ** Counters
+  , query_stat_getall
   , CounterExports(query, total_input_records)
   , CounterExports(query, total_output_records)
   , CounterExports(query, total_execute_errors)
 
     -- * PerViewStats
-    -- ** Counter
+    -- ** Counters
+  , view_stat_getall
   , CounterExports(view, total_execute_queries)
   ) where
 
@@ -165,6 +168,9 @@ PREFIX##getall (StatsHolder stats_holder) stat_name =                          \
 
 PER_X_STAT_GETALL(stream_stat_)
 PER_X_STAT_GETALL(subscription_stat_)
+PER_X_STAT_GETALL(connector_stat_)
+PER_X_STAT_GETALL(query_stat_)
+PER_X_STAT_GETALL(view_stat_)
 
 #define STAT_DEFINE(name, _)                                                   \
 PER_X_STAT_ADD(stream_stat_, name)                                             \
