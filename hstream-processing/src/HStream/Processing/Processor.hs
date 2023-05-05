@@ -135,6 +135,7 @@ runTask
   -> SourceConnectorWithoutCkp
   -> SinkConnector
   -> TaskBuilder
+  -> Text  -- ^ queryId, use for stats gathering
   -> h1
   -> h2
   -> (Task -> IO ())
@@ -143,7 +144,7 @@ runTask
   -> (BL.ByteString -> Maybe BL.ByteString)
   -> (BL.ByteString -> Maybe BL.ByteString)
   -> IO ()
-runTask statsHolder SourceConnectorWithoutCkp {..} sinkConnector taskBuilder@TaskTopologyConfig {..} changeLogger snapshotter doSnapshot transKSrc transVSrc transKSnk transVSnk = do
+runTask statsHolder SourceConnectorWithoutCkp {..} sinkConnector taskBuilder@TaskTopologyConfig {..} qid changeLogger snapshotter doSnapshot transKSrc transVSrc transKSnk transVSnk = do
   -- build and add internalSinkProcessor
   let sinkProcessors =
         HM.map
@@ -181,7 +182,6 @@ runTask statsHolder SourceConnectorWithoutCkp {..} sinkConnector taskBuilder@Tas
               True  -> unSubscribeToStreamWithoutCkp stream
               False -> return ()  )
   where
-    qid = getTaskName taskBuilder
     f :: TChan ([SourceRecord], MVar ()) -> TVar Bool -> T.Text -> IO ()
     f chan consumerClosed sourceStreamName =
       withReadRecordsWithoutCkp sourceStreamName (transKSrc sourceStreamName) (transVSrc sourceStreamName) consumerClosed $ \sourceRecords -> do
@@ -218,6 +218,7 @@ runTask statsHolder SourceConnectorWithoutCkp {..} sinkConnector taskBuilder@Tas
                 throw err
               , Handler $ \(err :: SomeException) -> do
                 liftIO $ Log.warning $ Log.buildString' err
+                liftIO $ query_stat_add_total_execute_errors statsHolder (textToCBytes qid) 1
               ]
             liftIO $ query_stat_add_total_output_records statsHolder (textToCBytes qid) 1
 

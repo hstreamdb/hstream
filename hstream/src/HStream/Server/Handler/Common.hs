@@ -346,8 +346,8 @@ doSnapshot h1 h2 Task{..} = do
 
 --------------------------------------------------------------------------------
 
-runTaskWrapper :: ServerContext -> SourceConnectorWithoutCkp -> SinkConnector -> TaskBuilder -> S.C_LogID -> IO ()
-runTaskWrapper ctx@ServerContext{..} sourceConnector sinkConnector taskBuilder logId = do
+runTaskWrapper :: ServerContext -> SourceConnectorWithoutCkp -> SinkConnector -> TaskBuilder -> Text -> S.C_LogID -> IO ()
+runTaskWrapper ServerContext{..} sourceConnector sinkConnector taskBuilder queryId logId = do
   -- RUN TASK
   let transKSrc = \s bl -> case Aeson.decode bl of
                           Nothing -> Nothing
@@ -366,6 +366,7 @@ runTaskWrapper ctx@ServerContext{..} sourceConnector sinkConnector taskBuilder l
               sourceConnector
               sinkConnector
               taskBuilder
+              queryId
               (scLDClient,logId)
               ()
               (\_ -> return ())
@@ -378,6 +379,7 @@ runTaskWrapper ctx@ServerContext{..} sourceConnector sinkConnector taskBuilder l
               sourceConnector
               sinkConnector
               taskBuilder
+              queryId
               (scLDClient,logId)
               db
               (doSnapshot (scLDClient,logId) db)
@@ -467,7 +469,7 @@ runQuery ctx@ServerContext{..} QueryRunner{..} logId = do
     action = do
       Log.debug $ "Start Query " <> Log.build qRQueryString
                 <> "with name: " <> Log.build qRQueryName
-      runTaskWrapper ctx sourceConnector sinkConnector qRTaskBuilder logId
+      runTaskWrapper ctx sourceConnector sinkConnector qRTaskBuilder qRQueryName logId
     cleanup =
       [ Handler (\(e :: HE.StreamReadClose) -> do
                     Log.info . Log.buildString
