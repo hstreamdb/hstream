@@ -119,3 +119,6 @@ loggroupSpec = describe "LogGroup" $ loggroupAround' $ parallel $ do
 
   it "get a nonexist loggroup should throw NOTFOUND" $ \(_, _) -> do
     I.getLogGroup client "this_is_a_non_exist_logroup" `shouldThrow` S.isNOTFOUND
+
+  it "delete a nonexist loggroup should throw NOTFOUND" $ \(_, _) -> do
+    I.removeLogGroup client "this_is_a_non_exist_logroup" `shouldThrow` S.isNOTFOUND

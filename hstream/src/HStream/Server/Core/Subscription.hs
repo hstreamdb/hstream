@@ -77,7 +77,9 @@ listConsumers sc@ServerContext{..} ListConsumersRequest{listConsumersRequestSubs
     -- FIXME: Set "" to Server uri, because these are consumers created by queries
     makeRpcConsumer ConsumerContext{..} = def {consumerName = ccConsumerName, consumerUri = fromMaybe "" ccConsumerUri, consumerUserAgent = fromMaybe "" ccConsumerAgent}
 
-getSubscription :: ServerContext -> GetSubscriptionRequest -> IO GetSubscriptionResponse
+getSubscription
+  :: HasCallStack
+  => ServerContext -> GetSubscriptionRequest -> IO GetSubscriptionResponse
 getSubscription ServerContext{..} GetSubscriptionRequest{getSubscriptionRequestId = subId} = do
   shardIds <- fmap HM.keys $ atomically $
     readTVar scSubscribeContexts
@@ -89,7 +91,7 @@ getSubscription ServerContext{..} GetSubscriptionRequest{getSubscriptionRequestI
   -- 1. We can get the LSN from subLdCkpReader directly if there is a cpp api.
   -- 2. Maybe we can have a ckpStoreGetAllLSN method
   let readerName = textToCBytes subId
-  ckpStoreId <- S.getSubscrCheckpointId scLDClient readerName
+  ckpStoreId <- S.allocSubscrCheckpointId scLDClient readerName
   store <- S.newRSMBasedCheckpointStore scLDClient ckpStoreId 5000
   offsets <- forM shardIds (\x -> do
     lsn <- handle (\(e::S.SomeHStoreException) -> return 0) $
@@ -106,7 +108,7 @@ getSubscription ServerContext{..} GetSubscriptionRequest{getSubscriptionRequestI
     getSubscriptionResponseOffsets = V.fromList offsets}
 
 createSubscription :: HasCallStack => ServerContext -> Subscription -> IO Subscription
-createSubscription ServerContext {..} sub@Subscription{..} = do
+createSubscription ServerContext{..} sub@Subscription{..} = do
   let streamName = transToStreamName subscriptionStreamName
   streamExists <- S.doesStreamExist scLDClient streamName
   unless streamExists $ do
@@ -135,8 +137,10 @@ createSubscription ServerContext {..} sub@Subscription{..} = do
      lsn <- (+1) <$> S.getTailLSN scLDClient shard
      return $ HM.insert shard lsn acc
 
-deleteSubscription :: ServerContext -> DeleteSubscriptionRequest -> IO ()
-deleteSubscription ServerContext{..} DeleteSubscriptionRequest { deleteSubscriptionRequestSubscriptionId = subId, deleteSubscriptionRequestForce = force} = do
+deleteSubscription
+  :: HasCallStack
+  => ServerContext -> DeleteSubscriptionRequest -> IO ()
+deleteSubscription ServerContext{..} DeleteSubscriptionRequest{ deleteSubscriptionRequestSubscriptionId = subId, deleteSubscriptionRequestForce = force} = do
   subscription <- M.getMeta @SubscriptionWrap subId metaHandle
   when (isNothing subscription) $ throwIO (HE.SubscriptionNotFound subId)
 
@@ -161,7 +165,7 @@ deleteSubscription ServerContext{..} DeleteSubscriptionRequest { deleteSubscript
               pure (CanDelete, Just (subCtx, stateVar))
           SubscribeStateStopping -> pure (Signaled, Just (subCtx, stateVar))
           SubscribeStateStopped  -> pure (Signaled, Just (subCtx, stateVar))
-  Log.debug $ "Subscription deletion has state " <> Log.buildString' status
+  Log.info $ "Subscription deletion has state " <> Log.buildString' status
   case status of
     NotExist  -> doRemove
     CanDelete -> do
@@ -169,10 +173,6 @@ deleteSubscription ServerContext{..} DeleteSubscriptionRequest { deleteSubscript
       atomically $ waitingStopped subCtx subState
       Log.info "Subscription stopped, start deleting "
       atomically removeSubFromCtx
-      -- NOTE: For each CheckpointedReader we have a unique CheckpointStore(logid),
-      -- so that we do not need to call: S.removeAllCheckpoints subLdCkpReader
-      -- to update the checkpoints in memory.
-      S.freeSubscrCheckpointId scLDClient (textToCBytes subId)
       stopCompactedWorker subLdTrimCkpWorker
       doRemove
     CanNotDelete -> throwIO $ HE.FoundActiveConsumers "Subscription still has active consumers"
@@ -180,7 +180,12 @@ deleteSubscription ServerContext{..} DeleteSubscriptionRequest { deleteSubscript
   where
     -- FIXME: Concurrency Issue
     doRemove :: IO ()
-    doRemove = M.deleteMeta @SubscriptionWrap subId Nothing metaHandle
+    doRemove = do
+      M.deleteMeta @SubscriptionWrap subId Nothing metaHandle
+      -- NOTE: For each CheckpointedReader we have a unique CheckpointStore(logid),
+      -- so that we do not need to call: S.removeAllCheckpoints subLdCkpReader
+      -- to update the checkpoints in memory.
+      S.freeSubscrCheckpointId scLDClient (textToCBytes subId)
 
     getSubState :: STM (Maybe (SubscribeContext, TVar SubscribeState))
     getSubState = do
@@ -343,7 +348,7 @@ doSubInit ServerContext{..} subId = do
       -- see: https://logdevice.io/api/classfacebook_1_1logdevice_1_1_client.html#a797d6ebcb95ace4b95a198a293215103
       let ldReaderBufferSize = 10
       -- create a ldCkpReader for reading new records
-      Log.info $ "Create a checkpoint store reader for " <> Log.build subId
+      Log.info $ "Alloc a checkpoint store reader for " <> Log.build subId
       ckpStoreId <- S.allocSubscrCheckpointId scLDClient readerName
       ldCkpReader <-
         S.newLDRsmCkpReader scLDClient readerName ckpStoreId 5000 maxReadLogs
