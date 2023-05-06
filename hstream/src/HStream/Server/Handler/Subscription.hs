@@ -130,7 +130,6 @@ deleteSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata r
   unless (serverNodeId == serverID) $
     throwIO $ HE.SubscriptionOnDifferentNode "Subscription is bound to a different node"
   Core.deleteSubscription ctx req
-  Log.info " ----------- successfully deleted subscription  -----------"
   returnResp Empty
 
 handleDeleteSubscription :: ServerContext -> G.UnaryHandler DeleteSubscriptionRequest Empty
@@ -142,7 +141,6 @@ handleDeleteSubscription ctx@ServerContext{..} _ req = catchDefaultEx $ do
   unless (serverNodeId == serverID) $
     throwIO $ HE.SubscriptionOnDifferentNode "Subscription is bound to a different node"
   Core.deleteSubscription ctx req
-  Log.info " ----------- successfully deleted subscription  -----------"
   pure Empty
 
 -------------------------------------------------------------------------------
