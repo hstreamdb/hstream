@@ -1,9 +1,10 @@
-{-# LANGUAGE CPP                #-}
-{-# LANGUAGE DeriveAnyClass     #-}
-{-# LANGUAGE FlexibleInstances  #-}
-{-# LANGUAGE OverloadedStrings  #-}
-{-# LANGUAGE RecordWildCards    #-}
-{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE CPP                 #-}
+{-# LANGUAGE DeriveAnyClass      #-}
+{-# LANGUAGE FlexibleInstances   #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving  #-}
 
 module HStream.SQL.Codegen.V1.Boilerplate where
 
@@ -20,14 +21,16 @@ import           Data.Scientific                       (Scientific (coefficient)
 import qualified Data.Text                             as T
 import qualified Data.Text.Lazy                        as TL
 import qualified Data.Text.Lazy.Encoding               as TLE
+import qualified Data.Time                             as Time
+import qualified Data.Time.Clock.POSIX                 as Time
+import           Data.Time.Format.ISO8601              (iso8601ParseM,
+                                                        iso8601Show)
 import           HStream.Processing.Encoding
 import           HStream.Processing.Stream.TimeWindows
 import           HStream.SQL.AST
+import           HStream.SQL.Exception
+import qualified HStream.Utils.Aeson                   as HsAeson
 import           RIO                                   (Int64, Void)
-#if MIN_VERSION_aeson(2,0,0)
-import qualified Data.Aeson.Key                        as Key
-import qualified Data.Aeson.KeyMap                     as KeyMap
-#endif
 
 winStartText :: T.Text
 winStartText = "window_start"
@@ -126,33 +129,39 @@ sessionWindowSerde =
 
 timeWindowObjectSerde :: Serde TimeWindow Object
 timeWindowObjectSerde =
-#if MIN_VERSION_aeson(2,0,0)
   Serde
   { serializer = Serializer $ \TimeWindow{..} ->
-      let winStart = [(Key.fromText winStartText, Aeson.Number $ scientific (toInteger tWindowStart) 0)]
-          winEnd   = [(Key.fromText winEndText, Aeson.Number $ scientific (toInteger tWindowEnd  ) 0)]
-       in KeyMap.fromList $ winStart ++ winEnd
+      let startTime = Time.utcToZonedTime Time.utc (Time.posixSecondsToUTCTime $ realToFrac (fromIntegral tWindowStart * 0.001))
+          endTime   = Time.utcToZonedTime Time.utc (Time.posixSecondsToUTCTime $ realToFrac (fromIntegral tWindowEnd   * 0.001))
+          winStart  = [( HsAeson.fromText winStartText
+                       , Aeson.Object $ HsAeson.fromList
+                         [ ( HsAeson.fromText "$timestamp"
+                           , Aeson.String (T.pack $ iso8601Show startTime)
+                           )]
+                       )]
+          winEnd    = [( HsAeson.fromText winEndText
+                       , Aeson.Object $ HsAeson.fromList
+                         [ ( HsAeson.fromText "$timestamp"
+                           , Aeson.String (T.pack $ iso8601Show endTime)
+                           )]
+                       )]
+       in HsAeson.fromList $ winStart ++ winEnd
   , deserializer = Deserializer $ \obj ->
-      let (Aeson.Number start) = fromJust $ KeyMap.lookup (Key.fromText winStartText) obj
-          startInt64 = fromInteger $ coefficient start
-          (Aeson.Number end)   = fromJust $ KeyMap.lookup (Key.fromText winEndText) obj
-          endInt64   = fromInteger $ coefficient end
-       in mkTimeWindow startInt64 endInt64
+      case do
+        Aeson.Object os <- HsAeson.lookup (HsAeson.fromText winStartText) obj
+        Aeson.Object oe <- HsAeson.lookup (HsAeson.fromText winEndText  ) obj
+        Aeson.String s1 <- HsAeson.lookup "$timestamp" os
+        Aeson.String s2 <- HsAeson.lookup "$timestamp" oe
+        (tsStart :: Time.ZonedTime) <- iso8601ParseM (T.unpack s1)
+        (tsEnd   :: Time.ZonedTime) <- iso8601ParseM (T.unpack s2)
+        let startTime = fromIntegral . floor . (1000 *) . Time.utcTimeToPOSIXSeconds . Time.zonedTimeToUTC $ tsStart
+            endTime   = fromIntegral . floor . (1000 *) . Time.utcTimeToPOSIXSeconds . Time.zonedTimeToUTC $ tsEnd
+        return (startTime, endTime) of
+         Nothing -> throwSQLException CodegenException Nothing ("Error when deserializing timewindow " <> show obj)
+         Just (startTime, endTime) -> TimeWindow { tWindowStart = startTime
+                                                 , tWindowEnd   = endTime
+                                                 }
   }
-#else
-  Serde
-  { serializer = Serializer $ \TimeWindow{..} ->
-      let winStart = [(winStartText, Aeson.Number $ scientific (toInteger tWindowStart) 0)]
-          winEnd   = [(winEndText, Aeson.Number $ scientific (toInteger tWindowEnd  ) 0)]
-       in HM.fromList $ winStart ++ winEnd
-  , deserializer = Deserializer $ \obj ->
-      let (Aeson.Number start) = fromJust $ KeyMap.lookup (Key.fromText winStartText) obj
-          startInt64 = fromInteger $ coefficient start
-          (Aeson.Number end)   = fromJust $ KeyMap.lookup (Key.fromText winEndText) obj
-          endInt64   = fromInteger $ coefficient end
-       in mkTimeWindow startInt64 endInt64
-  }
-#endif
 
 timeWindowFlowObjectSerde :: Serde TimeWindow FlowObject
 timeWindowFlowObjectSerde =

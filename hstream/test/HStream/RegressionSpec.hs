@@ -42,9 +42,10 @@ spec = aroundAll provideHstreamApi $
     runFetchSql "SELECT b, SUM(s1.a), SUM(s2.a) FROM s1 INNER JOIN s2 ON s1.b = s2.b WITHIN (INTERVAL '1' HOUR) GROUP BY s1.b EMIT CHANGES;"
 #endif
       `shouldReturn` [ mkStruct
-        [ ("SUM(s1.a)", Aeson.Number 1)
-        , ("SUM(s2.a)", Aeson.Number 2)
-        , ("b"     , Aeson.Number 3)]]
+        [ ("SUM(s1.a)", mkIntNumber 1)
+        , ("SUM(s2.a)", mkIntNumber 2)
+        , ("b"        , mkIntNumber 3)
+        ]]
     threadDelay 500000
     runDropSql api "DROP STREAM s1 IF EXISTS;"
     runDropSql api "DROP STREAM s2 IF EXISTS;"
@@ -67,10 +68,10 @@ spec = aroundAll provideHstreamApi $
       >>= (`shouldSatisfy`
            (\l -> not (L.null l) &&
                   L.isSubsequenceOf l
-                  [ mkStruct [("cnt", Aeson.Number 1), ("b", Aeson.Number 4), ("SUM(a)", Aeson.Number 1)]
-                  , mkStruct [("cnt", Aeson.Number 2), ("b", Aeson.Number 4), ("SUM(a)", Aeson.Number 2)]
-                  , mkStruct [("cnt", Aeson.Number 3), ("b", Aeson.Number 4), ("SUM(a)", Aeson.Number 3)]
-                  , mkStruct [("cnt", Aeson.Number 4), ("b", Aeson.Number 4), ("SUM(a)", Aeson.Number 4)]])
+                  [ mkStruct [("cnt", mkIntNumber 1), ("b", mkIntNumber 4), ("SUM(a)", mkIntNumber 1)]
+                  , mkStruct [("cnt", mkIntNumber 2), ("b", mkIntNumber 4), ("SUM(a)", mkIntNumber 2)]
+                  , mkStruct [("cnt", mkIntNumber 3), ("b", mkIntNumber 4), ("SUM(a)", mkIntNumber 3)]
+                  , mkStruct [("cnt", mkIntNumber 4), ("b", mkIntNumber 4), ("SUM(a)", mkIntNumber 4)]])
           )
     threadDelay 500000
     runTerminateSql api $ "TERMINATE QUERY " <> qName <> " ;"
@@ -97,7 +98,7 @@ spec = aroundAll provideHstreamApi $
       runInsertSql api "INSERT INTO s6 (key1, key2, key3) VALUES (4, \"hello_00000000000000000000\", true);"
     threadDelay 20000000
     runViewQuerySql api "SELECT * FROM v6 WHERE key3 = FALSE;"
-      `shouldReturn` mkViewResponse (mkStruct [ ("SUM(key1)", Aeson.Number 4)
+      `shouldReturn` mkViewResponse (mkStruct [ ("SUM(key1)", mkIntNumber 4)
                                                   , ("key2", Aeson.String "hello_00000000000000000001")
                                                   , ("key3", Aeson.Bool False)]
                                         )
@@ -119,10 +120,10 @@ spec = aroundAll provideHstreamApi $
       threadDelay 500000
       runInsertSql api "INSERT INTO stream_binary (b, c) VALUES (1, 2);"
     runFetchSql "SELECT * FROM stream_binary EMIT CHANGES;"
-      `shouldReturn` [ mkStruct [ ("a", Aeson.Number 1) ]
+      `shouldReturn` [ mkStruct [ ("a", mkIntNumber 1) ]
                      , mkStruct
-                       [ ("b", Aeson.Number 1)
-                       , ("c", Aeson.Number 2)
+                       [ ("b", mkIntNumber 1)
+                       , ("c", mkIntNumber 2)
                        ]
                      ]
     threadDelay 500000

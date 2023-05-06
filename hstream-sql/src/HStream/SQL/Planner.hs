@@ -57,9 +57,7 @@ data ScalarExpr
   | CallCast   ScalarExpr RDataType
   | CallJson   JsonOp ScalarExpr ScalarExpr
   | ValueArray [ScalarExpr]
-  | ValueMap   (Map.Map ScalarExpr ScalarExpr)
   | AccessArray ScalarExpr RArrayAccessRhs
-  | AccessMap ScalarExpr ScalarExpr
   deriving (Eq, Ord)
 
 type AggregateExpr = Aggregate ScalarExpr
@@ -80,9 +78,7 @@ instance Decouple RValueExpr where
     RExprAccessJson _ op e1 e2 -> CallJson op (decouple e1) (decouple e2)
     RExprAggregate name _      -> ColumnRef (T.pack name) Nothing
     RExprArray _ es            -> ValueArray (L.map decouple es)
-    RExprMap _ m               -> ValueMap (Map.mapKeys decouple $ Map.map decouple m)
     RExprAccessArray _ e rhs   -> AccessArray (decouple e) rhs
-    RExprAccessMap _ em ek     -> AccessMap (decouple em) (decouple ek)
     -- RExprSubquery _ _          -> throwSQLException RefineException Nothing "subquery is not supported"
 
 rSelToAffiliateItems :: RSel -> [(ColumnCatalog,ScalarExpr)]
@@ -325,8 +321,6 @@ instance HasAggregates RValueExpr where
     RExprConst _ _            -> []
     RExprCast _ e _           -> getAggregates e
     RExprArray _ es           -> L.concatMap getAggregates es
-    RExprMap _ m              -> L.concatMap (\(ek,ev) -> getAggregates ek ++ getAggregates ev) (Map.toList m)
-    RExprAccessMap _ em ek    -> getAggregates em ++ getAggregates ek
     RExprAccessArray _ e _    -> getAggregates e
     RExprAccessJson _ _ e1 e2 -> getAggregates e1 ++ getAggregates e2
     RExprBinOp _ _ e1 e2      -> getAggregates e1 ++ getAggregates e2

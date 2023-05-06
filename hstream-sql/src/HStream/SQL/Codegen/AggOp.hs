@@ -38,10 +38,10 @@ nullaryAggInitValue AggCountAll = FlowInt 0
 
 unaryAggInitValue :: UnaryAggregate -> FlowValue
 unaryAggInitValue AggCount = FlowInt 0
-unaryAggInitValue AggSum   = FlowNumeral 0
-unaryAggInitValue AggMax   = FlowNumeral 0
-unaryAggInitValue AggMin   = FlowNumeral 0
-unaryAggInitValue AggAvg   = FlowNumeral 0
+unaryAggInitValue AggSum   = FlowInt 0
+unaryAggInitValue AggMax   = FlowInt 0
+unaryAggInitValue AggMin   = FlowInt 0
+unaryAggInitValue AggAvg   = FlowInt 0
 
 binaryAggInitValue :: BinaryAggregate -> FlowValue
 binaryAggInitValue AggTopK         = FlowArray []
@@ -69,26 +69,32 @@ op_count FlowNull _ = Right FlowNull
 op_count _ _ = Left $ ERR "Count: internal error. Please report this as a bug"
 
 op_sum :: FlowValue -> FlowValue -> Either ERROR_TYPE FlowValue
-op_sum (FlowNumeral acc_x) (FlowInt row_x) = Right $ FlowNumeral (acc_x + fromIntegral row_x)
-op_sum (FlowNumeral acc_x) (FlowFloat row_x) = Right $ FlowNumeral (acc_x + fromFloatDigits row_x)
-op_sum (FlowNumeral acc_x) (FlowNumeral row_x) = Right $ FlowNumeral (acc_x + row_x)
-op_sum (FlowNumeral _) _ = Left $ ERR "Sum: type mismatch (expect a numeral value)"
+op_sum (FlowInt acc_x) (FlowInt   row_x) = Right $ FlowInt (acc_x + row_x)
+op_sum (FlowInt acc_x) (FlowFloat row_x) = Right $ FlowFloat (fromIntegral acc_x + row_x)
+op_sum (FlowInt _) _ = Left $ ERR "Sum: type mismatch (expect a numeral value)"
+op_sum (FlowFloat acc_x) (FlowInt   row_x) = Right $ FlowFloat (acc_x + fromIntegral row_x)
+op_sum (FlowFloat acc_x) (FlowFloat row_x) = Right $ FlowFloat (acc_x + row_x)
+op_sum (FlowFloat _) _ = Left $ ERR "Sum: type mismatch (expect a numeral value)"
 op_sum FlowNull _ = Right FlowNull
 op_sum _ _ = Left $ ERR "Sum: internal error. Please report this as a bug"
 
 op_max :: FlowValue -> FlowValue -> Either ERROR_TYPE FlowValue
-op_max (FlowNumeral acc_x) (FlowInt row_x) = Right $ FlowNumeral (max acc_x (fromIntegral row_x))
-op_max (FlowNumeral acc_x) (FlowFloat row_x) = Right $ FlowNumeral (max acc_x (fromFloatDigits row_x))
-op_max (FlowNumeral acc_x) (FlowNumeral row_x) = Right $ FlowNumeral (max acc_x row_x)
-op_max (FlowNumeral _) _ = Left $ ERR "Max: type mismatch (expect a numeral value)"
+op_max (FlowInt acc_x) (FlowInt row_x) = Right $ FlowInt (max acc_x row_x)
+op_max (FlowInt acc_x) (FlowFloat row_x) = Right $ FlowFloat (max (fromIntegral acc_x) row_x)
+op_max (FlowInt _) _ = Left $ ERR "Max: type mismatch (expect a numeral value)"
+op_max (FlowFloat acc_x) (FlowInt row_x) = Right $ FlowFloat (max acc_x (fromIntegral row_x))
+op_max (FlowFloat acc_x) (FlowFloat row_x) = Right $ FlowFloat (max acc_x row_x)
+op_max (FlowFloat _) _ = Left $ ERR "Max: type mismatch (expect a numeral value)"
 op_max FlowNull _ = Right FlowNull
 op_max _ _ = Left $ ERR "Max: internal error. Please report this as a bug"
 
 op_min :: FlowValue -> FlowValue -> Either ERROR_TYPE FlowValue
-op_min (FlowNumeral acc_x) (FlowInt row_x) = Right $ FlowNumeral (min acc_x (fromIntegral row_x))
-op_min (FlowNumeral acc_x) (FlowFloat row_x) = Right $ FlowNumeral (min acc_x (fromFloatDigits row_x))
-op_min (FlowNumeral acc_x) (FlowNumeral row_x) = Right $ FlowNumeral (min acc_x row_x)
-op_min (FlowNumeral _) _ = Left $ ERR "Min: type mismatch (expect a numeral value)"
+op_min (FlowInt acc_x) (FlowInt row_x) = Right $ FlowInt (min acc_x row_x)
+op_min (FlowInt acc_x) (FlowFloat row_x) = Right $ FlowFloat (min (fromIntegral acc_x) row_x)
+op_min (FlowInt _) _ = Left $ ERR "Min: type mismatch (expect a numeral value)"
+op_min (FlowFloat acc_x) (FlowInt row_x) = Right $ FlowFloat (min acc_x (fromIntegral row_x))
+op_min (FlowFloat acc_x) (FlowFloat row_x) = Right $ FlowFloat (min acc_x row_x)
+op_min (FlowFloat _) _ = Left $ ERR "Min: type mismatch (expect a numeral value)"
 op_min FlowNull _ = Right FlowNull
 op_min _ _ = Left $ ERR "Min: internal error. Please report this as a bug"
 
@@ -98,14 +104,11 @@ binaryAggOpOnValue agg acc row1 row2 = undefined
 
 op_topk :: FlowValue -> FlowValue -> FlowValue -> Either ERROR_TYPE FlowValue
 op_topk (FlowArray acc_x) (FlowInt k) (FlowInt row_x) =
-  let arr = (L.take k) . (L.sortBy (flip compare)) $ (FlowNumeral (fromIntegral row_x)) : acc_x
+  let arr = (L.take k) . (L.sortBy (flip compare)) $ (FlowFloat (fromIntegral row_x)) : acc_x
    in Right $ FlowArray arr
 op_topk (FlowArray acc_x) (FlowInt k) (FlowFloat row_x) =
-  let arr = (L.take k) . (L.sortBy (flip compare)) $ (FlowNumeral (fromFloatDigits row_x)) : acc_x
+  let arr = (L.take k) . (L.sortBy (flip compare)) $ (FlowFloat row_x) : acc_x
   in Right $ FlowArray arr
-op_topk (FlowArray acc_x) (FlowInt k) (FlowNumeral row_x) =
-  let arr = (L.take k) . (L.sortBy (flip compare)) $ (FlowNumeral row_x) : acc_x
-   in Right $ FlowArray arr
 op_topk (FlowArray acc_x) (FlowInt k) _ = Left $ ERR "TopK: type mismatch (expect a numeral value)"
 op_topk (FlowArray acc_x) _ _ = Left $ ERR "TopK: type mismatch (expect an integer value)"
 op_topk FlowNull _ _ = Right FlowNull
@@ -113,14 +116,11 @@ op_topk _ _ _ = Left $ ERR "TopK: internal error. Please report this as a bug"
 
 op_topkdistinct :: FlowValue -> FlowValue -> FlowValue -> Either ERROR_TYPE FlowValue
 op_topkdistinct (FlowArray acc_x) (FlowInt k) (FlowInt row_x) =
-  let arr = (L.take k) . (L.sortBy (flip compare)) . L.nub $ (FlowNumeral (fromIntegral row_x)) : acc_x
+  let arr = (L.take k) . (L.sortBy (flip compare)) . L.nub $ (FlowFloat (fromIntegral row_x)) : acc_x
    in Right $ FlowArray arr
 op_topkdistinct (FlowArray acc_x) (FlowInt k) (FlowFloat row_x) =
-  let arr = (L.take k) . (L.sortBy (flip compare)) . L.nub $ (FlowNumeral (fromFloatDigits row_x)) : acc_x
+  let arr = (L.take k) . (L.sortBy (flip compare)) . L.nub $ (FlowFloat row_x) : acc_x
   in Right $ FlowArray arr
-op_topkdistinct (FlowArray acc_x) (FlowInt k) (FlowNumeral row_x) =
-  let arr = (L.take k) . (L.sortBy (flip compare)) . L.nub $ (FlowNumeral row_x) : acc_x
-   in Right $ FlowArray arr
 op_topkdistinct (FlowArray acc_x) (FlowInt k) _ = Left $ ERR "TopKDistinct: type mismatch (expect a numeral value)"
 op_topkdistinct (FlowArray acc_x) _ _ = Left $ ERR "TopKDistinct: type mismatch (expect an integer value)"
 op_topkdistinct FlowNull _ _ = Right FlowNull
@@ -132,11 +132,20 @@ aggMergeOnValue (Nullary AggCountAll) k (FlowInt n1) (FlowInt n2) = Right $ Flow
 aggMergeOnValue (Nullary AggCountAll) k _ _ = Left $ ERR "CountAll: internal error. Please report this as a bug"
 aggMergeOnValue (Unary AggCount _) k (FlowInt n1) (FlowInt n2) = Right $ FlowInt (n1 + n2)
 aggMergeOnValue (Unary AggCount _) k _ _ = Left $ ERR "Count: internal error. Please report this as a bug"
-aggMergeOnValue (Unary AggSum _) k (FlowNumeral n1) (FlowNumeral n2) = Right $ FlowNumeral (n1 + n2)
+aggMergeOnValue (Unary AggSum _) k (FlowInt   n1) (FlowInt   n2) = Right $ FlowInt   (n1 + n2)
+aggMergeOnValue (Unary AggSum _) k (FlowInt   n1) (FlowFloat n2) = Right $ FlowFloat (fromIntegral n1 + n2)
+aggMergeOnValue (Unary AggSum _) k (FlowFloat n1) (FlowInt   n2) = Right $ FlowFloat (n1 + fromIntegral n2)
+aggMergeOnValue (Unary AggSum _) k (FlowFloat n1) (FlowFloat n2) = Right $ FlowFloat (n1 + n2)
 aggMergeOnValue (Unary AggSum _) k _ _ = Left $ ERR "Sum: internal error. Please report this as a bug"
-aggMergeOnValue (Unary AggMax _) k (FlowNumeral n1) (FlowNumeral n2) = Right $ FlowNumeral (max n1 n2)
+aggMergeOnValue (Unary AggMax _) k (FlowInt   n1) (FlowInt   n2) = Right $ FlowInt   (max n1 n2)
+aggMergeOnValue (Unary AggMax _) k (FlowInt   n1) (FlowFloat n2) = Right $ FlowFloat (max (fromIntegral n1) n2)
+aggMergeOnValue (Unary AggMax _) k (FlowFloat n1) (FlowInt   n2) = Right $ FlowFloat (max n1 (fromIntegral n2))
+aggMergeOnValue (Unary AggMax _) k (FlowFloat n1) (FlowFloat n2) = Right $ FlowFloat (max n1 n2)
 aggMergeOnValue (Unary AggMax _) k _ _ = Left $ ERR "Max: internal error. Please report this as a bug"
-aggMergeOnValue (Unary AggMin _) k (FlowNumeral n1) (FlowNumeral n2) = Right $ FlowNumeral (min n1 n2)
+aggMergeOnValue (Unary AggMin _) k (FlowInt   n1) (FlowInt   n2) = Right $ FlowInt   (min n1 n2)
+aggMergeOnValue (Unary AggMin _) k (FlowInt   n1) (FlowFloat n2) = Right $ FlowFloat (min (fromIntegral n1) n2)
+aggMergeOnValue (Unary AggMin _) k (FlowFloat n1) (FlowInt   n2) = Right $ FlowFloat (min n1 (fromIntegral n2))
+aggMergeOnValue (Unary AggMin _) k (FlowFloat n1) (FlowFloat n2) = Right $ FlowFloat (min n1 n2)
 aggMergeOnValue (Unary AggMin _) k _ _ = Left $ ERR "Min: internal error. Please report this as a bug"
 aggMergeOnValue (Unary AggAvg _) k _ _ = Left $ ERR "Avg: not supported now"
 aggMergeOnValue (Binary AggTopK _ _) k (FlowArray x1) (FlowArray x2) =

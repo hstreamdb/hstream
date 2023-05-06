@@ -198,6 +198,10 @@ appendRequest HStreamApi{..} streamName shardId records =
 mkStruct :: [(Text, Aeson.Value)] -> Struct
 mkStruct = jsonObjectToStruct . AesonComp.fromList . (map $ first AesonComp.fromText)
 
+-- labelled json
+mkIntNumber :: Int -> Aeson.Value
+mkIntNumber n = Aeson.Object $ AesonComp.fromList [("$numberLong", Aeson.String (T.pack $ show n))]
+
 mkViewResponse :: Struct -> ExecuteViewQueryResponse
 mkViewResponse = ExecuteViewQueryResponse . V.singleton
 

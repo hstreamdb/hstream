@@ -61,10 +61,6 @@ scalarExprToFun scalar o = case scalar of
   ValueArray scalars -> do
     values <- mapM (flip scalarExprToFun o) scalars
     return $ FlowArray values
-  ValueMap m -> do
-    ks <- mapM (flip scalarExprToFun o) (Map.keys m)
-    vs <- mapM (flip scalarExprToFun o) (Map.elems m)
-    return $ FlowMap (Map.fromList $ ks `zip` vs)
   AccessArray scalar rhs -> do
     v1 <- scalarExprToFun scalar o
     case v1 of
@@ -80,14 +76,6 @@ scalarExprToFun scalar o = case scalar of
                 Right $ FlowArray (L.drop start (L.take (end+1) arr)) else
                 Left . ERR $ "Access array operator: out of bound"
       _ -> Left . ERR $ "Can not perform AccessArray operator on value " <> T.pack (show v1)
-  AccessMap scalar scalarK -> do
-    vm <- scalarExprToFun scalar o
-    vk <- scalarExprToFun scalarK o
-    case vm of
-      FlowMap m -> case Map.lookup vk m of
-        Nothing -> Left . ERR $ "Can not find key " <> T.pack (show vk) <> " in Map " <> T.pack (show m)
-        Just v  -> Right v
-      _ -> Left . ERR $ "Can not perform AccessMap operator on value " <> T.pack (show vm)
 
 --------------------------------------------------------------------------------
 -- Aggregate

@@ -52,7 +52,6 @@ instance HaveValueExpr ScalarFunc where
     (ScalarFuncIsNum      _ e)      -> e
     (ScalarFuncIsBool     _ e)      -> e
     (ScalarFuncIsStr      _ e)      -> e
-    (ScalarFuncIsMap      _ e)      -> e
     (ScalarFuncIsArr      _ e)      -> e
     (ScalarFuncIsDate     _ e)      -> e
     (ScalarFuncIsTime     _ e)      -> e
@@ -93,7 +92,6 @@ class HavePos a where
 instance HavePos DataType where
   getPos (TypeInteger pos)   = pos
   getPos (TypeFloat pos)     = pos
-  getPos (TypeNumeric pos)   = pos
   getPos (TypeBoolean pos)   = pos
   getPos (TypeByte pos)      = pos
   getPos (TypeText pos)      = pos
@@ -103,7 +101,6 @@ instance HavePos DataType where
   getPos (TypeInterval pos)  = pos
   getPos (TypeJson pos)      = pos
   getPos (TypeArray pos _)   = pos
-  getPos (TypeMap pos _ _)   = pos
 
 instance HavePos ScalarFunc where
   getPos func = case func of
@@ -139,7 +136,6 @@ instance HavePos ScalarFunc where
     (ScalarFuncIsNum      pos _)      -> pos
     (ScalarFuncIsBool     pos _)      -> pos
     (ScalarFuncIsStr      pos _)      -> pos
-    (ScalarFuncIsMap      pos _)      -> pos
     (ScalarFuncIsArr      pos _)      -> pos
     (ScalarFuncIsDate     pos _)      -> pos
     (ScalarFuncIsTime     pos _)      -> pos
@@ -241,7 +237,6 @@ getScalarFuncType f = case f of
   (ScalarFuncIsNum      _ _)      -> 0b0001_0000
   (ScalarFuncIsBool     _ _)      -> 0b0001_0000
   (ScalarFuncIsStr      _ _)      -> 0b0001_0000
-  (ScalarFuncIsMap      _ _)      -> 0b0001_0000
   (ScalarFuncIsArr      _ _)      -> 0b0001_0000
   (ScalarFuncIsDate     _ _)      -> 0b0001_0000
   (ScalarFuncIsTime     _ _)      -> 0b0001_0000
@@ -310,7 +305,6 @@ getScalarArgType f = case f of
   (ScalarFuncIsNum      _ _)      -> anyMask
   (ScalarFuncIsBool     _ _)      -> anyMask
   (ScalarFuncIsStr      _ _)      -> anyMask
-  (ScalarFuncIsMap      _ _)      -> anyMask
   (ScalarFuncIsArr      _ _)      -> anyMask
   (ScalarFuncIsDate     _ _)      -> anyMask
   (ScalarFuncIsTime     _ _)      -> anyMask

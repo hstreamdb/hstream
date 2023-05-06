@@ -53,8 +53,8 @@ baseSpec = aroundAll provideHstreamApi $ aroundWith baseSpecAround $
 
     -- TODO
     runFetchSql ("SELECT * FROM " <> source <> " EMIT CHANGES;")
-      `shouldReturn` [ mkStruct [("temperature", Aeson.Number 22), ("humidity", Aeson.Number 80)]
-                     , mkStruct [("temperature", Aeson.Number 15), ("humidity", Aeson.Number 10)]
+      `shouldReturn` [ mkStruct [("temperature", mkIntNumber 22), ("humidity", mkIntNumber 80)]
+                     , mkStruct [("temperature", mkIntNumber 15), ("humidity", mkIntNumber 10)]
                      ]
 
   it "GROUP BY without timewindow" $ \(api, source) -> do
@@ -75,10 +75,10 @@ baseSpec = aroundAll provideHstreamApi $ aroundWith baseSpecAround $
     runFetchSql ("SELECT SUM(a) AS result FROM " <> source <> " GROUP BY b EMIT CHANGES;")
       >>= (`shouldSatisfy`
             (\l -> not (L.null l) &&
-                   L.last l == (mkStruct [("result", Aeson.Number 4)]) &&
-                   L.init l `L.isSubsequenceOf` [ mkStruct [("result", Aeson.Number 1)]
-                                                , mkStruct [("result", Aeson.Number 3)]
-                                                , mkStruct [("result", Aeson.Number 6)]
+                   L.last l == (mkStruct [("result", mkIntNumber 4)]) &&
+                   L.init l `L.isSubsequenceOf` [ mkStruct [("result", mkIntNumber 1)]
+                                                , mkStruct [("result", mkIntNumber 3)]
+                                                , mkStruct [("result", mkIntNumber 6)]
                                                 ]
             )
           )
@@ -145,8 +145,8 @@ viewSpec =
     runInsertSql api $ "INSERT INTO " <> source1 <> " (a) VALUES (2);"
     threadDelay 10000000
     runViewQuerySql api ("SELECT * FROM " <> viewName <> " WHERE b = 1;")
-      `shouldReturn` mkViewResponse (mkStruct [ ("SUM(a)", Aeson.Number 3)
-                                                  , ("b", Aeson.Number 1)
+      `shouldReturn` mkViewResponse (mkStruct [ ("SUM(a)", mkIntNumber 3)
+                                                  , ("b",  mkIntNumber 1)
                                                   ])
 
     threadDelay 500000
@@ -155,6 +155,6 @@ viewSpec =
     runInsertSql api $ "INSERT INTO " <> source1 <> " (a) VALUES (4);"
     threadDelay 10000000
     runViewQuerySql api ("SELECT * FROM " <> viewName <> " WHERE b = 1;")
-      `shouldReturn` mkViewResponse (mkStruct [ ("SUM(a)", Aeson.Number 10)
-                                                  , ("b", Aeson.Number 1)
+      `shouldReturn` mkViewResponse (mkStruct [ ("SUM(a)", mkIntNumber 10)
+                                                  , ("b",  mkIntNumber 1)
                                                   ])

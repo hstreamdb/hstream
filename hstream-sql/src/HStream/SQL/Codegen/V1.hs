@@ -41,6 +41,8 @@ import qualified RIO.ByteString.Lazy                             as BL
 import qualified Z.Data.CBytes                                   as CB
 
 import           HStream.Base                                    (genUnique)
+import           HStream.Processing.Encoding                     (Serde (..),
+                                                                  Serializer (..))
 import           HStream.Processing.Processor                    (Record (..),
                                                                   TaskBuilder)
 import           HStream.Processing.Store                        (mkInMemoryStateKVStore,
@@ -413,11 +415,9 @@ relationExprToGraph relation builder = case relation of
             s' <- HG.timeWindowedBy (mkTumblingWindow (calendarDiffTimeToMs i)) groupedStream
                   >>= HTW.aggregate aggregateInit
                                     aggregateR
-                                    (\a k TimeWindow{..} ->
-                                        let winStart = [(ColumnCatalog winStartText Nothing, jsonValueToFlowValue . Aeson.Number $ scientific (toInteger tWindowStart) 0)]
-                                            winEnd   = [(ColumnCatalog winEndText Nothing, jsonValueToFlowValue . Aeson.Number $ scientific (toInteger tWindowEnd  ) 0)]
-                                            win      = HM.fromList $ winStart ++ winEnd
-                                         in HM.union (HM.union a k) win
+                                    (\a k timeWindow ->
+                                        let twFlowObject = runSer (serializer timeWindowFlowObjectSerde) timeWindow
+                                         in HM.union (HM.union a k) twFlowObject
                                     )
                                     timeWindowFlowObjectSerde
                                     (timeWindowSerde $ calendarDiffTimeToMs i)
@@ -429,11 +429,9 @@ relationExprToGraph relation builder = case relation of
             s' <- HG.timeWindowedBy (mkHoppingWindow (calendarDiffTimeToMs i1) (calendarDiffTimeToMs i2)) groupedStream
                   >>= HTW.aggregate aggregateInit
                                     aggregateR
-                                    (\a k TimeWindow{..} ->
-                                        let winStart = [(ColumnCatalog winStartText Nothing, jsonValueToFlowValue . Aeson.Number $ scientific (toInteger tWindowStart) 0)]
-                                            winEnd   = [(ColumnCatalog winEndText Nothing, jsonValueToFlowValue . Aeson.Number $ scientific (toInteger tWindowEnd  ) 0)]
-                                            win      = HM.fromList $ winStart ++ winEnd
-                                         in HM.union (HM.union a k) win
+                                    (\a k timeWindow ->
+                                        let twFlowObject = runSer (serializer timeWindowFlowObjectSerde) timeWindow
+                                         in HM.union (HM.union a k) twFlowObject
                                     )
                                     timeWindowFlowObjectSerde
                                     (timeWindowSerde $ calendarDiffTimeToMs i1)
