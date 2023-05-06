@@ -216,7 +216,7 @@ checkIOTask IOTask{..} = do
     checkCmd = concat [
         "docker run --rm -i",
         " --network=", T.unpack tcNetwork,
-        " --name ", T.unpack (getDockerName taskId),
+        " --name ", T.unpack ("IO_CHECK_" <> taskId),
         " -v " , taskPath, ":/data",
         " " , T.unpack tcImage,
         " check",
