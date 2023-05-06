@@ -635,15 +635,22 @@ allocSubscrCheckpointId client key = do
       createRandomLogGroup client (subscriptionCheckpointDir <> "/" <> key) def
     Right logid -> return logid
 
-getSubscrCheckpointId :: FFI.LDClient -> CBytes -> IO FFI.C_LogID
+freeSubscrCheckpointId :: FFI.LDClient -> CBytes -> IO ()
+freeSubscrCheckpointId client key = do
+  catch (deleteSubscrCheckpointId client key) $ \(_ :: E.NOTFOUND) -> do
+    Log.warning $ "freeSubscrCheckpointId NotFound: " <> Log.buildString' key
+    return ()
+
+deleteSubscrCheckpointId :: FFI.LDClient -> CBytes -> IO ()
+deleteSubscrCheckpointId client key = do
+  let logpath = subscriptionCheckpointDir <> "/" <> key
+  LD.syncLogsConfigVersion client =<< LD.removeLogGroup client logpath
+
+-- Prefer to using 'allocSubscrCheckpointId' instead
+getSubscrCheckpointId :: HasCallStack => FFI.LDClient -> CBytes -> IO FFI.C_LogID
 getSubscrCheckpointId client key = do
   let logpath = subscriptionCheckpointDir <> "/" <> key
   fst <$> (LD.logGroupGetRange =<< LD.getLogGroup client logpath)
-
-freeSubscrCheckpointId :: FFI.LDClient -> CBytes -> IO ()
-freeSubscrCheckpointId client key = do
-  let logpath = subscriptionCheckpointDir <> "/" <> key
-  LD.syncLogsConfigVersion client =<< LD.removeLogGroup client logpath
 
 -------------------------------------------------------------------------------
 -- Reader
