@@ -91,9 +91,9 @@ handleStdout ioTask@IOTask{..} hStdout hStdin = forever $ do
   case J.eitherDecode (BSL.fromStrict line) of
     Left _ -> pure () -- Log.info $ "decode err:" <> Log.buildString err
     Right msg -> do
-      Log.info $ "connectorMsg:" <> Log.buildString (show msg)
+      Log.debug $ "connectorMsg:" <> Log.buildString (show msg)
       resp <- handleConnectorRequest ioTask msg
-      Log.info $ "ConnectorRes:" <> Log.buildString (show resp)
+      Log.debug $ "ConnectorRes:" <> Log.buildString (show resp)
       BSLC.hPutStrLn hStdin (J.encode resp)
       IO.hFlush hStdin
 
@@ -216,7 +216,7 @@ checkIOTask IOTask{..} = do
     checkCmd = concat [
         "docker run --rm -i",
         " --network=", T.unpack tcNetwork,
-        " --name ", T.unpack (getDockerName taskId),
+        " --name ", T.unpack ("IO_CHECK_" <> taskId),
         " -v " , taskPath, ":/data",
         " " , T.unpack tcImage,
         " check",
