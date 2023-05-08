@@ -260,6 +260,7 @@ resumeQuery ctx@ServerContext{..} qRQueryName = do
       roles_m <- mapM (amIStream ctx) sources
       unless (and roles_m) $ do
         Log.warning $ "At least one of the streams/views do not exist: " <> Log.buildString' sources
+        M.updateMeta qRQueryName P.QueryTerminated Nothing metaHandle -- FIXME: a better state to indicate the error result?
         throwIO $ HE.StreamNotFound $ "At least one of the streams/views do not exist: " <> T.pack (show sources)
 #endif
 
