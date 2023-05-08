@@ -356,7 +356,7 @@ doSubInit ServerContext{..} subId = do
       -- Ideally, if the subscription has no data to deliver, ldCkpReader should block on the read call. However, in the current implementation,
       -- a subscription forcing deletion operation requires that the sendRecords loop should `not` be blocked, otherwise the forcing deletion
       -- would be blocked because the delete precondition cannot be met. So set a 1s timeout for ldCkpReader
-      -- 
+      --
       -- TODO: Also consider calling stopReading to stop the reader while force deleting instead of setting timeout.
       S.ckpReaderSetTimeout ldCkpReader 1000
       S.ckpReaderSetWaitOnlyWhenNoData ldCkpReader
