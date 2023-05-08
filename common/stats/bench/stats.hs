@@ -6,8 +6,8 @@ import           Control.Monad
 import           Criterion.Main
 import           Data.IORef
 
+import           HStream.Base   (runConc)
 import           HStream.Stats
-import           HStream.Utils  (runConc)
 
 -- | To run the benchmark:
 --

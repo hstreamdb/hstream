@@ -40,6 +40,7 @@ import           ZooKeeper.Types                  (ZHandle, ZooEvent, ZooState,
                                                    pattern ZooConnectingState,
                                                    pattern ZooSessionEvent)
 
+import           HStream.Base                     (setupFatalSignalHandler)
 import           HStream.Common.ConsistentHashing (HashRing, constructServerMap)
 import           HStream.Exception
 import           HStream.Gossip                   (GossipContext (..),
@@ -89,8 +90,7 @@ import qualified HStream.Store.Logger             as Log
 import qualified HStream.ThirdParty.Protobuf      as Proto
 import           HStream.Utils                    (ResourceType (..),
                                                    getProtoTimestamp,
-                                                   pattern EnumPB,
-                                                   setupFatalSignalHandler)
+                                                   pattern EnumPB)
 
 
 main :: IO ()

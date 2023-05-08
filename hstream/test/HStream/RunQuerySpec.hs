@@ -12,12 +12,12 @@ import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 import           Test.Hspec
 
+import           HStream.Base                     (setupFatalSignalHandler)
 import           HStream.Server.HStreamApi
 import           HStream.SpecUtils
 import           HStream.Store.Logger             (pattern C_DBG_ERROR,
                                                    setLogDeviceDbgLevel)
-import           HStream.Utils                    (TaskStatus (..),
-                                                   setupFatalSignalHandler)
+import           HStream.Utils                    (TaskStatus (..))
 
 getQueryResponseIdIs :: T.Text -> Query -> Bool
 getQueryResponseIdIs targetId Query {..} = queryId == targetId

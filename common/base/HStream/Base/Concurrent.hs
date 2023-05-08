@@ -1,4 +1,4 @@
-module HStream.Utils.Concurrent
+module HStream.Base.Concurrent
   ( runConc
   ) where
 
