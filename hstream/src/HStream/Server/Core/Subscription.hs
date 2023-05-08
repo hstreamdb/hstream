@@ -353,7 +353,10 @@ doSubInit ServerContext{..} subId = do
       ldCkpReader <-
         S.newLDRsmCkpReader scLDClient readerName ckpStoreId 5000 maxReadLogs
                             (Just ldReaderBufferSize)
-      -- ckpReader is used to deliver the subscription records. If there are no records to be delivered, just wait
+      -- Ideally, if the subscription has no data to deliver, ldCkpReader should block on the read call. However, in the current implementation,
+      -- a subscription forcing deletion operation requires that the sendRecords loop should `not` be blocked, otherwise the forcing deletion
+      -- would be blocked because the delete precondition cannot be met. So set a 1s timeout for ldCkpReader
+      S.ckpReaderSetTimeout ldCkpReader 1000
       S.ckpReaderSetWaitOnlyWhenNoData ldCkpReader
       -- create a ldReader for rereading unacked records
       Log.info $ "Create a reader for " <> Log.build subId
@@ -522,7 +525,8 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
             successSendRecords <- sendReceivedRecordsVecs receivedRecordsVecs
             atomically $ addUnackedRecords subCtx successSendRecords
             loop isFirstSendRef
-        else
+        else do
+          Log.info $ "subscription " <> Log.build subSubscriptionId <> " is not running, exit sendRecords loop."
           when (state == SubscribeStateStopping) $ do
             throwIO $ HE.SubscriptionInvalidError "Invalid Subscription"
 
@@ -912,6 +916,7 @@ recvAcks ServerContext {..} subState subCtx ConsumerContext {..} streamRecv = lo
           atomically $ invalidConsumer subCtx ccConsumerName
           throwIO $ HE.StreamReadError "Consumer recv error"
         Right Nothing -> do
+          Log.info "receive acks recieve nothing"
           -- This means that the consumer finished sending acks actively.
           atomically $ invalidConsumer subCtx ccConsumerName
           throwIO $ HE.StreamReadClose "Consumer is closed"
