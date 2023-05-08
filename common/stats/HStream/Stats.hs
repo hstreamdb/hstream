@@ -184,13 +184,16 @@ PER_X_STAT_ADD(stream_time_series_, name)
 
 stream_time_series_get
   :: StatsHolder -> CBytes -> CBytes -> [Int] -> IO (Maybe [Double])
+stream_time_series_get _ _ _ [] = pure Nothing
 stream_time_series_get (StatsHolder holder) method_name stream_name intervals =
   withForeignPtr holder $ \holder' ->
   withCBytesUnsafe method_name $ \method_name' ->
   withCBytesUnsafe stream_name $ \stream_name' -> do
     let interval_len = length intervals
     (mpa@(MutablePrimArray mba#) :: MutablePrimArray RealWorld Double) <- newPrimArray interval_len
-    forM_ [0..interval_len] $ \i -> writePrimArray mpa i 0
+    -- Even we do not match empty intervals first, [0..(-1)] will return an
+    -- empty list, so we don't need to do bounds check here.
+    forM_ [0..interval_len-1] $ \i -> writePrimArray mpa i 0
     let !(ByteArray intervals') = byteArrayFromListN interval_len intervals
     !ret <- I.c_stream_time_series_get
               holder' (BA# method_name') (BA# stream_name')
@@ -282,13 +285,14 @@ PER_X_STAT_ADD(subscription_time_series_, name)
 
 subscription_time_series_get
   :: StatsHolder -> CBytes -> CBytes -> [Int] -> IO (Maybe [Double])
+subscription_time_series_get _ _ _ [] = pure Nothing
 subscription_time_series_get (StatsHolder holder) method_name stream_name intervals =
   withForeignPtr holder $ \holder' ->
   withCBytesUnsafe method_name $ \method_name' ->
   withCBytesUnsafe stream_name $ \stream_name' -> do
     let interval_len = length intervals
     (mpa@(MutablePrimArray mba#) :: MutablePrimArray RealWorld Double) <- newPrimArray interval_len
-    forM_ [0..interval_len] $ \i -> writePrimArray mpa i 0
+    forM_ [0..interval_len-1] $ \i -> writePrimArray mpa i 0
     let !(ByteArray intervals') = byteArrayFromListN interval_len intervals
     !ret <- I.subscription_time_series_get
               holder' (BA# method_name') (BA# stream_name')
@@ -330,13 +334,14 @@ PER_X_STAT_ADD(handle_time_series_, name)
 
 handle_time_series_get
   :: StatsHolder -> CBytes -> CBytes -> [Int] -> IO (Maybe [Double])
+handle_time_series_get _ _ _ [] = pure Nothing
 handle_time_series_get (StatsHolder holder) method_name key_name intervals =
   withForeignPtr holder $ \holder' ->
   withCBytesUnsafe method_name $ \method_name' ->
   withCBytesUnsafe key_name $ \key_name' -> do
     let interval_len = length intervals
     (mpa@(MutablePrimArray mba#) :: MutablePrimArray RealWorld Double) <- newPrimArray interval_len
-    forM_ [0..interval_len] $ \i -> writePrimArray mpa i 0
+    forM_ [0..interval_len-1] $ \i -> writePrimArray mpa i 0
     let !(ByteArray intervals') = byteArrayFromListN interval_len intervals
     !ret <- I.handle_time_series_get
               holder' (BA# method_name') (BA# key_name')
@@ -406,12 +411,13 @@ serverHistogramAdd (StatsHolder holder) label val =
 -- NOTE: Input percentiles must be sorted and in valid range [0.0, 1.0].
 serverHistogramEstimatePercentiles
   :: StatsHolder -> ServerHistogramLabel -> [Double] -> IO [Int64]
+serverHistogramEstimatePercentiles (StatsHolder holder) label [] = pure []
 serverHistogramEstimatePercentiles (StatsHolder holder) label ps =
   withForeignPtr holder $ \holder' ->
   withCBytesUnsafe (packServerHistogramLabel label) $ \label' -> do
     let len = length ps
     (mpa@(MutablePrimArray mba#) :: MutablePrimArray RealWorld Int64) <- newPrimArray len
-    forM_ [0..len] $ \i -> writePrimArray mpa i 0
+    forM_ [0..len-1] $ \i -> writePrimArray mpa i 0
     let !(ByteArray ps') = byteArrayFromListN len ps
     !ret <- I.server_histogram_estimatePercentiles
                 holder' (BA# label') (BA# ps') len
