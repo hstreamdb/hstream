@@ -18,6 +18,7 @@ import           Test.Hspec
 
 import           Data.Foldable                    (foldr')
 import           Data.Maybe                       (isJust)
+import           HStream.Base                     (setupFatalSignalHandler)
 import           HStream.Server.HStreamApi
 import           HStream.SpecUtils
 import           HStream.Store.Logger             (pattern C_DBG_ERROR,

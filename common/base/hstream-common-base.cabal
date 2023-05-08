@@ -50,6 +50,7 @@ library
     HStream.Base
     HStream.Base.Ansi
     HStream.Base.Bytes
+    HStream.Base.Concurrent
     HStream.Base.Table
     HStream.Base.Time
     HStream.Base.Timer

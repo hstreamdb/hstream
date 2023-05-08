@@ -14,6 +14,7 @@ import qualified Data.Text.Lazy.Encoding          as TL
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 
+import           HStream.Base                     (setupFatalSignalHandler)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.HStreamApi
 import           HStream.SpecUtils

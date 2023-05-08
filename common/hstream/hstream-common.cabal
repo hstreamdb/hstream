@@ -68,7 +68,6 @@ library
     HStream.Utils.Codec
     HStream.Utils.Common
     HStream.Utils.Compression
-    HStream.Utils.Concurrent
     HStream.Utils.Converter
     HStream.Utils.Format
     HStream.Utils.JSON

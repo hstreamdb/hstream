@@ -3,7 +3,6 @@ module HStream.Utils
   , module HStream.Utils.Format
   , module HStream.Utils.BuildRecord
   , module HStream.Utils.RPC
-  , module HStream.Utils.Concurrent
   , module HStream.Utils.Time
   , module HStream.Utils.Common
   , module HStream.Utils.JSON
@@ -16,7 +15,6 @@ import           HStream.Utils.BuildRecord
 import           HStream.Utils.Codec
 import           HStream.Utils.Common
 import           HStream.Utils.Compression
-import           HStream.Utils.Concurrent
 import           HStream.Utils.Converter
 import           HStream.Utils.Format
 import           HStream.Utils.JSON

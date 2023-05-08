@@ -53,6 +53,7 @@ import           Foreign.C.Types
 import           Foreign.ForeignPtr
 import           Foreign.Ptr
 import           Foreign.Storable
+import           GHC.Exts
 import           GHC.Prim
 import qualified Z.Data.Array       as Z
 import qualified Z.Data.CBytes      as CBytes
@@ -73,6 +74,7 @@ peekN len ptr
 
 newtype BA# a = BA# ByteArray#
 newtype MBA# a = MBA# (MutableByteArray# RealWorld)
+-- TODO: ghc-9.4+ deprecates ArrayArray#, consider using Array# instead
 newtype BAArray# a = BAArray# ArrayArray#
 
 -------------------------------------------------------------------------------

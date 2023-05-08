@@ -7,9 +7,9 @@ import qualified Data.Map.Strict        as Map
 import           Data.Maybe             (fromJust)
 import           Test.Hspec
 
+import           HStream.Base           (runConc, setupFatalSignalHandler)
 import           HStream.Stats
 import           HStream.StatsSpecUtils (mkTimeSeriesTest)
-import           HStream.Utils          (runConc, setupFatalSignalHandler)
 
 {-# ANN module ("HLint: ignore Use head" :: String) #-}
 

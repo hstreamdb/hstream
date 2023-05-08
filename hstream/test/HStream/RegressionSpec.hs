@@ -13,10 +13,10 @@ import qualified Data.List                     as L
 import qualified Data.Text                     as T
 import           Test.Hspec
 
+import           HStream.Base                  (setupFatalSignalHandler)
 import           HStream.SpecUtils
 import           HStream.Store.Logger          (pattern C_DBG_ERROR,
                                                 setLogDeviceDbgLevel)
-import           HStream.Utils                 (setupFatalSignalHandler)
 
 import           Network.GRPC.HighLevel.Client
 import           Network.GRPC.LowLevel
