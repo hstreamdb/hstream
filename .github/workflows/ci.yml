@@ -108,6 +108,11 @@ jobs:
         with:
           submodules: "recursive"
 
+      - name: CPU info
+        run: |
+          sudo apt-get install cpuid
+          cpuid
+
       - name: set env
         run: |
           docker pull docker.io/hstreamdb/haskell:${{ matrix.ghc }}
