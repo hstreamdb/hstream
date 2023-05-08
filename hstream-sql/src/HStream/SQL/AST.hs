@@ -1,50 +1,57 @@
-{-# LANGUAGE CPP                #-}
-{-# LANGUAGE DeriveAnyClass     #-}
-{-# LANGUAGE DeriveGeneric      #-}
-{-# LANGUAGE FlexibleContexts   #-}
-{-# LANGUAGE FlexibleInstances  #-}
-{-# LANGUAGE LambdaCase         #-}
-{-# LANGUAGE OverloadedStrings  #-}
-{-# LANGUAGE RecordWildCards    #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE TypeFamilies       #-}
+{-# LANGUAGE CPP                 #-}
+{-# LANGUAGE DeriveAnyClass      #-}
+{-# LANGUAGE DeriveGeneric       #-}
+{-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE FlexibleInstances   #-}
+{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving  #-}
+{-# LANGUAGE TypeFamilies        #-}
 
 module HStream.SQL.AST where
 
-import qualified Data.Aeson            as Aeson
-import qualified Data.Aeson.Types      as Aeson
-import qualified Data.ByteString       as BS
-import qualified Data.ByteString.Char8 as BSC
+import qualified Data.Aeson               as Aeson
+import qualified Data.Aeson.Types         as Aeson
+import qualified Data.ByteString          as BS
+import qualified Data.ByteString.Char8    as BSC
+import qualified Data.ByteString.Lazy     as BL
 import           Data.Default
 import           Data.Hashable
-import qualified Data.HashMap.Strict   as HM
-import           Data.Int              (Int64)
-import           Data.Kind             (Type)
-import qualified Data.List             as L
-import           Data.List.Extra       (anySame)
-import qualified Data.Map.Strict       as Map
-import qualified Data.Scientific       as Scientific
-import           Data.Text             (Text)
-import qualified Data.Text             as Text
-import           Data.Text.Encoding    (encodeUtf8)
-import qualified Data.Time             as Time
-import           Data.Time.Compat      ()
-import           Data.Typeable         (Typeable)
-import qualified Data.Vector           as V
-import           Data.Word             (Word32)
+import qualified Data.HashMap.Strict      as HM
+import           Data.Int                 (Int64)
+import           Data.Kind                (Type)
+import qualified Data.List                as L
+import           Data.List.Extra          (anySame)
+import qualified Data.Map.Strict          as Map
+import           Data.Maybe               (fromJust)
+import qualified Data.Scientific          as Scientific
+import           Data.Text                (Text)
+import qualified Data.Text                as Text
+import           Data.Text.Encoding       (encodeUtf8)
+import qualified Data.Time                as Time
+import           Data.Time.Compat         ()
+import           Data.Time.Format.ISO8601 (iso8601ParseM, iso8601Show)
+import           Data.Typeable            (Typeable)
+import qualified Data.Vector              as V
+import           Data.Word                (Word32)
 import           GHC.Generics
-import           GHC.Stack             (HasCallStack)
+import           GHC.Stack                (HasCallStack)
 import           HStream.SQL.Abs
-import           HStream.SQL.Exception (SomeSQLException (..),
-                                        throwSQLException)
-import           HStream.SQL.Extra     (extractColumnIdent, extractHIdent,
-                                        extractPNDouble, extractPNInteger,
-                                        trimSpacesPrint)
-import           HStream.SQL.Print     (printTree)
-import           HStream.Utils         (cBytesToText)
-import qualified HStream.Utils.Aeson   as HsAeson
-import qualified Z.Data.CBytes         as CB
-import           Z.Data.CBytes         (CBytes)
+import           HStream.SQL.Exception    (SomeSQLException (..),
+                                           throwSQLException)
+import           HStream.SQL.Extra        (extractColumnIdent, extractHIdent,
+                                           extractPNDouble, extractPNInteger,
+                                           trimSpacesPrint)
+import           HStream.SQL.Print        (printTree)
+import           HStream.Utils            (cBytesToText, textToCBytes)
+import qualified HStream.Utils.Aeson      as HsAeson
+import           Text.Read                (readMaybe)
+import qualified Z.Data.CBytes            as CB
+import           Z.Data.CBytes            (CBytes)
+import qualified Z.Data.Text              as ZT
+import qualified Z.Data.Vector.Base64     as Base64
 
 ----------------------------- Refinement Main class ----------------------------
 type family RefinedType a :: Type
@@ -74,7 +81,6 @@ data FlowValue
   = FlowNull
   | FlowInt Int
   | FlowFloat Double
-  | FlowNumeral Scientific.Scientific
   | FlowBoolean Bool
   | FlowByte CBytes
   | FlowText Text
@@ -82,9 +88,7 @@ data FlowValue
   | FlowTime Time.TimeOfDay
   | FlowTimestamp Time.ZonedTime
   | FlowInterval Time.CalendarDiffTime
-  | FlowJson Aeson.Object
   | FlowArray [FlowValue]
-  | FlowMap (Map.Map FlowValue FlowValue)
   | FlowSubObject FlowObject
   deriving ( Eq, Ord, Generic, Hashable, Typeable
            , Aeson.ToJSONKey, Aeson.ToJSON
@@ -96,7 +100,6 @@ instance Show FlowValue where
     FlowNull         -> "NULL"
     FlowInt n        -> show n
     FlowFloat n      -> show n
-    FlowNumeral n    -> show n
     FlowBoolean b    -> show b
     FlowByte bs      -> show bs
     FlowText t       -> Text.unpack t
@@ -104,42 +107,76 @@ instance Show FlowValue where
     FlowTime time    -> show time
     FlowTimestamp ts -> show ts
     FlowInterval i   -> show i
-    FlowJson obj     -> show obj
     FlowArray arr    -> show arr
-    FlowMap m        -> show m
     FlowSubObject o  -> show o
 
+--------------
 flowValueToJsonValue :: FlowValue -> Aeson.Value
 flowValueToJsonValue flowValue = case flowValue of
-  FlowNull -> Aeson.Null
-  FlowInt n -> Aeson.Number (fromIntegral n)
-  FlowFloat n -> Aeson.Number (Scientific.fromFloatDigits n)
-  FlowNumeral n -> Aeson.Number n
+  FlowNull      -> Aeson.Null
+  FlowInt n     -> Aeson.Object $ HsAeson.fromList [(HsAeson.fromText "$numberLong"  , Aeson.String (Text.pack $ show n))]
+  FlowFloat n   -> Aeson.Object $ HsAeson.fromList [(HsAeson.fromText "$numberDouble", Aeson.String (Text.pack $ show n))]
   FlowBoolean b -> Aeson.Bool b
-  FlowByte bs -> Aeson.String (Text.pack . show $ CB.toBytes bs)
+  FlowByte bs   -> Aeson.Object $ HsAeson.fromList
+    [( HsAeson.fromText "$binary"
+     , Aeson.Object $ HsAeson.fromList
+       [ (HsAeson.fromText "base64" , Aeson.String (Text.pack $ ZT.unpack . Base64.base64EncodeText $ CB.toBytes bs))
+       , (HsAeson.fromText "subType", Aeson.String "00")
+       ]
+     )]
   FlowText t -> Aeson.String t
-  FlowDate d -> Aeson.String (Text.pack . show $ d)
-  FlowTime t -> Aeson.String (Text.pack . show $ t)
-  FlowTimestamp ts -> Aeson.String (Text.pack . show $ ts)
-  FlowInterval i -> Aeson.String (Text.pack . show $ i)
-  FlowJson object -> Aeson.Object object
-  FlowArray vs -> Aeson.Array (V.fromList $ flowValueToJsonValue <$> vs)
-  FlowMap m ->
-    let l = L.map (\(k,v) -> (HsAeson.fromText $ Text.pack (show k), flowValueToJsonValue v)) (Map.toList m)
-     in Aeson.Object (HsAeson.fromList l)
+  FlowDate d -> Aeson.Object $ HsAeson.fromList
+    [(HsAeson.fromText "$date", Aeson.String (Text.pack $ iso8601Show d))]
+  FlowTime t -> Aeson.Object $ HsAeson.fromList
+    [(HsAeson.fromText "$time", Aeson.String (Text.pack $ iso8601Show t))]
+  FlowTimestamp ts -> Aeson.Object $ HsAeson.fromList
+    [(HsAeson.fromText "$timestamp", Aeson.String (Text.pack $ iso8601Show ts))]
+  FlowInterval i   -> Aeson.Object $ HsAeson.fromList
+    [(HsAeson.fromText "$interval", Aeson.String (Text.pack $ iso8601Show i))]
+  FlowArray vs         -> Aeson.Array (V.fromList $ flowValueToJsonValue <$> vs)
   FlowSubObject object -> Aeson.Object (flowObjectToJsonObject object)
 
 jsonValueToFlowValue :: Aeson.Value -> FlowValue
 jsonValueToFlowValue v = case v of
-  Aeson.Null -> FlowNull
-  Aeson.Number n -> FlowNumeral n
-  Aeson.String t -> FlowText t
-  Aeson.Bool b -> FlowBoolean b
-  Aeson.Array v -> FlowArray (jsonValueToFlowValue <$> (V.toList v))
-  Aeson.Object o ->
-    let list = HsAeson.toList o
-        list' = L.map (\(k,v) -> (ColumnCatalog (HsAeson.toText k) Nothing, jsonValueToFlowValue v)) list
-     in FlowSubObject (HM.fromList list')
+  Aeson.Null       -> FlowNull
+  Aeson.Bool b     -> FlowBoolean b
+  Aeson.String t   -> FlowText t
+  Aeson.Number n   -> case Scientific.floatingOrInteger n of
+    Left  f -> FlowFloat f
+    Right i -> FlowInt (fromIntegral i)
+  Aeson.Array arr  -> FlowArray (V.toList $ jsonValueToFlowValue <$> arr)
+  Aeson.Object obj -> case HsAeson.toList obj of
+    [("$numberLong", Aeson.String t)] ->
+      case readMaybe (Text.unpack t) of
+        Just n  -> FlowInt n
+        Nothing -> throwSQLException RefineException Nothing ("Invalid $numberLong value" <> Text.unpack t)
+    [("$numberDouble", Aeson.String t)] ->
+      case readMaybe (Text.unpack t) of
+        Just n  -> FlowFloat n
+        Nothing -> throwSQLException RefineException Nothing ("Invalid $numberDouble value" <> Text.unpack t)
+    [("$binary", Aeson.Object obj')] -> case do
+      Aeson.String t <- HsAeson.lookup "base64" obj'
+      Base64.base64Decode (CB.toBytes $ textToCBytes t) of
+        Nothing -> throwSQLException RefineException Nothing ("Invalid $binary value" <> show obj')
+        Just bs -> FlowByte (CB.fromBytes bs)
+    [("$date", Aeson.String t)] ->
+      case iso8601ParseM (Text.unpack t) of
+        Just d  -> FlowDate d
+        Nothing -> throwSQLException RefineException Nothing ("Invalid $date value" <> Text.unpack t)
+    [("$time", Aeson.String t)] ->
+      case iso8601ParseM (Text.unpack t) of
+        Just t  -> FlowTime t
+        Nothing -> throwSQLException RefineException Nothing ("Invalid $time value" <> Text.unpack t)
+    [("$timestamp", Aeson.String t)] ->
+      case iso8601ParseM (Text.unpack t) of
+        Just ts -> FlowTimestamp ts
+        Nothing -> throwSQLException RefineException Nothing ("Invalid $timestamp value" <> Text.unpack t)
+    [("$interval", Aeson.String t)] ->
+      case iso8601ParseM (Text.unpack t) of
+        Just i -> FlowInterval i
+        Nothing -> throwSQLException RefineException Nothing ("Invalid $interval value" <> Text.unpack t)
+    _ -> FlowSubObject (jsonObjectToFlowObject' obj)
+  _ -> throwSQLException RefineException Nothing ("Invalid json value: " <> show v)
 
 flowObjectToJsonObject :: FlowObject -> Aeson.Object
 flowObjectToJsonObject hm =
@@ -170,8 +207,6 @@ instance HasName RValueExpr where
   getName expr = case expr of
     RExprCast        name _ _   -> name
     RExprArray       name _     -> name
-    RExprMap         name _     -> name
-    RExprAccessMap   name _ _   -> name
     RExprAccessArray name _ _   -> name
     RExprCol         name _ _   -> name
     RExprConst       name _     -> name
@@ -184,27 +219,25 @@ instance HasName RValueExpr where
 ----------------------------- Refinement details -------------------------------
 
 data RDataType
-  = RTypeInteger | RTypeFloat | RTypeNumeric | RTypeBoolean
+  = RTypeInteger | RTypeFloat | RTypeBoolean
   | RTypeBytea | RTypeText | RTypeDate | RTypeTime | RTypeTimestamp
   | RTypeInterval | RTypeJsonb
-  | RTypeArray RDataType | RTypeMap RDataType RDataType
+  | RTypeArray RDataType
   deriving (Show, Eq, Ord)
 
 type instance RefinedType DataType = RDataType
 instance Refine DataType where
-  refine TypeInteger{}     = RTypeInteger
-  refine TypeFloat{}       = RTypeFloat
-  refine TypeNumeric{}     = RTypeNumeric
-  refine TypeBoolean{}     = RTypeBoolean
-  refine TypeByte{}        = RTypeBytea
-  refine TypeText{}        = RTypeText
-  refine TypeDate{}        = RTypeDate
-  refine TypeTime{}        = RTypeTime
-  refine TypeTimestamp{}   = RTypeTimestamp
-  refine TypeInterval{}    = RTypeInterval
-  refine TypeJson{}        = RTypeJsonb
-  refine (TypeArray _ t)   = RTypeArray (refine t)
-  refine (TypeMap _ kt vt) = RTypeMap (refine kt) (refine vt)
+  refine TypeInteger{}   = RTypeInteger
+  refine TypeFloat{}     = RTypeFloat
+  refine TypeBoolean{}   = RTypeBoolean
+  refine TypeByte{}      = RTypeBytea
+  refine TypeText{}      = RTypeText
+  refine TypeDate{}      = RTypeDate
+  refine TypeTime{}      = RTypeTime
+  refine TypeTimestamp{} = RTypeTimestamp
+  refine TypeInterval{}  = RTypeInterval
+  refine TypeJson{}      = RTypeJsonb
+  refine (TypeArray _ t) = RTypeArray (refine t)
 
 --------------------------------------------------------------------------------
 type ConnectorType = Text
@@ -347,7 +380,6 @@ calendarDiffTimeToMs Time.CalendarDiffTime{..} =
 data Constant = ConstantNull
               | ConstantInt       Int
               | ConstantFloat     Double
-              | ConstantNumeric   Double
               | ConstantText      Text
               | ConstantBoolean   Bool
               | ConstantDate      RDate
@@ -357,25 +389,22 @@ data Constant = ConstantNull
               | ConstantBytea     CBytes
               | ConstantJsonb     Aeson.Object
               | ConstantArray     [Constant]
-              | ConstantMap       (Map.Map Constant Constant)
               deriving (Show, Eq, Ord)
 
 constantToFlowValue :: Constant -> FlowValue
 constantToFlowValue constant = case constant of
-  ConstantNull -> FlowNull
-  ConstantInt n -> FlowInt n
-  ConstantFloat n -> FlowFloat n
-  ConstantNumeric n -> FlowNumeral (Scientific.fromFloatDigits n)
-  ConstantText t -> FlowText t
-  ConstantBoolean b -> FlowBoolean b
-  ConstantDate d -> FlowDate d
-  ConstantTime t -> FlowTime t
+  ConstantNull         -> FlowNull
+  ConstantInt n        -> FlowInt n
+  ConstantFloat n      -> FlowFloat n
+  ConstantText t       -> FlowText t
+  ConstantBoolean b    -> FlowBoolean b
+  ConstantDate d       -> FlowDate d
+  ConstantTime t       -> FlowTime t
   ConstantTimestamp ts -> FlowTimestamp ts
-  ConstantInterval i -> FlowInterval i
-  ConstantBytea bs -> FlowByte bs
-  ConstantJsonb json -> FlowJson json
-  ConstantArray arr -> FlowArray (constantToFlowValue <$> arr)
-  ConstantMap m -> FlowMap (Map.mapKeys constantToFlowValue (Map.map constantToFlowValue m))
+  ConstantInterval i   -> FlowInterval i
+  ConstantBytea bs     -> FlowByte bs
+  ConstantJsonb o      -> FlowSubObject (jsonObjectToFlowObject' o)
+  ConstantArray arr    -> FlowArray (constantToFlowValue <$> arr)
 
 instance Aeson.ToJSONKey Constant where
   toJSONKey = Aeson.toJSONKeyText (Text.pack . show)
@@ -384,7 +413,6 @@ instance Aeson.ToJSON Constant where
   toJSON ConstantNull          = Aeson.Null
   toJSON (ConstantInt       v) = Aeson.toJSON v
   toJSON (ConstantFloat     v) = Aeson.toJSON v
-  toJSON (ConstantNumeric   v) = Aeson.toJSON v
   toJSON (ConstantText      v) = Aeson.toJSON v
   toJSON (ConstantBoolean   v) = Aeson.toJSON v
   toJSON (ConstantDate      v) = Aeson.toJSON v
@@ -394,7 +422,6 @@ instance Aeson.ToJSON Constant where
   toJSON (ConstantBytea     v) = Aeson.toJSON v
   toJSON (ConstantJsonb     v) = Aeson.toJSON v
   toJSON (ConstantArray     v) = Aeson.toJSON v
-  toJSON (ConstantMap       v) = Aeson.toJSON v
 
 data BinaryOp = OpAnd | OpOr
               | OpEQ | OpNEQ | OpLT | OpGT | OpLEQ | OpGEQ
@@ -409,7 +436,7 @@ data UnaryOp  = OpSin      | OpSinh    | OpAsin   | OpAsinh  | OpCos   | OpCosh
               | OpAcos     | OpAcosh   | OpTan    | OpTanh   | OpAtan  | OpAtanh
               | OpAbs      | OpCeil    | OpFloor  | OpRound  | OpSign
               | OpSqrt     | OpLog     | OpLog2   | OpLog10  | OpExp
-              | OpIsInt    | OpIsFloat | OpIsNum  | OpIsBool | OpIsStr | OpIsMap
+              | OpIsInt    | OpIsFloat | OpIsBool | OpIsStr
               | OpIsArr    | OpIsDate  | OpIsTime
               | OpToStr
               | OpToLower  | OpToUpper | OpTrim   | OpLTrim  | OpRTrim
@@ -481,18 +508,11 @@ instance Refine ArrayAccessRhs where
     ArrayAccessRhsTo _ n    -> RArrayAccessRhsRange Nothing (Just $ fromInteger n)
     ArrayAccessRhsFromTo _ n1 n2 -> RArrayAccessRhsRange (Just $ fromInteger n1) (Just $ fromInteger n2)
 
-type instance RefinedType [LabelledValueExpr] = Map.Map RValueExpr RValueExpr
-instance Refine [LabelledValueExpr] where
-  refine ts = Map.fromList $
-    L.map (\(DLabelledValueExpr _ ek ev) -> (refine ek, refine ev)) ts
-
 type ExprName = String
 type StreamName = Text
 type FieldName  = Text
 data RValueExpr = RExprCast        ExprName RValueExpr RDataType
                 | RExprArray       ExprName [RValueExpr]
-                | RExprMap         ExprName (Map.Map RValueExpr RValueExpr)
-                | RExprAccessMap   ExprName RValueExpr RValueExpr
                 | RExprAccessArray ExprName RValueExpr RArrayAccessRhs
                 | RExprCol         ExprName (Maybe StreamName) FieldName
                 | RExprConst       ExprName Constant
@@ -520,7 +540,6 @@ instance Refine ValueExpr where
     (ExprGT _ e1 e2) -> RExprBinOp (trimSpacesPrint expr) OpGT (refine e1) (refine e2)
     (ExprLEQ _ e1 e2) -> RExprBinOp (trimSpacesPrint expr) OpLEQ (refine e1) (refine e2)
     (ExprGEQ _ e1 e2) -> RExprBinOp (trimSpacesPrint expr) OpGEQ (refine e1) (refine e2)
-    (ExprAccessMap _ e1 e2) -> RExprAccessMap (trimSpacesPrint expr) (refine e1) (refine e2)
     (ExprAccessArray _ e rhs) -> RExprAccessArray (trimSpacesPrint expr) (refine e) (refine rhs)
     (ExprAdd _ e1 e2) -> RExprBinOp (trimSpacesPrint expr) OpAdd (refine e1) (refine e2)
     (ExprSub _ e1 e2) -> RExprBinOp (trimSpacesPrint expr) OpSub (refine e1) (refine e2)
@@ -533,18 +552,13 @@ instance Refine ValueExpr where
     (ExprBool _ b)            -> RExprConst (trimSpacesPrint expr) (ConstantBoolean $ refine b)
     (ExprDate _ date)         -> RExprConst (trimSpacesPrint expr) (ConstantDate $ refine date)
     (ExprTime _ time)         -> RExprConst (trimSpacesPrint expr) (ConstantTime $ refine time)
-    (ExprTimestamp _ ts) -> RExprConst (trimSpacesPrint expr) (ConstantTimestamp $ refine ts)
+    (ExprTimestamp _ ts)      -> RExprConst (trimSpacesPrint expr) (ConstantTimestamp $ refine ts)
     (ExprInterval _ interval) -> RExprConst (trimSpacesPrint expr) (ConstantInterval $ refine interval)
 
-    -- 3. Arrays and Maps
+    -- 3. Arrays
     (ExprArr _ es) -> RExprArray (trimSpacesPrint expr) (refine <$> es)
-    (ExprMap _ ts) -> RExprMap (trimSpacesPrint expr) (refine ts)
 
     -- 4. Json access
-    (ExprScalarFunc _ (ScalarFuncFieldToJson _ e1 e2)) -> RExprAccessJson (trimSpacesPrint expr) JOpArrow (refine e1) (refine e2)
-    (ExprScalarFunc _ (ScalarFuncFieldToText _ e1 e2)) -> RExprAccessJson (trimSpacesPrint expr) JOpLongArrow (refine e1) (refine e2)
-    (ExprScalarFunc _ (ScalarFuncFieldsToJson _ e1 e2)) -> RExprAccessJson (trimSpacesPrint expr) JOpHashArrow (refine e1) (refine e2)
-    (ExprScalarFunc _ (ScalarFuncFieldsToTexts _ e1 e2)) -> RExprAccessJson (trimSpacesPrint expr) JOpHashLongArrow (refine e1) (refine e2)
     -- 5. Scalar functions
     (ExprScalarFunc _ func) -> refine func
     -- 6. Set functions
@@ -557,6 +571,12 @@ instance Refine ValueExpr where
 type instance RefinedType ScalarFunc = RValueExpr
 instance Refine ScalarFunc where
   refine func = case func of
+    -- 4. Json access
+    (ScalarFuncFieldToJson   _ e1 e2) -> RExprAccessJson (trimSpacesPrint func) JOpArrow         (refine e1) (refine e2)
+    (ScalarFuncFieldToText   _ e1 e2) -> RExprAccessJson (trimSpacesPrint func) JOpLongArrow     (refine e1) (refine e2)
+    (ScalarFuncFieldsToJson  _ e1 e2) -> RExprAccessJson (trimSpacesPrint func) JOpHashArrow     (refine e1) (refine e2)
+    (ScalarFuncFieldsToTexts _ e1 e2) -> RExprAccessJson (trimSpacesPrint func) JOpHashLongArrow (refine e1) (refine e2)
+    -- 5. Scalar functions
     ScalarFuncIfNull   _ e1 e2 -> RExprBinOp (trimSpacesPrint func) OpIfNull    (refine e1) (refine e2)
     ScalarFuncNullIf   _ e1 e2 -> RExprBinOp (trimSpacesPrint func) OpNullIf    (refine e1) (refine e2)
     ArrayFuncContain   _ e1 e2 -> RExprBinOp (trimSpacesPrint func) OpContain   (refine e1) (refine e2)
@@ -597,10 +617,8 @@ instance Refine ScalarFunc where
     ScalarFuncExp     _ e -> RExprUnaryOp (trimSpacesPrint func) OpExp     (refine e)
     ScalarFuncIsInt   _ e -> RExprUnaryOp (trimSpacesPrint func) OpIsInt   (refine e)
     ScalarFuncIsFloat _ e -> RExprUnaryOp (trimSpacesPrint func) OpIsFloat (refine e)
-    ScalarFuncIsNum   _ e -> RExprUnaryOp (trimSpacesPrint func) OpIsNum   (refine e)
     ScalarFuncIsBool  _ e -> RExprUnaryOp (trimSpacesPrint func) OpIsBool  (refine e)
     ScalarFuncIsStr   _ e -> RExprUnaryOp (trimSpacesPrint func) OpIsStr   (refine e)
-    ScalarFuncIsMap   _ e -> RExprUnaryOp (trimSpacesPrint func) OpIsMap   (refine e)
     ScalarFuncIsArr   _ e -> RExprUnaryOp (trimSpacesPrint func) OpIsArr   (refine e)
     ScalarFuncIsDate  _ e -> RExprUnaryOp (trimSpacesPrint func) OpIsDate  (refine e)
     ScalarFuncIsTime  _ e -> RExprUnaryOp (trimSpacesPrint func) OpIsTime  (refine e)
@@ -923,9 +941,7 @@ instance Refine Insert where
         let (RExprConst _ constant) = refine expr -- Ensured by Validate
          in constant
   refine (InsertBinary _ s bin) = RInsertBinary (refine s) (BSC.pack bin)
-  refine (InsertJson _ s ss) =
-    RInsertJSON (refine s) (refine $ ss)
-
+  refine (InsertJson _ s ss) = RInsertJSON (refine s) (refine ss)
 ---- SHOW
 data RShow
   = RShow RShowOption

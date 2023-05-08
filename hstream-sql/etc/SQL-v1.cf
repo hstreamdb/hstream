@@ -167,7 +167,6 @@ DHaving.      Having ::= "HAVING" ValueExpr ;
 ---- Data Types
 TypeInteger.  DataType ::= "INTEGER" ;
 TypeFloat.    DataType ::= "FLOAT" ;
-TypeNumeric.  DataType ::= "NUMERIC" ;
 TypeBoolean.  DataType ::= "BOOLEAN" ;
 TypeByte.     DataType ::= "BYTEA" ;
 TypeText.     DataType ::= "STRING" ;
@@ -177,7 +176,6 @@ TypeTimestamp. DataType ::= "TIMESTAMP" ;
 TypeInterval. DataType ::= "INTERVAL" ;
 TypeJson.     DataType ::= "JSONB" ;
 TypeArray.    DataType ::= DataType "[]" ;
-TypeMap.      DataType ::= "MAP" "[" DataType "=>" DataType "]" ;
 
 --------------------------------------------------------------------------------
 
@@ -202,21 +200,20 @@ ExprAdd. ValueExpr4 ::= ValueExpr4 "+" ValueExpr5 ;
 ExprSub. ValueExpr4 ::= ValueExpr4 "-" ValueExpr5 ;
 ExprMul. ValueExpr5 ::= ValueExpr5 "*" ValueExpr6 ;
 
--- Map and Array Access
+-- Array Access
 ArrayAccessRhsIndex. ArrayAccessRhs ::= "[" Integer "]" ;
 ArrayAccessRhsFrom. ArrayAccessRhs ::= "[" Integer ":" "]" ;
 ArrayAccessRhsTo. ArrayAccessRhs ::= "[" ":" Integer "]" ;
 ArrayAccessRhsFromTo. ArrayAccessRhs ::= "[" Integer ":" Integer "]" ;
 
-ExprAccessMap. ValueExpr ::= ValueExpr "=>" ValueExpr ; -- FIXME
 ExprAccessArray. ValueExpr ::= ValueExpr ArrayAccessRhs ; -- FIXME
 
 -- Null Expr.
 ExprNull. ValueExpr7 ::= "NULL" ;
 
 -- Scalar Numeric Type
-ExprInt. ValueExpr7 ::= PNInteger ; -- integer/numeric
-ExprNum. ValueExpr7 ::= PNDouble  ; -- float/numeric
+ExprInt. ValueExpr7 ::= PNInteger ; -- integer
+ExprNum. ValueExpr7 ::= PNDouble  ; -- float
 
 -- Plain String
 ExprString. ValueExpr7 ::= String ; -- string
@@ -258,11 +255,8 @@ IntervalYear.   IntervalUnit ::= "YEAR"   ;
 Interval. Interval ::= "INTERVAL" SString IntervalUnit ;
 ExprInterval. ValueExpr7 ::= Interval ;
 
--- Non-Scalar Type (Array and Map)
+-- Non-Scalar Type (Array)
 ExprArr. ValueExpr ::= "[" [ValueExpr] "]" ; -- array
-ExprMap. ValueExpr ::= "{" [LabelledValueExpr] "}" ; -- map
-DLabelledValueExpr. LabelledValueExpr ::= ValueExpr ":" ValueExpr ;
-separator LabelledValueExpr "," ;
 
 -- SubQuery
 -- ExprSubquery. ValueExpr7 ::= "(" Select ")" ;
@@ -322,7 +316,6 @@ ScalarFuncIsFloat. ScalarFunc ::= "IS_FLOAT" "(" ValueExpr ")" ;
 ScalarFuncIsNum.   ScalarFunc ::= "IS_NUM"   "(" ValueExpr ")" ;
 ScalarFuncIsBool.  ScalarFunc ::= "IS_BOOL"  "(" ValueExpr ")" ;
 ScalarFuncIsStr.   ScalarFunc ::= "IS_STR"   "(" ValueExpr ")" ;
-ScalarFuncIsMap.   ScalarFunc ::= "IS_MAP"   "(" ValueExpr ")" ;
 ScalarFuncIsArr.   ScalarFunc ::= "IS_ARRAY" "(" ValueExpr ")" ;
 ScalarFuncIsDate.  ScalarFunc ::= "IS_DATE"  "(" ValueExpr ")" ;
 ScalarFuncIsTime.  ScalarFunc ::= "IS_TIME"  "(" ValueExpr ")" ;

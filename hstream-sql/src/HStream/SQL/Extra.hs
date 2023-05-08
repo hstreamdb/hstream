@@ -58,7 +58,6 @@ extractRefNameFromExpr (ExprLT pos e1 e2) = extractRefNameFromExpr (ExprEQ pos e
 extractRefNameFromExpr (ExprGT pos e1 e2) = extractRefNameFromExpr (ExprEQ pos e1 e2)
 extractRefNameFromExpr (ExprLEQ pos e1 e2) = extractRefNameFromExpr (ExprEQ pos e1 e2)
 extractRefNameFromExpr (ExprGEQ pos e1 e2) = extractRefNameFromExpr (ExprEQ pos e1 e2)
-extractRefNameFromExpr (ExprAccessMap pos e1 e2) = extractRefNameFromExpr (ExprEQ pos e1 e2)
 extractRefNameFromExpr (ExprAccessArray _ e _) = extractRefNameFromExpr e
 -- extractRefNameFromExpr (ExprSubquery _ _) = (False, []) -- FIXME
 
@@ -74,8 +73,6 @@ extractRefNameFromExpr (ExprSetFunc _ (SetFuncTopK         _ e _)) = extractRefN
 extractRefNameFromExpr (ExprSetFunc _ (SetFuncTopKDistinct _ e _)) = extractRefNameFromExpr e
 extractRefNameFromExpr (ExprArr _ es) = (L.or (fst <$> tups), L.nub . L.concat $ snd <$> tups)
   where tups = extractRefNameFromExpr <$> es
-extractRefNameFromExpr (ExprMap pos es) = extractRefNameFromExpr (ExprArr pos ( L.concat $ extractExpr <$> es))
-  where extractExpr (DLabelledValueExpr _ e1 e2) = [e1,e2]
 extractRefNameFromExpr (ExprAdd pos e1 e2) = extractRefNameFromExpr (ExprArr pos [e1, e2])
 extractRefNameFromExpr (ExprSub pos e1 e2) = extractRefNameFromExpr (ExprArr pos [e1, e2])
 extractRefNameFromExpr (ExprMul pos e1 e2) = extractRefNameFromExpr (ExprArr pos [e1, e2])

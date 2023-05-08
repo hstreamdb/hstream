@@ -81,9 +81,7 @@ instance Show ScalarExpr where
                 CallCast e typ           -> show e <> "::" <> show typ
                 CallJson op e1 e2        -> show e1 <> show op <> show e2
                 ValueArray arr           -> "Array" <> show arr
-                ValueMap m               -> "Map" <> "[" <> (L.intercalate ", " (L.map (\(ke,ve) -> show ke <> "=>" <> show ve) (Map.toList m))) <> "]"
                 AccessArray e rhs        -> show e <> show rhs
-                AccessMap em ek          -> show em <> "[" <> show ek <> "]"
 
 instance HasName ScalarExpr where
   getName = show

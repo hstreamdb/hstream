@@ -20,8 +20,6 @@ checkGroupBySel gbs RSelectProjectAll            = Left $ buildSQLException Pars
 
 checkGroupBySelExpr gbs (RExprCast        _ expr _RDataType)       = checkGroupBySelExpr gbs expr
 checkGroupBySelExpr gbs (RExprArray       _ exprs)                 = mapM_ (checkGroupBySelExpr gbs) exprs
-checkGroupBySelExpr gbs (RExprMap         _ eMap)                  = mapM_ (checkGroupBySelExpr gbs) (Map.keys eMap)
-checkGroupBySelExpr gbs (RExprAccessMap   _ expr _expr)            = checkGroupBySelExpr gbs expr
 checkGroupBySelExpr gbs (RExprAccessArray _ expr _RArrayAccessRhs) = checkGroupBySelExpr gbs expr
 checkGroupBySelExpr gbs (RExprCol         _ maybeStreamName name) =
   if (maybeStreamName,name) `elem` gbs then Right () else Left $ buildSQLException ParseException Nothing "Select item does not appear in the GROUP BY clause"
