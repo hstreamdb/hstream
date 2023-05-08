@@ -14,7 +14,12 @@ ENGINE_VERSION ?= v1
 BNFC = bnfc
 PROTO_COMPILE = protoc
 PROTO_COMPILE_HS = ~/.cabal/bin/compile-proto-file_hstream
-PROTO_CPP_PLUGIN ?= /usr/local/bin/grpc_cpp_plugin
+
+ifeq ($(shell test -e /etc/NIXOS; echo $$?), 1)
+	PROTO_CPP_PLUGIN ?= /usr/local/bin/grpc_cpp_plugin
+else
+	PROTO_CPP_PLUGIN ?= $(shell which grpc_cpp_plugin 2>/dev/null)
+endif
 
 THRIFT_COMPILE = thrift-compiler
 thrift::
