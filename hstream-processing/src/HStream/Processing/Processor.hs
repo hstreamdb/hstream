@@ -221,6 +221,7 @@ runTask statsHolder SourceConnectorWithoutCkp {..} sinkConnector taskBuilder@Tas
                 liftIO $ query_stat_add_total_execute_errors statsHolder (textToCBytes qid) 1
               ]
             liftIO $ query_stat_add_total_output_records statsHolder (textToCBytes qid) 1
+            liftIO $ RIO.putMVar mvar ()
 
 runImmTask ::
   (Ord t, Semigroup t, Aeson.FromJSON t, Aeson.ToJSON t, Typeable t, ChangeLogger h1, Snapshotter h2) =>
