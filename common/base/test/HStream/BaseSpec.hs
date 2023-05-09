@@ -19,7 +19,7 @@ spec = parallel $ do
   baseSpec
 
 baseSpec :: Spec
-baseSpec = describe "HStream.Utils" $ do
+baseSpec = describe "HStream.Base" $ do
   it "genUniqueSpec" $ do
     let maxInflights = 5
         eachTimes = 5
@@ -38,3 +38,6 @@ baseSpec = describe "HStream.Utils" $ do
 
   prop "CByte to/from ShortByteString" $ \x ->
     (sbs2cbytes $ cbytes2sbs x) === x
+
+  -- TODO
+  it "setupFatalSignalHandler" $ setupFatalSignalHandler `shouldReturn` ()

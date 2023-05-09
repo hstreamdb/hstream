@@ -50,10 +50,8 @@ unaryOpOnValue OpLog10 v    = op_log10 v
 unaryOpOnValue OpExp   v    = op_exp v
 unaryOpOnValue OpIsInt v    = op_isInt v
 unaryOpOnValue OpIsFloat v  = op_isFloat v
-unaryOpOnValue OpIsNum v    = op_isNum v
 unaryOpOnValue OpIsBool v   = op_isBool v
 unaryOpOnValue OpIsStr v    = op_isStr v
-unaryOpOnValue OpIsMap v    = op_isMap v
 unaryOpOnValue OpIsArr v    = op_isArr v
 unaryOpOnValue OpIsDate v   = op_isDate v
 unaryOpOnValue OpIsTime v   = op_isTime v
@@ -74,109 +72,89 @@ unaryOpOnValue OpSort v     = op_sort v
 
 --------------------------------------------------------------------------------
 op_sin :: FlowValue -> Either ERROR_TYPE FlowValue
-op_sin (FlowInt n)     = Right $ FlowNumeral (fromFloatDigits $ (sin :: Double -> Double) (fromIntegral n))
-op_sin (FlowFloat n)   = Right $ FlowNumeral (fromFloatDigits $ sin n)
-op_sin (FlowNumeral n) = Right $ FlowNumeral (funcOnScientific (sin :: Double -> Double) n)
+op_sin (FlowInt n)     = Right $ FlowFloat (sin $ fromIntegral n)
+op_sin (FlowFloat n)   = Right $ FlowFloat (sin n)
 op_sin FlowNull        = Right FlowNull
 op_sin v               = Left . ERR $ "Unsupported operator <sin> on value <" <> T.pack (show v) <> ">"
 
 op_sinh :: FlowValue -> Either ERROR_TYPE FlowValue
-op_sinh (FlowInt n)     = Right $ FlowNumeral (fromFloatDigits $ (sinh :: Double -> Double) (fromIntegral n))
-op_sinh (FlowFloat n)   = Right $ FlowNumeral (fromFloatDigits $ sinh n)
-op_sinh (FlowNumeral n) = Right $ FlowNumeral (funcOnScientific (sinh :: Double -> Double) n)
+op_sinh (FlowInt n)     = Right $ FlowFloat (sinh $ fromIntegral n)
+op_sinh (FlowFloat n)   = Right $ FlowFloat (sinh n)
 op_sinh FlowNull        = Right FlowNull
 op_sinh v               = Left . ERR $ "Unsupported operator <sinh> on value <" <> T.pack (show v) <> ">"
 
 op_asin :: FlowValue -> Either ERROR_TYPE FlowValue
 op_asin (FlowInt n)
-  | n >= (-1) && n <= 1 = Right $ FlowNumeral (fromFloatDigits $ (asin :: Double -> Double) (fromIntegral n))
+  | n >= (-1) && n <= 1 = Right $ FlowFloat (asin $ fromIntegral n)
   | otherwise = Left . ERR $ "Function <asin>: mathematical error"
 op_asin (FlowFloat n)
-  | n >= (-1) && n <= 1 = Right $ FlowNumeral (fromFloatDigits $ asin n)
-  | otherwise = Left . ERR $ "Function <asin>: mathematical error"
-op_asin (FlowNumeral n)
-  | n >= (-1) && n <= 1 = Right $ FlowNumeral (funcOnScientific (asin :: Double -> Double) n)
+  | n >= (-1) && n <= 1 = Right $ FlowFloat (asin n)
   | otherwise = Left . ERR $ "Function <asin>: mathematical error"
 op_asin FlowNull = Right FlowNull
 op_asin v = Left . ERR $ "Unsupported operator <asin> on value <" <> T.pack (show v) <> ">"
 
 op_asinh :: FlowValue -> Either ERROR_TYPE FlowValue
-op_asinh (FlowInt n)     = Right $ FlowNumeral (fromFloatDigits $ (asinh :: Double -> Double) (fromIntegral n))
-op_asinh (FlowFloat n)   = Right $ FlowNumeral (fromFloatDigits $ asinh n)
-op_asinh (FlowNumeral n) = Right $ FlowNumeral (funcOnScientific (asinh :: Double -> Double) n)
+op_asinh (FlowInt n)     = Right $ FlowFloat (asinh $ fromIntegral n)
+op_asinh (FlowFloat n)   = Right $ FlowFloat (asinh n)
 op_asinh FlowNull        = Right FlowNull
 op_asinh v = Left . ERR $ "Unsupported operator <asinh> on value <" <> T.pack (show v) <> ">"
 
 op_cos :: FlowValue -> Either ERROR_TYPE FlowValue
-op_cos (FlowInt n)     = Right $ FlowNumeral (fromFloatDigits $ (cos :: Double -> Double) (fromIntegral n))
-op_cos (FlowFloat n)   = Right $ FlowNumeral (fromFloatDigits $ cos n)
-op_cos (FlowNumeral n) = Right $ FlowNumeral (funcOnScientific (cos :: Double -> Double) n)
+op_cos (FlowInt n)     = Right $ FlowFloat (cos $ fromIntegral n)
+op_cos (FlowFloat n)   = Right $ FlowFloat (cos n)
 op_cos FlowNull        = Right FlowNull
 op_cos v = Left . ERR $ "Unsupported operator <cos> on value <" <> T.pack (show v) <> ">"
 
 op_cosh :: FlowValue -> Either ERROR_TYPE FlowValue
-op_cosh (FlowInt n)     = Right $ FlowNumeral (fromFloatDigits $ (cosh :: Double -> Double) (fromIntegral n))
-op_cosh (FlowFloat n)   = Right $ FlowNumeral (fromFloatDigits $ cosh n)
-op_cosh (FlowNumeral n) = Right $ FlowNumeral (funcOnScientific (cosh :: Double -> Double) n)
+op_cosh (FlowInt n)     = Right $ FlowFloat (cosh $ fromIntegral n)
+op_cosh (FlowFloat n)   = Right $ FlowFloat (cosh n)
 op_cosh FlowNull        = Right FlowNull
 op_cosh v = Left . ERR $ "Unsupported operator <cosh> on value <" <> T.pack (show v) <> ">"
 
 op_acos :: FlowValue -> Either ERROR_TYPE FlowValue
 op_acos (FlowInt n)
-  | n >= (-1) && n <= 1 = Right $ FlowNumeral (fromFloatDigits $ (acos :: Double -> Double) (fromIntegral n))
+  | n >= (-1) && n <= 1 = Right $ FlowFloat (acos $ fromIntegral n)
   | otherwise = Left . ERR $ "Function <acos>: mathematical error"
 op_acos (FlowFloat n)
-  | n >= (-1) && n <= 1 = Right $ FlowNumeral (fromFloatDigits $ acos n)
-  | otherwise = Left . ERR $ "Function <acos>: mathematical error"
-op_acos (FlowNumeral n)
-  | n >= (-1) && n <= 1 = Right $ FlowNumeral (funcOnScientific (acos :: Double -> Double) n)
+  | n >= (-1) && n <= 1 = Right $ FlowFloat (acos n)
   | otherwise = Left . ERR $ "Function <acos>: mathematical error"
 op_acos FlowNull = Right FlowNull
 op_acos v = Left . ERR $ "Unsupported operator <acos> on value <" <> T.pack (show v) <> ">"
 
 op_acosh :: FlowValue -> Either ERROR_TYPE FlowValue
 op_acosh (FlowInt n)
-  | n >= 1 = Right $ FlowNumeral (fromFloatDigits $ (acosh :: Double -> Double) (fromIntegral n))
+  | n >= 1 = Right $ FlowFloat (acosh $ fromIntegral n)
   | otherwise = Left . ERR $ "Function <acosh>: mathematical error"
 op_acosh (FlowFloat n)
-  | n >= 1 = Right $ FlowNumeral (fromFloatDigits $ acosh n)
-  | otherwise = Left . ERR $ "Function <acosh>: mathematical error"
-op_acosh (FlowNumeral n)
-  | n >= 1 = Right $ FlowNumeral (funcOnScientific (acosh :: Double -> Double) n)
+  | n >= 1 = Right $ FlowFloat (acosh n)
   | otherwise = Left . ERR $ "Function <acosh>: mathematical error"
 op_acosh FlowNull = Right FlowNull
 op_acosh v = Left . ERR $ "Unsupported operator <acosh> on value <" <> T.pack (show v) <> ">"
 
 op_tan :: FlowValue -> Either ERROR_TYPE FlowValue
-op_tan (FlowInt n)     = Right $ FlowNumeral (fromFloatDigits $ (tan :: Double -> Double) (fromIntegral n))
-op_tan (FlowFloat n)   = Right $ FlowNumeral (fromFloatDigits $ tan n)
-op_tan (FlowNumeral n) = Right $ FlowNumeral (funcOnScientific (tan :: Double -> Double) n)
+op_tan (FlowInt n)     = Right $ FlowFloat (tan $ fromIntegral n)
+op_tan (FlowFloat n)   = Right $ FlowFloat (tan n)
 op_tan FlowNull        = Right FlowNull
 op_tan v = Left . ERR $ "Unsupported operator <tan> on value <" <> T.pack (show v) <> ">"
 
 op_tanh :: FlowValue -> Either ERROR_TYPE FlowValue
-op_tanh (FlowInt n)     = Right $ FlowNumeral (fromFloatDigits $ (tanh :: Double -> Double) (fromIntegral n))
-op_tanh (FlowFloat n)   = Right $ FlowNumeral (fromFloatDigits $ tanh n)
-op_tanh (FlowNumeral n) = Right $ FlowNumeral (funcOnScientific (tanh :: Double -> Double) n)
+op_tanh (FlowInt n)     = Right $ FlowFloat (tanh $ fromIntegral n)
+op_tanh (FlowFloat n)   = Right $ FlowFloat (tanh n)
 op_tanh FlowNull        = Right FlowNull
 op_tanh v = Left . ERR $ "Unsupported operator <tanh> on value <" <> T.pack (show v) <> ">"
 
 op_atan :: FlowValue -> Either ERROR_TYPE FlowValue
-op_atan (FlowInt n)     = Right $ FlowNumeral (fromFloatDigits $ (atan :: Double -> Double) (fromIntegral n))
-op_atan (FlowFloat n)   = Right $ FlowNumeral (fromFloatDigits $ atan n)
-op_atan (FlowNumeral n) = Right $ FlowNumeral (funcOnScientific (atan :: Double -> Double) n)
+op_atan (FlowInt n)     = Right $ FlowFloat (atan $ fromIntegral n)
+op_atan (FlowFloat n)   = Right $ FlowFloat (atan n)
 op_atan FlowNull        = Right FlowNull
 op_atan v = Left . ERR $ "Unsupported operator <atan> on value <" <> T.pack (show v) <> ">"
 
 op_atanh :: FlowValue -> Either ERROR_TYPE FlowValue
 op_atanh (FlowInt n)
-  | n > (-1) && n < 1 = Right $ FlowNumeral (fromFloatDigits $ (atanh :: Double -> Double) (fromIntegral n))
+  | n > (-1) && n < 1 = Right $ FlowFloat (atanh $ fromIntegral n)
   | otherwise = Left . ERR $ "Function <atanh>: mathematical error"
 op_atanh (FlowFloat n)
-  | n > (-1) && n < 1 = Right $ FlowNumeral (fromFloatDigits $ atanh n)
-  | otherwise = Left . ERR $ "Function <atanh>: mathematical error"
-op_atanh (FlowNumeral n)
-  | n > (-1) && n < 1 = Right $ FlowNumeral (funcOnScientific (atanh :: Double -> Double) n)
+  | n > (-1) && n < 1 = Right $ FlowFloat (atanh n)
   | otherwise = Left . ERR $ "Function <atanh>: mathematical error"
 op_atanh FlowNull = Right FlowNull
 op_atanh v = Left . ERR $ "Unsupported operator <atanh> on value <" <> T.pack (show v) <> ">"
@@ -184,35 +162,30 @@ op_atanh v = Left . ERR $ "Unsupported operator <atanh> on value <" <> T.pack (s
 op_abs :: FlowValue -> Either ERROR_TYPE FlowValue
 op_abs (FlowInt n)     = Right $ FlowInt (abs n)
 op_abs (FlowFloat n)   = Right $ FlowFloat (abs n)
-op_abs (FlowNumeral n) = Right $ FlowNumeral (funcOnScientific (abs :: Double -> Double) n)
 op_abs FlowNull        = Right FlowNull
 op_abs v = Left . ERR $ "Unsupported operator <abs> on value <" <> T.pack (show v) <> ">"
 
 op_ceil :: FlowValue -> Either ERROR_TYPE FlowValue
 op_ceil (FlowInt n)     = Right $ FlowInt n
 op_ceil (FlowFloat n)   = Right $ FlowInt (ceiling n)
-op_ceil (FlowNumeral n) = Right $ FlowInt (ceiling (toRealFloat n :: Double))
 op_ceil FlowNull        = Right FlowNull
 op_ceil v = Left . ERR $ "Unsupported operator <ceil> on value <" <> T.pack (show v) <> ">"
 
 op_floor :: FlowValue -> Either ERROR_TYPE FlowValue
 op_floor (FlowInt n)     = Right $ FlowInt n
 op_floor (FlowFloat n)   = Right $ FlowInt (floor n)
-op_floor (FlowNumeral n) = Right $ FlowInt (floor (toRealFloat n :: Double))
 op_floor FlowNull        = Right FlowNull
 op_floor v = Left . ERR $ "Unsupported operator <floor> on value <" <> T.pack (show v) <> ">"
 
 op_round :: FlowValue -> Either ERROR_TYPE FlowValue
 op_round (FlowInt n)     = Right $ FlowInt n
 op_round (FlowFloat n)   = Right $ FlowInt (round n)
-op_round (FlowNumeral n) = Right $ FlowInt (round (toRealFloat n :: Double))
 op_round FlowNull        = Right FlowNull
 op_round v = Left . ERR $ "Unsupported operator <round> on value <" <> T.pack (show v) <> ">"
 
 op_sqrt :: FlowValue -> Either ERROR_TYPE FlowValue
-op_sqrt (FlowInt n)     = Right $ FlowNumeral (fromFloatDigits $ sqrt (fromIntegral n :: Double))
-op_sqrt (FlowFloat n)   = Right $ FlowNumeral (fromFloatDigits $ sqrt n)
-op_sqrt (FlowNumeral n) = Right $ FlowNumeral (funcOnScientific (sqrt :: Double -> Double) n)
+op_sqrt (FlowInt n)     = Right $ FlowFloat (sqrt $ fromIntegral n)
+op_sqrt (FlowFloat n)   = Right $ FlowFloat (sqrt n)
 op_sqrt FlowNull        = Right FlowNull
 op_sqrt v = Left . ERR $ "Unsupported operator <sqrt> on value <" <> T.pack (show v) <> ">"
 
@@ -225,56 +198,42 @@ op_sign (FlowFloat n)
   | n > 0  = Right $ FlowInt 1
   | n == 0 = Right $ FlowInt 0
   | n < 0  = Right $ FlowInt (-1)
-op_sign (FlowNumeral n)
-  | n > 0  = Right $ FlowInt 1
-  | n == 0 = Right $ FlowInt 0
-  | n < 0  = Right $ FlowInt (-1)
 op_sign FlowNull = Right FlowNull
 op_sign v = Left . ERR $ "Unsupported operator <sign> on value <" <> T.pack (show v) <> ">"
 
 op_log :: FlowValue -> Either ERROR_TYPE FlowValue
 op_log (FlowInt n)
-  | n > 0 = Right $ FlowNumeral (fromFloatDigits $ log (fromIntegral n :: Double))
+  | n > 0 = Right $ FlowFloat (log $ fromIntegral n)
   | otherwise = Left . ERR $ "Function <log>: mathematical error"
 op_log (FlowFloat n)
-  | n > 0 = Right $ FlowNumeral (fromFloatDigits $ log n)
-  | otherwise = Left . ERR $ "Function <log>: mathematical error"
-op_log (FlowNumeral n)
-  | n > 0 = Right $ FlowNumeral (funcOnScientific (log :: Double -> Double) n)
+  | n > 0 = Right $ FlowFloat (log n)
   | otherwise = Left . ERR $ "Function <log>: mathematical error"
 op_log FlowNull = Right FlowNull
 op_log v = Left . ERR $ "Unsupported operator <log> on value <" <> T.pack (show v) <> ">"
 
 op_log2 :: FlowValue -> Either ERROR_TYPE FlowValue
 op_log2 (FlowInt n)
-  | n > 0 = Right $ FlowNumeral (fromFloatDigits $ log (fromIntegral n :: Double) / log 2)
+  | n > 0 = Right $ FlowFloat (log (fromIntegral n) / log 2)
   | otherwise = Left . ERR $ "Function <log2>: mathematical error"
 op_log2 (FlowFloat n)
-  | n > 0 = Right $ FlowNumeral (fromFloatDigits $ log n / log 2)
-  | otherwise = Left . ERR $ "Function <log2>: mathematical error"
-op_log2 (FlowNumeral n)
-  | n > 0 = Right $ FlowNumeral (fromFloatDigits $ log (toRealFloat n :: Double) / log 2)
+  | n > 0 = Right $ FlowFloat (log n / log 2)
   | otherwise = Left . ERR $ "Function <log2>: mathematical error"
 op_log2 FlowNull = Right FlowNull
 op_log2 v = Left . ERR $ "Unsupported operator <log2> on value <" <> T.pack (show v) <> ">"
 
 op_log10 :: FlowValue -> Either ERROR_TYPE FlowValue
 op_log10 (FlowInt n)
-  | n > 0 = Right $ FlowNumeral (fromFloatDigits $ log (fromIntegral n :: Double) / log 10)
+  | n > 0 = Right $ FlowFloat (log (fromIntegral n) / log 10)
   | otherwise = Left . ERR $ "Function <log10>: mathematical error"
 op_log10 (FlowFloat n)
-  | n > 0 = Right $ FlowNumeral (fromFloatDigits $ log n / log 10)
-  | otherwise = Left . ERR $ "Function <log10>: mathematical error"
-op_log10 (FlowNumeral n)
-  | n > 0 = Right $ FlowNumeral (fromFloatDigits $ log (toRealFloat n :: Double) / log 10)
+  | n > 0 = Right $ FlowFloat (log n / log 10)
   | otherwise = Left . ERR $ "Function <log10>: mathematical error"
 op_log10 FlowNull = Right FlowNull
 op_log10 v = Left . ERR $ "Unsupported operator <log10> on value <" <> T.pack (show v) <> ">"
 
 op_exp :: FlowValue -> Either ERROR_TYPE FlowValue
-op_exp (FlowInt n)     = Right $ FlowNumeral (fromFloatDigits $ exp (fromIntegral n :: Double))
-op_exp (FlowFloat n)   = Right $ FlowNumeral (fromFloatDigits $ exp n)
-op_exp (FlowNumeral n) = Right $ FlowNumeral (funcOnScientific (exp :: Double -> Double) n)
+op_exp (FlowInt n)     = Right $ FlowFloat (exp $ fromIntegral n)
+op_exp (FlowFloat n)   = Right $ FlowFloat (exp n)
 op_exp FlowNull        = Right FlowNull
 op_exp v = Left . ERR $ "Unsupported operator <exp> on value <" <> T.pack (show v) <> ">"
 
@@ -286,10 +245,6 @@ op_isFloat :: FlowValue -> Either ERROR_TYPE FlowValue
 op_isFloat (FlowFloat _) = Right $ FlowBoolean True
 op_isFloat _             = Right $ FlowBoolean False
 
-op_isNum :: FlowValue -> Either ERROR_TYPE FlowValue
-op_isNum (FlowNumeral _) = Right $ FlowBoolean True
-op_isNum _               = Right $ FlowBoolean False
-
 op_isBool :: FlowValue -> Either ERROR_TYPE FlowValue
 op_isBool (FlowBoolean _) = Right $ FlowBoolean True
 op_isBool _               = Right $ FlowBoolean False
@@ -297,10 +252,6 @@ op_isBool _               = Right $ FlowBoolean False
 op_isStr :: FlowValue -> Either ERROR_TYPE FlowValue
 op_isStr (FlowText _) = Right $ FlowBoolean True
 op_isStr _            = Right $ FlowBoolean False
-
-op_isMap :: FlowValue -> Either ERROR_TYPE FlowValue
-op_isMap (FlowMap _) = Right $ FlowBoolean True
-op_isMap _           = Right $ FlowBoolean False
 
 op_isArr :: FlowValue -> Either ERROR_TYPE FlowValue
 op_isArr (FlowArray _) = Right $ FlowBoolean True

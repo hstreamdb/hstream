@@ -9,7 +9,6 @@ import           Test.Hspec
 
 spec :: Spec
 spec = parallel $ do
-  utilsSpec
   timeIntervalSpec
 
 timeIntervalSpec :: Spec
@@ -18,8 +17,3 @@ timeIntervalSpec = describe "TimeInterval" $ do
     parserInterval "1s" `shouldBe` Right (Seconds 1)
   it "Parse 1ss should be Err" $ do
     parserInterval "1ss" `shouldSatisfy` isLeft
-
-utilsSpec :: Spec
-utilsSpec = describe "HStream.Utils" $ do
-  -- TODO
-  it "setupFatalSignalHandler" $ setupFatalSignalHandler `shouldReturn` ()

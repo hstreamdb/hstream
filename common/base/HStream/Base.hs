@@ -4,18 +4,23 @@ module HStream.Base
   , withoutPrefix
   , approxNaturalTime
   , rmTrailingZeros
+  , setupFatalSignalHandler
+
+  , module HStream.Base.Concurrent
   ) where
 
-import           Control.Monad          (unless)
-import           Data.Bits              (shiftL, shiftR, (.&.), (.|.))
-import           Data.Int               (Int64)
-import           Data.List              (stripPrefix)
-import           Data.Maybe             (fromMaybe)
-import           Data.Time.Clock        (NominalDiffTime)
-import           Data.Time.Clock.System (SystemTime (..), getSystemTime)
-import           Data.Word              (Word16, Word32, Word64)
-import           System.Random          (randomRIO)
-import           Text.Printf            (printf)
+import           Control.Monad           (unless)
+import           Data.Bits               (shiftL, shiftR, (.&.), (.|.))
+import           Data.Int                (Int64)
+import           Data.List               (stripPrefix)
+import           Data.Maybe              (fromMaybe)
+import           Data.Time.Clock         (NominalDiffTime)
+import           Data.Time.Clock.System  (SystemTime (..), getSystemTime)
+import           Data.Word               (Word16, Word32, Word64)
+import           System.Random           (randomRIO)
+import           Text.Printf             (printf)
+
+import           HStream.Base.Concurrent
 
 -- | Generate a "unique" number through a modified version of snowflake algorithm.
 --
@@ -70,3 +75,6 @@ rmTrailingZeros x
   | otherwise            = printf "%g" x
   where
     x' = floor x :: Int
+
+foreign import ccall unsafe "hs_common.h setup_fatal_signal_handler"
+  setupFatalSignalHandler :: IO ()

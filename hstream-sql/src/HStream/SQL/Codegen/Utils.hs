@@ -40,7 +40,6 @@ arrJoinPrim xs delimiterM | null xs = T.empty
     FlowNull         -> "NULL"
     FlowInt n        -> T.pack (show n)
     FlowFloat n      -> T.pack (show n)
-    FlowNumeral n    -> T.pack (show n)
     FlowBoolean b    -> T.pack (show b)
     FlowByte b       -> T.pack (show b)
     FlowText str     -> str
@@ -52,18 +51,15 @@ arrJoinPrim xs delimiterM | null xs = T.empty
       ("Operation OpArrJoin on " <> show notPrim <> " is not supported")
     ) <> delimiter
 
-strToDateGMT :: HasCallStack => T.Text -> T.Text -> Scientific
+strToDateGMT :: HasCallStack => T.Text -> T.Text -> Int
 strToDateGMT date fmt =
   let fmt' = checkTimeFmt "OpStrDate" fmt
       CTime sec = utSeconds $ parseUnixTimeGMT fmt' $ Text.encodeUtf8 date
-   in scientific (toInteger sec) 0
+   in fromIntegral sec
 
-dateToStrGMT :: Scientific -> T.Text -> T.Text
-dateToStrGMT date fmt =
-  let sec = case toBoundedInteger date of
-              Just x -> x
-              _ -> throwSQLException CodegenException Nothing "Impossible happened..."
-      time = UnixTime (CTime sec) 0
+dateToStrGMT :: Int -> T.Text -> T.Text
+dateToStrGMT sec fmt =
+  let time = UnixTime (CTime $ fromIntegral sec) 0
       fmt' = checkTimeFmt "OpDateStr" fmt
    in Text.decodeUtf8 $ formatUnixTimeGMT fmt' time
 

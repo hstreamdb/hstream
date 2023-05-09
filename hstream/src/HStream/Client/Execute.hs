@@ -30,6 +30,7 @@ import           Network.GRPC.HighLevel.Client
 import           Network.GRPC.HighLevel.Generated (withGRPCClient)
 import           System.Exit                      (exitFailure)
 
+import           HStream.Base                     (setupFatalSignalHandler)
 import           HStream.Client.Action
 import           HStream.Client.Types             (CliConnOpts (..),
                                                    HStreamCliContext (..),
@@ -42,8 +43,7 @@ import           HStream.Utils                    (Format, HStreamClientApi,
                                                    SocketAddr (..),
                                                    getServerResp,
                                                    mkGRPCClientConfWithSSL,
-                                                   serverNodeToSocketAddr,
-                                                   setupFatalSignalHandler)
+                                                   serverNodeToSocketAddr)
 
 executeShowPlan :: HStreamCliContext -> ShowObject -> IO ()
 executeShowPlan ctx showObject =

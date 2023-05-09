@@ -31,7 +31,6 @@ import qualified Z.Data.CBytes                  as CB
 castOnValue :: RDataType -> FlowValue -> Either ERROR_TYPE FlowValue
 castOnValue RTypeInteger     v = cast_integer v
 castOnValue RTypeFloat       v = cast_float v
-castOnValue RTypeNumeric     v = cast_numeric v
 castOnValue RTypeBoolean     v = cast_boolean v
 castOnValue RTypeBytea       v = cast_byte v
 castOnValue RTypeText        v = cast_text v
@@ -41,29 +40,19 @@ castOnValue RTypeTimestamp   v = cast_timestamp v
 castOnValue RTypeInterval    v = cast_interval v
 castOnValue RTypeJsonb       v = cast_json v
 castOnValue (RTypeArray t)   v = cast_array t v
-castOnValue (RTypeMap kt vt) v = cast_map kt vt v
 
 --------------------------------------------------------------------------------
 cast_integer :: FlowValue -> Either ERROR_TYPE FlowValue
 cast_integer (FlowInt n) = Right $ FlowInt n
 cast_integer (FlowFloat n) = Right $ FlowInt (floor n)
-cast_integer (FlowNumeral n) = Right $ FlowInt (floor (toRealFloat n :: Double))
 cast_integer v =
   Left . ERR $ "Can not cast value <" <> T.pack (show v) <> "> to type <Integer>"
 
 cast_float :: FlowValue -> Either ERROR_TYPE FlowValue
 cast_float (FlowInt n) = Right $ FlowFloat (fromIntegral n)
 cast_float (FlowFloat n) = Right $ FlowFloat n
-cast_float (FlowNumeral n) = Right $ FlowFloat (toRealFloat n)
 cast_float v =
   Left . ERR $ "Can not cast value <" <> T.pack (show v) <> "> to type <Float>"
-
-cast_numeric :: FlowValue -> Either ERROR_TYPE FlowValue
-cast_numeric (FlowInt n) = Right $ FlowNumeral (scientific (fromIntegral n) 0)
-cast_numeric (FlowFloat n) = Right $ FlowNumeral (fromFloatDigits n)
-cast_numeric (FlowNumeral n) = Right $ FlowNumeral n
-cast_numeric v =
-  Left . ERR $ "Can not cast value <" <> T.pack (show v) <> "> to type <Numeric>"
 
 cast_boolean :: FlowValue -> Either ERROR_TYPE FlowValue
 cast_boolean (FlowBoolean b) = Right $ FlowBoolean b
@@ -79,7 +68,6 @@ cast_text :: FlowValue -> Either ERROR_TYPE FlowValue
 cast_text FlowNull           = Right $ FlowText "NULL"
 cast_text (FlowInt n)        = Right $ FlowText (T.pack . show $ n)
 cast_text (FlowFloat n)      = Right $ FlowText (T.pack . show $ n)
-cast_text (FlowNumeral n)    = Right $ FlowText (T.pack . show $ n)
 cast_text (FlowBoolean b)    = Right $ FlowText (T.pack . show $ b)
 cast_text (FlowByte cb)      = Right $ FlowText (T.pack . show . CB.toBytes $ cb)
 cast_text (FlowText t)       = Right $ FlowText t
@@ -87,9 +75,7 @@ cast_text (FlowDate d)       = Right $ FlowText (T.pack . show $ d)
 cast_text (FlowTime t)       = Right $ FlowText (T.pack . show $ t)
 cast_text (FlowTimestamp ts) = Right $ FlowText (T.pack . show $ ts)
 cast_text (FlowInterval d)   = Right $ FlowText (T.pack . show $ d)
-cast_text (FlowJson o)       = Right $ FlowText (T.pack . show $ o)
 cast_text (FlowArray arr)    = Right $ FlowText (T.pack . show $ arr)
-cast_text (FlowMap m)        = Right $ FlowText (T.pack . show $ m)
 cast_text (FlowSubObject o)  = Right $ FlowText (T.pack . show $ o)
 
 cast_date :: FlowValue -> Either ERROR_TYPE FlowValue
@@ -123,14 +109,11 @@ cast_interval (FlowInt n) =
 cast_interval (FlowFloat n) =
   let cd = CalendarDiffTime{ ctMonths = 0, ctTime = realToFrac n }
    in Right $ FlowInterval cd
-cast_interval (FlowNumeral n) =
-  let cd = CalendarDiffTime{ ctMonths = 0, ctTime = fromRational . toRational $ n }
-   in Right $ FlowInterval cd
 cast_interval v =
   Left . ERR $ "Can not cast value <" <> T.pack (show v) <> "> to type <Interval>"
 
 cast_json :: FlowValue -> Either ERROR_TYPE FlowValue
-cast_json (FlowJson o) = Right $ FlowJson o
+cast_json (FlowSubObject o) = Right $ FlowSubObject o
 cast_json v =
   Left . ERR $ "Can not cast value <" <> T.pack (show v) <> "> to type <Jsonb>"
 
@@ -140,12 +123,3 @@ cast_array typ (FlowArray vs) = do
   Right $ FlowArray vs'
 cast_array typ v =
   Left . ERR $ "Can not cast value <" <> T.pack (show v) <> "> to type <[" <> T.pack (show typ) <> "]>"
-
-cast_map :: RDataType -> RDataType -> FlowValue -> Either ERROR_TYPE FlowValue
-cast_map kt vt (FlowMap m) = do
-  let (ks,vs) = unzip $ Map.toList m
-  ks' <- mapM (castOnValue kt) ks
-  vs' <- mapM (castOnValue vt) vs
-  Right . FlowMap $ Map.fromList (zip ks' vs')
-cast_map kt vt v =
-  Left . ERR $ "Can not cast value <" <> T.pack (show v) <> "> to type Map[" <> T.pack (show kt) <> "=>" <> T.pack (show vt) <> "]"

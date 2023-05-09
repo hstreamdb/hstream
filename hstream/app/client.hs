@@ -31,6 +31,7 @@ import           Text.RawString.QQ                (r)
 
 import qualified HStream.Admin.Server.Command     as Admin
 import           HStream.Admin.Server.Types       (StreamCommand (..))
+import           HStream.Base                     (setupFatalSignalHandler)
 import           HStream.Client.Action            (createSubscription',
                                                    deleteStream,
                                                    deleteSubscription,
@@ -66,8 +67,7 @@ import           HStream.Utils                    (ResourceType (..),
                                                    fillWithJsonString',
                                                    formatResult,
                                                    mkGRPCClientConfWithSSL,
-                                                   pattern EnumPB,
-                                                   setupFatalSignalHandler)
+                                                   pattern EnumPB)
 import qualified HStream.Utils.Aeson              as AesonComp
 
 main :: IO ()
