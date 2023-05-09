@@ -15,11 +15,8 @@ BNFC = bnfc
 PROTO_COMPILE = protoc
 PROTO_COMPILE_HS = ~/.cabal/bin/compile-proto-file_hstream
 
-ifeq ($(shell test -e /etc/NIXOS; echo $$?), 1)
-	PROTO_CPP_PLUGIN ?= /usr/local/bin/grpc_cpp_plugin
-else
-	PROTO_CPP_PLUGIN ?= $(shell which grpc_cpp_plugin 2>/dev/null)
-endif
+PROTO_CPP_PLUGIN ?= /usr/local/bin/grpc_cpp_plugin
+PROTOC_INCLUDE_DIR ?= /usr/local/include
 
 THRIFT_COMPILE = thrift-compiler
 thrift::
@@ -41,20 +38,20 @@ grpc-hs-deps::
 
 grpc-hs: grpc-hs-deps
 	($(PROTO_COMPILE_HS) \
-		--includeDir /usr/local/include \
+		--includeDir $(PROTOC_INCLUDE_DIR) \
 		--proto google/protobuf/struct.proto \
 		--out common/api/gen-hs)
 	($(PROTO_COMPILE_HS) \
-		--includeDir /usr/local/include \
+		--includeDir $(PROTOC_INCLUDE_DIR) \
 		--proto google/protobuf/empty.proto \
 		--out common/api/gen-hs)
 	(cd common/api/protos && $(PROTO_COMPILE_HS) \
-		--includeDir /usr/local/include \
+		--includeDir $(PROTOC_INCLUDE_DIR) \
 		--includeDir . \
 		--proto HStream/Server/HStreamApi.proto \
 		--out ../gen-hs)
 	(cd common/api/protos && $(PROTO_COMPILE_HS) \
-		--includeDir /usr/local/include \
+		--includeDir $(PROTOC_INCLUDE_DIR) \
 		--includeDir . \
 		--proto HStream/Server/HStreamInternal.proto \
 		--out ../gen-hs)
