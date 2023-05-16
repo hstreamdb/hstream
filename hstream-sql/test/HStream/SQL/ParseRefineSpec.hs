@@ -73,3 +73,22 @@ spec = describe "Create" $ do
     parseAndRefine "DROP STREAM foo IF EXISTS;"    `shouldReturn` RQDrop (RDropIf RDropStream    "foo")
     parseAndRefine "DROP VIEW foo;"                `shouldReturn` RQDrop (RDrop   RDropView      "foo")
     parseAndRefine "DROP VIEW foo IF EXISTS;"      `shouldReturn` RQDrop (RDropIf RDropView      "foo")
+
+  it "HS-3148" $ do
+    let ret0 = RQPushSelect (RSelect (RSel [RSelectItemProject (RExprAccessJson "c->>\"season_id\"" JOpLongArrow (RExprCol "c" Nothing "c") (RExprConst "\"season_id\"" (ConstantText "season_id"))) Nothing]) (RFrom (RTableRefSimple "production_changes" Nothing)) RWhereEmpty RGroupByEmpty RHavingEmpty)
+    parseAndRefine "select c->> \"season_id\" from production_changes EMIT CHANGES;"  `shouldReturn` ret0
+    parseAndRefine "select c ->> \"season_id\" from production_changes EMIT CHANGES;" `shouldReturn` ret0
+    parseAndRefine "select c->>\"season_id\" from production_changes EMIT CHANGES;"   `shouldReturn` ret0
+    parseAndRefine "select c->> \"season_id\" from production_changes EMIT CHANGES;"  `shouldReturn` ret0
+
+    let ret1 = RQPushSelect (RSelect (RSel [RSelectItemProject (RExprAccessJson "c->\"season_id\"" JOpArrow (RExprCol "c" Nothing "c") (RExprConst "\"season_id\"" (ConstantText "season_id"))) Nothing]) (RFrom (RTableRefSimple "production_changes" Nothing)) RWhereEmpty RGroupByEmpty RHavingEmpty)
+    parseAndRefine "select c ->\"season_id\" from production_changes EMIT CHANGES;"  `shouldReturn` ret1
+    parseAndRefine "select c -> \"season_id\" from production_changes EMIT CHANGES;" `shouldReturn` ret1
+    parseAndRefine "select c->\"season_id\" from production_changes EMIT CHANGES;"   `shouldReturn` ret1
+    parseAndRefine "select c-> \"season_id\" from production_changes EMIT CHANGES;"  `shouldReturn` ret1
+
+  it "HS-3332" $ do
+    parseAndRefine "select a-b, a, b from s emit changes;" `shouldReturn` RQPushSelect (RSelect (RSel [RSelectItemProject (RExprBinOp "a-b" OpSub (RExprCol "a" Nothing "a") (RExprCol "b" Nothing "b")) Nothing,RSelectItemProject (RExprCol "a" Nothing "a") Nothing,RSelectItemProject (RExprCol "b" Nothing "b") Nothing]) (RFrom (RTableRefSimple "s" Nothing)) RWhereEmpty RGroupByEmpty RHavingEmpty)
+    let ret2 = RQPushSelect (RSelect (RSel [RSelectItemProject (RExprBinOp "a-b" OpSub (RExprCol "a" Nothing "a") (RExprCol "b" Nothing "b")) Nothing]) (RFrom (RTableRefSimple "s" Nothing)) RWhereEmpty RGroupByEmpty RHavingEmpty)
+    parseAndRefine "select a-b from s emit changes;"   `shouldReturn` ret2
+    parseAndRefine "select a - b from s emit changes;" `shouldReturn` ret2

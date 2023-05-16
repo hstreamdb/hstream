@@ -26,12 +26,12 @@ extractPNDouble (IPDouble _ n) = n
 extractPNDouble (NDouble  _ n) = (-n)
 
 extractColumnIdent :: ColumnIdent -> Text
-extractColumnIdent (ColumnIdentNormal _ (HyphenIdent text)) = text
+extractColumnIdent (ColumnIdentNormal _ (Ident text)) = text
 extractColumnIdent (ColumnIdentRaw _ (QuotedRaw text')) =
   Text.tail . Text.init $ text'
 
 extractHIdent :: HIdent -> Text
-extractHIdent (HIdentNormal _ (HyphenIdent text)) = text
+extractHIdent (HIdentNormal _ (Ident text)) = text
 extractHIdent (HIdentRaw _ (QuotedRaw text')) =
   Text.tail . Text.init $ text'
 

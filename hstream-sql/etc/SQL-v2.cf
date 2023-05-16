@@ -12,14 +12,13 @@ PDouble.  PNDouble ::= "+" Double ;
 IPDouble. PNDouble ::=     Double ;
 NDouble.  PNDouble ::= "-" Double ;
 
-token HyphenIdent letter (letter | digit | '_' | '\'' | '-')* ;
 token SString '\'' char+ '\'' ;
 token QuotedRaw '`' (char - ["`"])+ '`' ;
 
-ColumnIdentNormal. ColumnIdent ::= HyphenIdent ;
-ColumnIdentRaw.    ColumnIdent ::= QuotedRaw;
+ColumnIdentNormal. ColumnIdent ::= Ident     ;
+ColumnIdentRaw.    ColumnIdent ::= QuotedRaw ;
 
-HIdentNormal. HIdent ::= HyphenIdent ;
+HIdentNormal. HIdent ::= Ident     ;
 HIdentRaw.    HIdent ::= QuotedRaw ;
 --------------------------------------------------------------------------------
 
