@@ -411,7 +411,7 @@ serverHistogramAdd (StatsHolder holder) label val =
 -- NOTE: Input percentiles must be sorted and in valid range [0.0, 1.0].
 serverHistogramEstimatePercentiles
   :: StatsHolder -> ServerHistogramLabel -> [Double] -> IO [Int64]
-serverHistogramEstimatePercentiles (StatsHolder holder) label [] = pure []
+serverHistogramEstimatePercentiles _ _ [] = pure []
 serverHistogramEstimatePercentiles (StatsHolder holder) label ps =
   withForeignPtr holder $ \holder' ->
   withCBytesUnsafe (packServerHistogramLabel label) $ \label' -> do
