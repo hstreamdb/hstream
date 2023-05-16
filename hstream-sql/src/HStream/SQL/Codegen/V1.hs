@@ -458,34 +458,40 @@ relationExprToGraph relation builder = case relation of
 data SinkConfigType = SinkConfigType StreamName (HS.StreamSinkConfig K V Ser)
                     | SinkConfigTypeWithWindow StreamName (HS.StreamSinkConfig (TimeWindowKey K) V Ser)
 
-genStreamSinkConfig :: Maybe StreamName -> RGroupBy -> IO SinkConfigType
-genStreamSinkConfig sinkStream' grp = do
+genStreamSinkConfig :: Maybe StreamName -> RelationExpr -> IO SinkConfigType
+genStreamSinkConfig sinkStream' relationExpr = do
   stream <- maybe genRandomSinkStream return sinkStream'
-  case grp of
-    RGroupBy _ (Just (Tumbling i)) ->
-      return $ SinkConfigTypeWithWindow stream HS.StreamSinkConfig
-      { sicStreamName = stream
-      , sicKeySerde = timeWindowKeySerde flowObjectSerde (timeWindowSerde $ calendarDiffTimeToMs i) (calendarDiffTimeToMs i)
-      , sicValueSerde = flowObjectSerde
-      }
-    RGroupBy _ (Just (Hopping i _)) ->
-      return $ SinkConfigTypeWithWindow stream HS.StreamSinkConfig
-      { sicStreamName = stream
-      , sicKeySerde = timeWindowKeySerde flowObjectSerde (timeWindowSerde $ calendarDiffTimeToMs i) (calendarDiffTimeToMs i)
-      , sicValueSerde = flowObjectSerde
-      }
-    RGroupBy _ (Just (Session i)) ->
-      return $ SinkConfigTypeWithWindow stream HS.StreamSinkConfig
-      { sicStreamName = stream
-      , sicKeySerde = sessionWindowKeySerde flowObjectSerde (timeWindowSerde $ calendarDiffTimeToMs i)
-      , sicValueSerde = flowObjectSerde
-      }
-    _ ->
-      return $ SinkConfigType stream HS.StreamSinkConfig
-      { sicStreamName  = stream
-      , sicKeySerde   = flowObjectSerde
-      , sicValueSerde = flowObjectSerde
-      }
+  let reduce_m = scanRelationExpr (\expr -> case expr of
+                                      Reduce{} -> True
+                                      _        -> False
+                                  ) relationExpr
+  case reduce_m of
+    Nothing -> return $ SinkConfigType stream HS.StreamSinkConfig
+               { sicStreamName  = stream
+               , sicKeySerde   = flowObjectSerde
+               , sicValueSerde = flowObjectSerde
+               }
+    Just (Reduce _ _ _ win_m) -> case win_m of
+      Nothing -> return $ SinkConfigType stream HS.StreamSinkConfig
+                 { sicStreamName  = stream
+                 , sicKeySerde   = flowObjectSerde
+                 , sicValueSerde = flowObjectSerde
+                 }
+      Just (Tumbling i) -> return $ SinkConfigTypeWithWindow stream HS.StreamSinkConfig
+                           { sicStreamName  = stream
+                           , sicKeySerde   = timeWindowKeySerde flowObjectSerde (timeWindowSerde $ calendarDiffTimeToMs i) (calendarDiffTimeToMs i)
+                           , sicValueSerde = flowObjectSerde
+                           }
+      Just (Hopping i _) -> return $ SinkConfigTypeWithWindow stream HS.StreamSinkConfig
+                              { sicStreamName  = stream
+                              , sicKeySerde   = timeWindowKeySerde flowObjectSerde (timeWindowSerde $ calendarDiffTimeToMs i) (calendarDiffTimeToMs i)
+                              , sicValueSerde = flowObjectSerde
+                              }
+      Just (Session i) -> return $ SinkConfigTypeWithWindow stream HS.StreamSinkConfig
+                          { sicStreamName = stream
+                          , sicKeySerde = sessionWindowKeySerde flowObjectSerde (timeWindowSerde $ calendarDiffTimeToMs i)
+                          , sicValueSerde = flowObjectSerde
+                          }
 
 genTaskName :: IO Text
 -- Please do not encode the this id to other forms,
@@ -500,10 +506,17 @@ elabRSelect :: Text
             -> Maybe StreamName
             -> RSelect
             -> IO (StreamBuilder, [StreamName], StreamName, Persist)
-elabRSelect taskName sinkStream' select@(RSelect sel frm whr grp hav) = do
-  sinkConfig           <- genStreamSinkConfig sinkStream' grp
-  builder <- newRandomText 20 >>= HS.mkStreamBuilder
-  (es,srcs,joins,mats) <- relationExprToGraph (decouple select) builder
+elabRSelect taskName sinkStream' select =
+  elabRelationExpr taskName sinkStream' (decouple select)
+
+elabRelationExpr :: Text
+                 -> Maybe StreamName
+                 -> RelationExpr
+                 -> IO (StreamBuilder, [StreamName], StreamName, Persist)
+elabRelationExpr taskName sinkStream' relationExpr = do
+  sinkConfig <- genStreamSinkConfig sinkStream' relationExpr
+  builder    <- newRandomText 20 >>= HS.mkStreamBuilder
+  (es,srcs,joins,mats) <- relationExprToGraph relationExpr builder
   case es of
     EStream1 s ->
       case sinkConfig of

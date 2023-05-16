@@ -29,7 +29,7 @@ import           Data.Maybe               (fromJust)
 import qualified Data.Scientific          as Scientific
 import           Data.Text                (Text)
 import qualified Data.Text                as Text
-import           Data.Text.Encoding       (encodeUtf8)
+import           Data.Text.Encoding       (decodeUtf8, encodeUtf8)
 import qualified Data.Time                as Time
 import           Data.Time.Compat         ()
 import           Data.Time.Format.ISO8601 (iso8601ParseM, iso8601Show)
@@ -223,7 +223,7 @@ data RDataType
   | RTypeBytea | RTypeText | RTypeDate | RTypeTime | RTypeTimestamp
   | RTypeInterval | RTypeJsonb
   | RTypeArray RDataType
-  deriving (Show, Eq, Ord)
+  deriving (Show, Eq, Ord, Generic, Aeson.ToJSON, Aeson.FromJSON)
 
 type instance RefinedType DataType = RDataType
 instance Refine DataType where
@@ -267,6 +267,14 @@ type instance RefinedType Boolean = RBool
 instance Refine Boolean where
   refine (BoolTrue _ ) = True
   refine (BoolFalse _) = False
+
+-- FIXME: FromJSON & ToJSON of ByteString...
+--        Another instance of lazy ByteString is at processing/ChangeLog.hs
+instance Aeson.FromJSON BS.ByteString where
+  parseJSON v = let pText = Aeson.parseJSON v in encodeUtf8 <$> pText
+
+instance Aeson.ToJSON BS.ByteString where
+  toJSON cb = Aeson.toJSON (decodeUtf8 cb)
 
 ------- date & time -------
 type RTimeStr = Time.TimeOfDay
@@ -389,7 +397,7 @@ data Constant = ConstantNull
               | ConstantBytea     CBytes
               | ConstantJsonb     Aeson.Object
               | ConstantArray     [Constant]
-              deriving (Show, Eq, Ord)
+              deriving (Show, Eq, Ord, Generic, Aeson.ToJSON, Aeson.FromJSON)
 
 constantToFlowValue :: Constant -> FlowValue
 constantToFlowValue constant = case constant of
@@ -406,23 +414,6 @@ constantToFlowValue constant = case constant of
   ConstantJsonb o      -> FlowSubObject (jsonObjectToFlowObject' o)
   ConstantArray arr    -> FlowArray (constantToFlowValue <$> arr)
 
-instance Aeson.ToJSONKey Constant where
-  toJSONKey = Aeson.toJSONKeyText (Text.pack . show)
-
-instance Aeson.ToJSON Constant where
-  toJSON ConstantNull          = Aeson.Null
-  toJSON (ConstantInt       v) = Aeson.toJSON v
-  toJSON (ConstantFloat     v) = Aeson.toJSON v
-  toJSON (ConstantText      v) = Aeson.toJSON v
-  toJSON (ConstantBoolean   v) = Aeson.toJSON v
-  toJSON (ConstantDate      v) = Aeson.toJSON v
-  toJSON (ConstantTime      v) = Aeson.toJSON v
-  toJSON (ConstantTimestamp v) = Aeson.toJSON v
-  toJSON (ConstantInterval  v) = Aeson.toJSON v
-  toJSON (ConstantBytea     v) = Aeson.toJSON v
-  toJSON (ConstantJsonb     v) = Aeson.toJSON v
-  toJSON (ConstantArray     v) = Aeson.toJSON v
-
 data BinaryOp = OpAnd | OpOr
               | OpEQ | OpNEQ | OpLT | OpGT | OpLEQ | OpGEQ
               | OpAdd | OpSub | OpMul
@@ -430,7 +421,7 @@ data BinaryOp = OpAnd | OpOr
               | OpIfNull  | OpNullIf  | OpDateStr   | OpStrDate
               | OpSplit   | OpChunksOf
               | OpTake    | OpTakeEnd | OpDrop      | OpDropEnd
-              deriving (Eq, Show, Ord)
+              deriving (Eq, Show, Ord, Generic, Aeson.ToJSON, Aeson.FromJSON)
 
 data UnaryOp  = OpSin      | OpSinh    | OpAsin   | OpAsinh  | OpCos   | OpCosh
               | OpAcos     | OpAcosh   | OpTan    | OpTanh   | OpAtan  | OpAtanh
@@ -442,26 +433,26 @@ data UnaryOp  = OpSin      | OpSinh    | OpAsin   | OpAsinh  | OpCos   | OpCosh
               | OpToLower  | OpToUpper | OpTrim   | OpLTrim  | OpRTrim
               | OpReverse  | OpStrLen
               | OpDistinct | OpArrJoin | OpLength | OpArrMax | OpArrMin | OpSort
-              deriving (Eq, Show, Ord)
+              deriving (Eq, Show, Ord, Generic, Aeson.ToJSON, Aeson.FromJSON)
 
 data JsonOp
   = JOpArrow -- json -> text = value
   | JOpLongArrow -- json ->> text = text
   | JOpHashArrow -- json #> array[text/int] = value
   | JOpHashLongArrow -- json #>> array[text/int] = text
-  deriving (Eq, Show, Ord)
+  deriving (Eq, Show, Ord, Generic, Aeson.ToJSON, Aeson.FromJSON)
 
 data Aggregate expr = Nullary NullaryAggregate
                     | Unary   UnaryAggregate  expr
                     | Binary  BinaryAggregate expr expr
-                    deriving (Eq)
+                    deriving (Eq, Generic, Aeson.ToJSON, Aeson.FromJSON)
 instance (HasName expr) => Show (Aggregate expr) where
   show agg = case agg of
     Nullary nullary     -> show nullary
     Unary unary expr    -> show unary  <> "(" <> getName expr <> ")"
     Binary binary e1 e2 -> show binary <> "(" <> getName e1 <> ", " <> getName e2 <> ")"
 
-data NullaryAggregate = AggCountAll deriving (Eq)
+data NullaryAggregate = AggCountAll deriving (Eq, Generic, Aeson.ToJSON, Aeson.FromJSON)
 instance Show NullaryAggregate where
   show AggCountAll = "COUNT(*)"
 
@@ -470,7 +461,7 @@ data UnaryAggregate   = AggCount
                       | AggSum
                       | AggMax
                       | AggMin
-                      deriving (Eq)
+                      deriving (Eq, Generic, Aeson.ToJSON, Aeson.FromJSON)
 instance Show UnaryAggregate where
   show agg = case agg of
     AggCount -> "COUNT"
@@ -479,7 +470,7 @@ instance Show UnaryAggregate where
     AggMax   -> "MAX"
     AggMin   -> "MIN"
 
-data BinaryAggregate = AggTopK | AggTopKDistinct deriving (Eq)
+data BinaryAggregate = AggTopK | AggTopKDistinct deriving (Eq, Generic, Aeson.ToJSON, Aeson.FromJSON)
 instance Show BinaryAggregate where
   show agg = case agg of
     AggTopK         -> "TOPK"
@@ -488,7 +479,7 @@ instance Show BinaryAggregate where
 data RArrayAccessRhs
   = RArrayAccessRhsIndex Int
   | RArrayAccessRhsRange (Maybe Int) (Maybe Int)
-  deriving (Eq, Ord)
+  deriving (Eq, Ord, Generic, Aeson.ToJSON, Aeson.FromJSON)
 instance Show RArrayAccessRhs where
   show (RArrayAccessRhsIndex n) = "[" <> show n <> "]"
   show (RArrayAccessRhsRange l_m r_m) =
@@ -521,7 +512,7 @@ data RValueExpr = RExprCast        ExprName RValueExpr RDataType
                 | RExprBinOp       ExprName BinaryOp RValueExpr RValueExpr
                 | RExprUnaryOp     ExprName UnaryOp  RValueExpr
                 -- | RExprSubquery    ExprName RSelect
-                deriving (Show, Eq)
+                deriving (Show, Eq, Generic, Aeson.ToJSON, Aeson.FromJSON)
 -- FIXME:
 instance Ord RValueExpr where
   e1 `compare` e2 = show e1 `compare` show e2
@@ -664,7 +655,7 @@ data RSelectItem
   = RSelectItemProject RValueExpr (Maybe SelectItemAlias)
   | RSelectProjectQualifiedAll StreamName
   | RSelectProjectAll
-  deriving (Show, Eq)
+  deriving (Show, Eq, Generic, Aeson.ToJSON, Aeson.FromJSON)
 
 type instance RefinedType SelectItem = RSelectItem
 instance Refine SelectItem where
@@ -675,7 +666,7 @@ instance Refine SelectItem where
     SelectItemExprWithAlias _ expr colIdent ->
       RSelectItemProject (refine expr) (Just $ refine colIdent)
 
-newtype RSel = RSel [RSelectItem] deriving (Show, Eq)
+newtype RSel = RSel [RSelectItem] deriving (Show, Eq, Generic, Aeson.ToJSON, Aeson.FromJSON)
 type instance RefinedType Sel = RSel
 instance Refine Sel where
   refine (DSel _ items) = RSel (refine <$> items)
@@ -689,7 +680,7 @@ data WindowType
 #else
   | Session  RInterval
 #endif
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Aeson.ToJSON, Aeson.FromJSON)
 
 #ifdef HStreamUseV2Engine
 data RTableRef = RTableRefSimple StreamName (Maybe StreamName)
@@ -708,7 +699,7 @@ data RTableRef = RTableRefSimple StreamName (Maybe StreamName)
                | RTableRefJoinOn RTableRef RJoinType RTableRef RValueExpr RInterval
                | RTableRefJoinUsing RTableRef RJoinType RTableRef [Text] RInterval
 #endif
-               deriving (Show, Eq)
+               deriving (Show, Eq, Generic, Aeson.ToJSON, Aeson.FromJSON)
 #ifdef HStreamUseV2Engine
 setRTableRefAlias :: RTableRef -> StreamName -> RTableRef
 setRTableRefAlias ref alias = case ref of
@@ -728,7 +719,7 @@ setRTableRefAlias ref alias = case ref of
 #endif
 
 data RJoinType = InnerJoin | LeftJoin | RightJoin | FullJoin
-               deriving (Eq, Show)
+               deriving (Eq, Show, Generic, Aeson.ToJSON, Aeson.FromJSON)
 type instance RefinedType JoinTypeWithCond = RJoinType
 instance Refine JoinTypeWithCond where
   refine joinType = case joinType of
@@ -776,12 +767,12 @@ instance Refine TableRef where
 #endif
 
 #ifdef HStreamUseV2Engine
-newtype RFrom = RFrom [RTableRef] deriving (Show, Eq)
+newtype RFrom = RFrom [RTableRef] deriving (Show, Eq, Generic, Aeson.ToJSON, Aeson.FromJSON)
 type instance RefinedType From = RFrom
 instance Refine From where
   refine (DFrom _ refs) = RFrom (refine <$> refs)
 #else
-newtype RFrom = RFrom RTableRef deriving (Show, Eq)
+newtype RFrom = RFrom RTableRef deriving (Show, Eq, Generic, Aeson.ToJSON, Aeson.FromJSON)
 type instance RefinedType From = RFrom
 instance Refine From where
   refine (DFrom _ ref) = RFrom (refine ref)
@@ -790,7 +781,7 @@ instance Refine From where
 ---- Whr
 data RWhere = RWhereEmpty
             | RWhere RValueExpr
-            deriving (Show, Eq)
+            deriving (Show, Eq, Generic, Aeson.ToJSON, Aeson.FromJSON)
 type instance RefinedType Where = RWhere
 instance Refine Where where
   refine (DWhereEmpty _) = RWhereEmpty
@@ -800,7 +791,7 @@ instance Refine Where where
 #ifdef HStreamUseV2Engine
 data RGroupBy = RGroupByEmpty
               | RGroupBy [(Maybe StreamName, FieldName)]
-              deriving (Eq, Show)
+              deriving (Eq, Show, Generic, Aeson.ToJSON, Aeson.FromJSON)
 type instance RefinedType GroupBy = RGroupBy
 instance Refine GroupBy where
   refine (DGroupByEmpty _) = RGroupByEmpty
@@ -811,7 +802,7 @@ instance Refine GroupBy where
 
 data RGroupBy = RGroupByEmpty
               | RGroupBy [(Maybe StreamName, FieldName)] (Maybe WindowType)
-              deriving (Eq, Show)
+              deriving (Eq, Show, Generic, Aeson.ToJSON, Aeson.FromJSON)
 type instance RefinedType GroupBy = RGroupBy
 instance Refine GroupBy where
   refine (DGroupByEmpty _) = RGroupByEmpty
@@ -827,7 +818,7 @@ instance Refine GroupBy where
 ---- Hav
 data RHaving = RHavingEmpty
              | RHaving RValueExpr
-             deriving (Show, Eq)
+             deriving (Show, Eq, Generic, Aeson.ToJSON, Aeson.FromJSON)
 type instance RefinedType Having = RHaving
 instance Refine Having where
   refine (DHavingEmpty _) = RHavingEmpty
@@ -835,7 +826,8 @@ instance Refine Having where
 
 ---- SELECT
 
-data RSelect = RSelect RSel RFrom RWhere RGroupBy RHaving deriving (Show, Eq)
+data RSelect = RSelect RSel RFrom RWhere RGroupBy RHaving
+             deriving (Show, Eq, Generic, Aeson.ToJSON, Aeson.FromJSON)
 type instance RefinedType Select = RSelect
 #ifdef HStreamUseV2Engine
 instance Refine Select where
@@ -866,7 +858,7 @@ instance Refine Explain where
 data RStreamOptions = RStreamOptions
   { rRepFactor       :: Int
   , rBacklogDuration :: Word32
-  } deriving (Eq, Show)
+  } deriving (Eq, Show, Generic, Aeson.ToJSON, Aeson.FromJSON)
 
 instance Default RStreamOptions where
   def = RStreamOptions
@@ -875,14 +867,14 @@ instance Default RStreamOptions where
       }
 
 newtype RConnectorOptions = RConnectorOptions (HM.HashMap Text Aeson.Value)
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Aeson.ToJSON, Aeson.FromJSON)
 
 data RCreate = RCreate   Text RStreamOptions
              | RCreateAs Text RSelect RStreamOptions
              -- RCreateConnector <SOURCE|SINK> <Name> <Target> <EXISTS> <OPTIONS>
              | RCreateConnector Text Text Text Bool RConnectorOptions
              | RCreateView Text RSelect
-             deriving (Show)
+             deriving (Show, Generic, Aeson.ToJSON, Aeson.FromJSON)
 
 type instance RefinedType [StreamOption] = RStreamOptions
 instance Refine [StreamOption] where
@@ -931,7 +923,7 @@ instance Refine Create where
 data RInsert = RInsert Text [(FieldName,Constant)]
              | RInsertBinary Text BS.ByteString
              | RInsertJSON   Text BS.ByteString
-             deriving (Show)
+             deriving (Show, Generic, Aeson.ToJSON, Aeson.FromJSON)
 type instance RefinedType Insert = RInsert
 instance Refine Insert where
   refine (DInsert _ s fields exprs) = RInsert (refine s) $
@@ -945,7 +937,7 @@ instance Refine Insert where
 ---- SHOW
 data RShow
   = RShow RShowOption
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Aeson.ToJSON, Aeson.FromJSON)
 instance Refine ShowQ where
   refine (DShow _ showOp) = RShow (refine showOp)
 type instance RefinedType ShowQ = RShow
@@ -955,7 +947,7 @@ data RShowOption
   | RShowQueries
   | RShowConnectors
   | RShowViews
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Aeson.ToJSON, Aeson.FromJSON)
 instance Refine ShowOption where
   refine (ShowStreams _)    = RShowStreams
   refine (ShowQueries _)    = RShowQueries
@@ -967,7 +959,7 @@ type instance RefinedType ShowOption = RShowOption
 data RDrop
   = RDrop   RDropOption Text
   | RDropIf RDropOption Text
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Aeson.ToJSON, Aeson.FromJSON)
 instance Refine Drop where
   refine (DDrop  _ dropOp x) = RDrop   (refine dropOp) (refine x)
   refine (DropIf _ dropOp x) = RDropIf (refine dropOp) (refine x)
@@ -978,7 +970,7 @@ data RDropOption
   | RDropStream
   | RDropView
   | RDropQuery
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Aeson.ToJSON, Aeson.FromJSON)
 
 instance Refine DropOption where
   refine (DropConnector _) = RDropConnector
@@ -990,7 +982,7 @@ type instance RefinedType DropOption = RDropOption
 ---- Terminate
 data RTerminate
   = RTerminateQuery Text
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Aeson.ToJSON, Aeson.FromJSON)
 instance Refine Terminate where
   refine (TerminateQuery _ x) = RTerminateQuery (refine x)
 type instance RefinedType Terminate = RTerminate
@@ -999,7 +991,7 @@ type instance RefinedType Terminate = RTerminate
 data RPause
   = RPauseConnector Text
   | RPauseQuery Text
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Aeson.ToJSON, Aeson.FromJSON)
 
 type instance RefinedType Pause = RPause
 
@@ -1011,7 +1003,7 @@ instance Refine Pause where
 data RResume
   = RResumeConnector Text
   | RResumeQuery Text
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Aeson.ToJSON, Aeson.FromJSON)
 
 type instance RefinedType Resume = RResume
 
@@ -1030,7 +1022,7 @@ data RSQL = RQSelect      RSelect
           | RQExplain     RExplain
           | RQPause       RPause
           | RQResume      RResume
-          deriving (Show)
+          deriving (Show, Generic, Aeson.FromJSON, Aeson.ToJSON)
 type instance RefinedType SQL = RSQL
 instance Refine SQL where
   refine (QSelect     _ select)  =  RQSelect      (refine   select)
