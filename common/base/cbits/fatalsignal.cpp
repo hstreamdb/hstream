@@ -135,7 +135,7 @@ static void handle_fatal_signal(int sig) {
   }
 
   if (s_index == 0) {
-    safe_print("handle_fatal_signal(): No rocksdb caches found.\n");
+    // safe_print("handle_fatal_signal(): No rocksdb caches found.\n");
     munmap((void*)sarray, SEGMAP_SIZE);
     raise(SIGTRAP);
     return;
