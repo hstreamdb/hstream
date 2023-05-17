@@ -58,14 +58,14 @@ instance Validate PNDouble where
 instance Validate SString where
   validate = return
 
-instance Validate HyphenIdent where
+instance Validate Ident where
   validate = return
 
 instance Validate QuotedRaw where
   validate = return
 
 instance Validate HIdent where
-  validate ident@(HIdentNormal pos (HyphenIdent text)) = do
+  validate ident@(HIdentNormal pos (Ident text)) = do
     unless (Text.length text <= maxIdentifierLength) (Left $ buildSQLException ParseException pos ("The length of an identifier should be equal to or less than " <> show maxIdentifierLength))
     return ident
   validate ident@(HIdentRaw pos (QuotedRaw text')) = do
@@ -83,7 +83,7 @@ instance Validate HIdent where
                    ) True (Text.tail ts)
 
 instance Validate ColumnIdent where
-  validate ident@(ColumnIdentNormal pos (HyphenIdent text)) = do
+  validate ident@(ColumnIdentNormal pos (Ident text)) = do
     unless (Text.length text <= maxIdentifierLength) (Left $ buildSQLException ParseException pos ("The length of an identifier should be equal to or less than " <> show maxIdentifierLength))
     return ident
   validate ident@(ColumnIdentRaw pos (QuotedRaw text')) = do

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -e
 
 IMAGE=${IMAGE:-"docker.io/hstreamdb/haskell"}
