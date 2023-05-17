@@ -210,8 +210,8 @@ type family BTK (b :: Bool) (k :: *) where
   BTK 'True  k = TimeWindowKey k
 
 data SK (b :: Bool) where
-  SK  :: SK False
-  SKT :: SK True
+  SK  :: SK 'False
+  SKT :: SK 'True
 
 withEStreamM :: Monad m => EStream -> SK b -> (Stream K V Ser -> m (Stream (BTK b K) V Ser)) -> (Stream (TimeWindowKey K) V Ser -> m (Stream (BTK b (TimeWindowKey K)) V Ser)) -> m EStream
 withEStreamM (EStream1 s) SK f1 f2 = do
