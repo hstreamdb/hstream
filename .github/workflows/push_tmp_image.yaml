@@ -1,0 +1,14 @@
+name: push_tmp_image
+
+on:
+  workflow_run:
+    workflows: ["pre_build"]
+    types:
+      - completed
+
+jobs:
+  push:
+    name: push_tmp_image
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "xxxxxxxxx"

@@ -1,0 +1,26 @@
+name: pre_build
+
+on:
+  push:
+    branches: [main, master]
+
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  pre-build:
+    runs-on: ubuntu-latest
+    name: prepare pre-build environment for tests
+    outputs:
+      ghc: ${{ steps.parser.outputs.ghc }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: "recursive"
+
+      - id: parser
+        run: |
+          pkgcabal="hstream/hstream.cabal"
+          GHCS=$(cat ${pkgcabal} | grep tested-with | python3 -c 'import sys, re, json; print(re.findall(r"(\d+\.\d+\.\d+)", sys.stdin.read()))')
+          echo "Set ghc versions: $GHCS..."
+          echo "ghc=$GHCS" >> $GITHUB_OUTPUT

@@ -6,6 +6,7 @@ on:
 
   pull_request:
     branches: [main, master]
+    types: [opened, reopened, synchronize, labeled]
 
 env:
   NEW_HSTREAM_IMAGE: new_hstream_image
@@ -13,6 +14,7 @@ env:
 jobs:
   pre-build:
     runs-on: ubuntu-latest
+    if: false
     name: prepare pre-build environment for tests
     outputs:
       ghc: ${{ steps.parser.outputs.ghc }}
@@ -247,6 +249,40 @@ jobs:
           name: image-testing-${{ matrix.ghc }}
           path: ~/data/new_hstream_image.tar
           retention-days: 2
+
+  push-test-image:
+    needs: [pre-build, build-and-test]
+    if: contains(github.event.pull_request.labels.*.name, 'pr-push-tmp-image')
+    runs-on: ubuntu-latest
+    name: push-test-image-${{ matrix.ghc }}
+    strategy:
+      fail-fast: false
+      matrix:
+        ghc: ${{ fromJson(needs.pre-build.outputs.ghc) }}
+    steps:
+      - name: retrieve saved docker image
+        uses: actions/download-artifact@v3
+        with:
+          name: image-testing-${{ matrix.ghc }}
+          path: ~/data
+
+      - name: docker load
+        run: |
+          docker load -i ~/data/new_hstream_image.tar
+          docker run -t --rm $NEW_HSTREAM_IMAGE /usr/local/bin/hstream-server +RTS --info
+
+      - name: login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: push image
+        run: |
+          pull_number=$(jq --raw-output .pull_request.number "$GITHUB_EVENT_PATH")
+          tag=hstreamdb/hstream-dev:pr_$pull_number
+          docker tag $NEW_HSTREAM_IMAGE $tag
+          docker push $tag
 
   integration-tests:
     needs: [pre-build, build-and-test]
