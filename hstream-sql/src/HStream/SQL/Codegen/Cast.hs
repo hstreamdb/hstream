@@ -83,10 +83,12 @@ showTypeOfFlowValue = \case
 --------------------------------------------------------------------------------
 castToInteger :: FlowValue -> Either ERROR_TYPE FlowValue
 castToInteger x =
-  let mkOk :: Int -> Either ERROR_TYPE FlowValue
+  let typName :: T.Text
+      typName = "Integer"
+      mkOk :: Int -> Either ERROR_TYPE FlowValue
       mkOk = Right . FlowInt
       mkErr :: Either ERROR_TYPE FlowValue
-      mkErr = mkCanNotCastErr x "Integer"
+      mkErr = mkCanNotCastErr x typName
   in case x of
     FlowInt x     -> mkOk x
     FlowFloat x   -> mkOk $ floor x
@@ -94,16 +96,18 @@ castToInteger x =
       True  -> 1
       False -> 0
     FlowText x -> case readMaybe @Int $ T.unpack x of
-      Nothing -> mkErr
+      Nothing -> mkCanNotParseTextErr x typName
       Just x  -> mkOk x
     _ -> mkErr
 
 castToFloat :: FlowValue -> Either ERROR_TYPE FlowValue
 castToFloat x =
-  let mkOk :: Double -> Either ERROR_TYPE FlowValue
+  let typName :: T.Text
+      typName = "Float"
+      mkOk :: Double -> Either ERROR_TYPE FlowValue
       mkOk = Right . FlowFloat
       mkErr :: Either ERROR_TYPE FlowValue
-      mkErr = mkCanNotCastErr x "Float"
+      mkErr = mkCanNotCastErr x typName
   in case x of
     FlowInt x     -> mkOk $ fromIntegral x
     FlowFloat x   -> mkOk x
@@ -111,16 +115,18 @@ castToFloat x =
       True  -> 1.0
       False -> 0.0
     FlowText x -> case readMaybe @Double $ T.unpack x of
-      Nothing -> mkErr
+      Nothing -> mkCanNotParseTextErr x typName
       Just x  -> mkOk x
     _ -> mkErr
 
 castToBoolean :: FlowValue -> Either ERROR_TYPE FlowValue
 castToBoolean x =
-  let mkOk :: Bool -> Either ERROR_TYPE FlowValue
+  let typName :: T.Text
+      typName = "Boolean"
+      mkOk :: Bool -> Either ERROR_TYPE FlowValue
       mkOk = Right . FlowBoolean
       mkErr :: Either ERROR_TYPE FlowValue
-      mkErr = mkCanNotCastErr x "Boolean"
+      mkErr = mkCanNotCastErr x typName
   in case x of
     FlowInt   x   -> mkOk $ x /= 0
     FlowFloat x   -> mkOk $ x /= 0.0
@@ -132,7 +138,7 @@ castToBoolean x =
         "FALSE" -> mkOk False
         "T"     -> mkOk True
         "F"     -> mkOk False
-    _             -> mkErr
+        _       -> mkCanNotParseTextErr x typName
 
 castToByte :: FlowValue -> Either ERROR_TYPE FlowValue
 castToByte x =
