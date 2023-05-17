@@ -36,22 +36,36 @@ foreign import ccall unsafe "hs_stats.h stats_holder_reset"
 foreign import ccall unsafe "hs_stats.h new_aggregate_stats"
   c_new_aggregate_stats :: Ptr CStatsHolder -> IO (Ptr CStats)
 
-#define PER_X_STAT_GETALL(prefix)                                              \
-foreign import ccall unsafe "hs_stats.h prefix##getall"                        \
-  prefix##getall                                                               \
+-------------------------------------------------------------------------------
+
+----------------- PER_X_STAT Start -----------------
+#define PER_X_STAT(prefix)                                                     \
+foreign import ccall unsafe "hs_stats.h prefix##stat_getall"                   \
+  prefix##stat_getall                                                          \
     :: Ptr CStatsHolder -> BA# Word8                                           \
     -> MBA# Int                                                                \
     -> MBA# (Ptr StdString)                                                    \
     -> MBA# (Ptr Int64)                                                        \
     -> MBA# (Ptr (StdVector StdString))                                        \
     -> MBA# (Ptr (StdVector Int64))                                            \
-    -> IO CInt;
+    -> IO CInt;                                                                \
+                                                                               \
+foreign import ccall unsafe "hs_stats.h prefix##stat_erase"                    \
+  prefix##stat_erase :: Ptr CStatsHolder -> BA# Word8 -> IO Int;
 
-PER_X_STAT_GETALL(stream_stat_)
-PER_X_STAT_GETALL(subscription_stat_)
-PER_X_STAT_GETALL(connector_stat_)
-PER_X_STAT_GETALL(query_stat_)
-PER_X_STAT_GETALL(view_stat_)
+-- stream_stat_getall, stream_stat_erase
+PER_X_STAT(stream_)
+-- subscription_stat_getall, subscription_stat_erase
+PER_X_STAT(subscription_)
+-- connector__stat_getall, connector_stat_erase
+PER_X_STAT(connector_)
+-- query_stat_getall, query_stat_erase
+PER_X_STAT(query_)
+-- view_stat_getall, view_stat_erase
+PER_X_STAT(view_)
+
+#undef PER_X_STAT
+----------------- PER_X_STAT End -----------------
 
 #define PER_X_STAT_DEFINE(prefix, name) \
 foreign import ccall unsafe "hs_stats.h prefix##add_##name"                    \
