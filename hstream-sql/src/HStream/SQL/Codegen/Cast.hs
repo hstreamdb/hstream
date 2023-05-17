@@ -130,6 +130,8 @@ castToBoolean x =
       Nothing -> case T.toUpper $ T.strip x of
         "TRUE"  -> mkOk True
         "FALSE" -> mkOk False
+        "T"     -> mkOk True
+        "F"     -> mkOk False
     _             -> mkErr
 
 castToByte :: FlowValue -> Either ERROR_TYPE FlowValue
