@@ -143,7 +143,7 @@ hstreamCodegen = \case
     return $ CreateBySelectPlan srcs sink (HS.build builder) rOptions persist
   RQCreate (RCreateView view select) -> do
     tName <- genTaskName
-    (builder, srcs, sink, persist) <- elabRSelect tName (Just $ view <> "_view") select
+    (builder, srcs, sink, persist) <- elabRSelect tName (Just view) select
     return $ CreateViewPlan srcs sink view (HS.build builder) persist
   RQCreate (RCreate stream rOptions) -> return $ CreatePlan stream rOptions
   RQCreate (RCreateConnector cType cName cTarget ifNotExist (RConnectorOptions cOptions)) ->
