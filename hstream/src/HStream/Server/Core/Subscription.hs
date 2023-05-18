@@ -182,10 +182,12 @@ deleteSubscription ServerContext{..} DeleteSubscriptionRequest{ deleteSubscripti
     doRemove :: IO ()
     doRemove = do
       M.deleteMeta @SubscriptionWrap subId Nothing metaHandle
+      let !subIdCBytes = textToCBytes subId
       -- NOTE: For each CheckpointedReader we have a unique CheckpointStore(logid),
       -- so that we do not need to call: S.removeAllCheckpoints subLdCkpReader
       -- to update the checkpoints in memory.
-      S.freeSubscrCheckpointId scLDClient (textToCBytes subId)
+      S.freeSubscrCheckpointId scLDClient subIdCBytes
+      Stats.subscription_stat_erase scStatsHolder subIdCBytes
 
     getSubState :: STM (Maybe (SubscribeContext, TVar SubscribeState))
     getSubState = do

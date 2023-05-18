@@ -49,6 +49,7 @@ import qualified HStream.Server.MetaData
 import qualified HStream.Server.MetaData          as P
 import           HStream.Server.Types
 import           HStream.SQL
+import qualified HStream.Stats                    as Stats
 import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils
 import qualified HStream.Utils.Aeson              as AesonComp
@@ -226,7 +227,10 @@ deleteQuery ServerContext{..} DeleteQueryRequest{..} = do
     Just P.QueryStatus{..} -> when (queryState /= Terminated && queryState /= Aborted) $
       throwIO $ HE.QueryNotTerminated deleteQueryRequestId
   getMeta @P.QVRelation deleteQueryRequestId metaHandle >>= \case
-    Nothing               -> P.deleteQueryInfo deleteQueryRequestId metaHandle
+    Nothing -> do
+      -- do deletion
+      P.deleteQueryInfo deleteQueryRequestId metaHandle
+      Stats.connector_stat_erase scStatsHolder (textToCBytes deleteQueryRequestId)
     Just P.QVRelation{..} -> throwIO $ HE.FoundAssociatedView qvRelationViewName
 
 ----

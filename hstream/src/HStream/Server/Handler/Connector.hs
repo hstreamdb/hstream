@@ -34,6 +34,7 @@ import qualified Data.Text                        as T
 import qualified Data.UUID                        as UUID
 import qualified Data.UUID.V4                     as UUID
 import qualified Data.Vector                      as V
+import           GHC.Stack                        (HasCallStack)
 import qualified HsGrpc.Server                    as G
 import           Network.GRPC.HighLevel.Generated
 
@@ -49,6 +50,7 @@ import           HStream.Server.Exception         (catchDefaultEx,
 import           HStream.Server.HStreamApi
 import           HStream.Server.Types
 import           HStream.Server.Validation        (validateCreateConnector)
+import qualified HStream.Stats                    as Stats
 import           HStream.ThirdParty.Protobuf      (Empty (..))
 import           HStream.Utils                    (ResourceType (..),
                                                    returnResp,
@@ -137,26 +139,15 @@ deleteConnectorHandler
   :: ServerContext
   -> ServerRequest 'Normal DeleteConnectorRequest Empty
   -> IO (ServerResponse 'Normal Empty)
-deleteConnectorHandler sc@ServerContext{..}
-  (ServerNormalRequest _metadata DeleteConnectorRequest{..}) = defaultExceptionHandle $ do
-  Log.debug $ "Receive Delete Connector Request. "
-    <> "Connector Name: " <> Log.build deleteConnectorRequestName
-  validateNameAndThrow ResConnector deleteConnectorRequestName
-  ServerNode{..} <- lookupResource' sc ResConnector deleteConnectorRequestName
-  unless (serverNodeId == serverID) $
-    throwIO $ HE.WrongServer "Connector is bound to a different node"
-  IO.deleteIOTask scIOWorker deleteConnectorRequestName
-  returnResp Empty
+deleteConnectorHandler sc (ServerNormalRequest _metadata req) =
+  defaultExceptionHandle $ do
+    deleteConnector sc req
+    returnResp Empty
 
 handleDeleteConnector :: ServerContext -> G.UnaryHandler DeleteConnectorRequest Empty
-handleDeleteConnector sc@ServerContext{..} _ DeleteConnectorRequest{..} = catchDefaultEx $ do
-  Log.debug $ "Receive Delete Connector Request. "
-    <> "Connector Name: " <> Log.build deleteConnectorRequestName
-  validateNameAndThrow ResConnector deleteConnectorRequestName
-  ServerNode{..} <- lookupResource' sc ResConnector deleteConnectorRequestName
-  unless (serverNodeId == serverID) $
-    throwIO $ HE.WrongServer "Connector is bound to a different node"
-  IO.deleteIOTask scIOWorker deleteConnectorRequestName >> pure Empty
+handleDeleteConnector sc _ req = catchDefaultEx $ do
+  deleteConnector sc req
+  pure Empty
 
 resumeConnectorHandler
   :: ServerContext
@@ -218,3 +209,17 @@ createIOTask sc@ServerContext{..} name typ target cfg = do
            <> ", connector targe: " <> Log.build target
            <> ", config: "         <> Log.build cfg
   IO.createIOTask scIOWorker name typ target cfg
+
+-------------------------------------------------------------------------------
+-- Internal functions
+
+deleteConnector :: HasCallStack => ServerContext -> DeleteConnectorRequest -> IO ()
+deleteConnector sc@ServerContext{..} DeleteConnectorRequest{..} = do
+  Log.info $ "Receive Delete Connector Request. "
+          <> "Connector Name: " <> Log.build deleteConnectorRequestName
+  validateNameAndThrow ResConnector deleteConnectorRequestName
+  ServerNode{..} <- lookupResource' sc ResConnector deleteConnectorRequestName
+  unless (serverNodeId == serverID) $
+    throwIO $ HE.WrongServer "Connector is bound to a different node"
+  IO.deleteIOTask scIOWorker deleteConnectorRequestName
+  Stats.connector_stat_erase scStatsHolder (Utils.textToCBytes deleteConnectorRequestName)
