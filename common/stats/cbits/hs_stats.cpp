@@ -40,7 +40,7 @@ void setPerConnectorStatsMember(const char* stat_name,
 }
 
 void setPerQueryStatsMember(const char* stat_name,
-                                    StatsCounter PerQueryStats::*& member_ptr) {
+                            StatsCounter PerQueryStats::*& member_ptr) {
 #define STAT_DEFINE(name, _)                                                   \
   if (#name == std::string(stat_name)) {                                       \
     member_ptr = &PerQueryStats::name##_counter;                               \
@@ -49,14 +49,13 @@ void setPerQueryStatsMember(const char* stat_name,
 }
 
 void setPerViewStatsMember(const char* stat_name,
-                                    StatsCounter PerViewStats::*& member_ptr) {
+                           StatsCounter PerViewStats::*& member_ptr) {
 #define STAT_DEFINE(name, _)                                                   \
   if (#name == std::string(stat_name)) {                                       \
     member_ptr = &PerViewStats::name##_counter;                                \
   }
 #include "per_view_stats.inc"
 }
-
 
 void setPerSubscriptionTimeSeriesMember(
     const char* stat_name, std::shared_ptr<PerSubscriptionTimeSeries>
@@ -93,8 +92,6 @@ void setPerHandleTimeSeriesMember(
 #include "per_handle_time_series.inc"
 }
 
-
-
 // ----------------------------------------------------------------------------
 
 StatsHolder* new_stats_holder(HsBool is_server) {
@@ -124,14 +121,8 @@ void stats_holder_reset(StatsHolder* s) { s->reset(); }
                            PerStreamStats, PerStreamTimeSeries, name)
 #include "per_stream_time_series.inc"
 
-int stream_stat_getall(StatsHolder* stats_holder, const char* stat_name,
-                       HsInt* len, std::string** keys_ptr, int64_t** values_ptr,
-                       std::vector<std::string>** keys_,
-                       std::vector<int64_t>** values_) {
-  return perXStatsGetall<PerStreamStats>(
-      stats_holder, &Stats::per_stream_stats, stat_name,
-      setPerStreamStatsMember, len, keys_ptr, values_ptr, keys_, values_);
-}
+// stream_stat_getall, stream_stat_erase
+PER_X_STAT(stream_, PerStreamStats, per_stream_stats, setPerStreamStatsMember)
 
 int stream_time_series_get(StatsHolder* stats_holder, const char* stat_name,
                            const char* stream_name, HsInt interval_size,
@@ -166,18 +157,14 @@ int stream_time_series_getall_by_name(
 
 // ----------------------------------------------------------------------------
 // PerConnectorStats
+
 #define STAT_DEFINE(name, _)                                                   \
-  PER_X_STAT_DEFINE(connector_stat_, per_connector_stats, PerConnectorStats, name)
+  PER_X_STAT_DEFINE(connector_stat_, per_connector_stats, PerConnectorStats,   \
+                    name)
 #include "per_connector_stats.inc"
 
-int connector_stat_getall(StatsHolder* stats_holder, const char* stat_name,
-                       HsInt* len, std::string** keys_ptr, int64_t** values_ptr,
-                       std::vector<std::string>** keys_,
-                       std::vector<int64_t>** values_) {
-  return perXStatsGetall<PerConnectorStats>(
-      stats_holder, &Stats::per_connector_stats, stat_name,
-      setPerConnectorStatsMember, len, keys_ptr, values_ptr, keys_, values_);
-}
+// connector_stat_getall, connector_stat_erase
+PER_X_STAT(connector_, PerConnectorStats, per_connector_stats, setPerConnectorStatsMember)
 
 // ----------------------------------------------------------------------------
 // PerQueryStats
@@ -185,14 +172,8 @@ int connector_stat_getall(StatsHolder* stats_holder, const char* stat_name,
   PER_X_STAT_DEFINE(query_stat_, per_query_stats, PerQueryStats, name)
 #include "per_query_stats.inc"
 
-int query_stat_getall(StatsHolder* stats_holder, const char* stat_name,
-                       HsInt* len, std::string** keys_ptr, int64_t** values_ptr,
-                       std::vector<std::string>** keys_,
-                       std::vector<int64_t>** values_) {
-  return perXStatsGetall<PerQueryStats>(
-      stats_holder, &Stats::per_query_stats, stat_name,
-      setPerQueryStatsMember, len, keys_ptr, values_ptr, keys_, values_);
-}
+// query_stat_getall, query_stat_erase
+PER_X_STAT(query_, PerQueryStats, per_query_stats, setPerQueryStatsMember)
 
 // ----------------------------------------------------------------------------
 // PerViewStats
@@ -200,14 +181,8 @@ int query_stat_getall(StatsHolder* stats_holder, const char* stat_name,
   PER_X_STAT_DEFINE(view_stat_, per_view_stats, PerViewStats, name)
 #include "per_view_stats.inc"
 
-int view_stat_getall(StatsHolder* stats_holder, const char* stat_name,
-                      HsInt* len, std::string** keys_ptr, int64_t** values_ptr,
-                      std::vector<std::string>** keys_,
-                      std::vector<int64_t>** values_) {
-  return perXStatsGetall<PerViewStats>(
-      stats_holder, &Stats::per_view_stats, stat_name,
-      setPerViewStatsMember, len, keys_ptr, values_ptr, keys_, values_);
-}
+// view_stat_getall, view_stat_erase
+PER_X_STAT(view_, PerViewStats, per_view_stats, setPerViewStatsMember)
 
 // ----------------------------------------------------------------------------
 // PerSubscriptionStats
@@ -223,15 +198,8 @@ int view_stat_getall(StatsHolder* stats_holder, const char* stat_name,
                            name)
 #include "per_subscription_time_series.inc"
 
-int subscription_stat_getall(StatsHolder* stats_holder, const char* stat_name,
-                             HsInt* len, std::string** keys_ptr,
-                             int64_t** values_ptr,
-                             std::vector<std::string>** keys_,
-                             std::vector<int64_t>** values_) {
-  return perXStatsGetall<PerSubscriptionStats>(
-      stats_holder, &Stats::per_subscription_stats, stat_name,
-      setPerSubscriptionStatsMember, len, keys_ptr, values_ptr, keys_, values_);
-}
+// subscription_stat_getall, subscription_stat_erase
+PER_X_STAT(subscription_, PerSubscriptionStats, per_subscription_stats, setPerSubscriptionStatsMember)
 
 int subscription_time_series_get(StatsHolder* stats_holder,
                                  const char* stat_name, const char* subs_name,

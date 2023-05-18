@@ -3,9 +3,11 @@ module HStream.StatsSpec (spec) where
 import           Control.Concurrent
 import           Data.Bits              (shiftL)
 import           Data.Either
+import           Data.Int
 import qualified Data.Map.Strict        as Map
 import           Data.Maybe             (fromJust)
 import           Test.Hspec
+import           Z.Data.CBytes          (CBytes)
 
 import           HStream.Base           (runConc, setupFatalSignalHandler)
 import           HStream.Stats
@@ -48,6 +50,36 @@ statsSpec = describe "HStream.Stats" $ do
 
     stream_stat_get_append_total s "/topic_1" `shouldReturn` 2
     stream_stat_get_append_total s "/topic_2" `shouldReturn` 1
+
+  eraseSpec "per stream stats"
+            stream_stat_add_append_in_bytes
+            stream_stat_get_append_in_bytes
+            stream_stat_getall_append_in_bytes
+            stream_stat_erase
+
+  eraseSpec "per subscription stats"
+            subscription_stat_add_send_out_bytes
+            subscription_stat_get_send_out_bytes
+            subscription_stat_getall_send_out_bytes
+            subscription_stat_erase
+
+  eraseSpec "per connector stats"
+            connector_stat_add_delivered_in_records
+            connector_stat_get_delivered_in_records
+            connector_stat_getall_delivered_in_records
+            connector_stat_erase
+
+  eraseSpec "per query stats"
+            query_stat_add_total_input_records
+            query_stat_get_total_input_records
+            query_stat_getall_total_input_records
+            query_stat_erase
+
+  eraseSpec "per view stats"
+            view_stat_add_total_execute_queries
+            view_stat_get_total_execute_queries
+            view_stat_getall_total_execute_queries
+            view_stat_erase
 
   it "per stream stats time series" $ do
     h <- newStatsHolder True
@@ -204,3 +236,44 @@ miscSpec = describe "HStream.Stats (misc)" $ do
     stream_time_series_add_append_in_bytes h "stream" 1000
     m <- stream_time_series_getall h "appends" tooBig
     m `shouldSatisfy` isLeft
+
+-------------------------------------------------------------------------------
+
+eraseSpec
+  :: String
+  -> (StatsHolder -> CBytes -> Int64 -> IO ())
+  -> (Stats -> CBytes -> IO Int64)
+  -> (Stats -> IO (Map.Map CBytes Int64))
+  -> (StatsHolder -> CBytes -> IO ())
+  -> Spec
+eraseSpec label stat_add stat_get stat_getall stat_erase = do
+  it (label <> ": erase 1") $ do
+    h <- newStatsHolder True
+    stat_add h "topic_1" 100
+    stat_add h "topic_1" 100
+    stat_add h "topic_2" 100
+    s <- newAggregateStats h
+    stat_get s "topic_1" `shouldReturn` 200
+    stat_get s "topic_2" `shouldReturn` 100
+    stat_erase h "topic_1"            -- delete "topic_1"
+    s <- newAggregateStats h
+    stat_get s "topic_1" `shouldReturn` (-1)
+    stat_get s "topic_2" `shouldReturn` 100
+    stat_add h "topic_1" 100
+    s <- newAggregateStats h
+    stat_get s "topic_1" `shouldReturn` 100
+
+  it (label <> ": erase 2") $ do
+    h <- newStatsHolder True
+    stat_add h "topic_1" 100
+    stat_add h "topic_1" 100
+    stat_add h "topic_2" 100
+    s <- newAggregateStats h
+    m <- stat_getall s
+    Map.lookup "topic_1" m `shouldBe` Just 200
+    Map.lookup "topic_2" m `shouldBe` Just 100
+    stat_erase h "topic_2"     -- delete "topic_2"
+    s <- newAggregateStats h
+    m' <- stat_getall s
+    Map.lookup "topic_1" m' `shouldBe` (Just 200)
+    Map.lookup "topic_2" m' `shouldBe` Nothing

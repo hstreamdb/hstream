@@ -41,6 +41,7 @@ common shared-properties
   ghc-options:
     -Wall -Wcompat -Widentities -Wincomplete-record-updates
     -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+    -Wunused-packages
 
   if flag(releasebuild)
     ghc-options:
@@ -63,27 +64,10 @@ library
     , hsc2hs:hsc2hs
 
   build-depends:
-    , aeson
-    , ansi-terminal
-    , attoparsec
-    , base                  >=4.11  && <5
-    , bytestring
-    , casing                >=0.1.4
+    , base                 >=4.11 && <5
     , containers
-    , data-default
-    , deepseq
-    , digest
-    , ghc-prim              >=0.5   && <1.0
-    , hashable
     , hstream-common-base
-    , primitive             ^>=0.7
-    , random
-    , scientific
-    , table-layout
-    , text
-    , time
-    , unordered-containers
-    , vector
+    , primitive            ^>=0.7
     , Z-Data
 
   cxx-options:        -std=c++17
