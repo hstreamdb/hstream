@@ -13,7 +13,7 @@ module HStream.Server.Core.View
 
 import           Control.Concurrent.STM        (newTVarIO)
 import           Control.Exception             (throw, throwIO)
-import           Control.Monad                 (forM_, unless, when)
+import           Control.Monad                 (forM, forM_, unless, when)
 import qualified Data.Aeson                    as Aeson
 import           Data.Functor                  ((<&>))
 import qualified Data.HashMap.Strict           as HM
@@ -179,7 +179,13 @@ executeViewQueryWithNamespace sc@ServerContext{..} sql namespace = parseAndRefin
           throwIO $ HE.ViewNotFound "View not found"
         True  -> do
           hm <- readIORef P.groupbyStores
-          let mats = L.map (hm HM.!) sources
+          mats <- forM sources $ \source -> do
+            case HM.lookup source hm of
+              Nothing -> do
+                Log.warning $ "View " <> Log.buildString (T.unpack source)
+                            <> " does not exist in memory. Try restarting the server or reporting this as a bug."
+                throwIO $ HE.ViewNotFound $ "View " <> source <> " does not exist in memory"
+              Just mat  -> return mat
           sinkRecords_m <- newIORef []
           let sinkConnector = SH.memorySinkConnector sinkRecords_m
           HP.runImmTask (sources `zip` mats) sinkConnector builder () () Just Just
