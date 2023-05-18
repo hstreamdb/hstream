@@ -23,6 +23,7 @@ module HStream.Stats
   , resetStatsHolder
 
     -- * PerStreamStats
+  , stream_stat_erase
     -- ** Counters
   , stream_stat_getall
   , CounterExports(stream, append_total)
@@ -39,6 +40,7 @@ module HStream.Stats
   , stream_time_series_getall_by_name
 
     -- * PerSubscriptionStats
+  , subscription_stat_erase
     -- ** Counters
   , subscription_stat_getall
   , CounterExports(subscription, send_out_bytes)
@@ -64,19 +66,15 @@ module HStream.Stats
   , handle_time_series_get
   , handle_time_series_getall
 
-    -- * ServerHistogram
-  , ServerHistogramLabel (..)
-  , serverHistogramAdd
-  , serverHistogramEstimatePercentiles
-  , serverHistogramEstimatePercentile
-
     -- * PerConnectorStats
+  , connector_stat_erase
     -- ** Counters
   , connector_stat_getall
   , CounterExports(connector, delivered_in_records)
   , CounterExports(connector, delivered_in_bytes)
 
     -- * PerQueryStats
+  , query_stat_erase
     -- ** Counters
   , query_stat_getall
   , CounterExports(query, total_input_records)
@@ -84,9 +82,16 @@ module HStream.Stats
   , CounterExports(query, total_execute_errors)
 
     -- * PerViewStats
+  , view_stat_erase
     -- ** Counters
   , view_stat_getall
   , CounterExports(view, total_execute_queries)
+
+    -- * ServerHistogram
+  , ServerHistogramLabel (..)
+  , serverHistogramAdd
+  , serverHistogramEstimatePercentiles
+  , serverHistogramEstimatePercentile
   ) where
 
 import           Control.Monad            (forM_, when)
@@ -135,7 +140,10 @@ PREFIX##add_##STATS_NAME (StatsHolder holder) key val =                        \
   withCBytesUnsafe key $ \key' ->                                              \
     I.PREFIX##add_##STATS_NAME holder' (BA# key') val;
 
--- TODO: Error while return value is a negative number.
+-- TODO:
+--
+-- 1. Error while return value is a negative number.
+-- 2. The return value should be a Maybe
 #define PER_X_STAT_GET(PREFIX, STATS_NAME)                                     \
 PREFIX##get_##STATS_NAME :: Stats -> CBytes -> IO Int64;                       \
 PREFIX##get_##STATS_NAME (Stats stats) key =                                   \
@@ -152,25 +160,41 @@ PREFIX##getall_##STATS_NAME (Stats stats) =                                    \
       peekStdStringToCBytesN c_delete_vector_of_string                         \
       peekN c_delete_vector_of_int64;
 
-#define PER_X_STAT_GETALL(PREFIX)                                              \
-PREFIX##getall :: StatsHolder -> CBytes -> IO (Map.Map CBytes Int64);          \
-PREFIX##getall (StatsHolder stats_holder) stat_name =                          \
+-- TODO:
+--
+-- 1. Error while return value is a negative number.
+#define PER_X_STAT(PREFIX)                                                     \
+PREFIX##stat_getall :: StatsHolder -> CBytes -> IO (Map.Map CBytes Int64);     \
+PREFIX##stat_getall (StatsHolder stats_holder) stat_name =                     \
   withForeignPtr stats_holder $ \stats_holder' ->                              \
-  withCBytesUnsafe stat_name $ \stat_name' -> do                               \
+  {- NOTE: the parentheses for do block is required to make the macro work -}  \
+  withCBytesUnsafe stat_name $ \stat_name' -> (do                              \
     (ret, statMap) <-                                                          \
       peekCppMap                                                               \
-        (I.PREFIX##getall stats_holder' (BA# stat_name'))                      \
+        (I.PREFIX##stat_getall stats_holder' (BA# stat_name'))                 \
         peekStdStringToCBytesN c_delete_vector_of_string                       \
         peekN c_delete_vector_of_int64 ;                                       \
     if ret == 0 then pure statMap                                              \
-                else do Log.fatal "PREFIX##getall failed!";                    \
-                        pure Map.empty
+                else do Log.fatal "PREFIX##stat_getall failed!";               \
+                        pure Map.empty;);                                      \
+                                                                               \
+PREFIX##stat_erase :: StatsHolder -> CBytes -> IO ();                          \
+PREFIX##stat_erase (StatsHolder stats_holder) name =                           \
+  withForeignPtr stats_holder $ \stats_holder' ->                              \
+  withCBytesUnsafe name $ \name' -> (do                                        \
+    r{- Total erases -} <- I.PREFIX##stat_erase stats_holder' (BA# name');     \
+    when (r < 0) (Log.fatal "PREFIX##stat_erase failed!"));
 
-PER_X_STAT_GETALL(stream_stat_)
-PER_X_STAT_GETALL(subscription_stat_)
-PER_X_STAT_GETALL(connector_stat_)
-PER_X_STAT_GETALL(query_stat_)
-PER_X_STAT_GETALL(view_stat_)
+-- stream_stat_getall, stream_stat_erase
+PER_X_STAT(stream_)
+-- subscription_stat_getall, subscription_stat_erase
+PER_X_STAT(subscription_)
+-- connector_stat_getall, connector_stat_erase
+PER_X_STAT(connector_)
+-- query_stat_getall, query_stat_erase
+PER_X_STAT(query_)
+-- view_stat_getall, view_stat_erase
+PER_X_STAT(view_)
 
 #define STAT_DEFINE(name, _)                                                   \
 PER_X_STAT_ADD(stream_stat_, name)                                             \
@@ -377,6 +401,7 @@ handle_time_series_getall (StatsHolder holder) name intervals =
                           pure Map.empty
     cfun = I.handle_time_series_getall_by_name
 
+#undef PER_X_STAT
 #undef PER_X_STAT_ADD
 #undef PER_X_STAT_GET
 #undef PER_X_STAT_GETALL_SEP
@@ -411,7 +436,7 @@ serverHistogramAdd (StatsHolder holder) label val =
 -- NOTE: Input percentiles must be sorted and in valid range [0.0, 1.0].
 serverHistogramEstimatePercentiles
   :: StatsHolder -> ServerHistogramLabel -> [Double] -> IO [Int64]
-serverHistogramEstimatePercentiles (StatsHolder holder) label [] = pure []
+serverHistogramEstimatePercentiles _ _ [] = pure []
 serverHistogramEstimatePercentiles (StatsHolder holder) label ps =
   withForeignPtr holder $ \holder' ->
   withCBytesUnsafe (packServerHistogramLabel label) $ \label' -> do

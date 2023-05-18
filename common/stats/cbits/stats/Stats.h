@@ -463,6 +463,8 @@ template <typename Func> void StatsHolder::runForEach(const Func& func) {
     }                                                                          \
   } while (0)
 
+// FIXME: both "not found" and "overflow" can return -1, so there should be
+// another returned value to distinguish (e.g. errmsg)
 #define PER_X_STAT_GET(stats_agg, x, stat_name, key)                           \
   do {                                                                         \
     if (stats_agg) {                                                           \
@@ -620,7 +622,7 @@ int perXTimeSeriesGetall(
 
   stats_holder->runForEach([&](Stats& s) {
     // Use synchronizedCopy() so we do not have to hold a read lock on
-    // per_log_stats map while we iterate over individual entries.
+    // per_x_stats map while we iterate over individual entries.
     for (auto& entry : s.synchronizedCopy(stats_member_map)) {
       std::lock_guard<std::mutex> guard(entry.second->mutex);
 
@@ -668,6 +670,10 @@ int perXTimeSeriesGetall(
   return 0;
 }
 
+// e.g.
+//
+// PER_X_STAT_DEFINE(stream_stat_, per_stream_stats, PerStreamStats,
+// append_total)
 #define PER_X_STAT_DEFINE(prefix, x, x_ty, stat_name)                          \
   void prefix##add_##stat_name(StatsHolder* stats_holder, const char* key,     \
                                int64_t val) {                                  \
@@ -729,6 +735,49 @@ int perXStatsGetall(
 
   return 0;
 }
+
+template <class PerXStats>
+HsInt perXStatsErase(
+    StatsHolder* stats_holder,
+    folly::Synchronized<
+        std::unordered_map<std::string, std::shared_ptr<PerXStats>>>
+        Stats::*stats_member_map,
+    const char* key) {
+  if (!stats_holder) {
+    ld_error("No such stasts_holder");
+    return -1;
+  }
+  HsInt r = 0;
+  stats_holder->runForEach([&](Stats& s) {
+    auto stats_wlock = (s.*stats_member_map).wlock();
+    // erase will return number of elements removed (0 or 1).
+    r += stats_wlock->erase(key);
+  });
+
+  return r;
+}
+
+// e.g.
+//
+// PER_X_STATS(stream_, PerStreamStats, per_stream_stats,
+// setPerStreamStatsMember)
+//
+// ->
+//
+// stream_stat_getall, stream_stat_erase
+#define PER_X_STAT(prefix, ty, member, set_member)                             \
+  int prefix##stat_getall(                                                     \
+      StatsHolder* stats_holder, const char* stat_name, HsInt* len,            \
+      std::string** keys_ptr, int64_t** values_ptr,                            \
+      std::vector<std::string>** keys_, std::vector<int64_t>** values_) {      \
+    return perXStatsGetall<ty>(stats_holder, &Stats::member, stat_name,        \
+                               set_member, len, keys_ptr, values_ptr, keys_,   \
+                               values_);                                       \
+  }                                                                            \
+                                                                               \
+  HsInt prefix##stat_erase(StatsHolder* stats_holder, const char* key) {       \
+    return perXStatsErase<ty>(stats_holder, &Stats::member, key);              \
+  }
 
 #define PER_X_TIME_SERIES_DEFINE(prefix, x, x_ty, ts_ty, stat_name)            \
   void prefix##add_##stat_name(StatsHolder* stats_holder, const char* key,     \
