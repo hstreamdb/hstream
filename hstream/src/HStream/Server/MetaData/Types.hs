@@ -72,6 +72,7 @@ data QueryInfo = QueryInfo
   , querySql         :: Text
   , queryCreatedTime :: Int64
   , queryStreams     :: RelatedStreams
+  , queryRefinedAST  :: AST.RSQL
   } deriving (Generic, Show, FromJSON, ToJSON)
 
 data QueryStatus = QueryStatus { queryState :: TaskStatus }
@@ -245,15 +246,15 @@ getQuerySink QueryInfo{..} = snd queryStreams
 getQuerySources :: QueryInfo -> SourceStreams
 getQuerySources QueryInfo{..} = fst queryStreams
 
-createInsertQueryInfo :: Text -> Text -> RelatedStreams -> MetaHandle -> IO QueryInfo
-createInsertQueryInfo queryId querySql queryStreams h = do
+createInsertQueryInfo :: Text -> Text -> RelatedStreams -> AST.RSQL -> MetaHandle -> IO QueryInfo
+createInsertQueryInfo queryId querySql queryStreams queryRefinedAST h = do
   MkSystemTime queryCreatedTime _ <- getSystemTime
   let qInfo = QueryInfo {..}
   insertQuery qInfo h
   return qInfo
 
-createInsertViewQueryInfo :: Text -> Text -> RelatedStreams -> Text -> MetaHandle -> IO ViewInfo
-createInsertViewQueryInfo queryId querySql queryStreams viewName h = do
+createInsertViewQueryInfo :: Text -> Text -> AST.RSQL -> RelatedStreams -> Text -> MetaHandle -> IO ViewInfo
+createInsertViewQueryInfo queryId querySql queryRefinedAST queryStreams viewName h = do
   MkSystemTime queryCreatedTime _ <- getSystemTime
   let vInfo = ViewInfo{ viewName = viewName, viewQuery = QueryInfo{..} }
   insertViewQuery vInfo h

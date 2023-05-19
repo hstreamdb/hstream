@@ -99,7 +99,8 @@ createView sc sql queryName = do
   plan <- streamCodegen sql
   case plan of
     CreateViewPlan srcs sink view builder persist -> do
-      createView' sc view srcs sink builder persist sql queryName
+      rSQL <- parseAndRefine sql
+      createView' sc view srcs sink builder persist sql rSQL queryName
     _ ->  throw $ HE.WrongExecutionPlan "Create query only support create view as select statements"
 
 createView' :: ServerContext
@@ -109,9 +110,10 @@ createView' :: ServerContext
             -> HP.TaskBuilder
             -> Persist
             -> T.Text
+            -> RSQL
             -> T.Text
             -> IO ViewInfo
-createView' sc@ServerContext{..} view srcs sink builder persist sql queryName = do
+createView' sc@ServerContext{..} view srcs sink builder persist sql rSQL queryName = do
   roles_m <- mapM (findIdentifierRole sc) srcs
   case all isJust roles_m of
     True -> do
@@ -122,7 +124,7 @@ createView' sc@ServerContext{..} view srcs sink builder persist sql queryName = 
           throwIO $ HE.InvalidSqlStatement "CREATE VIEW only supports sources of stream type"
         True  -> do
           let relatedStreams = (srcs, sink)
-          vInfo <- P.createInsertViewQueryInfo queryName sql relatedStreams view metaHandle
+          vInfo <- P.createInsertViewQueryInfo queryName sql rSQL relatedStreams view metaHandle
           consumerClosed <- newTVarIO False
           createQueryAndRun sc QueryRunner {
               qRTaskBuilder = builder
@@ -130,7 +132,8 @@ createView' sc@ServerContext{..} view srcs sink builder persist sql queryName = 
             , qRQueryString = sql
             , qRWhetherToHStore = False
             , qRQuerySources = srcs
-            , qRConsumerClosed = consumerClosed}
+            , qRConsumerClosed = consumerClosed
+            }
           let accumulation = L.head (snd persist)
           atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert view accumulation hm, ()))
           return vInfo

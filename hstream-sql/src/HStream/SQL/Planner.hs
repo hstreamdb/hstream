@@ -4,6 +4,7 @@
 
 module HStream.SQL.Planner where
 
+import           Control.Applicative   ((<|>))
 import           Data.Int              (Int64)
 import           Data.Kind             (Type)
 import qualified Data.List             as L
@@ -48,6 +49,37 @@ data RelationExpr
 
   | Union RelationExpr RelationExpr
   deriving (Eq)
+
+scanRelationExpr :: (RelationExpr -> Bool)
+                 -> RelationExpr
+                 -> Maybe RelationExpr
+scanRelationExpr p r = if p r then Just r else case r of
+  StreamScan _              -> Nothing
+  StreamRename r' _         -> scanRelationExpr p r'
+#ifdef HStreamUseV2Engine
+  CrossJoin r1 r2           -> scanRelationExpr p r1 <|> scanRelationExpr p r2
+  LoopJoinOn r1 r2 _ _      -> scanRelationExpr p r1 <|> scanRelationExpr p r2
+  LoopJoinUsing r1 r2 _ _   -> scanRelationExpr p r1 <|> scanRelationExpr p r2
+  LoopJoinNatural r1 r2 _   -> scanRelationExpr p r1 <|> scanRelationExpr p r2
+#else
+  CrossJoin r1 r2 _         -> scanRelationExpr p r1 <|> scanRelationExpr p r2
+  LoopJoinOn r1 r2 _ _ _    -> scanRelationExpr p r1 <|> scanRelationExpr p r2
+  LoopJoinUsing r1 r2 _ _ _ -> scanRelationExpr p r1 <|> scanRelationExpr p r2
+  LoopJoinNatural r1 r2 _ _ -> scanRelationExpr p r1 <|> scanRelationExpr p r2
+#endif
+  Filter r' _               -> scanRelationExpr p r'
+  Project r' _ _            -> scanRelationExpr p r'
+  Affiliate r' _            -> scanRelationExpr p r'
+#ifdef HStreamUseV2Engine
+  Reduce r' _ _             -> scanRelationExpr p r'
+#else
+  Reduce r' _ _ _           -> scanRelationExpr p r'
+#endif
+  Distinct r'               -> scanRelationExpr p r'
+#ifdef HStreamUseV2Engine
+  TimeWindow r' _           -> scanRelationExpr p r'
+#endif
+  Union r1 r2               -> scanRelationExpr p r1 <|> scanRelationExpr p r2
 
 data ScalarExpr
   = ColumnRef  Text (Maybe Text) -- fieldName, streamName_m

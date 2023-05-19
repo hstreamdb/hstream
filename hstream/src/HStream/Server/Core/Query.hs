@@ -24,11 +24,13 @@ import           Control.Concurrent.STM           (newTVarIO)
 import           Control.Exception                (throw, throwIO)
 import           Control.Monad
 import qualified Data.Aeson                       as Aeson
+import qualified Data.Aeson.Text                  as Aeson
 import           Data.Functor                     ((<&>))
 import qualified Data.HashMap.Strict              as HM
 import qualified Data.List                        as L
 import           Data.Maybe                       (fromJust, isJust)
 import qualified Data.Text                        as T
+import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated (GRPCIOError)
 import           Proto3.Suite.Class               (def)
@@ -163,43 +165,55 @@ createQueryWithNamespace'
             >>= hstreamQueryToQuery metaHandle
       _ -> throw $ HE.WrongExecutionPlan "Create query only support select / create stream as select statements"
 #else
-    parseAndRefine createQueryRequestSql >>= \case
-      RQCreate (RCreateAs stream select rOptions) -> hstreamCodegen (RQCreate (RCreateAs (namespace <> stream) (modifySelect namespace select) rOptions)) >>= \case
-        CreateBySelectPlan sources sink builder factor persist -> do
-          mapM_ (validateNameAndThrow ResStream) sources
-          validateNameAndThrow ResStream sink
-          roles_m <- mapM (findIdentifierRole sc) sources
-          unless (all isJust roles_m) $ do
-            Log.warning $ "At least one of the streams/views do not exist: "
-                <> Log.buildString (show sources)
-            throwIO $ HE.StreamNotFound $ "At least one of the streams/views do not exist: " <> T.pack (show sources)
-          unless (all (== Just RoleStream) roles_m) $ do
-            Log.warning "CREATE STREAM only supports sources of stream type"
-            throwIO $ HE.InvalidSqlStatement "CREATE STREAM only supports sources of stream type"
-          Core.createStream sc def {
+    parseAndRefine createQueryRequestSql >>= \rSQL -> case rSQL of
+      RQCreate (RCreateAs stream select rOptions) ->
+        hstreamCodegen (RQCreate (RCreateAs (namespace <> stream)
+                                            (modifySelect namespace select)
+                                            rOptions)) >>= \case
+          CreateBySelectPlan sources sink builder factor persist -> do
+            -- validate names
+            mapM_ (validateNameAndThrow ResStream) sources
+            validateNameAndThrow ResStream sink
+            -- check source streams
+            roles_m <- mapM (findIdentifierRole sc) sources
+            unless (all isJust roles_m) $ do
+              Log.warning $ "At least one of the streams/views do not exist: "
+                  <> Log.buildString (show sources)
+              throwIO $ HE.StreamNotFound $ "At least one of the streams/views do not exist: " <> T.pack (show sources)
+            unless (all (== Just RoleStream) roles_m) $ do
+              Log.warning "CREATE STREAM only supports sources of stream type"
+              throwIO $ HE.InvalidSqlStatement "CREATE STREAM only supports sources of stream type"
+            -- prepare sink stream
+            Core.createStream sc def {
               streamStreamName = sink
             , streamReplicationFactor = 1
             , streamBacklogDuration = 7 * 24 * 3600
             , streamShardCount = 1
             }
-          let relatedStreams = (sources, sink)
-          qInfo <- P.createInsertQueryInfo createQueryRequestQueryName createQueryRequestSql relatedStreams metaHandle
-          consumerClosed <- newTVarIO False
-          createQueryAndRun sc QueryRunner {
-              qRTaskBuilder = builder
-            , qRQueryName   = createQueryRequestQueryName
-            , qRQueryString = createQueryRequestSql
-            , qRWhetherToHStore = True
-            , qRQuerySources = sources
-            , qRConsumerClosed =  consumerClosed}
-          hstreamQueryToQuery metaHandle qInfo
-        _ -> throw $ HE.WrongExecutionPlan "Create query only support create stream/view <name> as select statements"
-      RQCreate (RCreateView view select) -> hstreamCodegen (RQCreate (RCreateView (namespace <> view) (modifySelect namespace select))) >>= \case
-        CreateViewPlan sources sink view builder persist -> do
-          validateNameAndThrow ResView view
-          Core.createView' sc view sources sink builder persist createQueryRequestSql createQueryRequestQueryName
-          >>= hstreamViewToQuery metaHandle
-        _ -> throw $ HE.WrongExecutionPlan "Create query only support create stream/view <name> as select statements"
+            -- update metadata
+            let relatedStreams = (sources, sink)
+            qInfo <- P.createInsertQueryInfo createQueryRequestQueryName createQueryRequestSql relatedStreams rSQL metaHandle
+            -- run core task
+            consumerClosed <- newTVarIO False
+            createQueryAndRun sc QueryRunner {
+                qRTaskBuilder = builder
+              , qRQueryName   = createQueryRequestQueryName
+              , qRQueryString = createQueryRequestSql
+              , qRWhetherToHStore = True
+              , qRQuerySources = sources
+              , qRConsumerClosed =  consumerClosed
+              }
+            hstreamQueryToQuery metaHandle qInfo
+          _ -> throw $ HE.WrongExecutionPlan "Create query only support create stream/view <name> as select statements"
+      RQCreate (RCreateView view select) ->
+        hstreamCodegen (RQCreate (RCreateView (namespace <> view)
+                                              (modifySelect namespace select)
+                                 )) >>= \case
+          CreateViewPlan sources sink view builder persist -> do
+            validateNameAndThrow ResView view
+            Core.createView' sc view sources sink builder persist createQueryRequestSql rSQL createQueryRequestQueryName
+            >>= hstreamViewToQuery metaHandle
+          _ -> throw $ HE.WrongExecutionPlan "Create query only support create stream/view <name> as select statements"
       _ -> throw $ HE.WrongExecutionPlan "Create query only support create stream/view <name> as select statements"
 #endif
 
@@ -244,7 +258,7 @@ resumeQuery ctx@ServerContext{..} qRQueryName = do
     Just state -> throwIO $ HE.QueryNotAborted (T.pack $ show state)
   getMeta @P.QueryInfo qRQueryName metaHandle >>= \case
     Just qInfo@P.QueryInfo{..} -> do
-      (qRTaskBuilder, qRWhetherToHStore, qRQuerySources) <- streamCodegen querySql >>= \case
+      (qRTaskBuilder, qRWhetherToHStore, qRQuerySources) <- hstreamCodegen queryRefinedAST >>= \case
         CreateBySelectPlan sources sink builder _ _ -> checkSources sources >> return (builder, True, sources)
         CreateViewPlan sources sink view builder persist  -> do
           checkSources sources

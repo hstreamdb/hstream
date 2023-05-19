@@ -390,6 +390,7 @@ runTaskWrapper ServerContext{..} sourceConnector sinkConnector taskBuilder query
 
 createQueryAndRun :: ServerContext -> QueryRunner -> IO ()
 createQueryAndRun ctx@ServerContext{..} qRunner@QueryRunner{..} = do
+  -- prepare logdevice stream for restoration
   let streamId = transToTempStreamName qRQueryName
   let attrs = S.def { S.logReplicationFactor = S.defAttr1 1 }
   logId <- do
@@ -398,7 +399,7 @@ createQueryAndRun ctx@ServerContext{..} qRunner@QueryRunner{..} = do
     >>= \case Right logId -> return logId
               Left  err   -> P.deleteQueryInfo qRQueryName metaHandle
                           >> throwIO err
-  -- update metadata
+  -- update metadata & fork working thread
   runQuery ctx qRunner logId
 
 restoreStateAndRun :: ServerContext -> QueryRunner -> IO ()
