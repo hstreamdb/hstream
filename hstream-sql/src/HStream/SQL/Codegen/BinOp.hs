@@ -235,7 +235,7 @@ op_arrJoin v1 v2 = Left . ERR $ "Unsupported operator <arrJoin> on value <" <> T
 
 op_ifNull :: FlowValue -> FlowValue -> Either ERROR_TYPE FlowValue
 op_ifNull FlowNull v = Right v
-op_ifNull _        _ = Right FlowNull
+op_ifNull notNull  _ = Right notNull
 
 op_nullIf :: FlowValue -> FlowValue -> Either ERROR_TYPE FlowValue
 op_nullIf v1 v2 = do
