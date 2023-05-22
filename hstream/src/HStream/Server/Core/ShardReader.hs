@@ -157,6 +157,7 @@ readShardStream ServerContext{..} API.ReadShardStreamRequest{readShardStreamRequ
      return $ mkShardReader reader timestamp
 
    deleteReader ShardReader{..} = do
+     Log.info $ "shard reader " <> Log.build rReaderId <> " stop reading"
      S.readerStopReading reader rShardId
 
    readRecords ShardReader{..} = do
