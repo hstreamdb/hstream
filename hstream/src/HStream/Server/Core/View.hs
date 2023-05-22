@@ -57,7 +57,7 @@ import           HStream.SQL.Codegen           (HStreamPlan (..), In (..),
 #else
 import qualified HStream.Processing.Processor  as HP
 import           HStream.SQL.Codegen.V1
-import           HStream.Stats                 (view_stat_add_total_execute_queries)
+import qualified HStream.Stats                 as Stats
 #endif
 
 #ifdef HStreamUseV2Engine
@@ -154,6 +154,7 @@ deleteView sc@ServerContext{..} name checkIfExist = do
            throwIO $ HE.QueryNotTerminated $ "Query " <> queryId <> " associated with view " <> name <> " is not terminated"
       P.deleteViewQuery name queryId metaHandle
       atomicModifyIORef' P.groupbyStores (\hm -> (HM.delete name hm, ()))
+      Stats.view_stat_erase scStatsHolder (textToCBytes name)
       return Empty
     Nothing -> do unless checkIfExist $ throwIO $ HE.ViewNotFound name; return Empty
 
@@ -205,7 +206,7 @@ executeViewQueryWithNamespace sc@ServerContext{..} sql namespace = parseAndRefin
                           HM.empty
                           flowObjects
                    in L.map (HM.filterWithKey (\ k _ -> L.notElem k keysAdded)) (HM.elems compactedRes)
-          forM_ sources $ \viewName -> view_stat_add_total_execute_queries scStatsHolder (textToCBytes viewName) 1
+          forM_ sources $ \viewName -> Stats.view_stat_add_total_execute_queries scStatsHolder (textToCBytes viewName) 1
           return . V.fromList $ jsonObjectToStruct . flowObjectToJsonObject
                               <$> res
     _ -> throw $ HE.InvalidSqlStatement "Invalid SQL statement for running view query"

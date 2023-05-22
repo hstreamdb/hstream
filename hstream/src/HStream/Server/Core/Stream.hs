@@ -87,10 +87,13 @@ deleteStream ServerContext{..} API.DeleteStreamRequest{deleteStreamRequestForce 
     doDelete = do
       subs <- P.getSubscriptionWithStream metaHandle sName
       if null subs
-      then S.removeStream scLDClient streamId
+      then do S.removeStream scLDClient streamId
+              Stats.stream_stat_erase scStatsHolder (textToCBytes sName)
       else if force
            then do
-             -- TODO: delete the archived stream when the stream is no longer needed
+             -- TODO:
+             -- 1. delete the archived stream when the stream is no longer needed
+             -- 2. erase stats for archived stream
              _archivedStream <- S.archiveStream scLDClient streamId
              P.updateSubscription metaHandle sName (cBytesToText $ S.getArchivedStreamName _archivedStream)
            else
