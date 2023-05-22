@@ -222,7 +222,7 @@ executeViewQuery sql HStreamApi{..} = hstreamApiExecuteViewQuery $ mkClientNorma
 readShard :: API.ReadShardStreamRequest -> HStreamClientApi -> IO (ClientResult 'ServerStreaming API.ReadShardStreamResponse)
 readShard req HStreamApi{..} = hstreamApiReadShardStream $
   ClientReaderRequest req requestTimeout (MetadataMap mempty) $ \cancel _meta recv ->
-    withInterrupt' (clientCallCancel cancel) (readStream recv)
+    withInterrupt (clientCallCancel cancel) (readStream recv)
  where
    readStream recv = recv >>= \case
       Left (err :: GRPCIOError) -> errorWithoutStackTrace ("error: " <> show err)

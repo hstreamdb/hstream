@@ -17,7 +17,6 @@ module HStream.Client.Utils
   , terminateMsg
   , waitForServerToStart
   , withInterrupt
-  , withInterrupt'
   , removeEmitChanges) where
 
 import           Control.Concurrent               (threadDelay)
@@ -129,10 +128,6 @@ withInterrupt :: IO () -> IO a -> IO a
 withInterrupt interruptHandle act = do
   old_handler <- installHandler keyboardSignal (Catch interruptHandle) Nothing
   act `finally` installHandler keyboardSignal old_handler Nothing
-
-withInterrupt' :: IO () -> IO a -> IO a
-withInterrupt' interruptHandle act = do
-  installHandler keyboardSignal (Catch interruptHandle) Nothing >> act
 
 removeEmitChanges :: [String] -> String
 removeEmitChanges = unwords . reverse . (";" :) . drop 1 . dropWhile ((/= "EMIT") . map toUpper) . reverse
