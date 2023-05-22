@@ -21,19 +21,16 @@ module HStream.Client.Execute
 import           Control.Concurrent
 import           Control.Monad
 import qualified Data.List                        as L
-import           Data.Maybe                       (isNothing)
 import qualified Data.Text                        as T
 import qualified Data.Text.Encoding               as BS
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel           (GRPCIOError (..))
 import           Network.GRPC.HighLevel.Client
 import           Network.GRPC.HighLevel.Generated (withGRPCClient)
-import           System.Exit                      (exitFailure)
 
 import           HStream.Base                     (setupFatalSignalHandler)
 import           HStream.Client.Action
-import           HStream.Client.Types             (CliConnOpts (..),
-                                                   HStreamCliContext (..),
+import           HStream.Client.Types             (HStreamCliContext (..),
                                                    RefinedCliConnOpts (..),
                                                    Resource)
 import           HStream.Client.Utils
@@ -61,7 +58,7 @@ execute_ ctx@HStreamCliContext{..} action = do
 
 executeWithLookupResource_ :: Format a => HStreamCliContext
   -> Resource -> (HStreamClientApi -> IO a)  -> IO ()
-executeWithLookupResource_ ctx@HStreamCliContext{..} rtype action =
+executeWithLookupResource_ ctx rtype action =
   executeWithLookupResource ctx rtype action >>= printResult
 
 executeWithLookupResource :: Format a => HStreamCliContext

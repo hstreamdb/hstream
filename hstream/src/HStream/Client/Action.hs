@@ -16,6 +16,7 @@ module HStream.Client.Action
   , getStream
   , listStreams
   , listShards
+  , readShard
   , insertIntoStream
 
   , createSubscription
@@ -50,10 +51,13 @@ import qualified Data.Map                         as Map
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import           Data.Word                        (Word32, Word64)
+import           Network.GRPC.HighLevel           (clientCallCancel)
 import           Network.GRPC.HighLevel.Generated (ClientError (..),
+                                                   ClientRequest (ClientReaderRequest),
                                                    ClientResult (..),
                                                    GRPCIOError (..),
-                                                   GRPCMethodType (Normal),
+                                                   GRPCMethodType (Normal, ServerStreaming),
+                                                   MetadataMap (MetadataMap),
                                                    StatusCode (..))
 import qualified Proto3.Suite                     as PT
 import           Proto3.Suite.Class               (def)
@@ -214,6 +218,19 @@ getSubscription sid HStreamApi{..} = hstreamApiGetSubscription $ mkClientNormalR
 
 executeViewQuery :: String -> Action ExecuteViewQueryResponse
 executeViewQuery sql HStreamApi{..} = hstreamApiExecuteViewQuery $ mkClientNormalRequest' def { executeViewQueryRequestSql = T.pack sql }
+
+readShard :: API.ReadShardStreamRequest -> HStreamClientApi -> IO (ClientResult 'ServerStreaming API.ReadShardStreamResponse)
+readShard req HStreamApi{..} = hstreamApiReadShardStream $
+  ClientReaderRequest req requestTimeout (MetadataMap mempty) $ \cancel _meta recv ->
+    withInterrupt' (clientCallCancel cancel) (readStream recv)
+ where
+   readStream recv = recv >>= \case
+      Left (err :: GRPCIOError) -> errorWithoutStackTrace ("error: " <> show err)
+      Right Nothing             -> pure ()  -- do `not` call cancel here
+      Right (res :: Maybe API.ReadShardStreamResponse) ->
+        case res of
+          Nothing   -> readStream recv
+          Just res' -> (putStr . formatResult $ res') >> readStream recv
 
 --------------------------------------------------------------------------------
 

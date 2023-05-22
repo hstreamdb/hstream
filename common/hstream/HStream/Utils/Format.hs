@@ -19,14 +19,12 @@ import qualified Data.Map.Strict                  as M
 import qualified Data.Text                        as T
 import qualified Data.Text.Encoding               as T
 import qualified Data.Text.Lazy                   as TL
-import           Data.Time.Clock.System           (SystemTime (MkSystemTime))
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 import qualified Proto3.Suite                     as PB
 import qualified Text.Layout.Table                as Table
-import qualified Z.Data.CBytes                    as CB
 
-import           Data.Maybe                       (maybeToList)
+import           Data.Maybe                       (fromMaybe, maybeToList)
 
 import           HStream.Base.Time                (CTime (CTime),
                                                    UnixTime (UnixTime),
@@ -34,7 +32,7 @@ import           HStream.Base.Time                (CTime (CTime),
                                                    iso8061DateFormat)
 import qualified HStream.Server.HStreamApi        as API
 import qualified HStream.ThirdParty.Protobuf      as PB
-import qualified HStream.Utils.Aeson              as A
+import           HStream.Utils.BuildRecord
 import           HStream.Utils.Converter          (structToJsonObject,
                                                    valueToJsonValue)
 import           HStream.Utils.RPC                (showNodeStatus)
@@ -71,6 +69,12 @@ instance Format API.Connector where
 instance Format API.Subscription where
   formatResult = renderSubscriptionsToTable . (:[])
 
+instance Format [API.ReceivedRecord] where
+  formatResult = formatReceivedRecords
+
+instance Format API.RecordId where
+  formatResult = formatRecorId
+
 instance Format [API.Query] where
   formatResult = renderQueriesToTable
 
@@ -80,6 +84,9 @@ instance Format [API.Connector] where
 instance Format [API.Subscription] where
   formatResult = renderSubscriptionsToTable
 
+instance Format [API.Shard] where
+  formatResult = renderShardsToTable
+
 instance Format [API.ServerNode] where
   formatResult = renderServerNodesToTable
 
@@ -88,6 +95,12 @@ instance Format [API.ServerNodeStatus] where
 
 instance Format a => Format (ClientResult 'Normal a) where
   formatResult (ClientNormalResponse response _ _ _ _) = formatResult response
+  formatResult (ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode _code details)))
+    = "Server Error: " <> BS.unpack (unStatusDetails details) <> "\n"
+  formatResult (ClientErrorResponse err) = "Error: " <> show err <> "\n"
+
+instance Format a => Format (ClientResult 'ServerStreaming a) where
+  formatResult (ClientReaderResponse _ _ _) = "Read Done.\n"
   formatResult (ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode _code details)))
     = "Server Error: " <> BS.unpack (unStatusDetails details) <> "\n"
   formatResult (ClientErrorResponse err) = "Error: " <> show err <> "\n"
@@ -102,6 +115,10 @@ instance Format API.ListConnectorsResponse where
   formatResult = formatResult . V.toList . API.listConnectorsResponseConnectors
 instance Format API.ListSubscriptionsResponse where
   formatResult = formatResult . V.toList . API.listSubscriptionsResponseSubscription
+instance Format API.ListShardsResponse where
+  formatResult = formatResult . V.toList . API.listShardsResponseShards
+instance Format API.ReadShardStreamResponse where
+  formatResult = formatResult . V.toList . API.readShardStreamResponseReceivedRecords
 
 instance Format API.GetStreamResponse where
   formatResult = formatResult . maybeToList . API.getStreamResponseStream
@@ -166,6 +183,22 @@ renderSubscriptionsToTable subscriptions = showTable titles rows
       , [show subscriptionMaxUnackedRecords]
       ]
     rows = map formatRow subscriptions
+
+renderShardsToTable :: [API.Shard] -> String
+renderShardsToTable shards = showTable titles rows
+  where
+    titles = [ "Stream Name"
+             , "Shard ID"
+             , "Start Key"
+             , "End Key"
+             ]
+    formatRow API.Shard {..} =
+      [ [T.unpack shardStreamName]
+      , [show shardShardId]
+      , [T.unpack shardStartHashRangeKey]
+      , [T.unpack shardEndHashRangeKey]
+      ]
+    rows = map formatRow shards
 
 renderConnectorsToTable :: [API.Connector] -> String
 renderConnectorsToTable connectors = showTable titles rows
@@ -251,3 +284,38 @@ formatStatus _ = "Unknown Status"
 formatTime :: Int64 -> String
 formatTime t = T.unpack . T.decodeUtf8 $
   formatUnixTimeGMT iso8061DateFormat (UnixTime (CTime t) 0)
+
+formatRecorId :: API.RecordId -> String
+formatRecorId API.RecordId{..} = "rid: " <> show recordIdShardId <> "-" <> show recordIdBatchId <> "-" <> show recordIdBatchIndex
+
+formatReceivedRecords :: [API.ReceivedRecord] -> String
+formatReceivedRecords records =
+  let res = map (fromMaybe (V.singleton "parse record error")) $ formatReceivedRecord <$> records
+      res' = concatMap V.toList res
+   in unlines res'
+
+formatReceivedRecord :: API.ReceivedRecord -> Maybe (V.Vector String)
+formatReceivedRecord API.ReceivedRecord{..} = do
+  records <- decompressBatchedRecord <$> receivedRecordRecord
+  let createTs = formatMaybeTimestamp $ getTimeStamp <$> receivedRecordRecord
+  V.mapM formatHStreamRecord records >>= pure <$> V.zip receivedRecordRecordIds >>= V.mapM (pure <$> formatRecords createTs)
+ where
+   formatRecords :: String -> (API.RecordId, String) -> String
+   formatRecords ts (API.RecordId{..}, record) = "publishTimestamp: " <> show ts
+                                              <> ", rid: " <> show recordIdShardId <> "-" <> show recordIdBatchId <> "-" <> show recordIdBatchIndex
+                                              <> ", record: " <> record
+
+   formatHStreamRecord :: API.HStreamRecord -> Maybe String
+   formatHStreamRecord API.HStreamRecord{..} = do
+     flag <- API.hstreamRecordHeaderFlag <$> hstreamRecordHeader
+     case flag of
+       PB.Enumerated (Right API.HStreamRecordHeader_FlagJSON) -> do
+          case PB.fromByteString hstreamRecordPayload of
+            Left e    -> Just $ "parse record error: " <> errorWithoutStackTrace (show e)
+            Right res -> Just . TL.unpack . A.encodeToLazyText . structToJsonObject $ res
+       PB.Enumerated (Right API.HStreamRecordHeader_FlagRAW)  -> return . BS.unpack $ hstreamRecordPayload
+       _                                                      -> return "parse record error: unknown record type"
+
+   formatMaybeTimestamp :: Maybe Int64 -> String
+   formatMaybeTimestamp Nothing  = ""
+   formatMaybeTimestamp (Just a) = show a

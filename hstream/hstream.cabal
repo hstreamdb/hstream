@@ -155,6 +155,7 @@ library
     , yaml
     , Z-Data
     , zoovisitor
+    , split
 
   if impl(ghc <9.2.0)
     build-depends: hstream-admin-store
@@ -244,6 +245,7 @@ executable hstream
     , unordered-containers
     , vector
     , Z-Data
+    , split
 
   default-language: Haskell2010
   ghc-options:      -threaded -rtsopts -with-rtsopts=-N

@@ -30,28 +30,27 @@ import           System.Timeout                   (timeout)
 import           Text.RawString.QQ                (r)
 
 import qualified HStream.Admin.Server.Command     as Admin
-import           HStream.Admin.Server.Types       (StreamCommand (..))
-import           HStream.Base                     (setupFatalSignalHandler)
 import           HStream.Client.Action            (createSubscription',
                                                    deleteStream,
                                                    deleteSubscription,
                                                    getStream, getSubscription,
-                                                   listStreams,
-                                                   listSubscriptions)
+                                                   listShards, listStreams,
+                                                   listSubscriptions, readShard)
 import           HStream.Client.Execute           (executeWithLookupResource_,
                                                    initCliContext,
                                                    simpleExecute)
 import           HStream.Client.SQL               (commandExec,
                                                    interactiveSQLApp)
-import           HStream.Client.Types             (CliConnOpts (..),
-                                                   Command (..),
+import           HStream.Client.Types             (Command (..),
                                                    HStreamCommand (..),
                                                    HStreamInitOpts (..),
                                                    HStreamNodes (..),
                                                    HStreamSqlContext (..),
                                                    HStreamSqlOpts (..),
+                                                   ReadShardArgs (..),
                                                    RefinedCliConnOpts (..),
                                                    Resource (..),
+                                                   StreamCommand (..),
                                                    SubscriptionCommand (..),
                                                    commandParser,
                                                    refineCliConnOpts)
@@ -65,8 +64,7 @@ import qualified HStream.Server.HStreamApi        as API
 import           HStream.ThirdParty.Protobuf      (Empty (Empty))
 import           HStream.Utils                    (ResourceType (..),
                                                    fillWithJsonString',
-                                                   formatResult,
-                                                   mkGRPCClientConfWithSSL,
+                                                   formatResult, newRandomText,
                                                    pattern EnumPB)
 import qualified HStream.Utils.Aeson              as AesonComp
 
@@ -157,7 +155,7 @@ hstreamInit RefinedCliConnOpts{..} HStreamInitOpts{..} = do
         _ -> loop api
 
 hstreamStream :: RefinedCliConnOpts -> StreamCommand -> IO ()
-hstreamStream RefinedCliConnOpts{..} cmd = do
+hstreamStream connOpts@RefinedCliConnOpts{..} cmd = do
   case cmd of
     StreamCmdList ->
       simpleExecute clientConfig listStreams >>= printResult
@@ -167,6 +165,19 @@ hstreamStream RefinedCliConnOpts{..} cmd = do
       simpleExecute clientConfig (deleteStream sName force) >>= printResult
     StreamCmdDescribe sName ->
       simpleExecute clientConfig (getStream sName) >>= printResult
+    StreamCmdListShard stream -> simpleExecute clientConfig (listShards stream) >>= printResult
+    StreamCmdReadShard args -> do
+      req <- getRequest args
+      ctx <- initCliContext connOpts
+      executeWithLookupResource_ ctx (Resource ResShardReader (API.readShardStreamRequestReaderId req)) (readShard req)
+ where
+   getRequest :: ReadShardArgs -> IO API.ReadShardStreamRequest
+   getRequest ReadShardArgs{..} = do
+     suffix <- newRandomText 32
+     return API.ReadShardStreamRequest { API.readShardStreamRequestReaderId = "reader_" <> suffix
+                                       , API.readShardStreamRequestShardId = shardIdArgs
+                                       , API.readShardStreamRequestShardOffset = shardOffsetArgs
+                                       }
 
 hstreamSubscription :: RefinedCliConnOpts -> SubscriptionCommand -> IO ()
 hstreamSubscription connOpts@RefinedCliConnOpts{..} = \case

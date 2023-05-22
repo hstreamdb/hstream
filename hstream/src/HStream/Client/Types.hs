@@ -1,27 +1,29 @@
+{-# OPTIONS_GHC -Wno-orphans #-}
+
 module HStream.Client.Types where
 
 import           Control.Concurrent            (MVar)
 import           Data.ByteString               (ByteString)
 import qualified Data.ByteString               as BS
+import           Data.List.Split               (splitOn)
 import           Data.Maybe                    (isNothing)
 import           Data.Text                     (Text)
 import qualified Data.Text                     as T
 import qualified Data.Text.Encoding            as T
-import           Data.Word                     (Word32)
+import           Data.Word                     (Word32, Word64)
 import           Network.GRPC.HighLevel.Client (ClientConfig (..),
                                                 ClientSSLConfig (..),
                                                 ClientSSLKeyCertPair (..))
 import           Network.URI
 import qualified Options.Applicative           as O
-import           System.Exit                   (exitFailure)
 import           Text.Read                     (readMaybe)
 
-import           HStream.Admin.Server.Types    (StreamCommand, streamCmdParser,
-                                                subscriptionParser)
+import           HStream.Admin.Server.Types    (subscriptionParser)
 import qualified HStream.Server.HStreamApi     as API
 import           HStream.Server.Types          (ServerID)
 import           HStream.Utils                 (ResourceType, SocketAddr (..),
                                                 mkGRPCClientConfWithSSL)
+import           Proto3.Suite                  (Enumerated (Enumerated))
 
 data HStreamCommand = HStreamCommand
   { cliConnOpts :: CliConnOpts
@@ -34,8 +36,141 @@ data Command
   = HStreamSql HStreamSqlOpts
   | HStreamNodes HStreamNodes
   | HStreamInit HStreamInitOpts
-  | HStreamStream StreamCommand   -- TODO: do NOT use HStream.Admin.Server.Types.StreamCommand
+  | HStreamStream StreamCommand
   | HStreamSubscription SubscriptionCommand
+
+commandParser :: O.Parser HStreamCommand
+commandParser = HStreamCommand
+  <$> connOptsParser
+  <*> O.hsubparser
+    (  O.command "sql"   (O.info (HStreamSql <$> hstreamSqlOptsParser) (O.progDesc "Start HStream SQL Shell"))
+    <> O.command "node" (O.info (HStreamNodes <$> hstreamNodesParser) (O.progDesc "Manage HStream Server Cluster"))
+    <> O.command "init"  (O.info (HStreamInit <$> hstreamInitOptsParser ) (O.progDesc "Init HStream Server Cluster"))
+    <> O.command "stream"        (O.info (HStreamStream <$> streamCmdParser ) (O.progDesc "Manage Streams in HStreamDB"))
+    <> O.command "subscription"  (O.info (HStreamSubscription <$> subscriptionCmdParser) (O.progDesc "Manage Subscriptions in HStreamDB (`sub` is an alias for this command"))
+    -- Also see: https://github.com/pcapriotti/optparse-applicative#command-groups
+    <> O.command "sub"  (O.info (HStreamSubscription <$> subscriptionCmdParser) (O.progDesc "Alias for the command `subscription`"))
+    )
+
+data StreamCommand
+  = StreamCmdList
+  | StreamCmdCreate API.Stream
+  | StreamCmdDelete Text Bool
+  | StreamCmdDescribe Text
+  | StreamCmdListShard Text
+  | StreamCmdReadShard ReadShardArgs
+  deriving (Show)
+
+streamCmdParser :: O.Parser StreamCommand
+streamCmdParser = O.hsubparser
+  ( O.command "list" (O.info (pure StreamCmdList) (O.progDesc "Get all streams"))
+ <> O.command "create" (O.info (StreamCmdCreate <$> streamParser) (O.progDesc "Create a stream"))
+ <> O.command "describe" (O.info (StreamCmdDescribe <$> O.strArgument ( O.metavar "STREAM_NAME"
+                                                                      <> O.help "The name of the stream"))
+                               (O.progDesc "Get the details of a stream"))
+ <> O.command "delete" (O.info (StreamCmdDelete <$> O.strArgument ( O.metavar "STREAM_NAME"
+                                                               <> O.help "The name of the stream to delete")
+                                                <*> O.switch ( O.long "force"
+                                                            <> O.short 'f'
+                                                            <> O.help "Whether to enable force deletion" ))
+                               (O.progDesc "Delete a stream")
+                        )
+ <> O.command "list-shard" (O.info (StreamCmdListShard <$> O.strArgument
+                                                               ( O.metavar "STREAM_NAME"
+                                                              <> O.help "The name of the stream to be queried"))
+                             (O.progDesc "List shards of specific stream"))
+ <> O.command "read-shard" (O.info (StreamCmdReadShard <$> readShardRequestParser)
+                             (O.progDesc "Read records from specific shard"))
+  )
+
+streamParser :: O.Parser API.Stream
+streamParser = API.Stream
+  <$> O.strArgument (O.metavar "STREAM_NAME"
+                 <> O.help "The name of the stream"
+                  )
+  <*> O.option O.auto ( O.long "replication-factor"
+                     <> O.short 'r'
+                     <> O.metavar "INT"
+                     <> O.showDefault
+                     <> O.value 1
+                     <> O.help "The replication factor for the stream"
+                      )
+  <*> O.option O.auto ( O.long "backlog-duration"
+                     <> O.short 'b'
+                     <> O.metavar "INT"
+                     <> O.showDefault
+                     <> O.value 0
+                     <> O.help "The backlog duration of records in stream in seconds"
+                      )
+  <*> O.option O.auto ( O.long "shards"
+                     <> O.short 's'
+                     <> O.metavar "INT"
+                     <> O.showDefault
+                     <> O.value 1
+                     <> O.help "The number of shards the stream should have"
+                      )
+  <*> pure Nothing
+
+data ReadShardArgs = ReadShardArgs
+  { shardIdArgs     :: Word64
+  , shardOffsetArgs :: Maybe API.ShardOffset
+  } deriving (Show)
+
+readShardRequestParser :: O.Parser ReadShardArgs
+readShardRequestParser = ReadShardArgs
+  <$> O.argument O.auto ( O.metavar "SHARD_ID" <> O.help "The shard you want to read" )
+  <*> (Just <$> offsetParser)
+
+offsetParser :: O.Parser API.ShardOffset
+offsetParser = specialOffsetParser O.<|> recordOffsetParser O.<|> timestampOffsetParser
+  O.<|> (pure . API.ShardOffset . Just . API.ShardOffsetOffsetSpecialOffset . Enumerated . Right $ API.SpecialOffsetEARLIEST)
+
+specialOffsetParser :: O.Parser API.ShardOffset
+specialOffsetParser = API.ShardOffset . Just . API.ShardOffsetOffsetSpecialOffset . Enumerated . Right
+  <$> (specialOffsetToAPI <$> specialOffsetParser')
+
+data SpecialOffset = Earliest | Latest
+
+specialOffsetToAPI :: SpecialOffset -> API.SpecialOffset
+specialOffsetToAPI offset = case offset of
+  Earliest -> API.SpecialOffsetEARLIEST
+  Latest   -> API.SpecialOffsetLATEST
+
+specialOffsetParser' :: O.Parser SpecialOffset
+specialOffsetParser' =
+   O.flag' Latest ( O.long "latest" <> O.help "Read from latest offset" )
+   O.<|> O.flag' Earliest ( O.long "earliest" <> O.help "Read from earliest offset" )
+
+recordOffsetParser :: O.Parser API.ShardOffset
+recordOffsetParser = API.ShardOffset . Just . API.ShardOffsetOffsetRecordOffset <$> recordIdParser
+
+recordIdParser :: O.Parser API.RecordId
+recordIdParser = O.option parseRecordId ( O.long "record"
+                                       <> O.metavar "RECORDID"
+                                       <> O.help "Read from specific recordId")
+
+parseRecordId :: O.ReadM API.RecordId
+parseRecordId = O.eitherReader parseRecordId'
+ where
+   parseRecordId' :: String -> Either String API.RecordId
+   parseRecordId' s =
+    let res = splitOn "-" s
+     in if length res /= 3 then Left $ "invalied recordId " <> s
+                           else Right API.RecordId { recordIdShardId = read $ head res
+                                                   , recordIdBatchId = read $ res !! 1
+                                                   , recordIdBatchIndex = read $ res !! 2
+                                                   }
+
+timestampOffsetParser :: O.Parser API.ShardOffset
+timestampOffsetParser = API.ShardOffset . Just . API.ShardOffsetOffsetTimestampOffset <$> timestampParser
+
+timestampParser :: O.Parser API.TimestampOffset
+timestampParser = API.TimestampOffset
+  <$> O.option O.auto ( O.long "timestamp"
+                       <> O.metavar "TIMESTAMP"
+                       <> O.help "Read from specific millisecond time stamp")
+  <*> (not <$> O.switch ( O.long "approximate"
+              <> O.help "Use approximate timestamp"))
 
 data SubscriptionCommand
   = SubscriptionCmdList
@@ -59,19 +194,6 @@ subscriptionCmdParser = O.hsubparser
                                (O.progDesc "Delete a subscription")
                        )
   )
-
-commandParser :: O.Parser HStreamCommand
-commandParser = HStreamCommand
-  <$> connOptsParser
-  <*> O.hsubparser
-    (  O.command "sql"   (O.info (HStreamSql <$> hstreamSqlOptsParser) (O.progDesc "Start HStream SQL Shell"))
-    <> O.command "node" (O.info (HStreamNodes <$> hstreamNodesParser) (O.progDesc "Manage HStream Server Cluster"))
-    <> O.command "init"  (O.info (HStreamInit <$> hstreamInitOptsParser ) (O.progDesc "Init HStream Server Cluster"))
-    <> O.command "stream"        (O.info (HStreamStream <$> streamCmdParser ) (O.progDesc "Manage Streams in HStreamDB"))
-    <> O.command "subscription"  (O.info (HStreamSubscription <$> subscriptionCmdParser) (O.progDesc "Manage Subscriptions in HStreamDB (`sub` is an alias for this command"))
-    -- Also see: https://github.com/pcapriotti/optparse-applicative#command-groups
-    <> O.command "sub"  (O.info (HStreamSubscription <$> subscriptionCmdParser) (O.progDesc "Alias for the command `subscription`"))
-    )
 
 data HStreamCliContext = HStreamCliContext
   { availableServers :: MVar [SocketAddr]
