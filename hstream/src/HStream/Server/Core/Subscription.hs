@@ -218,7 +218,7 @@ deleteSubscription ServerContext{..} DeleteSubscriptionRequest{ deleteSubscripti
     removeSubFromCtx :: STM ()
     removeSubFromCtx =  do
       scs <- readTVar scSubscribeContexts
-      writeTVar scSubscribeContexts (HM.delete subId scs)
+      writeTVar scSubscribeContexts $! HM.delete subId scs
 
 data DeleteSubStatus = NotExist | CanDelete | CanNotDelete | Signaled
   deriving (Show)
@@ -478,7 +478,7 @@ initConsumer SubscribeContext {subAssignment = Assignment{..}, ..} consumerName 
                 ccIsValid = isValid,
                 ccStreamSend = sender
               }
-    writeTVar subConsumerContexts (HM.insert consumerName cc cMap)
+    writeTVar subConsumerContexts $! HM.insert consumerName cc cMap
     return cc
 
 sendRecords :: ServerContext -> TVar SubscribeState -> SubscribeContext -> IO ()
@@ -708,7 +708,7 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
              return True
 
     registerResend logId batchId recordIds = atomically $ do
-      batchIndexes <- newTVar $ Set.fromList $ fmap sriBatchIndex (V.toList recordIds)
+      batchIndexes <- newTVar $! Set.fromList $! fmap sriBatchIndex (V.toList recordIds)
       currentTime <- readTVar subCurrentTime
       checkList <- readTVar subWaitingCheckedRecordIds
       checkListIndex <- readTVar subWaitingCheckedRecordIdsIndex
@@ -786,11 +786,11 @@ assignShards :: Assignment -> STM ()
 assignShards assignment@Assignment {..} = do
   unassign <- readTVar unassignedShards
   successCount <- tryAssignShards unassign True
-  writeTVar unassignedShards (drop successCount unassign)
+  writeTVar unassignedShards $! drop successCount unassign
 
   reassign <- readTVar waitingReassignedShards
   reassignSuccessCount <- tryAssignShards reassign False
-  writeTVar waitingReassignedShards (drop reassignSuccessCount reassign)
+  writeTVar waitingReassignedShards $! drop reassignSuccessCount reassign
   where
     tryAssignShards :: [S.C_LogID] -> Bool -> STM Int
     tryAssignShards logs needStartReading = do
@@ -823,7 +823,7 @@ assignShards assignment@Assignment {..} = do
         else do
           let waiter = head waiters
           doAssign assignment waiter logId needStartReading
-          writeTVar waitingConsumers (tail waiters)
+          writeTVar waitingConsumers $! tail waiters
           return True
 
 doAssign :: Assignment -> ConsumerName -> S.C_LogID -> Bool -> STM ()
@@ -837,14 +837,14 @@ doAssign Assignment {..} consumerName logId needStartReading = do
   case HM.lookup consumerName c2s of
     Nothing -> do
       set <- newTVar (Set.singleton logId)
-      writeTVar consumer2Shards (HM.insert consumerName set c2s)
-      writeTVar consumerWorkloads (Set.insert (ConsumerWorkload {cwConsumerName = consumerName, cwShardCount = 1}) workSet)
+      writeTVar consumer2Shards $! HM.insert consumerName set c2s
+      writeTVar consumerWorkloads $! Set.insert (ConsumerWorkload {cwConsumerName = consumerName, cwShardCount = 1}) workSet
     Just ts -> do
       set <- readTVar ts
-      writeTVar ts (Set.insert logId set)
+      writeTVar ts $! Set.insert logId set
       let old = ConsumerWorkload {cwConsumerName = consumerName, cwShardCount = Set.size set}
       let new = old {cwShardCount = Set.size set + 1}
-      writeTVar consumerWorkloads (Set.insert new (Set.delete old workSet))
+      writeTVar consumerWorkloads $! Set.insert new (Set.delete old workSet)
 
 assignWaitingConsumers :: Assignment -> STM ()
 assignWaitingConsumers assignment@Assignment {..} = do
@@ -861,7 +861,7 @@ assignWaitingConsumers assignment@Assignment {..} = do
     )
     (True, 0)
     consumers
-  writeTVar waitingConsumers (L.drop successCount consumers)
+  writeTVar waitingConsumers $! L.drop successCount consumers
   where
     tryAssignConsumer :: ConsumerName -> STM Bool
     tryAssignConsumer consumerName = do
@@ -992,7 +992,7 @@ doAcks ldclient subCtx@SubscribeContext{..} ackRecordIds = do
                     }
             case Map.lookup k checkListIndex of
               Nothing -> pure ()
-              Just CheckedRecordIds {..} -> modifyTVar crBatchIndexes (Set.delete recordIdBatchIndex)
+              Just CheckedRecordIds {..} -> modifyTVar' crBatchIndexes (Set.delete recordIdBatchIndex)
         )
         recordIds
       (newCheckList, newCheckListIndex) <- foldM
@@ -1027,7 +1027,7 @@ doAck ldclient subCtx@SubscribeContext{..} logId recordIds= do
     bnm <- readTVar awBatchNumMap
     let shardRecordIds = recordIds2ShardRecordIds recordIds
     let (newAckedRanges, updated :: Word32) = V.foldl' (\(a, n) b -> maybe (a, n) (, n + 1) $ insertAckedRecordId b lb a bnm) (ars, 0) shardRecordIds
-    when (updated > 0) $ modifyTVar subUnackedRecords (subtract updated)
+    when (updated > 0) $ modifyTVar' subUnackedRecords (subtract updated)
     let commitShardRecordId = getCommitRecordId newAckedRanges bnm
     case tryUpdateWindowLowerBound newAckedRanges lb bnm commitShardRecordId of
       Just (ranges, newLowerBound) -> do
@@ -1076,7 +1076,7 @@ invalidConsumer SubscribeContext{subAssignment = Assignment{..}, ..} consumer = 
               <- foldM unbindShardWithConsumer (idleShards, shardMap) works
             writeTVar waitingReassignedShards shardsNeedAssign
             writeTVar shard2Consumer newShardMap
-            modifyTVar consumerWorkloads
+            modifyTVar' consumerWorkloads
               (Set.filter (\ConsumerWorkload{..} ->
                               cwConsumerName /= consumer))
         let newConsumerCtx = HM.delete consumer ccs
@@ -1115,4 +1115,4 @@ addUnackedRecords :: SubscribeContext -> Int -> STM ()
 addUnackedRecords SubscribeContext {..} count = do
   -- traceM $ "addUnackedRecords: " <> show count
   unackedRecords <- readTVar subUnackedRecords
-  writeTVar subUnackedRecords (unackedRecords + fromIntegral count)
+  writeTVar subUnackedRecords $! unackedRecords + fromIntegral count

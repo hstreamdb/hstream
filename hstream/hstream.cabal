@@ -171,6 +171,7 @@ library
     OverloadedStrings
     RecordWildCards
     ScopedTypeVariables
+    Strict
     TypeApplications
     UnliftedFFITypes
 
@@ -313,6 +314,7 @@ test-suite hstream-test
     OverloadedStrings
     RecordWildCards
     ScopedTypeVariables
+    Strict
     TypeApplications
     UnliftedFFITypes
 
