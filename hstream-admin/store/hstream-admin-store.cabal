@@ -39,7 +39,12 @@ common shared-properties
     ghc-options:
       -feager-blackholing -flate-dmd-anal -flate-specialise
       -fspec-constr-keen -fstatic-argument-transformation
-      -funbox-strict-fields -O2
+      -funbox-strict-fields
+
+    -- Build Maintenance.Types(gen-hs2/Maintenance/Types.hs) with -O2 on aarch64
+    -- platform will lead to a long long compile times, so here we disable it.
+    if !arch(aarch64)
+      ghc-options: -O2
 
 library
   import:             shared-properties
