@@ -26,7 +26,7 @@ import           Data.Maybe                (fromMaybe)
 import qualified Data.Text                 as T
 import qualified Data.Vector               as V
 import           GHC.Stack                 (HasCallStack)
-import           Google.Protobuf.Timestamp (Timestamp)
+import           Google.Protobuf.Timestamp (Timestamp, fromRFC3339, toRFC3339)
 import qualified Proto3.Suite              as PT
 import qualified Z.Data.CBytes             as CB
 
@@ -51,7 +51,7 @@ createStream :: HasCallStack => ServerContext -> API.Stream -> IO API.Stream
 createStream ServerContext{..} stream@API.Stream{
   streamBacklogDuration = backlogSec, streamShardCount = shardCount, ..} = do
   timeStamp <- getProtoTimestamp
-  let extraAttr = M.fromList [("createTime", lazyByteStringToCBytes $ PT.toLazyByteString timeStamp)]
+  let extraAttr = M.fromList [("createTime", lazyTextToCBytes $ toRFC3339 timeStamp)]
   let streamId = transToStreamName streamStreamName
       attrs = S.def { S.logReplicationFactor = S.defAttr1 $ fromIntegral streamReplicationFactor
                     , S.logBacklogDuration   = S.defAttr1 $
@@ -107,14 +107,15 @@ getStream ServerContext{..} API.GetStreamRequest{ getStreamRequestName = sName} 
   attrs <- S.getStreamLogAttrs scLDClient streamId
   let reFac = fromMaybe 0 . S.attrValue . S.logReplicationFactor $ attrs
       backlogSec = fromMaybe 0 . fromMaybe Nothing . S.attrValue . S.logBacklogDuration $ attrs
-      createdAt = PT.fromByteString . BSL.toStrict . cBytesToLazyByteString $ S.logAttrsExtras attrs M.! "createTime"
+      createdAt = getCreateTime $ S.logAttrsExtras attrs
+
   shardsCount <- fromIntegral . M.size <$> S.listStreamPartitions scLDClient streamId
   return API.GetStreamResponse {
       getStreamResponseStream = Just API.Stream{
           streamStreamName = sName
         , streamReplicationFactor = fromIntegral reFac
         , streamBacklogDuration = fromIntegral backlogSec
-        , streamCreationTime = either (const Nothing) Just createdAt
+        , streamCreationTime = createdAt
         , streamShardCount =  shardsCount
         }
       }
@@ -146,12 +147,9 @@ getStreamInfo ServerContext{..} stream = do
         extraAttr = getCreateTime $ S.logAttrsExtras attrs
     shardCnt <- length <$> S.listStreamPartitions scLDClient stream
     return $ API.Stream (T.pack . S.showStreamName $ stream) (fromIntegral r) (fromIntegral b) (fromIntegral shardCnt) extraAttr
- where
-   getCreateTime :: M.Map CB.CBytes CB.CBytes -> Maybe Timestamp
-   getCreateTime attr = M.lookup "createTime" attr >>= \tmp -> do
-     case PT.fromByteString . BSL.toStrict . cBytesToLazyByteString $ tmp of
-       Left _          -> Nothing
-       Right timestamp -> Just timestamp
+
+getCreateTime :: M.Map CB.CBytes CB.CBytes -> Maybe Timestamp
+getCreateTime attr = M.lookup "createTime" attr >>= fromRFC3339 . cBytesToLazyText
 
 append :: HasCallStack
        => ServerContext

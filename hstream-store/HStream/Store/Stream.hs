@@ -351,7 +351,8 @@ createStreamPartition client streamid m_key attr = do
 #ifdef HSTREAM_USE_LOCAL_STREAM_CACHE
   if stream_exist
      then do (log_path, key) <- getStreamLogPath streamid m_key
-             logid <- createRandomLogGroup client log_path def{LD.logAttrsExtras = attr}
+             streamAttr <- getStreamExtraAttrs client streamid
+             logid <- createRandomLogGroup client log_path def{LD.logAttrsExtras = Map.union attr streamAttr}
              updateGloLogPathCache streamid key logid
              pure logid
      else E.throwStoreError ("No such stream: " <> ZT.pack (showStreamName streamid))
@@ -359,7 +360,8 @@ createStreamPartition client streamid m_key attr = do
 #else
   if stream_exist
      then do (log_path, _key) <- getStreamLogPath streamid m_key
-             createRandomLogGroup client log_path def{LD.logAttrsExtras = attr}
+             streamAttr <- getStreamExtraAttrs client streamid
+             createRandomLogGroup client log_path def{LD.logAttrsExtras = Map.union attr streamAttr}
      else E.throwStoreError ("No such stream: " <> ZT.pack (showStreamName streamid))
                             callStack
 #endif

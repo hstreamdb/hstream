@@ -264,6 +264,9 @@ cradle:
     - path: "hstream-admin/store"
       component: "lib:hstream-admin-store"
 
+    - path: "hstream-admin/store/app/admin-store.hs"
+      component: "hstream-admin-store:exe:hadmin-store"
+
     - path: "hstream-io/./"
       component: "lib:hstream-io"
 
