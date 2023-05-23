@@ -51,35 +51,66 @@ data RelationExpr
   deriving (Eq)
 
 scanRelationExpr :: (RelationExpr -> Bool)
+                 -> Maybe (RelationExpr -> RelationExpr)
                  -> RelationExpr
-                 -> Maybe RelationExpr
-scanRelationExpr p r = if p r then Just r else case r of
-  StreamScan _              -> Nothing
-  StreamRename r' _         -> scanRelationExpr p r'
+                 -> (Maybe RelationExpr, RelationExpr)
+scanRelationExpr p trans_m r = if p r then
+  case trans_m of
+    Nothing    -> (Just r, r)
+    Just trans -> (Just r, trans r)   else
+  case r of
+    StreamScan _              -> (Nothing, r)
+    StreamRename r' x         -> let tup = scanRelationExpr p trans_m r'
+                                  in (fst tup, StreamRename (snd tup) x)
 #ifdef HStreamUseV2Engine
-  CrossJoin r1 r2           -> scanRelationExpr p r1 <|> scanRelationExpr p r2
-  LoopJoinOn r1 r2 _ _      -> scanRelationExpr p r1 <|> scanRelationExpr p r2
-  LoopJoinUsing r1 r2 _ _   -> scanRelationExpr p r1 <|> scanRelationExpr p r2
-  LoopJoinNatural r1 r2 _   -> scanRelationExpr p r1 <|> scanRelationExpr p r2
+    CrossJoin r1 r2           -> let tup1 = scanRelationExpr p trans_m r1
+                                     tup2 = scanRelationExpr p trans_m r2
+                                  in (fst tup1 <|> fst tup2, CrossJoin (snd tup1) (snd tup2))
+    LoopJoinOn r1 r2 x1 x2    -> let tup1 = scanRelationExpr p trans_m r1
+                                     tup2 = scanRelationExpr p trans_m r2
+                                  in (fst tup1 <|> fst tup2, LoopJoinOn (snd tup1) (snd tup2) x1 x2)
+    LoopJoinUsing r1 r2 x1 x2 -> let tup1 = scanRelationExpr p trans_m r1
+                                     tup2 = scanRelationExpr p trans_m r2
+                                  in (fst tup1 <|> fst tup2, LoopJoinUsing (snd tup1) (snd tup2) x1 x2)
+    LoopJoinNatural r1 r2 x   -> let tup1 = scanRelationExpr p trans_m r1
+                                     tup2 = scanRelationExpr p trans_m r2
+                                  in (fst tup1 <|> fst tup2, LoopJoinNatural (snd tup1) (snd tup2) x)
 #else
-  CrossJoin r1 r2 _         -> scanRelationExpr p r1 <|> scanRelationExpr p r2
-  LoopJoinOn r1 r2 _ _ _    -> scanRelationExpr p r1 <|> scanRelationExpr p r2
-  LoopJoinUsing r1 r2 _ _ _ -> scanRelationExpr p r1 <|> scanRelationExpr p r2
-  LoopJoinNatural r1 r2 _ _ -> scanRelationExpr p r1 <|> scanRelationExpr p r2
+    CrossJoin r1 r2 x         -> let tup1 = scanRelationExpr p trans_m r1
+                                     tup2 = scanRelationExpr p trans_m r2
+                                  in (fst tup1 <|> fst tup2, CrossJoin (snd tup1) (snd tup2) x)
+    LoopJoinOn r1 r2 x1 x2 x3 -> let tup1 = scanRelationExpr p trans_m r1
+                                     tup2 = scanRelationExpr p trans_m r2
+                                  in (fst tup1 <|> fst tup2, LoopJoinOn (snd tup1) (snd tup2) x1 x2 x3)
+    LoopJoinUsing r1 r2 x1 x2 x3 -> let tup1 = scanRelationExpr p trans_m r1
+                                        tup2 = scanRelationExpr p trans_m r2
+                                     in (fst tup1 <|> fst tup2, LoopJoinUsing (snd tup1) (snd tup2) x1 x2 x3)
+    LoopJoinNatural r1 r2 x1 x2 -> let tup1 = scanRelationExpr p trans_m r1
+                                       tup2 = scanRelationExpr p trans_m r2
+                                    in (fst tup1 <|> fst tup2, LoopJoinNatural (snd tup1) (snd tup2) x1 x2)
 #endif
-  Filter r' _               -> scanRelationExpr p r'
-  Project r' _ _            -> scanRelationExpr p r'
-  Affiliate r' _            -> scanRelationExpr p r'
+    Filter r' x              -> let tup = scanRelationExpr p trans_m r'
+                                 in (fst tup, Filter (snd tup) x)
+    Project r' x1 x2         -> let tup = scanRelationExpr p trans_m r'
+                                 in (fst tup, Project (snd tup) x1 x2)
+    Affiliate r' x           -> let tup = scanRelationExpr p trans_m r'
+                                 in (fst tup, Affiliate (snd tup) x)
 #ifdef HStreamUseV2Engine
-  Reduce r' _ _             -> scanRelationExpr p r'
+    Reduce r' x1 x2          -> let tup = scanRelationExpr p trans_m r'
+                                 in (fst tup, Reduce (snd tup) x1 x2)
 #else
-  Reduce r' _ _ _           -> scanRelationExpr p r'
+    Reduce r' x1 x2 x3      -> let tup = scanRelationExpr p trans_m r'
+                                in (fst tup, Reduce (snd tup) x1 x2 x3)
 #endif
-  Distinct r'               -> scanRelationExpr p r'
+    Distinct r'               -> let tup = scanRelationExpr p trans_m r'
+                                  in (fst tup, Distinct (snd tup))
 #ifdef HStreamUseV2Engine
-  TimeWindow r' _           -> scanRelationExpr p r'
+    TimeWindow r' x          -> let tup = scanRelationExpr p trans_m r'
+                                 in (fst tup, TimeWindow (snd tup) x)
 #endif
-  Union r1 r2               -> scanRelationExpr p r1 <|> scanRelationExpr p r2
+    Union r1 r2               -> let tup1 = scanRelationExpr p trans_m r1
+                                     tup2 = scanRelationExpr p trans_m r2
+                                  in (fst tup1 <|> fst tup2, Union (snd tup1) (snd tup2))
 
 data ScalarExpr
   = ColumnRef  Text (Maybe Text) -- fieldName, streamName_m

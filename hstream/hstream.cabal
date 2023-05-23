@@ -139,6 +139,7 @@ library
     , raw-strings-qq
     , rocksdb-haskell-bindings
     , scientific
+    , split
     , statgrab
     , stm
     , string-random
@@ -155,7 +156,6 @@ library
     , yaml
     , Z-Data
     , zoovisitor
-    , split
 
   if impl(ghc <9.2.0)
     build-depends: hstream-admin-store
@@ -240,12 +240,12 @@ executable hstream
     , optparse-applicative
     , random
     , raw-strings-qq
+    , split
     , text
     , unix
     , unordered-containers
     , vector
     , Z-Data
-    , split
 
   default-language: Haskell2010
   ghc-options:      -threaded -rtsopts -with-rtsopts=-N
