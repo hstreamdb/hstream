@@ -461,10 +461,10 @@ data SinkConfigType = SinkConfigType StreamName (HS.StreamSinkConfig K V Ser)
 genStreamSinkConfig :: Maybe StreamName -> RelationExpr -> IO SinkConfigType
 genStreamSinkConfig sinkStream' relationExpr = do
   stream <- maybe genRandomSinkStream return sinkStream'
-  let reduce_m = scanRelationExpr (\expr -> case expr of
-                                      Reduce{} -> True
-                                      _        -> False
-                                  ) relationExpr
+  let (reduce_m, _) = scanRelationExpr (\expr -> case expr of
+                                           Reduce{} -> True
+                                           _        -> False
+                                       ) Nothing relationExpr
   case reduce_m of
     Nothing -> return $ SinkConfigType stream HS.StreamSinkConfig
                { sicStreamName  = stream
