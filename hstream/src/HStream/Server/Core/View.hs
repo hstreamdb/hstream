@@ -183,7 +183,7 @@ executeViewQueryWithNamespace sc@ServerContext{..} sql namespace = parseAndRefin
     (_,_view_names,_,_) <- elabRelationExpr taskName_imm Nothing relationExpr_imm
     -- FIXME: immediate select from [views join views/streams]?
     -- FIXME: L.head is partial
-    let view_name = namespace <> (L.head _view_names)
+    let view_name = L.head _view_names
 
     -- 2. the original query when creating the view
     (RQCreate (RCreateView _ select_v))
