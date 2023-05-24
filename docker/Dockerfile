@@ -93,6 +93,14 @@ COPY --from=ghcr.io/hstreamdb/hadmin-store:latest \
 COPY ./script/wait-for-storage.sh /usr/local/script/wait-for-storage.sh
 COPY ./conf/hstream.yaml /etc/hstream/config.yaml
 
+# Run hadmin-store on aarch64 requires libnuma.so.1
+RUN ARCH="$(uname -m)" && \
+    if [ "$ARCH" = "aarch64" ]; then \
+      apt-get update && \
+      apt-get install -y --no-install-recommends libnuma1 && \
+      rm -rf /var/lib/apt/lists/* && apt-get clean ; \
+    fi
+
 RUN mkdir -p /etc/bash_completion.d && \
     grep -wq '^source /etc/profile.d/bash_completion.sh' /etc/bash.bashrc || echo 'source /etc/profile.d/bash_completion.sh' >> /etc/bash.bashrc && \
     /usr/local/bin/hadmin --bash-completion-script /usr/local/bin/hadmin > /etc/bash_completion.d/hadmin && \
