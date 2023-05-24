@@ -30,6 +30,6 @@ handleParseSql sc _ req = catchQueryEx $ parseSql req
 parseSql :: API.ParseSqlRequest  -> IO API.ParseSqlResponse
 parseSql API.ParseSqlRequest{..} = do
   streamCodegen parseSqlRequestSql >>= \case
-    SelectPlan sources _ _ _ _ -> return $
+    SelectPlan sources _ _ _ -> return $
       ParseSqlResponse (Just $ ParseSqlResponseSqlEvqSql $ ExecuteViewQuerySql (head sources))
     _ -> throwIO $ HE.SQLNotSupportedByParseSQL parseSqlRequestSql
