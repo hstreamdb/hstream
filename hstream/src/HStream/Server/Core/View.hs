@@ -11,56 +11,56 @@ module HStream.Server.Core.View
   , hstreamViewToView
   ) where
 
-import           Control.Concurrent.STM           (newTVarIO)
-import           Control.Exception                (throw, throwIO)
-import           Control.Monad                    (forM, forM_, unless, when)
-import qualified Data.Aeson                       as Aeson
-import           Data.Functor                     ((<&>))
-import qualified Data.HashMap.Strict              as HM
-import           Data.IORef                       (atomicModifyIORef', newIORef,
-                                                   readIORef)
-import qualified Data.List                        as L
-import           Data.Maybe                       (fromJust, isJust)
-import qualified Data.Text                        as T
-import qualified Data.Vector                      as V
-import           GHC.Stack                        (HasCallStack)
+import           Control.Applicative           (liftA2)
+import           Control.Concurrent.STM        (newTVarIO)
+import           Control.Exception             (throw, throwIO)
+import           Control.Monad                 (forM, forM_, unless, when)
+import qualified Data.Aeson                    as Aeson
+import           Data.Functor                  ((<&>))
+import qualified Data.HashMap.Strict           as HM
+import           Data.IORef                    (atomicModifyIORef', newIORef,
+                                                readIORef)
+import qualified Data.List                     as L
+import           Data.Maybe                    (fromJust, isJust)
+import qualified Data.Text                     as T
+import qualified Data.Vector                   as V
+import           GHC.Stack                     (HasCallStack)
 
-import           HStream.Exception                (ViewNotFound (..))
-import qualified HStream.Exception                as HE
-import qualified HStream.Logger                   as Log
-import qualified HStream.MetaStore.Types          as M
-import           HStream.Processing.Type          (SinkRecord (..))
-import           HStream.Server.Core.Common       (modifySelect)
-import           HStream.Server.Handler.Common    (IdentifierRole (..),
-                                                   QueryRunner (..), amIView,
-                                                   createQueryAndRun,
-                                                   findIdentifierRole)
-import qualified HStream.Server.HStore            as SH
-import qualified HStream.Server.HStreamApi        as API
-import qualified HStream.Server.MetaData          as P
-import           HStream.Server.MetaData.Types    (ViewInfo (viewName))
+import           HStream.Exception             (ViewNotFound (..))
+import qualified HStream.Exception             as HE
+import qualified HStream.Logger                as Log
+import qualified HStream.MetaStore.Types       as M
+import           HStream.Processing.Type       (SinkRecord (..))
+import           HStream.Server.Core.Common    (modifySelect)
+import           HStream.Server.Handler.Common (IdentifierRole (..),
+                                                QueryRunner (..), amIView,
+                                                createQueryAndRun,
+                                                findIdentifierRole)
+import qualified HStream.Server.HStore         as SH
+import qualified HStream.Server.HStreamApi     as API
+import qualified HStream.Server.MetaData       as P
+import           HStream.Server.MetaData.Types (ViewInfo (viewName))
 import           HStream.Server.Types
-import           HStream.SQL                      (flowObjectToJsonObject,
-                                                   parseAndRefine)
-import           HStream.ThirdParty.Protobuf      (Empty (..), Struct)
-import           HStream.Utils                    (TaskStatus (..),
-                                                   jsonObjectToStruct,
-                                                   textToCBytes)
+import           HStream.SQL                   (flowObjectToJsonObject,
+                                                parseAndRefine)
+import           HStream.ThirdParty.Protobuf   (Empty (..), Struct)
+import           HStream.Utils                 (TaskStatus (..),
+                                                jsonObjectToStruct,
+                                                textToCBytes)
 #ifdef HStreamUseV2Engine
-import           DiffFlow.Graph                   (GraphBuilder)
-import           DiffFlow.Types                   (DataChangeBatch)
-import           HStream.SQL.Codegen              (HStreamPlan (..), In (..),
-                                                   Out (..), Row,
-                                                   TerminationSelection (..),
-                                                   streamCodegen)
+import           DiffFlow.Graph                (GraphBuilder)
+import           DiffFlow.Types                (DataChangeBatch)
+import           HStream.SQL.Codegen           (HStreamPlan (..), In (..),
+                                                Out (..), Row,
+                                                TerminationSelection (..),
+                                                streamCodegen)
 #else
-import qualified HStream.Processing.Processor     as HP
-import qualified HStream.Processing.Stream        as HS
+import qualified HStream.Processing.Processor  as HP
+import qualified HStream.Processing.Stream     as HS
 import           HStream.SQL.AST
 import           HStream.SQL.Codegen.V1
-import           HStream.SQL.Codegen.V1.Transform (addGroupByKeysToProjectItems)
 import           HStream.SQL.Planner
-import qualified HStream.Stats                    as Stats
+import qualified HStream.Stats                 as Stats
 #endif
 
 #ifdef HStreamUseV2Engine
@@ -178,9 +178,7 @@ executeViewQueryWithNamespace sc@ServerContext{..} sql namespace = parseAndRefin
     -- FIXME: Very tricky hack, invasive to the SQL Planner.
     -- 1. the immediate query to the view
     let select_imm_namespaced = modifySelect namespace select_imm
-        (select_imm', groupBykeys, keysAdded) =
-          addGroupByKeysToProjectItems select_imm_namespaced
-        relationExpr_imm = decouple select_imm'
+        relationExpr_imm = decouple select_imm_namespaced
     taskName_imm <- genTaskName
     (_,_view_names,_,_) <- elabRelationExpr taskName_imm Nothing relationExpr_imm
     -- FIXME: immediate select from [views join views/streams]?
@@ -193,8 +191,8 @@ executeViewQueryWithNamespace sc@ServerContext{..} sql namespace = parseAndRefin
         Nothing    -> throwIO $ ViewNotFound view_name
         Just vInfo -> return $ P.queryRefinedAST (P.viewQuery vInfo)
     let relationExpr_v = decouple select_v
-    -- 3. scan for HAVING
-    let trans_m =
+    -- 3.1 scan for HAVING
+    let trans_m_having =
           case scanRelationExpr (\r -> case r of
                                     Filter{} -> True
                                     _        -> False
@@ -207,7 +205,15 @@ executeViewQueryWithNamespace sc@ServerContext{..} sql namespace = parseAndRefin
                                     ) Nothing r' of
                 (Nothing, _) -> Nothing -- only one Filter but no Reduce, it is WHERE
                 (Just _ , _) -> Just (\r -> Filter r hav_scalar') -- both Filter and Reduce, it is HAVING
-    -- 4. insert HAVING into the immediate query
+    -- 3.2 scan for PROJECT
+    let trans_m_project =
+          case scanRelationExpr (\r -> case r of
+                                    Project{} -> True
+                                    _         -> False
+                                ) Nothing relationExpr_v of
+            (Nothing                        , _) -> Nothing
+            (Just (Project _ tups asterisks), _) -> Just (\r -> Project r tups asterisks)
+    -- 4 insert HAVING and PROJECT into the immediate query
     let (_, relationExpr_imm_new) =
           scanRelationExpr (\r -> case r of
                                     CrossJoin{}       -> True
@@ -218,7 +224,7 @@ executeViewQueryWithNamespace sc@ServerContext{..} sql namespace = parseAndRefin
                                     StreamRename{}    -> True
                                     _                 -> False
                            ) -- scan for the end of the FROM part
-                           trans_m  -- insert the HAVING part
+                           (liftA2 (.) trans_m_project trans_m_having) -- insert the HAVING and PROJECT part
                            relationExpr_imm
     -- 5. generate plan for the modified immediate query
     (_builder, sources, sink, persist)
@@ -244,23 +250,9 @@ executeViewQueryWithNamespace sc@ServerContext{..} sql namespace = parseAndRefin
         HP.runImmTask (sources `zip` mats) sinkConnector builder () () Just Just
         sinkRecords <- readIORef sinkRecords_m
         let flowObjects = L.map (fromJust . Aeson.decode . snkValue) sinkRecords :: [FlowObject]
-        let res =
-              if L.null groupBykeys
-              then flowObjects
-              else
-                let compactedRes =
-                      L.foldl'
-                        (
-                          \m fo ->
-                            let values = L.map (fo HM.!) groupBykeys
-                             in  HM.insert values fo m
-                        )
-                        HM.empty
-                        flowObjects
-                 in L.map (HM.filterWithKey (\ k _ -> L.notElem k keysAdded)) (HM.elems compactedRes)
         forM_ sources $ \viewName -> Stats.view_stat_add_total_execute_queries scStatsHolder (textToCBytes viewName) 1
         return . V.fromList $ jsonObjectToStruct . flowObjectToJsonObject
-                            <$> res
+                            <$> flowObjects
   _ -> throw $ HE.InvalidSqlStatement "Invalid SQL statement for running view query"
 
 listViews :: HasCallStack => ServerContext -> IO [API.View]

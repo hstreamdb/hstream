@@ -66,7 +66,6 @@ library
     HStream.SQL.Codegen.Utils
     HStream.SQL.Codegen.V1
     HStream.SQL.Codegen.V1.Boilerplate
-    HStream.SQL.Codegen.V1.Transform
     HStream.SQL.Exception
     HStream.SQL.Internal.Check
     HStream.SQL.Internal.Validate

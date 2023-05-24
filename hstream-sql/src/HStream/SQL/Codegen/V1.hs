@@ -73,7 +73,6 @@ import           HStream.SQL.Codegen.ColumnCatalog
 import           HStream.SQL.Codegen.Common
 import           HStream.SQL.Codegen.Utils
 import           HStream.SQL.Codegen.V1.Boilerplate
-import           HStream.SQL.Codegen.V1.Transform
 import           HStream.SQL.Exception                           (SomeSQLException (..),
                                                                   throwSQLException)
 import           HStream.SQL.Parse                               (parseAndRefine)
@@ -117,7 +116,7 @@ data HStreamPlan
   | ExplainPlan         Text
   | PausePlan           PauseObject
   | ResumePlan          ResumeObject
-  | SelectPlan          [StreamName] StreamName TaskBuilder Persist ([ColumnCatalog], [ColumnCatalog])
+  | SelectPlan          [StreamName] StreamName TaskBuilder Persist
   | PushSelectPlan      [StreamName] StreamName TaskBuilder Persist
   | CreateBySelectPlan  [StreamName] StreamName TaskBuilder RStreamOptions Persist
   | CreateViewPlan      [StreamName] StreamName ViewName TaskBuilder Persist
@@ -130,9 +129,8 @@ hstreamCodegen :: HasCallStack => RSQL -> IO HStreamPlan
 hstreamCodegen = \case
   RQSelect select -> do
     tName <- genTaskName
-    let (select', keys, keysAdded) = addGroupByKeysToProjectItems select
-    (builder, srcs, sink, persist) <- elabRSelect tName Nothing select'
-    return $ SelectPlan srcs sink (HS.build builder) persist (keys, keysAdded)
+    (builder, srcs, sink, persist) <- elabRSelect tName Nothing select
+    return $ SelectPlan srcs sink (HS.build builder) persist
   RQPushSelect select -> do
     tName <- genTaskName
     (builder, srcs, sink, persist) <- elabRSelect tName Nothing select

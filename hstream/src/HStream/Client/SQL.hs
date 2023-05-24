@@ -156,7 +156,7 @@ commandExec HStreamSqlContext{hstreamCliContext = cliCtx@HStreamCliContext{..},.
         ResumePlan (ResumeObjectConnector cName) -> executeWithLookupResource_ cliCtx (Resource ResConnector cName) (resumeConnector cName)
         PausePlan  (PauseObjectQuery qName) -> executeWithLookupResource_ cliCtx (Resource ResQuery qName) (pauseQuery qName)
         ResumePlan (ResumeObjectQuery qName) -> executeWithLookupResource_ cliCtx (Resource ResQuery qName) (resumeQuery qName)
-        SelectPlan sources _ _ _ _ -> executeWithLookupResource_ cliCtx (Resource ResView (head sources)) (executeViewQuery xs)
+        SelectPlan sources _ _ _ -> executeWithLookupResource_ cliCtx (Resource ResView (head sources)) (executeViewQuery xs)
         -- NOTE: EXPLAIN PLAN still uses the following path
         _ -> do
           addr <- readMVar currentServer
