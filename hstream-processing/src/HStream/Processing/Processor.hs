@@ -221,7 +221,12 @@ runTask statsHolder SourceConnectorWithoutCkp {..} sinkConnector taskBuilder@Tas
                 liftIO $ query_stat_add_total_execute_errors statsHolder (textToCBytes qid) 1
               ]
             liftIO $ query_stat_add_total_output_records statsHolder (textToCBytes qid) 1
-            liftIO $ RIO.putMVar mvar ()
+          -- NOTE: tell the server that we have processed this "batch" of records
+          --       so it can mark them as acked. Here we associate a batch of
+          --       'SourceRecord' with a single ack. This granularity may be too
+          --       coarse if the batch size is large.
+          -- CAUTION: the position of the following line!!!
+          liftIO $ RIO.putMVar mvar ()
 
 runImmTask ::
   (Ord t, Semigroup t, Aeson.FromJSON t, Aeson.ToJSON t, Typeable t, ChangeLogger h1, Snapshotter h2) =>
