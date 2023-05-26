@@ -7,6 +7,7 @@
 module HStream.Server.Config
   ( ServerOpts (..)
   , CliOptions (..)
+  , cliOptionsParser
   , TlsConfig (..)
   , AdvertisedListeners
   , advertisedListenersToPB
@@ -35,7 +36,6 @@ import           Data.Maybe                     (fromMaybe)
 import           Data.String                    (IsString (..))
 import           Data.Text                      (Text)
 import qualified Data.Text                      as T
-import qualified Data.Text                      as Text
 import           Data.Text.Encoding             (encodeUtf8)
 import           Data.Vector                    (Vector)
 import qualified Data.Vector                    as V
@@ -46,19 +46,11 @@ import           Data.Yaml                      as Y (Object,
                                                       parseEither, (.!=), (.:),
                                                       (.:?))
 import           Options.Applicative            as O (Alternative (many, (<|>)),
-                                                      CompletionResult (execCompletion),
-                                                      Parser, ParserResult (..),
-                                                      auto, defaultPrefs,
-                                                      execParserPure, flag,
-                                                      fullDesc, help, helper,
-                                                      info, long, maybeReader,
+                                                      Parser, auto, flag, help,
+                                                      long, maybeReader,
                                                       metavar, option, optional,
-                                                      progDesc, renderFailure,
-                                                      short, showDefault,
-                                                      strOption, value, (<**>))
+                                                      short, strOption, value)
 import           System.Directory               (makeAbsolute)
-import           System.Environment             (getArgs, getProgName)
-import           System.Exit                    (exitSuccess)
 import           Text.Read                      (readEither)
 import qualified Z.Data.CBytes                  as CB
 import           Z.Data.CBytes                  (CBytes)
@@ -136,28 +128,13 @@ data ServerOpts = ServerOpts
   , _querySnapshotPath            :: !FilePath
   } deriving (Show, Eq)
 
-getConfig :: IO ServerOpts
-getConfig = do
-  args <- getArgs
-  case parseCliOptions args of
-    Success opts@CliOptions{..} -> do
-      path <- makeAbsolute _configPath
-      jsonCfg <- decodeFileThrow path
-      case parseEither (parseJSONToOptions opts) jsonCfg of
-        Left err  -> throwIO (AesonException err)
-        Right cfg -> return cfg
-    Failure failure -> do
-      progn <- getProgName
-      let (msg, _) = renderFailure failure progn
-      putStrLn msg
-      exitSuccess
-    CompletionInvoked compl -> handleCompletion compl
-  where
-    handleCompletion compl = do
-      progn <- getProgName
-      msg <- execCompletion compl progn
-      putStr msg
-      exitSuccess
+getConfig :: CliOptions -> IO ServerOpts
+getConfig opts@CliOptions{..} = do
+  path <- makeAbsolute _configPath
+  jsonCfg <- decodeFileThrow path
+  case parseEither (parseJSONToOptions opts) jsonCfg of
+    Left err  -> throwIO (AesonException err)
+    Right cfg -> return cfg
 
 -------------------------------------------------------------------------------
 
@@ -194,10 +171,6 @@ data CliOptions = CliOptions
 
   , _querySnapshotPath_            :: !(Maybe FilePath)
   } deriving Show
-
-parseCliOptions :: [String] -> ParserResult CliOptions
-parseCliOptions = execParserPure defaultPrefs $
-  info (cliOptionsParser <**> helper) (fullDesc <> progDesc "HStream-Server")
 
 cliOptionsParser :: O.Parser CliOptions
 cliOptionsParser = do

@@ -9,6 +9,8 @@
 module HStream.Client.Action
   ( Action
 
+  , getHStreamVersion
+
   , createStream
   , createStreamBySelect
   , createStreamBySelectWithCustomQueryName
@@ -80,6 +82,9 @@ import           HStream.ThirdParty.Protobuf      (Empty (..))
 import           HStream.Utils
 
 type Action a = HStreamClientApi -> IO (ClientResult 'Normal a)
+
+getHStreamVersion :: Action API.GetVersionResponse
+getHStreamVersion API.HStreamApi{..} = hstreamApiGetVersion clientDefaultRequest
 
 createStream :: StreamName -> Int -> Word32
   -> Action API.Stream

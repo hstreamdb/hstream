@@ -93,6 +93,12 @@ instance Format [API.ServerNode] where
 instance Format [API.ServerNodeStatus] where
   formatResult = renderServerNodesStatusToTable
 
+instance Format (Maybe API.HStreamVersion) where
+  formatResult = maybe "unknown version" showHStreamVersion
+
+instance Format API.HStreamVersion where
+  formatResult = showHStreamVersion
+
 instance Format a => Format (ClientResult 'Normal a) where
   formatResult (ClientNormalResponse response _ _ _ _) = formatResult response
   formatResult (ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode _code details)))
@@ -104,6 +110,9 @@ instance Format a => Format (ClientResult 'ServerStreaming a) where
   formatResult (ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode _code details)))
     = "Server Error: " <> BS.unpack (unStatusDetails details) <> "\n"
   formatResult (ClientErrorResponse err) = "Error: " <> show err <> "\n"
+
+instance Format API.GetVersionResponse where
+  formatResult = formatResult . API.getVersionResponseVersion
 
 instance Format API.ListStreamsResponse where
   formatResult = formatResult . V.toList . API.listStreamsResponseStreams
@@ -319,3 +328,6 @@ formatReceivedRecord API.ReceivedRecord{..} = do
    formatMaybeTimestamp :: Maybe Int64 -> String
    formatMaybeTimestamp Nothing  = ""
    formatMaybeTimestamp (Just a) = show a
+
+showHStreamVersion :: API.HStreamVersion -> String
+showHStreamVersion API.HStreamVersion{..} = T.unpack hstreamVersionVersion <> " (" <> T.unpack hstreamVersionCommit <> ")"

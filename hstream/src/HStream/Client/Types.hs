@@ -38,19 +38,29 @@ data Command
   | HStreamInit HStreamInitOpts
   | HStreamStream StreamCommand
   | HStreamSubscription SubscriptionCommand
+  | HStreamVersion VersionCommand
+
+data VersionCommand = Version | NumVersion
 
 commandParser :: O.Parser HStreamCommand
 commandParser = HStreamCommand
   <$> connOptsParser
-  <*> O.hsubparser
-    (  O.command "sql"   (O.info (HStreamSql <$> hstreamSqlOptsParser) (O.progDesc "Start HStream SQL Shell"))
-    <> O.command "node" (O.info (HStreamNodes <$> hstreamNodesParser) (O.progDesc "Manage HStream Server Cluster"))
-    <> O.command "init"  (O.info (HStreamInit <$> hstreamInitOptsParser ) (O.progDesc "Init HStream Server Cluster"))
-    <> O.command "stream"        (O.info (HStreamStream <$> streamCmdParser ) (O.progDesc "Manage Streams in HStreamDB"))
-    <> O.command "subscription"  (O.info (HStreamSubscription <$> subscriptionCmdParser) (O.progDesc "Manage Subscriptions in HStreamDB (`sub` is an alias for this command"))
-    -- Also see: https://github.com/pcapriotti/optparse-applicative#command-groups
-    <> O.command "sub"  (O.info (HStreamSubscription <$> subscriptionCmdParser) (O.progDesc "Alias for the command `subscription`"))
-    )
+  <*> (O.hsubparser
+        (  O.command "sql"   (O.info (HStreamSql <$> hstreamSqlOptsParser) (O.progDesc "Start HStream SQL Shell"))
+        <> O.command "node" (O.info (HStreamNodes <$> hstreamNodesParser) (O.progDesc "Manage HStream Server Cluster"))
+        <> O.command "init"  (O.info (HStreamInit <$> hstreamInitOptsParser ) (O.progDesc "Init HStream Server Cluster"))
+        <> O.command "stream"        (O.info (HStreamStream <$> streamCmdParser ) (O.progDesc "Manage Streams in HStreamDB"))
+        <> O.command "subscription"  (O.info (HStreamSubscription <$> subscriptionCmdParser) (O.progDesc "Manage Subscriptions in HStreamDB (`sub` is an alias for this command)"))
+        -- Also see: https://github.com/pcapriotti/optparse-applicative#command-groups
+        <> O.command "sub"  (O.info (HStreamSubscription <$> subscriptionCmdParser) (O.progDesc "Alias for the command `subscription`"))
+        )
+      O.<|> versionCommandParser
+      )
+
+versionCommandParser :: O.Parser Command
+versionCommandParser = HStreamVersion
+  <$> ( O.flag' Version ( O.long "version" <> O.short 'v' <> O.help "Get HStream Server version with commit ref." )
+      O.<|> O.flag' NumVersion ( O.long "num-version" <> O.help "Get HStream Server version." ))
 
 data StreamCommand
   = StreamCmdList

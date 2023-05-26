@@ -106,7 +106,9 @@ handlers serverContext@ServerContext{..} =
         -- Admin
         hstreamApiSendAdminCommand = adminCommandHandler serverContext,
 
-        hstreamApiParseSql = parseSqlHandler serverContext
+        hstreamApiParseSql = parseSqlHandler serverContext,
+
+        hstreamApiGetVersion = getVersionHandler serverContext
 
       }
 

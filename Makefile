@@ -4,10 +4,10 @@ GHC_MAJOR_VERSION := $(shell ghc --numeric-version | cut -d'.' -f1)
 
 ifeq ($(GHC_MAJOR_VERSION), 8)
 CABAL_PROJECT_FILE ?= cabal.project.ghc810
-all:: thrift grpc sql
+all:: thrift grpc sql generate-version
 else
 CABAL_PROJECT_FILE ?= cabal.project
-all:: grpc sql
+all:: grpc sql generate-version
 endif
 
 ENGINE_VERSION ?= v1
@@ -20,6 +20,9 @@ THRIFT_COMPILE = thrift-compiler
 thrift::
 	(cd external/hsthrift && THRIFT_COMPILE=$(THRIFT_COMPILE) make thrift)
 	(cd hstream-admin/store/if && $(THRIFT_COMPILE) logdevice/admin/if/admin.thrift --hs -r -o ..)
+
+VERSION ?= "unknown"
+COMMIT ?= "unknown"
 
 grpc:: grpc-cpp grpc-hs
 
@@ -77,6 +80,19 @@ sql-deps::
 	(cd $(shell mktemp -d) && command -v bnfc || cabal install BNFC --constraint 'BNFC ^>= 2.9')
 	(cd $(shell mktemp -d) && command -v alex || cabal install alex --constraint 'alex ^>= 3.2.7.1')
 	(cd $(shell mktemp -d) && command -v happy || cabal install happy)
+
+generate-version:
+	@gitEnv=$$(git rev-parse --is-inside-work-tree 2>/dev/null); \
+    mkdir -p common/version/gen-hs/HStream; \
+	if [ $$gitEnv = "true" ]; then \
+		HSTREAM_VERSION=$$(git describe --tag --abbrev=0); \
+		HSTREAM_COMMIT=$$(git rev-parse HEAD); \
+	else \
+		HSTREAM_VERSION=${VERSION}; \
+		HSTREAM_COMMIT=${COMMIT}; \
+	fi; \
+	echo "Generating Version.hs with version: $$HSTREAM_VERSION and commit: $$HSTREAM_COMMIT"; \
+	cabal run generate-version -- $$HSTREAM_VERSION $$HSTREAM_COMMIT
 
 clean:
 	find ./common -maxdepth 10 -type d \

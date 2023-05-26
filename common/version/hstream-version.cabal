@@ -1,0 +1,57 @@
+cabal-version:      2.4
+name:               hstream-version
+version:            0.1.0.0
+synopsis:
+  High performance stream processing platform for IoT data written in Haskell.
+
+description:
+  Please see the README on GitHub at
+  <https://github.com/hstreamdb/hstream#readme>
+
+license:            BSD-3-Clause
+license-file:       LICENSE
+copyright:          Copyright (c) 2020 EMQ Technologies Co., Ltd.
+author:             Feng Lee <feng@emqx.io>
+maintainer:         lambda@emqx.io
+tested-with:        GHC ==8.10.7
+category:           Database
+homepage:           https://github.com/hstreamdb/hstream
+bug-reports:        https://github.com/hstreamdb/hstream/issues
+build-type:         Custom
+
+custom-setup
+  setup-depends:
+    , base  >=4.5 && <5
+    , Cabal >=2.4 && <4
+
+source-repository head
+  type:     git
+  location: https://github.com/hstreamdb/hstream
+
+common shared-properties
+  ghc-options:
+    -Wall -Wcompat -Widentities -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+    -Wunused-packages
+
+library
+  import:             shared-properties
+  exposed-modules:    HStream.Version
+  hs-source-dirs:     . gen-hs
+
+  build-depends:
+    , base                 >=4.11 && <5
+
+  default-language:   Haskell2010
+
+executable generate-version
+    hs-source-dirs:   app
+    main-is:          Generate.hs
+
+    build-depends:
+      , base
+      , text
+      , stache
+      , aeson
+
+    default-language: Haskell2010

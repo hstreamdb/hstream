@@ -87,6 +87,7 @@ handlers sc =
   , unary (GRPC :: GRPC P.HStreamApi "deleteQuery") (H.handleDeleteQuery sc)
   , unary (GRPC :: GRPC P.HStreamApi "resumeQuery") (H.handleResumeQuery sc)
   , unary (GRPC :: GRPC P.HStreamApi "parseSql") (H.handleParseSql sc)
+  , unary (GRPC :: GRPC P.HStreamApi "getVersion") (H.handleGetVersion sc)
   ]
 
 handleEcho :: UnaryHandler A.EchoRequest A.EchoResponse
