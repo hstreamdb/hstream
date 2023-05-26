@@ -3,10 +3,14 @@
 
 ARG BUILDER_IMAGE="hstreamdb/haskell:latest"
 ARG LD_IMAGE="hstreamdb/logdevice:latest"
+ARG VERSION="unknown tag"
+ARG COMMIT="unknown commit"
 
 # ------------------------------------------------------------------------------
 
 FROM ${BUILDER_IMAGE} as builder
+ENV HSTREAM_VERSION=${VERSION}
+ENV HSTREAM_COMMIT=${COMMIT}
 
 COPY . /hstream
 ARG BUILD_TYPE="ReleaseBuild"

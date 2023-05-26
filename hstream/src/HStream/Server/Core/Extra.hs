@@ -1,6 +1,3 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE GADTs     #-}
-
 module HStream.Server.Core.Extra where
 
 import qualified Data.Text                 as T
