@@ -86,6 +86,12 @@ data AggregateComponent = AggregateComponent
   }
 
 composeAggs :: [AggregateComponent] -> AggregateComponent
+composeAggs []   =
+  AggregateComponent
+  { aggregateInit = HM.empty
+  , aggregateF    = \_ _ -> Right HM.empty
+  , aggregateMergeF = \_ _ _ -> Right HM.empty
+  }
 composeAggs aggs =
   AggregateComponent
   { aggregateInit = HM.unions (L.map aggregateInit aggs)
