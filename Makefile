@@ -10,6 +10,11 @@ CABAL_PROJECT_FILE ?= cabal.project
 all:: grpc sql generate-version
 endif
 
+VERSION_TEMPLATE = "common/version/template/Version.tmpl"
+VERSION_OUTPUT = "common/version/gen-hs/HStream/Version.hs"
+VERSION ?= "unknown"
+COMMIT ?= "unknown"
+
 ENGINE_VERSION ?= v1
 BNFC = bnfc
 PROTO_COMPILE = protoc
@@ -20,9 +25,6 @@ THRIFT_COMPILE = thrift-compiler
 thrift::
 	(cd external/hsthrift && THRIFT_COMPILE=$(THRIFT_COMPILE) make thrift)
 	(cd hstream-admin/store/if && $(THRIFT_COMPILE) logdevice/admin/if/admin.thrift --hs -r -o ..)
-
-VERSION ?= "unknown"
-COMMIT ?= "unknown"
 
 grpc:: grpc-cpp grpc-hs
 
@@ -91,8 +93,8 @@ generate-version:
 		HSTREAM_VERSION=${VERSION}; \
 		HSTREAM_COMMIT=${COMMIT}; \
 	fi; \
-	echo "Generating Version.hs with version: $$HSTREAM_VERSION and commit: $$HSTREAM_COMMIT"; \
-	cabal run generate-version -- $$HSTREAM_VERSION $$HSTREAM_COMMIT
+    echo "Generating $(VERSION_OUTPUT) from $(VERSION_TEMPLATE)"; \
+	sed -e 's/{{version}}/'"$$HSTREAM_VERSION"'/g' -e 's/{{commit}}/'"$$HSTREAM_COMMIT"'/g' $(VERSION_TEMPLATE) > $(VERSION_OUTPUT)
 
 clean:
 	find ./common -maxdepth 10 -type d \

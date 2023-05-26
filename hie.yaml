@@ -321,8 +321,5 @@ cradle:
     - path: "hstream-processing/src"
       component: "lib:hstream-processing"
 
-    - path: "common/version/app/Generate.hs"
-      component: "hstream-version:exe:generate-version"
-
     - path: "common/version"
       component: "lib:hstream-version"

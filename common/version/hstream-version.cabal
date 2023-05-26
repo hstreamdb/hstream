@@ -43,15 +43,3 @@ library
     , base                 >=4.11 && <5
 
   default-language:   Haskell2010
-
-executable generate-version
-    hs-source-dirs:   app
-    main-is:          Generate.hs
-
-    build-depends:
-      , base
-      , text
-      , stache
-      , aeson
-
-    default-language: Haskell2010
