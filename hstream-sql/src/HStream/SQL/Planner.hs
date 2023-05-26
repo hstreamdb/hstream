@@ -5,6 +5,7 @@
 module HStream.SQL.Planner where
 
 import           Control.Applicative   ((<|>))
+import           Data.Function         (on)
 import           Data.Int              (Int64)
 import           Data.Kind             (Type)
 import qualified Data.List             as L
@@ -331,7 +332,7 @@ instance Decouple RSelect where
                        [] -> filtered_1
                        _  -> Affiliate filtered_1 affiliateItems
         -- GROUP BY
-        aggs = getAggregates sel ++ getAggregates hav
+        aggs = L.nubBy ((==) `on` snd) $ getAggregates sel ++ getAggregates hav -- remove duplicate aggregates
         projectItems   = rSelToProjectItems sel
         (aggs', projectItems') = L.foldl'
                   (\(ags, pis) (c, e) ->
@@ -383,10 +384,10 @@ instance HasAggregates RValueExpr where
     RExprCol _ _ _            -> []
     RExprConst _ _            -> []
     RExprCast _ e _           -> getAggregates e
-    RExprArray _ es           -> L.concatMap getAggregates es
+    RExprArray _ es           -> L.nubBy ((==) `on` snd) $  L.concatMap getAggregates es
     RExprAccessArray _ e _    -> getAggregates e
-    RExprAccessJson _ _ e1 e2 -> getAggregates e1 ++ getAggregates e2
-    RExprBinOp _ _ e1 e2      -> getAggregates e1 ++ getAggregates e2
+    RExprAccessJson _ _ e1 e2 -> L.nubBy ((==) `on` snd) $ getAggregates e1 ++ getAggregates e2
+    RExprBinOp _ _ e1 e2      -> L.nubBy ((==) `on` snd) $ getAggregates e1 ++ getAggregates e2
     RExprUnaryOp _ _ e        -> getAggregates e
     -- RExprSubquery _ _         -> [] -- do not support subquery in SELECT/HAVING now
 
@@ -396,7 +397,7 @@ instance HasAggregates RSelectItem where
     _                      -> []
 
 instance HasAggregates RSel where
-  getAggregates (RSel items) = L.concatMap getAggregates items
+  getAggregates (RSel items) = L.nubBy ((==) `on` snd) $ L.concatMap getAggregates items
 
 instance HasAggregates RHaving where
   getAggregates RHavingEmpty = []
