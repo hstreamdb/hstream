@@ -35,7 +35,6 @@ module HStream.Server.Handler.Query
 import           Control.Exception                (Handler (..), catches,
                                                    throwIO)
 import           Control.Monad                    (unless)
-import qualified Data.ByteString.Char8            as BS
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import qualified HsGrpc.Server                    as G
@@ -128,21 +127,22 @@ getQueryHandler
   :: ServerContext
   -> ServerRequest 'Normal API.GetQueryRequest API.Query
   -> IO (ServerResponse 'Normal API.Query)
-getQueryHandler ctx (ServerNormalRequest _metadata req@API.GetQueryRequest{..}) =
+getQueryHandler ctx (ServerNormalRequest _metadata API.GetQueryRequest{..}) =
   queryExceptionHandle $ do
     validateNameAndThrow ResQuery getQueryRequestId
     validateQueryAllocation ctx getQueryRequestId
     Log.debug $ "Receive Get Query Request. "
              <> "Query ID: " <> Log.build getQueryRequestId
-    returnResp =<< Core.getQuery ctx req
+    returnResp =<< maybe (throwIO $ HE.QueryNotFound getQueryRequestId) pure
+               =<< Core.getQuery ctx getQueryRequestId
 
 handleGetQuery :: ServerContext -> G.UnaryHandler API.GetQueryRequest API.Query
-handleGetQuery ctx _ req@API.GetQueryRequest{..} = catchQueryEx $ do
+handleGetQuery ctx _ API.GetQueryRequest{..} = catchQueryEx $ do
   Log.debug $ "Receive Get Query Request. "
            <> "Query ID: " <> Log.build getQueryRequestId
   validateNameAndThrow ResQuery getQueryRequestId
   validateQueryAllocation ctx getQueryRequestId
-  Core.getQuery ctx req
+  Core.getQuery ctx getQueryRequestId >>= maybe (throwIO $ HE.QueryNotFound getQueryRequestId) pure
 
 terminateQueryHandler
   :: ServerContext

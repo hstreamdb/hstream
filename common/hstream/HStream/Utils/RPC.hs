@@ -32,7 +32,8 @@ module HStream.Utils.RPC
   , showNodeStatus
   , TaskStatus (Creating, Running, Resuming, Terminated, Aborted, Unknown, Paused, ..)
   , ResourceType (ResStream, ResSubscription, ResShard, ResShardReader, ResConnector, ResQuery, ResView, ..)
-  , pattern QueryCreateStream, pattern QueryCreateView
+  , QType (QueryCreateStream, QueryCreateView, ..)
+  -- , pattern QueryCreateStream, pattern QueryCreateView
   ) where
 
 import           Control.Monad
@@ -189,7 +190,15 @@ pattern ResConnector    = ResourceTypeResConnector
 pattern ResQuery        = ResourceTypeResQuery
 pattern ResView         = ResourceTypeResView
 
-type QType = PB.Enumerated QueryType
-pattern QueryCreateStream, QueryCreateView :: PB.Enumerated QueryType
-pattern QueryCreateStream = PB.Enumerated (Right QueryTypeCreateStreamAs)
-pattern QueryCreateView   = PB.Enumerated (Right QueryTypeCreateViewAs)
+-- type QType = PB.Enumerated QueryType
+newtype QType = QType { getQueryType :: PB.Enumerated QueryType }
+  deriving (Generic, Show, JSON, Eq, ToJSON, FromJSON)
+
+instance JSON (PB.Enumerated QueryType)
+instance JSON QueryType
+instance ToJSON (PB.Enumerated QueryType)
+instance FromJSON (PB.Enumerated QueryType)
+
+pattern QueryCreateStream, QueryCreateView :: QType
+pattern QueryCreateStream = QType (PB.Enumerated (Right QueryTypeCreateStreamAs))
+pattern QueryCreateView   = QType (PB.Enumerated (Right QueryTypeCreateViewAs))

@@ -240,7 +240,7 @@ subscriptionParser = API.Subscription
                      <> O.help "Maximum number of unacked records allowed per subscription")
   <*> (Enumerated . Right <$> O.option O.auto ( O.long "offset"
                                      <> O.metavar "[earliest|latest]"
-                                     <> O.value (API.SpecialOffsetLATEST)
+                                     <> O.value API.SpecialOffsetLATEST
                                      <> O.help "The offset of the subscription to start from"
                                       )
     )
@@ -261,6 +261,7 @@ viewCmdParser = O.subparser
 
 data QueryCommand
   = QueryCmdStatus Text
+  | QueryCmdGet Text
   deriving Show
 
 queryCmdParser :: O.Parser QueryCommand
@@ -268,6 +269,9 @@ queryCmdParser = O.subparser
   ( O.command "status" (O.info (QueryCmdStatus <$> O.strArgument ( O.metavar "QUERY_ID"
                                                                 <> O.help "The ID of the query"))
                                (O.progDesc "Get the status of a query"))
+  <> O.command "get" (O.info (QueryCmdGet <$> O.strArgument ( O.metavar "QUERY_ID"
+                                                           <> O.help "The ID of the query"))
+                               (O.progDesc "Get the metadata of a query"))
   )
 
 -------------------------------------------------------------------------------
