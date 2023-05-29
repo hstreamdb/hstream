@@ -63,7 +63,6 @@ library
     HStream.Server.ConnectorTypes
     HStream.Server.Core.Cluster
     HStream.Server.Core.Common
-    HStream.Server.Core.Extra
     HStream.Server.Exception
     HStream.Server.Handler
     HStream.Server.Handler.Common
@@ -124,7 +123,6 @@ library
     , hstream-common
     , hstream-common-base
     , hstream-common-stats
-    , hstream-version
     , hstream-gossip
     , hstream-io
     , hstream-processing
@@ -195,7 +193,6 @@ executable hstream-server
     , hstream-common
     , hstream-common-base
     , hstream-common-stats
-    , hstream-version
     , hstream-gossip
     , hstream-store
     , http-client

@@ -109,6 +109,7 @@ library
     , hstream-api-hs
     , hstream-client-cpp
     , hstream-common-base
+    , hstream-version
     , http-client
     , http-types
     , primitive             ^>=0.7

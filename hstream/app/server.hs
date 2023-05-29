@@ -42,6 +42,7 @@ import           ZooKeeper.Types                  (ZHandle, ZooEvent, ZooState,
 
 import           HStream.Base                     (setupFatalSignalHandler)
 import           HStream.Common.ConsistentHashing (HashRing, constructServerMap)
+import           HStream.Common.Types             (getHStreamVersion)
 import           HStream.Exception
 import           HStream.Gossip                   (GossipContext (..),
                                                    defaultGossipOpts,
@@ -65,7 +66,6 @@ import           HStream.Server.Config            (AdvertisedListeners,
 import qualified HStream.Server.Core.Cluster      as Cluster
 import           HStream.Server.Core.Common       (lookupResource',
                                                    parseAllocationKey)
-import           HStream.Server.Core.Extra        (getVersion)
 import           HStream.Server.Handler           (handlers)
 import qualified HStream.Server.HsGrpcHandler     as HsGrpc
 import           HStream.Server.HStreamApi        (NodeState (..),
@@ -126,7 +126,7 @@ main = do
     Success StartArgs{..} -> do
       if isGetVersion
          then do
-           API.HStreamVersion{..} <- getVersion
+           API.HStreamVersion{..} <- getHStreamVersion
            putStrLn $ "version: " <> T.unpack hstreamVersionVersion <> " (" <> T.unpack hstreamVersionCommit <> ")"
          else getConfig cliOpts >>= app
     Failure failure -> do

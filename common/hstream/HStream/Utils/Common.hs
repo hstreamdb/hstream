@@ -3,8 +3,6 @@ module HStream.Utils.Common
   , newRandomText
   ) where
 
-import           Data.List     (stripPrefix)
-import           Data.Maybe    (fromMaybe)
 import           Data.Text     (Text)
 import qualified Data.Text     as Text
 import           System.Random

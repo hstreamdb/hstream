@@ -9,15 +9,11 @@ import qualified HsGrpc.Server                    as G
 import           Network.GRPC.HighLevel.Generated
 
 import qualified HStream.Exception                as HE
-import qualified HStream.Logger                   as Log
-import           HStream.Server.Core.Extra        (getVersion)
-import           HStream.Server.Exception
 import           HStream.Server.Handler.Query
 import           HStream.Server.HStreamApi        as API
 import           HStream.Server.Types             (ServerContext (..))
 import           HStream.SQL
 import           HStream.Utils
-import           Proto3.Suite.Class               (HasDefault (def))
 
 parseSqlHandler
   :: ServerContext
@@ -35,19 +31,3 @@ parseSql API.ParseSqlRequest{..} = do
     SelectPlan sources _ _ _ -> return $
       ParseSqlResponse (Just $ ParseSqlResponseSqlEvqSql $ ExecuteViewQuerySql (head sources))
     _ -> throwIO $ HE.SQLNotSupportedByParseSQL parseSqlRequestSql
-
-getVersionHandler
-  :: ServerContext
-  -> ServerRequest 'Normal API.GetVersionRequest API.GetVersionResponse
-  -> IO (ServerResponse 'Normal API.GetVersionResponse)
-getVersionHandler _ _ = defaultExceptionHandle $ do
-    version <- getVersion
-    Log.info $ "get server version: " <> Log.build (show version)
-    returnResp $ def { getVersionResponseVersion = Just version }
-
-handleGetVersion :: ServerContext -> G.UnaryHandler API.GetVersionRequest API.GetVersionResponse
-handleGetVersion _ _ _ = catchDefaultEx $ do
-    version <- getVersion
-    Log.info $ "get server version: " <> Log.build (show version)
-    return $ def { getVersionResponseVersion = Just version }
-

@@ -33,9 +33,8 @@ import qualified HStream.Admin.Server.Command     as Admin
 import           HStream.Client.Action            (createSubscription',
                                                    deleteStream,
                                                    deleteSubscription,
-                                                   getHStreamVersion, getStream,
-                                                   getSubscription, listShards,
-                                                   listStreams,
+                                                   getStream, getSubscription,
+                                                   listShards, listStreams,
                                                    listSubscriptions, readShard)
 import           HStream.Client.Execute           (executeWithLookupResource_,
                                                    initCliContext,
@@ -53,7 +52,6 @@ import           HStream.Client.Types             (Command (..),
                                                    Resource (..),
                                                    StreamCommand (..),
                                                    SubscriptionCommand (..),
-                                                   VersionCommand (..),
                                                    commandParser,
                                                    refineCliConnOpts)
 import           HStream.Client.Utils             (mkClientNormalRequest',
@@ -86,7 +84,6 @@ runCommand HStreamCommand{..} = do
     HStreamSql    opts       -> hstreamSQL    rConnOpts opts
     HStreamStream opts       -> hstreamStream rConnOpts opts
     HStreamSubscription opts -> hstreamSubscription rConnOpts opts
-    HStreamVersion opts      -> hstreamVersion rConnOpts opts
 
 hstreamSQL :: RefinedCliConnOpts -> HStreamSqlOpts -> IO ()
 hstreamSQL connOpt HStreamSqlOpts{_updateInterval = updateInterval,
@@ -206,13 +203,3 @@ getNodes RefinedCliConnOpts{..} =
         -> putStrLn (show x <> " Error: "  <> show (unStatusDetails details))
            >> exitFailure
       ClientErrorResponse err -> error $ "Server Error: " <> show err <> "\n"
-
-hstreamVersion :: RefinedCliConnOpts -> VersionCommand -> IO ()
-hstreamVersion RefinedCliConnOpts{..} = \case
-  Version -> simpleExecute clientConfig getHStreamVersion >>= printVersion . formatResult
-  NumVersion -> simpleExecute clientConfig getHStreamVersion >>= printVersion . getNumVersion
- where
-   getNumVersion resp =
-     let parts = words . formatResult $ resp
-      in if null parts then "unknown version" else head parts
-   printVersion version = putStrLn $ "version: " <> version

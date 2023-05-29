@@ -111,9 +111,6 @@ instance Format a => Format (ClientResult 'ServerStreaming a) where
     = "Server Error: " <> BS.unpack (unStatusDetails details) <> "\n"
   formatResult (ClientErrorResponse err) = "Error: " <> show err <> "\n"
 
-instance Format API.GetVersionResponse where
-  formatResult = formatResult . API.getVersionResponseVersion
-
 instance Format API.ListStreamsResponse where
   formatResult = formatResult . V.toList . API.listStreamsResponseStreams
 instance Format API.ListViewsResponse where
@@ -261,9 +258,14 @@ renderServerNodesToTable values = showTable titles rows
 renderServerNodesStatusToTable :: [API.ServerNodeStatus] -> String
 renderServerNodesStatusToTable values = showTable titles rows
   where
-    titles = ["Server Id", "State", "Address"]
+    titles = ["Server Id", "State", "Address", "Version", "Commit"]
     formatRow API.ServerNodeStatus {serverNodeStatusNode = Just API.ServerNode{..}, ..} =
-      [[show serverNodeId], [showNodeStatus serverNodeStatusState], [T.unpack serverNodeHost <> ":" <> show serverNodePort]]
+      [ [show serverNodeId]
+      , [showNodeStatus serverNodeStatusState]
+      , [T.unpack serverNodeHost <> ":" <> show serverNodePort]
+      , [T.unpack $ maybe "unknown" API.hstreamVersionVersion serverNodeVersion]
+      , [T.unpack $ maybe "unknown" API.hstreamVersionCommit serverNodeVersion]
+      ]
     formatRow API.ServerNodeStatus {serverNodeStatusNode = Nothing} = []
     rows = map formatRow . L.sort $ values
 
