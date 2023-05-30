@@ -8,19 +8,23 @@ module HStream.Server.Validation
   , validateCreateConnector
   , validateCreateQuery
   , validateCreateQueryWithNamespace
-  )
-where
+  , validateResLookup
+  ) where
 
-import           Control.Exception         (Exception, throwIO)
-import           Control.Monad             (when)
-import qualified Data.ByteString           as BS
-import           Data.Maybe                (isJust)
-import qualified Data.Text                 as T
-import           Data.Word                 (Word32)
-import qualified HStream.Exception         as HE
-import qualified HStream.Server.HStreamApi as API
-import           HStream.Utils             (ResourceType (ResConnector, ResQuery, ResShardReader, ResStream, ResSubscription),
-                                            validateNameAndThrow)
+import           Control.Exception          (Exception, throwIO)
+import           Control.Monad              (unless, when)
+import qualified Data.ByteString            as BS
+import           Data.Maybe                 (isJust)
+import qualified Data.Text                  as T
+import           Data.Word                  (Word32)
+import           GHC.Stack                  (HasCallStack)
+
+import qualified HStream.Exception          as HE
+import           HStream.Server.Core.Common (lookupResource')
+import qualified HStream.Server.HStreamApi  as API
+import           HStream.Server.Types
+import           HStream.Utils              (ResourceType (..),
+                                             validateNameAndThrow)
 
 validateStream :: API.Stream -> IO ()
 validateStream API.Stream{..} = do
@@ -80,3 +84,12 @@ validateSql err x = if T.length x > 0 then pure () else throwIO $ err "Empty Sql
 validateAppendRequestPayload :: Maybe API.BatchedRecord -> IO ()
 validateAppendRequestPayload Nothing = throwIO HE.EmptyBatchedRecord
 validateAppendRequestPayload (Just API.BatchedRecord{..}) = when (batchedRecordBatchSize == 0 || BS.null batchedRecordPayload) $ throwIO HE.EmptyBatchedRecord
+
+-------------------------------------------------------------------------------
+
+validateResLookup
+  :: HasCallStack
+  => ServerContext -> ResourceType -> T.Text -> String -> IO ()
+validateResLookup ctx resType name errmsg = do
+  API.ServerNode{..} <- lookupResource' ctx resType name
+  unless (serverNodeId == serverID ctx) $ throwIO $ HE.WrongServer errmsg
