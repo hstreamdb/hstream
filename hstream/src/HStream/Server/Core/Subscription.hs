@@ -541,11 +541,21 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
       doneList <- atomically $ do
         ct <- readTVar subCurrentTime
         checkList <- readTVar subWaitingCheckedRecordIds
-        let (!doneList, !leftList) = span ( \CheckedRecordIds {..} -> crDeadline <= newTime) checkList
+        let (!doneList, !leftList) = L.partition (\CheckedRecordIds {..} -> crDeadline <= newTime) checkList
         writeTVar subCurrentTime newTime
-        writeTVar subWaitingCheckedRecordIds leftList
         return doneList
       forM_ doneList (\r@CheckedRecordIds {..} -> buildShardRecordIds r >>= resendTimeoutRecords crLogId crBatchId )
+      recordIds <- mapM (\CheckedRecordIds {..} -> do
+                           idxs <- readTVarIO crBatchIndexes
+                           return $ L.map (\idx ->
+                                             RecordId {
+                                               recordIdShardId = crLogId
+                                             , recordIdBatchId = crBatchId
+                                             , recordIdBatchIndex = idx
+                                             }
+                                          ) (Set.toList idxs)
+                        ) doneList <&> (V.fromList . L.concat)
+      atomically $ removeAckedRecordIdsFromCheckList subCtx recordIds
       where
         buildShardRecordIds  CheckedRecordIds {..} = atomically $ do
           batchIndexes <- readTVar crBatchIndexes
@@ -705,9 +715,9 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
                       <> ", batchId=" <> Log.build batchId <> ", num of records=" <> Log.build (V.length shardRecordIds)
              registerResend logId batchId shardRecordIds
              return True
-
     registerResend logId batchId recordIds = atomically $ do
-      batchIndexes <- newTVar $ Set.fromList $ fmap sriBatchIndex (V.toList recordIds)
+      let batchIndexes = Set.fromList $! fmap sriBatchIndex (V.toList recordIds)
+      batchIndexes_m <- newTVar batchIndexes
       currentTime <- readTVar subCurrentTime
       checkList <- readTVar subWaitingCheckedRecordIds
       checkListIndex <- readTVar subWaitingCheckedRecordIdsIndex
@@ -715,16 +725,20 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
                               crDeadline =  currentTime + fromIntegral (subAckTimeoutSeconds * 1000),
                               crLogId = logId,
                               crBatchId = batchId,
-                              crBatchIndexes = batchIndexes
+                              crBatchIndexes = batchIndexes_m
                             }
       let checkedRecordIdsKey = CheckedRecordIdsKey {
                               crkLogId = logId,
                               crkBatchId = batchId
                             }
       let newCheckList = checkList ++ [checkedRecordIds]
-      let newCheckListIndex = Map.insert checkedRecordIdsKey checkedRecordIds checkListIndex
       writeTVar subWaitingCheckedRecordIds newCheckList
-      writeTVar subWaitingCheckedRecordIdsIndex newCheckListIndex
+      case Map.lookup checkedRecordIdsKey checkListIndex of
+        Nothing                -> do
+          let newCheckListIndex = Map.insert checkedRecordIdsKey checkedRecordIds checkListIndex
+          writeTVar subWaitingCheckedRecordIdsIndex newCheckListIndex
+        Just checkedRecordIds_ -> do
+          modifyTVar' (crBatchIndexes checkedRecordIds_) (Set.union batchIndexes)
 
     resendTimeoutRecords logId batchId recordIds = do
       resendRecordIds <- atomically $ do
@@ -959,7 +973,7 @@ doAcks
   -> IO ()
 doAcks ldclient subCtx@SubscribeContext{..} ackRecordIds = do
   atomically $ do
-    removeAckedRecordIdsFromCheckList ackRecordIds
+    removeAckedRecordIdsFromCheckList subCtx ackRecordIds
   let group = HM.toList $ groupRecordIds ackRecordIds
   forM_ group (\(logId, recordIds) -> doAck ldclient subCtx logId recordIds)
   where
@@ -978,37 +992,39 @@ doAcks ldclient subCtx@SubscribeContext{..} ackRecordIds = do
         HM.empty
         recordIds
 
-    removeAckedRecordIdsFromCheckList :: V.Vector RecordId -> STM ()
-    removeAckedRecordIdsFromCheckList recordIds = do
-      checkList <- readTVar subWaitingCheckedRecordIds
-      checkListIndex <- readTVar subWaitingCheckedRecordIdsIndex
-      mapM_
-        (
-          \ RecordId {..}  -> do
-            let k = CheckedRecordIdsKey {
-                      crkLogId = recordIdShardId,
-                      crkBatchId = recordIdBatchId
-                    }
-            case Map.lookup k checkListIndex of
-              Nothing -> pure ()
-              Just CheckedRecordIds {..} -> modifyTVar crBatchIndexes (Set.delete recordIdBatchIndex)
-        )
-        recordIds
-      (newCheckList, newCheckListIndex) <- foldM
-        ( \(r, i) l@CheckedRecordIds{..} -> do
-            batchIndexes <- readTVar crBatchIndexes
-            let k = CheckedRecordIdsKey {
-                      crkLogId =  crLogId,
-                      crkBatchId = crBatchId
-                    }
-            if Set.null batchIndexes
-            then pure (r, Map.delete k i)
-            else pure (r ++ [l], i)
-        )
-        ([], checkListIndex)
-        checkList
-      writeTVar subWaitingCheckedRecordIds newCheckList
-      writeTVar subWaitingCheckedRecordIdsIndex newCheckListIndex
+removeAckedRecordIdsFromCheckList :: SubscribeContext
+                                  -> V.Vector RecordId
+                                  -> STM ()
+removeAckedRecordIdsFromCheckList SubscribeContext{..} recordIds = do
+  checkList <- readTVar subWaitingCheckedRecordIds
+  checkListIndex <- readTVar subWaitingCheckedRecordIdsIndex
+  mapM_
+    (
+      \ RecordId {..}  -> do
+        let k = CheckedRecordIdsKey {
+                  crkLogId = recordIdShardId,
+                  crkBatchId = recordIdBatchId
+                }
+        case Map.lookup k checkListIndex of
+          Nothing -> pure ()
+          Just CheckedRecordIds {..} -> modifyTVar' crBatchIndexes (Set.delete recordIdBatchIndex)
+    )
+    recordIds
+  (newCheckList, newCheckListIndex) <- foldM
+    ( \(r, i) l@CheckedRecordIds{..} -> do
+        batchIndexes <- readTVar crBatchIndexes
+        let k = CheckedRecordIdsKey {
+                  crkLogId =  crLogId,
+                  crkBatchId = crBatchId
+                }
+        if Set.null batchIndexes
+        then pure (r, Map.delete k i)
+        else pure (r++[l], i)
+    )
+    ([], checkListIndex)
+    checkList
+  writeTVar subWaitingCheckedRecordIds newCheckList
+  writeTVar subWaitingCheckedRecordIdsIndex newCheckListIndex
 
 doAck
   :: S.LDClient
