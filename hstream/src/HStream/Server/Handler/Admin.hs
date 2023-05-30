@@ -41,7 +41,7 @@ import           HStream.Gossip                   (GossipContext (clusterReady),
                                                    initCluster)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Core.Common       (lookupResource')
-import           HStream.Server.Core.Query        (getQuery, resumeQuery)
+import qualified HStream.Server.Core.Query        as HC
 import qualified HStream.Server.Core.Stream       as HC
 import qualified HStream.Server.Core.Subscription as HC
 import qualified HStream.Server.Core.View         as HC
@@ -313,24 +313,26 @@ runQuery ServerContext{..} (AT.QueryCmdStatus qid) = do
           content = Aeson.object ["headers" .= headers, "rows" .= rows]
       return $ tableResponse content
 runQuery sc (AT.QueryCmdDescribe qid) = do
-  query <- getQuery sc qid
+  query <- HC.getQuery sc qid
   case query of
     Nothing -> return $ errorResponse $ "Query " <> Text.pack (show qid) <> " not found, or already dead"
     Just API.Query{..} -> do
-      let headers = ["Query ID" :: Text, "Type", "Status", "Source ID", "Result ID", "Node"]
+      let headers = ["Query ID" :: Text, "Type", "Status", "Source ID", "Result ID", "CreatedTime", "Node", "SQL"]
           rows =
             [[ queryId
              , Text.pack $ formatQueryType queryType
              , Text.pack $ formatStatus queryStatus
              , V.foldl' (\acc x -> if Text.null acc then x else acc <> "," <> x) Text.empty querySources
              , queryResultName
+             , Text.pack . show $ queryCreatedTime
              , Text.pack .show $ queryNodeId
+             , queryQueryText
             ]]
           content = Aeson.object ["headers" .= headers, "rows" .= rows]
       return $ tableResponse content
 runQuery sc (AT.QueryCmdResume qid) = do
-  resumeQuery sc qid
-  query <- getQuery sc qid
+  HC.resumeQuery sc qid
+  query <- HC.getQuery sc qid
   case query of
     Nothing -> return $ errorResponse $ "Query " <> Text.pack (show qid) <> " not found, or already dead"
     Just API.Query{..} -> do
@@ -342,6 +344,18 @@ runQuery sc (AT.QueryCmdResume qid) = do
             ]]
           content = Aeson.object ["headers" .= headers, "rows" .= rows]
       return $ tableResponse content
+runQuery sc AT.QueryCmdList = do
+  let headers = ["Query ID" :: Text, "Type", "Status", "CreatedTime", "SQL"]
+  queries <- HC.listQueries sc
+  rows <- forM queries $ \API.Query{..} -> do
+    return [ queryId
+           , Text.pack $ formatQueryType queryType
+           , Text.pack $ formatStatus queryStatus
+           , Text.pack . show $ queryCreatedTime
+           , queryQueryText
+           ]
+  let content = Aeson.object ["headers" .= headers, "rows" .= rows]
+  return $ tableResponse content
 
 -------------------------------------------------------------------------------
 -- Admin Status Command

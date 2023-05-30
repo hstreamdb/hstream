@@ -263,6 +263,7 @@ data QueryCommand
   = QueryCmdStatus Text
   | QueryCmdDescribe Text
   | QueryCmdResume Text
+  | QueryCmdList
   deriving Show
 
 queryCmdParser :: O.Parser QueryCommand
@@ -282,6 +283,7 @@ queryCmdParser = O.subparser
                                                                <> O.metavar "QUERY_ID"
                                                                <> O.help "The ID of the query"))
                                 (O.progDesc "Resume specific query"))
+  <> O.command "list" (O.info (pure QueryCmdList) (O.progDesc "List all queries"))
   )
 
 -------------------------------------------------------------------------------
