@@ -3,7 +3,9 @@ module HStream.Admin.Server.Command
   , withAdminClient'
   , sendAdminCommand
   , sendAdminCommand'
+  , sendLookupCommand
   , formatCommandResponse
+  , getResourceType
   , module HStream.Admin.Server.Command.ServerSql
   ) where
 
@@ -22,12 +24,14 @@ import           System.Exit                            (exitFailure)
 import qualified Z.Data.CBytes                          as CBytes
 import qualified Z.Foreign                              as Z
 
+import           Data.Word                              (Word32)
 import           HStream.Admin.Server.Command.ServerSql
 import           HStream.Admin.Server.Types
 import           HStream.Base.Table                     (defaultShowTableIO')
 import qualified HStream.Server.HStreamApi              as API
 import qualified HStream.Utils                          as U
 import qualified HStream.Utils.Aeson                    as AesonComp
+import           Proto3.Suite                           (Enumerated (Enumerated))
 
 formatCommandResponse :: Text -> IO String
 formatCommandResponse resp =
@@ -93,6 +97,18 @@ sendAdminCommand' timeout command api = do
   fmap API.adminCommandResponseResult . U.getServerResp =<< API.hstreamApiSendAdminCommand api req
 {-# INLINABLE sendAdminCommand' #-}
 
+sendLookupCommand :: API.ResourceType -> Text -> U.HStreamClientApi -> IO (Text, Word32)
+sendLookupCommand = sendLookupCommand' 10
+{-# INLINABLE sendLookupCommand #-}
+
+sendLookupCommand' :: GRPC.TimeoutSeconds -> API.ResourceType -> Text -> U.HStreamClientApi -> IO (Text, Word32)
+sendLookupCommand' timeout resType rId api = do
+  let comReq = API.LookupResourceRequest { lookupResourceRequestResId = rId, lookupResourceRequestResType = Enumerated $ Right resType }
+      req = GRPC.ClientNormalRequest comReq timeout $ GRPC.MetadataMap Map.empty
+  node <- U.getServerResp =<< API.hstreamApiLookupResource api req
+  return (API.serverNodeHost node, API.serverNodePort node)
+{-# INLINABLE sendLookupCommand' #-}
+
 withAdminClient
   :: CliOpts
   -> (U.HStreamClientApi -> IO a)
@@ -116,3 +132,12 @@ withAdminClient' host port f = withGRPCClient config (f <=< API.hstreamApiClient
                         , clientSSLConfig = Nothing
                         , clientAuthority = Nothing
                         }
+
+getResourceType :: AdminCommand -> API.ResourceType
+getResourceType cmd =
+  case cmd of
+    AdminStreamCommand _       -> API.ResourceTypeResStream
+    AdminQueryCommand _        -> API.ResourceTypeResQuery
+    AdminSubscriptionCommand _ -> API.ResourceTypeResSubscription
+    AdminViewCommand _         -> API.ResourceTypeResView
+    _                          -> errorWithoutStackTrace "invalid command"

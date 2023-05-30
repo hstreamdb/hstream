@@ -41,7 +41,7 @@ import           HStream.Gossip                   (GossipContext (clusterReady),
                                                    initCluster)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Core.Common       (lookupResource')
-import           HStream.Server.Core.Query        (getQuery)
+import           HStream.Server.Core.Query        (getQuery, resumeQuery)
 import qualified HStream.Server.Core.Stream       as HC
 import qualified HStream.Server.Core.Subscription as HC
 import qualified HStream.Server.Core.View         as HC
@@ -312,7 +312,7 @@ runQuery ServerContext{..} (AT.QueryCmdStatus qid) = do
           rows = [[qid, Text.pack (show status), Text.pack (show closed)]]
           content = Aeson.object ["headers" .= headers, "rows" .= rows]
       return $ tableResponse content
-runQuery sc (AT.QueryCmdGet qid) = do
+runQuery sc (AT.QueryCmdDescribe qid) = do
   query <- getQuery sc qid
   case query of
     Nothing -> return $ errorResponse $ "Query " <> Text.pack (show qid) <> " not found, or already dead"
@@ -324,6 +324,20 @@ runQuery sc (AT.QueryCmdGet qid) = do
              , Text.pack $ formatStatus queryStatus
              , V.foldl' (\acc x -> if Text.null acc then x else acc <> "," <> x) Text.empty querySources
              , queryResultName
+             , Text.pack .show $ queryNodeId
+            ]]
+          content = Aeson.object ["headers" .= headers, "rows" .= rows]
+      return $ tableResponse content
+runQuery sc (AT.QueryCmdResume qid) = do
+  resumeQuery sc qid
+  query <- getQuery sc qid
+  case query of
+    Nothing -> return $ errorResponse $ "Query " <> Text.pack (show qid) <> " not found, or already dead"
+    Just API.Query{..} -> do
+      let headers = ["Query ID" :: Text, "Status", "Node"]
+          rows =
+            [[ queryId
+             , Text.pack $ formatStatus queryStatus
              , Text.pack .show $ queryNodeId
             ]]
           content = Aeson.object ["headers" .= headers, "rows" .= rows]

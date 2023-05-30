@@ -278,7 +278,6 @@ resumeQuery ctx@ServerContext{..} qRQueryName = do
 
 hstreamQueryToQuery :: MetaHandle -> P.QueryInfo -> IO Query
 hstreamQueryToQuery h P.QueryInfo{..} = do
-  Log.info "====================== query to query"
   state <- getMeta @P.QueryStatus queryId h >>= \case
     Nothing                -> return Unknown
     Just P.QueryStatus{..} -> return queryState
@@ -295,7 +294,6 @@ hstreamQueryToQuery h P.QueryInfo{..} = do
 
 hstreamViewToQuery :: M.MetaHandle -> P.ViewInfo -> IO API.Query
 hstreamViewToQuery h P.ViewInfo{viewQuery = P.QueryInfo{..},..} = do
-  Log.info "====================== view to query"
   state <- M.getMeta @P.QueryStatus queryId h <&> maybe Unknown P.queryState
   return API.Query
     { queryId = queryId
