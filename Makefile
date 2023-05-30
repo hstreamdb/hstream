@@ -10,10 +10,9 @@ CABAL_PROJECT_FILE ?= cabal.project
 all:: grpc sql generate-version
 endif
 
-VERSION_TEMPLATE = "common/version/template/Version.tmpl"
-VERSION_OUTPUT = "common/version/gen-hs/HStream/Version.hs"
-VERSION ?= "unknown"
-COMMIT ?= "unknown"
+HSTREAM_VERSION_FILE = "common/hstream/HStream/Version.hs"
+VERSION ?= unknown
+COMMIT ?= unknown
 
 ENGINE_VERSION ?= v1
 BNFC = bnfc
@@ -83,18 +82,19 @@ sql-deps::
 	(cd $(shell mktemp -d) && command -v alex || cabal install alex --constraint 'alex ^>= 3.2.7.1')
 	(cd $(shell mktemp -d) && command -v happy || cabal install happy)
 
-generate-version:
-	@gitEnv=$$(git rev-parse --is-inside-work-tree 2>/dev/null); \
-    mkdir -p common/version/gen-hs/HStream; \
-	if [ $$gitEnv = "true" ]; then \
-		HSTREAM_VERSION=$$(git describe --tag --abbrev=0); \
-		HSTREAM_COMMIT=$$(git rev-parse HEAD); \
-	else \
-		HSTREAM_VERSION=${VERSION}; \
-		HSTREAM_COMMIT=${COMMIT}; \
-	fi; \
-    echo "Generating $(VERSION_OUTPUT) from $(VERSION_TEMPLATE)"; \
-	sed -e 's/{{version}}/'"$$HSTREAM_VERSION"'/g' -e 's/{{commit}}/'"$$HSTREAM_COMMIT"'/g' $(VERSION_TEMPLATE) > $(VERSION_OUTPUT)
+generate-version: $(HSTREAM_VERSION_FILE)
+
+$(HSTREAM_VERSION_FILE):
+	HSTREAM_VERSION=$(or $(shell git describe --tag --abbrev=0 2>/dev/null), $(VERSION)); \
+	HSTREAM_COMMIT=$(or $(shell git rev-parse HEAD 2>/dev/null), $(COMMIT)); \
+	echo "Generating HStream Version file with version: $$HSTREAM_VERSION, commit: $$HSTREAM_COMMIT"; \
+	echo "module HStream.Version where" > $@; \
+	echo "" >> $@; \
+	echo "hstreamVersion :: String" >> $@; \
+	echo "hstreamVersion = \"$$HSTREAM_VERSION\"" >> $@; \
+	echo "" >> $@; \
+	echo "hstreamCommit :: String" >> $@; \
+	echo "hstreamCommit = \"$$HSTREAM_COMMIT\"" >> $@
 
 clean:
 	find ./common -maxdepth 10 -type d \

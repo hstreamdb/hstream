@@ -73,6 +73,7 @@ library
     HStream.Utils.JSON
     HStream.Utils.RPC
     HStream.Utils.Time
+    HStream.Version
 
   hs-source-dirs:     .
   include-dirs:       . include /usr/local/include
@@ -109,7 +110,6 @@ library
     , hstream-api-hs
     , hstream-client-cpp
     , hstream-common-base
-    , hstream-version
     , http-client
     , http-types
     , primitive             ^>=0.7

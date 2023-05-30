@@ -320,6 +320,3 @@ cradle:
 
     - path: "hstream-processing/src"
       component: "lib:hstream-processing"
-
-    - path: "common/version"
-      component: "lib:hstream-version"
