@@ -52,11 +52,7 @@ import           HStream.Utils                 (decompressBatchedRecord,
                                                 getProtoTimestamp,
                                                 mkBatchedRecord, textToCBytes)
 
---------------------------------------------------------------------------------
-
-checkSubscriptionExist :: ServerContext -> Text -> IO Bool
-checkSubscriptionExist ServerContext{..} sid =
-  M.checkMetaExists @SubscriptionWrap sid metaHandle
+-------------------------------------------------------------------------------
 
 listSubscriptions :: ServerContext -> IO (V.Vector Subscription)
 listSubscriptions sc = CC.listSubscriptions sc Nothing
@@ -68,9 +64,12 @@ listConsumers :: ServerContext -> ListConsumersRequest -> IO ListConsumersRespon
 listConsumers sc@ServerContext{..} ListConsumersRequest{listConsumersRequestSubscriptionId = sid} = do
   subCtxMap <- readTVarIO scSubscribeContexts
   case HM.lookup sid subCtxMap of
-    Nothing -> throwIO $ HE.SubscriptionNotFound sid
+    Nothing -> do
+      exist <- checkSubscriptionExist sc sid
+      if exist then return $ ListConsumersResponse V.empty
+               else throwIO $ HE.SubscriptionNotFound sid
     Just subCtx@SubscribeContextNewWrapper{..} -> atomically $ do
-      ctx@SubscribeContext{..} <- readTMVar scnwContext
+      SubscribeContext{..} <- readTMVar scnwContext
       consumerMap <- readTVar subConsumerContexts
       return . ListConsumersResponse . V.fromList $ makeRpcConsumer <$> HM.elems consumerMap
   where
@@ -1107,6 +1106,8 @@ tryUpdateWindowLowerBound ackedRanges lowerBoundRecordId batchNumMap (Just commi
        | otherwise -> Nothing
 tryUpdateWindowLowerBound _ _ _ Nothing = Nothing
 
+-------------------------------------------------------------------------------
+
 recordIds2ShardRecordIds :: V.Vector RecordId -> V.Vector ShardRecordId
 recordIds2ShardRecordIds =
   V.map (\RecordId {..} -> ShardRecordId {sriBatchId = recordIdBatchId, sriBatchIndex = recordIdBatchIndex})
@@ -1116,3 +1117,8 @@ addUnackedRecords SubscribeContext {..} count = do
   -- traceM $ "addUnackedRecords: " <> show count
   unackedRecords <- readTVar subUnackedRecords
   writeTVar subUnackedRecords (unackedRecords + fromIntegral count)
+
+checkSubscriptionExist :: ServerContext -> Text -> IO Bool
+checkSubscriptionExist ServerContext{..} sid =
+  M.checkMetaExists @SubscriptionWrap sid metaHandle
+
