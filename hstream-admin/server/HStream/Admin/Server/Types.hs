@@ -92,6 +92,7 @@ logLevelParser =
 data AdminCommand
   = AdminStatsCommand StatsCommand
   | AdminResetStatsCommand
+  | AdminLookupCommand LookupCommand
   | AdminStreamCommand StreamCommand
   | AdminSubscriptionCommand SubscriptionCommand
   | AdminViewCommand ViewCommand
@@ -108,6 +109,8 @@ adminCommandParser = O.hsubparser
                                          <> "stream(or other) for only one specific server"))
  <> O.command "reset-stats" (O.info (pure AdminResetStatsCommand)
                                     (O.progDesc "Reset all counters to their initial values."))
+ <> O.command "lookup" (O.info (AdminLookupCommand <$> lookupCmdParser)
+                               (O.progDesc "Lookup command"))
  <> O.command "stream" (O.info (AdminStreamCommand <$> streamCmdParser)
                                (O.progDesc "Stream command"))
  <> O.command "sub"    (O.info (AdminSubscriptionCommand <$> subscriptionCmdParser)
@@ -125,6 +128,14 @@ adminCommandParser = O.hsubparser
   )
 
 -------------------------------------------------------------------------------
+
+data LookupCommand = LookupCommand Text Text deriving (Show)
+
+lookupCmdParser :: O.Parser LookupCommand
+lookupCmdParser = LookupCommand
+  <$> O.strArgument ( O.metavar "RESOURCE_TYPE"
+                   <> O.help "The type of resource, include: [stream|subscription|query|view|connector|shard|shard-reader]")
+  <*> O.strArgument ( O.metavar "RESOURCE_ID" <> O.help "The id of resource")
 
 data StreamCommand
   = StreamCmdList

@@ -32,12 +32,15 @@ import           Proto3.Suite                     (HasDefault (def))
 import qualified Z.Data.CBytes                    as CB
 import           Z.Data.CBytes                    (CBytes)
 
+import           Control.Exception                (throw)
 import qualified HStream.Admin.Server.Types       as AT
 import           HStream.Base                     (rmTrailingZeros)
+import qualified HStream.Exception                as HE
 import           HStream.Gossip                   (GossipContext (clusterReady),
                                                    getClusterStatus,
                                                    initCluster)
 import qualified HStream.Logger                   as Log
+import           HStream.Server.Core.Common       (lookupResource')
 import qualified HStream.Server.Core.Stream       as HC
 import qualified HStream.Server.Core.Subscription as HC
 import qualified HStream.Server.Core.View         as HC
@@ -99,6 +102,7 @@ runAdminCommand sc@ServerContext{..} cmd = do
     AT.AdminStatusCommand         -> runStatus sc
     AT.AdminInitCommand           -> runInit sc
     AT.AdminCheckReadyCommand     -> runCheckReady sc
+    AT.AdminLookupCommand c       -> runLookup sc c
 
 handleParseResult :: O.ParserResult a -> IO a
 handleParseResult (O.Success a) = return a
@@ -182,6 +186,28 @@ runResetStats :: Stats.StatsHolder -> IO Text
 runResetStats stats_holder = do
   Stats.resetStatsHolder stats_holder
   return $ plainResponse "OK"
+
+-------------------------------------------------------------------------------
+-- Admin Lookup Command
+
+runLookup :: ServerContext -> AT.LookupCommand -> IO Text
+runLookup ctx (AT.LookupCommand resType rId) = do
+  API.ServerNode{..} <- lookupResource' ctx getResType rId
+  let headers = ["Resource ID" :: Text, "Host", "Port"]
+      rows = [[rId, serverNodeHost, Text.pack .show $ serverNodePort]]
+      content = Aeson.object ["headers" .= headers, "rows" .= rows]
+  return $ tableResponse content
+ where
+  getResType =
+    case resType of
+      "stream"       -> API.ResourceTypeResStream
+      "subscription" -> API.ResourceTypeResSubscription
+      "query"        -> API.ResourceTypeResQuery
+      "view"         -> API.ResourceTypeResView
+      "connector"    -> API.ResourceTypeResConnector
+      "shard"        -> API.ResourceTypeResShard
+      "shard-reader" -> API.ResourceTypeResShardReader
+      x              -> throw $ HE.InvalidResourceType (show x)
 
 -------------------------------------------------------------------------------
 -- Admin Stream Command
