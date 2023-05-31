@@ -16,7 +16,8 @@ import           Network.URI
 import qualified Options.Applicative           as O
 import           Text.Read                     (readMaybe)
 
-import           HStream.Admin.Server.Types    (subscriptionParser)
+import           HStream.Common.CliParsers     (streamParser,
+                                                subscriptionParser)
 import qualified HStream.Server.HStreamApi     as API
 import           HStream.Server.Types          (ServerID)
 import           HStream.Utils                 (ResourceType, SocketAddr (..),
@@ -80,34 +81,6 @@ streamCmdParser = O.hsubparser
  <> O.command "read-shard" (O.info (StreamCmdReadShard <$> readShardRequestParser)
                              (O.progDesc "Read records from specific shard"))
   )
-
-streamParser :: O.Parser API.Stream
-streamParser = API.Stream
-  <$> O.strArgument (O.metavar "STREAM_NAME"
-                 <> O.help "The name of the stream"
-                  )
-  <*> O.option O.auto ( O.long "replication-factor"
-                     <> O.short 'r'
-                     <> O.metavar "INT"
-                     <> O.showDefault
-                     <> O.value 1
-                     <> O.help "The replication factor for the stream"
-                      )
-  <*> O.option O.auto ( O.long "backlog-duration"
-                     <> O.short 'b'
-                     <> O.metavar "INT"
-                     <> O.showDefault
-                     <> O.value 0
-                     <> O.help "The backlog duration of records in stream in seconds"
-                      )
-  <*> O.option O.auto ( O.long "shards"
-                     <> O.short 's'
-                     <> O.metavar "INT"
-                     <> O.showDefault
-                     <> O.value 1
-                     <> O.help "The number of shards the stream should have"
-                      )
-  <*> pure Nothing
 
 data ReadShardArgs = ReadShardArgs
   { shardIdArgs     :: Word64
