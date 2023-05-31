@@ -1,5 +1,3 @@
-{-# OPTIONS_GHC -Wno-orphans #-}
-
 module HStream.Client.Types where
 
 import           Control.Concurrent            (MVar)

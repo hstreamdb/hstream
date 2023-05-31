@@ -1,5 +1,3 @@
-{-# OPTIONS_GHC -Wno-orphans #-}
-
 module HStream.Admin.Server.Types where
 
 import           Data.Aeson                (FromJSON (..), ToJSON (..))
@@ -14,6 +12,7 @@ import qualified Text.Read                 as Read
 import qualified Z.Data.CBytes             as CB
 import           Z.Data.CBytes             (CBytes)
 
+import           HStream.Instances         ()
 import qualified HStream.Logger            as Log
 import qualified HStream.Server.HStreamApi as API
 import qualified HStream.Utils             as U
@@ -219,14 +218,6 @@ subscriptionCmdParser = O.hsubparser
                                   (O.progDesc "Delete all subscriptions. NOTE: make sure you send the request to the right server")
                           )
   )
-
-instance Read API.SpecialOffset where
-  readPrec = do
-    i <- Read.lexP
-    case i of
-        Read.Ident "earliest" -> return API.SpecialOffsetEARLIEST
-        Read.Ident "latest"  -> return API.SpecialOffsetLATEST
-        x -> errorWithoutStackTrace $ "cannot parse value: " <> show x
 
 subscriptionParser :: O.Parser API.Subscription
 subscriptionParser = API.Subscription

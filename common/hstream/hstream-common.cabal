@@ -55,6 +55,7 @@ library
     HStream.Common.Query
     HStream.Common.Types
     HStream.Exception
+    HStream.Instances
     HStream.MetaStore.FileUtils
     HStream.MetaStore.RqliteUtils
     HStream.MetaStore.Types

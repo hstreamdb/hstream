@@ -97,10 +97,9 @@ withAdminClient
   :: CliOpts
   -> (U.HStreamClientApi -> IO a)
   -> IO a
-withAdminClient CliOpts{..} = withAdminClient' host port
+withAdminClient CliOpts{..} = withAdminClient' host optServerPort
   where
     host = Z.toByteString . CBytes.toBytes $ optServerHost
-    port = fromIntegral optServerPort
 
 withAdminClient'
   :: ByteString
