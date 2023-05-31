@@ -50,11 +50,13 @@ common shared-properties
 library
   import:             shared-properties
   exposed-modules:
+    HStream.Common.CliParsers
     HStream.Common.ConsistentHashing
     HStream.Common.GrpcHaskell
     HStream.Common.Query
     HStream.Common.Types
     HStream.Exception
+    HStream.Instances
     HStream.MetaStore.FileUtils
     HStream.MetaStore.RqliteUtils
     HStream.MetaStore.Types
@@ -112,6 +114,7 @@ library
     , hstream-common-base
     , http-client
     , http-types
+    , optparse-applicative
     , primitive             ^>=0.7
     , proto3-suite
     , proto3-wire
