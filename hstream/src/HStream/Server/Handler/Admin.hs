@@ -308,8 +308,8 @@ runQuery ServerContext{..} (AT.QueryCmdStatus qid) = do
     Just (tid,closed_m) -> do
       closed <- readTVarIO closed_m
       status <- threadStatus tid
-      let headers = ["id" :: Text, "thread_status", "consumer_closed"]
-          rows = [[qid, Text.pack (show status), Text.pack (show closed)]]
+      let headers = ["Query ID" :: Text, "Thread Status", "Consumer Status"]
+          rows = [[qid, Text.pack (show status), if closed then "Closed" else "Running"]]
           content = Aeson.object ["headers" .= headers, "rows" .= rows]
       return $ tableResponse content
 runQuery sc (AT.QueryCmdDescribe qid) = do
