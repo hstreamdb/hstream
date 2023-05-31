@@ -108,12 +108,12 @@ ckpStoreUpdateLSNSync store customid logid sn =
   withForeignPtr store $ \store' -> do
     void $ E.throwStreamErrorIfNotOK $ c_checkpoint_store_update_lsn_sync_safe store' customid' logid sn
 
-updateMultiSequenceNumSync
+ckpStoreUpdateMultiLSNSync
   :: LDCheckpointStore
   -> CBytes
   -> Map C_LogID LSN
   -> IO ()
-updateMultiSequenceNumSync store customid sns =
+ckpStoreUpdateMultiLSNSync store customid sns =
   ZC.withCBytes customid $ \customid' ->
   withForeignPtr store $ \store' -> do
     let xs = Map.toList sns

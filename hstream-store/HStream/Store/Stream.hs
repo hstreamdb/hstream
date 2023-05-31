@@ -80,6 +80,7 @@ module HStream.Store.Stream
   , LD.newZookeeperBasedCheckpointStore
   , LD.ckpStoreGetLSN
   , LD.ckpStoreUpdateLSN
+  , LD.ckpStoreUpdateMultiLSNSync
   , LD.ckpStoreRemoveCheckpoints
   , LD.ckpStoreRemoveAllCheckpoints
     --
