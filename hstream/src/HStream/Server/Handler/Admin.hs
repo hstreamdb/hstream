@@ -364,8 +364,8 @@ runQuery sc AT.QueryCmdList = do
 
 runConnector :: ServerContext -> AT.ConnectorCommand -> IO Text
 runConnector ServerContext{..} AT.ConnectorCmdList = do
-  let headers = ["Connector Name" :: Text, "Type", "Target", "Status", "Created Time"]
   connectors <- HC.listIOTasks scIOWorker
+  let headers = ["Connector Name" :: Text, "Type", "Target", "Status", "Created Time"]
   rows <- forM connectors $ \API.Connector{..} -> do
     return [ connectorName
            , connectorType
@@ -373,6 +373,18 @@ runConnector ServerContext{..} AT.ConnectorCmdList = do
            , connectorStatus
            , Text.pack . show $ connectorCreationTime
            ]
+  let content = Aeson.object ["headers" .= headers, "rows" .= rows]
+  return $ tableResponse content
+runConnector ServerContext{..} (AT.ConnectorCmdRecover cId) = do
+  HC.recoverTask scIOWorker cId
+  API.Connector{..} <- HC.showIOTask_ scIOWorker cId
+  let headers = ["Connector Name" :: Text, "Type", "Target", "Status", "Config"]
+      rows = [[ connectorName
+              , connectorType
+              , connectorTarget
+              , connectorStatus
+              , connectorConfig
+             ]]
   let content = Aeson.object ["headers" .= headers, "rows" .= rows]
   return $ tableResponse content
 

@@ -69,6 +69,7 @@ runServerCli' s (Server.ServerAdminCmd adminCmd) = do
   checkLookup cmd =
     case cmd of
       Server.AdminQueryCommand (Server.QueryCmdResume qid) -> (True, qid)
+      Server.AdminConnectorCommand (Server.ConnectorCmdRecover cId) -> (True, cId)
       _                                                    -> (False, "")
 
 -- TODO
