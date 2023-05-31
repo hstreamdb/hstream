@@ -16,6 +16,7 @@ import           Control.Exception             (catch, handle, onException,
 import           Control.Monad
 import qualified Data.ByteString               as BS
 import           Data.Foldable                 (foldl')
+import           Data.Function                 (fix)
 import           Data.Functor                  ((<&>))
 import qualified Data.HashMap.Strict           as HM
 import           Data.IORef                    (newIORef, readIORef, writeIORef)
@@ -138,6 +139,32 @@ createSubscription ServerContext{..} sub@Subscription{..} = do
      lsn <- (+1) <$> S.getTailLSN scLDClient shard
      return $ HM.insert shard lsn acc
 
+--                                                          +----------------|
+--                                                          |                |
+--                                                          |                | retry
+--                                                   +------|-----+          |
+--                                                   |    New     |----------+
+--                                                   +------------+
+--
+--
+--                                                   +------------+ -----------------+
+--                           +---------------------- |  Running   |                  | active consumers,
+--                           |                       +------------+                  | not force
+--  active consumers,        |                             |   |                     | [CanNotDelete]
+--  force                    |         no active consumers |   +---------------------|
+--  [CanDelete]              |         [CanDelete]         |                             +-----------------|
+--                           |                             |                             |                 |
+--                           |                             |                             |                 | [Signaled]
+--                           |                       +------------+                +------------+          |
+--                           |---------------------+ |  Stopping  |  ------------+ |  Stopped   |----------+
+--                                                   +-----------++   (wait until  +------------+
+--                                                                   no consumer!!)
+--                                                    |          |
+--                                                    |          |
+--                                                    |          |
+--                                                    |          |
+--                                                    +----------
+--                                                     [Signaled]
 deleteSubscription
   :: HasCallStack
   => ServerContext -> DeleteSubscriptionRequest -> IO ()
@@ -489,9 +516,10 @@ sendRecords :: ServerContext -> TVar SubscribeState -> SubscribeContext -> IO ()
 sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
   threadDelay 10000
   isFirstSendRef <- newIORef True
-  loop isFirstSendRef
+  isSubscriptionDeleted <- newIORef False
+  loop isFirstSendRef isSubscriptionDeleted
   where
-    loop isFirstSendRef = do
+    loop !isFirstSendRef !isSubscriptionDeleted = do
       -- Log.debug "enter sendRecords loop"
       state <- readTVarIO subState
       if state == SubscribeStateRunning
@@ -515,28 +543,36 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
           if isFirstSend
           then do
             writeIORef isFirstSendRef False
-            tid1 <- forkIO . forever $ do
-                     threadDelay (100 * 1000)
-                     updateClockAndDoResend
+            tid1 <- forkIO . fix $ \f -> do
+              isSubDeleted <- readIORef isSubscriptionDeleted
+              unless isSubDeleted $ do
+                threadDelay (100 * 1000)
+                updateClockAndDoResend
+                f
 
-            tid2 <- forkIO . forever $ do
-                      threadDelay (100 * 1000)
-                      atomically $ assignShards subAssignment
+            tid2 <- forkIO . fix $ \f -> do
+              isSubDeleted <- readIORef isSubscriptionDeleted
+              unless isSubDeleted $ do
+                threadDelay (100 * 1000)
+                atomically $ assignShards subAssignment
+                f
 
             -- FIXME: the same code
             successSendRecords <- sendReceivedRecordsVecs receivedRecordsVecs
             atomically $ addUnackedRecords subCtx successSendRecords
             -- Note: automically kill child threads when the parent thread is killed
-            loop isFirstSendRef `onException` (killThread tid1 >> killThread tid2)
+            loop isFirstSendRef isSubscriptionDeleted `onException` (killThread tid1 >> killThread tid2)
           else do
             -- FIXME: the same code
             successSendRecords <- sendReceivedRecordsVecs receivedRecordsVecs
             atomically $ addUnackedRecords subCtx successSendRecords
-            loop isFirstSendRef
+            loop isFirstSendRef isSubscriptionDeleted
         else do
           Log.info $ "subscription " <> Log.build subSubscriptionId <> " is not running, exit sendRecords loop."
           when (state == SubscribeStateStopping) $ do
             throwIO $ HE.SubscriptionInvalidError "Invalid Subscription"
+          when (state == SubscribeStateStopped) $ do
+            writeIORef isSubscriptionDeleted True
 
     updateClockAndDoResend :: IO ()
     updateClockAndDoResend = do
