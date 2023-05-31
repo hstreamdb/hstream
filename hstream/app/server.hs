@@ -105,6 +105,9 @@ import           Options.Applicative              as O (CompletionResult (execCo
 import           System.Environment               (getArgs, getProgName)
 import           System.Exit                      (exitSuccess)
 
+-- TODO: Improvements
+-- Rename HStream.Server.Config to HStream.Server.Cli and move these
+-- "parsing code" to it. Keep main function simple and clear.
 parseStartArgs :: [String] -> ParserResult StartArgs
 parseStartArgs = execParserPure defaultPrefs $
   info (startArgsParser <**> helper) (fullDesc <> progDesc "HStream-Server")

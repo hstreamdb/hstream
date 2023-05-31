@@ -11,8 +11,8 @@ all:: grpc sql generate-version
 endif
 
 HSTREAM_VERSION_FILE = "common/hstream/HStream/Version.hs"
-VERSION ?= unknown
-COMMIT ?= unknown
+HSTREAM_VERSION ?= $(or $(shell git describe --tag --abbrev=0 2>/dev/null), unknown)
+HSTREAM_VERSION_COMMIT ?= $(or $(shell git rev-parse HEAD 2>/dev/null), unknown)
 
 ENGINE_VERSION ?= v1
 BNFC = bnfc
@@ -85,16 +85,14 @@ sql-deps::
 generate-version: $(HSTREAM_VERSION_FILE)
 
 $(HSTREAM_VERSION_FILE):
-	HSTREAM_VERSION=$(or $(shell git describe --tag --abbrev=0 2>/dev/null), $(VERSION)); \
-	HSTREAM_COMMIT=$(or $(shell git rev-parse HEAD 2>/dev/null), $(COMMIT)); \
-	echo "Generating HStream Version file with version: $$HSTREAM_VERSION, commit: $$HSTREAM_COMMIT"; \
+	echo "Generating HStream Version file with version: $(HSTREAM_VERSION), commit: $(HSTREAM_VERSION_COMMIT)"; \
 	echo "module HStream.Version where" > $@; \
 	echo "" >> $@; \
 	echo "hstreamVersion :: String" >> $@; \
-	echo "hstreamVersion = \"$$HSTREAM_VERSION\"" >> $@; \
+	echo "hstreamVersion = \"$(HSTREAM_VERSION)\"" >> $@; \
 	echo "" >> $@; \
 	echo "hstreamCommit :: String" >> $@; \
-	echo "hstreamCommit = \"$$HSTREAM_COMMIT\"" >> $@
+	echo "hstreamCommit = \"$(HSTREAM_VERSION_COMMIT)\"" >> $@
 
 clean:
 	find ./common -maxdepth 10 -type d \
@@ -107,3 +105,4 @@ clean:
 		-o -name "gen-src" \
 		| xargs rm -rf
 	rm -rf $(PROTO_COMPILE_HS)
+	rm -rf $(HSTREAM_VERSION_FILE)
