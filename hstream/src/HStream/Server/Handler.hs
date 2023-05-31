@@ -107,7 +107,6 @@ handlers serverContext@ServerContext{..} =
         hstreamApiSendAdminCommand = adminCommandHandler serverContext,
 
         hstreamApiParseSql = parseSqlHandler serverContext
-
       }
 
 -------------------------------------------------------------------------------

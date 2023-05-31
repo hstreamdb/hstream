@@ -73,6 +73,7 @@ library
     HStream.Utils.JSON
     HStream.Utils.RPC
     HStream.Utils.Time
+    HStream.Version
 
   hs-source-dirs:     .
   include-dirs:       . include /usr/local/include

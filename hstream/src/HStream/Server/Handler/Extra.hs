@@ -6,11 +6,9 @@ module HStream.Server.Handler.Extra where
 
 import           Control.Exception                (throwIO)
 import qualified HsGrpc.Server                    as G
-import qualified HsGrpc.Server.Types              as G
 import           Network.GRPC.HighLevel.Generated
 
 import qualified HStream.Exception                as HE
-import           HStream.Server.Exception
 import           HStream.Server.Handler.Query
 import           HStream.Server.HStreamApi        as API
 import           HStream.Server.Types             (ServerContext (..))
@@ -21,11 +19,11 @@ parseSqlHandler
   :: ServerContext
   -> ServerRequest 'Normal API.ParseSqlRequest API.ParseSqlResponse
   -> IO (ServerResponse 'Normal API.ParseSqlResponse)
-parseSqlHandler sc (ServerNormalRequest _metadata req) = queryExceptionHandle $
+parseSqlHandler _ (ServerNormalRequest _metadata req) = queryExceptionHandle $
   parseSql req >>= returnResp
 
 handleParseSql :: ServerContext -> G.UnaryHandler API.ParseSqlRequest API.ParseSqlResponse
-handleParseSql sc _ req = catchQueryEx $ parseSql req
+handleParseSql _ _ req = catchQueryEx $ parseSql req
 
 parseSql :: API.ParseSqlRequest  -> IO API.ParseSqlResponse
 parseSql API.ParseSqlRequest{..} = do

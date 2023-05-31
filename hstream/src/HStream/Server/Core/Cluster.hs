@@ -12,20 +12,20 @@ module HStream.Server.Core.Cluster
   , recoverLocalTasks
   ) where
 
-import           Control.Concurrent             (MVar, modifyMVar_, tryReadMVar,
-                                                 withMVar)
-import           Control.Concurrent.STM         (atomically, readTVarIO, retry)
+import           Control.Concurrent             (MVar, tryReadMVar, withMVar)
+import           Control.Concurrent.STM         (readTVarIO)
 import           Control.Exception              (Handler (..),
                                                  SomeException (..), catches,
                                                  throwIO)
-import           Control.Monad                  (forM_, unless, when)
+import           Control.Monad                  (forM_, when)
 import qualified Data.List                      as L
 import qualified Data.Map.Strict                as Map
 import qualified Data.Text                      as T
 import qualified Data.Vector                    as V
 import           Proto3.Suite                   (Enumerated (..))
 
-import           HStream.Common.Types           (fromInternalServerNodeWithKey)
+import           HStream.Common.Types           (fromInternalServerNodeWithKey,
+                                                 getHStreamVersion)
 import qualified HStream.Exception              as HE
 import           HStream.Gossip                 (GossipContext (..),
                                                  getFailedNodes,
@@ -54,11 +54,11 @@ import           HStream.Utils                  (ResourceType (..),
 describeCluster :: ServerContext -> IO DescribeClusterResponse
 describeCluster ServerContext{gossipContext = gc@GossipContext{..}, ..} = do
   let protocolVer = Types.protocolVersion
-      serverVer   = Types.serverVersion
+  serverVersion <- getHStreamVersion
   isReady <- tryReadMVar clusterReady
-  self    <- getListeners serverSelf
-  alives  <- getMemberList gc >>= fmap V.concat . mapM getListeners . (L.delete serverSelf)
-  deads   <- getFailedNodes gc >>= fmap V.concat . mapM getListeners
+  self    <- getListeners serverSelf >>= (pure <$> updateServerVersionVector serverVersion)
+  alives  <- getMemberList gc >>= fmap  V.concat . mapM  (fmap (updateServerVersionVector serverVersion) . getListeners) . L.delete serverSelf
+  deads   <- getFailedNodes gc >>= fmap V.concat . mapM (fmap (updateServerVersionVector serverVersion) . getListeners)
   let self'   = helper (case isReady of Just _  -> NodeStateRunning; Nothing -> NodeStateStarting) <$> self
   let alives' = helper NodeStateRunning <$> alives
   let deads'  = helper NodeStateDead    <$> deads
@@ -66,7 +66,6 @@ describeCluster ServerContext{gossipContext = gc@GossipContext{..}, ..} = do
   startTime <- getMeta @Proto.Timestamp clusterStartTimeId metaHandle
   return $ DescribeClusterResponse
     { describeClusterResponseProtocolVersion   = protocolVer
-    , describeClusterResponseServerVersion     = serverVer
       -- TODO : If Cluster is not ready this should return empty
     , describeClusterResponseServerNodes       = self <> alives
     , describeClusterResponseServerNodesStatus = self' <> alives' <> deads'
@@ -74,9 +73,15 @@ describeCluster ServerContext{gossipContext = gc@GossipContext{..}, ..} = do
     }
   where
     getListeners = fromInternalServerNodeWithKey scAdvertisedListenersKey
+
     helper state node = ServerNodeStatus
       { serverNodeStatusNode  = Just node
       , serverNodeStatusState = EnumPB state}
+
+    updateServerVersionVector :: HStreamVersion -> V.Vector ServerNode -> V.Vector ServerNode
+    updateServerVersionVector version = V.map (updateServerVersion version)
+
+    updateServerVersion version node = node { serverNodeVersion = Just version }
 
 lookupResource :: ServerContext -> LookupResourceRequest -> IO ServerNode
 lookupResource sc LookupResourceRequest{..} = do
