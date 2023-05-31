@@ -39,6 +39,7 @@ import qualified HStream.Exception                as HE
 import           HStream.Gossip                   (GossipContext (clusterReady),
                                                    getClusterStatus,
                                                    initCluster)
+import qualified HStream.IO.Worker                as HC
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Core.Common       (lookupResource')
 import qualified HStream.Server.Core.Query        as HC
@@ -105,6 +106,7 @@ runAdminCommand sc@ServerContext{..} cmd = do
     AT.AdminInitCommand           -> runInit sc
     AT.AdminCheckReadyCommand     -> runCheckReady sc
     AT.AdminLookupCommand c       -> runLookup sc c
+    AT.AdminConnectorCommand c    -> runConnector sc c
 
 handleParseResult :: O.ParserResult a -> IO a
 handleParseResult (O.Success a) = return a
@@ -353,6 +355,23 @@ runQuery sc AT.QueryCmdList = do
            , Text.pack $ formatStatus queryStatus
            , Text.pack . show $ queryCreatedTime
            , queryQueryText
+           ]
+  let content = Aeson.object ["headers" .= headers, "rows" .= rows]
+  return $ tableResponse content
+
+-------------------------------------------------------------------------------
+-- Admin Connector Command
+
+runConnector :: ServerContext -> AT.ConnectorCommand -> IO Text
+runConnector ServerContext{..} AT.ConnectorCmdList = do
+  let headers = ["Connector Name" :: Text, "Type", "Target", "Status", "Created Time"]
+  connectors <- HC.listIOTasks scIOWorker
+  rows <- forM connectors $ \API.Connector{..} -> do
+    return [ connectorName
+           , connectorType
+           , connectorTarget
+           , connectorStatus
+           , Text.pack . show $ connectorCreationTime
            ]
   let content = Aeson.object ["headers" .= headers, "rows" .= rows]
   return $ tableResponse content

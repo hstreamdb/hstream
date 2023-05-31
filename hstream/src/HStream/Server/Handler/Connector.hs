@@ -29,19 +29,13 @@ module HStream.Server.Handler.Connector
 
 import           Control.Exception                (throwIO)
 import           Control.Monad                    (unless)
-import qualified Data.Aeson                       as A
 import qualified Data.Text                        as T
-import qualified Data.UUID                        as UUID
-import qualified Data.UUID.V4                     as UUID
 import qualified Data.Vector                      as V
 import           GHC.Stack                        (HasCallStack)
 import qualified HsGrpc.Server                    as G
 import           Network.GRPC.HighLevel.Generated
 
-import qualified Data.Aeson.KeyMap                as A
-import qualified Data.Text.Encoding               as T
 import qualified HStream.Exception                as HE
-import qualified HStream.IO.Types                 as IO
 import qualified HStream.IO.Worker                as IO
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Core.Common       (lookupResource')
