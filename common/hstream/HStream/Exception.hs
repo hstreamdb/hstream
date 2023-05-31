@@ -124,7 +124,6 @@ module HStream.Exception
     -- $aborted
   , SomeAborted
   , SubscriptionIsDeleting (SubscriptionIsDeleting)
-  , SubscriptionOnDifferentNode (SubscriptionOnDifferentNode)
   , SubscriptionInvalidError (SubscriptionInvalidError)
   , ConsumerInvalidError (ConsumerInvalidError)
   , QueryNotRunning (QueryNotRunning)
@@ -566,7 +565,6 @@ MAKE_EX_1_DEFMSG(SomeFailedPrecondition, ConnectorInvalidStatus, Text, API.Error
 MAKE_SUB_EX(SomeHServerException, SomeAborted)
 
 MAKE_EX_1_DEFMSG(SomeAborted, SubscriptionIsDeleting, String, API.ErrorCodeInternalError)
-MAKE_EX_1_DEFMSG(SomeAborted, SubscriptionOnDifferentNode, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeAborted, SubscriptionInvalidError, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeAborted, ConsumerInvalidError, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeAborted, QueryNotRunning, Text, API.ErrorCodeQueryNotRunning)

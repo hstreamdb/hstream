@@ -46,9 +46,11 @@ import           HStream.Server.Core.Common    as CC (decodeRecordBatch,
                                                       listSubscriptions)
 import           HStream.Server.HStreamApi
 import           HStream.Server.Types
+import           HStream.Server.Validation     (validateResLookup)
 import qualified HStream.Stats                 as Stats
 import qualified HStream.Store                 as S
-import           HStream.Utils                 (decompressBatchedRecord,
+import           HStream.Utils                 (ResourceType (..),
+                                                decompressBatchedRecord,
                                                 getProtoTimestamp,
                                                 mkBatchedRecord, textToCBytes)
 
@@ -301,6 +303,9 @@ initSub serverCtx@ServerContext {..} subId = M.getMeta subId metaHandle >>= \cas
     Log.fatal $ "subscription " <> Log.build subId <> " not exist."
     throwIO $ HE.SubscriptionNotFound subId
   Just SubscriptionWrap{} -> do
+    -- FIXME: Comment this validateResLookup since some internal sub can not pass
+    --validateResLookup serverCtx ResSubscription subId "Subscription is bound to a different node"
+
     (needInit, SubscribeContextNewWrapper {..}) <- atomically $ do
       subMap <- readTVar scSubscribeContexts
       case HM.lookup subId subMap of
@@ -1137,4 +1142,3 @@ addUnackedRecords SubscribeContext {..} count = do
 checkSubscriptionExist :: ServerContext -> Text -> IO Bool
 checkSubscriptionExist ServerContext{..} sid =
   M.checkMetaExists @SubscriptionWrap sid metaHandle
-
