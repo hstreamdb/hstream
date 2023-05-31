@@ -27,11 +27,18 @@ jobs:
         with:
           submodules: "recursive"
 
+      - name: Get version info
+        run: |
+          echo "LATEST_TAG=$(git describe --tag --abbrev=0)" >> $GITHUB_ENV
+          echo "CURRENT_COMMIT=$(git rev-parse HEAD)" >> $GITHUB_ENV
+
       - name: Docker build
         run: |
           docker build . -f docker/Dockerfile \
             --build-arg BUILDER_IMAGE=${{ matrix.builder_image }} \
             --build-arg LD_IMAGE=${{ matrix.ld_image }} \
+            --build-arg HSTREAM_VERSION=${{ env.LATEST_TAG }} \
+            --build-arg HSTREAM_VERSION_COMMIT=${{ env.CURRENT_COMMIT }} \
             -t ${IMAGE_NAME}:${{ matrix.tag }}
 
       - name: Login to Docker Hub

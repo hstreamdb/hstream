@@ -9,10 +9,17 @@ ARG LD_IMAGE="hstreamdb/logdevice:latest"
 FROM ${BUILDER_IMAGE} as builder
 
 COPY . /hstream
+
 ARG BUILD_TYPE="ReleaseBuild"
+# NOTE: Since we ignore the .git directory, the Makefile itself can not get
+# the information by git. Which means you should provide version information
+# as docker build args.
+ARG HSTREAM_VERSION="unknown"
+ARG HSTREAM_VERSION_COMMIT="unknown"
 
 RUN cabal update && \
-    cd /hstream && make && \
+    cd /hstream && \
+    HSTREAM_VERSION=${HSTREAM_VERSION} HSTREAM_VERSION_COMMIT=${HSTREAM_VERSION_COMMIT} make && \
     cabal build --flags "${BUILD_TYPE}" all && \
     cabal install --flags "${BUILD_TYPE}" hstream hstream-admin hstream-store && \
     cabal install --flags "${BUILD_TYPE}" \

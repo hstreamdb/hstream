@@ -93,6 +93,12 @@ instance Format [API.ServerNode] where
 instance Format [API.ServerNodeStatus] where
   formatResult = renderServerNodesStatusToTable
 
+instance Format (Maybe API.HStreamVersion) where
+  formatResult = maybe "unknown version" showHStreamVersion
+
+instance Format API.HStreamVersion where
+  formatResult = showHStreamVersion
+
 instance Format a => Format (ClientResult 'Normal a) where
   formatResult (ClientNormalResponse response _ _ _ _) = formatResult response
   formatResult (ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode _code details)))
@@ -252,9 +258,14 @@ renderServerNodesToTable values = showTable titles rows
 renderServerNodesStatusToTable :: [API.ServerNodeStatus] -> String
 renderServerNodesStatusToTable values = showTable titles rows
   where
-    titles = ["Server Id", "State", "Address"]
+    titles = ["Server Id", "State", "Address", "Version", "Commit"]
     formatRow API.ServerNodeStatus {serverNodeStatusNode = Just API.ServerNode{..}, ..} =
-      [[show serverNodeId], [showNodeStatus serverNodeStatusState], [T.unpack serverNodeHost <> ":" <> show serverNodePort]]
+      [ [show serverNodeId]
+      , [showNodeStatus serverNodeStatusState]
+      , [T.unpack serverNodeHost <> ":" <> show serverNodePort]
+      , [T.unpack $ maybe "unknown" API.hstreamVersionVersion serverNodeVersion]
+      , [T.unpack $ maybe "unknown" API.hstreamVersionCommit serverNodeVersion]
+      ]
     formatRow API.ServerNodeStatus {serverNodeStatusNode = Nothing} = []
     rows = map formatRow . L.sort $ values
 
@@ -319,3 +330,6 @@ formatReceivedRecord API.ReceivedRecord{..} = do
    formatMaybeTimestamp :: Maybe Int64 -> String
    formatMaybeTimestamp Nothing  = ""
    formatMaybeTimestamp (Just a) = show a
+
+showHStreamVersion :: API.HStreamVersion -> String
+showHStreamVersion API.HStreamVersion{..} = T.unpack hstreamVersionVersion <> " (" <> T.unpack hstreamVersionCommit <> ")"

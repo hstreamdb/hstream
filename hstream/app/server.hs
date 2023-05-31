@@ -42,6 +42,7 @@ import           ZooKeeper.Types                  (ZHandle, ZooEvent, ZooState,
 
 import           HStream.Base                     (setupFatalSignalHandler)
 import           HStream.Common.ConsistentHashing (HashRing, constructServerMap)
+import           HStream.Common.Types             (getHStreamVersion)
 import           HStream.Exception
 import           HStream.Gossip                   (GossipContext (..),
                                                    defaultGossipOpts,
@@ -55,12 +56,13 @@ import           HStream.MetaStore.Types          as M (MetaHandle (..),
                                                         MetaStore (..),
                                                         RHandle (..))
 import           HStream.Server.Config            (AdvertisedListeners,
+                                                   CliOptions (..),
                                                    ListenersSecurityProtocolMap,
                                                    MetaStoreAddr (..),
                                                    SecurityProtocolMap,
                                                    ServerOpts (..), TlsConfig,
                                                    advertisedListenersToPB,
-                                                   getConfig)
+                                                   cliOptionsParser, getConfig)
 import qualified HStream.Server.Core.Cluster      as Cluster
 import           HStream.Server.Core.Common       (lookupResource',
                                                    parseAllocationKey)
@@ -83,7 +85,7 @@ import           HStream.Server.MetaData          (TaskAllocation (..),
                                                    initializeTables)
 import           HStream.Server.MetaData          as P
 import           HStream.Server.QueryWorker       (QueryWorker (QueryWorker))
-import           HStream.Server.Types             (ServerContext (..), ServerID,
+import           HStream.Server.Types             (ServerContext (..),
                                                    TaskManager (recoverTask, resourceType),
                                                    resourceType)
 import qualified HStream.Store.Logger             as Log
@@ -91,10 +93,57 @@ import qualified HStream.ThirdParty.Protobuf      as Proto
 import           HStream.Utils                    (ResourceType (..),
                                                    getProtoTimestamp,
                                                    pattern EnumPB)
+import           Options.Applicative              as O (CompletionResult (execCompletion),
+                                                        Parser,
+                                                        ParserResult (..),
+                                                        defaultPrefs,
+                                                        execParserPure,
+                                                        fullDesc, help, helper,
+                                                        info, long, progDesc,
+                                                        renderFailure, short,
+                                                        switch, (<**>))
+import           System.Environment               (getArgs, getProgName)
+import           System.Exit                      (exitSuccess)
 
+-- TODO: Improvements
+-- Rename HStream.Server.Config to HStream.Server.Cli and move these
+-- "parsing code" to it. Keep main function simple and clear.
+parseStartArgs :: [String] -> ParserResult StartArgs
+parseStartArgs = execParserPure defaultPrefs $
+  info (startArgsParser <**> helper) (fullDesc <> progDesc "HStream-Server")
+
+data StartArgs = StartArgs
+  { cliOpts      :: CliOptions
+  , isGetVersion :: Bool
+  }
+
+startArgsParser :: O.Parser StartArgs
+startArgsParser = StartArgs
+  <$> cliOptionsParser
+  <*> O.switch ( O.long "version" <> O.short 'v' <> O.help "Show server version." )
 
 main :: IO ()
-main = getConfig >>= app
+main = do
+  args <- getArgs
+  case parseStartArgs args of
+    Success StartArgs{..} -> do
+      if isGetVersion
+         then do
+           API.HStreamVersion{..} <- getHStreamVersion
+           putStrLn $ "version: " <> T.unpack hstreamVersionVersion <> " (" <> T.unpack hstreamVersionCommit <> ")"
+         else getConfig cliOpts >>= app
+    Failure failure -> do
+      progn <- getProgName
+      let (msg, _) = renderFailure failure progn
+      putStrLn msg
+      exitSuccess
+    CompletionInvoked compl -> handleCompletion compl
+ where
+   handleCompletion compl = do
+     progn <- getProgName
+     msg <- execCompletion compl progn
+     putStr msg
+     exitSuccess
 
 app :: ServerOpts -> IO ()
 app config@ServerOpts{..} = do
