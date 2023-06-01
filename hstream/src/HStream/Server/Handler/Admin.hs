@@ -41,6 +41,7 @@ import           HStream.Gossip                   (GossipContext (clusterReady),
                                                    initCluster)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Core.Common       (lookupResource')
+import qualified HStream.Server.Core.Query        as HC
 import qualified HStream.Server.Core.Stream       as HC
 import qualified HStream.Server.Core.Subscription as HC
 import qualified HStream.Server.Core.View         as HC
@@ -49,9 +50,10 @@ import           HStream.Server.Exception         (catchDefaultEx,
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.Server.Types
 import qualified HStream.Stats                    as Stats
-import           HStream.Utils                    (Interval (..), formatStatus,
-                                                   interval2ms, returnResp,
-                                                   showNodeStatus)
+import           HStream.Utils                    (Interval (..),
+                                                   formatQueryType,
+                                                   formatStatus, interval2ms,
+                                                   returnResp, showNodeStatus)
 
 -------------------------------------------------------------------------------
 -- All command line data types are defined in 'HStream.Admin.Types'
@@ -306,10 +308,54 @@ runQuery ServerContext{..} (AT.QueryCmdStatus qid) = do
     Just (tid,closed_m) -> do
       closed <- readTVarIO closed_m
       status <- threadStatus tid
-      let headers = ["id" :: Text, "thread_status", "consumer_closed"]
-          rows = [[qid, Text.pack (show status), Text.pack (show closed)]]
+      let headers = ["Query ID" :: Text, "Thread Status", "Consumer Status"]
+          rows = [[qid, Text.pack (show status), if closed then "Closed" else "Running"]]
           content = Aeson.object ["headers" .= headers, "rows" .= rows]
       return $ tableResponse content
+runQuery sc (AT.QueryCmdDescribe qid) = do
+  query <- HC.getQuery sc qid
+  case query of
+    Nothing -> return $ errorResponse $ "Query " <> Text.pack (show qid) <> " not found, or already dead"
+    Just API.Query{..} -> do
+      let headers = ["Query ID" :: Text, "Type", "Status", "Source ID", "Result ID", "CreatedTime", "Node", "SQL"]
+          rows =
+            [[ queryId
+             , Text.pack $ formatQueryType queryType
+             , Text.pack $ formatStatus queryStatus
+             , V.foldl' (\acc x -> if Text.null acc then x else acc <> "," <> x) Text.empty querySources
+             , queryResultName
+             , Text.pack . show $ queryCreatedTime
+             , Text.pack .show $ queryNodeId
+             , queryQueryText
+            ]]
+          content = Aeson.object ["headers" .= headers, "rows" .= rows]
+      return $ tableResponse content
+runQuery sc (AT.QueryCmdResume qid) = do
+  HC.resumeQuery sc qid
+  query <- HC.getQuery sc qid
+  case query of
+    Nothing -> return $ errorResponse $ "Query " <> Text.pack (show qid) <> " not found, or already dead"
+    Just API.Query{..} -> do
+      let headers = ["Query ID" :: Text, "Status", "Node"]
+          rows =
+            [[ queryId
+             , Text.pack $ formatStatus queryStatus
+             , Text.pack .show $ queryNodeId
+            ]]
+          content = Aeson.object ["headers" .= headers, "rows" .= rows]
+      return $ tableResponse content
+runQuery sc AT.QueryCmdList = do
+  let headers = ["Query ID" :: Text, "Type", "Status", "CreatedTime", "SQL"]
+  queries <- HC.listQueries sc
+  rows <- forM queries $ \API.Query{..} -> do
+    return [ queryId
+           , Text.pack $ formatQueryType queryType
+           , Text.pack $ formatStatus queryStatus
+           , Text.pack . show $ queryCreatedTime
+           , queryQueryText
+           ]
+  let content = Aeson.object ["headers" .= headers, "rows" .= rows]
+  return $ tableResponse content
 
 -------------------------------------------------------------------------------
 -- Admin Status Command

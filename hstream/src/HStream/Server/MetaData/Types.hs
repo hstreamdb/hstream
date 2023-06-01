@@ -67,15 +67,7 @@ import           HStream.SQL.Codegen.V1
 #endif
 --------------------------------------------------------------------------------
 
-data QueryInfo = QueryInfo
-  { queryId          :: Text
-  , querySql         :: Text
-  , queryCreatedTime :: Int64
-  , queryStreams     :: RelatedStreams
-  , queryRefinedAST  :: AST.RSQL
-  } deriving (Generic, Show, FromJSON, ToJSON)
-
-data QueryStatus = QueryStatus { queryState :: TaskStatus }
+newtype QueryStatus = QueryStatus { queryState :: TaskStatus }
   deriving (Generic, Show, FromJSON, ToJSON)
 
 pattern QueryCreating, QueryRunning, QueryResuming, QueryAborted, QueryPaused, QueryTerminated :: QueryStatus
@@ -85,6 +77,16 @@ pattern QueryResuming = QueryStatus { queryState = Resuming }
 pattern QueryAborted  = QueryStatus { queryState = Aborted }
 pattern QueryPaused   = QueryStatus { queryState = Paused }
 pattern QueryTerminated   = QueryStatus { queryState = Terminated }
+
+data QueryInfo = QueryInfo
+  { queryId          :: Text
+  , querySql         :: Text
+  , queryCreatedTime :: Int64
+  , queryStreams     :: RelatedStreams
+  , queryRefinedAST  :: AST.RSQL
+  , workerNodeId     :: Word32
+  , queryType        :: QType
+  } deriving (Generic, Show, FromJSON, ToJSON)
 
 data ViewInfo = ViewInfo {
     viewName  :: Text
@@ -246,17 +248,19 @@ getQuerySink QueryInfo{..} = snd queryStreams
 getQuerySources :: QueryInfo -> SourceStreams
 getQuerySources QueryInfo{..} = fst queryStreams
 
-createInsertQueryInfo :: Text -> Text -> RelatedStreams -> AST.RSQL -> MetaHandle -> IO QueryInfo
-createInsertQueryInfo queryId querySql queryStreams queryRefinedAST h = do
+createInsertQueryInfo :: Text -> Text -> RelatedStreams -> AST.RSQL -> Word32 -> MetaHandle -> IO QueryInfo
+createInsertQueryInfo queryId querySql queryStreams queryRefinedAST workerNodeId h = do
   MkSystemTime queryCreatedTime _ <- getSystemTime
-  let qInfo = QueryInfo {..}
+  let queryType = QueryCreateStream
+      qInfo = QueryInfo {..}
   insertQuery qInfo h
   return qInfo
 
-createInsertViewQueryInfo :: Text -> Text -> AST.RSQL -> RelatedStreams -> Text -> MetaHandle -> IO ViewInfo
-createInsertViewQueryInfo queryId querySql queryRefinedAST queryStreams viewName h = do
+createInsertViewQueryInfo :: Text -> Text -> AST.RSQL -> RelatedStreams -> Text -> Word32 -> MetaHandle -> IO ViewInfo
+createInsertViewQueryInfo queryId querySql queryRefinedAST queryStreams viewName workerNodeId h = do
   MkSystemTime queryCreatedTime _ <- getSystemTime
-  let vInfo = ViewInfo{ viewName = viewName, viewQuery = QueryInfo{..} }
+  let queryType = QueryCreateView
+      vInfo = ViewInfo{ viewName = viewName, viewQuery = QueryInfo{..} }
   insertViewQuery vInfo h
   return vInfo
 

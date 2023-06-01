@@ -206,13 +206,29 @@ viewCmdParser = O.subparser
 
 data QueryCommand
   = QueryCmdStatus Text
+  | QueryCmdDescribe Text
+  | QueryCmdResume Text
+  | QueryCmdList
   deriving Show
 
 queryCmdParser :: O.Parser QueryCommand
 queryCmdParser = O.subparser
-  ( O.command "status" (O.info (QueryCmdStatus <$> O.strArgument ( O.metavar "QUERY_ID"
-                                                                <> O.help "The ID of the query"))
+  ( O.command "status" (O.info (QueryCmdStatus <$> O.strOption ( O.long "id"
+                                                              <> O.short 'i'
+                                                              <> O.metavar "QUERY_ID"
+                                                              <> O.help "The ID of the query"))
                                (O.progDesc "Get the status of a query"))
+  <> O.command "describe" (O.info (QueryCmdDescribe <$> O.strOption ( O.long "id"
+                                                                   <> O.short 'i'
+                                                                   <> O.metavar "QUERY_ID"
+                                                                   <> O.help "The ID of the query"))
+                                  (O.progDesc "Get the metadata of a query"))
+  <> O.command "resume" (O.info (QueryCmdResume <$> O.strOption ( O.long "id"
+                                                               <> O.short 'i'
+                                                               <> O.metavar "QUERY_ID"
+                                                               <> O.help "The ID of the query"))
+                                (O.progDesc "Resume specific query"))
+  <> O.command "list" (O.info (pure QueryCmdList) (O.progDesc "List all queries"))
   )
 
 -------------------------------------------------------------------------------

@@ -23,14 +23,11 @@ module HStream.Server.Core.Query
 import           Control.Concurrent.STM           (newTVarIO)
 import           Control.Exception                (throw, throwIO)
 import           Control.Monad
-import qualified Data.Aeson                       as Aeson
-import qualified Data.Aeson.Text                  as Aeson
 import           Data.Functor                     ((<&>))
 import qualified Data.HashMap.Strict              as HM
 import qualified Data.List                        as L
 import           Data.Maybe                       (fromJust, isJust)
 import qualified Data.Text                        as T
-import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated (GRPCIOError)
 import           Proto3.Suite.Class               (def)
@@ -136,7 +133,7 @@ createQuery sc req = createQueryWithNamespace' sc req ""
 createQueryWithNamespace ::
   ServerContext -> CreateQueryWithNamespaceRequest -> IO Query
 createQueryWithNamespace
-  sc@ServerContext {..} CreateQueryWithNamespaceRequest {..} =
+  sc CreateQueryWithNamespaceRequest {..} =
   createQueryWithNamespace' sc CreateQueryRequest{
       createQueryRequestSql = createQueryWithNamespaceRequestSql
     , createQueryRequestQueryName = createQueryWithNamespaceRequestQueryName } createQueryWithNamespaceRequestNamespace
@@ -193,7 +190,7 @@ createQueryWithNamespace'
             }
             -- update metadata
             let relatedStreams = (sources, sink)
-            qInfo <- P.createInsertQueryInfo createQueryRequestQueryName createQueryRequestSql relatedStreams rSQL metaHandle
+            qInfo <- P.createInsertQueryInfo createQueryRequestQueryName createQueryRequestSql relatedStreams rSQL serverID metaHandle
             -- run core task
             consumerClosed <- newTVarIO False
             createQueryAndRun sc QueryRunner {
@@ -223,16 +220,11 @@ listQueries ServerContext{..} = do
   queries <- M.listMeta metaHandle
   mapM (hstreamQueryToQuery metaHandle) queries
 
-getQuery :: ServerContext -> GetQueryRequest -> IO Query
-getQuery ctx req@GetQueryRequest{..} = do
-  m_query <- getQuery' ctx req
-  maybe (throwIO $ HE.QueryNotFound getQueryRequestId) pure m_query
-
-getQuery' :: ServerContext -> GetQueryRequest -> IO (Maybe Query)
-getQuery' ServerContext{..} GetQueryRequest{..} = do
+getQuery :: ServerContext -> T.Text -> IO (Maybe Query)
+getQuery ServerContext{..} qid = do
   queries <- M.listMeta metaHandle
   hstreamQueryToQuery metaHandle `traverse`
-    L.find (\P.QueryInfo{..} -> queryId == getQueryRequestId) queries
+    L.find (\P.QueryInfo{..} -> queryId == qid) queries
 
 deleteQuery :: ServerContext -> DeleteQueryRequest -> IO ()
 deleteQuery ServerContext{..} DeleteQueryRequest{..} = do
@@ -296,7 +288,8 @@ hstreamQueryToQuery h P.QueryInfo{..} = do
     , queryQueryText = querySql
     , querySources = V.fromList $ fst queryStreams
     , queryResultName = snd queryStreams
-    , queryType = QueryCreateStream
+    , queryType = getQueryType queryType
+    , queryNodeId = workerNodeId
     }
 
 hstreamViewToQuery :: M.MetaHandle -> P.ViewInfo -> IO API.Query
@@ -309,7 +302,8 @@ hstreamViewToQuery h P.ViewInfo{viewQuery = P.QueryInfo{..},..} = do
     , queryQueryText = querySql
     , querySources = V.fromList $ fst queryStreams
     , queryResultName = viewName
-    , queryType = QueryCreateView
+    , queryType = getQueryType queryType
+    , queryNodeId = workerNodeId
     }
 
 -------------------------------------------------------------------------------

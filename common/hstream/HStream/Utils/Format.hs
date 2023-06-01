@@ -7,6 +7,7 @@ module HStream.Utils.Format
   ( Format (..)
   , formatCommandQueryResponse
   , formatStatus
+  , formatQueryType
   ) where
 
 import qualified Data.Aeson                       as A
@@ -282,7 +283,7 @@ showTable titles rows = Table.tableString t ++ "\n"
           (Table.colsAllG Table.center <$> rows)
     colSpec = map (const $ Table.column Table.expand Table.left def def) titles
 
-formatStatus ::  PB.Enumerated API.TaskStatusPB -> String
+formatStatus :: PB.Enumerated API.TaskStatusPB -> String
 formatStatus (PB.Enumerated (Right API.TaskStatusPBTASK_RUNNING)) = "RUNNING"
 formatStatus (PB.Enumerated (Right API.TaskStatusPBTASK_ABORTED)) = "ABORTED"
 formatStatus (PB.Enumerated (Right API.TaskStatusPBTASK_CREATING)) = "CREATING"
@@ -291,6 +292,11 @@ formatStatus (PB.Enumerated (Right API.TaskStatusPBTASK_RESUMING)) = "RESUMING"
 formatStatus (PB.Enumerated (Right API.TaskStatusPBTASK_TERMINATED)) = "TERMINATED"
 formatStatus (PB.Enumerated (Right API.TaskStatusPBTASK_UNKNOWN)) = "UNKNOWN"
 formatStatus _ = "Unknown Status"
+
+formatQueryType :: PB.Enumerated API.QueryType -> String
+formatQueryType (PB.Enumerated (Right API.QueryTypeCreateStreamAs)) = "CreateStreamAs"
+formatQueryType (PB.Enumerated (Right API.QueryTypeCreateViewAs)) = "CreateViewAs"
+formatQueryType _ = "Unknown Query Type"
 
 formatTime :: Int64 -> String
 formatTime t = T.unpack . T.decodeUtf8 $
