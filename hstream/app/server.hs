@@ -240,7 +240,7 @@ serve host port securityMap sc@ServerContext{..} listeners listenerSecurityMap =
         , GRPC.sslConfig = sslOpts
         }
 #else
-        HsGrpc.ServerOptions
+        HsGrpc.defaultServerOpts
           { HsGrpc.serverHost = BS.toShort host
           , HsGrpc.serverPort = fromIntegral port
           , HsGrpc.serverParallelism = 0
