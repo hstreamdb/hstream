@@ -14,6 +14,7 @@ import           Control.Concurrent.STM.TVar      (readTVarIO)
 import           Control.Monad                    (forM, void)
 import           Data.Aeson                       ((.=))
 import qualified Data.Aeson                       as Aeson
+import qualified Data.Aeson.Text                  as Aeson
 import qualified Data.HashMap.Strict              as HM
 import           Data.Map.Strict                  (Map)
 import qualified Data.Map.Strict                  as Map
@@ -39,6 +40,7 @@ import qualified HStream.Exception                as HE
 import           HStream.Gossip                   (GossipContext (clusterReady),
                                                    getClusterStatus,
                                                    initCluster)
+import           HStream.IO.Types                 (IOTask (IOTask))
 import qualified HStream.IO.Worker                as HC
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Core.Common       (lookupResource')
@@ -54,7 +56,8 @@ import qualified HStream.Stats                    as Stats
 import           HStream.Utils                    (Interval (..),
                                                    formatQueryType,
                                                    formatStatus, interval2ms,
-                                                   returnResp, showNodeStatus)
+                                                   returnResp, showNodeStatus,
+                                                   structToJsonObject)
 
 -------------------------------------------------------------------------------
 -- All command line data types are defined in 'HStream.Admin.Types'
@@ -384,6 +387,22 @@ runConnector ServerContext{..} (AT.ConnectorCmdRecover cId) = do
               , connectorTarget
               , connectorStatus
               , connectorConfig
+             ]]
+  let content = Aeson.object ["headers" .= headers, "rows" .= rows]
+  return $ tableResponse content
+runConnector ServerContext{..} (AT.ConnectorCmdDescribe cId) = do
+  API.Connector{..} <- HC.showIOTask_ scIOWorker cId
+  let headers = ["Connector Name" :: Text, "Task ID", "Node", "Target", "Status", "Offsets", "Config", "Docker Image", "Docker Status"]
+      offsets = V.map (Aeson.encodeToLazyText . structToJsonObject) connectorOffsets
+      rows = [[ connectorName
+              , connectorTaskId
+              , connectorNode
+              , connectorTarget
+              , connectorStatus
+              , TL.toStrict $ V.foldl' (\acc x -> if TL.null acc then x else acc <> "," <> x) TL.empty offsets
+              , connectorConfig
+              , connectorImage
+              , connectorDockerStatus
              ]]
   let content = Aeson.object ["headers" .= headers, "rows" .= rows]
   return $ tableResponse content

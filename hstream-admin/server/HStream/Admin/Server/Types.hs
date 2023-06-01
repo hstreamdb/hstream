@@ -239,7 +239,7 @@ queryCmdParser = O.subparser
 data ConnectorCommand
   = ConnectorCmdList
   | ConnectorCmdRecover Text
-  -- | ConnectorCmdDelete Text Bool
+  | ConnectorCmdDescribe Text
   deriving (Show)
 
 connectorCmdParser :: O.Parser ConnectorCommand
@@ -250,6 +250,11 @@ connectorCmdParser = O.subparser
                                                                       <> O.metavar "CONNECTOR_ID"
                                                                       <> O.help "The ID of the connector"))
                                  (O.progDesc "Recover specific connector"))
+ <> O.command "describe" (O.info (ConnectorCmdDescribe <$> O.strOption ( O.long "id"
+                                                                      <> O.short 'i'
+                                                                      <> O.metavar "CONNECTOR_ID"
+                                                                      <> O.help "The ID of the connector"))
+                                 (O.progDesc "Get the details of specific connector"))
   )
 
 -------------------------------------------------------------------------------
