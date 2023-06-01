@@ -7,7 +7,6 @@ import           GHC.Generics              (Generic)
 import           Network.Socket            (PortNumber)
 import           Options.Applicative       ((<|>))
 import qualified Options.Applicative       as O
-import           Proto3.Suite              (Enumerated (Enumerated))
 import qualified Text.Read                 as Read
 import qualified Z.Data.CBytes             as CB
 import           Z.Data.CBytes             (CBytes)
@@ -245,10 +244,10 @@ data ConnectorCommand
 connectorCmdParser :: O.Parser ConnectorCommand
 connectorCmdParser = O.subparser
   ( O.command "list" (O.info (pure ConnectorCmdList) (O.progDesc "Get all connectors"))
- <> O.command "recorver" (O.info (ConnectorCmdRecover <$> O.strOption ( O.long "id"
-                                                                      <> O.short 'i'
-                                                                      <> O.metavar "CONNECTOR_ID"
-                                                                      <> O.help "The ID of the connector"))
+ <> O.command "recover" (O.info (ConnectorCmdRecover <$> O.strOption ( O.long "id"
+                                                                    <> O.short 'i'
+                                                                    <> O.metavar "CONNECTOR_ID"
+                                                                    <> O.help "The ID of the connector"))
                                  (O.progDesc "Recover specific connector"))
  <> O.command "describe" (O.info (ConnectorCmdDescribe <$> O.strOption ( O.long "id"
                                                                       <> O.short 'i'

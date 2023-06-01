@@ -40,7 +40,6 @@ import qualified HStream.Exception                as HE
 import           HStream.Gossip                   (GossipContext (clusterReady),
                                                    getClusterStatus,
                                                    initCluster)
-import           HStream.IO.Types                 (IOTask (IOTask))
 import qualified HStream.IO.Worker                as HC
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Core.Common       (lookupResource')
@@ -57,7 +56,8 @@ import           HStream.Utils                    (Interval (..),
                                                    formatQueryType,
                                                    formatStatus, interval2ms,
                                                    returnResp, showNodeStatus,
-                                                   structToJsonObject)
+                                                   structToJsonObject,
+                                                   timestampToMsTimestamp)
 
 -------------------------------------------------------------------------------
 -- All command line data types are defined in 'HStream.Admin.Types'
@@ -374,7 +374,7 @@ runConnector ServerContext{..} AT.ConnectorCmdList = do
            , connectorType
            , connectorTarget
            , connectorStatus
-           , Text.pack . show $ connectorCreationTime
+           , maybe "unknown" (Text.pack . show . timestampToMsTimestamp) connectorCreationTime
            ]
   let content = Aeson.object ["headers" .= headers, "rows" .= rows]
   return $ tableResponse content
