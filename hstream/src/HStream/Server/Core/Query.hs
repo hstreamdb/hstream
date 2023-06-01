@@ -236,7 +236,7 @@ getQuery ServerContext{..} qid = do
   hstreamQueryToQuery metaHandle `traverse`
     L.find (\P.QueryInfo{..} -> queryId == qid) queries
 
-deleteQuery :: ServerContext -> DeleteQueryRequest -> IO ()
+deleteQuery :: HasCallStack => ServerContext -> DeleteQueryRequest -> IO ()
 deleteQuery ServerContext{..} DeleteQueryRequest{..} = do
   getMeta @P.QueryStatus deleteQueryRequestId metaHandle >>= \case
     Nothing -> throwIO $ HE.QueryNotFound deleteQueryRequestId
@@ -245,6 +245,8 @@ deleteQuery ServerContext{..} DeleteQueryRequest{..} = do
   getMeta @P.QVRelation deleteQueryRequestId metaHandle >>= \case
     Nothing -> do
       -- do deletion
+      -- Note: do not forget to delete the stream for changelog
+      S.removeStream scLDClient (transToTempStreamName deleteQueryRequestId)
       P.deleteQueryInfo deleteQueryRequestId metaHandle
       Stats.connector_stat_erase scStatsHolder (textToCBytes deleteQueryRequestId)
     Just P.QVRelation{..} -> throwIO $ HE.FoundAssociatedView qvRelationViewName
