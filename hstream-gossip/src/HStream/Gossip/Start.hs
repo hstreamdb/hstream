@@ -98,7 +98,7 @@ startGossip grpcHost gc@GossipContext{..} = do
           , GRPC.serverOnStarted = Just serverOnStarted
           }
 #else
-        HsGrpc.ServerOptions
+        HsGrpc.defaultServerOpts
           { HsGrpc.serverHost = BSS.toShort grpcHost
           , HsGrpc.serverPort = fromIntegral port
           , HsGrpc.serverParallelism = 0
