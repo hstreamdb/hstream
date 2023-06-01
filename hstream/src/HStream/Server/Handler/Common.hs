@@ -28,6 +28,7 @@ import           Data.IORef
 import           Data.Maybe                            (fromJust)
 import           Data.Text                             (Text)
 import qualified Database.RocksDB                      as RocksDB
+import           GHC.Stack                             (HasCallStack)
 
 import qualified HStream.Exception                     as HE
 import qualified HStream.Logger                        as Log
@@ -388,11 +389,14 @@ runTaskWrapper ServerContext{..} sourceConnector sinkConnector taskBuilder query
               transKSnk
               transVSnk
 
-createQueryAndRun :: ServerContext -> QueryRunner -> IO ()
+createQueryAndRun :: HasCallStack => ServerContext -> QueryRunner -> IO ()
 createQueryAndRun ctx@ServerContext{..} qRunner@QueryRunner{..} = do
   -- prepare logdevice stream for restoration
   let streamId = transToTempStreamName qRQueryName
   let attrs = S.def { S.logReplicationFactor = S.defAttr1 1 }
+  S.doesStreamExist scLDClient streamId >>= \case
+    True  -> S.removeStream scLDClient streamId
+    False -> return ()
   logId <- do
     try @SomeException (S.createStream scLDClient streamId attrs
       >> S.createStreamPartition scLDClient streamId Nothing mempty)
@@ -458,7 +462,7 @@ restoreState ServerContext{..} qRunner@QueryRunner{..} = do
            ) (oldBuilder, S.LSN_MIN) dataRecords
       Left gp@S.GapRecord{..} -> return (oldBuilder, gapHiLSN)
 
-runQuery :: ServerContext -> QueryRunner -> S.C_LogID -> IO ()
+runQuery :: HasCallStack => ServerContext -> QueryRunner -> S.C_LogID -> IO ()
 runQuery ctx@ServerContext{..} QueryRunner{..} logId = do
   M.updateMeta qRQueryName P.QueryRunning Nothing metaHandle
   tid <- forkIO $ catches action cleanup
