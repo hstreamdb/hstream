@@ -29,8 +29,6 @@ module HStream.Server.Handler.Subscription
 where
 
 import           Control.Applicative              ((<|>))
-import           Control.Exception                (throwIO)
-import           Control.Monad
 import           Data.Bifunctor                   (first)
 import qualified Data.Map.Strict                  as Map
 import qualified Data.Text                        as T
@@ -40,10 +38,7 @@ import qualified HsGrpc.Server.Context            as G
 import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.Unsafe
 
-import qualified HStream.Exception                as HE
 import qualified HStream.Logger                   as Log
-import qualified HStream.MetaStore.Types          as M
-import           HStream.Server.Core.Common       (lookupResource')
 import qualified HStream.Server.Core.Subscription as Core
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi

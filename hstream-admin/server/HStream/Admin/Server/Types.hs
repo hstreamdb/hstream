@@ -7,7 +7,6 @@ import           GHC.Generics              (Generic)
 import           Network.Socket            (PortNumber)
 import           Options.Applicative       ((<|>))
 import qualified Options.Applicative       as O
-import           Proto3.Suite              (Enumerated (Enumerated))
 import qualified Text.Read                 as Read
 import qualified Z.Data.CBytes             as CB
 import           Z.Data.CBytes             (CBytes)
@@ -151,7 +150,7 @@ streamCmdParser = O.hsubparser
                                                                       <> O.help "The name of the stream"))
                                (O.progDesc "Get the details of a stream"))
  <> O.command "delete" (O.info (StreamCmdDelete <$> O.strArgument ( O.metavar "STREAM_NAME"
-                                                               <> O.help "The name of the stream to delete")
+                                                                 <> O.help "The name of the stream to delete")
                                                 <*> O.switch ( O.long "force"
                                                             <> O.short 'f'
                                                             <> O.help "Whether to enable force deletion" ))
