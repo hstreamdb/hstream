@@ -73,6 +73,7 @@ library
     , vector
     , Z-Data
     , zoovisitor
+    , proto3-suite
 
   default-extensions:
     DeriveGeneric

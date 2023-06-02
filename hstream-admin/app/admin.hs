@@ -68,8 +68,10 @@ runServerCli' s (Server.ServerAdminCmd adminCmd) = do
   checkLookup :: Server.AdminCommand -> (Bool, Text.Text)
   checkLookup cmd =
     case cmd of
-      Server.AdminQueryCommand (Server.QueryCmdResume qid) -> (True, qid)
-      _                                                    -> (False, "")
+      Server.AdminQueryCommand (Server.QueryCmdResume qid)           -> (True, qid)
+      Server.AdminConnectorCommand (Server.ConnectorCmdRecover cId)  -> (True, cId)
+      Server.AdminConnectorCommand (Server.ConnectorCmdDescribe cId) -> (True, cId)
+      _                                                              -> (False, "")
 
 -- TODO
 runStoreCli :: [String] -> IO ()

@@ -5,26 +5,23 @@
 module HStream.IO.IOTask where
 
 import qualified Control.Concurrent         as C
+import qualified Control.Concurrent.Async   as Async
 import           Control.Exception          (throwIO)
 import qualified Control.Exception          as E
 import           Control.Monad              (forever, msum, unless, void, when)
 import qualified Data.Aeson                 as J
+import qualified Data.Aeson.Text            as J
 import qualified Data.ByteString            as BS
 import qualified Data.ByteString.Lazy       as BSL
 import qualified Data.ByteString.Lazy.Char8 as BSLC
-import           Data.IORef                 (newIORef, readIORef, writeIORef)
-import qualified Data.Text                  as T
-import qualified Data.Text.Lazy             as TL
-import qualified GHC.IO.Handle              as IO
-import           System.Directory           (createDirectoryIfMissing,
-                                             removeDirectoryRecursive)
-import qualified System.Process.Typed       as TP
-
-import qualified Control.Concurrent.Async   as Async
-import qualified Data.Aeson.Text            as J
 import           Data.Int                   (Int32)
+import           Data.IORef                 (newIORef, readIORef, writeIORef)
 import           Data.Maybe                 (isNothing)
+import qualified Data.Text                  as T
+import qualified Data.Text.Encoding         as TLE
+import qualified Data.Text.Lazy             as TL
 import qualified Data.Vector                as Vector
+import qualified GHC.IO.Handle              as IO
 import qualified HStream.Exception          as HE
 import qualified HStream.IO.LineReader      as LR
 import qualified HStream.IO.Messages        as MSG
@@ -34,6 +31,9 @@ import qualified HStream.Logger             as Log
 import qualified HStream.MetaStore.Types    as M
 import qualified HStream.Stats              as Stats
 import qualified HStream.Utils              as Utils
+import           System.Directory           (createDirectoryIfMissing,
+                                             removeDirectoryRecursive)
+import qualified System.Process.Typed       as TP
 
 newIOTask :: T.Text -> M.MetaHandle -> Stats.StatsHolder -> TaskInfo -> T.Text -> IO IOTask
 newIOTask taskId taskHandle taskStatsHolder taskInfo path = do
@@ -82,6 +82,20 @@ runIOTask ioTask@IOTask{..} = do
       . TP.setStdout TP.createPipe
       . TP.setStderr TP.createPipe
       $ TP.shell taskCmd
+
+getDockerStatus :: IOTask -> IO T.Text
+getDockerStatus IOTask{..} = do
+  let cmd = "docker"
+      args = ["inspect", "-f", "'{{ .State.Status }}'", T.unpack (getDockerName taskId) ]
+  (exitCode, status, errStr) <- TP.readProcess (TP.proc cmd args)
+  case exitCode of
+    TP.ExitSuccess -> do
+      return . stripSpaceAndQuotes . TLE.decodeUtf8 . BSL.toStrict $ status
+    TP.ExitFailure _ -> do
+      Log.fatal $ "execute get docker status err: " <> Log.build errStr
+      return "get status error"
+ where
+   stripSpaceAndQuotes = T.strip . T.filter (/= '\'')
 
 handleStdout :: IOTask -> IO.Handle -> IO.Handle -> IO ()
 handleStdout ioTask@IOTask{..} hStdout hStdin = forever $ do

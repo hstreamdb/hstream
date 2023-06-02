@@ -26,6 +26,7 @@ module HStream.Utils.RPC
   , getServerRespPure
   , getProtoTimestamp
   , msTimestampToProto
+  , timestampToMsTimestamp
   , isSuccessful
 
   , pattern EnumPB
@@ -145,6 +146,9 @@ msTimestampToProto millis =
   let (sec, remain) = millis `divMod` 1000
       nano = remain * 1000000
    in Timestamp sec (fromIntegral nano)
+
+timestampToMsTimestamp :: Timestamp -> Int64
+timestampToMsTimestamp Timestamp{..} = floor @Double $ (fromIntegral timestampSeconds * 1e3) + (fromIntegral timestampNanos / 1e6)
 
 isSuccessful :: ClientResult 'Normal a -> Bool
 isSuccessful (ClientNormalResponse _ _ _ StatusOk _) = True
