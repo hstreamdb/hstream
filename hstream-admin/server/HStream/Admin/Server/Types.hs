@@ -95,6 +95,7 @@ data AdminCommand
   | AdminSubscriptionCommand SubscriptionCommand
   | AdminViewCommand ViewCommand
   | AdminQueryCommand QueryCommand
+  | AdminMetaCommand MetaCommand
   | AdminConnectorCommand ConnectorCommand
   | AdminStatusCommand
   | AdminInitCommand
@@ -118,6 +119,8 @@ adminCommandParser = O.hsubparser
                                (O.progDesc "View command"))
  <> O.command "query"  (O.info (AdminQueryCommand <$> queryCmdParser)
                                (O.progDesc "Query command"))
+ <> O.command "meta"   (O.info (AdminMetaCommand <$> metaCmdParser)
+                               (O.progDesc "Meta command"))
  <> O.command "status" (O.info (pure AdminStatusCommand)
                                (O.progDesc "Get the status of the HServer cluster"))
  <> O.command "init"   (O.info (pure AdminInitCommand)
@@ -254,6 +257,21 @@ connectorCmdParser = O.subparser
                                                                       <> O.metavar "CONNECTOR_ID"
                                                                       <> O.help "The ID of the connector"))
                                  (O.progDesc "Get the details of specific connector"))
+  )
+
+-------------------------------------------------------------------------------
+
+data MetaCommand
+  = MetaCmdList Text
+  deriving (Show)
+
+metaCmdParser :: O.Parser MetaCommand
+metaCmdParser = O.subparser
+  ( O.command "List" (O.info (MetaCmdList <$> O.strOption ( O.long "resource"
+                                                         <> O.short 'r'
+                                                         <> O.metavar "RESOURCE_CATEGORY"
+                                                         <> O.help "The category of the resource"))
+                             (O.progDesc "List all metadata of specific resource"))
   )
 
 -------------------------------------------------------------------------------

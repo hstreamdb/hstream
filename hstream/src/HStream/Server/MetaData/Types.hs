@@ -29,6 +29,10 @@ module HStream.Server.MetaData.Types
   , rootPath
   , getQuerySink
   , getQuerySources
+  , renderQueryInfosToTable
+  , renderQueryStatusToTable
+  , renderViewInfosToTable
+  , renderQVRelationToTable
   ) where
 
 import           Control.Exception                 (catches)
@@ -37,6 +41,9 @@ import qualified Data.HashMap.Strict               as HM
 import           Data.Int                          (Int64)
 import           Data.IORef
 import           Data.Text                         (Text)
+import qualified Data.Text as T
+import qualified Data.Text.Lazy as TL
+import qualified Data.Text.Lazy.Encoding as TL
 import           Data.Time.Clock.System            (SystemTime (MkSystemTime),
                                                     getSystemTime)
 import           Data.Word                         (Word32, Word64)
@@ -59,6 +66,9 @@ import qualified HStream.SQL.AST                   as AST
 import qualified HStream.Store                     as S
 import qualified HStream.ThirdParty.Protobuf       as Proto
 import           HStream.Utils
+import HStream.Base.Time (formatUnixTimeGMT, iso8061DateFormat, UnixTime (UnixTime), CTime (CTime))
+import Control.Monad (forM)
+import qualified Data.Aeson as Aeson
 #ifdef HStreamUseV2Engine
 import           DiffFlow.Types
 #else
@@ -71,12 +81,19 @@ newtype QueryStatus = QueryStatus { queryState :: TaskStatus }
   deriving (Generic, Show, FromJSON, ToJSON)
 
 pattern QueryCreating, QueryRunning, QueryResuming, QueryAborted, QueryPaused, QueryTerminated :: QueryStatus
-pattern QueryCreating = QueryStatus { queryState = Creating }
-pattern QueryRunning  = QueryStatus { queryState = Running }
-pattern QueryResuming = QueryStatus { queryState = Resuming }
-pattern QueryAborted  = QueryStatus { queryState = Aborted }
-pattern QueryPaused   = QueryStatus { queryState = Paused }
-pattern QueryTerminated   = QueryStatus { queryState = Terminated }
+pattern QueryCreating   = QueryStatus { queryState = Creating }
+pattern QueryRunning    = QueryStatus { queryState = Running }
+pattern QueryResuming   = QueryStatus { queryState = Resuming }
+pattern QueryAborted    = QueryStatus { queryState = Aborted }
+pattern QueryPaused     = QueryStatus { queryState = Paused }
+pattern QueryTerminated = QueryStatus { queryState = Terminated }
+
+renderQueryStatusToTable :: [QueryStatus] -> Aeson.Value
+renderQueryStatusToTable infos = 
+  let headers = ["Query Status" :: Text]
+      rows = forM infos $ \QueryStatus{..} ->
+        [ queryState ]
+   in Aeson.object ["headers" Aeson..= headers, "rows" Aeson..= rows]
 
 data QueryInfo = QueryInfo
   { queryId          :: Text
@@ -88,15 +105,69 @@ data QueryInfo = QueryInfo
   , queryType        :: QType
   } deriving (Generic, Show, FromJSON, ToJSON)
 
+-- showQueryInfo :: QueryInfo -> Text
+-- showQueryInfo QueryInfo{..} = "{ queryId: " <> queryId
+--                            <> ", sql: " <> querySql
+--                            <> ", createdTime: " <> (T.pack . show $ queryCreatedTime)
+--                            <> ", sourceStream: " <> T.intercalate "," (fst queryStreams)
+--                            <> ", sinkStream: " <> snd queryStreams
+--                            <> ", ast: " <> (T.pack . show $ queryRefinedAST)
+--                            <> ", workNode: " <> (T.pack . show $ workerNodeId)
+--                            <> ", type: " <> (T.pack . show $ queryType)
+--                            <> "}"
+
+showQueryInfo :: QueryInfo -> Text
+showQueryInfo QueryInfo{..} = "queryId: " <> queryId
+                           <> ", sql: " <> querySql
+                           <> ", createdTime: " <> (T.pack . show $ queryCreatedTime)
+                           <> ", sourceStream: " <> T.intercalate "," (fst queryStreams)
+                           <> ", sinkStream: " <> snd queryStreams
+                           <> ", ast: " <> (T.pack . show $ queryRefinedAST)
+                           <> ", workNode: " <> (T.pack . show $ workerNodeId)
+                           <> ", type: " <> (T.pack . formatQueryType . getQueryType $ queryType)
+
+renderQueryInfosToTable :: [QueryInfo] -> Text
+-- renderQueryInfosToTable infos = showTable titles rows
+-- renderQueryInfosToTable infos = T.intercalate "\n" $ map (TL.toStrict . TL.decodeUtf8 . Aeson.encode) infos 
+renderQueryInfosToTable infos = T.intercalate "\n" $ map (\info -> "{ " <> showQueryInfo info <> " }") infos 
+
+-- renderQueryInfosToTable :: [QueryInfo] -> Aeson.Value
+-- -- renderQueryInfosToTable infos = showTable titles rows
+-- renderQueryInfosToTable infos = 
+--   let headers = ["Query ID" :: Text, "SQL", "Created Time", "Source Streams", "SinkStreams", "AST", "Worker Node", "Type"]
+--       rows = forM infos $ \QueryInfo{..} ->
+--         [ queryId
+--         , querySql
+--         , T.pack . show $ queryCreatedTime
+--         , T.intercalate "," $ fst queryStreams
+--         , snd queryStreams
+--         , T.pack . show $ queryRefinedAST
+--         , T.pack . show $ workerNodeId
+--         , T.pack . show $ queryType
+--         ]
+--    in Aeson.object ["headers" Aeson..= headers, "rows" Aeson..= rows]
+
 data ViewInfo = ViewInfo {
     viewName  :: Text
   , viewQuery :: QueryInfo
 } deriving (Generic, Show, FromJSON, ToJSON)
 
+showViewInfo :: ViewInfo -> Text
+showViewInfo ViewInfo{..} = "viewName: " <> viewName <> ", " <> showQueryInfo viewQuery
+
+renderViewInfosToTable :: [ViewInfo] -> Text
+renderViewInfosToTable infos = T.intercalate "\n" $ map (\info -> "{ " <> showViewInfo info <> " }") infos 
+
 data QVRelation = QVRelation {
     qvRelationQueryName :: Text
   , qvRelationViewName  :: Text
 } deriving (Generic, Show, FromJSON, ToJSON)
+
+renderQVRelationToTable :: [QVRelation] -> Aeson.Value
+renderQVRelationToTable relations = 
+  let headers = ["Query ID" :: Text, "View Name"]
+      rows = map (\QVRelation{..} -> [qvRelationQueryName, qvRelationViewName]) relations
+   in Aeson.object ["headers" Aeson..= headers, "rows" Aeson..= rows]
 
 type SourceStreams  = [Text]
 type SinkStream     = Text

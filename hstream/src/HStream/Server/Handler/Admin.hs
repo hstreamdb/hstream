@@ -1,6 +1,15 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs     #-}
 {-# OPTIONS_GHC -Werror=incomplete-patterns #-}
+    -- {-# LANGUAGE KindSignatures #-}
+-- {-# LANGUAGE GeneralisedNewtypeDeriving #-}
+-- {-# LANGUAGE AllowAmbiguousTypes #-}
+-- {-# LANGUAGE TypeApplications #-}
+-- {-# LANGUAGE ScopedTypeVariables #-}
+    {-# LANGUAGE MultiParamTypeClasses #-}
+        {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeFamilies #-}
+    {-# LANGUAGE FlexibleContexts #-}
 
 module HStream.Server.Handler.Admin
   ( -- * For grpc-haskell
@@ -55,9 +64,12 @@ import qualified HStream.Stats                    as Stats
 import           HStream.Utils                    (Interval (..),
                                                    formatQueryType,
                                                    formatStatus, interval2ms,
-                                                   returnResp, showNodeStatus,
-                                                   structToJsonObject,
-                                                   timestampToMsTimestamp)
+                                                   returnResp, showNodeStatus, Format (formatResult))
+import qualified HStream.MetaStore.Types as M
+import HStream.Server.HStreamApi (Subscription)
+import Data.Data (Proxy)
+import Data.Kind (Type)
+import HStream.Server.MetaData (QueryInfo(QueryInfo), renderQueryInfosToTable, QueryStatus (QueryStatus), renderQueryStatusToTable, ViewInfo (ViewInfo), renderViewInfosToTable, QVRelation (QVRelation), renderQVRelationToTable)
 
 -------------------------------------------------------------------------------
 -- All command line data types are defined in 'HStream.Admin.Types'
@@ -110,6 +122,7 @@ runAdminCommand sc@ServerContext{..} cmd = do
     AT.AdminCheckReadyCommand     -> runCheckReady sc
     AT.AdminLookupCommand c       -> runLookup sc c
     AT.AdminConnectorCommand c    -> runConnector sc c
+    AT.AdminMetaCommand c         -> runMeta sc c
 
 handleParseResult :: O.ParserResult a -> IO a
 handleParseResult (O.Success a) = return a
@@ -215,6 +228,27 @@ runLookup ctx (AT.LookupCommand resType rId) = do
       "shard"        -> API.ResourceTypeResShard
       "shard-reader" -> API.ResourceTypeResShardReader
       x              -> throw $ HE.InvalidResourceType (show x)
+
+-------------------------------------------------------------------------------
+-- Admin Meta Command
+
+-- class (M.HasPath value handle) => MtCmd value handle where
+--   type Tp value
+--   list :: handle -> IO [value]
+
+-- instance MtCmd SubscriptionWrap handle where
+--   type Tp SubscriptionWrap = SubscriptionWrap
+--   list = M.listMeta
+
+runMeta :: ServerContext -> AT.MetaCommand -> IO Text
+runMeta ServerContext{..} (AT.MetaCmdList resType) = do
+  case resType of
+    "subscription" -> pure <$> plainResponse . Text.pack . formatResult . map originSub =<< M.listMeta @SubscriptionWrap metaHandle
+    "query-info" -> pure <$> plainResponse . renderQueryInfosToTable =<< M.listMeta @QueryInfo metaHandle
+    -- "query_status" -> pure <$> tableResponse . renderQueryStatusToTable =<< M.listMeta @QueryStatus metaHandle
+    "view-info" -> pure <$> plainResponse . renderViewInfosToTable =<< M.listMeta @ViewInfo metaHandle
+    "qv-relation" -> pure <$> tableResponse . renderQVRelationToTable =<< M.listMeta @QVRelation metaHandle
+    _ -> return $ errorResponse "unknown resource type"
 
 -------------------------------------------------------------------------------
 -- Admin Stream Command
