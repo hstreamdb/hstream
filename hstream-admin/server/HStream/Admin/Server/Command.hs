@@ -139,4 +139,5 @@ getResourceType cmd =
     AdminQueryCommand _        -> API.ResourceTypeResQuery
     AdminSubscriptionCommand _ -> API.ResourceTypeResSubscription
     AdminViewCommand _         -> API.ResourceTypeResView
+    AdminConnectorCommand _    -> API.ResourceTypeResConnector
     _                          -> errorWithoutStackTrace "invalid command"

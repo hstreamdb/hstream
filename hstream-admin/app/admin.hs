@@ -72,6 +72,8 @@ runServerCli' s (Server.ServerAdminCmd adminCmd) = do
       Server.AdminStreamCommand (Server.StreamCmdDelete sid _)             -> (True, sid)
       Server.AdminSubscriptionCommand (Server.SubscriptionCmdDelete sid _) -> (True, sid)
       Server.AdminSubscriptionCommand (Server.SubscriptionCmdDescribe sid) -> (True, sid)
+      Server.AdminConnectorCommand (Server.ConnectorCmdRecover cId)        -> (True, cId)
+      Server.AdminConnectorCommand (Server.ConnectorCmdDescribe cId)       -> (True, cId)
       _                                                                    -> (False, "")
 
 -- TODO

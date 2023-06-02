@@ -95,6 +95,7 @@ data AdminCommand
   | AdminSubscriptionCommand SubscriptionCommand
   | AdminViewCommand ViewCommand
   | AdminQueryCommand QueryCommand
+  | AdminConnectorCommand ConnectorCommand
   | AdminStatusCommand
   | AdminInitCommand
   | AdminCheckReadyCommand
@@ -123,6 +124,8 @@ adminCommandParser = O.hsubparser
                                (O.progDesc "Init an HServer cluster"))
  <> O.command "ready"  (O.info (pure AdminCheckReadyCommand)
                                (O.progDesc "Check if an HServer cluster is ready"))
+ <> O.command "connector" (O.info (AdminConnectorCommand <$> connectorCmdParser)
+                                  (O.progDesc "Connector command"))
   )
 
 -------------------------------------------------------------------------------
@@ -228,6 +231,29 @@ queryCmdParser = O.subparser
                                                                <> O.help "The ID of the query"))
                                 (O.progDesc "Resume specific query"))
   <> O.command "list" (O.info (pure QueryCmdList) (O.progDesc "List all queries"))
+  )
+
+-------------------------------------------------------------------------------
+
+data ConnectorCommand
+  = ConnectorCmdList
+  | ConnectorCmdRecover Text
+  | ConnectorCmdDescribe Text
+  deriving (Show)
+
+connectorCmdParser :: O.Parser ConnectorCommand
+connectorCmdParser = O.subparser
+  ( O.command "list" (O.info (pure ConnectorCmdList) (O.progDesc "Get all connectors"))
+ <> O.command "recover" (O.info (ConnectorCmdRecover <$> O.strOption ( O.long "id"
+                                                                    <> O.short 'i'
+                                                                    <> O.metavar "CONNECTOR_ID"
+                                                                    <> O.help "The ID of the connector"))
+                                 (O.progDesc "Recover specific connector"))
+ <> O.command "describe" (O.info (ConnectorCmdDescribe <$> O.strOption ( O.long "id"
+                                                                      <> O.short 'i'
+                                                                      <> O.metavar "CONNECTOR_ID"
+                                                                      <> O.help "The ID of the connector"))
+                                 (O.progDesc "Get the details of specific connector"))
   )
 
 -------------------------------------------------------------------------------
