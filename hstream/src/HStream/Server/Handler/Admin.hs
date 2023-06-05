@@ -21,6 +21,7 @@ module HStream.Server.Handler.Admin
 import           Control.Concurrent               (readMVar, tryReadMVar)
 import           Control.Concurrent.STM.TVar      (readTVarIO)
 import           Control.Monad                    (forM, void)
+import qualified Data.List as L
 import           Data.Aeson                       ((.=))
 import qualified Data.Aeson                       as Aeson
 import qualified Data.Aeson.Text                  as Aeson
@@ -51,7 +52,7 @@ import           HStream.Gossip                   (GossipContext (clusterReady),
                                                    initCluster)
 import qualified HStream.IO.Worker                as HC
 import qualified HStream.Logger                   as Log
-import           HStream.Server.Core.Common       (lookupResource')
+import           HStream.Server.Core.Common       (lookupResource', mkAllocationKey)
 import qualified HStream.Server.Core.Query        as HC
 import qualified HStream.Server.Core.Stream       as HC
 import qualified HStream.Server.Core.Subscription as HC
@@ -69,7 +70,7 @@ import qualified HStream.MetaStore.Types as M
 import HStream.Server.HStreamApi (Subscription)
 import Data.Data (Proxy)
 import Data.Kind (Type)
-import HStream.Server.MetaData (QueryInfo(QueryInfo), renderQueryInfosToTable, QueryStatus (QueryStatus), renderQueryStatusToTable, ViewInfo (ViewInfo), renderViewInfosToTable, QVRelation (QVRelation), renderQVRelationToTable)
+import HStream.Server.MetaData (QueryInfo(QueryInfo), renderQueryInfosToTable, QueryStatus (QueryStatus), renderQueryStatusToTable, ViewInfo (ViewInfo), renderViewInfosToTable, QVRelation (QVRelation), renderQVRelationToTable, TaskAllocation (TaskAllocation), renderTaskAllocationsToTable)
 
 -------------------------------------------------------------------------------
 -- All command line data types are defined in 'HStream.Admin.Types'
@@ -212,23 +213,23 @@ runResetStats stats_holder = do
 
 runLookup :: ServerContext -> AT.LookupCommand -> IO Text
 runLookup ctx (AT.LookupCommand resType rId) = do
-  API.ServerNode{..} <- lookupResource' ctx getResType rId
+  API.ServerNode{..} <- lookupResource' ctx (getResType resType) rId
   let headers = ["Resource ID" :: Text, "Host", "Port"]
       rows = [[rId, serverNodeHost, Text.pack .show $ serverNodePort]]
       content = Aeson.object ["headers" .= headers, "rows" .= rows]
   return $ tableResponse content
- where
-  getResType =
-    case resType of
-      "stream"       -> API.ResourceTypeResStream
-      "subscription" -> API.ResourceTypeResSubscription
-      "query"        -> API.ResourceTypeResQuery
-      "view"         -> API.ResourceTypeResView
-      "connector"    -> API.ResourceTypeResConnector
-      "shard"        -> API.ResourceTypeResShard
-      "shard-reader" -> API.ResourceTypeResShardReader
-      x              -> throw $ HE.InvalidResourceType (show x)
 
+getResType :: Text -> API.ResourceType
+getResType resType =
+  case resType of
+    "stream"       -> API.ResourceTypeResStream
+    "subscription" -> API.ResourceTypeResSubscription
+    "query"        -> API.ResourceTypeResQuery
+    "view"         -> API.ResourceTypeResView
+    "connector"    -> API.ResourceTypeResConnector
+    "shard"        -> API.ResourceTypeResShard
+    "shard-reader" -> API.ResourceTypeResShardReader
+    x              -> throw $ HE.InvalidResourceType (show x)
 -------------------------------------------------------------------------------
 -- Admin Meta Command
 
@@ -248,6 +249,14 @@ runMeta ServerContext{..} (AT.MetaCmdList resType) = do
     -- "query_status" -> pure <$> tableResponse . renderQueryStatusToTable =<< M.listMeta @QueryStatus metaHandle
     "view-info" -> pure <$> plainResponse . renderViewInfosToTable =<< M.listMeta @ViewInfo metaHandle
     "qv-relation" -> pure <$> tableResponse . renderQVRelationToTable =<< M.listMeta @QVRelation metaHandle
+    _ -> return $ errorResponse "unknown resource type"
+runMeta ServerContext{..} (AT.MetaCmdGet resType rId) = do
+  case resType of
+    "subscription" -> pure <$> maybe "" (plainResponse . Text.pack . formatResult . originSub) =<< M.getMeta @SubscriptionWrap rId metaHandle
+    "query-info" -> pure <$> maybe "" (plainResponse . renderQueryInfosToTable . L.singleton) =<< M.getMeta @QueryInfo rId metaHandle
+    "query_status" -> pure <$> maybe "" (tableResponse . renderQueryStatusToTable . L.singleton) =<< M.getMeta @QueryStatus rId metaHandle
+    "view-info" -> pure <$> maybe "" (plainResponse . renderViewInfosToTable . L.singleton) =<< M.getMeta @ViewInfo rId metaHandle
+    "qv-relation" -> pure <$> maybe "" (tableResponse . renderQVRelationToTable . L.singleton) =<< M.getMeta @QVRelation rId metaHandle
     _ -> return $ errorResponse "unknown resource type"
 
 -------------------------------------------------------------------------------
