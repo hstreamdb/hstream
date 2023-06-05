@@ -42,9 +42,9 @@ import qualified Data.HashMap.Strict               as HM
 import           Data.Int                          (Int64)
 import           Data.IORef
 import           Data.Text                         (Text)
-import qualified Data.Text as T
-import qualified Data.Text.Lazy as TL
-import qualified Data.Text.Lazy.Encoding as TL
+import qualified Data.Text                         as T
+import qualified Data.Text.Lazy                    as TL
+import qualified Data.Text.Lazy.Encoding           as TL
 import           Data.Time.Clock.System            (SystemTime (MkSystemTime),
                                                     getSystemTime)
 import           Data.Word                         (Word32, Word64)
@@ -52,6 +52,8 @@ import           GHC.Generics                      (Generic)
 import           GHC.IO                            (unsafePerformIO)
 import           ZooKeeper.Types                   (ZHandle)
 
+import           Control.Monad                     (forM)
+import qualified Data.Aeson                        as Aeson
 import           HStream.MetaStore.Types           (FHandle, HasPath (..),
                                                     MetaHandle,
                                                     MetaMulti (metaMulti),
@@ -67,9 +69,6 @@ import qualified HStream.SQL.AST                   as AST
 import qualified HStream.Store                     as S
 import qualified HStream.ThirdParty.Protobuf       as Proto
 import           HStream.Utils
-import HStream.Base.Time (formatUnixTimeGMT, iso8061DateFormat, UnixTime (UnixTime), CTime (CTime))
-import Control.Monad (forM)
-import qualified Data.Aeson as Aeson
 #ifdef HStreamUseV2Engine
 import           DiffFlow.Types
 #else
@@ -90,7 +89,7 @@ pattern QueryPaused     = QueryStatus { queryState = Paused }
 pattern QueryTerminated = QueryStatus { queryState = Terminated }
 
 renderQueryStatusToTable :: [QueryStatus] -> Aeson.Value
-renderQueryStatusToTable infos = 
+renderQueryStatusToTable infos =
   let headers = ["Query Status" :: Text]
       rows = forM infos $ \QueryStatus{..} ->
         [ queryState ]
@@ -106,17 +105,6 @@ data QueryInfo = QueryInfo
   , queryType        :: QType
   } deriving (Generic, Show, FromJSON, ToJSON)
 
--- showQueryInfo :: QueryInfo -> Text
--- showQueryInfo QueryInfo{..} = "{ queryId: " <> queryId
---                            <> ", sql: " <> querySql
---                            <> ", createdTime: " <> (T.pack . show $ queryCreatedTime)
---                            <> ", sourceStream: " <> T.intercalate "," (fst queryStreams)
---                            <> ", sinkStream: " <> snd queryStreams
---                            <> ", ast: " <> (T.pack . show $ queryRefinedAST)
---                            <> ", workNode: " <> (T.pack . show $ workerNodeId)
---                            <> ", type: " <> (T.pack . show $ queryType)
---                            <> "}"
-
 showQueryInfo :: QueryInfo -> Text
 showQueryInfo QueryInfo{..} = "queryId: " <> queryId
                            <> ", sql: " <> querySql
@@ -128,25 +116,7 @@ showQueryInfo QueryInfo{..} = "queryId: " <> queryId
                            <> ", type: " <> (T.pack . formatQueryType . getQueryType $ queryType)
 
 renderQueryInfosToTable :: [QueryInfo] -> Text
--- renderQueryInfosToTable infos = showTable titles rows
--- renderQueryInfosToTable infos = T.intercalate "\n" $ map (TL.toStrict . TL.decodeUtf8 . Aeson.encode) infos 
-renderQueryInfosToTable infos = T.intercalate "\n" $ map (\info -> "{ " <> showQueryInfo info <> " }") infos 
-
--- renderQueryInfosToTable :: [QueryInfo] -> Aeson.Value
--- -- renderQueryInfosToTable infos = showTable titles rows
--- renderQueryInfosToTable infos = 
---   let headers = ["Query ID" :: Text, "SQL", "Created Time", "Source Streams", "SinkStreams", "AST", "Worker Node", "Type"]
---       rows = forM infos $ \QueryInfo{..} ->
---         [ queryId
---         , querySql
---         , T.pack . show $ queryCreatedTime
---         , T.intercalate "," $ fst queryStreams
---         , snd queryStreams
---         , T.pack . show $ queryRefinedAST
---         , T.pack . show $ workerNodeId
---         , T.pack . show $ queryType
---         ]
---    in Aeson.object ["headers" Aeson..= headers, "rows" Aeson..= rows]
+renderQueryInfosToTable infos = T.intercalate "\n" $ map (\info -> "{ " <> showQueryInfo info <> " }") infos
 
 data ViewInfo = ViewInfo {
     viewName  :: Text
@@ -157,7 +127,7 @@ showViewInfo :: ViewInfo -> Text
 showViewInfo ViewInfo{..} = "viewName: " <> viewName <> ", " <> showQueryInfo viewQuery
 
 renderViewInfosToTable :: [ViewInfo] -> Text
-renderViewInfosToTable infos = T.intercalate "\n" $ map (\info -> "{ " <> showViewInfo info <> " }") infos 
+renderViewInfosToTable infos = T.intercalate "\n" $ map (\info -> "{ " <> showViewInfo info <> " }") infos
 
 data QVRelation = QVRelation {
     qvRelationQueryName :: Text
@@ -165,7 +135,7 @@ data QVRelation = QVRelation {
 } deriving (Generic, Show, FromJSON, ToJSON)
 
 renderQVRelationToTable :: [QVRelation] -> Aeson.Value
-renderQVRelationToTable relations = 
+renderQVRelationToTable relations =
   let headers = ["Query ID" :: Text, "View Name"]
       rows = map (\QVRelation{..} -> [qvRelationQueryName, qvRelationViewName]) relations
    in Aeson.object ["headers" Aeson..= headers, "rows" Aeson..= rows]
@@ -192,7 +162,7 @@ data TaskAllocation = TaskAllocation { taskAllocationEpoch :: Word32, taskAlloca
   deriving (Show, Generic, FromJSON, ToJSON)
 
 renderTaskAllocationsToTable :: [TaskAllocation] -> Aeson.Value
-renderTaskAllocationsToTable relations = 
+renderTaskAllocationsToTable relations =
   let headers = ["Server ID" :: Text]
       rows = map (\TaskAllocation{..} -> [taskAllocationServerId]) relations
    in Aeson.object ["headers" Aeson..= headers, "rows" Aeson..= rows]

@@ -1,15 +1,6 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs     #-}
 {-# OPTIONS_GHC -Werror=incomplete-patterns #-}
-    -- {-# LANGUAGE KindSignatures #-}
--- {-# LANGUAGE GeneralisedNewtypeDeriving #-}
--- {-# LANGUAGE AllowAmbiguousTypes #-}
--- {-# LANGUAGE TypeApplications #-}
--- {-# LANGUAGE ScopedTypeVariables #-}
-    {-# LANGUAGE MultiParamTypeClasses #-}
-        {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE TypeFamilies #-}
-    {-# LANGUAGE FlexibleContexts #-}
 
 module HStream.Server.Handler.Admin
   ( -- * For grpc-haskell
@@ -21,11 +12,11 @@ module HStream.Server.Handler.Admin
 import           Control.Concurrent               (readMVar, tryReadMVar)
 import           Control.Concurrent.STM.TVar      (readTVarIO)
 import           Control.Monad                    (forM, void)
-import qualified Data.List as L
 import           Data.Aeson                       ((.=))
 import qualified Data.Aeson                       as Aeson
 import qualified Data.Aeson.Text                  as Aeson
 import qualified Data.HashMap.Strict              as HM
+import qualified Data.List                        as L
 import           Data.Map.Strict                  (Map)
 import qualified Data.Map.Strict                  as Map
 import           Data.Text                        (Text)
@@ -52,7 +43,11 @@ import           HStream.Gossip                   (GossipContext (clusterReady),
                                                    initCluster)
 import qualified HStream.IO.Worker                as HC
 import qualified HStream.Logger                   as Log
-import           HStream.Server.Core.Common       (lookupResource', mkAllocationKey)
+import qualified HStream.MetaStore.Types          as M
+import           HStream.Server.Config            (MetaStoreAddr (..),
+                                                   ServerOpts (ServerOpts, _metaStore))
+import           HStream.Server.Core.Common       (lookupResource',
+                                                   mkAllocationKey)
 import qualified HStream.Server.Core.Query        as HC
 import qualified HStream.Server.Core.Stream       as HC
 import qualified HStream.Server.Core.Subscription as HC
@@ -60,19 +55,22 @@ import qualified HStream.Server.Core.View         as HC
 import           HStream.Server.Exception         (catchDefaultEx,
                                                    defaultExceptionHandle)
 import qualified HStream.Server.HStreamApi        as API
+import           HStream.Server.MetaData          (QVRelation, QueryInfo,
+                                                   QueryStatus, TaskAllocation,
+                                                   ViewInfo,
+                                                   renderQVRelationToTable,
+                                                   renderQueryInfosToTable,
+                                                   renderQueryStatusToTable,
+                                                   renderTaskAllocationsToTable,
+                                                   renderViewInfosToTable)
 import           HStream.Server.Types
 import qualified HStream.Stats                    as Stats
-import           HStream.Utils                    (Interval (..),
+import           HStream.Utils                    (Interval (..), cBytesToText,
                                                    formatQueryType,
                                                    formatStatus, interval2ms,
-                                                   returnResp, showNodeStatus, Format (formatResult), cBytesToText)
-import qualified HStream.MetaStore.Types as M
-import HStream.Server.HStreamApi (Subscription)
-import Data.Data (Proxy)
-import Data.Kind (Type)
-import HStream.Server.MetaData (QueryInfo(QueryInfo), renderQueryInfosToTable, QueryStatus (QueryStatus), renderQueryStatusToTable, ViewInfo (ViewInfo), renderViewInfosToTable, QVRelation (QVRelation), renderQVRelationToTable, TaskAllocation (TaskAllocation), renderTaskAllocationsToTable)
-import HStream.Server.Config (ServerOpts(ServerOpts, _metaStore), MetaStoreAddr (ZkAddr, RqAddr, FileAddr))
-import HStream.MetaStore.Types (HasPath(myRootPath))
+                                                   returnResp, showNodeStatus,
+                                                   structToJsonObject,
+                                                   timestampToMsTimestamp)
 
 -------------------------------------------------------------------------------
 -- All command line data types are defined in 'HStream.Admin.Types'
@@ -235,32 +233,22 @@ getResType resType =
 -------------------------------------------------------------------------------
 -- Admin Meta Command
 
--- class (M.HasPath value handle) => MtCmd value handle where
---   type Tp value
---   list :: handle -> IO [value]
-
--- instance MtCmd SubscriptionWrap handle where
---   type Tp SubscriptionWrap = SubscriptionWrap
---   list = M.listMeta
-
 runMeta :: ServerContext -> AT.MetaCommand -> IO Text
 runMeta ServerContext{..} (AT.MetaCmdList resType) = do
   case resType of
-    -- "subscription" -> pure <$> plainResponse . Text.pack . formatResult . map originSub =<< M.listMeta @SubscriptionWrap metaHandle
     "subscription" -> pure <$> tableResponse . renderSubscriptionWrapToTable  =<< M.listMeta @SubscriptionWrap metaHandle
     "query-info" -> pure <$> plainResponse . renderQueryInfosToTable =<< M.listMeta @QueryInfo metaHandle
     "view-info" -> pure <$> plainResponse . renderViewInfosToTable =<< M.listMeta @ViewInfo metaHandle
     "qv-relation" -> pure <$> tableResponse . renderQVRelationToTable =<< M.listMeta @QVRelation metaHandle
-    _ -> return $ errorResponse "unknown resource type"
+    _ -> return $ errorResponse "invalid resource type, try [subscription|query-info|view-info|qv-relateion]"
 runMeta ServerContext{..} (AT.MetaCmdGet resType rId) = do
   case resType of
     "subscription" -> pure <$> maybe (plainResponse "Not Found") (tableResponse . renderSubscriptionWrapToTable .L.singleton) =<< M.getMeta @SubscriptionWrap rId metaHandle
-    -- "subscription" -> pure <$> maybe (plainResponse "Not Found") (plainResponse . Text.pack . formatResult . originSub) =<< M.getMeta @SubscriptionWrap rId metaHandle
     "query-info" -> pure <$> maybe (plainResponse "Not Found") (plainResponse . renderQueryInfosToTable . L.singleton) =<< M.getMeta @QueryInfo rId metaHandle
-    "query_status" -> pure <$> maybe (plainResponse "Not Found") (tableResponse . renderQueryStatusToTable . L.singleton) =<< M.getMeta @QueryStatus rId metaHandle
+    "query-status" -> pure <$> maybe (plainResponse "Not Found") (tableResponse . renderQueryStatusToTable . L.singleton) =<< M.getMeta @QueryStatus rId metaHandle
     "view-info" -> pure <$> maybe (plainResponse "Not Found") (plainResponse . renderViewInfosToTable . L.singleton) =<< M.getMeta @ViewInfo rId metaHandle
     "qv-relation" -> pure <$> maybe (plainResponse "Not Found") (tableResponse . renderQVRelationToTable . L.singleton) =<< M.getMeta @QVRelation rId metaHandle
-    _ -> return $ errorResponse "unknown resource type"
+    _ -> return $ errorResponse "invalid resource type, try [subscription|query-info|query-status|view-info|qv-relateion]"
 runMeta ServerContext{serverOpts=ServerOpts{..}} AT.MetaCmdInfo = do
   let headers = ["Meta Type" :: Text, "Connection Info"]
       rows = case _metaStore of
@@ -274,8 +262,6 @@ runMeta sc (AT.MetaCmdTask taskCmd) = runMetaTask sc taskCmd
 runMetaTask :: ServerContext -> AT.MetaTaskCommand -> IO Text
 runMetaTask ServerContext{..} (AT.MetaTaskGet resType rId) = do
   let metaId = mkAllocationKey (getResType resType) rId
-  res <- M.getMeta @TaskAllocation metaId metaHandle
-  Log.info $ "get metaId " <> Log.build metaId <> ", res = " <> Log.build (show res)
   pure <$> maybe (plainResponse "Not Found") (tableResponse . renderTaskAllocationsToTable . L.singleton) =<< M.getMeta @TaskAllocation metaId metaHandle
 
 -------------------------------------------------------------------------------
