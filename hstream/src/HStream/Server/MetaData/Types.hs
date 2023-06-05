@@ -33,6 +33,7 @@ module HStream.Server.MetaData.Types
   , renderQueryStatusToTable
   , renderViewInfosToTable
   , renderQVRelationToTable
+  , renderTaskAllocationsToTable
   ) where
 
 import           Control.Exception                 (catches)
@@ -189,6 +190,12 @@ data ShardReaderMeta = ShardReaderMeta
 
 data TaskAllocation = TaskAllocation { taskAllocationEpoch :: Word32, taskAllocationServerId :: ServerID}
   deriving (Show, Generic, FromJSON, ToJSON)
+
+renderTaskAllocationsToTable :: [TaskAllocation] -> Aeson.Value
+renderTaskAllocationsToTable relations = 
+  let headers = ["Server ID" :: Text]
+      rows = map (\TaskAllocation{..} -> [taskAllocationServerId]) relations
+   in Aeson.object ["headers" Aeson..= headers, "rows" Aeson..= rows]
 
 rootPath :: Text
 rootPath = "/hstream"

@@ -258,6 +258,14 @@ runMeta ServerContext{..} (AT.MetaCmdGet resType rId) = do
     "view-info" -> pure <$> maybe "" (plainResponse . renderViewInfosToTable . L.singleton) =<< M.getMeta @ViewInfo rId metaHandle
     "qv-relation" -> pure <$> maybe "" (tableResponse . renderQVRelationToTable . L.singleton) =<< M.getMeta @QVRelation rId metaHandle
     _ -> return $ errorResponse "unknown resource type"
+runMeta sc (AT.MetaCmdTask taskCmd) = runMetaTask sc taskCmd
+
+runMetaTask :: ServerContext -> AT.MetaTaskCommand -> IO Text
+runMetaTask ServerContext{..} (AT.MetaTaskGet resType rId) = do
+  let metaId = mkAllocationKey (getResType resType) rId
+  res <- M.getMeta @TaskAllocation metaId metaHandle
+  Log.info $ "get metaId " <> Log.build metaId <> ", res = " <> Log.build (show res)
+  pure <$> maybe (plainResponse "Not Found.") (tableResponse . renderTaskAllocationsToTable . L.singleton) =<< M.getMeta @TaskAllocation metaId metaHandle
 
 -------------------------------------------------------------------------------
 -- Admin Stream Command

@@ -264,6 +264,7 @@ connectorCmdParser = O.subparser
 data MetaCommand 
   = MetaCmdList Text
   | MetaCmdGet Text Text
+  | MetaCmdTask MetaTaskCommand
   deriving (Show)
 
 metaCmdParser :: O.Parser MetaCommand
@@ -282,6 +283,23 @@ metaCmdParser = O.subparser
                                                        <> O.metavar "RESOURCE_ID"
                                                        <> O.help "The Id of the resource"))
                             (O.progDesc "Get metadata of specific resource"))
+  ) O.<|> MetaCmdTask <$> metaTaskCmdParser
+
+data MetaTaskCommand
+  = MetaTaskGet Text Text
+  deriving (Show)
+
+metaTaskCmdParser :: O.Parser MetaTaskCommand
+metaTaskCmdParser = O.subparser
+  ( O.command "get-task" (O.info (MetaTaskGet <$> O.strOption ( O.long "resource"
+                                                             <> O.short 'r'
+                                                             <> O.metavar "RESOURCE_CATEGORY"
+                                                             <> O.help "The category of the resource")
+                                              <*> O.strOption ( O.long "id"
+                                                             <> O.short 'i'
+                                                             <> O.metavar "RESOURCE_ID"
+                                                             <> O.help "The Id of the resource"))
+                            (O.progDesc "Get task allocation metadata of specific resource"))
   )
 
 -------------------------------------------------------------------------------
