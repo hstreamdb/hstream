@@ -246,14 +246,16 @@ getResType resType =
 runMeta :: ServerContext -> AT.MetaCommand -> IO Text
 runMeta ServerContext{..} (AT.MetaCmdList resType) = do
   case resType of
-    "subscription" -> pure <$> plainResponse . Text.pack . formatResult . map originSub =<< M.listMeta @SubscriptionWrap metaHandle
+    -- "subscription" -> pure <$> plainResponse . Text.pack . formatResult . map originSub =<< M.listMeta @SubscriptionWrap metaHandle
+    "subscription" -> pure <$> tableResponse . renderSubscriptionWrapToTable  =<< M.listMeta @SubscriptionWrap metaHandle
     "query-info" -> pure <$> plainResponse . renderQueryInfosToTable =<< M.listMeta @QueryInfo metaHandle
     "view-info" -> pure <$> plainResponse . renderViewInfosToTable =<< M.listMeta @ViewInfo metaHandle
     "qv-relation" -> pure <$> tableResponse . renderQVRelationToTable =<< M.listMeta @QVRelation metaHandle
     _ -> return $ errorResponse "unknown resource type"
 runMeta ServerContext{..} (AT.MetaCmdGet resType rId) = do
   case resType of
-    "subscription" -> pure <$> maybe (plainResponse "Not Found") (plainResponse . Text.pack . formatResult . originSub) =<< M.getMeta @SubscriptionWrap rId metaHandle
+    "subscription" -> pure <$> maybe (plainResponse "Not Found") (tableResponse . renderSubscriptionWrapToTable .L.singleton) =<< M.getMeta @SubscriptionWrap rId metaHandle
+    -- "subscription" -> pure <$> maybe (plainResponse "Not Found") (plainResponse . Text.pack . formatResult . originSub) =<< M.getMeta @SubscriptionWrap rId metaHandle
     "query-info" -> pure <$> maybe (plainResponse "Not Found") (plainResponse . renderQueryInfosToTable . L.singleton) =<< M.getMeta @QueryInfo rId metaHandle
     "query_status" -> pure <$> maybe (plainResponse "Not Found") (tableResponse . renderQueryStatusToTable . L.singleton) =<< M.getMeta @QueryStatus rId metaHandle
     "view-info" -> pure <$> maybe (plainResponse "Not Found") (plainResponse . renderViewInfosToTable . L.singleton) =<< M.getMeta @ViewInfo rId metaHandle
