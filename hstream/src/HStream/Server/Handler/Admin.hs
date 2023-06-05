@@ -65,12 +65,14 @@ import qualified HStream.Stats                    as Stats
 import           HStream.Utils                    (Interval (..),
                                                    formatQueryType,
                                                    formatStatus, interval2ms,
-                                                   returnResp, showNodeStatus, Format (formatResult))
+                                                   returnResp, showNodeStatus, Format (formatResult), cBytesToText)
 import qualified HStream.MetaStore.Types as M
 import HStream.Server.HStreamApi (Subscription)
 import Data.Data (Proxy)
 import Data.Kind (Type)
 import HStream.Server.MetaData (QueryInfo(QueryInfo), renderQueryInfosToTable, QueryStatus (QueryStatus), renderQueryStatusToTable, ViewInfo (ViewInfo), renderViewInfosToTable, QVRelation (QVRelation), renderQVRelationToTable, TaskAllocation (TaskAllocation), renderTaskAllocationsToTable)
+import HStream.Server.Config (ServerOpts(ServerOpts, _metaStore), MetaStoreAddr (ZkAddr, RqAddr, FileAddr))
+import HStream.MetaStore.Types (HasPath(myRootPath))
 
 -------------------------------------------------------------------------------
 -- All command line data types are defined in 'HStream.Admin.Types'
@@ -246,7 +248,6 @@ runMeta ServerContext{..} (AT.MetaCmdList resType) = do
   case resType of
     "subscription" -> pure <$> plainResponse . Text.pack . formatResult . map originSub =<< M.listMeta @SubscriptionWrap metaHandle
     "query-info" -> pure <$> plainResponse . renderQueryInfosToTable =<< M.listMeta @QueryInfo metaHandle
-    -- "query_status" -> pure <$> tableResponse . renderQueryStatusToTable =<< M.listMeta @QueryStatus metaHandle
     "view-info" -> pure <$> plainResponse . renderViewInfosToTable =<< M.listMeta @ViewInfo metaHandle
     "qv-relation" -> pure <$> tableResponse . renderQVRelationToTable =<< M.listMeta @QVRelation metaHandle
     _ -> return $ errorResponse "unknown resource type"
@@ -258,6 +259,14 @@ runMeta ServerContext{..} (AT.MetaCmdGet resType rId) = do
     "view-info" -> pure <$> maybe (plainResponse "Not Found") (plainResponse . renderViewInfosToTable . L.singleton) =<< M.getMeta @ViewInfo rId metaHandle
     "qv-relation" -> pure <$> maybe (plainResponse "Not Found") (tableResponse . renderQVRelationToTable . L.singleton) =<< M.getMeta @QVRelation rId metaHandle
     _ -> return $ errorResponse "unknown resource type"
+runMeta ServerContext{serverOpts=ServerOpts{..}} AT.MetaCmdInfo = do
+  let headers = ["Meta Type" :: Text, "Connection Info"]
+      rows = case _metaStore of
+               ZkAddr addr   -> [["zookeeper", cBytesToText addr]]
+               RqAddr addr   -> [["rqlite", addr]]
+               FileAddr addr -> [["file", Text.pack addr]]
+      content = Aeson.object ["headers" .= headers, "rows" .= rows]
+  return $ tableResponse content
 runMeta sc (AT.MetaCmdTask taskCmd) = runMetaTask sc taskCmd
 
 runMetaTask :: ServerContext -> AT.MetaTaskCommand -> IO Text

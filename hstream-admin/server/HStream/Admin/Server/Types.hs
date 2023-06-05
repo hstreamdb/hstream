@@ -265,6 +265,7 @@ data MetaCommand
   = MetaCmdList Text
   | MetaCmdGet Text Text
   | MetaCmdTask MetaTaskCommand
+  | MetaCmdInfo
   deriving (Show)
 
 metaCmdParser :: O.Parser MetaCommand
@@ -283,6 +284,7 @@ metaCmdParser = O.subparser
                                                        <> O.metavar "RESOURCE_ID"
                                                        <> O.help "The Id of the resource"))
                             (O.progDesc "Get metadata of specific resource"))
+ <> O.command "info" (O.info (pure MetaCmdInfo) (O.progDesc "Get meta info"))
   ) O.<|> MetaCmdTask <$> metaTaskCmdParser
 
 data MetaTaskCommand
