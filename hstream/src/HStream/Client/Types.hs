@@ -24,6 +24,12 @@ import           HStream.Utils                 (ResourceType, SocketAddr (..),
                                                 mkGRPCClientConfWithSSL)
 import           Proto3.Suite                  (Enumerated (Enumerated))
 
+data CliCmd = CliCmd HStreamCommand | GetVersionCmd
+
+cliCmdParser :: O.Parser CliCmd
+cliCmdParser = CliCmd <$> commandParser
+  O.<|> O.flag' GetVersionCmd ( O.long "version" <> O.short 'v' <> O.help "Get client version")
+
 data HStreamCommand = HStreamCommand
   { cliConnOpts :: CliConnOpts
   , cliCommand  :: Command

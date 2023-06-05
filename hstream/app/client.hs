@@ -17,6 +17,7 @@ import           Data.Aeson                       as Aeson
 import qualified Data.Char                        as Char
 import qualified Data.List                        as L
 import           Data.Maybe                       (mapMaybe, maybeToList)
+import qualified Data.Text                        as T
 import qualified Data.Text.Encoding               as T
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated (ClientError (..),
@@ -41,7 +42,7 @@ import           HStream.Client.Execute           (executeWithLookupResource_,
                                                    simpleExecute)
 import           HStream.Client.SQL               (commandExec,
                                                    interactiveSQLApp)
-import           HStream.Client.Types             (Command (..),
+import           HStream.Client.Types             (CliCmd (..), Command (..),
                                                    HStreamCommand (..),
                                                    HStreamInitOpts (..),
                                                    HStreamNodes (..),
@@ -52,10 +53,11 @@ import           HStream.Client.Types             (Command (..),
                                                    Resource (..),
                                                    StreamCommand (..),
                                                    SubscriptionCommand (..),
-                                                   commandParser,
+                                                   cliCmdParser,
                                                    refineCliConnOpts)
 import           HStream.Client.Utils             (mkClientNormalRequest',
                                                    printResult)
+import           HStream.Common.Types             (getHStreamVersion)
 import           HStream.Server.HStreamApi        (DescribeClusterResponse (..),
                                                    HStreamApi (..),
                                                    ServerNode (..),
@@ -71,12 +73,15 @@ import qualified HStream.Utils.Aeson              as AesonComp
 main :: IO ()
 main = runCommand =<<
   O.customExecParser (O.prefs (O.showHelpOnEmpty <> O.showHelpOnError))
-                     (O.info (commandParser O.<**> O.helper)
+                     (O.info (cliCmdParser O.<**> O.helper)
                              (O.fullDesc <> O.header "======= HStream CLI =======")
                      )
 
-runCommand :: HStreamCommand -> IO ()
-runCommand HStreamCommand{..} = do
+runCommand :: CliCmd -> IO ()
+runCommand GetVersionCmd = do
+  API.HStreamVersion{..} <- getHStreamVersion
+  putStrLn $ "version: " <> T.unpack hstreamVersionVersion <> " (" <> T.unpack hstreamVersionCommit <> ")"
+runCommand (CliCmd HStreamCommand{..}) = do
   rConnOpts <- refineCliConnOpts cliConnOpts
   case cliCommand of
     HStreamNodes  opts       -> hstreamNodes  rConnOpts opts
