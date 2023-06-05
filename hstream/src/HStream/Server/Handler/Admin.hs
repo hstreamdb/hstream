@@ -252,11 +252,11 @@ runMeta ServerContext{..} (AT.MetaCmdList resType) = do
     _ -> return $ errorResponse "unknown resource type"
 runMeta ServerContext{..} (AT.MetaCmdGet resType rId) = do
   case resType of
-    "subscription" -> pure <$> maybe "" (plainResponse . Text.pack . formatResult . originSub) =<< M.getMeta @SubscriptionWrap rId metaHandle
-    "query-info" -> pure <$> maybe "" (plainResponse . renderQueryInfosToTable . L.singleton) =<< M.getMeta @QueryInfo rId metaHandle
-    "query_status" -> pure <$> maybe "" (tableResponse . renderQueryStatusToTable . L.singleton) =<< M.getMeta @QueryStatus rId metaHandle
-    "view-info" -> pure <$> maybe "" (plainResponse . renderViewInfosToTable . L.singleton) =<< M.getMeta @ViewInfo rId metaHandle
-    "qv-relation" -> pure <$> maybe "" (tableResponse . renderQVRelationToTable . L.singleton) =<< M.getMeta @QVRelation rId metaHandle
+    "subscription" -> pure <$> maybe (plainResponse "Not Found") (plainResponse . Text.pack . formatResult . originSub) =<< M.getMeta @SubscriptionWrap rId metaHandle
+    "query-info" -> pure <$> maybe (plainResponse "Not Found") (plainResponse . renderQueryInfosToTable . L.singleton) =<< M.getMeta @QueryInfo rId metaHandle
+    "query_status" -> pure <$> maybe (plainResponse "Not Found") (tableResponse . renderQueryStatusToTable . L.singleton) =<< M.getMeta @QueryStatus rId metaHandle
+    "view-info" -> pure <$> maybe (plainResponse "Not Found") (plainResponse . renderViewInfosToTable . L.singleton) =<< M.getMeta @ViewInfo rId metaHandle
+    "qv-relation" -> pure <$> maybe (plainResponse "Not Found") (tableResponse . renderQVRelationToTable . L.singleton) =<< M.getMeta @QVRelation rId metaHandle
     _ -> return $ errorResponse "unknown resource type"
 runMeta sc (AT.MetaCmdTask taskCmd) = runMetaTask sc taskCmd
 
@@ -265,7 +265,7 @@ runMetaTask ServerContext{..} (AT.MetaTaskGet resType rId) = do
   let metaId = mkAllocationKey (getResType resType) rId
   res <- M.getMeta @TaskAllocation metaId metaHandle
   Log.info $ "get metaId " <> Log.build metaId <> ", res = " <> Log.build (show res)
-  pure <$> maybe (plainResponse "Not Found.") (tableResponse . renderTaskAllocationsToTable . L.singleton) =<< M.getMeta @TaskAllocation metaId metaHandle
+  pure <$> maybe (plainResponse "Not Found") (tableResponse . renderTaskAllocationsToTable . L.singleton) =<< M.getMeta @TaskAllocation metaId metaHandle
 
 -------------------------------------------------------------------------------
 -- Admin Stream Command
