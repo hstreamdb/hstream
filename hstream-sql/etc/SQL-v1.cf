@@ -184,7 +184,7 @@ ExprCast1. ValueExpr ::= ValueExpr1 "::" DataType ;
 ExprCast2. ValueExpr ::= "CAST" "(" ValueExpr1 "AS" DataType ")" ;
 
 -- Boolean Expr
-ExprOr.  ValueExpr1  ::= ValueExpr1  "OR" ValueExpr2 ;
+ExprOr.  ValueExpr1 ::= ValueExpr1 "OR"  ValueExpr2 ;
 ExprAnd. ValueExpr2 ::= ValueExpr2 "AND" ValueExpr3 ;
 
 ExprEQ.  ValueExpr3 ::= ValueExpr3 "="  ValueExpr4 ;
@@ -195,9 +195,9 @@ ExprLEQ. ValueExpr3 ::= ValueExpr3 "<=" ValueExpr4 ;
 ExprGEQ. ValueExpr3 ::= ValueExpr3 ">=" ValueExpr4 ;
 
 -- Arith Expr
-ExprAdd. ValueExpr4 ::= ValueExpr4 "+" ValueExpr5 ;
-ExprSub. ValueExpr4 ::= ValueExpr4 "-" ValueExpr5 ;
-ExprMul. ValueExpr5 ::= ValueExpr5 "*" ValueExpr6 ;
+ExprAdd. ValueExpr5 ::= ValueExpr5 "+" ValueExpr6 ;
+ExprSub. ValueExpr5 ::= ValueExpr5 "-" ValueExpr6 ;
+ExprMul. ValueExpr6 ::= ValueExpr6 "*" ValueExpr7 ;
 
 -- Array Access
 ArrayAccessRhsIndex. ArrayAccessRhs ::= "[" Integer "]" ;
@@ -251,7 +251,7 @@ IntervalDay.    IntervalUnit ::= "DAY"    ;
 IntervalMonth.  IntervalUnit ::= "MONTH"  ;
 IntervalYear.   IntervalUnit ::= "YEAR"   ;
 
-Interval. Interval ::= "INTERVAL" SString IntervalUnit ;
+DInterval. Interval ::= "INTERVAL" SString IntervalUnit ;
 ExprInterval. ValueExpr7 ::= Interval ;
 
 -- Non-Scalar Type (Array)
@@ -280,10 +280,15 @@ ExprSetFunc. ValueExpr7 ::= SetFunc ;
 
 -- Scalar Functions
 -- jsonb related
-ScalarFuncFieldToJson.   ScalarFunc ::= ValueExpr "->"  ValueExpr ;
-ScalarFuncFieldToText.   ScalarFunc ::= ValueExpr "->>" ValueExpr ;
-ScalarFuncFieldsToJson.  ScalarFunc ::= ValueExpr "#>"  ValueExpr ;
-ScalarFuncFieldsToTexts. ScalarFunc ::= ValueExpr "#>>" ValueExpr ;
+OpScalarFuncFieldToJson.   ValueExpr4 ::= ValueExpr4 "->"  ValueExpr5 ;
+OpScalarFuncFieldToText.   ValueExpr4 ::= ValueExpr4 "->>" ValueExpr5 ;
+OpScalarFuncFieldsToJson.  ValueExpr4 ::= ValueExpr4 "#>"  ValueExpr5 ;
+OpScalarFuncFieldsToTexts. ValueExpr4 ::= ValueExpr4 "#>>" ValueExpr5 ;
+
+ScalarFuncFieldToJson.   ScalarFunc ::= "JSON_FIELD_TO_VALUE" "(" ValueExpr "," ValueExpr ")" ;
+ScalarFuncFieldToText.   ScalarFunc ::= "JSON_FIELD_TO_TEXT"  "(" ValueExpr "," ValueExpr ")" ;
+ScalarFuncFieldsToJson.  ScalarFunc ::= "JSON_PATH_TO_VALUE"  "(" ValueExpr "," ValueExpr ")" ;
+ScalarFuncFieldsToTexts. ScalarFunc ::= "JSON_PATH_TO_TEXT"   "(" ValueExpr "," ValueExpr ")" ;
 
 ScalarFuncSin.   ScalarFunc ::= "SIN"   "(" ValueExpr ")" ;
 ScalarFuncSinh.  ScalarFunc ::= "SINH"  "(" ValueExpr ")" ;
@@ -357,4 +362,4 @@ ArrayFuncMin.       ScalarFunc ::= "ARRAY_MIN"       "(" ValueExpr              
 ArrayFuncSort.      ScalarFunc ::= "ARRAY_SORT"      "(" ValueExpr               ")" ;
 
 ExprScalarFunc. ValueExpr ::= ScalarFunc ;
-coercions ValueExpr 7 ;
+coercions ValueExpr 8 ;
