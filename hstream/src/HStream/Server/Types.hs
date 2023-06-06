@@ -12,6 +12,7 @@ import           Control.Concurrent               (MVar, ThreadId)
 import           Control.Concurrent.STM
 import           Data.Aeson                       (FromJSON (..), ToJSON (..))
 import qualified Data.HashMap.Strict              as HM
+import qualified Data.Heap                        as Heap
 import           Data.Int                         (Int32, Int64)
 import qualified Data.Map                         as Map
 import qualified Data.Map.Strict                  as M
@@ -121,8 +122,7 @@ data SubscribeContext = SubscribeContext
   , subShardContexts     :: !(TVar (HM.HashMap HS.C_LogID SubscribeShardContext))
   , subAssignment        :: !Assignment
   , subCurrentTime       :: !(TVar Word64) -- unit: ms
-  , subWaitingCheckedRecordIds      :: !(TVar [CheckedRecordIds])
-  , subWaitingCheckedRecordIdsIndex :: !(TVar (Map.Map CheckedRecordIdsKey CheckedRecordIds))
+  , subWaitingCheckedRecordIds      :: !(TVar (Heap.Heap CheckedRecordIds))
   , subStartOffsets      :: !(HM.HashMap S.C_LogID S.LSN)
   }
 
@@ -132,6 +132,11 @@ data CheckedRecordIds = CheckedRecordIds {
   crBatchId      :: Word64,
   crBatchIndexes :: TVar (Set.Set Word32)
 }
+
+instance Eq CheckedRecordIds where
+  (==) cr1 cr2 = crDeadline cr1 == crDeadline cr2
+instance Ord CheckedRecordIds where
+  (<=) cr1 cr2 = crDeadline cr1 <= crDeadline cr2
 
 data CheckedRecordIdsKey = CheckedRecordIdsKey {
   crkLogId   :: HS.C_LogID,
