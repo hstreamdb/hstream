@@ -11,21 +11,23 @@ module HStream.SQL.Internal.Validate
   ( Validate (..)
   ) where
 
-import           Control.Monad              (Monad (return), unless, void, when)
-import qualified Data.Aeson                 as Aeson
-import qualified Data.ByteString.Lazy       as BSL
-import           Data.Char                  (isNumber)
-import qualified Data.List                  as L
-import           Data.List.Extra            (anySame)
-import qualified Data.Text                  as Text
-import           Data.Text.Encoding         (encodeUtf8)
-import           Data.Time.Calendar         (isLeapYear)
-import           GHC.Stack                  (HasCallStack)
+import           Control.Monad                (Monad (return), unless, void,
+                                               when)
+import qualified Data.Aeson                   as Aeson
+import qualified Data.ByteString.Lazy         as BSL
+import           Data.Char                    (isNumber)
+import qualified Data.List                    as L
+import           Data.List.Extra              (anySame)
+import qualified Data.Text                    as Text
+import           Data.Text.Encoding           (encodeUtf8)
+import           Data.Time.Calendar           (isLeapYear)
+import           GHC.Stack                    (HasCallStack)
 import           HStream.SQL.Abs
-import           HStream.SQL.Abs            (SelectItem)
-import           HStream.SQL.Exception      (SomeSQLException (..),
-                                             buildSQLException)
-import           HStream.SQL.Extra          (extractPNInteger)
+import           HStream.SQL.Abs              (SelectItem)
+import           HStream.SQL.Exception        (SomeSQLException (..),
+                                               buildSQLException)
+import           HStream.SQL.Extra            (extractPNInteger)
+import           HStream.SQL.Internal.Functor (getScalarFuncValueExpr)
 import           HStream.SQL.Validate.Utils
 
 ------------------------------ TypeClass Definition ----------------------------
@@ -543,6 +545,10 @@ notAggregateExpr expr@(ExprOr  _ e1 e2) = notAggregateExpr e1 >> notAggregateExp
 notAggregateExpr expr = return expr
 
 -- For validating Insert
+
+isConstExpr_ :: HasCallStack => ValueExpr -> Either SomeSQLException ()
+isConstExpr_ x = isConstExpr x *> pure ()
+
 isConstExpr :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
 isConstExpr expr@(ExprCast1 _ e _) = isConstExpr e >> return expr
 isConstExpr expr@(ExprCast2 _ e _) = isConstExpr e >> return expr
@@ -564,6 +570,15 @@ isConstExpr expr@ExprDate{}     = Right expr
 isConstExpr expr@ExprTime{}     = Right expr
 isConstExpr expr@ExprTimestamp{} = Right expr
 isConstExpr expr@ExprInterval{} = Right expr
+
+isConstExpr expr@(ExprScalarFunc _ rawExpr) = do
+  h $ getScalarFuncValueExpr rawExpr
+  undefined
+    where
+      h :: [ValueExpr] -> Either SomeSQLException ()
+      h []       = Right ()
+      h (x : xs) = isConstExpr x *> h xs
+
 isConstExpr _ = Left $ buildSQLException ParseException Nothing "INSERT only supports constant values"
 
 ------------------------------------- SELECT -----------------------------------
@@ -659,7 +674,7 @@ instance Validate Having where
 ---- Select
 
 instance Validate Select where
-  validate select@(DSelect _ sel@(DSel selPos selList) frm@(DFrom _ refs) whr grp hav) = do
+  validate select@(SelectFromView _ sel@(DSel _ _) frm@(DFrom _ refs) whr grp hav) = do
 #ifndef HStreamUseV2Engine
     case grp of
       DGroupByEmpty pos -> case refs of
@@ -678,6 +693,23 @@ instance Validate Select where
     void $ validate grp
     void $ validate hav
     return select
+
+  validate select@(SelectSimple _ sel@(DSel _ selList)) = h selList *> pure select
+    where
+      isConstSelItemAndValidate :: SelectItem -> Either SomeSQLException ()
+      isConstSelItemAndValidate = \case
+        SelectItemUnnamedExpr   _ valExpr          -> pure () -- isConstExpr valExpr *> pure ()
+        SelectItemExprWithAlias _ valExpr colIdent -> isConstExpr valExpr *> pure ()
+        SelectItemQualifiedWildcard pos _ -> pureErr pos
+        SelectItemWildcard pos -> pureErr pos
+      pureErr :: BNFC'Position -> Either SomeSQLException ()
+      pureErr pos = Left $ buildSQLException ParseException pos
+        "select wildcard `*` is not supported in simple `SELECT` without `FROM`"
+      h :: [SelectItem] -> Either SomeSQLException ()
+      h []       = Right ()
+      h (x : xs) = case isConstSelItemAndValidate x of
+        err@(Left _) -> err
+        Right ()     -> h xs
 
 ------------------------------------- EXPLAIN ----------------------------------
 instance Validate Explain where
@@ -714,7 +746,7 @@ instance Validate Create where
   validate create@(CreateSinkConnectorIf _ i1 i2 options) =
     validate i1 >> validate i2 >>
     validate (ConnectorOptions options) >> return create
-  validate create@(CreateView _ hIdent select@(DSelect _ _ _ _ grp _)) = do
+  validate create@(CreateView _ hIdent select@(SelectFromView _ _ _ _ grp _)) = do
 #ifndef HStreamUseV2Engine
     case grp of
       DGroupByEmpty pos -> Left $ buildSQLException ParseException pos "Create View requires a group by clause"

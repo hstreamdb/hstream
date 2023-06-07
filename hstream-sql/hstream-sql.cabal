@@ -68,6 +68,7 @@ library
     HStream.SQL.Codegen.V1.Boilerplate
     HStream.SQL.Exception
     HStream.SQL.Internal.Check
+    HStream.SQL.Internal.Functor
     HStream.SQL.Internal.Validate
     HStream.SQL.Parse
     HStream.SQL.Planner

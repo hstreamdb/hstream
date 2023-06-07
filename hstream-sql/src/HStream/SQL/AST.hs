@@ -826,16 +826,17 @@ instance Refine Having where
 
 ---- SELECT
 
-data RSelect = RSelect RSel RFrom RWhere RGroupBy RHaving
+data RSelect = RSelect       RSel RFrom RWhere RGroupBy RHaving
+             | RSelectSimple RSel
              deriving (Show, Eq, Generic, Aeson.ToJSON, Aeson.FromJSON)
 type instance RefinedType Select = RSelect
-#ifdef HStreamUseV2Engine
+
 instance Refine Select where
-  refine (DSelect _ sel frm whr grp hav) =
+#ifdef HStreamUseV2Engine
+  refine (SelectFromView _ sel frm whr grp hav) =
     RSelect (refine sel) (refine frm) (refine whr) (refine grp) (refine hav)
 #else
-instance Refine Select where
-  refine (DSelect _ sel frm whr grp hav) =
+  refine (SelectFromView _ sel frm whr grp hav) =
     case refine frm of
       RFrom (RTableRefWindowed r win)->
         let newFrm = RFrom (RTableRefSimple r Nothing) in
@@ -843,6 +844,7 @@ instance Refine Select where
         RSelect (refine sel) newFrm (refine whr) newGrp (refine hav)
       rfrm -> RSelect (refine sel) rfrm (refine whr) (refine grp) (refine hav)
 #endif
+  refine (SelectSimple _ sel) = RSelectSimple $ refine sel
 
 ---- EXPLAIN
 type RExplain = RSelect

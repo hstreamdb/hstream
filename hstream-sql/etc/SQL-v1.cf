@@ -89,7 +89,7 @@ DropIf. Drop ::= "DROP" DropOption HIdent "IF" "EXISTS" ;
 DropConnector. DropOption ::= "CONNECTOR" ;
 DropStream.    DropOption ::= "STREAM"    ;
 DropView.      DropOption ::= "VIEW"      ;
-DropQuery.     DropOption ::= "QUERY"      ;
+DropQuery.     DropOption ::= "QUERY"     ;
 
 -- Terminate Query
 TerminateQuery. Terminate ::= "TERMINATE" "QUERY" HIdent ;
@@ -99,7 +99,8 @@ ExplainSelect. Explain ::= "EXPLAIN" Select ;
 ExplainCreate. Explain ::= "EXPLAIN" Create ;
 
 ---- Select Query
-DSelect. Select ::= Sel From Where GroupBy Having ;
+SelectFromView. Select ::= Sel From Where GroupBy Having ;
+SelectSimple.   Select ::= Sel                           ;
 
 -- Sel
 DSel. Sel ::= "SELECT" [SelectItem] ;

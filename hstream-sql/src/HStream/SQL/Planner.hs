@@ -49,6 +49,7 @@ data RelationExpr
 #endif
 
   | Union RelationExpr RelationExpr
+  | Result _
   deriving (Eq)
 
 scanRelationExpr :: (RelationExpr -> Bool)
@@ -368,6 +369,9 @@ instance Decouple RSelect where
                       filtered_2 else
                       Project filtered_2 projectItems' projectStreams
      in projected
+
+  decouple (RSelectSimple sel) =
+    undefined
 
 --------------------------------------------------------------------------------
 class HasAggregates a where

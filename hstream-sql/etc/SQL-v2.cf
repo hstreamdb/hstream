@@ -96,7 +96,7 @@ ExplainSelect. Explain ::= "EXPLAIN" Select ;
 ExplainCreate. Explain ::= "EXPLAIN" Create ;
 
 ---- Select Query
-DSelect. Select ::= Sel From Where GroupBy Having ;
+SelectFromView. Select ::= Sel From Where GroupBy Having ;
 
 -- Sel
 DSel. Sel ::= "SELECT" [SelectItem] ;
