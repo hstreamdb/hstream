@@ -117,6 +117,7 @@ library
     , grpc-haskell-core
     , hashable
     , haskeline
+    , heaps
     , hs-grpc-server
     , hstream-admin-server
     , hstream-api-hs
