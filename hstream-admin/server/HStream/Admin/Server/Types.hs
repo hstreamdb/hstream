@@ -95,6 +95,7 @@ data AdminCommand
   | AdminSubscriptionCommand SubscriptionCommand
   | AdminViewCommand ViewCommand
   | AdminQueryCommand QueryCommand
+  | AdminMetaCommand MetaCommand
   | AdminConnectorCommand ConnectorCommand
   | AdminStatusCommand
   | AdminInitCommand
@@ -118,6 +119,8 @@ adminCommandParser = O.hsubparser
                                (O.progDesc "View command"))
  <> O.command "query"  (O.info (AdminQueryCommand <$> queryCmdParser)
                                (O.progDesc "Query command"))
+ <> O.command "meta"   (O.info (AdminMetaCommand <$> metaCmdParser)
+                               (O.progDesc "Meta command"))
  <> O.command "status" (O.info (pure AdminStatusCommand)
                                (O.progDesc "Get the status of the HServer cluster"))
  <> O.command "init"   (O.info (pure AdminInitCommand)
@@ -200,7 +203,7 @@ data ViewCommand
   deriving (Show)
 
 viewCmdParser :: O.Parser ViewCommand
-viewCmdParser = O.subparser
+viewCmdParser = O.hsubparser
   ( O.command "list" (O.info (pure ViewCmdList) (O.progDesc "Get all views"))
   )
 
@@ -214,7 +217,7 @@ data QueryCommand
   deriving Show
 
 queryCmdParser :: O.Parser QueryCommand
-queryCmdParser = O.subparser
+queryCmdParser = O.hsubparser
   ( O.command "status" (O.info (QueryCmdStatus <$> O.strOption ( O.long "id"
                                                               <> O.short 'i'
                                                               <> O.metavar "QUERY_ID"
@@ -242,7 +245,7 @@ data ConnectorCommand
   deriving (Show)
 
 connectorCmdParser :: O.Parser ConnectorCommand
-connectorCmdParser = O.subparser
+connectorCmdParser = O.hsubparser
   ( O.command "list" (O.info (pure ConnectorCmdList) (O.progDesc "Get all connectors"))
  <> O.command "recover" (O.info (ConnectorCmdRecover <$> O.strOption ( O.long "id"
                                                                     <> O.short 'i'
@@ -254,6 +257,53 @@ connectorCmdParser = O.subparser
                                                                       <> O.metavar "CONNECTOR_ID"
                                                                       <> O.help "The ID of the connector"))
                                  (O.progDesc "Get the details of specific connector"))
+  )
+
+-------------------------------------------------------------------------------
+
+data MetaCommand
+  = MetaCmdList Text
+  | MetaCmdGet Text Text
+  | MetaCmdTask MetaTaskCommand
+  | MetaCmdInfo
+  deriving (Show)
+
+metaCmdParser :: O.Parser MetaCommand
+metaCmdParser = O.hsubparser
+  ( O.command "list" (O.info (MetaCmdList <$> O.strOption ( O.long "resource"
+                                                         <> O.short 'r'
+                                                         <> O.metavar "RESOURCE_CATEGORY"
+                                                         <> O.help ("The category of the resource, currently support: "
+                                                                 <> "[subscription|query-info|view-info|qv-relation]")))
+                             (O.progDesc "List all metadata of specific resource"))
+ <> O.command "get" (O.info (MetaCmdGet <$> O.strOption ( O.long "resource"
+                                                       <> O.short 'r'
+                                                       <> O.metavar "RESOURCE_CATEGORY"
+                                                       <> O.help ("The category of the resource, currently support: "
+                                                                 <> "[subscription|query-info|query-status|view-info|qv-relation]"))
+                                        <*> O.strOption ( O.long "id"
+                                                       <> O.short 'i'
+                                                       <> O.metavar "RESOURCE_ID"
+                                                       <> O.help "The Id of the resource"))
+                            (O.progDesc "Get metadata of specific resource"))
+ <> O.command "info" (O.info (pure MetaCmdInfo) (O.progDesc "Get meta info"))
+  ) O.<|> MetaCmdTask <$> metaTaskCmdParser
+
+data MetaTaskCommand
+  = MetaTaskGet Text Text
+  deriving (Show)
+
+metaTaskCmdParser :: O.Parser MetaTaskCommand
+metaTaskCmdParser = O.hsubparser
+  ( O.command "get-task" (O.info (MetaTaskGet <$> O.strOption ( O.long "resource"
+                                                             <> O.short 'r'
+                                                             <> O.metavar "RESOURCE_CATEGORY"
+                                                             <> O.help "The category of the resource")
+                                              <*> O.strOption ( O.long "id"
+                                                             <> O.short 'i'
+                                                             <> O.metavar "RESOURCE_ID"
+                                                             <> O.help "The Id of the resource"))
+                                 (O.progDesc "Get task allocation metadata of specific resource"))
   )
 
 -------------------------------------------------------------------------------

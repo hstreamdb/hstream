@@ -16,6 +16,7 @@ import           Data.Aeson                       ((.=))
 import qualified Data.Aeson                       as Aeson
 import qualified Data.Aeson.Text                  as Aeson
 import qualified Data.HashMap.Strict              as HM
+import qualified Data.List                        as L
 import           Data.Map.Strict                  (Map)
 import qualified Data.Map.Strict                  as Map
 import           Data.Text                        (Text)
@@ -42,7 +43,11 @@ import           HStream.Gossip                   (GossipContext (clusterReady),
                                                    initCluster)
 import qualified HStream.IO.Worker                as HC
 import qualified HStream.Logger                   as Log
-import           HStream.Server.Core.Common       (lookupResource')
+import qualified HStream.MetaStore.Types          as M
+import           HStream.Server.Config            (MetaStoreAddr (..),
+                                                   ServerOpts (ServerOpts, _metaStore))
+import           HStream.Server.Core.Common       (lookupResource',
+                                                   mkAllocationKey)
 import qualified HStream.Server.Core.Query        as HC
 import qualified HStream.Server.Core.Stream       as HC
 import qualified HStream.Server.Core.Subscription as HC
@@ -50,9 +55,17 @@ import qualified HStream.Server.Core.View         as HC
 import           HStream.Server.Exception         (catchDefaultEx,
                                                    defaultExceptionHandle)
 import qualified HStream.Server.HStreamApi        as API
+import           HStream.Server.MetaData          (QVRelation, QueryInfo,
+                                                   QueryStatus, TaskAllocation,
+                                                   ViewInfo,
+                                                   renderQVRelationToTable,
+                                                   renderQueryInfosToTable,
+                                                   renderQueryStatusToTable,
+                                                   renderTaskAllocationsToTable,
+                                                   renderViewInfosToTable)
 import           HStream.Server.Types
 import qualified HStream.Stats                    as Stats
-import           HStream.Utils                    (Interval (..),
+import           HStream.Utils                    (Interval (..), cBytesToText,
                                                    formatQueryType,
                                                    formatStatus, interval2ms,
                                                    returnResp, showNodeStatus,
@@ -110,6 +123,7 @@ runAdminCommand sc@ServerContext{..} cmd = do
     AT.AdminCheckReadyCommand     -> runCheckReady sc
     AT.AdminLookupCommand c       -> runLookup sc c
     AT.AdminConnectorCommand c    -> runConnector sc c
+    AT.AdminMetaCommand c         -> runMeta sc c
 
 handleParseResult :: O.ParserResult a -> IO a
 handleParseResult (O.Success a) = return a
@@ -199,22 +213,56 @@ runResetStats stats_holder = do
 
 runLookup :: ServerContext -> AT.LookupCommand -> IO Text
 runLookup ctx (AT.LookupCommand resType rId) = do
-  API.ServerNode{..} <- lookupResource' ctx getResType rId
+  API.ServerNode{..} <- lookupResource' ctx (getResType resType) rId
   let headers = ["Resource ID" :: Text, "Host", "Port"]
       rows = [[rId, serverNodeHost, Text.pack .show $ serverNodePort]]
       content = Aeson.object ["headers" .= headers, "rows" .= rows]
   return $ tableResponse content
- where
-  getResType =
-    case resType of
-      "stream"       -> API.ResourceTypeResStream
-      "subscription" -> API.ResourceTypeResSubscription
-      "query"        -> API.ResourceTypeResQuery
-      "view"         -> API.ResourceTypeResView
-      "connector"    -> API.ResourceTypeResConnector
-      "shard"        -> API.ResourceTypeResShard
-      "shard-reader" -> API.ResourceTypeResShardReader
-      x              -> throw $ HE.InvalidResourceType (show x)
+
+getResType :: Text -> API.ResourceType
+getResType resType =
+  case resType of
+    "stream"       -> API.ResourceTypeResStream
+    "subscription" -> API.ResourceTypeResSubscription
+    "query"        -> API.ResourceTypeResQuery
+    "view"         -> API.ResourceTypeResView
+    "connector"    -> API.ResourceTypeResConnector
+    "shard"        -> API.ResourceTypeResShard
+    "shard-reader" -> API.ResourceTypeResShardReader
+    x              -> throw $ HE.InvalidResourceType (show x)
+-------------------------------------------------------------------------------
+-- Admin Meta Command
+
+runMeta :: ServerContext -> AT.MetaCommand -> IO Text
+runMeta ServerContext{..} (AT.MetaCmdList resType) = do
+  case resType of
+    "subscription" -> pure <$> tableResponse . renderSubscriptionWrapToTable  =<< M.listMeta @SubscriptionWrap metaHandle
+    "query-info" -> pure <$> plainResponse . renderQueryInfosToTable =<< M.listMeta @QueryInfo metaHandle
+    "view-info" -> pure <$> plainResponse . renderViewInfosToTable =<< M.listMeta @ViewInfo metaHandle
+    "qv-relation" -> pure <$> tableResponse . renderQVRelationToTable =<< M.listMeta @QVRelation metaHandle
+    _ -> return $ errorResponse "invalid resource type, try [subscription|query-info|view-info|qv-relateion]"
+runMeta ServerContext{..} (AT.MetaCmdGet resType rId) = do
+  case resType of
+    "subscription" -> pure <$> maybe (plainResponse "Not Found") (tableResponse . renderSubscriptionWrapToTable .L.singleton) =<< M.getMeta @SubscriptionWrap rId metaHandle
+    "query-info" -> pure <$> maybe (plainResponse "Not Found") (plainResponse . renderQueryInfosToTable . L.singleton) =<< M.getMeta @QueryInfo rId metaHandle
+    "query-status" -> pure <$> maybe (plainResponse "Not Found") (tableResponse . renderQueryStatusToTable . L.singleton) =<< M.getMeta @QueryStatus rId metaHandle
+    "view-info" -> pure <$> maybe (plainResponse "Not Found") (plainResponse . renderViewInfosToTable . L.singleton) =<< M.getMeta @ViewInfo rId metaHandle
+    "qv-relation" -> pure <$> maybe (plainResponse "Not Found") (tableResponse . renderQVRelationToTable . L.singleton) =<< M.getMeta @QVRelation rId metaHandle
+    _ -> return $ errorResponse "invalid resource type, try [subscription|query-info|query-status|view-info|qv-relateion]"
+runMeta ServerContext{serverOpts=ServerOpts{..}} AT.MetaCmdInfo = do
+  let headers = ["Meta Type" :: Text, "Connection Info"]
+      rows = case _metaStore of
+               ZkAddr addr   -> [["zookeeper", cBytesToText addr]]
+               RqAddr addr   -> [["rqlite", addr]]
+               FileAddr addr -> [["file", Text.pack addr]]
+      content = Aeson.object ["headers" .= headers, "rows" .= rows]
+  return $ tableResponse content
+runMeta sc (AT.MetaCmdTask taskCmd) = runMetaTask sc taskCmd
+
+runMetaTask :: ServerContext -> AT.MetaTaskCommand -> IO Text
+runMetaTask ServerContext{..} (AT.MetaTaskGet resType rId) = do
+  let metaId = mkAllocationKey (getResType resType) rId
+  pure <$> maybe (plainResponse "Not Found") (tableResponse . renderTaskAllocationsToTable . L.singleton) =<< M.getMeta @TaskAllocation metaId metaHandle
 
 -------------------------------------------------------------------------------
 -- Admin Stream Command

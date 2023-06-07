@@ -11,6 +11,7 @@ module HStream.Server.Types where
 import           Control.Concurrent               (MVar, ThreadId)
 import           Control.Concurrent.STM
 import           Data.Aeson                       (FromJSON (..), ToJSON (..))
+import qualified Data.Aeson                       as Aeson
 import qualified Data.HashMap.Strict              as HM
 import qualified Data.Heap                        as Heap
 import           Data.Int                         (Int32, Int64)
@@ -37,16 +38,16 @@ import           HStream.MetaStore.Types          (MetaHandle)
 import           HStream.Server.Config
 import           HStream.Server.ConnectorTypes    as HCT
 import           HStream.Server.HStreamApi        (NodeState, ResourceType,
-                                                   SpecialOffset,
+                                                   SpecialOffset (..),
                                                    StreamingFetchResponse,
-                                                   Subscription)
+                                                   Subscription (..))
 import           HStream.Server.Shard             (ShardKey, SharedShardMap)
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as HS
 import qualified HStream.Store                    as S
 import           HStream.Utils                    (ResourceType (ResConnector),
-                                                   textToCBytes)
-
+                                                   textToCBytes,
+                                                   timestampToMsTimestamp)
 
 protocolVersion :: Text
 protocolVersion = "0.1.0"
@@ -58,6 +59,26 @@ data SubscriptionWrap = SubscriptionWrap
   { originSub  :: Subscription
   , subOffsets :: HM.HashMap S.C_LogID S.LSN
   } deriving (Generic, Show, FromJSON, ToJSON)
+
+renderSubscriptionWrapToTable :: [SubscriptionWrap] -> Aeson.Value
+renderSubscriptionWrapToTable subs =
+  let headers = ["Sub ID" :: Text, "StreamName", "AckTimeout", "Max Unacked Records", "CreatedTime", "OffsetType", "Offsets"]
+      rows = map formatSubscriptionWrap subs
+   in Aeson.object ["headers" Aeson..= headers, "rows" Aeson..= rows]
+ where
+   formatSubscriptionWrap SubscriptionWrap{originSub=Subscription{..}, ..} =
+     let offset = case subscriptionOffset of
+                    (PB.Enumerated (Right SpecialOffsetEARLIEST)) -> "EARLIEST"
+                    (PB.Enumerated (Right SpecialOffsetLATEST))   -> "LATEST"
+                    _                                             -> "UNKNOWN"
+      in [ subscriptionSubscriptionId
+         , subscriptionStreamName
+         , T.pack . show $ subscriptionAckTimeoutSeconds
+         , T.pack . show $ subscriptionMaxUnackedRecords
+         , maybe "" (T.pack . show . timestampToMsTimestamp) subscriptionCreationTime
+         , offset
+         , T.pack . show . HM.toList $ subOffsets
+         ]
 
 type Timestamp = Int64
 type ServerID = Word32
