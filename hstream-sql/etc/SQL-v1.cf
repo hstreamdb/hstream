@@ -180,20 +180,19 @@ TypeArray.    DataType ::= DataType "[]" ;
 --------------------------------------------------------------------------------
 
 ---- Value Expression
--- Type Casting
-ExprCast1. ValueExpr ::= ValueExpr1 "::" DataType ;
-ExprCast2. ValueExpr ::= "CAST" "(" ValueExpr1 "AS" DataType ")" ;
-
 -- Boolean Expr
-ExprOr.  ValueExpr1  ::= ValueExpr1  "OR" ValueExpr2 ;
-ExprAnd. ValueExpr2 ::= ValueExpr2 "AND" ValueExpr3 ;
+ExprOr.  ValueExpr  ::= ValueExpr  "OR" ValueExpr1 ;
+ExprAnd. ValueExpr1 ::= ValueExpr1 "AND" ValueExpr2 ;
 
-ExprEQ.  ValueExpr3 ::= ValueExpr3 "="  ValueExpr4 ;
-ExprNEQ. ValueExpr3 ::= ValueExpr3 "<>" ValueExpr4 ;
-ExprLT.  ValueExpr3 ::= ValueExpr3 "<"  ValueExpr4 ;
-ExprGT.  ValueExpr3 ::= ValueExpr3 ">"  ValueExpr4 ;
-ExprLEQ. ValueExpr3 ::= ValueExpr3 "<=" ValueExpr4 ;
-ExprGEQ. ValueExpr3 ::= ValueExpr3 ">=" ValueExpr4 ;
+ExprEQ.  ValueExpr2 ::= ValueExpr2 "="  ValueExpr3 ;
+ExprNEQ. ValueExpr2 ::= ValueExpr2 "<>" ValueExpr3 ;
+ExprLT.  ValueExpr2 ::= ValueExpr2 "<"  ValueExpr3 ;
+ExprGT.  ValueExpr2 ::= ValueExpr2 ">"  ValueExpr3 ;
+ExprLEQ. ValueExpr2 ::= ValueExpr2 "<=" ValueExpr3 ;
+ExprGEQ. ValueExpr2 ::= ValueExpr2 ">=" ValueExpr3 ;
+
+-- Json Access
+ExprScalarFunc. ValueExpr3 ::= ScalarFunc ;
 
 -- Arith Expr
 ExprAdd. ValueExpr4 ::= ValueExpr4 "+" ValueExpr5 ;
@@ -206,22 +205,26 @@ ArrayAccessRhsFrom. ArrayAccessRhs ::= "[" Integer ":" "]" ;
 ArrayAccessRhsTo. ArrayAccessRhs ::= "[" ":" Integer "]" ;
 ArrayAccessRhsFromTo. ArrayAccessRhs ::= "[" Integer ":" Integer "]" ;
 
-ExprAccessArray. ValueExpr ::= ValueExpr ArrayAccessRhs ; -- FIXME
+ExprAccessArray. ValueExpr6 ::= ValueExpr7 ArrayAccessRhs ;
+
+-- Type Casting
+ExprCast1. ValueExpr7 ::= ValueExpr8 "::" DataType ;
+ExprCast2. ValueExpr7 ::= "CAST" "(" ValueExpr "AS" DataType ")" ;
 
 -- Null Expr.
-ExprNull. ValueExpr7 ::= "NULL" ;
+ExprNull. ValueExpr8 ::= "NULL" ;
 
 -- Scalar Numeric Type
-ExprInt. ValueExpr7 ::= PNInteger ; -- integer
-ExprNum. ValueExpr7 ::= PNDouble  ; -- float
+ExprInt. ValueExpr8 ::= PNInteger ; -- integer
+ExprNum. ValueExpr8 ::= PNDouble  ; -- float
 
 -- Plain String
-ExprString. ValueExpr7 ::= String ; -- string
+ExprString. ValueExpr8 ::= String ; -- string
 
 -- Boolean Type
 BoolTrue.  Boolean ::= "TRUE"  ; -- boolean
 BoolFalse. Boolean ::= "FALSE" ;
-ExprBool. ValueExpr7 ::= Boolean ;
+ExprBool. ValueExpr8 ::= Boolean ;
 
 -- Date, Time and Interval
 TimeStrWithoutMicroSec. TimeStr ::= Integer ":" Integer ":" Integer ;
@@ -241,9 +244,9 @@ DTime. Time ::= "TIME" TimeStr ;
 TimestampWithoutZone. Timestamp ::= "TIMESTAMP" DateTimeStr ;
 TimestampWithZone.    Timestamp ::= "TIMESTAMP" TimestampStr ;
 
-ExprDate. ValueExpr7 ::= Date ;
-ExprTime. ValueExpr7 ::= Time ;
-ExprTimestamp. ValueExpr7 ::= Timestamp ;
+ExprDate. ValueExpr8 ::= Date ;
+ExprTime. ValueExpr8 ::= Time ;
+ExprTimestamp. ValueExpr8 ::= Timestamp ;
 
 IntervalSecond. IntervalUnit ::= "SECOND" ;
 IntervalMinute. IntervalUnit ::= "MINUTE" ;
@@ -253,18 +256,18 @@ IntervalMonth.  IntervalUnit ::= "MONTH"  ;
 IntervalYear.   IntervalUnit ::= "YEAR"   ;
 
 Interval. Interval ::= "INTERVAL" SString IntervalUnit ;
-ExprInterval. ValueExpr7 ::= Interval ;
+ExprInterval. ValueExpr8 ::= Interval ;
 
 -- Non-Scalar Type (Array)
 ExprArr. ValueExpr ::= "[" [ValueExpr] "]" ; -- array
 
 -- SubQuery
--- ExprSubquery. ValueExpr7 ::= "(" Select ")" ;
+-- ExprSubquery. ValueExpr8 ::= "(" Select ")" ;
 
 -- Column Name
 ColNameSimple. ColName ::= ColumnIdent ;
 ColNameStream. ColName ::= HIdent "." ColumnIdent ;
-ExprColName. ValueExpr7 ::= ColName ;
+ExprColName. ValueExpr8 ::= ColName ;
 
 -- Set Functions
 SetFuncCountAll. SetFunc ::= "COUNT" "(" "*"       ")" ;
@@ -277,14 +280,14 @@ SetFuncMin.      SetFunc ::= "MIN"   "(" ValueExpr ")" ;
 SetFuncTopK.         SetFunc ::= "TOPK"         "(" ValueExpr "," ValueExpr ")" ;
 SetFuncTopKDistinct. SetFunc ::= "TOPKDISTINCT" "(" ValueExpr "," ValueExpr ")" ;
 
-ExprSetFunc. ValueExpr7 ::= SetFunc ;
+ExprSetFunc. ValueExpr8 ::= SetFunc ;
 
 -- Scalar Functions
 -- jsonb related
-ScalarFuncFieldToJson.   ScalarFunc ::= ValueExpr "->"  ValueExpr ;
-ScalarFuncFieldToText.   ScalarFunc ::= ValueExpr "->>" ValueExpr ;
-ScalarFuncFieldsToJson.  ScalarFunc ::= ValueExpr "#>"  ValueExpr ;
-ScalarFuncFieldsToTexts. ScalarFunc ::= ValueExpr "#>>" ValueExpr ;
+ScalarFuncFieldToJson.   ScalarFunc ::= ValueExpr3 "->"  ValueExpr4 ;
+ScalarFuncFieldToText.   ScalarFunc ::= ValueExpr3 "->>" ValueExpr4 ;
+ScalarFuncFieldsToJson.  ScalarFunc ::= ValueExpr3 "#>"  ValueExpr4 ;
+ScalarFuncFieldsToTexts. ScalarFunc ::= ValueExpr3 "#>>" ValueExpr4 ;
 
 ScalarFuncSin.   ScalarFunc ::= "SIN"   "(" ValueExpr ")" ;
 ScalarFuncSinh.  ScalarFunc ::= "SINH"  "(" ValueExpr ")" ;
@@ -357,5 +360,4 @@ ArrayFuncMax.       ScalarFunc ::= "ARRAY_MAX"       "(" ValueExpr              
 ArrayFuncMin.       ScalarFunc ::= "ARRAY_MIN"       "(" ValueExpr               ")" ;
 ArrayFuncSort.      ScalarFunc ::= "ARRAY_SORT"      "(" ValueExpr               ")" ;
 
-ExprScalarFunc. ValueExpr ::= ScalarFunc ;
-coercions ValueExpr 7 ;
+coercions ValueExpr 8 ;
