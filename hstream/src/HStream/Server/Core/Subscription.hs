@@ -585,23 +585,6 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
         writeTVar subCurrentTime newTime
         writeTVar subWaitingCheckedRecordIds leftList
         return timeoutList
-      recordIds <- foldM
-                      (
-                        \acc CheckedRecordIds {..} -> do
-                          idxs <- readTVarIO crBatchIndexes
-                          let ids =
-                                    V.fromList $  fmap (\idx ->
-                                            RecordId {
-                                              recordIdShardId = crLogId
-                                            , recordIdBatchId = crBatchId
-                                            , recordIdBatchIndex = idx
-                                            }
-                                         ) (Set.toList idxs)
-                          pure $ acc V.++ ids
-                      )
-                      V.empty
-                      timeoutList
-      atomically $ removeAckedRecordIdsFromCheckList subCtx recordIds
       forM_ timeoutList (\r@CheckedRecordIds {..} -> buildShardRecordIds r >>= resendTimeoutRecords crLogId crBatchId )
       where
         buildShardRecordIds  CheckedRecordIds {..} = atomically $ do
