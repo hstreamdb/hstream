@@ -991,8 +991,7 @@ doAcks
   -> V.Vector RecordId
   -> IO ()
 doAcks ldclient subCtx@SubscribeContext{..} ackRecordIds = do
-  atomically $ do
-    removeAckedRecordIdsFromCheckList subCtx ackRecordIds
+  removeAckedRecordIdsFromCheckList subCtx ackRecordIds
   let group = HM.toList $ groupRecordIds ackRecordIds
   forM_ group (\(logId, recordIds) -> doAck ldclient subCtx logId recordIds)
   where
@@ -1055,7 +1054,7 @@ doAck ldclient subCtx@SubscribeContext{..} logId recordIds= do
 
 removeAckedRecordIdsFromCheckList :: SubscribeContext
                                   -> V.Vector RecordId
-                                  -> STM ()
+                                  -> IO ()
 removeAckedRecordIdsFromCheckList SubscribeContext{..} recordIds = do
   let ackedRecordIdMap =
         V.foldl'
@@ -1073,29 +1072,42 @@ removeAckedRecordIdsFromCheckList SubscribeContext{..} recordIds = do
           )
           Map.empty
           recordIds
-  checkList <- readTVar subWaitingCheckedRecordIds
-  mapM_
-    (
-      \ CheckedRecordIds{..}  -> do
-        let k = CheckedRecordIdsKey {
-                  crkLogId =  crLogId,
-                  crkBatchId = crBatchId
-                }
-        case Map.lookup k ackedRecordIdMap of
-          Nothing -> pure ()
-          Just s  -> modifyTVar' crBatchIndexes (`Set.difference` s)
-    )
-    checkList
-  newCheckList <- foldM
-    ( \h l@CheckedRecordIds{..} -> do
-        batchIndexes <- readTVar crBatchIndexes
-        if Set.null batchIndexes
-        then pure h
-        else pure (Heap.insert l h)
-    )
-    Heap.empty
-    checkList
-  writeTVar subWaitingCheckedRecordIds newCheckList
+  checkList <- readTVarIO subWaitingCheckedRecordIds
+  recordIdKeys <-
+    foldM
+      (
+        \ acc CheckedRecordIds{..}  -> do
+          let k = CheckedRecordIdsKey {
+                    crkLogId =  crLogId,
+                    crkBatchId = crBatchId
+                  }
+          case Map.lookup k ackedRecordIdMap of
+            Nothing -> pure acc
+            Just s  -> atomically $ do
+                        idxSet <- readTVar crBatchIndexes
+                        let ns = idxSet `Set.difference` s
+                        writeTVar crBatchIndexes ns
+                        if Set.null ns
+                        then pure $ Set.insert k acc
+                        else pure acc
+      )
+      Set.empty
+      checkList
+  atomically $ do
+    checkList1 <- readTVar subWaitingCheckedRecordIds
+    newCheckList <- foldM
+      ( \h l@CheckedRecordIds{..} -> do
+          let k = CheckedRecordIdsKey {
+                    crkLogId =  crLogId,
+                    crkBatchId = crBatchId
+                  }
+          if Set.member k recordIdKeys
+          then pure h
+          else pure (Heap.insert l h)
+      )
+      Heap.empty
+      checkList1
+    writeTVar subWaitingCheckedRecordIds newCheckList
 
 invalidConsumer :: SubscribeContext -> ConsumerName -> STM ()
 invalidConsumer SubscribeContext{subAssignment = Assignment{..}, ..} consumer = do
