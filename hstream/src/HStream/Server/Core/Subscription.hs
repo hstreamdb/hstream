@@ -393,12 +393,6 @@ doSubInit ServerContext{..} subId = do
       -- TODO: Also consider calling stopReading to stop the reader while force deleting instead of setting timeout.
       S.ckpReaderSetTimeout ldCkpReader 1000
       S.ckpReaderSetWaitOnlyWhenNoData ldCkpReader
-      -- create a ldReader for rereading unacked records
-      Log.info $ "Create a reader for " <> Log.build subId
-      reader <- S.newLDReader scLDClient maxReadLogs (Just ldReaderBufferSize)
-      -- reader reads the data and delivers it immediately, otherwise it waits up to 1s
-      S.readerSetTimeout reader 1000 -- 1 seconds
-      S.readerSetWaitOnlyWhenNoData reader
 
       consumerContexts <- newTVarIO HM.empty
       shardCtx <- newTVarIO HM.empty
@@ -518,13 +512,22 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
           then do
             writeIORef isFirstSendRef False
 
+            tid2 <- forkIO . fix $ \f -> do
+              isSubDeleted <- readIORef isSubscriptionDeleted
+              unless isSubDeleted $ do
+                threadDelay (100 * 1000)
+                atomically $ assignShards subAssignment
+                f
+
             -- FIXME: the same code
             successSendRecords <- sendReceivedRecordsVecs receivedRecordsVecs
+            Log.debug $ "successSendRecords: "  <> Log.build successSendRecords
             -- Note: automically kill child threads when the parent thread is killed
-            loop isFirstSendRef isSubscriptionDeleted
+            loop isFirstSendRef isSubscriptionDeleted `onException` killThread tid2
           else do
             -- FIXME: the same code
             successSendRecords <- sendReceivedRecordsVecs receivedRecordsVecs
+            Log.debug $ "successSendRecords: "  <> Log.build successSendRecords
             loop isFirstSendRef isSubscriptionDeleted
         else do
           Log.info $ "subscription " <> Log.build subSubscriptionId <> " is not running, exit sendRecords loop."
