@@ -4,13 +4,6 @@ Simple parser for a SQL-like language
 
 --------------------------------------------------------------------------------
 
-token DateTok      (digit+ '-' digit+ '-' digit+) ;
-token TimeTok      (digit+ ':' digit+ ':' digit+ ('.' digit+)?) ;
-token TimestampTok ((digit+ '-' digit+ '-' digit+) ' '*
-                    (digit+ ':' digit+ ':' digit+ ('.' digit+)?)
-                    (('+' digit+) | ('-' digit+))?
-                   ) ; -- FIXME: BNFC does not support identifiers in token definitions
-
 token SingleQuoted ('\'' (char - ["'"] )* '\'') ;
 token DoubleQuoted ('"'  (char - ["\""])* '"' ) ;
 
@@ -222,9 +215,9 @@ BoolFalse. Boolean ::= "FALSE" ;
 ExprBool. ValueExpr8 ::= Boolean ;
 
 -- Date, Time, Timestamp and Interval
-DDate.      Date      ::= "\'" DateTok      "\'" ;
-DTime.      Time      ::= "\'" TimeTok      "\'" ;
-DTimestamp. Timestamp ::= "\'" TimestampTok "\'" ;
+DDate.      Date      ::= "DATE"      SingleQuoted ;
+DTime.      Time      ::= "TIME"      SingleQuoted ;
+DTimestamp. Timestamp ::= "TIMESTAMP" SingleQuoted ;
 
 ExprDate.      ValueExpr8 ::= Date ;
 ExprTime.      ValueExpr8 ::= Time ;
