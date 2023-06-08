@@ -25,8 +25,7 @@ import           HStream.SQL.Abs
 import           HStream.SQL.Abs            (SelectItem)
 import           HStream.SQL.Exception      (SomeSQLException (..),
                                              buildSQLException)
-import           HStream.SQL.Extra          (extractPNInteger,
-                                             unifyValueExprCast)
+import           HStream.SQL.Extra
 import           HStream.SQL.Validate.Utils
 
 ------------------------------ TypeClass Definition ----------------------------
@@ -142,6 +141,28 @@ instance Validate ScalarFunc where
     where expr    = getValueExpr f
           argType = getScalarArgType f
 
+instance Validate Date where
+  validate strVal@(DDate pos (SingleQuoted date)) =
+    case parseFlowDateValue date of
+      Nothing -> mkIso8601ParseErr "DATE" date pos
+      Just _  -> pure strVal
+
+instance Validate Time where
+  validate strVal@(DTime pos (SingleQuoted time)) =
+    case parseFlowTimeValue time of
+      Nothing -> mkIso8601ParseErr "TIME" time pos
+      Just _  -> pure strVal
+
+instance Validate Timestamp where
+  validate strVal@(DTimestamp pos (SingleQuoted timestamp)) =
+    case parseFlowTimestampValue timestamp of
+      Nothing -> mkIso8601ParseErr "TIMESTAMP" timestamp pos
+      Just _  -> pure strVal
+
+mkIso8601ParseErr :: String -> Text.Text -> BNFC'Position -> Either SomeSQLException a
+mkIso8601ParseErr name strVal pos = Left . buildSQLException ParseException pos $
+  "Failed to parse `"<> Text.unpack strVal <>"` ISO 8601 format " <> name
+
 --------------------------------------- ValueExpr ------------------------------
 
 -- 1. Add, Sub and Mul: exprs should be Num
@@ -175,6 +196,9 @@ instance Validate ValueExpr where
   validate expr@(ExprColName _ col)       = validate col   >> return expr
   validate expr@(ExprSetFunc _ func)      = validate func >> return expr
   validate expr@(ExprScalarFunc _ func)   = validate func >> return expr
+  validate expr@(ExprDate _ expr')        = validate expr' >> pure expr
+  validate expr@(ExprTime _ expr')        = validate expr' >> pure expr
+  validate expr@(ExprTimestamp _ expr')   = validate expr' >> pure expr
 
 isNumExpr :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
 isNumExpr expr = case expr of
@@ -680,7 +704,7 @@ instance Validate Resume where
 instance Validate Insert where
   validate insert@(DInsert pos hIdent fields exprs) = do
     unless (L.length fields == L.length exprs) (Left $ buildSQLException ParseException pos "Number of fields should match expressions")
-    validate hIdent
+    _ <- validate hIdent
     mapM_ validate fields
     mapM_ validate exprs
     mapM_ isConstExpr exprs
