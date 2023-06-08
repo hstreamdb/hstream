@@ -56,20 +56,20 @@ instance Validate PNInteger where
 instance Validate PNDouble where
   validate = return
 
-instance Validate SingleQuotedString where
+instance Validate SingleQuoted where
   validate = return
 
 instance Validate Ident where
   validate = return
 
-instance Validate DoubleQuotedString where
+instance Validate DoubleQuoted where
   validate = return
 
 instance Validate HIdent where
   validate ident@(HIdentNormal pos (Ident text)) = do
     unless (Text.length text <= maxIdentifierLength) (Left $ buildSQLException ParseException pos ("The length of an identifier should be equal to or less than " <> show maxIdentifierLength))
     return ident
-  validate ident@(HIdentRaw pos (DoubleQuotedString text')) = do
+  validate ident@(HIdentDoubleQuoted pos (DoubleQuoted text')) = do
     let text = Text.tail . Text.init $ text'
     unless (isValidIdent text) (Left $ buildSQLException ParseException pos ("Invalid identifier " <> Text.unpack text' <> ", please refer to the document"))
     unless (Text.length text <= maxIdentifierLength) (Left $ buildSQLException ParseException pos ("The length of an identifier should be equal to or less than " <> show maxIdentifierLength))
@@ -87,7 +87,7 @@ instance Validate ColumnIdent where
   validate ident@(ColumnIdentNormal pos (Ident text)) = do
     unless (Text.length text <= maxIdentifierLength) (Left $ buildSQLException ParseException pos ("The length of an identifier should be equal to or less than " <> show maxIdentifierLength))
     return ident
-  validate ident@(ColumnIdentRaw pos (DoubleQuotedString text')) = do
+  validate ident@(ColumnIdentDoubleQuoted pos (DoubleQuoted text')) = do
     let text = Text.tail . Text.init $ text'
     unless (Text.length text <= maxIdentifierLength) (Left $ buildSQLException ParseException pos ("The length of an identifier should be equal to or less than " <> show maxIdentifierLength))
     return ident
@@ -99,8 +99,8 @@ instance Validate Boolean where
 instance Validate IntervalUnit where
   validate = return
 instance Validate Interval where
-  validate interval@(DInterval pos (SingleQuotedString x) iUnit) = do
-    unless (all isNumber $ Text.unpack $ Text.dropAround (=='\'') x) $ Left $ buildSQLException ParseException pos "Invalid interval value, only integer values are supported"
+  validate interval@(DInterval pos n iUnit) = do
+    -- TODO: validate n range?
     validate iUnit >> return interval
 
 instance Validate ColName where
@@ -150,7 +150,7 @@ instance Validate ScalarFunc where
 -- 4. Cols and Aggs should be legal
 -- 5. Scalar functions should not be applied to aggs
 instance Validate ValueExpr where
-  validate expr@ExprCast{}                = return expr
+  validate expr@DExprCast{}               = return expr
   validate expr@(ExprArr _ es)            = mapM_ validate es >> return expr
   validate expr@ExprEQ{}                  = isBoolExpr expr
   validate expr@ExprNEQ{}                 = isBoolExpr expr
@@ -178,7 +178,7 @@ instance Validate ValueExpr where
 
 isNumExpr :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
 isNumExpr expr = case expr of
-  (ExprCast _ exprCast) -> let (e, typ, _) = unifyValueExprCast exprCast in validate e >> isNumType typ >> return expr
+  (DExprCast _ exprCast) -> let (e, typ, _) = unifyValueExprCast exprCast in validate e >> isNumType typ >> return expr
   (ExprArr pos _) -> Left $ buildSQLException ParseException pos "Expected a numeric expression but got an array"
   (ExprEQ _ e1 e2) -> validate e1 >> validate e2 >> return expr
   (ExprNEQ _ e1 e2) -> validate e1 >> validate e2 >> return expr
@@ -222,7 +222,7 @@ isNumExpr expr = case expr of
 
 isFloatExpr :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
 isFloatExpr expr = case expr of
-  (ExprCast _ exprCast) -> let (e, typ, _) = unifyValueExprCast exprCast in validate e >> isFloatType typ >> return expr
+  (DExprCast _ exprCast) -> let (e, typ, _) = unifyValueExprCast exprCast in validate e >> isFloatType typ >> return expr
   (ExprArr pos _) -> Left $ buildSQLException ParseException pos "Expected a float expression but got an array"
   (ExprEQ _ e1 e2) -> validate e1 >> validate e2 >> return expr
   (ExprNEQ _ e1 e2) -> validate e1 >> validate e2 >> return expr
@@ -265,7 +265,7 @@ isFloatExpr expr = case expr of
 
 isOrdExpr :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
 isOrdExpr expr = case expr of
-  (ExprCast _ exprCast) -> let (e, typ, _) = unifyValueExprCast exprCast in validate e >> isOrdType typ >> return expr
+  (DExprCast _ exprCast) -> let (e, typ, _) = unifyValueExprCast exprCast in validate e >> isOrdType typ >> return expr
   (ExprArr pos _) -> Left $ buildSQLException ParseException pos "Expected a comparable expression but got an array"
   (ExprEQ _ e1 e2) -> validate e1 >> validate e2 >> return expr
   (ExprNEQ _ e1 e2) -> validate e1 >> validate e2 >> return expr
@@ -314,7 +314,7 @@ isOrdExpr expr = case expr of
 
 isBoolExpr :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
 isBoolExpr expr = case expr of
-  (ExprCast _ exprCast) -> let (e, typ, _) = unifyValueExprCast exprCast in validate e >> isBoolType typ >> return expr
+  (DExprCast _ exprCast) -> let (e, typ, _) = unifyValueExprCast exprCast in validate e >> isBoolType typ >> return expr
   (ExprArr pos _) -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got an array"
   (ExprEQ _ e1 e2) -> validate e1 >> validate e2 >> return expr
   (ExprNEQ _ e1 e2) -> validate e1 >> validate e2 >> return expr
@@ -360,7 +360,7 @@ isBoolExpr expr = case expr of
 
 isIntExpr :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
 isIntExpr expr = case expr of
-  (ExprCast _ exprCast) -> let (e, typ, _) = unifyValueExprCast exprCast in validate e >> isIntType typ >> return expr
+  (DExprCast _ exprCast) -> let (e, typ, _) = unifyValueExprCast exprCast in validate e >> isIntType typ >> return expr
   (ExprArr pos _) -> Left $ buildSQLException ParseException pos "Expected an integer expression but got an array"
   (ExprEQ _ e1 e2) -> validate e1 >> validate e2 >> return expr
   (ExprNEQ _ e1 e2) -> validate e1 >> validate e2 >> return expr
@@ -403,7 +403,7 @@ isIntExpr expr = case expr of
 
 isStringExpr :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
 isStringExpr expr = case expr of
-  (ExprCast _ exprCast) -> let (e, typ, _) = unifyValueExprCast exprCast in validate e >> isStringType typ >> return expr
+  (DExprCast _ exprCast) -> let (e, typ, _) = unifyValueExprCast exprCast in validate e >> isStringType typ >> return expr
   (ExprArr pos _) -> Left $ buildSQLException ParseException pos "Expected a string expression but got an array"
   (ExprEQ _ e1 e2) -> validate e1 >> validate e2 >> return expr
   (ExprNEQ _ e1 e2) -> validate e1 >> validate e2 >> return expr
@@ -447,7 +447,7 @@ isStringExpr expr = case expr of
 
 -- For validating SearchCond
 notAggregateExpr :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
-notAggregateExpr expr@(ExprCast _ exprCast) = let (e, _, _) = unifyValueExprCast exprCast in notAggregateExpr e >> return expr
+notAggregateExpr expr@(DExprCast _ exprCast) = let (e, _, _) = unifyValueExprCast exprCast in notAggregateExpr e >> return expr
 notAggregateExpr expr@(ExprArr _ es) = mapM_ notAggregateExpr es >> return expr
 notAggregateExpr expr@(ExprEQ _ e1 e2) = notAggregateExpr e1 >> notAggregateExpr e2 >> return expr
 notAggregateExpr expr@(ExprNEQ _ e1 e2) = notAggregateExpr e1 >> notAggregateExpr e2 >> return expr
@@ -470,7 +470,7 @@ notAggregateExpr expr = return expr
 
 -- For validating Insert
 isConstExpr :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
-isConstExpr expr@(ExprCast _ exprCast) = let (e, _, _) = unifyValueExprCast exprCast in isConstExpr e >> return expr
+isConstExpr expr@(DExprCast _ exprCast) = let (e, _, _) = unifyValueExprCast exprCast in isConstExpr e >> return expr
 isConstExpr expr@(ExprArr _ es) = mapM_ isConstExpr es >> return expr
 isConstExpr expr@(ExprEQ _ e1 e2) = isConstExpr e1 >> isConstExpr e2 >> return expr
 isConstExpr expr@(ExprNEQ _ e1 e2) = isConstExpr e1 >> isConstExpr e2 >> return expr
@@ -690,10 +690,10 @@ instance Validate Insert where
     _ <- validate hIdent
     let (valExpr, valTyp, pos) = unifyValueExprCast exprCast
     case valExpr of
-      ExprString pos' strVal -> case valTyp of
+      ExprString pos' (SingleQuoted strVal) -> case valTyp of
         TypeByte _ -> pure insert
         TypeJson _ -> do
-          let serialized = BSL.fromStrict . encodeUtf8 . Text.init . Text.tail $ Text.pack strVal
+          let serialized = BSL.fromStrict . encodeUtf8 . Text.init . Text.tail $ strVal
           let (o' :: Maybe Aeson.Object) = Aeson.decode serialized
           case o' of
             Just _ -> pure insert

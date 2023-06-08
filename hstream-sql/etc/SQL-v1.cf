@@ -231,7 +231,7 @@ IntervalDay.    IntervalUnit ::= "DAY"    ;
 IntervalMonth.  IntervalUnit ::= "MONTH"  ;
 IntervalYear.   IntervalUnit ::= "YEAR"   ;
 
-DInterval. Interval ::= "INTERVAL" "\'" Integer IntervalUnit "\'" ;
+DInterval. Interval ::= "INTERVAL" Integer IntervalUnit ;
 ExprInterval. ValueExpr8 ::= Interval ;
 
 -- Non-Scalar Type (Array)

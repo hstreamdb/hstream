@@ -250,9 +250,9 @@ type instance RefinedType PNDouble = Double
 instance Refine PNDouble where
   refine = extractPNDouble
 
-type instance RefinedType SingleQuotedString = BS.ByteString
-instance Refine SingleQuotedString where
-  refine (SingleQuotedString t) = encodeUtf8 . Text.init . Text.tail $ t
+type instance RefinedType SingleQuoted = BS.ByteString
+instance Refine SingleQuoted where
+  refine (SingleQuoted t) = encodeUtf8 . Text.init . Text.tail $ t
 
 type instance RefinedType ColumnIdent = Text
 instance Refine ColumnIdent where
@@ -318,7 +318,7 @@ fromUnitToDiffTime (m, s) x
 type RInterval = Time.CalendarDiffTime
 type instance RefinedType Interval = RInterval
 instance Refine Interval where
-  refine (DInterval _ (SingleQuotedString n) iUnit) = fromUnitToDiffTime (refine iUnit) (read $ Text.unpack $ Text.dropAround (== '\'') n)
+  refine (DInterval _ n iUnit) = fromUnitToDiffTime (refine iUnit) n
 
 instance Ord Time.CalendarDiffTime where
   d1 `compare` d2 =
@@ -474,7 +474,7 @@ type instance RefinedType ValueExpr = RValueExpr
 instance Refine ValueExpr where
   refine expr = case expr of
     -- 1. Operations
-    (ExprCast _ exprCast) -> case exprCast of
+    (DExprCast _ exprCast) -> case exprCast of
       ExprCast1 _ e typ -> RExprCast (trimSpacesPrint expr) (refine e) (refine typ)
       ExprCast2 _ e typ -> RExprCast (trimSpacesPrint expr) (refine e) (refine typ)
     (ExprAnd _ e1 e2)   -> RExprBinOp (trimSpacesPrint expr) OpAnd (refine e1) (refine e2)
@@ -490,12 +490,12 @@ instance Refine ValueExpr where
     (ExprSub _ e1 e2) -> RExprBinOp (trimSpacesPrint expr) OpSub (refine e1) (refine e2)
     (ExprMul _ e1 e2) -> RExprBinOp (trimSpacesPrint expr) OpMul (refine e1) (refine e2)
     -- 2. Constants
-    (ExprNull _)              -> RExprConst (trimSpacesPrint expr) ConstantNull
-    (ExprInt _ n)             -> RExprConst (trimSpacesPrint expr) (ConstantInt . fromInteger . refine $ n)
-    (ExprNum _ n)             -> RExprConst (trimSpacesPrint expr) (ConstantFloat $ refine n)
-    (ExprString _ s)          -> RExprConst (trimSpacesPrint expr) (ConstantText (Text.pack s))
-    (ExprBool _ b)            -> RExprConst (trimSpacesPrint expr) (ConstantBoolean $ refine b)
-    (ExprInterval _ interval) -> RExprConst (trimSpacesPrint expr) (ConstantInterval $ refine interval)
+    (ExprNull _)                    -> RExprConst (trimSpacesPrint expr) ConstantNull
+    (ExprInt _ n)                   -> RExprConst (trimSpacesPrint expr) (ConstantInt . fromInteger . refine $ n)
+    (ExprNum _ n)                   -> RExprConst (trimSpacesPrint expr) (ConstantFloat $ refine n)
+    (ExprString _ (SingleQuoted s)) -> RExprConst (trimSpacesPrint expr) (ConstantText s)
+    (ExprBool _ b)                  -> RExprConst (trimSpacesPrint expr) (ConstantBoolean $ refine b)
+    (ExprInterval _ interval)       -> RExprConst (trimSpacesPrint expr) (ConstantInterval $ refine interval)
 
     -- 3. Arrays
     (ExprArr _ es) -> RExprArray (trimSpacesPrint expr) (refine <$> es)
