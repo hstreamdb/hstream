@@ -277,21 +277,27 @@ instance Aeson.ToJSON BS.ByteString where
   toJSON cb = Aeson.toJSON (decodeUtf8 cb)
 
 ------- date & time -------
-type RTimeStr = Time.TimeOfDay
-
-type RDateStr = Time.Day
-
-type RDateTimeStr = Time.LocalTime
-
 type RTimezone = Time.TimeZone
 
 type RTimestampStr = Time.ZonedTime
 
 type RDate = Time.Day
+type instance RefinedType Date = RDate
+instance Refine Date where
+  refine (DDate _ (SingleQuoted date)) =
+    fromJust . iso8601ParseM . tail . init $ Text.unpack date
 
 type RTime = Time.TimeOfDay
+type instance RefinedType Time = RTime
+instance Refine Time where
+  refine (DTime _ (SingleQuoted time)) =
+    fromJust . iso8601ParseM . tail . init $ Text.unpack time
 
 type RTimestamp = Time.ZonedTime
+type instance RefinedType Timestamp = RTimestamp
+instance Refine Timestamp where
+  refine (DTimestamp _ (SingleQuoted timestamp)) =
+    fromJust . iso8601ParseM . tail . init $ Text.unpack timestamp
 
 instance Eq Time.ZonedTime where
   z1 == z2 = Time.zonedTimeToUTC z1 == Time.zonedTimeToUTC z2
@@ -496,6 +502,9 @@ instance Refine ValueExpr where
     (ExprString _ (SingleQuoted s)) -> RExprConst (trimSpacesPrint expr) (ConstantText s)
     (ExprBool _ b)                  -> RExprConst (trimSpacesPrint expr) (ConstantBoolean $ refine b)
     (ExprInterval _ interval)       -> RExprConst (trimSpacesPrint expr) (ConstantInterval $ refine interval)
+    ExprDate _ date                 -> RExprConst (trimSpacesPrint expr) $ ConstantDate $ refine date
+    ExprTime _ time                 -> RExprConst (trimSpacesPrint expr) $ ConstantTime $ refine time
+    ExprTimestamp _ timestamp       -> RExprConst (trimSpacesPrint expr) $ ConstantTimestamp $ refine timestamp
 
     -- 3. Arrays
     (ExprArr _ es) -> RExprArray (trimSpacesPrint expr) (refine <$> es)
