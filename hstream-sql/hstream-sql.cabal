@@ -148,3 +148,18 @@ library
 --   build-tool-depends: hspec-discover:hspec-discover ==2.*
 --   ghc-options:        -threaded -rtsopts -with-rtsopts=-N
 --
+
+executable syntax-test-runner
+  main-is:          app/SyntaxTestRunner.hs
+  build-depends:
+    , aeson
+    , base
+    , bytestring
+    , hstream-sql
+    , optparse-applicative
+    , text
+    , vector
+    , yaml
+
+  default-language: GHC2021
+  ghc-options:      -Wall -Wextra
