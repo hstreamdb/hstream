@@ -136,14 +136,14 @@ data SubscribeContext = SubscribeContext
   , subMaxUnackedRecords :: !Word32
   , subStartOffset       :: !(PB.Enumerated SpecialOffset)
   , subLdCkpReader       :: !HS.LDSyncCkpReader
-  , subLdTrimCkpWorker   :: !CompactedWorker
-  , subLdReader          :: !(MVar HS.LDReader)
-  , subUnackedRecords    :: !(TVar Word32)
+  -- , subLdTrimCkpWorker   :: !CompactedWorker
+  -- , subLdReader          :: !(MVar HS.LDReader)
+  -- , subUnackedRecords    :: !(TVar Word32)
   , subConsumerContexts  :: !(TVar (HM.HashMap ConsumerName ConsumerContext))
   , subShardContexts     :: !(TVar (HM.HashMap HS.C_LogID SubscribeShardContext))
   , subAssignment        :: !Assignment
-  , subCurrentTime       :: !(TVar Word64) -- unit: ms
-  , subWaitingCheckedRecordIds      :: !(TVar (Heap.Heap CheckedRecordIds))
+  -- , subCurrentTime       :: !(TVar Word64) -- unit: ms
+  -- , subWaitingCheckedRecordIds      :: !(TVar (Heap.Heap CheckedRecordIds))
   , subStartOffsets      :: !(HM.HashMap S.C_LogID S.LSN)
   }
 
@@ -175,7 +175,7 @@ data ConsumerContext = ConsumerContext
   }
 
 data SubscribeShardContext = SubscribeShardContext
-  { sscAckWindow :: AckWindow,
+  { -- sscAckWindow :: AckWindow,
     sscLogId     :: HS.C_LogID
   }
 
