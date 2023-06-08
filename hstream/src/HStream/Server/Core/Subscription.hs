@@ -499,11 +499,11 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
       state <- readTVarIO subState
       if state == SubscribeStateRunning
         then do
-          newShards <- getNewShards
-          unless (L.null newShards) $ do
-            addNewShardsToSubCtx subCtx newShards
-            Log.info $ "add shards " <> Log.buildString (show newShards)
-                    <> " to consumer " <> Log.build subSubscriptionId
+          -- newShards <- getNewShards
+          -- unless (L.null newShards) $ do
+          --   addNewShardsToSubCtx subCtx newShards
+          --   Log.info $ "add shards " <> Log.buildString (show newShards)
+          --           <> " to consumer " <> Log.build subSubscriptionId
           atomically $ do
             checkAvailable subShardContexts
             checkAvailable subConsumerContexts
