@@ -70,8 +70,7 @@ ResumeQuery.     Resume  ::= "RESUME" "QUERY"    HIdent ;
 DInsert. Insert ::= "INSERT" "INTO" HIdent "(" [ColumnIdent] ")" "VALUES" "(" [ValueExpr] ")" ;
 separator ColumnIdent "," ;
 separator ValueExpr "," ;
-InsertBinary. Insert ::= "INSERT" "INTO" HIdent "VALUES" String       ;
-InsertJson.   Insert ::= "INSERT" "INTO" HIdent "VALUES" SingleQuoted ;
+InsertRawOrJson. Insert ::= "INSERT" "INTO" HIdent "VALUES" ExprCast ;
 
 ---- Show Query
 DShow. ShowQ ::= "SHOW" ShowOption ;
@@ -196,8 +195,10 @@ ArrayAccessRhsFromTo. ArrayAccessRhs ::= "[" Integer ":" Integer "]" ;
 ExprAccessArray. ValueExpr6 ::= ValueExpr7 ArrayAccessRhs ;
 
 -- Type Casting
-ExprCast1. ValueExpr7 ::= ValueExpr8 "::" DataType ;
-ExprCast2. ValueExpr7 ::= "CAST" "(" ValueExpr "AS" DataType ")" ;
+ExprCast1. ExprCast ::= ValueExpr8 "::" DataType ;
+ExprCast2. ExprCast ::= "CAST" "(" ValueExpr "AS" DataType ")" ;
+
+DExprCast. ValueExpr7 ::= ExprCast ;
 
 -- Null Expr.
 ExprNull. ValueExpr8 ::= "NULL" ;
