@@ -82,7 +82,7 @@ library
     HStream.SQL.Print
     HStream.SQL.Validate.Utils
 
-  hs-source-dirs:     src gen-sql
+  hs-source-dirs:     src gen-sql app
   build-depends:
     , aeson
     , array
@@ -150,7 +150,9 @@ library
 --
 
 executable syntax-test-runner
-  main-is:          app/SyntaxTestRunner.hs
+  main-is:          SyntaxTestRunner.hs
+  hs-source-dirs:   app
+  other-modules:    Lib
   build-depends:
     , aeson
     , base
