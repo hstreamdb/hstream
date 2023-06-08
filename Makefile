@@ -4,11 +4,15 @@ GHC_MAJOR_VERSION := $(shell ghc --numeric-version | cut -d'.' -f1)
 
 ifeq ($(GHC_MAJOR_VERSION), 8)
 CABAL_PROJECT_FILE ?= cabal.project.ghc810
-all:: thrift grpc sql
+all:: thrift grpc sql generate-version
 else
 CABAL_PROJECT_FILE ?= cabal.project
-all:: grpc sql
+all:: grpc sql generate-version
 endif
+
+HSTREAM_VERSION_FILE = "common/hstream/HStream/Version.hs"
+HSTREAM_VERSION ?= $(or $(shell git describe --tag --abbrev=0 2>/dev/null), unknown)
+HSTREAM_VERSION_COMMIT ?= $(or $(shell git rev-parse HEAD 2>/dev/null), unknown)
 
 ENGINE_VERSION ?= v1
 BNFC = bnfc
@@ -78,6 +82,18 @@ sql-deps::
 	(cd $(shell mktemp -d) && command -v alex || cabal install alex --constraint 'alex ^>= 3.2.7.1')
 	(cd $(shell mktemp -d) && command -v happy || cabal install happy)
 
+generate-version: $(HSTREAM_VERSION_FILE)
+
+$(HSTREAM_VERSION_FILE):
+	echo "Generating HStream Version file with version: $(HSTREAM_VERSION), commit: $(HSTREAM_VERSION_COMMIT)"; \
+	echo "module HStream.Version where" > $@; \
+	echo "" >> $@; \
+	echo "hstreamVersion :: String" >> $@; \
+	echo "hstreamVersion = \"$(HSTREAM_VERSION)\"" >> $@; \
+	echo "" >> $@; \
+	echo "hstreamCommit :: String" >> $@; \
+	echo "hstreamCommit = \"$(HSTREAM_VERSION_COMMIT)\"" >> $@
+
 clean:
 	find ./common -maxdepth 10 -type d \
 		-name "gen" \
@@ -89,3 +105,4 @@ clean:
 		-o -name "gen-src" \
 		| xargs rm -rf
 	rm -rf $(PROTO_COMPILE_HS)
+	rm -rf $(HSTREAM_VERSION_FILE)

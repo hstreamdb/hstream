@@ -127,7 +127,7 @@ createView' sc@ServerContext{..} view srcs sink builder persist sql rSQL queryNa
           throwIO $ HE.InvalidSqlStatement "CREATE VIEW only supports sources of stream type"
         True  -> do
           let relatedStreams = (srcs, sink)
-          vInfo <- P.createInsertViewQueryInfo queryName sql rSQL relatedStreams view metaHandle
+          vInfo <- P.createInsertViewQueryInfo queryName sql rSQL relatedStreams view serverID metaHandle
           consumerClosed <- newTVarIO False
           createQueryAndRun sc QueryRunner {
               qRTaskBuilder = builder

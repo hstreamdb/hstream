@@ -29,6 +29,11 @@ module HStream.Server.MetaData.Types
   , rootPath
   , getQuerySink
   , getQuerySources
+  , renderQueryInfosToTable
+  , renderQueryStatusToTable
+  , renderViewInfosToTable
+  , renderQVRelationToTable
+  , renderTaskAllocationsToTable
   ) where
 
 import           Control.Exception                 (catches)
@@ -37,6 +42,9 @@ import qualified Data.HashMap.Strict               as HM
 import           Data.Int                          (Int64)
 import           Data.IORef
 import           Data.Text                         (Text)
+import qualified Data.Text                         as T
+import qualified Data.Text.Lazy                    as TL
+import qualified Data.Text.Lazy.Encoding           as TL
 import           Data.Time.Clock.System            (SystemTime (MkSystemTime),
                                                     getSystemTime)
 import           Data.Word                         (Word32, Word64)
@@ -44,6 +52,8 @@ import           GHC.Generics                      (Generic)
 import           GHC.IO                            (unsafePerformIO)
 import           ZooKeeper.Types                   (ZHandle)
 
+import           Control.Monad                     (forM)
+import qualified Data.Aeson                        as Aeson
 import           HStream.MetaStore.Types           (FHandle, HasPath (..),
                                                     MetaHandle,
                                                     MetaMulti (metaMulti),
@@ -67,34 +77,68 @@ import           HStream.SQL.Codegen.V1
 #endif
 --------------------------------------------------------------------------------
 
+newtype QueryStatus = QueryStatus { queryState :: TaskStatus }
+  deriving (Generic, Show, FromJSON, ToJSON)
+
+pattern QueryCreating, QueryRunning, QueryResuming, QueryAborted, QueryPaused, QueryTerminated :: QueryStatus
+pattern QueryCreating   = QueryStatus { queryState = Creating }
+pattern QueryRunning    = QueryStatus { queryState = Running }
+pattern QueryResuming   = QueryStatus { queryState = Resuming }
+pattern QueryAborted    = QueryStatus { queryState = Aborted }
+pattern QueryPaused     = QueryStatus { queryState = Paused }
+pattern QueryTerminated = QueryStatus { queryState = Terminated }
+
+renderQueryStatusToTable :: [QueryStatus] -> Aeson.Value
+renderQueryStatusToTable infos =
+  let headers = ["Query Status" :: Text]
+      rows = forM infos $ \QueryStatus{..} ->
+        [ queryState ]
+   in Aeson.object ["headers" Aeson..= headers, "rows" Aeson..= rows]
+
 data QueryInfo = QueryInfo
   { queryId          :: Text
   , querySql         :: Text
   , queryCreatedTime :: Int64
   , queryStreams     :: RelatedStreams
   , queryRefinedAST  :: AST.RSQL
+  , workerNodeId     :: Word32
+  , queryType        :: QType
   } deriving (Generic, Show, FromJSON, ToJSON)
 
-data QueryStatus = QueryStatus { queryState :: TaskStatus }
-  deriving (Generic, Show, FromJSON, ToJSON)
+showQueryInfo :: QueryInfo -> Text
+showQueryInfo QueryInfo{..} = "queryId: " <> queryId
+                           <> ", sql: " <> querySql
+                           <> ", createdTime: " <> (T.pack . show $ queryCreatedTime)
+                           <> ", sourceStream: " <> T.intercalate "," (fst queryStreams)
+                           <> ", sinkStream: " <> snd queryStreams
+                           <> ", ast: " <> (T.pack . show $ queryRefinedAST)
+                           <> ", workNode: " <> (T.pack . show $ workerNodeId)
+                           <> ", type: " <> (T.pack . formatQueryType . getQueryType $ queryType)
 
-pattern QueryCreating, QueryRunning, QueryResuming, QueryAborted, QueryPaused, QueryTerminated :: QueryStatus
-pattern QueryCreating = QueryStatus { queryState = Creating }
-pattern QueryRunning  = QueryStatus { queryState = Running }
-pattern QueryResuming = QueryStatus { queryState = Resuming }
-pattern QueryAborted  = QueryStatus { queryState = Aborted }
-pattern QueryPaused   = QueryStatus { queryState = Paused }
-pattern QueryTerminated   = QueryStatus { queryState = Terminated }
+renderQueryInfosToTable :: [QueryInfo] -> Text
+renderQueryInfosToTable infos = T.intercalate "\n" $ map (\info -> "{ " <> showQueryInfo info <> " }") infos
 
 data ViewInfo = ViewInfo {
     viewName  :: Text
   , viewQuery :: QueryInfo
 } deriving (Generic, Show, FromJSON, ToJSON)
 
+showViewInfo :: ViewInfo -> Text
+showViewInfo ViewInfo{..} = "viewName: " <> viewName <> ", " <> showQueryInfo viewQuery
+
+renderViewInfosToTable :: [ViewInfo] -> Text
+renderViewInfosToTable infos = T.intercalate "\n" $ map (\info -> "{ " <> showViewInfo info <> " }") infos
+
 data QVRelation = QVRelation {
     qvRelationQueryName :: Text
   , qvRelationViewName  :: Text
 } deriving (Generic, Show, FromJSON, ToJSON)
+
+renderQVRelationToTable :: [QVRelation] -> Aeson.Value
+renderQVRelationToTable relations =
+  let headers = ["Query ID" :: Text, "View Name"]
+      rows = map (\QVRelation{..} -> [qvRelationQueryName, qvRelationViewName]) relations
+   in Aeson.object ["headers" Aeson..= headers, "rows" Aeson..= rows]
 
 type SourceStreams  = [Text]
 type SinkStream     = Text
@@ -116,6 +160,12 @@ data ShardReaderMeta = ShardReaderMeta
 
 data TaskAllocation = TaskAllocation { taskAllocationEpoch :: Word32, taskAllocationServerId :: ServerID}
   deriving (Show, Generic, FromJSON, ToJSON)
+
+renderTaskAllocationsToTable :: [TaskAllocation] -> Aeson.Value
+renderTaskAllocationsToTable relations =
+  let headers = ["Server ID" :: Text]
+      rows = map (\TaskAllocation{..} -> [taskAllocationServerId]) relations
+   in Aeson.object ["headers" Aeson..= headers, "rows" Aeson..= rows]
 
 rootPath :: Text
 rootPath = "/hstream"
@@ -246,17 +296,19 @@ getQuerySink QueryInfo{..} = snd queryStreams
 getQuerySources :: QueryInfo -> SourceStreams
 getQuerySources QueryInfo{..} = fst queryStreams
 
-createInsertQueryInfo :: Text -> Text -> RelatedStreams -> AST.RSQL -> MetaHandle -> IO QueryInfo
-createInsertQueryInfo queryId querySql queryStreams queryRefinedAST h = do
+createInsertQueryInfo :: Text -> Text -> RelatedStreams -> AST.RSQL -> Word32 -> MetaHandle -> IO QueryInfo
+createInsertQueryInfo queryId querySql queryStreams queryRefinedAST workerNodeId h = do
   MkSystemTime queryCreatedTime _ <- getSystemTime
-  let qInfo = QueryInfo {..}
+  let queryType = QueryCreateStream
+      qInfo = QueryInfo {..}
   insertQuery qInfo h
   return qInfo
 
-createInsertViewQueryInfo :: Text -> Text -> AST.RSQL -> RelatedStreams -> Text -> MetaHandle -> IO ViewInfo
-createInsertViewQueryInfo queryId querySql queryRefinedAST queryStreams viewName h = do
+createInsertViewQueryInfo :: Text -> Text -> AST.RSQL -> RelatedStreams -> Text -> Word32 -> MetaHandle -> IO ViewInfo
+createInsertViewQueryInfo queryId querySql queryRefinedAST queryStreams viewName workerNodeId h = do
   MkSystemTime queryCreatedTime _ <- getSystemTime
-  let vInfo = ViewInfo{ viewName = viewName, viewQuery = QueryInfo{..} }
+  let queryType = QueryCreateView
+      vInfo = ViewInfo{ viewName = viewName, viewQuery = QueryInfo{..} }
   insertViewQuery vInfo h
   return vInfo
 

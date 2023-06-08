@@ -12,15 +12,18 @@ import           Data.IORef                (newIORef, readIORef)
 import qualified Data.IORef                as C
 import           Data.Maybe                (fromMaybe)
 import qualified Data.Text                 as T
+import qualified Data.Text.Lazy            as TL
 import           GHC.Stack                 (HasCallStack)
 
 import qualified Data.Aeson                as J
 import qualified Data.Aeson.KeyMap         as J
+import qualified Data.Aeson.Text           as J
 import           Data.Int                  (Int32)
 import qualified Data.Text.Encoding        as T
 import qualified Data.UUID                 as UUID
 import qualified Data.UUID.V4              as UUID
 import qualified HStream.Exception         as HE
+import           HStream.IO.IOTask         (getDockerStatus)
 import qualified HStream.IO.IOTask         as IOTask
 import qualified HStream.IO.Meta           as M
 import           HStream.IO.Types
@@ -110,11 +113,31 @@ getTaskLogs worker name beg num = do
 
 showIOTask_ :: Worker -> T.Text -> IO API.Connector
 showIOTask_ worker@Worker{..} name = do
-  IOTask{..} <- getIOTask_ worker name
+  task@IOTask{taskInfo=TaskInfo{..}, ..} <- getIOTask_ worker name
   taskOffsets <- C.readMVar taskOffsetsM
   M.getIOTaskMeta workerHandle taskId >>= \case
     Nothing -> throwIO $ HE.ConnectorNotFound name
-    Just c  -> return $ (convertTaskMeta c) {API.connectorOffsets = taskOffsets}
+    Just c  -> do
+      dockerStatus <- getDockerStatus task
+      let connector = convertTaskMeta c
+      return $ connector { API.connectorOffsets = taskOffsets
+                         , API.connectorTaskId  = taskId
+                         , API.connectorNode    = fromMaybe "" (getServerNode connectorConfig)
+                         , API.connectorConfig  = getConnectorConfig connectorConfig
+                         , API.connectorImage   = tcImage taskConfig
+                         , API.connectorDockerStatus = dockerStatus
+                         }
+ where
+   getServerNode cfg = do
+     jsonCfg <- J.lookup "hstream" cfg
+     HStreamConfig{..} <- case J.fromJSON jsonCfg of
+       J.Error _      -> Nothing
+       J.Success cfg' -> Just cfg'
+     T.stripPrefix "hstream://" serviceUrl
+
+   getConnectorConfig cfg =
+    let mConnector :: Maybe J.Value = J.lookup "connector" cfg
+     in maybe "" (TL.toStrict . J.encodeToLazyText) mConnector
 
 listIOTasks :: Worker -> IO [API.Connector]
 listIOTasks Worker{..} = M.listIOTaskMeta workerHandle

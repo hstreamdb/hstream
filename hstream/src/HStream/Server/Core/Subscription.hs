@@ -16,8 +16,10 @@ import           Control.Exception             (catch, handle, onException,
 import           Control.Monad
 import qualified Data.ByteString               as BS
 import           Data.Foldable                 (foldl')
+import           Data.Function                 (fix)
 import           Data.Functor                  ((<&>))
 import qualified Data.HashMap.Strict           as HM
+import qualified Data.Heap                     as Heap
 import           Data.IORef                    (newIORef, readIORef, writeIORef)
 import           Data.Kind                     (Type)
 import qualified Data.List                     as L
@@ -46,17 +48,15 @@ import           HStream.Server.Core.Common    as CC (decodeRecordBatch,
                                                       listSubscriptions)
 import           HStream.Server.HStreamApi
 import           HStream.Server.Types
+import           HStream.Server.Validation     (validateResLookup)
 import qualified HStream.Stats                 as Stats
 import qualified HStream.Store                 as S
-import           HStream.Utils                 (decompressBatchedRecord,
+import           HStream.Utils                 (ResourceType (..),
+                                                decompressBatchedRecord,
                                                 getProtoTimestamp,
                                                 mkBatchedRecord, textToCBytes)
 
---------------------------------------------------------------------------------
-
-checkSubscriptionExist :: ServerContext -> Text -> IO Bool
-checkSubscriptionExist ServerContext{..} sid =
-  M.checkMetaExists @SubscriptionWrap sid metaHandle
+-------------------------------------------------------------------------------
 
 listSubscriptions :: ServerContext -> IO (V.Vector Subscription)
 listSubscriptions sc = CC.listSubscriptions sc Nothing
@@ -68,9 +68,12 @@ listConsumers :: ServerContext -> ListConsumersRequest -> IO ListConsumersRespon
 listConsumers sc@ServerContext{..} ListConsumersRequest{listConsumersRequestSubscriptionId = sid} = do
   subCtxMap <- readTVarIO scSubscribeContexts
   case HM.lookup sid subCtxMap of
-    Nothing -> throwIO $ HE.SubscriptionNotFound sid
+    Nothing -> do
+      exist <- checkSubscriptionExist sc sid
+      if exist then return $ ListConsumersResponse V.empty
+               else throwIO $ HE.SubscriptionNotFound sid
     Just subCtx@SubscribeContextNewWrapper{..} -> atomically $ do
-      ctx@SubscribeContext{..} <- readTMVar scnwContext
+      SubscribeContext{..} <- readTMVar scnwContext
       consumerMap <- readTVar subConsumerContexts
       return . ListConsumersResponse . V.fromList $ makeRpcConsumer <$> HM.elems consumerMap
   where
@@ -137,6 +140,32 @@ createSubscription ServerContext{..} sub@Subscription{..} = do
      lsn <- (+1) <$> S.getTailLSN scLDClient shard
      return $ HM.insert shard lsn acc
 
+--                                                          +----------------|
+--                                                          |                |
+--                                                          |                | retry
+--                                                   +------|-----+          |
+--                                                   |    New     |----------+
+--                                                   +------------+
+--
+--
+--                                                   +------------+ -----------------+
+--                           +---------------------- |  Running   |                  | active consumers,
+--                           |                       +------------+                  | not force
+--  active consumers,        |                             |   |                     | [CanNotDelete]
+--  force                    |         no active consumers |   +---------------------|
+--  [CanDelete]              |         [CanDelete]         |                             +-----------------|
+--                           |                             |                             |                 |
+--                           |                             |                             |                 | [Signaled]
+--                           |                       +------------+                +------------+          |
+--                           |---------------------+ |  Stopping  |  ------------+ |  Stopped   |----------+
+--                                                   +-----------++   (wait until  +------------+
+--                                                                   no consumer!!)
+--                                                    |          |
+--                                                    |          |
+--                                                    |          |
+--                                                    |          |
+--                                                    +----------
+--                                                     [Signaled]
 deleteSubscription
   :: HasCallStack
   => ServerContext -> DeleteSubscriptionRequest -> IO ()
@@ -302,6 +331,9 @@ initSub serverCtx@ServerContext {..} subId = M.getMeta subId metaHandle >>= \cas
     Log.fatal $ "subscription " <> Log.build subId <> " not exist."
     throwIO $ HE.SubscriptionNotFound subId
   Just SubscriptionWrap{} -> do
+    -- FIXME: Comment this validateResLookup since some internal sub can not pass
+    --validateResLookup serverCtx ResSubscription subId "Subscription is bound to a different node"
+
     (needInit, SubscribeContextNewWrapper {..}) <- atomically $ do
       subMap <- readTVar scSubscribeContexts
       case HM.lookup subId subMap of
@@ -379,8 +411,7 @@ doSubInit ServerContext{..} subId = do
       shardContexts <- newTVarIO HM.empty
       assignment <- mkEmptyAssignment
       curTime <- getCurrentTimestamp >>= (newTVarIO . fromIntegral)
-      checkList <- newTVarIO []
-      checkListIndex <- newTVarIO Map.empty
+      checkList <- newTVarIO Heap.empty
       let emptySubCtx =
             SubscribeContext
               { subSubscriptionId = subId
@@ -396,7 +427,6 @@ doSubInit ServerContext{..} subId = do
               , subAssignment = assignment
               , subCurrentTime = curTime
               , subWaitingCheckedRecordIds = checkList
-              , subWaitingCheckedRecordIdsIndex = checkListIndex
               , subStartOffsets = subOffsets
               , subStartOffset = subscriptionOffset
               }
@@ -485,9 +515,10 @@ sendRecords :: ServerContext -> TVar SubscribeState -> SubscribeContext -> IO ()
 sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
   threadDelay 10000
   isFirstSendRef <- newIORef True
-  loop isFirstSendRef
+  isSubscriptionDeleted <- newIORef False
+  loop isFirstSendRef isSubscriptionDeleted
   where
-    loop isFirstSendRef = do
+    loop !isFirstSendRef !isSubscriptionDeleted = do
       -- Log.debug "enter sendRecords loop"
       state <- readTVarIO subState
       if state == SubscribeStateRunning
@@ -511,42 +542,50 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
           if isFirstSend
           then do
             writeIORef isFirstSendRef False
-            tid1 <- forkIO . forever $ do
-                     threadDelay (100 * 1000)
-                     updateClockAndDoResend
+            tid1 <- forkIO . fix $ \f -> do
+              isSubDeleted <- readIORef isSubscriptionDeleted
+              unless isSubDeleted $ do
+                threadDelay (100 * 1000)
+                updateClockAndDoResend
+                f
 
-            tid2 <- forkIO . forever $ do
-                      threadDelay (100 * 1000)
-                      atomically $ assignShards subAssignment
+            tid2 <- forkIO . fix $ \f -> do
+              isSubDeleted <- readIORef isSubscriptionDeleted
+              unless isSubDeleted $ do
+                threadDelay (100 * 1000)
+                atomically $ assignShards subAssignment
+                f
 
             -- FIXME: the same code
             successSendRecords <- sendReceivedRecordsVecs receivedRecordsVecs
             atomically $ addUnackedRecords subCtx successSendRecords
             -- Note: automically kill child threads when the parent thread is killed
-            loop isFirstSendRef `onException` (killThread tid1 >> killThread tid2)
+            loop isFirstSendRef isSubscriptionDeleted `onException` (killThread tid1 >> killThread tid2)
           else do
             -- FIXME: the same code
             successSendRecords <- sendReceivedRecordsVecs receivedRecordsVecs
             atomically $ addUnackedRecords subCtx successSendRecords
-            loop isFirstSendRef
+            loop isFirstSendRef isSubscriptionDeleted
         else do
           Log.info $ "subscription " <> Log.build subSubscriptionId <> " is not running, exit sendRecords loop."
           when (state == SubscribeStateStopping) $ do
             throwIO $ HE.SubscriptionInvalidError "Invalid Subscription"
+          when (state == SubscribeStateStopped) $ do
+            writeIORef isSubscriptionDeleted True
 
     updateClockAndDoResend :: IO ()
     updateClockAndDoResend = do
       -- Note: non-strict behaviour in STM!
       --       Please refer to https://github.com/haskell/stm/issues/30
       newTime <- getCurrentTimestamp <&> fromIntegral
-      doneList <- atomically $ do
+      timeoutList <- atomically $ do
         ct <- readTVar subCurrentTime
         checkList <- readTVar subWaitingCheckedRecordIds
-        let (!doneList, !leftList) = span ( \CheckedRecordIds {..} -> crDeadline <= newTime) checkList
+        let (!timeoutList, !leftList) = Heap.span (\CheckedRecordIds {..} -> crDeadline <= newTime) checkList
         writeTVar subCurrentTime newTime
         writeTVar subWaitingCheckedRecordIds leftList
-        return doneList
-      forM_ doneList (\r@CheckedRecordIds {..} -> buildShardRecordIds r >>= resendTimeoutRecords crLogId crBatchId )
+        return timeoutList
+      forM_ timeoutList (\r@CheckedRecordIds {..} -> buildShardRecordIds r >>= resendTimeoutRecords crLogId crBatchId )
       where
         buildShardRecordIds  CheckedRecordIds {..} = atomically $ do
           batchIndexes <- readTVar crBatchIndexes
@@ -706,26 +745,19 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
                       <> ", batchId=" <> Log.build batchId <> ", num of records=" <> Log.build (V.length shardRecordIds)
              registerResend logId batchId shardRecordIds
              return True
-
     registerResend logId batchId recordIds = atomically $ do
-      batchIndexes <- newTVar $ Set.fromList $ fmap sriBatchIndex (V.toList recordIds)
+      let batchIndexes = Set.fromList $! fmap sriBatchIndex (V.toList recordIds)
+      batchIndexes_m <- newTVar batchIndexes
       currentTime <- readTVar subCurrentTime
       checkList <- readTVar subWaitingCheckedRecordIds
-      checkListIndex <- readTVar subWaitingCheckedRecordIdsIndex
       let checkedRecordIds = CheckedRecordIds {
                               crDeadline =  currentTime + fromIntegral (subAckTimeoutSeconds * 1000),
                               crLogId = logId,
                               crBatchId = batchId,
-                              crBatchIndexes = batchIndexes
+                              crBatchIndexes = batchIndexes_m
                             }
-      let checkedRecordIdsKey = CheckedRecordIdsKey {
-                              crkLogId = logId,
-                              crkBatchId = batchId
-                            }
-      let newCheckList = checkList ++ [checkedRecordIds]
-      let newCheckListIndex = Map.insert checkedRecordIdsKey checkedRecordIds checkListIndex
+      let newCheckList = Heap.insert checkedRecordIds checkList
       writeTVar subWaitingCheckedRecordIds newCheckList
-      writeTVar subWaitingCheckedRecordIdsIndex newCheckListIndex
 
     resendTimeoutRecords logId batchId recordIds = do
       resendRecordIds <- atomically $ do
@@ -959,8 +991,7 @@ doAcks
   -> V.Vector RecordId
   -> IO ()
 doAcks ldclient subCtx@SubscribeContext{..} ackRecordIds = do
-  atomically $ do
-    removeAckedRecordIdsFromCheckList ackRecordIds
+  removeAckedRecordIdsFromCheckList subCtx ackRecordIds
   let group = HM.toList $ groupRecordIds ackRecordIds
   forM_ group (\(logId, recordIds) -> doAck ldclient subCtx logId recordIds)
   where
@@ -978,38 +1009,6 @@ doAcks ldclient subCtx@SubscribeContext{..} ackRecordIds = do
         )
         HM.empty
         recordIds
-
-    removeAckedRecordIdsFromCheckList :: V.Vector RecordId -> STM ()
-    removeAckedRecordIdsFromCheckList recordIds = do
-      checkList <- readTVar subWaitingCheckedRecordIds
-      checkListIndex <- readTVar subWaitingCheckedRecordIdsIndex
-      mapM_
-        (
-          \ RecordId {..}  -> do
-            let k = CheckedRecordIdsKey {
-                      crkLogId = recordIdShardId,
-                      crkBatchId = recordIdBatchId
-                    }
-            case Map.lookup k checkListIndex of
-              Nothing -> pure ()
-              Just CheckedRecordIds {..} -> modifyTVar crBatchIndexes (Set.delete recordIdBatchIndex)
-        )
-        recordIds
-      (newCheckList, newCheckListIndex) <- foldM
-        ( \(r, i) l@CheckedRecordIds{..} -> do
-            batchIndexes <- readTVar crBatchIndexes
-            let k = CheckedRecordIdsKey {
-                      crkLogId =  crLogId,
-                      crkBatchId = crBatchId
-                    }
-            if Set.null batchIndexes
-            then pure (r, Map.delete k i)
-            else pure (r ++ [l], i)
-        )
-        ([], checkListIndex)
-        checkList
-      writeTVar subWaitingCheckedRecordIds newCheckList
-      writeTVar subWaitingCheckedRecordIdsIndex newCheckListIndex
 
 doAck
   :: S.LDClient
@@ -1052,6 +1051,63 @@ doAck ldclient subCtx@SubscribeContext{..} logId recordIds= do
         S.writeCheckpoints subLdCkpReader (Map.singleton logId lsn) 10{-retries-}
         triggerCompactedWorker subLdTrimCkpWorker
     Nothing  -> return ()
+
+removeAckedRecordIdsFromCheckList :: SubscribeContext
+                                  -> V.Vector RecordId
+                                  -> IO ()
+removeAckedRecordIdsFromCheckList SubscribeContext{..} recordIds = do
+  let ackedRecordIdMap =
+        V.foldl'
+          (
+            \acc RecordId{..} ->
+              let k = CheckedRecordIdsKey {
+                        crkLogId = recordIdShardId,
+                        crkBatchId = recordIdBatchId
+                      }
+              in
+                case Map.lookup k acc of
+                  Nothing -> Map.insert k (Set.singleton recordIdBatchIndex) acc
+                  Just s -> let ns = Set.insert recordIdBatchIndex s
+                            in Map.insert k ns acc
+          )
+          Map.empty
+          recordIds
+  checkList <- readTVarIO subWaitingCheckedRecordIds
+  recordIdKeys <-
+    foldM
+      (
+        \ acc CheckedRecordIds{..}  -> do
+          let k = CheckedRecordIdsKey {
+                    crkLogId =  crLogId,
+                    crkBatchId = crBatchId
+                  }
+          case Map.lookup k ackedRecordIdMap of
+            Nothing -> pure acc
+            Just s  -> atomically $ do
+                        idxSet <- readTVar crBatchIndexes
+                        let ns = idxSet `Set.difference` s
+                        writeTVar crBatchIndexes ns
+                        if Set.null ns
+                        then pure $ Set.insert k acc
+                        else pure acc
+      )
+      Set.empty
+      checkList
+  atomically $ do
+    checkList1 <- readTVar subWaitingCheckedRecordIds
+    newCheckList <- foldM
+      ( \h l@CheckedRecordIds{..} -> do
+          let k = CheckedRecordIdsKey {
+                    crkLogId =  crLogId,
+                    crkBatchId = crBatchId
+                  }
+          if Set.member k recordIdKeys
+          then pure h
+          else pure (Heap.insert l h)
+      )
+      Heap.empty
+      checkList1
+    writeTVar subWaitingCheckedRecordIds newCheckList
 
 invalidConsumer :: SubscribeContext -> ConsumerName -> STM ()
 invalidConsumer SubscribeContext{subAssignment = Assignment{..}, ..} consumer = do
@@ -1107,6 +1163,8 @@ tryUpdateWindowLowerBound ackedRanges lowerBoundRecordId batchNumMap (Just commi
        | otherwise -> Nothing
 tryUpdateWindowLowerBound _ _ _ Nothing = Nothing
 
+-------------------------------------------------------------------------------
+
 recordIds2ShardRecordIds :: V.Vector RecordId -> V.Vector ShardRecordId
 recordIds2ShardRecordIds =
   V.map (\RecordId {..} -> ShardRecordId {sriBatchId = recordIdBatchId, sriBatchIndex = recordIdBatchIndex})
@@ -1116,3 +1174,7 @@ addUnackedRecords SubscribeContext {..} count = do
   -- traceM $ "addUnackedRecords: " <> show count
   unackedRecords <- readTVar subUnackedRecords
   writeTVar subUnackedRecords (unackedRecords + fromIntegral count)
+
+checkSubscriptionExist :: ServerContext -> Text -> IO Bool
+checkSubscriptionExist ServerContext{..} sid =
+  M.checkMetaExists @SubscriptionWrap sid metaHandle

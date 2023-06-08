@@ -7,6 +7,7 @@ module HStream.Utils.Format
   ( Format (..)
   , formatCommandQueryResponse
   , formatStatus
+  , formatQueryType
   ) where
 
 import qualified Data.Aeson                       as A
@@ -92,6 +93,12 @@ instance Format [API.ServerNode] where
 
 instance Format [API.ServerNodeStatus] where
   formatResult = renderServerNodesStatusToTable
+
+instance Format (Maybe API.HStreamVersion) where
+  formatResult = maybe "unknown version" showHStreamVersion
+
+instance Format API.HStreamVersion where
+  formatResult = showHStreamVersion
 
 instance Format a => Format (ClientResult 'Normal a) where
   formatResult (ClientNormalResponse response _ _ _ _) = formatResult response
@@ -252,9 +259,14 @@ renderServerNodesToTable values = showTable titles rows
 renderServerNodesStatusToTable :: [API.ServerNodeStatus] -> String
 renderServerNodesStatusToTable values = showTable titles rows
   where
-    titles = ["Server Id", "State", "Address"]
+    titles = ["Server Id", "State", "Address", "Version", "Commit"]
     formatRow API.ServerNodeStatus {serverNodeStatusNode = Just API.ServerNode{..}, ..} =
-      [[show serverNodeId], [showNodeStatus serverNodeStatusState], [T.unpack serverNodeHost <> ":" <> show serverNodePort]]
+      [ [show serverNodeId]
+      , [showNodeStatus serverNodeStatusState]
+      , [T.unpack serverNodeHost <> ":" <> show serverNodePort]
+      , [T.unpack $ maybe "unknown" API.hstreamVersionVersion serverNodeVersion]
+      , [T.unpack $ maybe "unknown" API.hstreamVersionCommit serverNodeVersion]
+      ]
     formatRow API.ServerNodeStatus {serverNodeStatusNode = Nothing} = []
     rows = map formatRow . L.sort $ values
 
@@ -271,7 +283,7 @@ showTable titles rows = Table.tableString t ++ "\n"
           (Table.colsAllG Table.center <$> rows)
     colSpec = map (const $ Table.column Table.expand Table.left def def) titles
 
-formatStatus ::  PB.Enumerated API.TaskStatusPB -> String
+formatStatus :: PB.Enumerated API.TaskStatusPB -> String
 formatStatus (PB.Enumerated (Right API.TaskStatusPBTASK_RUNNING)) = "RUNNING"
 formatStatus (PB.Enumerated (Right API.TaskStatusPBTASK_ABORTED)) = "ABORTED"
 formatStatus (PB.Enumerated (Right API.TaskStatusPBTASK_CREATING)) = "CREATING"
@@ -280,6 +292,11 @@ formatStatus (PB.Enumerated (Right API.TaskStatusPBTASK_RESUMING)) = "RESUMING"
 formatStatus (PB.Enumerated (Right API.TaskStatusPBTASK_TERMINATED)) = "TERMINATED"
 formatStatus (PB.Enumerated (Right API.TaskStatusPBTASK_UNKNOWN)) = "UNKNOWN"
 formatStatus _ = "Unknown Status"
+
+formatQueryType :: PB.Enumerated API.QueryType -> String
+formatQueryType (PB.Enumerated (Right API.QueryTypeCreateStreamAs)) = "CreateStreamAs"
+formatQueryType (PB.Enumerated (Right API.QueryTypeCreateViewAs)) = "CreateViewAs"
+formatQueryType _ = "Unknown Query Type"
 
 formatTime :: Int64 -> String
 formatTime t = T.unpack . T.decodeUtf8 $
@@ -319,3 +336,6 @@ formatReceivedRecord API.ReceivedRecord{..} = do
    formatMaybeTimestamp :: Maybe Int64 -> String
    formatMaybeTimestamp Nothing  = ""
    formatMaybeTimestamp (Just a) = show a
+
+showHStreamVersion :: API.HStreamVersion -> String
+showHStreamVersion API.HStreamVersion{..} = T.unpack hstreamVersionVersion <> " (" <> T.unpack hstreamVersionCommit <> ")"

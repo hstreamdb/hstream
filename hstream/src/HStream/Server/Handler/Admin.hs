@@ -14,7 +14,9 @@ import           Control.Concurrent.STM.TVar      (readTVarIO)
 import           Control.Monad                    (forM, void)
 import           Data.Aeson                       ((.=))
 import qualified Data.Aeson                       as Aeson
+import qualified Data.Aeson.Text                  as Aeson
 import qualified Data.HashMap.Strict              as HM
+import qualified Data.List                        as L
 import           Data.Map.Strict                  (Map)
 import qualified Data.Map.Strict                  as Map
 import           Data.Text                        (Text)
@@ -32,23 +34,43 @@ import           Proto3.Suite                     (HasDefault (def))
 import qualified Z.Data.CBytes                    as CB
 import           Z.Data.CBytes                    (CBytes)
 
+import           Control.Exception                (throw)
 import qualified HStream.Admin.Server.Types       as AT
 import           HStream.Base                     (rmTrailingZeros)
+import qualified HStream.Exception                as HE
 import           HStream.Gossip                   (GossipContext (clusterReady),
                                                    getClusterStatus,
                                                    initCluster)
+import qualified HStream.IO.Worker                as HC
 import qualified HStream.Logger                   as Log
+import qualified HStream.MetaStore.Types          as M
+import           HStream.Server.Config            (MetaStoreAddr (..),
+                                                   ServerOpts (ServerOpts, _metaStore))
+import           HStream.Server.Core.Common       (lookupResource',
+                                                   mkAllocationKey)
+import qualified HStream.Server.Core.Query        as HC
 import qualified HStream.Server.Core.Stream       as HC
 import qualified HStream.Server.Core.Subscription as HC
 import qualified HStream.Server.Core.View         as HC
 import           HStream.Server.Exception         (catchDefaultEx,
                                                    defaultExceptionHandle)
 import qualified HStream.Server.HStreamApi        as API
+import           HStream.Server.MetaData          (QVRelation, QueryInfo,
+                                                   QueryStatus, TaskAllocation,
+                                                   ViewInfo,
+                                                   renderQVRelationToTable,
+                                                   renderQueryInfosToTable,
+                                                   renderQueryStatusToTable,
+                                                   renderTaskAllocationsToTable,
+                                                   renderViewInfosToTable)
 import           HStream.Server.Types
 import qualified HStream.Stats                    as Stats
-import           HStream.Utils                    (Interval (..), formatStatus,
-                                                   interval2ms, returnResp,
-                                                   showNodeStatus)
+import           HStream.Utils                    (Interval (..), cBytesToText,
+                                                   formatQueryType,
+                                                   formatStatus, interval2ms,
+                                                   returnResp, showNodeStatus,
+                                                   structToJsonObject,
+                                                   timestampToMsTimestamp)
 
 -------------------------------------------------------------------------------
 -- All command line data types are defined in 'HStream.Admin.Types'
@@ -99,6 +121,9 @@ runAdminCommand sc@ServerContext{..} cmd = do
     AT.AdminStatusCommand         -> runStatus sc
     AT.AdminInitCommand           -> runInit sc
     AT.AdminCheckReadyCommand     -> runCheckReady sc
+    AT.AdminLookupCommand c       -> runLookup sc c
+    AT.AdminConnectorCommand c    -> runConnector sc c
+    AT.AdminMetaCommand c         -> runMeta sc c
 
 handleParseResult :: O.ParserResult a -> IO a
 handleParseResult (O.Success a) = return a
@@ -182,6 +207,62 @@ runResetStats :: Stats.StatsHolder -> IO Text
 runResetStats stats_holder = do
   Stats.resetStatsHolder stats_holder
   return $ plainResponse "OK"
+
+-------------------------------------------------------------------------------
+-- Admin Lookup Command
+
+runLookup :: ServerContext -> AT.LookupCommand -> IO Text
+runLookup ctx (AT.LookupCommand resType rId) = do
+  API.ServerNode{..} <- lookupResource' ctx (getResType resType) rId
+  let headers = ["Resource ID" :: Text, "Host", "Port"]
+      rows = [[rId, serverNodeHost, Text.pack .show $ serverNodePort]]
+      content = Aeson.object ["headers" .= headers, "rows" .= rows]
+  return $ tableResponse content
+
+getResType :: Text -> API.ResourceType
+getResType resType =
+  case resType of
+    "stream"       -> API.ResourceTypeResStream
+    "subscription" -> API.ResourceTypeResSubscription
+    "query"        -> API.ResourceTypeResQuery
+    "view"         -> API.ResourceTypeResView
+    "connector"    -> API.ResourceTypeResConnector
+    "shard"        -> API.ResourceTypeResShard
+    "shard-reader" -> API.ResourceTypeResShardReader
+    x              -> throw $ HE.InvalidResourceType (show x)
+-------------------------------------------------------------------------------
+-- Admin Meta Command
+
+runMeta :: ServerContext -> AT.MetaCommand -> IO Text
+runMeta ServerContext{..} (AT.MetaCmdList resType) = do
+  case resType of
+    "subscription" -> pure <$> tableResponse . renderSubscriptionWrapToTable  =<< M.listMeta @SubscriptionWrap metaHandle
+    "query-info" -> pure <$> plainResponse . renderQueryInfosToTable =<< M.listMeta @QueryInfo metaHandle
+    "view-info" -> pure <$> plainResponse . renderViewInfosToTable =<< M.listMeta @ViewInfo metaHandle
+    "qv-relation" -> pure <$> tableResponse . renderQVRelationToTable =<< M.listMeta @QVRelation metaHandle
+    _ -> return $ errorResponse "invalid resource type, try [subscription|query-info|view-info|qv-relateion]"
+runMeta ServerContext{..} (AT.MetaCmdGet resType rId) = do
+  case resType of
+    "subscription" -> pure <$> maybe (plainResponse "Not Found") (tableResponse . renderSubscriptionWrapToTable .L.singleton) =<< M.getMeta @SubscriptionWrap rId metaHandle
+    "query-info" -> pure <$> maybe (plainResponse "Not Found") (plainResponse . renderQueryInfosToTable . L.singleton) =<< M.getMeta @QueryInfo rId metaHandle
+    "query-status" -> pure <$> maybe (plainResponse "Not Found") (tableResponse . renderQueryStatusToTable . L.singleton) =<< M.getMeta @QueryStatus rId metaHandle
+    "view-info" -> pure <$> maybe (plainResponse "Not Found") (plainResponse . renderViewInfosToTable . L.singleton) =<< M.getMeta @ViewInfo rId metaHandle
+    "qv-relation" -> pure <$> maybe (plainResponse "Not Found") (tableResponse . renderQVRelationToTable . L.singleton) =<< M.getMeta @QVRelation rId metaHandle
+    _ -> return $ errorResponse "invalid resource type, try [subscription|query-info|query-status|view-info|qv-relateion]"
+runMeta ServerContext{serverOpts=ServerOpts{..}} AT.MetaCmdInfo = do
+  let headers = ["Meta Type" :: Text, "Connection Info"]
+      rows = case _metaStore of
+               ZkAddr addr   -> [["zookeeper", cBytesToText addr]]
+               RqAddr addr   -> [["rqlite", addr]]
+               FileAddr addr -> [["file", Text.pack addr]]
+      content = Aeson.object ["headers" .= headers, "rows" .= rows]
+  return $ tableResponse content
+runMeta sc (AT.MetaCmdTask taskCmd) = runMetaTask sc taskCmd
+
+runMetaTask :: ServerContext -> AT.MetaTaskCommand -> IO Text
+runMetaTask ServerContext{..} (AT.MetaTaskGet resType rId) = do
+  let metaId = mkAllocationKey (getResType resType) rId
+  pure <$> maybe (plainResponse "Not Found") (tableResponse . renderTaskAllocationsToTable . L.singleton) =<< M.getMeta @TaskAllocation metaId metaHandle
 
 -------------------------------------------------------------------------------
 -- Admin Stream Command
@@ -280,10 +361,99 @@ runQuery ServerContext{..} (AT.QueryCmdStatus qid) = do
     Just (tid,closed_m) -> do
       closed <- readTVarIO closed_m
       status <- threadStatus tid
-      let headers = ["id" :: Text, "thread_status", "consumer_closed"]
-          rows = [[qid, Text.pack (show status), Text.pack (show closed)]]
+      let headers = ["Query ID" :: Text, "Thread Status", "Consumer Status"]
+          rows = [[qid, Text.pack (show status), if closed then "Closed" else "Running"]]
           content = Aeson.object ["headers" .= headers, "rows" .= rows]
       return $ tableResponse content
+runQuery sc (AT.QueryCmdDescribe qid) = do
+  query <- HC.getQuery sc qid
+  case query of
+    Nothing -> return $ errorResponse $ "Query " <> Text.pack (show qid) <> " not found, or already dead"
+    Just API.Query{..} -> do
+      let headers = ["Query ID" :: Text, "Type", "Status", "Source ID", "Result ID", "CreatedTime", "Node", "SQL"]
+          rows =
+            [[ queryId
+             , Text.pack $ formatQueryType queryType
+             , Text.pack $ formatStatus queryStatus
+             , V.foldl' (\acc x -> if Text.null acc then x else acc <> "," <> x) Text.empty querySources
+             , queryResultName
+             , Text.pack . show $ queryCreatedTime
+             , Text.pack .show $ queryNodeId
+             , queryQueryText
+            ]]
+          content = Aeson.object ["headers" .= headers, "rows" .= rows]
+      return $ tableResponse content
+runQuery sc (AT.QueryCmdResume qid) = do
+  HC.resumeQuery sc qid
+  query <- HC.getQuery sc qid
+  case query of
+    Nothing -> return $ errorResponse $ "Query " <> Text.pack (show qid) <> " not found, or already dead"
+    Just API.Query{..} -> do
+      let headers = ["Query ID" :: Text, "Status", "Node"]
+          rows =
+            [[ queryId
+             , Text.pack $ formatStatus queryStatus
+             , Text.pack .show $ queryNodeId
+            ]]
+          content = Aeson.object ["headers" .= headers, "rows" .= rows]
+      return $ tableResponse content
+runQuery sc AT.QueryCmdList = do
+  let headers = ["Query ID" :: Text, "Type", "Status", "CreatedTime", "SQL"]
+  queries <- HC.listQueries sc
+  rows <- forM queries $ \API.Query{..} -> do
+    return [ queryId
+           , Text.pack $ formatQueryType queryType
+           , Text.pack $ formatStatus queryStatus
+           , Text.pack . show $ queryCreatedTime
+           , queryQueryText
+           ]
+  let content = Aeson.object ["headers" .= headers, "rows" .= rows]
+  return $ tableResponse content
+
+-------------------------------------------------------------------------------
+-- Admin Connector Command
+
+runConnector :: ServerContext -> AT.ConnectorCommand -> IO Text
+runConnector ServerContext{..} AT.ConnectorCmdList = do
+  connectors <- HC.listIOTasks scIOWorker
+  let headers = ["Connector Name" :: Text, "Type", "Target", "Status", "Created Time"]
+  rows <- forM connectors $ \API.Connector{..} -> do
+    return [ connectorName
+           , connectorType
+           , connectorTarget
+           , connectorStatus
+           , maybe "unknown" (Text.pack . show . timestampToMsTimestamp) connectorCreationTime
+           ]
+  let content = Aeson.object ["headers" .= headers, "rows" .= rows]
+  return $ tableResponse content
+runConnector ServerContext{..} (AT.ConnectorCmdRecover cId) = do
+  HC.recoverTask scIOWorker cId
+  API.Connector{..} <- HC.showIOTask_ scIOWorker cId
+  let headers = ["Connector Name" :: Text, "Type", "Target", "Status", "Config"]
+      rows = [[ connectorName
+              , connectorType
+              , connectorTarget
+              , connectorStatus
+              , connectorConfig
+             ]]
+  let content = Aeson.object ["headers" .= headers, "rows" .= rows]
+  return $ tableResponse content
+runConnector ServerContext{..} (AT.ConnectorCmdDescribe cId) = do
+  API.Connector{..} <- HC.showIOTask_ scIOWorker cId
+  let headers = ["Connector Name" :: Text, "Task ID", "Node", "Target", "Status", "Offsets", "Config", "Docker Image", "Docker Status"]
+      offsets = V.map (Aeson.encodeToLazyText . structToJsonObject) connectorOffsets
+      rows = [[ connectorName
+              , connectorTaskId
+              , connectorNode
+              , connectorTarget
+              , connectorStatus
+              , TL.toStrict $ V.foldl' (\acc x -> if TL.null acc then x else acc <> "," <> x) TL.empty offsets
+              , connectorConfig
+              , connectorImage
+              , connectorDockerStatus
+             ]]
+  let content = Aeson.object ["headers" .= headers, "rows" .= rows]
+  return $ tableResponse content
 
 -------------------------------------------------------------------------------
 -- Admin Status Command

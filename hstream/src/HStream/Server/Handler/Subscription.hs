@@ -29,8 +29,6 @@ module HStream.Server.Handler.Subscription
 where
 
 import           Control.Applicative              ((<|>))
-import           Control.Exception                (throwIO)
-import           Control.Monad
 import           Data.Bifunctor                   (first)
 import qualified Data.Map.Strict                  as Map
 import qualified Data.Text                        as T
@@ -40,21 +38,24 @@ import qualified HsGrpc.Server.Context            as G
 import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.Unsafe
 
-import qualified HStream.Exception                as HE
 import qualified HStream.Logger                   as Log
-import qualified HStream.MetaStore.Types          as M
-import           HStream.Server.Core.Common       (lookupResource')
 import qualified HStream.Server.Core.Subscription as Core
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
 import           HStream.Server.Types
-import           HStream.Server.Validation        (validateSubscription)
+import           HStream.Server.Validation
 import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils                    (ResourceType (ResSubscription),
                                                    returnResp,
                                                    validateNameAndThrow)
 
 -------------------------------------------------------------------------------
+
+-- NOTE: All validations should not be implemented in the core module
+-- (HStream.Server.Handler.Core). Since some internal subscription names
+-- (e.g. start with HStream.Server.HStore.hstoreSubscriptionPrefix) are "invalid"
+-- (can not pass validateNameAndThrow). And other internal modules will call core
+-- directly.
 
 createSubscriptionHandler
   :: ServerContext
@@ -80,20 +81,18 @@ getSubscriptionHandler
 getSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata req) = defaultExceptionHandle $ do
   Log.debug $ "Receive getSubscription request: " <> Log.buildString' req
   let subId = getSubscriptionRequestId req
-  validateNameAndThrow ResSubscription subId
-  ServerNode{..} <- lookupResource' ctx ResSubscription subId
-  unless (serverNodeId == serverID) $
-    throwIO $ HE.SubscriptionOnDifferentNode "Subscription is bound to a different node"
+  --validateNameAndThrow ResSubscription subId
+  validateResLookup ctx ResSubscription subId "Subscription is bound to a different node"
   Core.getSubscription ctx req >>= returnResp
 
 handleGetSubscription :: ServerContext -> G.UnaryHandler GetSubscriptionRequest GetSubscriptionResponse
 handleGetSubscription ctx@ServerContext{..} _ req = catchDefaultEx $ do
   Log.debug $ "Receive getSubscription request: " <> Log.buildString' req
   let subId = getSubscriptionRequestId req
-  -- validateNameAndThrow ResSubscription subId
-  ServerNode{..} <- lookupResource' ctx ResSubscription subId
-  unless (serverNodeId == serverID) $
-    throwIO $ HE.SubscriptionOnDifferentNode "Subscription is bound to a different node"
+  -- FIXME: Some internal Subscription names have a
+  -- HStream.Server.HStore.hstoreSubscriptionPrefix, which can not pass validateNameAndThrow
+  --validateNameAndThrow ResSubscription subId
+  validateResLookup ctx ResSubscription subId "Subscription is bound to a different node"
   Core.getSubscription ctx req
 
 -------------------------------------------------------------------------------
@@ -101,19 +100,17 @@ handleGetSubscription ctx@ServerContext{..} _ req = catchDefaultEx $ do
 listConsumersHandler :: ServerContext -> ServerRequest 'Normal ListConsumersRequest ListConsumersResponse -> IO (ServerResponse 'Normal ListConsumersResponse)
 listConsumersHandler ctx@ServerContext{..} (ServerNormalRequest _metadata req) = defaultExceptionHandle $ do
   let subId = listConsumersRequestSubscriptionId req
-  validateNameAndThrow ResSubscription subId
-  ServerNode{..} <- lookupResource' ctx ResSubscription subId
-  unless (serverNodeId == serverID) $
-    throwIO $ HE.SubscriptionOnDifferentNode "Subscription is bound to a different node"
+  --validateNameAndThrow ResSubscription subId
+  validateResLookup ctx ResSubscription subId "Subscription is bound to a different node"
   Core.listConsumers ctx req >>= returnResp
 
 handleListConsumers :: ServerContext -> G.UnaryHandler ListConsumersRequest ListConsumersResponse
 handleListConsumers ctx@ServerContext{..} _ req = catchDefaultEx $ do
   let subId = listConsumersRequestSubscriptionId req
-  -- validateNameAndThrow ResSubscription subId
-  ServerNode{..} <- lookupResource' ctx ResSubscription subId
-  unless (serverNodeId == serverID) $
-    throwIO $ HE.SubscriptionOnDifferentNode "Subscription is bound to a different node"
+  -- FIXME: Some internal Subscription names have a
+  -- HStream.Server.HStore.hstoreSubscriptionPrefix, which can not pass validateNameAndThrow
+  --validateNameAndThrow ResSubscription subId
+  validateResLookup ctx ResSubscription subId "Subscription is bound to a different node"
   Core.listConsumers ctx req
 
 --------------------------------------------------------------------------------
@@ -126,9 +123,7 @@ deleteSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata r
   Log.debug $ "Receive deleteSubscription request: " <> Log.buildString' req
   let subId = deleteSubscriptionRequestSubscriptionId req
   validateNameAndThrow ResSubscription subId
-  ServerNode{..} <- lookupResource' ctx ResSubscription subId
-  unless (serverNodeId == serverID) $
-    throwIO $ HE.SubscriptionOnDifferentNode "Subscription is bound to a different node"
+  validateResLookup ctx ResSubscription subId "Subscription is bound to a different node"
   Core.deleteSubscription ctx req
   returnResp Empty
 
@@ -137,9 +132,7 @@ handleDeleteSubscription ctx@ServerContext{..} _ req = catchDefaultEx $ do
   Log.debug $ "Receive deleteSubscription request: " <> Log.buildString' req
   let subId = deleteSubscriptionRequestSubscriptionId req
   validateNameAndThrow ResSubscription subId
-  ServerNode{..} <- lookupResource' ctx ResSubscription subId
-  unless (serverNodeId == serverID) $
-    throwIO $ HE.SubscriptionOnDifferentNode "Subscription is bound to a different node"
+  validateResLookup ctx ResSubscription subId "Subscription is bound to a different node"
   Core.deleteSubscription ctx req
   pure Empty
 

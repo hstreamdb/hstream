@@ -1,5 +1,3 @@
-{-# OPTIONS_GHC -Wno-orphans #-}
-
 module HStream.Admin.Server.Types where
 
 import           Data.Aeson                (FromJSON (..), ToJSON (..))
@@ -9,11 +7,11 @@ import           GHC.Generics              (Generic)
 import           Network.Socket            (PortNumber)
 import           Options.Applicative       ((<|>))
 import qualified Options.Applicative       as O
-import           Proto3.Suite              (Enumerated (Enumerated))
 import qualified Text.Read                 as Read
 import qualified Z.Data.CBytes             as CB
 import           Z.Data.CBytes             (CBytes)
 
+import           HStream.Common.CliParsers (streamParser, subscriptionParser)
 import qualified HStream.Logger            as Log
 import qualified HStream.Server.HStreamApi as API
 import qualified HStream.Utils             as U
@@ -92,10 +90,13 @@ logLevelParser =
 data AdminCommand
   = AdminStatsCommand StatsCommand
   | AdminResetStatsCommand
+  | AdminLookupCommand LookupCommand
   | AdminStreamCommand StreamCommand
   | AdminSubscriptionCommand SubscriptionCommand
   | AdminViewCommand ViewCommand
   | AdminQueryCommand QueryCommand
+  | AdminMetaCommand MetaCommand
+  | AdminConnectorCommand ConnectorCommand
   | AdminStatusCommand
   | AdminInitCommand
   | AdminCheckReadyCommand
@@ -108,6 +109,8 @@ adminCommandParser = O.hsubparser
                                          <> "stream(or other) for only one specific server"))
  <> O.command "reset-stats" (O.info (pure AdminResetStatsCommand)
                                     (O.progDesc "Reset all counters to their initial values."))
+ <> O.command "lookup" (O.info (AdminLookupCommand <$> lookupCmdParser)
+                               (O.progDesc "Lookup command"))
  <> O.command "stream" (O.info (AdminStreamCommand <$> streamCmdParser)
                                (O.progDesc "Stream command"))
  <> O.command "sub"    (O.info (AdminSubscriptionCommand <$> subscriptionCmdParser)
@@ -116,15 +119,27 @@ adminCommandParser = O.hsubparser
                                (O.progDesc "View command"))
  <> O.command "query"  (O.info (AdminQueryCommand <$> queryCmdParser)
                                (O.progDesc "Query command"))
+ <> O.command "meta"   (O.info (AdminMetaCommand <$> metaCmdParser)
+                               (O.progDesc "Meta command"))
  <> O.command "status" (O.info (pure AdminStatusCommand)
                                (O.progDesc "Get the status of the HServer cluster"))
  <> O.command "init"   (O.info (pure AdminInitCommand)
                                (O.progDesc "Init an HServer cluster"))
  <> O.command "ready"  (O.info (pure AdminCheckReadyCommand)
                                (O.progDesc "Check if an HServer cluster is ready"))
+ <> O.command "connector" (O.info (AdminConnectorCommand <$> connectorCmdParser)
+                                  (O.progDesc "Connector command"))
   )
 
 -------------------------------------------------------------------------------
+
+data LookupCommand = LookupCommand Text Text deriving (Show)
+
+lookupCmdParser :: O.Parser LookupCommand
+lookupCmdParser = LookupCommand
+  <$> O.strArgument ( O.metavar "RESOURCE_TYPE"
+                   <> O.help "The type of resource, include: [stream|subscription|query|view|connector|shard|shard-reader]")
+  <*> O.strArgument ( O.metavar "RESOURCE_ID" <> O.help "The id of resource")
 
 data StreamCommand
   = StreamCmdList
@@ -141,41 +156,13 @@ streamCmdParser = O.hsubparser
                                                                       <> O.help "The name of the stream"))
                                (O.progDesc "Get the details of a stream"))
  <> O.command "delete" (O.info (StreamCmdDelete <$> O.strArgument ( O.metavar "STREAM_NAME"
-                                                               <> O.help "The name of the stream to delete")
+                                                                 <> O.help "The name of the stream to delete")
                                                 <*> O.switch ( O.long "force"
                                                             <> O.short 'f'
                                                             <> O.help "Whether to enable force deletion" ))
                                (O.progDesc "Delete a stream")
                         )
   )
-
-streamParser :: O.Parser API.Stream
-streamParser = API.Stream
-  <$> O.strArgument (O.metavar "STREAM_NAME"
-                 <> O.help "The name of the stream"
-                  )
-  <*> O.option O.auto ( O.long "replication-factor"
-                     <> O.short 'r'
-                     <> O.metavar "INT"
-                     <> O.showDefault
-                     <> O.value 1
-                     <> O.help "The replication factor for the stream"
-                      )
-  <*> O.option O.auto ( O.long "backlog-duration"
-                     <> O.short 'b'
-                     <> O.metavar "INT"
-                     <> O.showDefault
-                     <> O.value 0
-                     <> O.help "The backlog duration of records in stream in seconds"
-                      )
-  <*> O.option O.auto ( O.long "shards"
-                     <> O.short 's'
-                     <> O.metavar "INT"
-                     <> O.showDefault
-                     <> O.value 1
-                     <> O.help "The number of shards the stream should have"
-                      )
-  <*> pure Nothing
 
 -------------------------------------------------------------------------------
 
@@ -209,32 +196,6 @@ subscriptionCmdParser = O.hsubparser
                           )
   )
 
-instance Read API.SpecialOffset where
-  readPrec = do
-    i <- Read.lexP
-    case i of
-        Read.Ident "earliest" -> return API.SpecialOffsetEARLIEST
-        Read.Ident "latest"  -> return API.SpecialOffsetLATEST
-        x -> errorWithoutStackTrace $ "cannot parse value: " <> show x
-
-subscriptionParser :: O.Parser API.Subscription
-subscriptionParser = API.Subscription
-  <$> O.strArgument ( O.help "Subscription ID" <> O.metavar "SUB_ID" <> O.help "The ID of the subscription")
-  <*> O.strOption ( O.long "stream" <> O.metavar "STREAM_NAME"
-                 <> O.help "The stream associated with the subscription" )
-  <*> O.option O.auto ( O.long "ack-timeout" <> O.metavar "INT" <> O.value 60
-                     <> O.help "Timeout for acknowledgements in seconds")
-  <*> O.option O.auto ( O.long "max-unacked-records" <> O.metavar "INT"
-                     <> O.value 10000
-                     <> O.help "Maximum number of unacked records allowed per subscription")
-  <*> (Enumerated . Right <$> O.option O.auto ( O.long "offset"
-                                     <> O.metavar "[earliest|latest]"
-                                     <> O.value (API.SpecialOffsetLATEST)
-                                     <> O.help "The offset of the subscription to start from"
-                                      )
-    )
-  <*> pure Nothing
-
 -------------------------------------------------------------------------------
 
 data ViewCommand
@@ -242,7 +203,7 @@ data ViewCommand
   deriving (Show)
 
 viewCmdParser :: O.Parser ViewCommand
-viewCmdParser = O.subparser
+viewCmdParser = O.hsubparser
   ( O.command "list" (O.info (pure ViewCmdList) (O.progDesc "Get all views"))
   )
 
@@ -250,13 +211,99 @@ viewCmdParser = O.subparser
 
 data QueryCommand
   = QueryCmdStatus Text
+  | QueryCmdDescribe Text
+  | QueryCmdResume Text
+  | QueryCmdList
   deriving Show
 
 queryCmdParser :: O.Parser QueryCommand
-queryCmdParser = O.subparser
-  ( O.command "status" (O.info (QueryCmdStatus <$> O.strArgument ( O.metavar "QUERY_ID"
-                                                                <> O.help "The ID of the query"))
+queryCmdParser = O.hsubparser
+  ( O.command "status" (O.info (QueryCmdStatus <$> O.strOption ( O.long "id"
+                                                              <> O.short 'i'
+                                                              <> O.metavar "QUERY_ID"
+                                                              <> O.help "The ID of the query"))
                                (O.progDesc "Get the status of a query"))
+  <> O.command "describe" (O.info (QueryCmdDescribe <$> O.strOption ( O.long "id"
+                                                                   <> O.short 'i'
+                                                                   <> O.metavar "QUERY_ID"
+                                                                   <> O.help "The ID of the query"))
+                                  (O.progDesc "Get the metadata of a query"))
+  <> O.command "resume" (O.info (QueryCmdResume <$> O.strOption ( O.long "id"
+                                                               <> O.short 'i'
+                                                               <> O.metavar "QUERY_ID"
+                                                               <> O.help "The ID of the query"))
+                                (O.progDesc "Resume specific query"))
+  <> O.command "list" (O.info (pure QueryCmdList) (O.progDesc "List all queries"))
+  )
+
+-------------------------------------------------------------------------------
+
+data ConnectorCommand
+  = ConnectorCmdList
+  | ConnectorCmdRecover Text
+  | ConnectorCmdDescribe Text
+  deriving (Show)
+
+connectorCmdParser :: O.Parser ConnectorCommand
+connectorCmdParser = O.hsubparser
+  ( O.command "list" (O.info (pure ConnectorCmdList) (O.progDesc "Get all connectors"))
+ <> O.command "recover" (O.info (ConnectorCmdRecover <$> O.strOption ( O.long "id"
+                                                                    <> O.short 'i'
+                                                                    <> O.metavar "CONNECTOR_ID"
+                                                                    <> O.help "The ID of the connector"))
+                                 (O.progDesc "Recover specific connector"))
+ <> O.command "describe" (O.info (ConnectorCmdDescribe <$> O.strOption ( O.long "id"
+                                                                      <> O.short 'i'
+                                                                      <> O.metavar "CONNECTOR_ID"
+                                                                      <> O.help "The ID of the connector"))
+                                 (O.progDesc "Get the details of specific connector"))
+  )
+
+-------------------------------------------------------------------------------
+
+data MetaCommand
+  = MetaCmdList Text
+  | MetaCmdGet Text Text
+  | MetaCmdTask MetaTaskCommand
+  | MetaCmdInfo
+  deriving (Show)
+
+metaCmdParser :: O.Parser MetaCommand
+metaCmdParser = O.hsubparser
+  ( O.command "list" (O.info (MetaCmdList <$> O.strOption ( O.long "resource"
+                                                         <> O.short 'r'
+                                                         <> O.metavar "RESOURCE_CATEGORY"
+                                                         <> O.help ("The category of the resource, currently support: "
+                                                                 <> "[subscription|query-info|view-info|qv-relation]")))
+                             (O.progDesc "List all metadata of specific resource"))
+ <> O.command "get" (O.info (MetaCmdGet <$> O.strOption ( O.long "resource"
+                                                       <> O.short 'r'
+                                                       <> O.metavar "RESOURCE_CATEGORY"
+                                                       <> O.help ("The category of the resource, currently support: "
+                                                                 <> "[subscription|query-info|query-status|view-info|qv-relation]"))
+                                        <*> O.strOption ( O.long "id"
+                                                       <> O.short 'i'
+                                                       <> O.metavar "RESOURCE_ID"
+                                                       <> O.help "The Id of the resource"))
+                            (O.progDesc "Get metadata of specific resource"))
+ <> O.command "info" (O.info (pure MetaCmdInfo) (O.progDesc "Get meta info"))
+  ) O.<|> MetaCmdTask <$> metaTaskCmdParser
+
+data MetaTaskCommand
+  = MetaTaskGet Text Text
+  deriving (Show)
+
+metaTaskCmdParser :: O.Parser MetaTaskCommand
+metaTaskCmdParser = O.hsubparser
+  ( O.command "get-task" (O.info (MetaTaskGet <$> O.strOption ( O.long "resource"
+                                                             <> O.short 'r'
+                                                             <> O.metavar "RESOURCE_CATEGORY"
+                                                             <> O.help "The category of the resource")
+                                              <*> O.strOption ( O.long "id"
+                                                             <> O.short 'i'
+                                                             <> O.metavar "RESOURCE_ID"
+                                                             <> O.help "The Id of the resource"))
+                                 (O.progDesc "Get task allocation metadata of specific resource"))
   )
 
 -------------------------------------------------------------------------------

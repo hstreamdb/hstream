@@ -1,5 +1,3 @@
-{-# OPTIONS_GHC -Wno-orphans #-}
-
 module HStream.Client.Types where
 
 import           Control.Concurrent            (MVar)
@@ -18,12 +16,19 @@ import           Network.URI
 import qualified Options.Applicative           as O
 import           Text.Read                     (readMaybe)
 
-import           HStream.Admin.Server.Types    (subscriptionParser)
+import           HStream.Common.CliParsers     (streamParser,
+                                                subscriptionParser)
 import qualified HStream.Server.HStreamApi     as API
 import           HStream.Server.Types          (ServerID)
 import           HStream.Utils                 (ResourceType, SocketAddr (..),
                                                 mkGRPCClientConfWithSSL)
 import           Proto3.Suite                  (Enumerated (Enumerated))
+
+data CliCmd = CliCmd HStreamCommand | GetVersionCmd
+
+cliCmdParser :: O.Parser CliCmd
+cliCmdParser = CliCmd <$> commandParser
+  O.<|> O.flag' GetVersionCmd ( O.long "version" <> O.short 'v' <> O.help "Get client version")
 
 data HStreamCommand = HStreamCommand
   { cliConnOpts :: CliConnOpts
@@ -43,14 +48,14 @@ commandParser :: O.Parser HStreamCommand
 commandParser = HStreamCommand
   <$> connOptsParser
   <*> O.hsubparser
-    (  O.command "sql"   (O.info (HStreamSql <$> hstreamSqlOptsParser) (O.progDesc "Start HStream SQL Shell"))
-    <> O.command "node" (O.info (HStreamNodes <$> hstreamNodesParser) (O.progDesc "Manage HStream Server Cluster"))
-    <> O.command "init"  (O.info (HStreamInit <$> hstreamInitOptsParser ) (O.progDesc "Init HStream Server Cluster"))
-    <> O.command "stream"        (O.info (HStreamStream <$> streamCmdParser ) (O.progDesc "Manage Streams in HStreamDB"))
-    <> O.command "subscription"  (O.info (HStreamSubscription <$> subscriptionCmdParser) (O.progDesc "Manage Subscriptions in HStreamDB (`sub` is an alias for this command"))
-    -- Also see: https://github.com/pcapriotti/optparse-applicative#command-groups
-    <> O.command "sub"  (O.info (HStreamSubscription <$> subscriptionCmdParser) (O.progDesc "Alias for the command `subscription`"))
-    )
+      (  O.command "sql"   (O.info (HStreamSql <$> hstreamSqlOptsParser) (O.progDesc "Start HStream SQL Shell"))
+      <> O.command "node" (O.info (HStreamNodes <$> hstreamNodesParser) (O.progDesc "Manage HStream Server Cluster"))
+      <> O.command "init"  (O.info (HStreamInit <$> hstreamInitOptsParser ) (O.progDesc "Init HStream Server Cluster"))
+      <> O.command "stream"        (O.info (HStreamStream <$> streamCmdParser ) (O.progDesc "Manage Streams in HStreamDB"))
+      <> O.command "subscription"  (O.info (HStreamSubscription <$> subscriptionCmdParser) (O.progDesc "Manage Subscriptions in HStreamDB (`sub` is an alias for this command)"))
+      -- Also see: https://github.com/pcapriotti/optparse-applicative#command-groups
+      <> O.command "sub"  (O.info (HStreamSubscription <$> subscriptionCmdParser) (O.progDesc "Alias for the command `subscription`"))
+      )
 
 data StreamCommand
   = StreamCmdList
@@ -82,34 +87,6 @@ streamCmdParser = O.hsubparser
  <> O.command "read-shard" (O.info (StreamCmdReadShard <$> readShardRequestParser)
                              (O.progDesc "Read records from specific shard"))
   )
-
-streamParser :: O.Parser API.Stream
-streamParser = API.Stream
-  <$> O.strArgument (O.metavar "STREAM_NAME"
-                 <> O.help "The name of the stream"
-                  )
-  <*> O.option O.auto ( O.long "replication-factor"
-                     <> O.short 'r'
-                     <> O.metavar "INT"
-                     <> O.showDefault
-                     <> O.value 1
-                     <> O.help "The replication factor for the stream"
-                      )
-  <*> O.option O.auto ( O.long "backlog-duration"
-                     <> O.short 'b'
-                     <> O.metavar "INT"
-                     <> O.showDefault
-                     <> O.value 0
-                     <> O.help "The backlog duration of records in stream in seconds"
-                      )
-  <*> O.option O.auto ( O.long "shards"
-                     <> O.short 's'
-                     <> O.metavar "INT"
-                     <> O.showDefault
-                     <> O.value 1
-                     <> O.help "The number of shards the stream should have"
-                      )
-  <*> pure Nothing
 
 data ReadShardArgs = ReadShardArgs
   { shardIdArgs     :: Word64

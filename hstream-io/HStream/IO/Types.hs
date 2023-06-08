@@ -31,6 +31,7 @@ import qualified HStream.Server.HStreamApi   as API
 import qualified HStream.Stats               as Stats
 import qualified HStream.ThirdParty.Protobuf as Grpc
 import qualified HStream.ThirdParty.Protobuf as PB
+import           Proto3.Suite                (def)
 
 data IOTaskType = SOURCE | SINK
   deriving (Show, Eq)
@@ -153,14 +154,13 @@ instance HasPath TaskKvMeta FHandle where
 
 convertTaskMeta :: TaskMeta -> API.Connector
 convertTaskMeta TaskMeta {..} =
-  API.Connector
-    (taskName taskInfoMeta)
-    (ioTaskTypeToText . taskType $ taskInfoMeta)
-    (taskTarget taskInfoMeta)
-    (Just . taskCreatedTime $ taskInfoMeta)
-    (ioTaskStatusToText taskStateMeta)
-    (TL.toStrict . J.encodeToLazyText . J.lookup "connector" $ connectorConfig taskInfoMeta)
-    Vector.empty
+  def { API.connectorName = taskName taskInfoMeta
+      , API.connectorType = ioTaskTypeToText . taskType $ taskInfoMeta
+      , API.connectorTarget = taskTarget taskInfoMeta
+      , API.connectorCreationTime = Just . taskCreatedTime $ taskInfoMeta
+      , API.connectorStatus = ioTaskStatusToText taskStateMeta
+      , API.connectorConfig = TL.toStrict . J.encodeToLazyText . J.lookup "connector" $ connectorConfig taskInfoMeta
+      }
 
 ioTaskStatusToText :: IOTaskStatus -> T.Text
 ioTaskStatusToText = T.pack . show

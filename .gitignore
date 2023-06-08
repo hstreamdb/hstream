@@ -45,3 +45,6 @@ deploy/chart/hstream/charts/*
 
 ## v1/v2 sql switching
 hstream-sql/etc/SQL.cf
+
+## hstream version
+common/hstream/HStream/Version.hs
