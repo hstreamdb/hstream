@@ -250,9 +250,9 @@ type instance RefinedType PNDouble = Double
 instance Refine PNDouble where
   refine = extractPNDouble
 
-type instance RefinedType SString = BS.ByteString
-instance Refine SString where
-  refine (SString t) = encodeUtf8 . Text.init . Text.tail $ t
+type instance RefinedType SingleQuotedString = BS.ByteString
+instance Refine SingleQuotedString where
+  refine (SingleQuotedString t) = encodeUtf8 . Text.init . Text.tail $ t
 
 type instance RefinedType ColumnIdent = Text
 instance Refine ColumnIdent where
@@ -278,67 +278,20 @@ instance Aeson.ToJSON BS.ByteString where
 
 ------- date & time -------
 type RTimeStr = Time.TimeOfDay
-type instance RefinedType TimeStr = RTimeStr
-instance Refine TimeStr where
-  refine (TimeStrWithoutMicroSec pos h m s) =
-    case Time.makeTimeOfDayValid (fromInteger h) (fromInteger m) (fromInteger s) of
-      Nothing -> throwSQLException RefineException pos "invalid time"
-      Just t  -> t
-
-  refine (TimeStrWithMicroSec pos h m s ms) =
-    case Time.makeTimeOfDayValid (fromInteger h) (fromInteger m) (fromInteger s + (fromInteger ms) * 0.001) of
-      Nothing -> throwSQLException RefineException pos "invalid time"
-      Just t  -> t
 
 type RDateStr = Time.Day
-type instance RefinedType DateStr = RDateStr
-instance Refine DateStr where
-  refine (DDateStr pos y m d) =
-    case Time.fromGregorianValid y (fromInteger m) (fromInteger d) of
-      Nothing -> throwSQLException RefineException pos "invalid date"
-      Just d  -> d
 
 type RDateTimeStr = Time.LocalTime
-type instance RefinedType DateTimeStr = RDateTimeStr
-instance Refine DateTimeStr where
-  refine (DDateTimeStr _ dateStr timeStr) =
-    let timeOfDay = refine timeStr
-        day       = refine dateStr
-     in Time.LocalTime day timeOfDay
 
 type RTimezone = Time.TimeZone
-type instance RefinedType Timezone = RTimezone
-instance Refine Timezone where
-  refine (TimezoneZ _) = Time.minutesToTimeZone 0
-  refine (TimezonePositive _ h m) = Time.minutesToTimeZone (fromInteger $ h * 60 + m)
-  refine (TimezoneNegative _ h m) = Time.minutesToTimeZone (fromInteger $ - (h * 60 + m))
 
 type RTimestampStr = Time.ZonedTime
-type instance RefinedType TimestampStr = RTimestampStr
-instance Refine TimestampStr where
-  refine (DTimestampStr pos dateStr timeStr zone) =
-    let localTime = refine (DDateTimeStr pos dateStr timeStr)
-        timeZone  = refine zone
-     in Time.ZonedTime localTime timeZone
 
 type RDate = Time.Day
-type instance RefinedType Date = RDate
-instance Refine Date where
-  refine (DDate _ dateStr) = refine dateStr
 
 type RTime = Time.TimeOfDay
-type instance RefinedType Time = RTime
-instance Refine Time where
-  refine (DTime _ timeStr) = refine timeStr
 
 type RTimestamp = Time.ZonedTime
-type instance RefinedType Timestamp = RTimestamp
-instance Refine Timestamp where
-  refine (TimestampWithoutZone _ dateTimeStr) =
-    let localTime = refine dateTimeStr
-        timeZone  = Time.utc
-     in Time.ZonedTime localTime timeZone
-  refine (TimestampWithZone _ tsStr) = refine tsStr
 
 instance Eq Time.ZonedTime where
   z1 == z2 = Time.zonedTimeToUTC z1 == Time.zonedTimeToUTC z2
@@ -365,7 +318,7 @@ fromUnitToDiffTime (m, s) x
 type RInterval = Time.CalendarDiffTime
 type instance RefinedType Interval = RInterval
 instance Refine Interval where
-  refine (Interval _ (SString n) iUnit) = fromUnitToDiffTime (refine iUnit) (read $ Text.unpack $ Text.dropAround (== '\'') n)
+  refine (DInterval _ (SingleQuotedString n) iUnit) = fromUnitToDiffTime (refine iUnit) (read $ Text.unpack $ Text.dropAround (== '\'') n)
 
 instance Ord Time.CalendarDiffTime where
   d1 `compare` d2 =
@@ -521,8 +474,9 @@ type instance RefinedType ValueExpr = RValueExpr
 instance Refine ValueExpr where
   refine expr = case expr of
     -- 1. Operations
-    (ExprCast1 _ e typ) -> RExprCast (trimSpacesPrint expr) (refine e) (refine typ)
-    (ExprCast2 _ e typ) -> RExprCast (trimSpacesPrint expr) (refine e) (refine typ)
+    (ExprCast _ exprCast) -> case exprCast of
+      ExprCast1 _ e typ -> RExprCast (trimSpacesPrint expr) (refine e) (refine typ)
+      ExprCast2 _ e typ -> RExprCast (trimSpacesPrint expr) (refine e) (refine typ)
     (ExprAnd _ e1 e2)   -> RExprBinOp (trimSpacesPrint expr) OpAnd (refine e1) (refine e2)
     (ExprOr  _ e1 e2)   -> RExprBinOp (trimSpacesPrint expr) OpOr  (refine e1) (refine e2)
     (ExprEQ _ e1 e2) -> RExprBinOp (trimSpacesPrint expr) OpEQ (refine e1) (refine e2)
@@ -541,9 +495,6 @@ instance Refine ValueExpr where
     (ExprNum _ n)             -> RExprConst (trimSpacesPrint expr) (ConstantFloat $ refine n)
     (ExprString _ s)          -> RExprConst (trimSpacesPrint expr) (ConstantText (Text.pack s))
     (ExprBool _ b)            -> RExprConst (trimSpacesPrint expr) (ConstantBoolean $ refine b)
-    (ExprDate _ date)         -> RExprConst (trimSpacesPrint expr) (ConstantDate $ refine date)
-    (ExprTime _ time)         -> RExprConst (trimSpacesPrint expr) (ConstantTime $ refine time)
-    (ExprTimestamp _ ts)      -> RExprConst (trimSpacesPrint expr) (ConstantTimestamp $ refine ts)
     (ExprInterval _ interval) -> RExprConst (trimSpacesPrint expr) (ConstantInterval $ refine interval)
 
     -- 3. Arrays
@@ -919,21 +870,22 @@ instance Refine Create where
   refine (CreateSinkConnectorIf _ s t options) = RCreateConnector "SINK" (refine s) (refine t) True (refine options)
   refine (CreateView _ s select) = RCreateView (refine s) (refine select)
 
+data RInsertRawOrJsonPayloadType = RInsertRawOrJsonPayloadTypeRaw | RInsertRawOrJsonPayloadTypeJson
+  deriving (Show, Generic, Aeson.ToJSON, Aeson.FromJSON)
+
 ---- INSERT
 data RInsert = RInsert Text [(FieldName,Constant)]
-             | RInsertBinary Text BS.ByteString
-             | RInsertJSON   Text BS.ByteString
+             | RInsertRawOrJson Text BS.ByteString RInsertRawOrJsonPayloadType
              deriving (Show, Generic, Aeson.ToJSON, Aeson.FromJSON)
 type instance RefinedType Insert = RInsert
 instance Refine Insert where
   refine (DInsert _ s fields exprs) = RInsert (refine s) $
     zip ((\colIdent -> refine colIdent) <$> fields) (refineConst <$> exprs)
     where
-      refineConst expr =
-        let (RExprConst _ constant) = refine expr -- Ensured by Validate
-         in constant
-  refine (InsertBinary _ s bin) = RInsertBinary (refine s) (BSC.pack bin)
-  refine (InsertJson _ s ss) = RInsertJSON (refine s) (refine ss)
+      refineConst expr = case refine expr of
+        RExprConst _ constant -> constant
+        _ -> error "INTERNAL ERROR: constant expr in RInsert is ensured by validate"
+  refine (InsertRawOrJson _ streamName valExprCast) = undefined
 ---- SHOW
 data RShow
   = RShow RShowOption

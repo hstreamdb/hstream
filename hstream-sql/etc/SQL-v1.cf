@@ -12,14 +12,14 @@ PDouble.  PNDouble ::= "+" Double ;
 IPDouble. PNDouble ::=     Double ;
 NDouble.  PNDouble ::= "-" Double ;
 
-token SString '\'' char+ '\'' ;
-token QuotedRaw '`' (char - ["`"])+ '`' ;
+token SingleQuotedString '\'' (char - ["'"])*  '\'' ;
+token DoubleQuotedString '"'  (char - ["\""])* '"'  ;
 
-ColumnIdentNormal. ColumnIdent ::= Ident     ;
-ColumnIdentRaw.    ColumnIdent ::= QuotedRaw ;
+ColumnIdentNormal. ColumnIdent ::= Ident              ;
+ColumnIdentRaw.    ColumnIdent ::= DoubleQuotedString ;
 
-HIdentNormal. HIdent ::= Ident     ;
-HIdentRaw.    HIdent ::= QuotedRaw ;
+HIdentNormal. HIdent ::= Ident              ;
+HIdentRaw.    HIdent ::= DoubleQuotedString ;
 --------------------------------------------------------------------------------
 
 comment "//" ;
@@ -72,8 +72,7 @@ ResumeQuery.    Resume  ::= "RESUME" "QUERY" HIdent ;
 DInsert. Insert ::= "INSERT" "INTO" HIdent "(" [ColumnIdent] ")" "VALUES" "(" [ValueExpr] ")" ;
 separator ColumnIdent "," ;
 separator ValueExpr "," ;
-InsertBinary. Insert ::= "INSERT" "INTO" HIdent "VALUES" String ;
-InsertJson.   Insert ::= "INSERT" "INTO" HIdent "VALUES" SString ;
+InsertRawOrJson. Insert ::= "INSERT" "INTO" HIdent "VALUES" ValueExprCast ;
 
 ---- Show Query
 DShow. ShowQ ::= "SHOW" ShowOption ;
@@ -179,6 +178,12 @@ TypeArray.    DataType ::= DataType "[]" ;
 --------------------------------------------------------------------------------
 
 ---- Value Expression
+-- Type Casting
+ExprCast1. ValueExprCast ::= ValueExpr1 "::" DataType ;
+ExprCast2. ValueExprCast ::= "CAST" "(" ValueExpr1 "AS" DataType ")" ;
+ExprCast3. ValueExprCast ::= "TIMESTAMP" SingleQuotedString ;
+ExprCast.  ValueExpr     ::= ValueExprCast ;
+
 -- Boolean Expr
 ExprOr.  ValueExpr  ::= ValueExpr  "OR" ValueExpr1 ;
 ExprAnd. ValueExpr1 ::= ValueExpr1 "AND" ValueExpr2 ;
@@ -206,10 +211,6 @@ ArrayAccessRhsFromTo. ArrayAccessRhs ::= "[" Integer ":" Integer "]" ;
 
 ExprAccessArray. ValueExpr6 ::= ValueExpr7 ArrayAccessRhs ;
 
--- Type Casting
-ExprCast1. ValueExpr7 ::= ValueExpr8 "::" DataType ;
-ExprCast2. ValueExpr7 ::= "CAST" "(" ValueExpr "AS" DataType ")" ;
-
 -- Null Expr.
 ExprNull. ValueExpr8 ::= "NULL" ;
 
@@ -226,27 +227,6 @@ BoolFalse. Boolean ::= "FALSE" ;
 ExprBool. ValueExpr8 ::= Boolean ;
 
 -- Date, Time and Interval
-TimeStrWithoutMicroSec. TimeStr ::= Integer ":" Integer ":" Integer ;
-TimeStrWithMicroSec.    TimeStr ::= Integer ":" Integer ":" Integer "." Integer ;
-
-DDateStr. DateStr ::= Integer "-" Integer "-" Integer ;
-DDateTimeStr. DateTimeStr ::= DateStr TimeStr ;
-
-TimezoneZ.        Timezone ::= "Z" ;
-TimezonePositive. Timezone ::= "+" Integer ":" Integer ;
-TimezoneNegative. Timezone ::= "-" Integer ":" Integer ;
-
-DTimestampStr. TimestampStr ::= DateStr "T" TimeStr Timezone ;
-
-DDate. Date ::= "DATE" DateStr ;
-DTime. Time ::= "TIME" TimeStr ;
-TimestampWithoutZone. Timestamp ::= "TIMESTAMP" DateTimeStr ;
-TimestampWithZone.    Timestamp ::= "TIMESTAMP" TimestampStr ;
-
-ExprDate. ValueExpr8 ::= Date ;
-ExprTime. ValueExpr8 ::= Time ;
-ExprTimestamp. ValueExpr8 ::= Timestamp ;
-
 IntervalSecond. IntervalUnit ::= "SECOND" ;
 IntervalMinute. IntervalUnit ::= "MINUTE" ;
 IntervalHour.   IntervalUnit ::= "HOUR"   ;
@@ -254,8 +234,11 @@ IntervalDay.    IntervalUnit ::= "DAY"    ;
 IntervalMonth.  IntervalUnit ::= "MONTH"  ;
 IntervalYear.   IntervalUnit ::= "YEAR"   ;
 
-Interval. Interval ::= "INTERVAL" SString IntervalUnit ;
+DInterval. Interval ::= "INTERVAL" SingleQuotedString IntervalUnit ;
 ExprInterval. ValueExpr8 ::= Interval ;
+
+DTimestamp. Timestamp ::= "TIMESTAMP" SingleQuotedString ;
+ExprTimestamp. ValueExpr7 ::= Timestamp ;
 
 -- Non-Scalar Type (Array)
 ExprArr. ValueExpr ::= "[" [ValueExpr] "]" ; -- array

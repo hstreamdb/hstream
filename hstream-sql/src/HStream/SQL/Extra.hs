@@ -1,3 +1,5 @@
+{-# LANGUAGE LambdaCase #-}
+
 module HStream.SQL.Extra
   ( extractPNInteger
   , extractPNDouble
@@ -5,6 +7,7 @@ module HStream.SQL.Extra
   , extractHIdent
   , extractRefNameFromExpr
   , trimSpacesPrint
+  , unifyValueExprCast
   ) where
 
 import           Data.Char         (isSpace)
@@ -26,14 +29,14 @@ extractPNDouble (IPDouble _ n) = n
 extractPNDouble (NDouble  _ n) = (-n)
 
 extractColumnIdent :: ColumnIdent -> Text
-extractColumnIdent (ColumnIdentNormal _ (Ident text)) = text
-extractColumnIdent (ColumnIdentRaw _ (QuotedRaw text')) =
-  Text.tail . Text.init $ text'
+extractColumnIdent (ColumnIdentNormal _ (Ident text)) = Text.toLower text
+extractColumnIdent (ColumnIdentRaw _ (DoubleQuotedString text)) =
+  Text.tail . Text.init $ text
 
 extractHIdent :: HIdent -> Text
-extractHIdent (HIdentNormal _ (Ident text)) = text
-extractHIdent (HIdentRaw _ (QuotedRaw text')) =
-  Text.tail . Text.init $ text'
+extractHIdent (HIdentNormal _ (Ident text)) = Text.toLower text
+extractHIdent (HIdentRaw _ (DoubleQuotedString text)) =
+  Text.tail . Text.init $ text
 
 trimSpacesPrint :: Print a => a -> String
 trimSpacesPrint = removeSpace . printTree
@@ -47,8 +50,9 @@ trimSpacesPrint = removeSpace . printTree
 -- Return value: (anySimpleCol, [streamName])
 -- For example, "s1.col1 + col2" -> (True, ["s1"])
 extractRefNameFromExpr :: ValueExpr -> (Bool, [Text])
-extractRefNameFromExpr (ExprCast1 _ e _) = extractRefNameFromExpr e
-extractRefNameFromExpr (ExprCast2 _ e _) = extractRefNameFromExpr e
+extractRefNameFromExpr (ExprCast _ e) = case e of
+  ExprCast1 _ e _ -> extractRefNameFromExpr e
+  ExprCast2 _ e _ -> extractRefNameFromExpr e
 extractRefNameFromExpr (ExprEQ _ e1 e2) =
   let (b1,l1) = extractRefNameFromExpr e1
       (b2,l2) = extractRefNameFromExpr e2
@@ -77,3 +81,8 @@ extractRefNameFromExpr (ExprAdd pos e1 e2) = extractRefNameFromExpr (ExprArr pos
 extractRefNameFromExpr (ExprSub pos e1 e2) = extractRefNameFromExpr (ExprArr pos [e1, e2])
 extractRefNameFromExpr (ExprMul pos e1 e2) = extractRefNameFromExpr (ExprArr pos [e1, e2])
 extractRefNameFromExpr _ = (False, [])
+
+unifyValueExprCast :: ValueExprCast -> (ValueExpr, DataType, BNFC'Position)
+unifyValueExprCast = \case
+  ExprCast1 pos x y -> (x, y, pos)
+  ExprCast2 pos x y -> (x, y, pos)

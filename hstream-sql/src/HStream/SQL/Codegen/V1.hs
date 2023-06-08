@@ -150,8 +150,10 @@ hstreamCodegen = \case
     let jsonObj = HsAeson.fromList $
           bimap HsAeson.fromText (flowValueToJsonValue . constantToFlowValue) <$> tuples
     return $ InsertPlan stream JsonFormat (BL.toStrict . PB.toLazyByteString . jsonObjectToStruct $ jsonObj)
-  RQInsert (RInsertBinary stream bs) -> return $ InsertPlan stream RawFormat  bs
-  RQInsert (RInsertJSON stream bs)   -> return $ InsertPlan stream JsonFormat (BL.toStrict . PB.toLazyByteString . jsonObjectToStruct . fromJust $ Aeson.decode (BL.fromStrict bs))
+  RQInsert (RInsertRawOrJson stream bs payloadType) ->
+    pure $ case payloadType of
+      RInsertRawOrJsonPayloadTypeRaw  -> InsertPlan stream RawFormat bs
+      RInsertRawOrJsonPayloadTypeJson -> InsertPlan stream JsonFormat $ BL.toStrict . PB.toLazyByteString . jsonObjectToStruct . fromJust . Aeson.decode $ BL.fromStrict bs
   RQShow (RShow RShowStreams)        -> return $ ShowPlan SStreams
   RQShow (RShow RShowQueries)        -> return $ ShowPlan SQueries
   RQShow (RShow RShowConnectors)     -> return $ ShowPlan SConnectors
@@ -336,7 +338,7 @@ relationExprToGraph relation builder = case relation of
   LoopJoinNatural r1 r2 typ t -> do
     let joiner = HM.union
         joinCond = \record1 record2 ->
-          HM.foldlWithKey (\acc k@(ColumnCatalog f _) v ->
+          HM.foldlWithKey (\acc _k@(ColumnCatalog f _) v ->
                                if acc then
                                  case getField (ColumnCatalog f Nothing) (recordValue record2) of
                                    Nothing     -> acc
