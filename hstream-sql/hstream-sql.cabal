@@ -82,7 +82,7 @@ library
     HStream.SQL.Print
     HStream.SQL.Validate.Utils
 
-  hs-source-dirs:     src gen-sql
+  hs-source-dirs:     src gen-sql app
   build-depends:
     , aeson
     , array
@@ -148,3 +148,20 @@ library
 --   build-tool-depends: hspec-discover:hspec-discover ==2.*
 --   ghc-options:        -threaded -rtsopts -with-rtsopts=-N
 --
+
+executable syntax-test-runner
+  main-is:          SyntaxTestRunner.hs
+  hs-source-dirs:   app
+  other-modules:    Lib
+  build-depends:
+    , aeson
+    , base
+    , bytestring
+    , hstream-sql
+    , optparse-applicative
+    , text
+    , vector
+    , yaml
+
+  default-language: GHC2021
+  ghc-options:      -Wall -Wextra
