@@ -39,7 +39,7 @@ spec = aroundAll provideHstreamApi $
 #ifdef HStreamUseV2Engine
     runFetchSql "SELECT b, SUM(s1.a), SUM(s2.a) FROM s1 INNER JOIN s2 ON s1.b = s2.b GROUP BY s1.b EMIT CHANGES;"
 #else
-    runFetchSql "SELECT b, SUM(s1.a), SUM(s2.a) FROM s1 INNER JOIN s2 ON s1.b = s2.b WITHIN (INTERVAL '1' HOUR) GROUP BY s1.b EMIT CHANGES;"
+    runFetchSql "SELECT b, SUM(s1.a), SUM(s2.a) FROM s1 INNER JOIN s2 ON s1.b = s2.b WITHIN (INTERVAL 1 HOUR) GROUP BY s1.b EMIT CHANGES;"
 #endif
       `shouldReturn` [ mkStruct
         [ ("SUM(s1.a)", mkIntNumber 1)
@@ -64,7 +64,7 @@ spec = aroundAll provideHstreamApi $
       runInsertSql api "INSERT INTO s4 (a, b) VALUES (1, 4);"
       threadDelay 500000
       runInsertSql api "INSERT INTO s4 (a, b) VALUES (1, 4);"
-    runFetchSql "SELECT `SUM(a)`, `result` AS cnt, b FROM s5 EMIT CHANGES;"
+    runFetchSql "SELECT \"SUM(a)\", result AS cnt, b FROM s5 EMIT CHANGES;"
       >>= (`shouldSatisfy`
            (\l -> not (L.null l) &&
                   L.isSubsequenceOf l
@@ -116,7 +116,7 @@ spec = aroundAll provideHstreamApi $
       threadDelay 500000
       runInsertSql api "INSERT INTO stream_binary VALUES CAST ('xxxxxxxxx' AS BYTEA);"
       threadDelay 500000
-      runInsertSql api "INSERT INTO stream_binary VALUES CAST ('{ \"a\": 1}' AS JSONB);"
+      runInsertSql api "INSERT INTO stream_binary VALUES CAST ('{\"a\": 1}' AS JSONB);"
       threadDelay 500000
       runInsertSql api "INSERT INTO stream_binary (b, c) VALUES (1, 2);"
     runFetchSql "SELECT * FROM stream_binary EMIT CHANGES;"
