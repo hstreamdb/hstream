@@ -45,11 +45,11 @@ parseArgs x =
 parseOpts :: HasRunTest a => a -> Parser Opts
 parseOpts x =
   Opts
-    <$> switch (short 'i' <> help "Inplace edit <file>s, if specified.")
+    <$> switch (short 'i' <> help "Inplace edit <file>s, if specified")
     <*> hsubparser
       ( cmdRun x <> cmdGen x
       )
-    <*> some (strArgument @FilePath mempty)
+    <*> some (strArgument @FilePath $ metavar "FILES" <> help "File paths to verify or generate tests")
 
 data Cmd = Run | Gen
 
