@@ -35,12 +35,12 @@ extractPNDouble (IPDouble _ n) = n
 extractPNDouble (NDouble  _ n) = (-n)
 
 extractColumnIdent :: ColumnIdent -> Text
-extractColumnIdent (ColumnIdentNormal _ (Ident text)) = Text.toLower text
+extractColumnIdent (ColumnIdentNormal _ (Ident text)) = text
 extractColumnIdent (ColumnIdentDoubleQuoted _ (DoubleQuoted text)) =
   Text.tail . Text.init $ text
 
 extractHIdent :: HIdent -> Text
-extractHIdent (HIdentNormal _ (Ident text)) = Text.toLower text
+extractHIdent (HIdentNormal _ (Ident text)) = text
 extractHIdent (HIdentDoubleQuoted _ (DoubleQuoted text)) =
   Text.tail . Text.init $ text
 
