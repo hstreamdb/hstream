@@ -41,9 +41,7 @@ import           GHC.Stack                (HasCallStack)
 import           HStream.SQL.Abs
 import           HStream.SQL.Exception    (SomeSQLException (..),
                                            throwSQLException)
-import           HStream.SQL.Extra        (extractColumnIdent, extractHIdent,
-                                           extractPNDouble, extractPNInteger,
-                                           trimSpacesPrint)
+import           HStream.SQL.Extra
 import           HStream.SQL.Print        (printTree)
 import           HStream.Utils            (cBytesToText, textToCBytes)
 import qualified HStream.Utils.Aeson      as HsAeson
@@ -894,7 +892,18 @@ instance Refine Insert where
       refineConst expr = case refine expr of
         RExprConst _ constant -> constant
         _ -> error "INTERNAL ERROR: constant expr in RInsert is ensured by validate"
-  refine (InsertRawOrJson _ streamName valExprCast) = undefined
+  refine (InsertRawOrJson _ streamName valExprCast) =
+    let (val, typ, _) = unifyValueExprCast valExprCast
+        errMsg        = "INTERNAL ERROR: Insert RawRecord or HRecord syntax only supports string literals to be casted to `BYTEA` or `JSONB`, which is ensured by validate"
+        rVal          = case val of
+                          ExprString _ (SingleQuoted singleQuoted) -> singleQuoted
+                          _ -> error errMsg
+        rTyp          = case typ of
+                          TypeByte _ -> RInsertRawOrJsonPayloadTypeRaw
+                          TypeJson _ -> RInsertRawOrJsonPayloadTypeJson
+                          _          -> error errMsg
+    in RInsertRawOrJson (extractHIdent streamName) (encodeUtf8 rVal) rTyp
+
 ---- SHOW
 data RShow
   = RShow RShowOption

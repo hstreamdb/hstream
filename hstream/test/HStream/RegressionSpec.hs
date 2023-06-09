@@ -112,11 +112,11 @@ spec = aroundAll provideHstreamApi $
     runCreateStreamSql api "CREATE STREAM stream_binary;"
     _ <- forkIO $ do
       threadDelay 10000000 -- FIXME: requires a notification mechanism to ensure that the task starts successfully before inserting data
-      runInsertSql api "INSERT INTO stream_binary VALUES \"aaaaaaaaa\";"
+      runInsertSql api "INSERT INTO stream_binary VALUES CAST ('aaaaaaaaa' AS BYTEA);"
       threadDelay 500000
-      runInsertSql api "INSERT INTO stream_binary VALUES \"xxxxxxxxx\";"
+      runInsertSql api "INSERT INTO stream_binary VALUES CAST ('xxxxxxxxx' AS BYTEA);"
       threadDelay 500000
-      runInsertSql api "INSERT INTO stream_binary VALUES \"{ \\\"a\\\": 1}\";"
+      runInsertSql api "INSERT INTO stream_binary VALUES CAST ('{ \"a\": 1}' AS JSONB);"
       threadDelay 500000
       runInsertSql api "INSERT INTO stream_binary (b, c) VALUES (1, 2);"
     runFetchSql "SELECT * FROM stream_binary EMIT CHANGES;"
