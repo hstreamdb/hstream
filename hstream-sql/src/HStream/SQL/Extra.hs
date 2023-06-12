@@ -1,3 +1,5 @@
+{-# LANGUAGE LambdaCase #-}
+
 module HStream.SQL.Extra
   ( extractPNInteger
   , extractPNDouble
@@ -5,14 +7,21 @@ module HStream.SQL.Extra
   , extractHIdent
   , extractRefNameFromExpr
   , trimSpacesPrint
+  , unifyValueExprCast,
+  parseFlowDateValue,
+  parseFlowTimeValue,
+  parseFlowTimestampValue,
+  parseFlowIntervalValue
   ) where
 
-import           Data.Char         (isSpace)
-import qualified Data.List         as L
-import           Data.Text         (Text)
-import qualified Data.Text         as Text
+import           Data.Char                (isSpace)
+import qualified Data.List                as L
+import           Data.Text                (Text)
+import qualified Data.Text                as Text
+import qualified Data.Time                as Time
+import           Data.Time.Format.ISO8601 (iso8601ParseM)
 import           HStream.SQL.Abs
-import           HStream.SQL.Print (Print, printTree)
+import           HStream.SQL.Print        (Print, printTree)
 
 --------------------------------------------------------------------------------
 extractPNInteger :: PNInteger -> Integer
@@ -27,13 +36,13 @@ extractPNDouble (NDouble  _ n) = (-n)
 
 extractColumnIdent :: ColumnIdent -> Text
 extractColumnIdent (ColumnIdentNormal _ (Ident text)) = text
-extractColumnIdent (ColumnIdentRaw _ (QuotedRaw text')) =
-  Text.tail . Text.init $ text'
+extractColumnIdent (ColumnIdentDoubleQuoted _ (DoubleQuoted text)) =
+  Text.tail . Text.init $ text
 
 extractHIdent :: HIdent -> Text
 extractHIdent (HIdentNormal _ (Ident text)) = text
-extractHIdent (HIdentRaw _ (QuotedRaw text')) =
-  Text.tail . Text.init $ text'
+extractHIdent (HIdentDoubleQuoted _ (DoubleQuoted text)) =
+  Text.tail . Text.init $ text
 
 trimSpacesPrint :: Print a => a -> String
 trimSpacesPrint = removeSpace . printTree
@@ -47,8 +56,9 @@ trimSpacesPrint = removeSpace . printTree
 -- Return value: (anySimpleCol, [streamName])
 -- For example, "s1.col1 + col2" -> (True, ["s1"])
 extractRefNameFromExpr :: ValueExpr -> (Bool, [Text])
-extractRefNameFromExpr (ExprCast1 _ e _) = extractRefNameFromExpr e
-extractRefNameFromExpr (ExprCast2 _ e _) = extractRefNameFromExpr e
+extractRefNameFromExpr (DExprCast _ e) = case e of
+  ExprCast1 _ e _ -> extractRefNameFromExpr e
+  ExprCast2 _ e _ -> extractRefNameFromExpr e
 extractRefNameFromExpr (ExprEQ _ e1 e2) =
   let (b1,l1) = extractRefNameFromExpr e1
       (b2,l2) = extractRefNameFromExpr e2
@@ -77,3 +87,20 @@ extractRefNameFromExpr (ExprAdd pos e1 e2) = extractRefNameFromExpr (ExprArr pos
 extractRefNameFromExpr (ExprSub pos e1 e2) = extractRefNameFromExpr (ExprArr pos [e1, e2])
 extractRefNameFromExpr (ExprMul pos e1 e2) = extractRefNameFromExpr (ExprArr pos [e1, e2])
 extractRefNameFromExpr _ = (False, [])
+
+unifyValueExprCast :: ExprCast -> (ValueExpr, DataType, BNFC'Position)
+unifyValueExprCast = \case
+  ExprCast1 pos x y -> (x, y, pos)
+  ExprCast2 pos x y -> (x, y, pos)
+
+parseFlowDateValue :: Text.Text -> Maybe Time.Day
+parseFlowDateValue = iso8601ParseM . Text.unpack . Text.tail . Text.init
+
+parseFlowTimeValue :: Text.Text -> Maybe Time.TimeOfDay
+parseFlowTimeValue = iso8601ParseM . Text.unpack . Text.tail . Text.init
+
+parseFlowTimestampValue :: Text.Text -> Maybe Time.ZonedTime
+parseFlowTimestampValue = iso8601ParseM . Text.unpack . Text.tail . Text.init
+
+parseFlowIntervalValue :: Text.Text -> Maybe Time.CalendarDiffTime
+parseFlowIntervalValue = iso8601ParseM . Text.unpack . Text.tail . Text.init

@@ -213,32 +213,6 @@ BoolTrue.  Boolean ::= "TRUE"  ; -- boolean
 BoolFalse. Boolean ::= "FALSE" ;
 ExprBool. ValueExpr7 ::= Boolean ;
 
--- Date, Time and Interval
-TimeStrWithoutMicroSec. TimeStr ::= Integer ":" Integer ":" Integer ;
-TimeStrWithMicroSec.    TimeStr ::= Integer ":" Integer ":" Integer "." Integer ;
-
-DDateStr. DateStr ::= Integer "-" Integer "-" Integer ;
-DDateTimeStr. DateTimeStr ::= DateStr TimeStr ;
-
-TimezoneZ.        Timezone ::= "Z" ;
-TimezonePositive. Timezone ::= "+" Integer ":" Integer ;
-TimezoneNegative. Timezone ::= "-" Integer ":" Integer ;
-
-DTimestampStr. TimestampStr ::= DateStr "T" TimeStr Timezone ;
-
-DDate. Date ::= "DATE" DateStr ;
-DTime. Time ::= "TIME" TimeStr ;
-TimestampWithoutZone. Timestamp ::= "TIMESTAMP" DateTimeStr ;
-TimestampWithZone.    Timestamp ::= "TIMESTAMP" TimestampStr ;
-
-ExprDate. ValueExpr7 ::= Date ;
-ExprTime. ValueExpr7 ::= Time ;
-ExprTimestamp. ValueExpr7 ::= Timestamp ;
-
-IntervalWithoutDate. Interval ::= "INTERVAL" TimeStr ;     -- TimeOfDay
-IntervalWithDate.    Interval ::= "INTERVAL" DateTimeStr ; -- LocalTime
-ExprInterval. ValueExpr7 ::= Interval ;
-
 -- Non-Scalar Type (Array and Map)
 ExprArr. ValueExpr ::= "[" [ValueExpr] "]" ; -- array
 ExprMap. ValueExpr ::= "{" [LabelledValueExpr] "}" ; -- map

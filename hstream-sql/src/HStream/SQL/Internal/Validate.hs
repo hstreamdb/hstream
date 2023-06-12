@@ -25,7 +25,7 @@ import           HStream.SQL.Abs
 import           HStream.SQL.Abs            (SelectItem)
 import           HStream.SQL.Exception      (SomeSQLException (..),
                                              buildSQLException)
-import           HStream.SQL.Extra          (extractPNInteger)
+import           HStream.SQL.Extra
 import           HStream.SQL.Validate.Utils
 
 ------------------------------ TypeClass Definition ----------------------------
@@ -55,20 +55,20 @@ instance Validate PNInteger where
 instance Validate PNDouble where
   validate = return
 
-instance Validate SString where
+instance Validate SingleQuoted where
   validate = return
 
 instance Validate Ident where
   validate = return
 
-instance Validate QuotedRaw where
+instance Validate DoubleQuoted where
   validate = return
 
 instance Validate HIdent where
   validate ident@(HIdentNormal pos (Ident text)) = do
     unless (Text.length text <= maxIdentifierLength) (Left $ buildSQLException ParseException pos ("The length of an identifier should be equal to or less than " <> show maxIdentifierLength))
     return ident
-  validate ident@(HIdentRaw pos (QuotedRaw text')) = do
+  validate ident@(HIdentDoubleQuoted pos (DoubleQuoted text')) = do
     let text = Text.tail . Text.init $ text'
     unless (isValidIdent text) (Left $ buildSQLException ParseException pos ("Invalid identifier " <> Text.unpack text' <> ", please refer to the document"))
     unless (Text.length text <= maxIdentifierLength) (Left $ buildSQLException ParseException pos ("The length of an identifier should be equal to or less than " <> show maxIdentifierLength))
@@ -86,7 +86,7 @@ instance Validate ColumnIdent where
   validate ident@(ColumnIdentNormal pos (Ident text)) = do
     unless (Text.length text <= maxIdentifierLength) (Left $ buildSQLException ParseException pos ("The length of an identifier should be equal to or less than " <> show maxIdentifierLength))
     return ident
-  validate ident@(ColumnIdentRaw pos (QuotedRaw text')) = do
+  validate ident@(ColumnIdentDoubleQuoted pos (DoubleQuoted text')) = do
     let text = Text.tail . Text.init $ text'
     unless (Text.length text <= maxIdentifierLength) (Left $ buildSQLException ParseException pos ("The length of an identifier should be equal to or less than " <> show maxIdentifierLength))
     return ident
@@ -95,57 +95,11 @@ instance Validate Boolean where
   validate e@(BoolTrue  _) = return e
   validate e@(BoolFalse _) = return e
 
-instance Validate DateStr where
-  validate date@(DDateStr pos y m d) = do
-    unless (y >= 0 && y <= 9999)     (Left $ buildSQLException ParseException pos "Year must be between 0 and 9999")
-    unless (m >= 1 && m <= 12)       (Left $ buildSQLException ParseException pos "Month must be between 1 and 12")
-    unless (d >= 1 && d <= realDays) (Left $ buildSQLException ParseException pos ("Day must be between 1 and " <> show realDays))
-    return date
-    where daysOfMonth = [31,28 + if isLeapYear y then 1 else 0,31,30,31,30,31,31,30,31,30,31]
-          realDays = daysOfMonth !! (fromInteger m - 1)
-
-instance Validate TimeStr where
-  validate time@(TimeStrWithoutMicroSec pos h m s) = do
-    unless (h >= 0 && h <= 23) (Left $ buildSQLException ParseException pos "Hour must be between 0 and 23")
-    unless (m >= 0 && m <= 59) (Left $ buildSQLException ParseException pos "Minute must be between 0 and 59")
-    unless (s >= 0 && s <= 59) (Left $ buildSQLException ParseException pos "Second must be between 0 and 59")
-    return time
-  validate time@(TimeStrWithMicroSec pos h m s ms) = do
-    unless (h >= 0 && h <= 23) (Left $ buildSQLException ParseException pos "Hour must be between 0 and 23")
-    unless (m >= 0 && m <= 59) (Left $ buildSQLException ParseException pos "Minute must be between 0 and 59")
-    unless (s >= 0 && s <= 59) (Left $ buildSQLException ParseException pos "Second must be between 0 and 59")
-    unless (ms >= 0 && ms <= 999) (Left $ buildSQLException ParseException pos "Microsecond must be between 0 and 999")
-    return time
-
-instance Validate DateTimeStr where
-  validate datetime@(DDateTimeStr _ dateStr timeStr) =
-    validate dateStr >> validate timeStr >> return datetime
-
-instance Validate Timezone where
-  validate zone@(TimezoneZ _) = return zone
-  validate zone@(TimezonePositive pos h m) = do
-    unless (h >= 0 && h <= 13 && m >= 0 && m <= 59) (Left $ buildSQLException ParseException pos "Timezone must be between -12:59 and +13:59")
-    return zone
-  validate zone@(TimezoneNegative pos h m) = do
-    unless (h >= 0 && h <= 12 && m >= 0 && m <= 59) (Left $ buildSQLException ParseException pos "Timezone must be between -12:59 and +13:59")
-    return zone
-
-instance Validate TimestampStr where
-  validate str@(DTimestampStr _ dateStr timeStr zone) =
-    validate dateStr >> validate timeStr >> validate zone >> return str
-
-instance Validate Date where
-  validate date@(DDate _ dateStr) = validate dateStr >> return date
-instance Validate Time where
-  validate time@(DTime _ timeStr) = validate timeStr >> return time
-instance Validate Timestamp where
-  validate ts@(TimestampWithoutZone _ datetimeStr) = validate datetimeStr >> return ts
-  validate ts@(TimestampWithZone _ tsStr) = validate tsStr >> return ts
 instance Validate IntervalUnit where
   validate = return
 instance Validate Interval where
-  validate interval@(Interval pos (SString x) iUnit) = do
-    unless (all isNumber $ Text.unpack $ Text.dropAround (=='\'') x) $ Left $ buildSQLException ParseException pos "Invalid interval value, only integer values are supported"
+  validate interval@(DInterval pos n iUnit) = do
+    -- TODO: validate n range?
     validate iUnit >> return interval
 
 instance Validate ColName where
@@ -187,6 +141,28 @@ instance Validate ScalarFunc where
     where expr    = getValueExpr f
           argType = getScalarArgType f
 
+instance Validate Date where
+  validate strVal@(DDate pos (SingleQuoted date)) =
+    case parseFlowDateValue date of
+      Nothing -> mkIso8601ParseErr "DATE" date pos
+      Just _  -> pure strVal
+
+instance Validate Time where
+  validate strVal@(DTime pos (SingleQuoted time)) =
+    case parseFlowTimeValue time of
+      Nothing -> mkIso8601ParseErr "TIME" time pos
+      Just _  -> pure strVal
+
+instance Validate Timestamp where
+  validate strVal@(DTimestamp pos (SingleQuoted timestamp)) =
+    case parseFlowTimestampValue timestamp of
+      Nothing -> mkIso8601ParseErr "TIMESTAMP" timestamp pos
+      Just _  -> pure strVal
+
+mkIso8601ParseErr :: String -> Text.Text -> BNFC'Position -> Either SomeSQLException a
+mkIso8601ParseErr name strVal pos = Left . buildSQLException ParseException pos $
+  "Failed to parse `"<> Text.unpack strVal <>"` ISO 8601 format " <> name
+
 --------------------------------------- ValueExpr ------------------------------
 
 -- 1. Add, Sub and Mul: exprs should be Num
@@ -195,8 +171,7 @@ instance Validate ScalarFunc where
 -- 4. Cols and Aggs should be legal
 -- 5. Scalar functions should not be applied to aggs
 instance Validate ValueExpr where
-  validate expr@ExprCast1{}               = return expr
-  validate expr@ExprCast2{}               = return expr
+  validate expr@DExprCast{}               = return expr
   validate expr@(ExprArr _ es)            = mapM_ validate es >> return expr
   validate expr@ExprEQ{}                  = isBoolExpr expr
   validate expr@ExprNEQ{}                 = isBoolExpr expr
@@ -217,18 +192,17 @@ instance Validate ValueExpr where
   validate expr@ExprString{}              = Right expr
   validate expr@ExprNull{}                = Right expr
   validate expr@ExprBool{}                = Right expr
-  validate expr@(ExprDate _ date)         = validate date >> return expr
-  validate expr@(ExprTime _ time)         = validate time >> return expr
-  validate expr@(ExprTimestamp _ ts)      = validate ts >> return expr
   validate expr@(ExprInterval _ interval) = validate interval >> return expr
   validate expr@(ExprColName _ col)       = validate col   >> return expr
   validate expr@(ExprSetFunc _ func)      = validate func >> return expr
   validate expr@(ExprScalarFunc _ func)   = validate func >> return expr
+  validate expr@(ExprDate _ expr')        = validate expr' >> pure expr
+  validate expr@(ExprTime _ expr')        = validate expr' >> pure expr
+  validate expr@(ExprTimestamp _ expr')   = validate expr' >> pure expr
 
 isNumExpr :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
 isNumExpr expr = case expr of
-  (ExprCast1 _ e typ) -> validate e >> isNumType typ >> return expr
-  (ExprCast2 _ e typ) -> validate e >> isNumType typ >> return expr
+  (DExprCast _ exprCast) -> let (e, typ, _) = unifyValueExprCast exprCast in validate e >> isNumType typ >> return expr
   (ExprArr pos _) -> Left $ buildSQLException ParseException pos "Expected a numeric expression but got an array"
   (ExprEQ _ e1 e2) -> validate e1 >> validate e2 >> return expr
   (ExprNEQ _ e1 e2) -> validate e1 >> validate e2 >> return expr
@@ -249,9 +223,6 @@ isNumExpr expr = case expr of
   (ExprString pos _)   -> Left $ buildSQLException ParseException pos "Expected a numeric expression but got a String"
   (ExprNull _)         -> Right expr
   (ExprBool pos _)     -> Left $ buildSQLException ParseException pos "Expected a numeric expression but got a boolean"
-  (ExprDate pos _)     -> Left $ buildSQLException ParseException pos "Expected a numeric expression but got a Date"
-  (ExprTime pos _)     -> Left $ buildSQLException ParseException pos "Expected a numeric expression but got a Time"
-  (ExprTimestamp pos _) -> Left $ buildSQLException ParseException pos "Expected a numeric expression but got a Timestamp"
   (ExprInterval pos _) -> Left $ buildSQLException ParseException pos "Expected a numeric expression but got an Interval"
   (ExprColName _ _)    -> Right expr -- TODO: Use schema to decide this
   (ExprSetFunc _ (SetFuncCountAll _)) -> Right expr
@@ -275,8 +246,7 @@ isNumExpr expr = case expr of
 
 isFloatExpr :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
 isFloatExpr expr = case expr of
-  (ExprCast1 _ e typ) -> validate e >> isFloatType typ >> return expr
-  (ExprCast2 _ e typ) -> validate e >> isFloatType typ >> return expr
+  (DExprCast _ exprCast) -> let (e, typ, _) = unifyValueExprCast exprCast in validate e >> isFloatType typ >> return expr
   (ExprArr pos _) -> Left $ buildSQLException ParseException pos "Expected a float expression but got an array"
   (ExprEQ _ e1 e2) -> validate e1 >> validate e2 >> return expr
   (ExprNEQ _ e1 e2) -> validate e1 >> validate e2 >> return expr
@@ -297,9 +267,6 @@ isFloatExpr expr = case expr of
   (ExprString pos _)   -> Left $ buildSQLException ParseException pos "Expected a float expression but got a String"
   (ExprNull _)         -> Right expr
   (ExprBool pos _)     -> Left $ buildSQLException ParseException pos "Expected a float expression but got a boolean"
-  (ExprDate pos _)     -> Left $ buildSQLException ParseException pos "Expected a float expression but got a Date"
-  (ExprTime pos _)     -> Left $ buildSQLException ParseException pos "Expected a float expression but got a Time"
-  (ExprTimestamp pos _) -> Left $ buildSQLException ParseException pos "Expected a float expression but got a Timestamp"
   (ExprInterval pos _) -> Left $ buildSQLException ParseException pos "Expected a float expression but got an Interval"
   (ExprColName _ _)    -> Right expr -- TODO: Use schema to decide this
   (ExprSetFunc pos (SetFuncCountAll _)) -> Left $ buildSQLException ParseException pos "Expected a float expression but got an Integral"
@@ -322,8 +289,7 @@ isFloatExpr expr = case expr of
 
 isOrdExpr :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
 isOrdExpr expr = case expr of
-  (ExprCast1 _ e typ) -> validate e >> isOrdType typ >> return expr
-  (ExprCast2 _ e typ) -> validate e >> isOrdType typ >> return expr
+  (DExprCast _ exprCast) -> let (e, typ, _) = unifyValueExprCast exprCast in validate e >> isOrdType typ >> return expr
   (ExprArr pos _) -> Left $ buildSQLException ParseException pos "Expected a comparable expression but got an array"
   (ExprEQ _ e1 e2) -> validate e1 >> validate e2 >> return expr
   (ExprNEQ _ e1 e2) -> validate e1 >> validate e2 >> return expr
@@ -344,9 +310,6 @@ isOrdExpr expr = case expr of
   ExprString{} -> Right expr
   (ExprNull _)         -> Right expr
   (ExprBool pos _) -> Left $ buildSQLException ParseException pos "Expected a comparable expression but got a boolean"
-  (ExprDate _ date) -> validate date >> return expr
-  (ExprTime _ time) -> validate time >> return expr
-  (ExprTimestamp _ ts) -> validate ts >> return expr
   (ExprInterval _ interval) -> validate interval >> return expr
   (ExprColName _ _) -> Right expr-- inaccurate
   (ExprSetFunc _ (SetFuncCountAll _)) -> Right expr
@@ -375,8 +338,7 @@ isOrdExpr expr = case expr of
 
 isBoolExpr :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
 isBoolExpr expr = case expr of
-  (ExprCast1 _ e typ) -> validate e >> isBoolType typ >> return expr
-  (ExprCast2 _ e typ) -> validate e >> isBoolType typ >> return expr
+  (DExprCast _ exprCast) -> let (e, typ, _) = unifyValueExprCast exprCast in validate e >> isBoolType typ >> return expr
   (ExprArr pos _) -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got an array"
   (ExprEQ _ e1 e2) -> validate e1 >> validate e2 >> return expr
   (ExprNEQ _ e1 e2) -> validate e1 >> validate e2 >> return expr
@@ -397,9 +359,6 @@ isBoolExpr expr = case expr of
   (ExprString pos _)   -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a string"
   (ExprNull _)         -> Right expr
   (ExprBool _ _)       -> Right expr
-  (ExprDate pos _)     -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a date"
-  (ExprTime pos _)     -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a time"
-  (ExprTimestamp pos _) -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a timestamp"
   (ExprInterval pos _) -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a interval"
   (ExprColName _ _)    -> Right expr -- TODO: Use schema to decide this
   (ExprSetFunc pos (SetFuncCountAll _)) -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
@@ -425,8 +384,7 @@ isBoolExpr expr = case expr of
 
 isIntExpr :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
 isIntExpr expr = case expr of
-  (ExprCast1 _ e typ) -> validate e >> isIntType typ >> return expr
-  (ExprCast2 _ e typ) -> validate e >> isIntType typ >> return expr
+  (DExprCast _ exprCast) -> let (e, typ, _) = unifyValueExprCast exprCast in validate e >> isIntType typ >> return expr
   (ExprArr pos _) -> Left $ buildSQLException ParseException pos "Expected an integer expression but got an array"
   (ExprEQ _ e1 e2) -> validate e1 >> validate e2 >> return expr
   (ExprNEQ _ e1 e2) -> validate e1 >> validate e2 >> return expr
@@ -447,9 +405,6 @@ isIntExpr expr = case expr of
   (ExprString pos _)   -> Left $ buildSQLException ParseException pos "Expected an integral expression but got a String"
   (ExprNull _)         -> Right expr
   (ExprBool pos _)     -> Left $ buildSQLException ParseException pos "Expected an integral expression but got a boolean"
-  (ExprDate pos _)     -> Left $ buildSQLException ParseException pos "Expected an integral expression but got a Date"
-  (ExprTime pos _)     -> Left $ buildSQLException ParseException pos "Expected an integral expression but got a Time"
-  (ExprTimestamp pos _) -> Left $ buildSQLException ParseException pos "Expected an integral expression but got a Timestamp"
   (ExprInterval pos _) -> Left $ buildSQLException ParseException pos "Expected an integral expression but got an Interval"
   (ExprColName _ _)    -> Right expr -- TODO: Use schema to decide this
   (ExprSetFunc _ (SetFuncCountAll _))    -> Right expr
@@ -472,8 +427,7 @@ isIntExpr expr = case expr of
 
 isStringExpr :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
 isStringExpr expr = case expr of
-  (ExprCast1 _ e typ) -> validate e >> isStringType typ >> return expr
-  (ExprCast2 _ e typ) -> validate e >> isStringType typ >> return expr
+  (DExprCast _ exprCast) -> let (e, typ, _) = unifyValueExprCast exprCast in validate e >> isStringType typ >> return expr
   (ExprArr pos _) -> Left $ buildSQLException ParseException pos "Expected a string expression but got an array"
   (ExprEQ _ e1 e2) -> validate e1 >> validate e2 >> return expr
   (ExprNEQ _ e1 e2) -> validate e1 >> validate e2 >> return expr
@@ -494,9 +448,6 @@ isStringExpr expr = case expr of
   (ExprString _ _)     -> return expr
   (ExprNull _)         -> Right expr
   (ExprBool pos _)     -> Left $ buildSQLException ParseException pos "Expected an String expression but got a boolean"
-  (ExprDate pos _)     -> Left $ buildSQLException ParseException pos "Expected an String expression but got a Date"
-  (ExprTime pos _)     -> Left $ buildSQLException ParseException pos "Expected an String expression but got a Time"
-  (ExprTimestamp pos _) -> Left $ buildSQLException ParseException pos "Expected an String expression but got a Timestamp"
   (ExprInterval pos _) -> Left $ buildSQLException ParseException pos "Expected an String expression but got an Interval"
   (ExprColName _ _)    -> Right expr -- TODO: Use schema to decide this
   (ExprSetFunc pos (SetFuncCountAll _))    -> Left $ buildSQLException ParseException pos "Expected an String expression but got an Integer"
@@ -520,8 +471,7 @@ isStringExpr expr = case expr of
 
 -- For validating SearchCond
 notAggregateExpr :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
-notAggregateExpr expr@(ExprCast1 _ e _) = notAggregateExpr e >> return expr
-notAggregateExpr expr@(ExprCast2 _ e _) = notAggregateExpr e >> return expr
+notAggregateExpr expr@(DExprCast _ exprCast) = let (e, _, _) = unifyValueExprCast exprCast in notAggregateExpr e >> return expr
 notAggregateExpr expr@(ExprArr _ es) = mapM_ notAggregateExpr es >> return expr
 notAggregateExpr expr@(ExprEQ _ e1 e2) = notAggregateExpr e1 >> notAggregateExpr e2 >> return expr
 notAggregateExpr expr@(ExprNEQ _ e1 e2) = notAggregateExpr e1 >> notAggregateExpr e2 >> return expr
@@ -544,8 +494,7 @@ notAggregateExpr expr = return expr
 
 -- For validating Insert
 isConstExpr :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
-isConstExpr expr@(ExprCast1 _ e _) = isConstExpr e >> return expr
-isConstExpr expr@(ExprCast2 _ e _) = isConstExpr e >> return expr
+isConstExpr expr@(DExprCast _ exprCast) = let (e, _, _) = unifyValueExprCast exprCast in isConstExpr e >> return expr
 isConstExpr expr@(ExprArr _ es) = mapM_ isConstExpr es >> return expr
 isConstExpr expr@(ExprEQ _ e1 e2) = isConstExpr e1 >> isConstExpr e2 >> return expr
 isConstExpr expr@(ExprNEQ _ e1 e2) = isConstExpr e1 >> isConstExpr e2 >> return expr
@@ -560,9 +509,6 @@ isConstExpr expr@ExprNum{}      = Right expr
 isConstExpr expr@ExprString{}   = Right expr
 isConstExpr expr@ExprNull{}     = Right expr
 isConstExpr expr@ExprBool{}     = Right expr
-isConstExpr expr@ExprDate{}     = Right expr
-isConstExpr expr@ExprTime{}     = Right expr
-isConstExpr expr@ExprTimestamp{} = Right expr
 isConstExpr expr@ExprInterval{} = Right expr
 isConstExpr _ = Left $ buildSQLException ParseException Nothing "INSERT only supports constant values"
 
@@ -758,19 +704,31 @@ instance Validate Resume where
 instance Validate Insert where
   validate insert@(DInsert pos hIdent fields exprs) = do
     unless (L.length fields == L.length exprs) (Left $ buildSQLException ParseException pos "Number of fields should match expressions")
-    validate hIdent
+    _ <- validate hIdent
     mapM_ validate fields
     mapM_ validate exprs
     mapM_ isConstExpr exprs
     return insert
-  validate insert@(InsertBinary _ hIdent _) = validate hIdent >> return insert
-  validate insert@(InsertJson pos hIdent (SString text)) = do
-    validate hIdent
-    let serialized = BSL.fromStrict . encodeUtf8 . Text.init . Text.tail $ text
-    let (o' :: Maybe Aeson.Object) = Aeson.decode serialized
-    case o' of
-      Nothing -> Left $ buildSQLException ParseException pos "Invalid JSON text"
-      Just _  -> return insert
+
+  validate insert@(InsertRawOrJson _ hIdent exprCast) = do
+    _ <- validate hIdent
+    let (valExpr, valTyp, pos) = unifyValueExprCast exprCast
+    case valExpr of
+      ExprString pos' (SingleQuoted strVal) -> case valTyp of
+        TypeByte _ -> pure insert
+        TypeJson _ -> do
+          let serialized = BSL.fromStrict . encodeUtf8 . Text.init . Text.tail $ strVal
+          let (o' :: Maybe Aeson.Object) = Aeson.decode serialized
+          case o' of
+            Just _ -> pure insert
+            Nothing -> Left $ buildSQLException ParseException pos' "Invalid JSON"
+        _ -> pureErr pos
+      _ -> pureErr pos
+
+    where
+      pureErr :: BNFC'Position -> Either SomeSQLException a
+      pureErr pos = Left $ buildSQLException ParseException pos
+        "Insert RawRecord or HRecord syntax only supports string literals to be casted to `BYTEA` or `JSONB`"
 
 ------------------------------------- SHOW -------------------------------------
 instance Validate ShowQ where

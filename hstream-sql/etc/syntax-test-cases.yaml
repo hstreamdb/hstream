@@ -28,9 +28,9 @@ testSuiteCases:
 - testCaseFail: null
   testCaseLabel: deny unquoted dash in ident (1410)
   testCaseResult: RQPushSelect (RSelect (RSel [RSelectItemProject (RExprAccessJson
-    "c->>\"season_id\"" JOpLongArrow (RExprCol "c" Nothing "c") (RExprConst "\"season_id\""
-    (ConstantText "season_id"))) Nothing]) (RFrom (RTableRefSimple "production_changes"
-    Nothing)) RWhereEmpty RGroupByEmpty RHavingEmpty)
+    "c->>\"season_id\"" JOpLongArrow (RExprCol "c" Nothing "c") (RExprCol "\"season_id\""
+    Nothing "season_id")) Nothing]) (RFrom (RTableRefSimple "production_changes" Nothing))
+    RWhereEmpty RGroupByEmpty RHavingEmpty)
   testCaseStmts:
   - select c->>"season_id" from production_changes EMIT CHANGES;
   - select c ->> "season_id" from production_changes EMIT CHANGES;
@@ -39,9 +39,9 @@ testSuiteCases:
 - testCaseFail: null
   testCaseLabel: deny unquoted dash in ident (1410)
   testCaseResult: RQPushSelect (RSelect (RSel [RSelectItemProject (RExprAccessJson
-    "c->\"season_id\"" JOpArrow (RExprCol "c" Nothing "c") (RExprConst "\"season_id\""
-    (ConstantText "season_id"))) Nothing]) (RFrom (RTableRefSimple "production_changes"
-    Nothing)) RWhereEmpty RGroupByEmpty RHavingEmpty)
+    "c->\"season_id\"" JOpArrow (RExprCol "c" Nothing "c") (RExprCol "\"season_id\""
+    Nothing "season_id")) Nothing]) (RFrom (RTableRefSimple "production_changes" Nothing))
+    RWhereEmpty RGroupByEmpty RHavingEmpty)
   testCaseStmts:
   - select c ->"season_id" from production_changes EMIT CHANGES;
   - select c -> "season_id" from production_changes EMIT CHANGES;

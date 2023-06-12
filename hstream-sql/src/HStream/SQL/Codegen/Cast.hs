@@ -18,6 +18,7 @@ import           DiffFlow.Error
 #else
 import           HStream.Processing.Error
 #endif
+import           Data.Time.Format.ISO8601       (iso8601ParseM)
 import           HStream.SQL.AST
 import           HStream.SQL.Exception
 import qualified Z.Data.CBytes                  as CB
@@ -173,6 +174,9 @@ castToDate x =
   in case x of
     FlowDate x      -> mkOk x
     FlowTimestamp x -> mkOk . utctDay . zonedTimeToUTC $ x
+    FlowText x      -> case iso8601ParseM (T.unpack x) of
+      Just x  -> mkOk x
+      Nothing -> mkCanNotParseTextErr x "Date"
     _               -> mkErr
 
 castToTime :: FlowValue -> Either ERROR_TYPE FlowValue
@@ -184,6 +188,9 @@ castToTime x =
   in case x of
     FlowTime      x -> mkOk x
     FlowTimestamp x -> mkOk . timeToTimeOfDay . utctDayTime . zonedTimeToUTC $ x
+    FlowText x -> case iso8601ParseM (T.unpack x) of
+      Just x  -> mkOk x
+      Nothing -> mkCanNotParseTextErr x "Time"
     _               -> mkErr
 
 castToTimestamp :: FlowValue -> Either ERROR_TYPE FlowValue
@@ -202,6 +209,9 @@ castToTimestamp x =
       { utctDay     = fromOrdinalDate 1970 1
       , utctDayTime = timeOfDayToTime x
       }
+    FlowText x -> case iso8601ParseM (T.unpack x) of
+      Just x  -> mkOk x
+      Nothing -> mkCanNotParseTextErr x "Timestamp"
     _ -> mkErr
 
 castToInterval :: FlowValue -> Either ERROR_TYPE FlowValue
@@ -220,6 +230,9 @@ castToInterval x =
       { ctMonths = 0
       , ctTime   = realToFrac x
       }
+    FlowText x -> case iso8601ParseM (T.unpack x) of
+      Just x  -> mkOk x
+      Nothing -> mkCanNotParseTextErr x "Interval"
     _ -> mkErr
 
 castToJson :: FlowValue -> Either ERROR_TYPE FlowValue
