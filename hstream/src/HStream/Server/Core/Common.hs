@@ -177,7 +177,7 @@ terminateQuery sc@ServerContext{..} qid = do
     (Nothing, Nothing) -> throwIO $ HE.QueryNotFound qid
     (Nothing, Just (tid, consumerClosed)) -> do
       Log.warning $ "Query " <> Log.build qid
-                 <> "has been deleted from meta store for some unknown reason, "
+                 <> " has been deleted from meta store for some unknown reason, "
                  <> "the query thread will now be killed"
       atomically (writeTVar consumerClosed True)
     (Just (P.QueryRunning, ver), Just (tid, consumerClosed)) -> do

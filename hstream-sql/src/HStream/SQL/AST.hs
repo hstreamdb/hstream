@@ -390,6 +390,7 @@ data UnaryOp  = OpSin      | OpSinh    | OpAsin   | OpAsinh  | OpCos   | OpCosh
               | OpToLower  | OpToUpper | OpTrim   | OpLTrim  | OpRTrim
               | OpReverse  | OpStrLen
               | OpDistinct | OpArrJoin | OpLength | OpArrMax | OpArrMin | OpSort
+              | OpNot
               deriving (Eq, Show, Ord, Generic, Aeson.ToJSON, Aeson.FromJSON)
 
 data JsonOp
@@ -467,7 +468,7 @@ data RValueExpr = RExprCast        ExprName RValueExpr RDataType
                 | RExprAggregate   ExprName (Aggregate RValueExpr)
                 | RExprAccessJson  ExprName JsonOp RValueExpr RValueExpr
                 | RExprBinOp       ExprName BinaryOp RValueExpr RValueExpr
-                | RExprUnaryOp     ExprName UnaryOp  RValueExpr
+                | RExprUnaryOp     ExprName UnaryOp RValueExpr
                 -- | RExprSubquery    ExprName RSelect
                 deriving (Show, Eq, Generic, Aeson.ToJSON, Aeson.FromJSON)
 -- FIXME:
@@ -478,42 +479,43 @@ type instance RefinedType ValueExpr = RValueExpr
 instance Refine ValueExpr where
   refine expr = case expr of
     -- 1. Operations
-    (DExprCast _ exprCast) -> case exprCast of
+    DExprCast _ exprCast -> case exprCast of
       ExprCast1 _ e typ -> RExprCast (trimSpacesPrint expr) (refine e) (refine typ)
       ExprCast2 _ e typ -> RExprCast (trimSpacesPrint expr) (refine e) (refine typ)
-    (ExprAnd _ e1 e2)   -> RExprBinOp (trimSpacesPrint expr) OpAnd (refine e1) (refine e2)
-    (ExprOr  _ e1 e2)   -> RExprBinOp (trimSpacesPrint expr) OpOr  (refine e1) (refine e2)
-    (ExprEQ _ e1 e2) -> RExprBinOp (trimSpacesPrint expr) OpEQ (refine e1) (refine e2)
-    (ExprNEQ _ e1 e2) -> RExprBinOp (trimSpacesPrint expr) OpNEQ (refine e1) (refine e2)
-    (ExprLT _ e1 e2) -> RExprBinOp (trimSpacesPrint expr) OpLT (refine e1) (refine e2)
-    (ExprGT _ e1 e2) -> RExprBinOp (trimSpacesPrint expr) OpGT (refine e1) (refine e2)
-    (ExprLEQ _ e1 e2) -> RExprBinOp (trimSpacesPrint expr) OpLEQ (refine e1) (refine e2)
-    (ExprGEQ _ e1 e2) -> RExprBinOp (trimSpacesPrint expr) OpGEQ (refine e1) (refine e2)
-    (ExprAccessArray _ e rhs) -> RExprAccessArray (trimSpacesPrint expr) (refine e) (refine rhs)
-    (ExprAdd _ e1 e2) -> RExprBinOp (trimSpacesPrint expr) OpAdd (refine e1) (refine e2)
-    (ExprSub _ e1 e2) -> RExprBinOp (trimSpacesPrint expr) OpSub (refine e1) (refine e2)
-    (ExprMul _ e1 e2) -> RExprBinOp (trimSpacesPrint expr) OpMul (refine e1) (refine e2)
+    ExprNot _ e         -> RExprUnaryOp (trimSpacesPrint expr) OpNot (refine e)
+    ExprAnd _ e1 e2   -> RExprBinOp (trimSpacesPrint expr) OpAnd (refine e1) (refine e2)
+    ExprOr  _ e1 e2   -> RExprBinOp (trimSpacesPrint expr) OpOr  (refine e1) (refine e2)
+    ExprEQ _ e1 e2 -> RExprBinOp (trimSpacesPrint expr) OpEQ (refine e1) (refine e2)
+    ExprNEQ _ e1 e2 -> RExprBinOp (trimSpacesPrint expr) OpNEQ (refine e1) (refine e2)
+    ExprLT _ e1 e2 -> RExprBinOp (trimSpacesPrint expr) OpLT (refine e1) (refine e2)
+    ExprGT _ e1 e2 -> RExprBinOp (trimSpacesPrint expr) OpGT (refine e1) (refine e2)
+    ExprLEQ _ e1 e2 -> RExprBinOp (trimSpacesPrint expr) OpLEQ (refine e1) (refine e2)
+    ExprGEQ _ e1 e2 -> RExprBinOp (trimSpacesPrint expr) OpGEQ (refine e1) (refine e2)
+    ExprAccessArray _ e rhs -> RExprAccessArray (trimSpacesPrint expr) (refine e) (refine rhs)
+    ExprAdd _ e1 e2 -> RExprBinOp (trimSpacesPrint expr) OpAdd (refine e1) (refine e2)
+    ExprSub _ e1 e2 -> RExprBinOp (trimSpacesPrint expr) OpSub (refine e1) (refine e2)
+    ExprMul _ e1 e2 -> RExprBinOp (trimSpacesPrint expr) OpMul (refine e1) (refine e2)
     -- 2. Constants
-    (ExprNull _)                    -> RExprConst (trimSpacesPrint expr) ConstantNull
-    (ExprInt _ n)                   -> RExprConst (trimSpacesPrint expr) (ConstantInt . fromInteger . refine $ n)
-    (ExprNum _ n)                   -> RExprConst (trimSpacesPrint expr) (ConstantFloat $ refine n)
-    (ExprString _ (SingleQuoted s)) -> RExprConst (trimSpacesPrint expr) (ConstantText s)
-    (ExprBool _ b)                  -> RExprConst (trimSpacesPrint expr) (ConstantBoolean $ refine b)
-    (ExprInterval _ interval)       -> RExprConst (trimSpacesPrint expr) (ConstantInterval $ refine interval)
+    ExprNull _                    -> RExprConst (trimSpacesPrint expr) ConstantNull
+    ExprInt _ n                   -> RExprConst (trimSpacesPrint expr) (ConstantInt . fromInteger . refine $ n)
+    ExprNum _ n                   -> RExprConst (trimSpacesPrint expr) (ConstantFloat $ refine n)
+    ExprString _ (SingleQuoted s) -> RExprConst (trimSpacesPrint expr) (ConstantText s)
+    ExprBool _ b                  -> RExprConst (trimSpacesPrint expr) (ConstantBoolean $ refine b)
+    ExprInterval _ interval       -> RExprConst (trimSpacesPrint expr) (ConstantInterval $ refine interval)
     ExprDate _ date                 -> RExprConst (trimSpacesPrint expr) $ ConstantDate $ refine date
     ExprTime _ time                 -> RExprConst (trimSpacesPrint expr) $ ConstantTime $ refine time
     ExprTimestamp _ timestamp       -> RExprConst (trimSpacesPrint expr) $ ConstantTimestamp $ refine timestamp
 
     -- 3. Arrays
-    (ExprArr _ es) -> RExprArray (trimSpacesPrint expr) (refine <$> es)
+    ExprArr _ es -> RExprArray (trimSpacesPrint expr) (refine <$> es)
 
     -- 4. Json access
     -- 5. Scalar functions
-    (ExprScalarFunc _ func) -> refine func
+    ExprScalarFunc _ func -> refine func
     -- 6. Set functions
-    (ExprSetFunc _ func) -> refine func
+    ExprSetFunc _ func -> refine func
     -- 7. Column access
-    (ExprColName _ col) -> refine col
+    ExprColName _ col -> refine col
     -- 8. Subquery
     -- (ExprSubquery _ select) -> RExprSubquery (trimSpacesPrint expr) (refine select)
 
