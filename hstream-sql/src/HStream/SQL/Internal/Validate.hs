@@ -185,6 +185,7 @@ instance Validate ValueExpr where
   validate expr@ExprAdd{}                 = isNumExpr expr
   validate expr@ExprSub{}                 = isNumExpr expr
   validate expr@ExprMul{}                 = isNumExpr expr
+  validate expr@ExprNot{}                 = isBoolExpr expr
   validate expr@ExprAnd{}                 = isBoolExpr expr
   validate expr@ExprOr{}                  = isBoolExpr expr
   validate expr@ExprInt{}                 = Right expr
@@ -216,6 +217,7 @@ isNumExpr expr = case expr of
   (ExprAdd _ e1 e2)    -> isNumExpr e1 >> isNumExpr e2 >> return expr
   (ExprSub _ e1 e2)    -> isNumExpr e1 >> isNumExpr e2 >> return expr
   (ExprMul _ e1 e2)    -> isNumExpr e1 >> isNumExpr e2 >> return expr
+  (ExprNot pos _)      -> Left $ buildSQLException ParseException pos "Expected a numeric expression but got a boolean"
   (ExprAnd pos _ _)    -> Left $ buildSQLException ParseException pos "Expected a numeric expression but got a boolean"
   (ExprOr pos _ _ )    -> Left $ buildSQLException ParseException pos "Expected a numeric expression but got a boolean"
   (ExprInt _ _)        -> Right expr
@@ -260,6 +262,7 @@ isFloatExpr expr = case expr of
   (ExprAdd _ e1 e2)    -> isFloatExpr e1 >> isFloatExpr e2 >> return expr
   (ExprSub _ e1 e2)    -> isFloatExpr e1 >> isFloatExpr e2 >> return expr
   (ExprMul _ e1 e2)    -> isFloatExpr e1 >> isFloatExpr e2 >> return expr
+  (ExprNot pos _)      -> Left $ buildSQLException ParseException pos "Expected a float expression but got a boolean"
   (ExprAnd pos _ _)    -> Left $ buildSQLException ParseException pos "Expected a float expression but got a boolean"
   (ExprOr pos _ _ )    -> Left $ buildSQLException ParseException pos "Expected a float expression but got a boolean"
   (ExprInt pos _)        -> Left $ buildSQLException ParseException pos "Expected a float expression but got an Integral"
@@ -303,8 +306,9 @@ isOrdExpr expr = case expr of
   ExprAdd{}    -> isNumExpr expr
   ExprSub{}    -> isNumExpr expr
   ExprMul{}    -> isNumExpr expr
-  (ExprAnd pos _ _) -> Left $ buildSQLException ParseException pos "Expected a comparable expression but got a boolean"
-  (ExprOr  pos _ _) -> Left $ buildSQLException ParseException pos "Expected a comparable expression but got a boolean"
+  ExprNot pos _   -> Left $ buildSQLException ParseException pos "Expected a comparable expression but got a boolean"
+  ExprAnd pos _ _ -> Left $ buildSQLException ParseException pos "Expected a comparable expression but got a boolean"
+  ExprOr  pos _ _ -> Left $ buildSQLException ParseException pos "Expected a comparable expression but got a boolean"
   ExprInt{}    -> Right expr
   ExprNum{}    -> Right expr
   ExprString{} -> Right expr
@@ -352,6 +356,7 @@ isBoolExpr expr = case expr of
   (ExprAdd pos _ _)  -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
   (ExprSub pos _ _)  -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
   (ExprMul pos _ _)  -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
+  (ExprNot _ e)        -> isBoolExpr e >> return expr
   (ExprAnd _ e1 e2)    -> isBoolExpr e1 >> isBoolExpr e2 >> return expr
   (ExprOr  _ e1 e2)    -> isBoolExpr e1 >> isBoolExpr e2 >> return expr
   (ExprInt pos _)      -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
@@ -398,6 +403,7 @@ isIntExpr expr = case expr of
   (ExprAdd _ e1 e2)    -> isIntExpr e1 >> isIntExpr e2 >> return expr
   (ExprSub _ e1 e2)    -> isIntExpr e1 >> isIntExpr e2 >> return expr
   (ExprMul _ e1 e2)    -> isIntExpr e1 >> isIntExpr e2 >> return expr
+  (ExprNot pos _)      -> Left $ buildSQLException ParseException pos "Expected an integral expression but got a boolean"
   (ExprAnd pos _ _)    -> Left $ buildSQLException ParseException pos "Expected an integral expression but got a boolean"
   (ExprOr pos _ _ )    -> Left $ buildSQLException ParseException pos "Expected an integral expression but got a boolean"
   (ExprInt _ _)        -> Right expr
@@ -441,6 +447,7 @@ isStringExpr expr = case expr of
   (ExprAdd pos _ _)    -> Left $ buildSQLException ParseException pos "Expected an String expression but got a numeric"
   (ExprSub pos _ _)    -> Left $ buildSQLException ParseException pos "Expected an String expression but got a numeric"
   (ExprMul pos _ _)    -> Left $ buildSQLException ParseException pos "Expected an String expression but got a numeric"
+  (ExprNot pos _)      -> Left $ buildSQLException ParseException pos "Expected an String expression but got a boolean"
   (ExprAnd pos _ _)    -> Left $ buildSQLException ParseException pos "Expected an String expression but got a boolean"
   (ExprOr pos _ _ )    -> Left $ buildSQLException ParseException pos "Expected an String expression but got a boolean"
   (ExprInt pos _)      -> Left $ buildSQLException ParseException pos "Expected an String expression but got an Integer"
@@ -488,6 +495,7 @@ notAggregateExpr (ExprScalarFunc _ (ScalarFuncAbs _ e)) = notAggregateExpr e
 notAggregateExpr expr@(ExprAdd _ e1 e2) = notAggregateExpr e1 >> notAggregateExpr e2 >> return expr
 notAggregateExpr expr@(ExprSub _ e1 e2) = notAggregateExpr e1 >> notAggregateExpr e2 >> return expr
 notAggregateExpr expr@(ExprMul _ e1 e2) = notAggregateExpr e1 >> notAggregateExpr e2 >> return expr
+notAggregateExpr expr@(ExprNot _ e)     = notAggregateExpr e >> pure expr
 notAggregateExpr expr@(ExprAnd _ e1 e2) = notAggregateExpr e1 >> notAggregateExpr e2 >> return expr
 notAggregateExpr expr@(ExprOr  _ e1 e2) = notAggregateExpr e1 >> notAggregateExpr e2 >> return expr
 notAggregateExpr expr = return expr
@@ -699,6 +707,7 @@ instance Validate Pause where
 
 instance Validate Resume where
   validate resume@(ResumeConnector _ hIdent) = validate hIdent >> return resume
+  validate resume@(ResumeQuery     _ hIdent) = validate hIdent >> return resume
 
 ------------------------------------- INSERT -----------------------------------
 instance Validate Insert where

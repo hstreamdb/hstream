@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP               #-}
+{-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module HStream.SQL.Codegen.UnaryOp
@@ -69,6 +70,7 @@ unaryOpOnValue OpLength v   = op_length v
 unaryOpOnValue OpArrMax v   = op_arrMax v
 unaryOpOnValue OpArrMin v   = op_arrMin v
 unaryOpOnValue OpSort v     = op_sort v
+unaryOpOnValue OpNot v      = op_not v
 
 --------------------------------------------------------------------------------
 op_sin :: FlowValue -> Either ERROR_TYPE FlowValue
@@ -336,3 +338,9 @@ op_sort :: FlowValue -> Either ERROR_TYPE FlowValue
 op_sort (FlowArray arr) = Right $ FlowArray (L.sort arr)
 op_sort FlowNull        = Right FlowNull
 op_sort v = Left . ERR $ "Unsupported operator <sort> on value <" <> T.pack (show v) <> ">"
+
+op_not :: FlowValue -> Either ERROR_TYPE FlowValue
+op_not v = case v of
+  FlowBoolean x -> pure $ FlowBoolean (not x)
+  FlowNull -> pure FlowNull
+  _ -> Left . ERR $ "Unsupported operator <not> on value <" <> T.pack (show v) <> ">"

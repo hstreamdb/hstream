@@ -257,7 +257,7 @@ deleteQuery ServerContext{..} DeleteQueryRequest{..} = do
 resumeQuery :: ServerContext -> T.Text -> IO ()
 resumeQuery ctx@ServerContext{..} qRQueryName = do
   getMeta @P.QueryStatus qRQueryName metaHandle >>= \case
-    Nothing -> throwIO $ HE.QueryNotFound ("Query " <> qRQueryName <> "does not exist")
+    Nothing -> throwIO $ HE.QueryNotFound ("Query " <> qRQueryName <> " does not exist")
     Just P.QueryAborted -> return ()
     -- NOTE: We don't have the state update from running to aborted
     --     , so if the method is called it means the node was down
@@ -273,10 +273,10 @@ resumeQuery ctx@ServerContext{..} qRQueryName = do
           let accumulation = L.head (snd persist)
           atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert view accumulation hm, ()))
           return (builder, False, sources)
-        _ -> throwIO $ HE.UnexpectedError ("Query " <> T.unpack queryId <> "should not be like \"" <> T.unpack querySql <> "\". What happened?")
+        _ -> throwIO $ HE.UnexpectedError ("Query " <> T.unpack queryId <> " should not be like \"" <> T.unpack querySql <> "\". What happened?")
       qRConsumerClosed <- newTVarIO False
       restoreStateAndRun ctx QueryRunner {qRQueryString = querySql, ..}
-    Nothing -> throwIO $ HE.QueryNotFound ("Query " <> qRQueryName <> "does not exist")
+    Nothing -> throwIO $ HE.QueryNotFound ("Query " <> qRQueryName <> " does not exist")
   where
     checkSources sources = do
       roles_m <- mapM (amIStream ctx) sources
