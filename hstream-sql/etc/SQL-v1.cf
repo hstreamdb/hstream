@@ -337,4 +337,4 @@ ArrayFuncMax.       ScalarFunc ::= "ARRAY_MAX"       "(" ValueExpr              
 ArrayFuncMin.       ScalarFunc ::= "ARRAY_MIN"       "(" ValueExpr               ")" ;
 ArrayFuncSort.      ScalarFunc ::= "ARRAY_SORT"      "(" ValueExpr               ")" ;
 
-coercions ValueExpr 10 ;
+coercions ValueExpr 9 ;
