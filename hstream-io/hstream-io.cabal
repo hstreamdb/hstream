@@ -63,6 +63,7 @@ library
     , hstream-common-base
     , hstream-common-stats
     , hstream-sql
+    , proto3-suite
     , scientific
     , stm
     , text
@@ -73,7 +74,6 @@ library
     , vector
     , Z-Data
     , zoovisitor
-    , proto3-suite
 
   default-extensions:
     DeriveGeneric

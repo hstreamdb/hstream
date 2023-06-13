@@ -4,6 +4,9 @@ Simple parser for a SQL-like language
 
 --------------------------------------------------------------------------------
 
+token SingleQuoted ('\'' (char - ["'"] )* '\'') ;
+token DoubleQuoted ('"'  (char - ["\""])* '"' ) ;
+
 PInteger.  PNInteger ::= "+" Integer ;
 IPInteger. PNInteger ::=     Integer ;
 NInteger.  PNInteger ::= "-" Integer ;
@@ -12,14 +15,11 @@ PDouble.  PNDouble ::= "+" Double ;
 IPDouble. PNDouble ::=     Double ;
 NDouble.  PNDouble ::= "-" Double ;
 
-token SString '\'' char+ '\'' ;
-token QuotedRaw '`' (char - ["`"])+ '`' ;
+ColumnIdentNormal.       ColumnIdent ::= Ident        ;
+ColumnIdentDoubleQuoted. ColumnIdent ::= DoubleQuoted ;
 
-ColumnIdentNormal. ColumnIdent ::= Ident     ;
-ColumnIdentRaw.    ColumnIdent ::= QuotedRaw ;
-
-HIdentNormal. HIdent ::= Ident     ;
-HIdentRaw.    HIdent ::= QuotedRaw ;
+HIdentNormal.       HIdent ::= Ident        ;
+HIdentDoubleQuoted. HIdent ::= DoubleQuoted ;
 --------------------------------------------------------------------------------
 
 comment "//" ;
@@ -39,21 +39,19 @@ QPause.       SQL ::= Pause       ";" ;
 QResume.      SQL ::= Resume      ";" ;
 
 ---- Create Query
-DCreate.  Create ::= "CREATE" "STREAM" HIdent ;
-CreateOp. Create ::= "CREATE" "STREAM" HIdent "WITH" "(" [StreamOption] ")" ;
-separator StreamOption "," ;
-CreateAs. Create ::= "CREATE" "STREAM" HIdent "AS" Select ;
+DCreate.    Create ::= "CREATE" "STREAM" HIdent ;
+CreateOp.   Create ::= "CREATE" "STREAM" HIdent             "WITH" "(" [StreamOption] ")" ;
+CreateAs.   Create ::= "CREATE" "STREAM" HIdent "AS" Select ;
 CreateAsOp. Create ::= "CREATE" "STREAM" HIdent "AS" Select "WITH" "(" [StreamOption] ")" ;
+separator StreamOption "," ;
 
--- OptionTopic.  StreamOption ::= "TOPIC"  "=" String ;
--- OptionFormat. StreamOption ::= "FORMAT" "=" String ;
 OptionRepFactor. StreamOption ::= "REPLICATE" "=" PNInteger ;
-OptionDuration.  StreamOption ::= "DURATION" "=" Interval ;
+OptionDuration.  StreamOption ::= "DURATION"  "=" Interval ;
 
-CreateSourceConnector. Create ::= "CREATE" "SOURCE" "CONNECTOR" HIdent "FROM" HIdent "WITH" "(" [ConnectorOption] ")" ;
+CreateSourceConnector.   Create ::= "CREATE" "SOURCE" "CONNECTOR" HIdent "FROM" HIdent                    "WITH" "(" [ConnectorOption] ")" ;
 CreateSourceConnectorIf. Create ::= "CREATE" "SOURCE" "CONNECTOR" HIdent "FROM" HIdent "IF" "NOT" "EXIST" "WITH" "(" [ConnectorOption] ")" ;
-CreateSinkConnector. Create ::= "CREATE" "SINK" "CONNECTOR" HIdent "TO" HIdent "WITH" "(" [ConnectorOption] ")" ;
-CreateSinkConnectorIf. Create ::= "CREATE" "SINK" "CONNECTOR" HIdent "TO" HIdent "IF" "NOT" "EXIST" "WITH" "(" [ConnectorOption] ")" ;
+CreateSinkConnector.     Create ::= "CREATE" "SINK"   "CONNECTOR" HIdent "TO"   HIdent                    "WITH" "(" [ConnectorOption] ")" ;
+CreateSinkConnectorIf.   Create ::= "CREATE" "SINK"   "CONNECTOR" HIdent "TO"   HIdent "IF" "NOT" "EXIST" "WITH" "(" [ConnectorOption] ")" ;
 separator ConnectorOption "," ;
 
 CreateView. Create ::= "CREATE" "VIEW" HIdent "AS" Select ;
@@ -62,34 +60,33 @@ ConnectorProperty. ConnectorOption ::= String "=" ValueExpr ;
 
 ---- Pause Query
 PauseConnector. Pause ::= "PAUSE" "CONNECTOR" HIdent ;
-PauseQuery.     Pause ::= "PAUSE" "QUERY" HIdent ;
+PauseQuery.     Pause ::= "PAUSE" "QUERY"     HIdent ;
 
---- Resume Query
+---- Resume Query
 ResumeConnector. Resume ::= "RESUME" "CONNECTOR" HIdent ;
-ResumeQuery.    Resume  ::= "RESUME" "QUERY" HIdent ;
+ResumeQuery.     Resume  ::= "RESUME" "QUERY"    HIdent ;
 
 ---- Insert Query
 DInsert. Insert ::= "INSERT" "INTO" HIdent "(" [ColumnIdent] ")" "VALUES" "(" [ValueExpr] ")" ;
 separator ColumnIdent "," ;
 separator ValueExpr "," ;
-InsertBinary. Insert ::= "INSERT" "INTO" HIdent "VALUES" String ;
-InsertJson.   Insert ::= "INSERT" "INTO" HIdent "VALUES" SString ;
+InsertRawOrJson. Insert ::= "INSERT" "INTO" HIdent "VALUES" ExprCast ;
 
 ---- Show Query
 DShow. ShowQ ::= "SHOW" ShowOption ;
-ShowQueries. ShowOption ::= "QUERIES" ;
-ShowStreams. ShowOption ::= "STREAMS" ;
+ShowQueries.    ShowOption ::= "QUERIES"    ;
+ShowStreams.    ShowOption ::= "STREAMS"    ;
 ShowConnectors. ShowOption ::= "CONNECTORS" ;
-ShowViews. ShowOption ::= "VIEWS" ;
+ShowViews.      ShowOption ::= "VIEWS"      ;
 
---- Drop Query
-DDrop.  Drop ::= "DROP" DropOption HIdent ;
+---- Drop Query
+DDrop.  Drop ::= "DROP" DropOption HIdent               ;
 DropIf. Drop ::= "DROP" DropOption HIdent "IF" "EXISTS" ;
 
 DropConnector. DropOption ::= "CONNECTOR" ;
 DropStream.    DropOption ::= "STREAM"    ;
 DropView.      DropOption ::= "VIEW"      ;
-DropQuery.     DropOption ::= "QUERY"      ;
+DropQuery.     DropOption ::= "QUERY"     ;
 
 -- Terminate Query
 TerminateQuery. Terminate ::= "TERMINATE" "QUERY" HIdent ;
@@ -113,74 +110,65 @@ SelectItemWildcard.          SelectItem ::= "*" ;
 -- From
 DFrom. From ::= "FROM" TableRef;
 
-_. TableRef ::= TableRef1;
-_. TableRef ::= TableRef3;
+_. TableRef  ::= TableRef1;
+_. TableRef  ::= TableRef3;
 _. TableRef1 ::= TableRef2;
 
-TableRefCrossJoin.   TableRef1 ::= TableRef1 JoinTypeWithoutCond "JOIN" TableRef2 "WITHIN" "(" Interval ")" ;
-TableRefNaturalJoin. TableRef1 ::= TableRef1 "NATURAL" JoinTypeWithCond "JOIN" TableRef2 "WITHIN" "(" Interval ")" ;
-TableRefJoinOn.      TableRef1 ::= TableRef1 JoinTypeWithCond "JOIN" TableRef2 "ON" ValueExpr "WITHIN" "(" Interval ")" ;
-TableRefJoinUsing.   TableRef1 ::= TableRef1 JoinTypeWithCond "JOIN" TableRef2 "USING" "(" [ColName] ")" "WITHIN" "(" Interval ")" ;
+TableRefCrossJoin.   TableRef1 ::= TableRef1           JoinTypeWithoutCond "JOIN" TableRef2                           "WITHIN" "(" Interval ")" ;
+TableRefNaturalJoin. TableRef1 ::= TableRef1 "NATURAL" JoinTypeWithCond    "JOIN" TableRef2                           "WITHIN" "(" Interval ")" ;
+TableRefJoinOn.      TableRef1 ::= TableRef1           JoinTypeWithCond    "JOIN" TableRef2 "ON" ValueExpr            "WITHIN" "(" Interval ")" ;
+TableRefJoinUsing.   TableRef1 ::= TableRef1           JoinTypeWithCond    "JOIN" TableRef2 "USING" "(" [ColName] ")" "WITHIN" "(" Interval ")" ;
 
-TableRefTumbling. TableRef3 ::= "TUMBLE" "(" HIdent "," Interval ")" ;
-TableRefHopping.  TableRef3 ::= "HOP"    "(" HIdent "," Interval "," Interval ")" ;
-TableRefSession.  TableRef3 ::= "SESSION"  "(" HIdent "," Interval ")" ;
+TableRefTumbling. TableRef3 ::= "TUMBLE"   "(" HIdent "," Interval              ")" ;
+TableRefHopping.  TableRef3 ::= "HOP"      "(" HIdent "," Interval "," Interval ")" ;
+TableRefSession.  TableRef3 ::= "SESSION"  "(" HIdent "," Interval              ")" ;
 
 TableRefAs.    TableRef2 ::= HIdent "AS" HIdent ;
 TableRefIdent. TableRef2 ::= HIdent ;
 
--- TableRefSubquery.  TableRef2 ::= "(" Select ")" ;
-
 separator ColName "," ;
 
-JoinInner1. JoinTypeWithCond ::= "INNER" ;
-JoinInner2. JoinTypeWithCond ::= "" ;
-JoinLeft1.  JoinTypeWithCond ::= "LEFT" ;
-JoinLeft2.  JoinTypeWithCond ::= "LEFT" "OUTER" ;
-JoinRight1. JoinTypeWithCond ::= "RIGHT" ;
-JoinRight2. JoinTypeWithCond ::= "RIGHT" "OUTER" ;
-JoinFull1.  JoinTypeWithCond ::= "FULL" ;
-JoinFull2.  JoinTypeWithCond ::= "FULL" "OUTER" ;
-JoinCross.  JoinTypeWithoutCond ::= "CROSS" ;
+JoinInner1. JoinTypeWithCond    ::=         "INNER" ;
+JoinInner2. JoinTypeWithCond    ::=         ""      ;
+JoinLeft1.  JoinTypeWithCond    ::= "LEFT"          ;
+JoinLeft2.  JoinTypeWithCond    ::= "LEFT"  "OUTER" ;
+JoinRight1. JoinTypeWithCond    ::= "RIGHT"         ;
+JoinRight2. JoinTypeWithCond    ::= "RIGHT" "OUTER" ;
+JoinFull1.  JoinTypeWithCond    ::= "FULL"          ;
+JoinFull2.  JoinTypeWithCond    ::= "FULL"  "OUTER" ;
+JoinCross.  JoinTypeWithoutCond ::= "CROSS"         ;
 
 -- Where
 DWhereEmpty. Where ::= "" ;
-DWhere.     Where ::= "WHERE" ValueExpr ;
+DWhere.      Where ::= "WHERE" ValueExpr ;
 
 -- GroupBy
-
--- DTumbling. TimeWindow ::= "TUMBLING" "(" Interval ")" ;
--- DHopping.  TimeWindow ::= "HOPPING"  "(" Interval "," Interval ")" ;
--- DSession.  TimeWindow ::= "SESSION"  "(" Interval ")" ;
-
 DGroupByEmpty. GroupBy ::= "" ;
 DGroupBy.      GroupBy ::= "GROUP" "BY" [ColName] ;
--- DGroupByWin.   GroupBy ::= "GROUP" "BY" [ColName] TimeWindow ;
 
 -- Having
 DHavingEmpty. Having ::= "" ;
 DHaving.      Having ::= "HAVING" ValueExpr ;
 
 --------------------------------------------------------------------------------
-
 ---- Data Types
-TypeInteger.  DataType ::= "INTEGER" ;
-TypeFloat.    DataType ::= "FLOAT" ;
-TypeBoolean.  DataType ::= "BOOLEAN" ;
-TypeByte.     DataType ::= "BYTEA" ;
-TypeText.     DataType ::= "STRING" ;
-TypeDate.     DataType ::= "DATE" ;
-TypeTime.     DataType ::= "TIME" ;
-TypeTimestamp. DataType ::= "TIMESTAMP" ;
-TypeInterval. DataType ::= "INTERVAL" ;
-TypeJson.     DataType ::= "JSONB" ;
-TypeArray.    DataType ::= DataType "[]" ;
+TypeInteger.   DataType ::= "INTEGER"     ;
+TypeFloat.     DataType ::= "FLOAT"       ;
+TypeBoolean.   DataType ::= "BOOLEAN"     ;
+TypeByte.      DataType ::= "BYTEA"       ;
+TypeText.      DataType ::= "STRING"      ;
+TypeDate.      DataType ::= "DATE"        ;
+TypeTime.      DataType ::= "TIME"        ;
+TypeTimestamp. DataType ::= "TIMESTAMP"   ;
+TypeInterval.  DataType ::= "INTERVAL"    ;
+TypeJson.      DataType ::= "JSONB"       ;
+TypeArray.     DataType ::= DataType "[]" ;
 
 --------------------------------------------------------------------------------
 
 ---- Value Expression
 -- Boolean Expr
-ExprOr.  ValueExpr  ::= ValueExpr  "OR" ValueExpr1 ;
+ExprOr.  ValueExpr  ::= ValueExpr  "OR"  ValueExpr1 ;
 ExprAnd. ValueExpr1 ::= ValueExpr1 "AND" ValueExpr2 ;
 
 ExprEQ.  ValueExpr2 ::= ValueExpr2 "="  ValueExpr3 ;
@@ -199,52 +187,41 @@ ExprSub. ValueExpr4 ::= ValueExpr4 "-" ValueExpr5 ;
 ExprMul. ValueExpr5 ::= ValueExpr5 "*" ValueExpr6 ;
 
 -- Array Access
-ArrayAccessRhsIndex. ArrayAccessRhs ::= "[" Integer "]" ;
-ArrayAccessRhsFrom. ArrayAccessRhs ::= "[" Integer ":" "]" ;
-ArrayAccessRhsTo. ArrayAccessRhs ::= "[" ":" Integer "]" ;
+ArrayAccessRhsIndex.  ArrayAccessRhs ::= "[" Integer             "]" ;
+ArrayAccessRhsFrom.   ArrayAccessRhs ::= "[" Integer ":"         "]" ;
+ArrayAccessRhsTo.     ArrayAccessRhs ::= "["         ":" Integer "]" ;
 ArrayAccessRhsFromTo. ArrayAccessRhs ::= "[" Integer ":" Integer "]" ;
 
 ExprAccessArray. ValueExpr6 ::= ValueExpr7 ArrayAccessRhs ;
 
 -- Type Casting
-ExprCast1. ValueExpr7 ::= ValueExpr8 "::" DataType ;
-ExprCast2. ValueExpr7 ::= "CAST" "(" ValueExpr "AS" DataType ")" ;
+ExprCast1. ExprCast ::= ValueExpr8 "::" DataType ;
+ExprCast2. ExprCast ::= "CAST" "(" ValueExpr "AS" DataType ")" ;
+
+DExprCast. ValueExpr7 ::= ExprCast ;
 
 -- Null Expr.
 ExprNull. ValueExpr8 ::= "NULL" ;
 
 -- Scalar Numeric Type
-ExprInt. ValueExpr8 ::= PNInteger ; -- integer
-ExprNum. ValueExpr8 ::= PNDouble  ; -- float
+ExprInt. ValueExpr8 ::= PNInteger ;
+ExprNum. ValueExpr8 ::= PNDouble  ;
 
 -- Plain String
-ExprString. ValueExpr8 ::= String ; -- string
+ExprString. ValueExpr8 ::= SingleQuoted ;
 
 -- Boolean Type
-BoolTrue.  Boolean ::= "TRUE"  ; -- boolean
+BoolTrue.  Boolean ::= "TRUE"  ;
 BoolFalse. Boolean ::= "FALSE" ;
 ExprBool. ValueExpr8 ::= Boolean ;
 
--- Date, Time and Interval
-TimeStrWithoutMicroSec. TimeStr ::= Integer ":" Integer ":" Integer ;
-TimeStrWithMicroSec.    TimeStr ::= Integer ":" Integer ":" Integer "." Integer ;
+-- Date, Time, Timestamp and Interval
+DDate.      Date      ::= "DATE"      SingleQuoted ;
+DTime.      Time      ::= "TIME"      SingleQuoted ;
+DTimestamp. Timestamp ::= "TIMESTAMP" SingleQuoted ;
 
-DDateStr. DateStr ::= Integer "-" Integer "-" Integer ;
-DDateTimeStr. DateTimeStr ::= DateStr TimeStr ;
-
-TimezoneZ.        Timezone ::= "Z" ;
-TimezonePositive. Timezone ::= "+" Integer ":" Integer ;
-TimezoneNegative. Timezone ::= "-" Integer ":" Integer ;
-
-DTimestampStr. TimestampStr ::= DateStr "T" TimeStr Timezone ;
-
-DDate. Date ::= "DATE" DateStr ;
-DTime. Time ::= "TIME" TimeStr ;
-TimestampWithoutZone. Timestamp ::= "TIMESTAMP" DateTimeStr ;
-TimestampWithZone.    Timestamp ::= "TIMESTAMP" TimestampStr ;
-
-ExprDate. ValueExpr8 ::= Date ;
-ExprTime. ValueExpr8 ::= Time ;
+ExprDate.      ValueExpr8 ::= Date ;
+ExprTime.      ValueExpr8 ::= Time ;
 ExprTimestamp. ValueExpr8 ::= Timestamp ;
 
 IntervalSecond. IntervalUnit ::= "SECOND" ;
@@ -254,7 +231,7 @@ IntervalDay.    IntervalUnit ::= "DAY"    ;
 IntervalMonth.  IntervalUnit ::= "MONTH"  ;
 IntervalYear.   IntervalUnit ::= "YEAR"   ;
 
-Interval. Interval ::= "INTERVAL" SString IntervalUnit ;
+DInterval. Interval ::= "INTERVAL" Integer IntervalUnit ;
 ExprInterval. ValueExpr8 ::= Interval ;
 
 -- Non-Scalar Type (Array)
