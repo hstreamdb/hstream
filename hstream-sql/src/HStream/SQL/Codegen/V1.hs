@@ -155,7 +155,7 @@ hstreamCodegen = \case
       RInsertRawOrJsonPayloadTypeRaw  -> InsertPlan stream RawFormat bs
       RInsertRawOrJsonPayloadTypeJson -> InsertPlan stream JsonFormat $
         BL.toStrict . PB.toLazyByteString . jsonObjectToStruct . fromJust . Aeson.decode
-          $ BL.fromStrict . BSC.init . BSC.tail $ bs
+          $ BL.fromStrict bs
   RQShow (RShow RShowStreams)        -> return $ ShowPlan SStreams
   RQShow (RShow RShowQueries)        -> return $ ShowPlan SQueries
   RQShow (RShow RShowConnectors)     -> return $ ShowPlan SConnectors
