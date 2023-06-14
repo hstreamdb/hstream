@@ -154,15 +154,25 @@ data CheckedRecordIds = CheckedRecordIds {
   crBatchIndexes :: TVar (Set.Set Word32)
 }
 
+instance Show CheckedRecordIds where
+  show CheckedRecordIds{..} = "{ logId=" <> show crLogId
+                           <> ", batchId=" <> show crBatchId
+                           <> ", deadline=" <> show crDeadline
+                           <> "}"
+
 instance Eq CheckedRecordIds where
   (==) cr1 cr2 = crDeadline cr1 == crDeadline cr2
 instance Ord CheckedRecordIds where
-  (<=) cr1 cr2 = crDeadline cr1 <= crDeadline cr2
+  (<=) cr1 cr2 | crDeadline cr1 /= crDeadline cr2 = crDeadline cr1 < crDeadline cr2
+               | otherwise = crBatchId cr1 <= crBatchId cr2
 
 data CheckedRecordIdsKey = CheckedRecordIdsKey {
   crkLogId   :: HS.C_LogID,
   crkBatchId :: Word64
 } deriving (Eq, Ord)
+
+instance Show CheckedRecordIdsKey where
+  show CheckedRecordIdsKey{..} = show crkLogId <> "-" <> show crkBatchId
 
 data ConsumerContext = ConsumerContext
   { ccConsumerName  :: ConsumerName,
@@ -212,7 +222,10 @@ type OrderingKey = T.Text
 data ShardRecordId = ShardRecordId {
   sriBatchId    :: Word64,
   sriBatchIndex :: Word32
-} deriving (Eq, Ord, Show)
+} deriving (Eq, Ord)
+
+instance Show ShardRecordId where
+  show ShardRecordId{..} = show sriBatchId <> "-" <> show sriBatchIndex
 
 instance Bounded ShardRecordId where
   minBound = ShardRecordId minBound minBound
