@@ -248,9 +248,9 @@ type instance RefinedType PNDouble = Double
 instance Refine PNDouble where
   refine = extractPNDouble
 
-type instance RefinedType SingleQuoted = BS.ByteString
+type instance RefinedType SingleQuoted = Text
 instance Refine SingleQuoted where
-  refine (SingleQuoted t) = encodeUtf8 . Text.init . Text.tail $ t
+  refine = extractSingleQuoted
 
 type instance RefinedType ColumnIdent = Text
 instance Refine ColumnIdent where
@@ -499,7 +499,7 @@ instance Refine ValueExpr where
     ExprNull _                    -> RExprConst (trimSpacesPrint expr) ConstantNull
     ExprInt _ n                   -> RExprConst (trimSpacesPrint expr) (ConstantInt . fromInteger . refine $ n)
     ExprNum _ n                   -> RExprConst (trimSpacesPrint expr) (ConstantFloat $ refine n)
-    ExprString _ (SingleQuoted s) -> RExprConst (trimSpacesPrint expr) (ConstantText s)
+    ExprString _ s@(SingleQuoted _) -> RExprConst (trimSpacesPrint expr) (ConstantText $ refine s)
     ExprBool _ b                  -> RExprConst (trimSpacesPrint expr) (ConstantBoolean $ refine b)
     ExprInterval _ interval       -> RExprConst (trimSpacesPrint expr) (ConstantInterval $ refine interval)
     ExprDate _ date                 -> RExprConst (trimSpacesPrint expr) $ ConstantDate $ refine date
@@ -898,7 +898,7 @@ instance Refine Insert where
     let (val, typ, _) = unifyValueExprCast valExprCast
         errMsg        = "INTERNAL ERROR: Insert RawRecord or HRecord syntax only supports string literals to be casted to `BYTEA` or `JSONB`, which is ensured by validate"
         rVal          = case val of
-                          ExprString _ (SingleQuoted singleQuoted) -> singleQuoted
+                          ExprString _ singleQuoted@(SingleQuoted _) -> refine singleQuoted
                           _ -> error errMsg
         rTyp          = case typ of
                           TypeByte _ -> RInsertRawOrJsonPayloadTypeRaw
