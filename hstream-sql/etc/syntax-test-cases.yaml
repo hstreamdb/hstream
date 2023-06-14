@@ -57,3 +57,33 @@ testSuiteCases:
   - select a -b from s emit changes;
   - select a- b from s emit changes;
   - select a - b from s emit changes;
+- testCaseFail: null
+  testCaseLabel: JSON operator should unquote string literal
+  testCaseResult: RQPushSelect (RSelect (RSel [RSelectItemProject (RExprAccessJson
+    "c->'season_id'" JOpArrow (RExprCol "c" Nothing "c") (RExprConst "'season_id'"
+    (ConstantText "season_id"))) Nothing]) (RFrom (RTableRefSimple "production_changes"
+    Nothing)) RWhereEmpty RGroupByEmpty RHavingEmpty)
+  testCaseStmts:
+  - select c -> 'season_id' from production_changes EMIT CHANGES;
+- testCaseFail: null
+  testCaseLabel: JSON operator should unquote string literal
+  testCaseResult: RQPushSelect (RSelect (RSel [RSelectItemProject (RExprAccessJson
+    "c->>'season_id'" JOpLongArrow (RExprCol "c" Nothing "c") (RExprConst "'season_id'"
+    (ConstantText "season_id"))) Nothing]) (RFrom (RTableRefSimple "production_changes"
+    Nothing)) RWhereEmpty RGroupByEmpty RHavingEmpty)
+  testCaseStmts:
+  - select c ->> 'season_id' from production_changes EMIT CHANGES;
+- testCaseFail: null
+  testCaseLabel: insert JSON
+  testCaseResult: 'RQInsert (RInsertRawOrJson "s" "{\"x\": {\"a\": 42, \"b\": null,
+    \"c\": \"str\", \"d\": true}}" RInsertRawOrJsonPayloadTypeJson)'
+  testCaseStmts:
+  - 'insert into s values cast (''{"x": {"a": 42, "b": null, "c": "str", "d": true}}''
+    as jsonb);'
+- testCaseFail: null
+  testCaseLabel: string function
+  testCaseResult: RQPushSelect (RSelect (RSel [RSelectItemProject (RExprBinOp "SPLIT('a.b.c',x)"
+    OpSplit (RExprConst "'a.b.c'" (ConstantText "a.b.c")) (RExprCol "x" Nothing "x"))
+    Nothing]) (RFrom (RTableRefSimple "s" Nothing)) RWhereEmpty RGroupByEmpty RHavingEmpty)
+  testCaseStmts:
+  - select SPLIT('a.b.c', x) from s emit changes;

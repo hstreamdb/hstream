@@ -5,6 +5,7 @@ module HStream.SQL.Extra
   , extractPNDouble
   , extractColumnIdent
   , extractHIdent
+  , extractSingleQuoted
   , extractRefNameFromExpr
   , trimSpacesPrint
   , unifyValueExprCast,
@@ -43,6 +44,9 @@ extractHIdent :: HIdent -> Text
 extractHIdent (HIdentNormal _ (Ident text)) = text
 extractHIdent (HIdentDoubleQuoted _ (DoubleQuoted text)) =
   Text.tail . Text.init $ text
+
+extractSingleQuoted :: SingleQuoted -> Text
+extractSingleQuoted (SingleQuoted x) = Text.tail . Text.init $ x
 
 trimSpacesPrint :: Print a => a -> String
 trimSpacesPrint = removeSpace . printTree

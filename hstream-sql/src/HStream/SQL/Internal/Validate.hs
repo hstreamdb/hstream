@@ -723,10 +723,10 @@ instance Validate Insert where
     _ <- validate hIdent
     let (valExpr, valTyp, pos) = unifyValueExprCast exprCast
     case valExpr of
-      ExprString pos' (SingleQuoted strVal) -> case valTyp of
+      ExprString pos' strVal -> case valTyp of
         TypeByte _ -> pure insert
         TypeJson _ -> do
-          let serialized = BSL.fromStrict . encodeUtf8 . Text.init . Text.tail $ strVal
+          let serialized = BSL.fromStrict . encodeUtf8 . extractSingleQuoted $ strVal
           let (o' :: Maybe Aeson.Object) = Aeson.decode serialized
           case o' of
             Just _ -> pure insert
