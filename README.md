@@ -8,7 +8,8 @@
 
 # HStreamDB
 
-HStreamDB is an open-source, cloud-native streaming database for IoT and beyond. Modernize your data stack for real-time applications.
+HStreamDB is an open-source, cloud-native streaming database for IoT and beyond.
+Modernize your data stack for real-time applications.
 
 ![hstream-db](https://assets.emqx.com/images/hstreamdb-hstream-github-readme-2022121402.png)
 
@@ -52,24 +53,25 @@ HStreamDB is an open-source, cloud-native streaming database for IoT and beyond.
   With the architecture that separates compute from storage, both compute and
   storage layers of HStreamDB can be independently scaled seamlessly. And with
   the consensus algorithm based on the optimized Paxos, data is securely
-  replicated to multiple nodes which ensures the high availability of our system.
+  replicated to multiple nodes which ensures the high availability of our
+  system.
 
 For more information, please visit [HStreamDB homepage](https://hstream.io).
 
 ## Quickstart
 
 **For detailed instructions, follow
-[HStreamDB quickstart](https://hstream.io/docs/en/latest/start/quickstart-with-docker.html).**
+[HStreamDB quickstart](https://docs.hstream.io/start/quickstart-with-docker.html).**
 
-1. [Install HStreamDB](https://hstream.io/docs/en/latest/start/quickstart-with-docker.html#installation).
-2. [Start a local standalone HStream server](https://hstream.io/docs/en/latest/start/quickstart-with-docker.html#start-a-local-standalone-hstream-server-in-docker).
-3. [Start HStreamDB's interactive CLI](https://hstream.io/docs/en/latest/start/quickstart-with-docker.html#start-hstreamdb-s-interactive-sql-cli)
+1. [Install HStreamDB](https://docs.hstream.io/start/quickstart-with-docker.html#installation).
+2. [Start a local standalone HStream server](https://docs.hstream.io/start/quickstart-with-docker.html#start-hstreamdb-services).
+3. [Start HStreamDB's interactive CLI](https://docs.hstream.io/start/quickstart-with-docker.html#start-hstreamdb-s-interactive-sql-cli)
    and
-   [create your first stream](https://hstream.io/docs/en/latest/start/quickstart-with-docker.html#create-a-stream).
-4. [Run a continuous query](https://hstream.io/docs/en/latest/start/quickstart-with-docker.html#run-a-continuous-query-over-the-stream).
-5. [Start another interactive CLI](https://hstream.io/docs/en/latest/start/quickstart-with-docker.html#start-another-cli-session),
+   [create your first stream](https://docs.hstream.io/start/quickstart-with-docker.html#create-a-stream).
+4. [Run a continuous query](https://docs.hstream.io/start/quickstart-with-docker.html#run-a-continuous-query-over-the-stream).
+5. [Start another interactive CLI](https://docs.hstream.io/start/quickstart-with-docker.html#start-another-cli-session),
    then
-   [insert some data into the stream and get query results](https://hstream.io/docs/en/latest/start/quickstart-with-docker.html#insert-data-into-the-stream).
+   [insert some data into the stream and get query results](https://docs.hstream.io/start/quickstart-with-docker.html#insert-data-into-the-stream).
 
 ## Documentation
 
@@ -90,9 +92,10 @@ Please submit any bugs, issues, and feature requests to
 
 **Pre-requirements**
 
-1. Make sure you have Docker installed, and can run `docker` as a non-root user.
-2. You have `python3` installed.
-3. You can clone the GitHub repository by ssh key.
+1. You have `python3` and `docker` installed.
+2. [Optional] You can run `docker` without `sudo`. For details, see
+   [this docs](https://docs.docker.com/engine/install/linux-postinstall/)
+3. [Optional] You can clone the GitHub repository by ssh key.
 
 **Get the source code**
 
@@ -122,8 +125,7 @@ To see information about all started services, run
 script/dev-tools info
 ```
 
-> _A dev-cluster is required while running tests. All data are stored under
-> `your-project-root/local-data/logdevice`_
+> _All datas are stored under `your-project-root/local-data`_
 
 **Enter in an interactive shell**
 
@@ -136,6 +138,7 @@ script/dev-tools shell
 _Inside the interactive shell, you have all extra dependencies installed._
 
 ```
+I have no name!@649bc6bb75ed:~$ cabal update
 I have no name!@649bc6bb75ed:~$ make
 I have no name!@649bc6bb75ed:~$ cabal build all
 ```
