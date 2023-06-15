@@ -463,6 +463,27 @@ template <typename Func> void StatsHolder::runForEach(const Func& func) {
     }                                                                          \
   } while (0)
 
+#define PER_X_STAT_SET(stats_struct, x, x_ty, stat_name, key, val)             \
+  do {                                                                         \
+    if (stats_struct) {                                                        \
+      auto stats_ulock = (stats_struct)->get().x.ulock();                      \
+      auto stats_it = stats_ulock->find((key));                                \
+      if (stats_it != stats_ulock->end()) {                                    \
+        /* x_ty for key already exist (common case). */                        \
+        /* Just atomically set the value.  */                                  \
+        stats_it->second->stat_name##_counter = (val);                         \
+      } else {                                                                 \
+        /* x_ty for key do not exist yet (rare case). */                       \
+        /* Upgrade ulock to wlock and emplace new x_ty. */                     \
+        /* No risk of deadlock because we are the only writer thread. */       \
+        auto stats_ptr = std::make_shared<x_ty>();                             \
+        stats_ptr->stat_name##_counter = (val);                                \
+        stats_ulock.moveFromUpgradeToWrite()->emplace_hint(                    \
+            stats_it, (key), std::move(stats_ptr));                            \
+      }                                                                        \
+    }                                                                          \
+  } while (0)
+
 // FIXME: both "not found" and "overflow" can return -1, so there should be
 // another returned value to distinguish (e.g. errmsg)
 #define PER_X_STAT_GET(stats_agg, x, stat_name, key)                           \
@@ -678,6 +699,10 @@ int perXTimeSeriesGetall(
   void prefix##add_##stat_name(StatsHolder* stats_holder, const char* key,     \
                                int64_t val) {                                  \
     PER_X_STAT_ADD(stats_holder, x, x_ty, stat_name, key, val);                \
+  }                                                                            \
+  void prefix##set_##stat_name(StatsHolder* stats_holder, const char* key,     \
+                               int64_t val) {                                  \
+    PER_X_STAT_SET(stats_holder, x, x_ty, stat_name, key, val);                \
   }                                                                            \
   int64_t prefix##get_##stat_name(Stats* stats, const char* key) {             \
     PER_X_STAT_GET(stats, x, stat_name, key);                                  \
