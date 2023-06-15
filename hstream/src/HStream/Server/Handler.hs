@@ -62,6 +62,7 @@ handlers serverContext@ServerContext{..} =
         hstreamApiCreateShardReader = createShardReaderHandler serverContext,
         hstreamApiDeleteShardReader = deleteShardReaderHandler serverContext,
         hstreamApiReadShard         = readShardHandler serverContext,
+        hstreamApiReadShardStream   = readShardStreamHandler serverContext,
 
         -- Stats
         hstreamApiPerStreamTimeSeriesStats = H.perStreamTimeSeriesStats scStatsHolder,

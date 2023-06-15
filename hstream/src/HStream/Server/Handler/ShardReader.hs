@@ -1,4 +1,3 @@
-
 {-# LANGUAGE BlockArguments      #-}
 {-# LANGUAGE CPP                 #-}
 {-# LANGUAGE DataKinds           #-}
@@ -8,10 +7,13 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module HStream.Server.Handler.ShardReader
-  ( createShardReaderHandler
+  ( -- * For grpc-haskell
+    createShardReaderHandler
   , deleteShardReaderHandler
   , readShardHandler
   , listShardReadersHandler
+  , readShardStreamHandler
+    -- * For hs-grpc-server
   , handleListShardReaders
   , handleCreateShardReader
   , handleDeleteShardReader
@@ -21,15 +23,14 @@ module HStream.Server.Handler.ShardReader
 where
 
 import           Control.Exception
-import qualified Data.Text                        as T
+import           Data.Bifunctor                   (first)
 import qualified HsGrpc.Server                    as G
 import           Network.GRPC.HighLevel.Generated
 
-import           Control.Concurrent.STM           (readTVarIO)
 import           Control.Monad                    (unless)
 import qualified HStream.Exception                as HE
 import qualified HStream.Logger                   as Log
-import           HStream.Server.Core.Common       (getResNode, lookupResource')
+import           HStream.Server.Core.Common       (lookupResource')
 import qualified HStream.Server.Core.ShardReader  as C
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
@@ -103,9 +104,21 @@ handleReadShard sc _ req = catchDefaultEx $ do
   Log.debug $ "Receive read shard Request: " <> Log.buildString (show req)
   ReadShardResponse <$> C.readShard sc req
 
+readShardStreamHandler
+  :: ServerContext
+  -> ServerRequest 'ServerStreaming ReadShardStreamRequest ReadShardStreamResponse
+  -> IO (ServerResponse 'ServerStreaming ReadShardStreamResponse)
+readShardStreamHandler sc (ServerWriterRequest _meta req streamSend) =
+  defaultServerStreamExceptionHandle $ do
+    Log.debug $ "Receive read shard stream Request: " <> Log.build (show req)
+    C.readShardStream sc req streamWrite
+    return $ ServerWriterResponse mempty StatusUnknown "should not reach here"
+  where
+    streamWrite x = first show <$> (streamSend x)
+
 handleReadShardStream
   :: ServerContext
   -> G.ServerStreamHandler ReadShardStreamRequest ReadShardStreamResponse ()
 handleReadShardStream sc _ req stream = catchDefaultEx $ do
   Log.debug $ "Receive read shard stream Request: " <> Log.build (show req)
-  C.readShardStream sc req stream
+  C.readShardStream sc req (G.streamWrite stream . Just)
