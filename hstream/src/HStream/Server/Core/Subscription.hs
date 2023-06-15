@@ -54,6 +54,7 @@ import qualified HStream.Stats                 as Stats
 import qualified HStream.Store                 as S
 import           HStream.Utils                 (ResourceType (..),
                                                 decompressBatchedRecord,
+                                                getCurrentMsTimestamp,
                                                 getProtoTimestamp,
                                                 mkBatchedRecord, textToCBytes)
 
@@ -588,9 +589,8 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
     updateClockAndDoResend = do
       -- Note: non-strict behaviour in STM!
       --       Please refer to https://github.com/haskell/stm/issues/30
-      newTime <- getCurrentTimestamp <&> fromIntegral
+      newTime <- getCurrentMsTimestamp <&> fromIntegral
       timeoutList <- atomically $ do
-        ct <- readTVar subCurrentTime
         checkList <- readTVar subWaitingCheckedRecordIds
         let (!timeoutList, !leftList) = Heap.span (\CheckedRecordIds {..} -> crDeadline <= newTime) checkList
         -- traceM $ "newTime=" <> show newTime <> ", timeoutList=" <> show timeoutList <> ", leftList=" <> show leftList

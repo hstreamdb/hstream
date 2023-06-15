@@ -1,3 +1,5 @@
+{-# LANGUAGE BangPatterns #-}
+
 module HStream.Utils.Time
   ( Interval (..)
   , parserInterval
@@ -10,17 +12,20 @@ module HStream.Utils.Time
 
     -- * Re-export
   , getPOSIXTime
+  , getCurrentMsTimestamp
   ) where
 
-import           Control.Applicative   ((<|>))
-import           Data.Attoparsec.Text  (Parser, choice, endOfInput, parseOnly,
-                                        rational, string)
-import           Data.Int              (Int64)
-import qualified Data.Text             as T
-import           Data.Time.Clock       (NominalDiffTime)
-import           Data.Time.Clock.POSIX (getPOSIXTime)
+import           Control.Applicative    ((<|>))
+import           Data.Attoparsec.Text   (Parser, choice, endOfInput, parseOnly,
+                                         rational, string)
+import           Data.Int               (Int64)
+import qualified Data.Text              as T
+import           Data.Time.Clock        (NominalDiffTime)
+import           Data.Time.Clock.POSIX  (getPOSIXTime)
 
-import           HStream.Base          (rmTrailingZeros)
+import           Data.Time.Clock.System (SystemTime (MkSystemTime),
+                                         getSystemTime)
+import           HStream.Base           (rmTrailingZeros)
 
 data Interval
   = Milliseconds Double
@@ -75,3 +80,9 @@ msecSince start = floor . (* 1e3) <$> diffTimeSince start
 secSince :: NominalDiffTime -> IO Int64
 secSince start = floor <$> diffTimeSince start
 {-# INLINE secSince #-}
+
+getCurrentMsTimestamp :: IO Int64
+getCurrentMsTimestamp = do
+  MkSystemTime sec nano <- getSystemTime
+  let !ts = floor @Double $ (fromIntegral sec * 1e3) + (fromIntegral nano / 1e6)
+  return ts
