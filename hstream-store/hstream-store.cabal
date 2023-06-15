@@ -254,6 +254,22 @@ benchmark hstore-bench-stream
   default-language: Haskell2010
   ghc-options:      -threaded -rtsopts -with-rtsopts=-N
 
+benchmark hstore-bench-log-extra-attrs
+  import:           shared-properties
+  type:             exitcode-stdio-1.0
+  main-is:          LogExtraAttrs.hs
+  hs-source-dirs:   bench
+  build-depends:
+    , base           >=4.11 && <5
+    , bytestring
+    , containers
+    , hstream-store
+    , time
+    , Z-Data
+
+  default-language: Haskell2010
+  ghc-options:      -threaded -rtsopts -with-rtsopts=-N
+
 executable hstore-bench-writter
   import:           shared-properties
   main-is:          writeBench.hs
