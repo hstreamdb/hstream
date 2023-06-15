@@ -10,6 +10,7 @@ import           Data.Int              (Int64)
 import           Data.Kind             (Type)
 import qualified Data.List             as L
 import qualified Data.Map              as Map
+import           Data.Maybe            (fromMaybe)
 import           Data.Text             (Text)
 import qualified Data.Text             as T
 
@@ -149,12 +150,12 @@ rSelToAffiliateItems :: RSel -> [(ColumnCatalog,ScalarExpr)]
 rSelToAffiliateItems (RSel items) =
   L.concatMap (\item ->
                  case item of
-                   RSelectItemProject expr _ ->
+                   RSelectItemProject expr alias_m ->
                      case expr of
                        RExprCol _ _ _     -> []
                        RExprAggregate _ _ -> []
                        _ -> let cata = ColumnCatalog
-                                     { columnName = T.pack (getName expr)
+                                     { columnName = fromMaybe (T.pack (getName expr)) alias_m
                                      , columnStream = Nothing
                                      }
                                 scalar = decouple expr
@@ -171,10 +172,15 @@ rSelToProjectItems (RSel items) =
                    RSelectItemProject expr alias_m ->
                      case expr of
                        RExprCol name stream_m field ->
-                         let cata_get = ColumnCatalog
-                                        { columnName = field
-                                        , columnStream = stream_m
-                                        }
+                         let cata_get = case alias_m of
+                                          Nothing    -> ColumnCatalog
+                                                       { columnName = field
+                                                       , columnStream = stream_m
+                                                       }
+                                          Just alias -> ColumnCatalog
+                                                        { columnName = alias
+                                                        , columnStream = Nothing
+                                                        }
                              cata_alias = case alias_m of
                                             Nothing    -> cata_get
                                             Just alias -> ColumnCatalog
@@ -182,10 +188,15 @@ rSelToProjectItems (RSel items) =
                                                         , columnStream = Nothing
                                                         }
                           in [(cata_get,cata_alias)]
-                       _ -> let cata_get = ColumnCatalog
-                                       { columnName = T.pack (getName expr)
-                                       , columnStream = Nothing
-                                       }
+                       _ -> let cata_get = case alias_m of
+                                              Nothing    -> ColumnCatalog
+                                                           { columnName = T.pack (getName expr)
+                                                           , columnStream = Nothing
+                                                           }
+                                              Just alias -> ColumnCatalog
+                                                            { columnName = alias
+                                                            , columnStream = Nothing
+                                                            }
                                 cata_alias = case alias_m of
                                                Nothing    -> cata_get
                                                Just alias -> ColumnCatalog
@@ -393,8 +404,17 @@ instance HasAggregates RValueExpr where
 
 instance HasAggregates RSelectItem where
   getAggregates item = case item of
-    RSelectItemProject e _ -> getAggregates e
-    _                      -> []
+    RSelectItemProject e alias_m ->
+      let tups = getAggregates e
+       in case alias_m of
+            Nothing    -> tups
+            Just alias ->
+              let cata = ColumnCatalog
+                       { columnName = alias
+                       , columnStream = Nothing
+                       }
+               in L.map (\(c, a) -> (cata, a)) tups
+    _                            -> []
 
 instance HasAggregates RSel where
   getAggregates (RSel items) = L.nubBy ((==) `on` snd) $ L.concatMap getAggregates items
