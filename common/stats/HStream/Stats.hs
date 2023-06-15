@@ -87,6 +87,12 @@ module HStream.Stats
   , view_stat_getall
   , CounterExports(view, total_execute_queries)
 
+    -- * InternalStats
+  , internal_stat_erase
+    -- ** Counters
+  , internal_stat_getall
+  , CounterExports(internal, sub_checklist_size)
+
     -- * ServerHistogram
   , ServerHistogramLabel (..)
   , serverHistogramAdd
@@ -202,6 +208,8 @@ PER_X_STAT(connector_)
 PER_X_STAT(query_)
 -- view_stat_getall, view_stat_erase
 PER_X_STAT(view_)
+-- internal_stat_getall, internal_stat_erase
+PER_X_STAT(internal_)
 
 #define STAT_DEFINE(name, _)                                                   \
 PER_X_STAT_ADD(stream_stat_, name)                                             \
@@ -307,6 +315,14 @@ PER_X_STAT_SET(view_stat_, name)                                               \
 PER_X_STAT_GET(view_stat_, name)                                               \
 PER_X_STAT_GETALL_SEP(view_stat_, name)
 #include "../include/per_view_stats.inc"
+
+-- Internal
+#define STAT_DEFINE(name, _)                                                   \
+PER_X_STAT_ADD(internal_stat_, name)                                           \
+PER_X_STAT_SET(internal_stat_, name)                                           \
+PER_X_STAT_GET(internal_stat_, name)                                           \
+PER_X_STAT_GETALL_SEP(internal_stat_, name)
+#include "../include/internal_stats.inc"
 
 #define STAT_DEFINE(name, _)                                                   \
 PER_X_STAT_ADD(subscription_stat_, name)                                       \

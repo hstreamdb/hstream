@@ -139,6 +139,27 @@ std::string PerViewStats::toJson() {
   return folly::toJson(this->toJsonObj());
 }
 
+void InternalStats::aggregate(InternalStats const& other,
+                              StatsAggOptional agg_override) {
+#define STAT_DEFINE(name, agg)                                                 \
+  aggregateStat(StatsAgg::agg, agg_override, name##_counter,                   \
+                other.name##_counter);
+#include "internal_stats.inc"
+}
+
+folly::dynamic InternalStats::toJsonObj() {
+  folly::dynamic map = folly::dynamic::object;
+#define STAT_DEFINE(name, _)                                                   \
+  /* we know that all names are unique */                                      \
+  map[#name] = name##_counter.load();
+#include "internal_stats.inc"
+  return map;
+}
+
+std::string InternalStats::toJson() {
+  return folly::toJson(this->toJsonObj());
+}
+
 void PerSubscriptionStats::aggregate(PerSubscriptionStats const& other,
                                      StatsAggOptional agg_override) {
 #define STAT_DEFINE(name, agg)                                                 \
@@ -258,6 +279,7 @@ void Stats::aggregateCompoundStats(Stats const& other,
   _PER_STATS(per_query_stats, PerQueryStats)
   _PER_STATS(per_view_stats, PerViewStats)
   _PER_STATS(per_subscription_stats, PerSubscriptionStats)
+  _PER_STATS(internal_stats, InternalStats)
 #undef _PER_STATS
 
   if (other.server_histograms) {
@@ -276,6 +298,7 @@ void Stats::reset() {
   per_view_stats.wlock()->clear();
   per_subscription_stats.wlock()->clear();
   per_handle_stats.wlock()->clear();
+  internal_stats.wlock()->clear();
 
   if (params->get()->is_server) {
     if (server_histograms) {
@@ -301,6 +324,7 @@ folly::dynamic Stats::toJsonObj() {
   _PER_TO_JSON(per_query_stats)
   _PER_TO_JSON(per_view_stats)
   _PER_TO_JSON(per_subscription_stats)
+  _PER_TO_JSON(internal_stats)
 #undef _PER_TO_JSON
 
   return result;

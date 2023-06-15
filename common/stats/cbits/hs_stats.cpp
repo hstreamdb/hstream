@@ -57,6 +57,15 @@ void setPerViewStatsMember(const char* stat_name,
 #include "per_view_stats.inc"
 }
 
+void setInternalStatsMember(const char* stat_name,
+                           StatsCounter InternalStats::*& member_ptr) {
+#define STAT_DEFINE(name, _)                                                   \
+  if (#name == std::string(stat_name)) {                                       \
+    member_ptr = &InternalStats::name##_counter;                               \
+  }
+#include "internal_stats.inc"
+}
+
 void setPerSubscriptionTimeSeriesMember(
     const char* stat_name, std::shared_ptr<PerSubscriptionTimeSeries>
                                PerSubscriptionStats::*& member_ptr) {
@@ -183,6 +192,15 @@ PER_X_STAT(query_, PerQueryStats, per_query_stats, setPerQueryStatsMember)
 
 // view_stat_getall, view_stat_erase
 PER_X_STAT(view_, PerViewStats, per_view_stats, setPerViewStatsMember)
+
+// ----------------------------------------------------------------------------
+// InternalStats
+#define STAT_DEFINE(name, _)                                                   \
+  PER_X_STAT_DEFINE(internal_stat_, internal_stats, InternalStats, name)
+#include "internal_stats.inc"
+
+// internal_stat_getall, internal_stat_erase
+PER_X_STAT(internal_, InternalStats, internal_stats, setInternalStatsMember)
 
 // ----------------------------------------------------------------------------
 // PerSubscriptionStats
