@@ -26,8 +26,7 @@ import           Data.Maybe                 (fromJust)
 import qualified Data.Text                  as T
 import qualified Data.Vector                as V
 import           GHC.Stack                  (HasCallStack)
-import           HsGrpc.Server              (OutStream,
-                                             StreamOutput (streamWrite), whileM)
+import           HsGrpc.Server              (whileM)
 import qualified HStream.Exception          as HE
 import qualified HStream.Logger             as Log
 import qualified HStream.MetaStore.Types    as M
@@ -132,10 +131,15 @@ readShardStream
   :: HasCallStack
   => ServerContext
   -> API.ReadShardStreamRequest
-  -> OutStream API.ReadShardStreamResponse
+  -> (API.ReadShardStreamResponse -> IO (Either String ()))
+  -- ^ Stream write function
   -> IO ()
-readShardStream ServerContext{..} API.ReadShardStreamRequest{readShardStreamRequestReaderId=rReaderId,
-    readShardStreamRequestShardId=rShardId, readShardStreamRequestShardOffset=rOffset} stream = do
+readShardStream ServerContext{..}
+                API.ReadShardStreamRequest{ readShardStreamRequestReaderId=rReaderId
+                                          , readShardStreamRequestShardId=rShardId
+                                          , readShardStreamRequestShardOffset=rOffset
+                                          }
+                streamWrite = do
   bracket createReader deleteReader readRecords
  where
    ldReaderBufferSize = 10
@@ -170,7 +174,7 @@ readShardStream ServerContext{..} API.ReadShardStreamRequest{readShardStreamRequ
        let res = V.fromList $ map (\(_, _, _, record) -> record) receivedRecordsVecs
        Log.debug $ "reader " <> Log.build rReaderId
                 <> " read " <> Log.build (V.length res) <> " batchRecords"
-       isRight <$> streamWrite stream (Just . API.ReadShardStreamResponse $ res)
+       isRight <$> streamWrite (API.ReadShardStreamResponse res)
      Log.info $ "shard reader " <> Log.build rReaderId <> " read stream done."
 
 -- Remove all values with timestamps less than the given starting timestamp
