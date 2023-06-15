@@ -147,10 +147,9 @@ decodeRecordBatch dataRecord = do
       logId = HS.recordLogID dataRecord
       batchId = HS.recordLSN dataRecord
       publishTime = msTimestampToProto $ HS.recordTimestamp dataRecord
-  let batch = updateRecordTimestamp publishTime $ decodeByteStringBatch payload
+      batch = updateRecordTimestamp publishTime $ decodeByteStringBatch payload
       batchSize = batchedRecordBatchSize batch :: Word32
-  Log.debug $ "Decoding BatchedRecord size: " <> Log.build batchSize
-  let shardRecordIds = V.generate (fromIntegral batchSize) (ShardRecordId batchId . fromIntegral)
+      shardRecordIds = V.generate (fromIntegral batchSize) (ShardRecordId batchId . fromIntegral)
       recordIds = V.generate (fromIntegral batchSize) (RecordId logId batchId . fromIntegral)
       receivedRecords = ReceivedRecord recordIds (Just batch)
   pure (logId, batchId, shardRecordIds, receivedRecords)

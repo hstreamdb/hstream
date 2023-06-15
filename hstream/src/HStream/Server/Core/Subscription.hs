@@ -24,7 +24,8 @@ import           Data.IORef                    (newIORef, readIORef, writeIORef)
 import           Data.Kind                     (Type)
 import qualified Data.List                     as L
 import qualified Data.Map.Strict               as Map
-import           Data.Maybe                    (fromJust, fromMaybe, isNothing)
+import           Data.Maybe                    (catMaybes, fromJust, fromMaybe,
+                                                isNothing)
 import qualified Data.Set                      as Set
 import           Data.Text                     (Text)
 import qualified Data.Text                     as T
@@ -72,7 +73,7 @@ listConsumers sc@ServerContext{..} ListConsumersRequest{listConsumersRequestSubs
       exist <- checkSubscriptionExist sc sid
       if exist then return $ ListConsumersResponse V.empty
                else throwIO $ HE.SubscriptionNotFound sid
-    Just subCtx@SubscribeContextNewWrapper{..} -> atomically $ do
+    Just SubscribeContextNewWrapper{..} -> atomically $ do
       SubscribeContext{..} <- readTMVar scnwContext
       consumerMap <- readTVar subConsumerContexts
       return . ListConsumersResponse . V.fromList $ makeRpcConsumer <$> HM.elems consumerMap
@@ -90,6 +91,10 @@ getSubscription ServerContext{..} GetSubscriptionRequest{getSubscriptionRequestI
                            >=> readTVar . subShardContexts)
      .  HM.lookup subId
 
+  mMeta <- M.getMeta subId metaHandle
+  when (isNothing mMeta) $ throwIO $ HE.SubscriptionNotFound subId
+  let sub@SubscriptionWrap{originSub=Subscription{..}} = fromJust mMeta
+
   -- TODO: improvements
   -- 1. We can get the LSN from subLdCkpReader directly if there is a cpp api.
   -- 2. Maybe we can have a ckpStoreGetAllLSN method
@@ -97,32 +102,36 @@ getSubscription ServerContext{..} GetSubscriptionRequest{getSubscriptionRequestI
   ckpStoreId <- S.allocSubscrCheckpointId scLDClient readerName
   store <- S.newRSMBasedCheckpointStore scLDClient ckpStoreId 5000
   offsets <- forM shardIds (\x -> do
-    lsn <- handle (\(e::S.SomeHStoreException) -> return 0) $
+    lsn <- handle (\(e::S.SomeHStoreException) -> handleStoreExp subscriptionSubscriptionId x e) $
       S.ckpStoreGetLSN store (textToCBytes subId) x
     return $ SubscriptionOffset {
       subscriptionOffsetShardId = x,
       subscriptionOffsetBatchId = lsn
       })
-  mMeta <- M.getMeta subId metaHandle
-  case mMeta of
-   Nothing  -> throwIO $ HE.SubscriptionNotFound subId
-   Just sub -> pure $ GetSubscriptionResponse {
+
+  return $ GetSubscriptionResponse {
     getSubscriptionResponseSubscription = Just $ originSub sub,
     getSubscriptionResponseOffsets = V.fromList offsets}
+ where
+   handleStoreExp sId shardId e = do
+     Log.info $ "Get offset for sub " <> Log.build sId <> " return error, shardId: "
+             <> Log.build shardId <> ", error: " <> Log.build (show e)
+     return 0
 
 createSubscription :: HasCallStack => ServerContext -> Subscription -> IO Subscription
 createSubscription ServerContext{..} sub@Subscription{..} = do
   let streamName = transToStreamName subscriptionStreamName
   streamExists <- S.doesStreamExist scLDClient streamName
   unless streamExists $ do
-    Log.debug $ "Try to create a subscription to a nonexistent stream. Stream Name: "
+    Log.info $ "Try to create a subscription to a nonexistent stream. Stream Name: "
               <> Log.buildString' streamName
     throwIO $ HE.NonExistentStream subscriptionStreamName
   shards <- getShards scLDClient subscriptionStreamName
   startOffsets <- case subscriptionOffset of
     (Enumerated (Right SpecialOffsetEARLIEST)) -> return $ foldl' (\acc logId -> HM.insert logId S.LSN_MIN acc) HM.empty shards
     (Enumerated (Right SpecialOffsetLATEST))   -> foldM gatherTailLSN HM.empty shards
-    _                                          -> throwIO HE.InvalidSubscriptionOffset
+    _                                          -> do Log.info $ "Create sub " <> Log.build subscriptionSubscriptionId <> " failed because invalid offset"
+                                                     throwIO HE.InvalidSubscriptionOffset
 
   createTime <- getProtoTimestamp
   let newSub = sub {subscriptionCreationTime = Just createTime}
@@ -132,8 +141,14 @@ createSubscription ServerContext{..} sub@Subscription{..} = do
         }
   -- FIXME: SubscriptionExists
   subExists <- M.checkMetaExists @SubscriptionWrap subscriptionSubscriptionId metaHandle
-  when subExists $ throwIO (HE.SubscriptionExists subscriptionSubscriptionId)
+  when subExists $ do
+    Log.info $ "Create sub " <> Log.build subscriptionSubscriptionId <> " on stream "
+            <> Log.build subscriptionStreamName <> " failed because sub exists."
+    throwIO (HE.SubscriptionExists subscriptionSubscriptionId)
   M.insertMeta subscriptionSubscriptionId subWrap metaHandle
+  Log.info $ "create sub " <> Log.build subscriptionSubscriptionId <> " on stream "
+          <> Log.build subscriptionStreamName <> " successfully. Sub offsets: "
+          <> Log.build (show startOffsets)
   return newSub
  where
    gatherTailLSN acc shard = do
@@ -171,7 +186,9 @@ deleteSubscription
   => ServerContext -> DeleteSubscriptionRequest -> IO ()
 deleteSubscription ServerContext{..} DeleteSubscriptionRequest{ deleteSubscriptionRequestSubscriptionId = subId, deleteSubscriptionRequestForce = force} = do
   subscription <- M.getMeta @SubscriptionWrap subId metaHandle
-  when (isNothing subscription) $ throwIO (HE.SubscriptionNotFound subId)
+  when (isNothing subscription) $ do
+    Log.info $ "delete subscription failed because sub " <> Log.build subId <> " not found."
+    throwIO (HE.SubscriptionNotFound subId)
 
   (status, msub) <- atomically $ do
     res <- getSubState
@@ -194,7 +211,7 @@ deleteSubscription ServerContext{..} DeleteSubscriptionRequest{ deleteSubscripti
               pure (CanDelete, Just (subCtx, stateVar))
           SubscribeStateStopping -> pure (Signaled, Just (subCtx, stateVar))
           SubscribeStateStopped  -> pure (Signaled, Just (subCtx, stateVar))
-  Log.info $ "Subscription deletion has state " <> Log.buildString' status
+  Log.info $ "State of the subscription(" <> Log.build subId <> ") to be deleted: " <> Log.buildString' status
   case status of
     NotExist  -> doRemove
     CanDelete -> do
@@ -204,8 +221,12 @@ deleteSubscription ServerContext{..} DeleteSubscriptionRequest{ deleteSubscripti
       atomically removeSubFromCtx
       stopCompactedWorker subLdTrimCkpWorker
       doRemove
-    CanNotDelete -> throwIO $ HE.FoundActiveConsumers "Subscription still has active consumers"
-    Signaled     -> throwIO $ HE.SubscriptionIsDeleting "Subscription is being deleted, please wait a while"
+    CanNotDelete -> do
+      Log.info $ "delete sub " <> Log.build subId <> " failed because subscription still has active consumers"
+      throwIO $ HE.FoundActiveConsumers "Subscription still has active consumers"
+    Signaled     -> do
+      Log.info $ "delete sub " <> Log.build subId <> " failed because subscription is being deleted"
+      throwIO $ HE.SubscriptionIsDeleting "Subscription is being deleted, please wait a while"
   where
     -- FIXME: Concurrency Issue
     doRemove :: IO ()
@@ -275,9 +296,7 @@ streamingFetchCore ctx SFetchCoreDirect = \initReq consumerClosed callbacksGen -
   mockAckPool <- newTChanIO
   Stats.subscription_time_series_add_request_messages (scStatsHolder ctx) (textToCBytes (streamingFetchRequestSubscriptionId initReq)) 1
   Stats.subscription_stat_add_request_messages (scStatsHolder ctx) (textToCBytes (streamingFetchRequestSubscriptionId initReq)) 1
-  Log.debug "pass first recv"
   (SubscribeContextWrapper {..}, tid_m) <- initSub ctx (streamingFetchRequestSubscriptionId initReq)
-  Log.debug "pass initSub"
   let streamSend resp = do
         let req = StreamingFetchRequest
                   { streamingFetchRequestSubscriptionId = streamingFetchRequestSubscriptionId initReq
@@ -289,7 +308,6 @@ streamingFetchCore ctx SFetchCoreDirect = \initReq consumerClosed callbacksGen -
         async (beforeAck >> (atomically $ writeTChan mockAckPool req))
         return $ Right ()
   consumerCtx <- initConsumer scwContext (streamingFetchRequestConsumerName initReq) Nothing Nothing streamSend
-  Log.debug "pass initConsumer"
   let streamRecv' =
         (do isClosed <- readTVar consumerClosed
             check isClosed
@@ -304,16 +322,12 @@ streamingFetchCore ctx SFetchCoreDirect = \initReq consumerClosed callbacksGen -
   --   case tid_m of
   --     Just tid -> killThread tid
   --     Nothing  -> return ()
-  Log.debug "pass recvAcks"
 streamingFetchCore ctx SFetchCoreInteractive = \(streamSend, streamRecv, requestUri, userAgent) -> do
   StreamingFetchRequest {..} <- firstRecv streamRecv
-  Log.debug "pass first recv"
+  Log.info $ "Receive streaming fetch request for sub " <> Log.build streamingFetchRequestSubscriptionId
   (SubscribeContextWrapper {..}, _) <- initSub ctx streamingFetchRequestSubscriptionId
-  Log.debug "pass initSub"
   consumerCtx <- initConsumer scwContext streamingFetchRequestConsumerName (Just requestUri) (Just userAgent) streamSend
-  Log.debug "pass initConsumer"
   async (recvAcks ctx scwState scwContext consumerCtx streamRecv) >>= wait
-  Log.debug "pass recvAcks"
   where
     firstRecv :: StreamRecv StreamingFetchRequest -> IO StreamingFetchRequest
     firstRecv streamRecv =
@@ -328,7 +342,7 @@ streamingFetchCore ctx SFetchCoreInteractive = \(streamSend, streamRecv, request
 initSub :: ServerContext -> SubscriptionId -> IO (SubscribeContextWrapper, Maybe ThreadId)
 initSub serverCtx@ServerContext {..} subId = M.getMeta subId metaHandle >>= \case
   Nothing -> do
-    Log.fatal $ "subscription " <> Log.build subId <> " not exist."
+    Log.fatal $ "subscription " <> Log.build subId <> " not exist, exit streaming fetch"
     throwIO $ HE.SubscriptionNotFound subId
   Just SubscriptionWrap{} -> do
     -- FIXME: Comment this validateResLookup since some internal sub can not pass
@@ -362,20 +376,22 @@ initSub serverCtx@ServerContext {..} subId = M.getMeta subId metaHandle >>= \cas
         return (wrapper, Just tid)
       else do
         mctx <- atomically $ readTMVar scnwContext
+        Log.info $ "Get context for sub " <> Log.build subId
         return (SubscribeContextWrapper {scwState = scnwState, scwContext = mctx}, Nothing)
 
 -- For each subscriptionId, create ldCkpReader and ldReader, then
 -- add all shards of target stream to SubscribeContext
 doSubInit :: ServerContext -> SubscriptionId -> IO SubscribeContext
 doSubInit ServerContext{..} subId = do
+  Log.info $ "Init sub " <> Log.build subId
   M.getMeta subId metaHandle >>= \case
     Nothing -> do
-      Log.fatal $ "unexpected error: subscription " <> Log.build subId <> " not exist."
+      Log.fatal $ "Unexpected error: subscription " <> Log.build subId <> " not exist."
       throwIO $ HE.SubscriptionNotFound subId
     Just SubscriptionWrap {originSub=oSub@Subscription{..}, ..} -> do
-      Log.debug $ "get subscriptionInfo from persistence: \n"
-               <> "subscription = " <> Log.buildString' (show oSub) <> "\n"
-               <> "startOffsets = " <> Log.buildString' (show subOffsets)
+      Log.info $ "Get subscription info from persistence: "
+              <> "subscription = " <> Log.buildString' (show oSub)
+              <> ", startOffsets = " <> Log.buildString' (show subOffsets)
       let readerName = textToCBytes subId
       -- Notice: doc this. shard count can not larger than this.
       let maxReadLogs = 1000
@@ -390,8 +406,6 @@ doSubInit ServerContext{..} subId = do
       -- Ideally, if the subscription has no data to deliver, ldCkpReader should block on the read call. However, in the current implementation,
       -- a subscription forcing deletion operation requires that the sendRecords loop should `not` be blocked, otherwise the forcing deletion
       -- would be blocked because the delete precondition cannot be met. So set a 1s timeout for ldCkpReader
-      --
-      -- TODO: Also consider calling stopReading to stop the reader while force deleting instead of setting timeout.
       S.ckpReaderSetTimeout ldCkpReader 1000
       S.ckpReaderSetWaitOnlyWhenNoData ldCkpReader
       -- create a ldReader for rereading unacked records
@@ -403,7 +417,7 @@ doSubInit ServerContext{..} subId = do
       ldReader <- newMVar reader
 
       trimCkpWorker <- startCompactedWorker (60 * 1000000){- 60s -} $ do
-        Log.info $ "Compacting checkpoint store of " <> Log.build subId
+        Log.debug $ "Compacting checkpoint store of " <> Log.build subId
         S.trimLastBefore 1 scLDClient ckpStoreId
 
       unackedRecords <- newTVarIO 0
@@ -431,31 +445,20 @@ doSubInit ServerContext{..} subId = do
               , subStartOffset = subscriptionOffset
               }
       addNewShardsToSubCtx emptySubCtx (HM.toList subOffsets)
+      Log.info $ "Finish sub " <> Log.build subId <> " init"
       return emptySubCtx
   where
     mkEmptyAssignment :: IO Assignment
     mkEmptyAssignment = do
-      total <- newTVarIO Set.empty
-      unassign <- newTVarIO []
-      waitingRead <- newTVarIO []
-      waitingReassign <- newTVarIO []
-      wc <- newTVarIO []
-      s2c <- newTVarIO HM.empty
-      c2s <- newTVarIO HM.empty
-      cws <- newTVarIO Set.empty
-
-      return
-        Assignment
-          { totalShards = total,
-            unassignedShards = unassign,
-            waitingReadShards = waitingRead,
-            waitingReassignedShards = waitingReassign,
-            waitingConsumers = wc,
-            shard2Consumer = s2c,
-            consumer2Shards = c2s,
-            consumerWorkloads = cws
-          }
-
+      totalShards <- newTVarIO Set.empty
+      unassignedShards <- newTVarIO []
+      waitingReadShards <- newTVarIO []
+      waitingReassignedShards <- newTVarIO []
+      waitingConsumers <- newTVarIO []
+      shard2Consumer <- newTVarIO HM.empty
+      consumer2Shards <- newTVarIO HM.empty
+      consumerWorkloads <- newTVarIO Set.empty
+      return Assignment {..}
 
 -- get all partitions of the specified stream
 getShards :: S.LDClient -> T.Text -> IO [S.C_LogID]
@@ -491,11 +494,15 @@ addNewShardsToSubCtx SubscribeContext {subAssignment = Assignment{..}, ..} shard
 
 -- Add consumer and sender to the waitlist and consumerCtx
 initConsumer
-  :: SubscribeContext -> ConsumerName -> Maybe Text -> Maybe Text -> StreamSend StreamingFetchResponse
+  :: SubscribeContext
+  -> ConsumerName
+  -> Maybe Text
+  -> Maybe Text
+  -> StreamSend StreamingFetchResponse
   -> IO ConsumerContext
 initConsumer SubscribeContext {subAssignment = Assignment{..}, ..} consumerName uri agent streamSend = do
   sender <- newMVar streamSend
-  atomically $ do
+  res <- atomically $ do
     cMap <- readTVar subConsumerContexts
     when (HM.member consumerName cMap) $ throwSTM (HE.ConsumerExists $ T.unpack consumerName)
     modifyTVar' waitingConsumers (\consumers -> consumers ++ [consumerName])
@@ -510,6 +517,8 @@ initConsumer SubscribeContext {subAssignment = Assignment{..}, ..} consumerName 
               }
     writeTVar subConsumerContexts (HM.insert consumerName cc cMap)
     return cc
+  Log.info $ "Register consumer " <> Log.build consumerName <> " for sub " <> Log.build subSubscriptionId
+  return res
 
 sendRecords :: ServerContext -> TVar SubscribeState -> SubscribeContext -> IO ()
 sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
@@ -582,6 +591,7 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
         ct <- readTVar subCurrentTime
         checkList <- readTVar subWaitingCheckedRecordIds
         let (!timeoutList, !leftList) = Heap.span (\CheckedRecordIds {..} -> crDeadline <= newTime) checkList
+        -- traceM $ "newTime=" <> show newTime <> ", timeoutList=" <> show timeoutList <> ", leftList=" <> show leftList
         writeTVar subCurrentTime newTime
         writeTVar subWaitingCheckedRecordIds leftList
         return timeoutList
@@ -615,7 +625,7 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
           Enumerated (Right SpecialOffsetLATEST)   ->
             mapM (\x -> S.getTailLSN scLDClient x <&> (x,) . (+1)) newShards
           _                                        ->
-            throwIO $ HE.InvalidSubscriptionOffset
+            throwIO HE.InvalidSubscriptionOffset
 
     addRead :: S.LDSyncCkpReader -> Assignment -> HM.HashMap S.C_LogID S.LSN -> IO ()
     addRead ldCkpReader Assignment {..} startOffsets = do
@@ -623,13 +633,12 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
       forM_ shards $ \shard -> do
         offset <- case HM.lookup shard startOffsets of
           Nothing -> do
-            Log.fatal $ "can't find startOffsets for shard "
-                     <> Log.build shard
-                     <> ", startOffsets="
-                     <> Log.buildString' (show startOffsets)
+            Log.fatal $ "Can't find startOffsets(" <> Log.build (show startOffsets) <> ") for shard "
+                     <> Log.build shard <> "(stream: " <> Log.build subStreamName <> ")"
+                     <> ", sub " <> Log.build subSubscriptionId <> " addRead failed."
             throwIO . HE.UnexpectedError $ "can't find startOffsets for shard " <> show shard
           Just s -> return s
-        Log.debug $ "Start reading " <> Log.buildString' shard <> " from "
+        Log.info $ "Sub " <> Log.build subSubscriptionId <> " start reading shard " <> Log.buildString' shard <> " from offset "
                  <> Log.buildString' offset
         S.startReadingFromCheckpointOrStart ldCkpReader shard (Just offset) S.LSN_MAX
 
@@ -732,7 +741,8 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
        recordsDelivery (Just(consumerName, streamSend)) = do
          withMVar streamSend (\ss -> ss (StreamingFetchResponse $ Just records)) >>= \case
            Left err -> do
-             Log.fatal $ "sendReceivedRecords failed: logId=" <> Log.build logId <> ", batchId=" <> Log.build batchId
+             Log.fatal $ "Sub " <> Log.build subSubscriptionId <> " sendReceivedRecords failed: logId="
+                      <> Log.build logId <> ", batchId=" <> Log.build batchId
                       <> ", num of records=" <> Log.build (V.length shardRecordIds) <> "\n"
                       <> "will remove the consumer " <> Log.build consumerName <> ": " <> Log.buildString (show err)
              atomically $ invalidConsumer subCtx consumerName
@@ -741,7 +751,8 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
              else resetReadingOffset logId batchId
              return False
            Right _ -> do
-             Log.debug $ "send records from " <> Log.build logId <> " to consumer " <> Log.build consumerName
+             Log.debug $ "Sub " <> Log.build subSubscriptionId <> " send records from " <> Log.build logId
+                      <> " to consumer " <> Log.build consumerName
                       <> ", batchId=" <> Log.build batchId <> ", num of records=" <> Log.build (V.length shardRecordIds)
              registerResend logId batchId shardRecordIds
              return True
@@ -776,16 +787,13 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
         return res
 
       unless (V.null resendRecordIds) $ do
-        Log.debug $ "There are " <> Log.build (V.length resendRecordIds) <> " records need to resent"
-                 <> ", logId=" <> Log.build logId  <> ", batchId=" <> Log.build batchId
         dataRecord <- withMVar subLdReader $ \reader -> do
           S.readerStartReading reader logId batchId batchId
           S.readerRead reader 1
         if null dataRecord
         then do
-          Log.info $ "sub resend reader read empty records from log "
-                  <> Log.build logId <> ", batchId " <> Log.build batchId
-                  <> ", retry next time"
+          Log.info $ "Sub " <> Log.build subSubscriptionId <> " resend reader read empty records from log "
+                  <> Log.build logId <> ", batchId " <> Log.build batchId <> ", retry next time"
         else do
           (_, _, _, ReceivedRecord{..}) <- decodeRecordBatch $ head dataRecord
           let batchRecords@BatchedRecord{..} = fromJust receivedRecordRecord
@@ -801,6 +809,10 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
                   resendRecordIds
               resendBatch = mkBatchedRecord batchedRecordCompressionType batchedRecordPublishTime (fromIntegral $ V.length records) records
               resendRecords = ReceivedRecord ids (Just resendBatch)
+          Log.info $ "Sub " <> Log.build subSubscriptionId
+                  <> " need resend timeout records for shard " <> Log.build logId
+                  <> ", records count " <> Log.build (show $ V.length resendRecordIds)
+                  <> ", recordIds: " <> Log.build (show resendRecordIds)
           void $ sendReceivedRecords logId batchId resendRecordIds resendRecords True
 
     filterUnackedRecordIds recordIds ackedRanges windowLowerBound =
@@ -940,26 +952,27 @@ recvAcks
   -> ConsumerContext
   -> StreamRecv StreamingFetchRequest
   -> IO ()
-recvAcks ServerContext {..} subState subCtx ConsumerContext {..} streamRecv = loop
+recvAcks ServerContext {..} subState subCtx@SubscribeContext{..} ConsumerContext {..} streamRecv = loop
   where
     loop = do
       checkSubRunning
-      Log.debug "Waiting for acks from client"
+      Log.debug $ "Sub " <> Log.build subSubscriptionId <> "is waiting for acks from client"
       streamRecv >>= \case
         Left (err :: grpcIOError) -> do
-          Log.fatal . Log.buildString $ "streamRecv error: " <> show err
+          Log.fatal $ "Consumer " <> Log.build ccConsumerName <> " for sub " <> Log.build subSubscriptionId
+                   <> " trigger a streamRecv error: " <> Log.build (show err)
           -- invalid consumer
           atomically $ invalidConsumer subCtx ccConsumerName
           throwIO $ HE.StreamReadError "Consumer recv error"
         Right Nothing -> do
-          Log.info "receive acks recieve nothing"
+          Log.info $ "Consumer " <> Log.build ccConsumerName <> " finished ack-sending stream to sub " <> Log.build subSubscriptionId
           -- This means that the consumer finished sending acks actively.
           atomically $ invalidConsumer subCtx ccConsumerName
-          throwIO $ HE.StreamReadClose "Consumer is closed"
+          -- throwIO $ HE.StreamReadClose "Consumer is closed"
         Right (Just StreamingFetchRequest {..}) -> do
-          Log.debug $ "received acks:" <> Log.build (V.length streamingFetchRequestAckIds)
-            <> " from consumer:" <> Log.build ccConsumerName
-          let cSubscriptionId = textToCBytes (subSubscriptionId subCtx)
+          Log.debug $ "Sub " <> Log.build subSubscriptionId <> " receive " <> Log.build (V.length streamingFetchRequestAckIds)
+            <> " acks from consumer:" <> Log.build ccConsumerName
+          let cSubscriptionId = textToCBytes subSubscriptionId
           Stats.subscription_time_series_add_request_messages scStatsHolder cSubscriptionId 1
           Stats.subscription_stat_add_request_messages scStatsHolder cSubscriptionId 1
           unless (V.null streamingFetchRequestAckIds) $ do
@@ -993,10 +1006,14 @@ doAcks
 doAcks ldclient subCtx@SubscribeContext{..} ackRecordIds = do
   removeAckedRecordIdsFromCheckList subCtx ackRecordIds
   let group = HM.toList $ groupRecordIds ackRecordIds
-  forM_ group (\(logId, recordIds) -> doAck ldclient subCtx logId recordIds)
+  res <- catMaybes <$> forM group (\(logId, recordIds) -> doAck ldclient subCtx logId recordIds)
+  if null res
+    then return ()
+    else do
+      Log.debug $ "Update sub " <> Log.build subSubscriptionId <> " offsets: " <> Log.build (show . HM.fromList $ res)
   where
     groupRecordIds :: V.Vector RecordId -> HM.HashMap S.C_LogID (V.Vector RecordId)
-    groupRecordIds recordIds =
+    groupRecordIds =
       V.foldl'
         (
           \ g r@RecordId{..} ->
@@ -1008,15 +1025,14 @@ doAcks ldclient subCtx@SubscribeContext{..} ackRecordIds = do
               HM.insert recordIdShardId (V.singleton r) g
         )
         HM.empty
-        recordIds
 
 doAck
   :: S.LDClient
   -> SubscribeContext
   -> S.C_LogID
   -> V.Vector RecordId
-  -> IO ()
-doAck ldclient subCtx@SubscribeContext{..} logId recordIds= do
+  -> IO (Maybe (S.C_LogID, Word64))
+doAck ldclient SubscribeContext{..} logId recordIds= do
   res <- atomically $ do
     scs <- readTVar subShardContexts
     let SubscribeShardContext {sscAckWindow = AckWindow{..}} = scs HM.! logId
@@ -1047,10 +1063,10 @@ doAck ldclient subCtx@SubscribeContext{..} logId recordIds= do
         return Nothing
   case res of
     Just lsn -> do
-        Log.debug $ "[stream " <> Log.build logId <> "] commit checkpoint = " <> Log.buildString (show lsn)
-        S.writeCheckpoints subLdCkpReader (Map.singleton logId lsn) 10{-retries-}
-        triggerCompactedWorker subLdTrimCkpWorker
-    Nothing  -> return ()
+      S.writeCheckpoints subLdCkpReader (Map.singleton logId lsn) 10{-retries-}
+      triggerCompactedWorker subLdTrimCkpWorker
+      return $ Just (logId, lsn)
+    Nothing  -> return Nothing
 
 removeAckedRecordIdsFromCheckList :: SubscribeContext
                                   -> V.Vector RecordId
@@ -1072,6 +1088,8 @@ removeAckedRecordIdsFromCheckList SubscribeContext{..} recordIds = do
           )
           Map.empty
           recordIds
+  Log.debug $ "Sub " <> Log.build subSubscriptionId <> " receive acks: " <> Log.build (show ackedRecordIdMap)
+           <> ", remove them from checkList"
   checkList <- readTVarIO subWaitingCheckedRecordIds
   recordIdKeys <-
     foldM
