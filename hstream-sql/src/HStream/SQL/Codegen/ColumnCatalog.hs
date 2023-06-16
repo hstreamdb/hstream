@@ -5,6 +5,7 @@
 module HStream.SQL.Codegen.ColumnCatalog where
 
 import qualified Data.HashMap.Strict as HM
+import qualified Data.List           as L
 import           Data.Text           (Text)
 import           HStream.SQL.AST
 
@@ -19,7 +20,7 @@ getField (ColumnCatalog k stream_m) o =
    in case HM.toList (HM.filterWithKey filterCond o) of
         []      -> Nothing
         [(k,v)] -> Just (k, v)
-        xs      -> Nothing
+        xs      -> Just (L.head xs) --FIXME: ambiguous columns
 {-
             _          -> throw
                           SomeRuntimeException
