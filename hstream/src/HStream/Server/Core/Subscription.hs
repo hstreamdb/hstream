@@ -473,6 +473,7 @@ addNewShardsToSubCtx SubscribeContext {subAssignment = Assignment{..}, ..} shard
   (newTotal, newUnassign, newShardCtxs)
     <- foldM addShards (oldTotal, oldUnassign, oldShardCtxs) shards
   writeTVar totalShards newTotal
+  -- traceM $ "addNewShardsToSubCtx: newUnassign = " <> show newUnassign
   writeTVar unassignedShards newUnassign
   writeTVar subShardContexts newShardCtxs
   where
@@ -535,8 +536,7 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
           newShards <- getNewShards
           unless (L.null newShards) $ do
             addNewShardsToSubCtx subCtx newShards
-            Log.info $ "add shards " <> Log.buildString (show newShards)
-                    <> " to consumer " <> Log.build subSubscriptionId
+            Log.info $ "Subscription " <> Log.build subSubscriptionId <> " get new shards " <> Log.build (show newShards)
           atomically $ do
             checkAvailable subShardContexts
             checkAvailable subConsumerContexts
@@ -561,8 +561,10 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
             tid2 <- forkIO . fix $ \f -> do
               isSubDeleted <- readIORef isSubscriptionDeleted
               unless isSubDeleted $ do
-                threadDelay (100 * 1000)
-                atomically $ assignShards subAssignment
+                threadDelay (1000 * 1000)
+                -- traceM $ "==== Start sub " <> show subSubscriptionId <> " shard assign"
+                atomically $ assignShards subSubscriptionId subAssignment
+                -- traceM $ "==== Finish sub " <> show subSubscriptionId <> " shard assign"
                 f
 
             -- FIXME: the same code
@@ -826,15 +828,19 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
     resetReadingOffset logId startOffset = do
       S.ckpReaderStartReading subLdCkpReader logId startOffset S.LSN_MAX
 
-assignShards :: Assignment -> STM ()
-assignShards assignment@Assignment {..} = do
+assignShards :: Text -> Assignment -> STM ()
+assignShards subId assignment@Assignment {..} = do
   unassign <- readTVar unassignedShards
+  -- traceM $ "sub " <> show subId <> " assgin unassignedShards: " <> show unassign
   successCount <- tryAssignShards unassign True
-  writeTVar unassignedShards (drop successCount unassign)
+  let unassign' = drop successCount unassign
+  writeTVar unassignedShards unassign'
+  -- traceM $ "sub " <> show subId <> " update unassignedShards to " <> show unassign'
 
   reassign <- readTVar waitingReassignedShards
   reassignSuccessCount <- tryAssignShards reassign False
   writeTVar waitingReassignedShards (drop reassignSuccessCount reassign)
+  -- traceM $ "sub " <> show subId <> " complete waitingReassignedShards "
   where
     tryAssignShards :: [S.C_LogID] -> Bool -> STM Int
     tryAssignShards logs needStartReading = do
@@ -843,6 +849,7 @@ assignShards assignment@Assignment {..} = do
             if goOn
               then do
                 ok <- tryAssignShard shard needStartReading
+                -- traceM $ "assagin shard success: " <> show ok
                 if ok
                 then return (True, n + 1)
                 else return (False, n)
@@ -889,6 +896,7 @@ doAssign Assignment {..} consumerName logId needStartReading = do
       let old = ConsumerWorkload {cwConsumerName = consumerName, cwShardCount = Set.size set}
       let new = old {cwShardCount = Set.size set + 1}
       writeTVar consumerWorkloads (Set.insert new (Set.delete old workSet))
+  -- traceM $ "assaign shard " <> show logId <> " to consumer " <> show consumerName
 
 assignWaitingConsumers :: Assignment -> STM ()
 assignWaitingConsumers assignment@Assignment {..} = do
@@ -956,7 +964,7 @@ recvAcks ServerContext {..} subState subCtx@SubscribeContext{..} ConsumerContext
   where
     loop = do
       checkSubRunning
-      Log.debug $ "Sub " <> Log.build subSubscriptionId <> "is waiting for acks from client"
+      Log.debug $ "Sub " <> Log.build subSubscriptionId <> " is waiting for acks from client"
       streamRecv >>= \case
         Left (err :: grpcIOError) -> do
           Log.fatal $ "Consumer " <> Log.build ccConsumerName <> " for sub " <> Log.build subSubscriptionId
@@ -1088,8 +1096,8 @@ removeAckedRecordIdsFromCheckList SubscribeContext{..} recordIds = do
           )
           Map.empty
           recordIds
-  Log.debug $ "Sub " <> Log.build subSubscriptionId <> " receive acks: " <> Log.build (show ackedRecordIdMap)
-           <> ", remove them from checkList"
+  Log.debug $ "Sub " <> Log.build subSubscriptionId <> " remove recordIds: " <> Log.build (show ackedRecordIdMap)
+           <> " from checkList"
   checkList <- readTVarIO subWaitingCheckedRecordIds
   recordIdKeys <-
     foldM
@@ -1129,33 +1137,51 @@ removeAckedRecordIdsFromCheckList SubscribeContext{..} recordIds = do
 
 invalidConsumer :: SubscribeContext -> ConsumerName -> STM ()
 invalidConsumer SubscribeContext{subAssignment = Assignment{..}, ..} consumer = do
+  -- traceM $ "=== invalid consumer: " <> show consumer <> " ======="
   ccs <- readTVar subConsumerContexts
   case HM.lookup consumer ccs of
-    Nothing -> pure ()
+    Nothing -> do
+      -- traceM "consumer doesn't in subConsumerContexts, just return"
+      pure ()
     Just ConsumerContext {..} -> do
       consumerValid <- readTVar ccIsValid
       if consumerValid
       then do
         writeTVar ccIsValid False
-        c2s <- readTVar consumer2Shards
-        case HM.lookup consumer c2s of
-          Nothing        -> pure ()
-          Just worksTVar -> do
-            works <- swapTVar worksTVar Set.empty
-            let nc2s = HM.delete consumer c2s
-            writeTVar consumer2Shards nc2s
-            idleShards <- readTVar waitingReassignedShards
-            shardMap <- readTVar shard2Consumer
-            (shardsNeedAssign, newShardMap)
-              <- foldM unbindShardWithConsumer (idleShards, shardMap) works
-            writeTVar waitingReassignedShards shardsNeedAssign
-            writeTVar shard2Consumer newShardMap
-            modifyTVar consumerWorkloads
-              (Set.filter (\ConsumerWorkload{..} ->
-                              cwConsumerName /= consumer))
-        let newConsumerCtx = HM.delete consumer ccs
-        writeTVar subConsumerContexts newConsumerCtx
-      else pure ()
+        wc <- readTVar waitingConsumers
+        if consumer `L.elem` wc
+           then do
+             let nwc = L.delete consumer wc
+             writeTVar waitingConsumers nwc
+             -- traceM $ "remove consumer from waitingConsumers, new waitingConsumers: " <> show nwc
+            else do
+              c2s <- readTVar consumer2Shards
+              case HM.lookup consumer c2s of
+                Nothing        -> do
+                  -- traceM "can't find consumer in consumer2Shards, return"
+                  pure ()
+                Just worksTVar -> do
+                  works <- swapTVar worksTVar Set.empty
+                  let nc2s = HM.delete consumer c2s
+                  -- traceM $ "after delete consumer from consumer2Shards, new consumer2Shards: " <> show (HM.keys nc2s)
+                  writeTVar consumer2Shards nc2s
+                  idleShards <- readTVar waitingReassignedShards
+                  shardMap <- readTVar shard2Consumer
+                  -- traceM $ "invaild shards {" <> show shardMap <> "} for consumer " <> show consumer
+                  (shardsNeedAssign, newShardMap)
+                    <- foldM unbindShardWithConsumer (idleShards, shardMap) works
+                  -- traceM $ "shardsNeedAssgin: " <> show shardsNeedAssign
+                  writeTVar waitingReassignedShards shardsNeedAssign
+                  writeTVar shard2Consumer newShardMap
+                  modifyTVar consumerWorkloads
+                    (Set.filter (\ConsumerWorkload{..} ->
+                                    cwConsumerName /= consumer))
+              let newConsumerCtx = HM.delete consumer ccs
+              writeTVar subConsumerContexts newConsumerCtx
+      else do
+         -- traceM "consumer is invalid, just return"
+         pure ()
+  -- traceM $ "=== finish invalid consumer: " <> show consumer <> " ======="
   where
     unbindShardWithConsumer (shards, mp) logId = return (shards ++ [logId], HM.delete logId mp)
 
