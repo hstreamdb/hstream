@@ -152,6 +152,13 @@ rSelToAffiliateItems (RSel items) =
                  case item of
                    RSelectItemProject expr alias_m ->
                      case expr of
+                       RExprCol _ stream_m field ->
+                         let cata = ColumnCatalog
+                                    { columnName = fromMaybe field alias_m
+                                    , columnStream = stream_m
+                                    }
+                             scalar = decouple expr
+                            in [(cata,scalar)]
                        RExprAggregate _ _ -> []
                        _ -> let cata = ColumnCatalog
                                      { columnName = fromMaybe (T.pack (getName expr)) alias_m
