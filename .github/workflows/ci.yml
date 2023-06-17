@@ -98,7 +98,7 @@ jobs:
   build-and-test:
     needs: pre-build
     runs-on: ubuntu-latest
-    name: GHC-${{ matrix.ghc }}
+    name: ghc-${{ matrix.ghc }}
     strategy:
       fail-fast: false
       matrix:
