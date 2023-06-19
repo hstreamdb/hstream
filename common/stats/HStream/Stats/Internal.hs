@@ -63,8 +63,6 @@ PER_X_STAT(connector_)
 PER_X_STAT(query_)
 -- view_stat_getall, view_stat_erase
 PER_X_STAT(view_)
--- internal_stat_getall, internal_stat_erase
-PER_X_STAT(internal_)
 
 #undef PER_X_STAT
 ----------------- PER_X_STAT End -----------------
@@ -106,9 +104,6 @@ foreign import ccall unsafe "hs_stats.h prefix##getall_##name"                 \
 
 #define STAT_DEFINE(name, _) PER_X_STAT_DEFINE(subscription_stat_, name)
 #include "../include/per_subscription_stats.inc"
-
-#define STAT_DEFINE(name, _) PER_X_STAT_DEFINE(internal_stat_, name)
-#include "../include/internal_stats.inc"
 
 #define TIME_SERIES_DEFINE(name, _, __, ___)                                   \
 foreign import ccall unsafe "hs_stats.h stream_time_series_add_##name"         \

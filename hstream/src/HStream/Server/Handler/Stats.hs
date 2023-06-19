@@ -135,8 +135,6 @@ getStatsInternal holder s@(StatTypeStatQueryStat stats) = do
   getQueryStatsInternal holder stats <&> convert s
 getStatsInternal holder s@(StatTypeStatViewStat stats) = do
   getViewStatsInternal holder stats <&> convert s
-getStatsInternal holder s@(StatTypeStatInternalStat stats) = do
-  getInternalStatsInternal holder stats <&> convert s
 
 getStreamStatsInternal
   :: Stats.StatsHolder
@@ -222,18 +220,6 @@ getViewStatsInternal statsHolder (PS.Enumerated stats) = do
   case stats of
     Right API.ViewStatsTotalExecuteQueries ->
       Stats.view_stat_getall_total_execute_queries s <&> Right
-    Left _ -> return . Left . T.pack $ "invalid stat type " <> show stats
-
-getInternalStatsInternal
-  :: Stats.StatsHolder
-  -> PS.Enumerated API.InternalStats
-  -> IO (Either T.Text (Map CBytes Int64))
-getInternalStatsInternal statsHolder (PS.Enumerated stats) = do
-  Log.debug $ "request internal stats: " <> Log.buildString' stats
-  s <- Stats.newAggregateStats statsHolder
-  case stats of
-    Right API.InternalStatsSubChecklistSize ->
-      Stats.internal_stat_getall_sub_checklist_size s <&> Right
     Left _ -> return . Left . T.pack $ "invalid stat type " <> show stats
 
 convert :: StatTypeStat -> Either T.Text (Map CBytes Int64) -> Either StatError StatValue

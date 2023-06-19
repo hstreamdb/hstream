@@ -133,22 +133,6 @@ struct PerViewStats {
 };
 
 // ----------------------------------------------------------------------------
-// InternalStats
-
-struct InternalStats {
-#define STAT_DEFINE(name, _) StatsCounter name##_counter{};
-#include "internal_stats.inc"
-  void aggregate(InternalStats const& other, StatsAggOptional agg_override);
-  // Show all per_query_stats to a json formatted string.
-  folly::dynamic toJsonObj();
-  std::string toJson();
-
-  // Mutex almost exclusively locked by one thread since PerQueryStats
-  // objects are contained in thread-local stats
-  std::mutex mutex;
-};
-
-// ----------------------------------------------------------------------------
 // PerSubscriptionStats
 
 using PerSubscriptionTimeSeries = MultiLevelTimeSeriesWrapper<int64_t>;
@@ -322,11 +306,6 @@ struct Stats {
   folly::Synchronized<
       std::unordered_map<std::string, std::shared_ptr<PerSubscriptionStats>>>
       per_subscription_stats;
-
-  // internal stats
-  folly::Synchronized<
-      std::unordered_map<std::string, std::shared_ptr<InternalStats>>>
-      internal_stats;
 
   // Per-handle stats
   folly::Synchronized<
