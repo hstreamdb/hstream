@@ -51,6 +51,7 @@ module HStream.Stats
   , CounterExports(subscription, received_acks)
   , CounterExports(subscription, request_messages)
   , CounterExports(subscription, response_messages)
+  , CounterExports(subscription, checklist_size)
     -- ** Time series
   , subscription_time_series_add_send_out_bytes
   , subscription_time_series_add_send_out_records

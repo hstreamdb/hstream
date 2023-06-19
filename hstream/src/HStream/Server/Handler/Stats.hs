@@ -179,6 +179,8 @@ getSubscriptionStatsInternal statsHolder (PS.Enumerated stats) = do
     Right API.SubscriptionStatsResponseMessages ->
       Stats.subscription_stat_getall_response_messages s <&> Right
     Left _ -> return . Left . T.pack $ "invalid stat type " <> show stats
+    Right API.SubscriptionStatsChecklistSize ->
+      Stats.subscription_stat_getall_checklist_size s <&> Right
 
 getConnectorStatsInternal
   :: Stats.StatsHolder

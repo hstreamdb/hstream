@@ -20,4 +20,7 @@ STAT_DEFINE(received_acks, SUM)
 STAT_DEFINE(request_messages, SUM)
 STAT_DEFINE(response_messages, SUM)
 
+// ========== Internal Stats =================
+STAT_DEFINE(checklist_size, SUM)
+
 #undef STAT_DEFINE

@@ -239,6 +239,8 @@ deleteSubscription ServerContext{..} DeleteSubscriptionRequest{ deleteSubscripti
       -- to update the checkpoints in memory.
       S.freeSubscrCheckpointId scLDClient subIdCBytes
       Stats.subscription_stat_erase scStatsHolder subIdCBytes
+      -- FIXME: Find another way to delete unused stats totally
+      Stats.subscription_stat_set_checklist_size scStatsHolder subIdCBytes 0
 
     getSubState :: STM (Maybe (SubscribeContext, TVar SubscribeState))
     getSubState = do
@@ -598,6 +600,7 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
         writeTVar subWaitingCheckedRecordIds leftList
         return timeoutList
       forM_ timeoutList (\r@CheckedRecordIds {..} -> buildShardRecordIds r >>= resendTimeoutRecords crLogId crBatchId )
+      Stats.subscription_stat_set_checklist_size scStatsHolder (textToCBytes subSubscriptionId) (fromIntegral . Heap.size $ timeoutList)
       where
         buildShardRecordIds  CheckedRecordIds {..} = atomically $ do
           batchIndexes <- readTVar crBatchIndexes
