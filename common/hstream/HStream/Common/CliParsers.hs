@@ -25,8 +25,8 @@ streamParser = API.Stream
                      <> O.short 'b'
                      <> O.metavar "INT"
                      <> O.showDefault
-                     <> O.value 0
-                     <> O.help "The backlog duration of records in stream in seconds"
+                     <> O.value 604800
+                     <> O.help "The backlog duration of records in stream in seconds, default is 7 days"
                       )
   <*> O.option O.auto ( O.long "shards"
                      <> O.short 's'
