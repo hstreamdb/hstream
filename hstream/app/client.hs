@@ -16,7 +16,7 @@ import           Control.Monad                    (when)
 import           Data.Aeson                       as Aeson
 import qualified Data.Char                        as Char
 import qualified Data.List                        as L
-import           Data.Maybe                       (mapMaybe, maybeToList)
+import           Data.Maybe                       (maybeToList)
 import qualified Data.Text                        as T
 import qualified Data.Text.Encoding               as T
 import qualified Data.Vector                      as V
@@ -66,8 +66,7 @@ import qualified HStream.Server.HStreamApi        as API
 import           HStream.ThirdParty.Protobuf      (Empty (Empty))
 import           HStream.Utils                    (ResourceType (..),
                                                    fillWithJsonString',
-                                                   formatResult, newRandomText,
-                                                   pattern EnumPB)
+                                                   formatResult, newRandomText)
 import qualified HStream.Utils.Aeson              as AesonComp
 
 main :: IO ()
@@ -123,17 +122,6 @@ hstreamNodes connOpts (HStreamNodesStatus mid) = do
       case serverNodeStatusNode of
         Just API.ServerNode{..} -> serverNodeId == x
         Nothing                 -> False
-hstreamNodes connOpts (HStreamNodesCheck nMaybe) = do
-  nodes <- describeClusterResponseServerNodesStatus <$> getNodes connOpts
-  let n' = length nodes
-  case nMaybe of
-    Just n -> when (n' < fromIntegral n) $ errorWithoutStackTrace "No enough nodes in the cluster"
-    Nothing -> return ()
-  let nodesNotRunning = V.filter ((/= EnumPB API.NodeStateRunning) . API.serverNodeStatusState) nodes
-  if null nodesNotRunning
-    then putStrLn "All nodes in the cluster are running."
-    else errorWithoutStackTrace $ "Some Nodes are not running: "
-                                <> show (mapMaybe ((API.serverNodeId <$>) . API.serverNodeStatusNode) (V.toList nodesNotRunning))
 
 -- TODO: Init should have it's own rpc call
 hstreamInit :: RefinedCliConnOpts -> HStreamInitOpts -> IO ()
