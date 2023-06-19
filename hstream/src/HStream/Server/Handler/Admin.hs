@@ -140,15 +140,15 @@ handleParseResult (O.CompletionInvoked compl) = throwParsingErr =<< O.execComple
 runStats :: Stats.StatsHolder -> AT.StatsCommand -> IO Text
 runStats statsHolder AT.StatsCommand{..} = do
   case statsCategory of
-    AT.PerStreamStats -> doStats Stats.stream_stat_getall "stream_name"
-    AT.PerStreamTimeSeries -> doPerStreamTimeSeries statsName statsIntervals
-    AT.PerSubscriptionStats -> doStats Stats.subscription_stat_getall "subscription_id"
+    AT.PerStreamStats            -> doStats Stats.stream_stat_getall "stream_name"
+    AT.PerStreamTimeSeries       -> doPerStreamTimeSeries statsName statsIntervals
+    AT.PerSubscriptionStats      -> doStats Stats.subscription_stat_getall "subscription_id"
     AT.PerSubscriptionTimeSeries -> doPerSubscriptionTimeSeries statsName statsIntervals
-    AT.PerHandleTimeSeries -> doPerHandleTimeSeries statsName statsIntervals
-    AT.PerConnectorStats -> doStats Stats.connector_stat_getall "task_name"
-    AT.PerQueryStats -> doStats Stats.query_stat_getall "query_name"
-    AT.PerViewStats -> doStats Stats.view_stat_getall "view_name"
-    AT.ServerHistogram -> doServerHistogram statsName
+    AT.PerHandleTimeSeries       -> doPerHandleTimeSeries statsName statsIntervals
+    AT.PerConnectorStats         -> doStats Stats.connector_stat_getall "task_name"
+    AT.PerQueryStats             -> doStats Stats.query_stat_getall "query_name"
+    AT.PerViewStats              -> doStats Stats.view_stat_getall "view_name"
+    AT.ServerHistogram           -> doServerHistogram statsName
   where
     doStats getstats label = do
       m <- getstats statsHolder statsName
@@ -182,11 +182,12 @@ runStats statsHolder AT.StatsCommand{..} = do
           content = Aeson.object ["headers" .= headers, "rows" .= rows]
       return $ tableResponse content
 
-doTimeSeries :: CBytes
-             -> CBytes
-             -> [Interval]
-             -> (CBytes -> [Int] -> IO (Either String (Map CBytes [Double])))
-             -> IO Text
+doTimeSeries
+  :: CBytes
+  -> CBytes
+  -> [Interval]
+  -> (CBytes -> [Int] -> IO (Either String (Map CBytes [Double])))
+  -> IO Text
 doTimeSeries stat_name x intervals f = do
   m <- f stat_name (map interval2ms intervals)
   case m of
@@ -237,17 +238,17 @@ runMeta :: ServerContext -> AT.MetaCommand -> IO Text
 runMeta ServerContext{..} (AT.MetaCmdList resType) = do
   case resType of
     "subscription" -> pure <$> tableResponse . renderSubscriptionWrapToTable  =<< M.listMeta @SubscriptionWrap metaHandle
-    "query-info" -> pure <$> plainResponse . renderQueryInfosToTable =<< M.listMeta @QueryInfo metaHandle
-    "view-info" -> pure <$> plainResponse . renderViewInfosToTable =<< M.listMeta @ViewInfo metaHandle
-    "qv-relation" -> pure <$> tableResponse . renderQVRelationToTable =<< M.listMeta @QVRelation metaHandle
+    "query-info"   -> pure <$> plainResponse . renderQueryInfosToTable =<< M.listMeta @QueryInfo metaHandle
+    "view-info"    -> pure <$> plainResponse . renderViewInfosToTable =<< M.listMeta @ViewInfo metaHandle
+    "qv-relation"  -> pure <$> tableResponse . renderQVRelationToTable =<< M.listMeta @QVRelation metaHandle
     _ -> return $ errorResponse "invalid resource type, try [subscription|query-info|view-info|qv-relateion]"
 runMeta ServerContext{..} (AT.MetaCmdGet resType rId) = do
   case resType of
     "subscription" -> pure <$> maybe (plainResponse "Not Found") (tableResponse . renderSubscriptionWrapToTable .L.singleton) =<< M.getMeta @SubscriptionWrap rId metaHandle
-    "query-info" -> pure <$> maybe (plainResponse "Not Found") (plainResponse . renderQueryInfosToTable . L.singleton) =<< M.getMeta @QueryInfo rId metaHandle
+    "query-info"   -> pure <$> maybe (plainResponse "Not Found") (plainResponse . renderQueryInfosToTable . L.singleton) =<< M.getMeta @QueryInfo rId metaHandle
     "query-status" -> pure <$> maybe (plainResponse "Not Found") (tableResponse . renderQueryStatusToTable . L.singleton) =<< M.getMeta @QueryStatus rId metaHandle
-    "view-info" -> pure <$> maybe (plainResponse "Not Found") (plainResponse . renderViewInfosToTable . L.singleton) =<< M.getMeta @ViewInfo rId metaHandle
-    "qv-relation" -> pure <$> maybe (plainResponse "Not Found") (tableResponse . renderQVRelationToTable . L.singleton) =<< M.getMeta @QVRelation rId metaHandle
+    "view-info"    -> pure <$> maybe (plainResponse "Not Found") (plainResponse . renderViewInfosToTable . L.singleton) =<< M.getMeta @ViewInfo rId metaHandle
+    "qv-relation"  -> pure <$> maybe (plainResponse "Not Found") (tableResponse . renderQVRelationToTable . L.singleton) =<< M.getMeta @QVRelation rId metaHandle
     _ -> return $ errorResponse "invalid resource type, try [subscription|query-info|query-status|view-info|qv-relateion]"
 runMeta ServerContext{serverOpts=ServerOpts{..}} AT.MetaCmdInfo = do
   let headers = ["Meta Type" :: Text, "Connection Info"]
