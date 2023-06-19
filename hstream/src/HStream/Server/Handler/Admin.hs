@@ -30,7 +30,8 @@ import qualified HsGrpc.Server                    as G
 import           Network.GRPC.HighLevel.Generated
 import qualified Options.Applicative              as O
 import qualified Options.Applicative.Help         as O
-import           Proto3.Suite                     (HasDefault (def))
+import           Proto3.Suite                     (Enumerated (Enumerated),
+                                                   HasDefault (def))
 import qualified Z.Data.CBytes                    as CB
 import           Z.Data.CBytes                    (CBytes)
 
@@ -299,12 +300,12 @@ runStream ctx (AT.StreamCmdDescribe sName) = do
 
 runSubscription :: ServerContext -> AT.SubscriptionCommand -> IO Text
 runSubscription ctx AT.SubscriptionCmdList = do
-  let headers = ["Subscription ID" :: Text, "Stream Name", "Timeout"]
+  let headers = ["Subscription ID" :: Text, "Stream Name", "CreatedTime"]
   subs <- HC.listSubscriptions ctx
   rows <- V.forM subs $ \sub -> do
     return [ API.subscriptionSubscriptionId sub
            , API.subscriptionStreamName sub
-           , Text.pack . show $ API.subscriptionAckTimeoutSeconds sub
+           , Text.pack (maybe "Unknown" (show . timestampToMsTimestamp) $ API.subscriptionCreationTime sub)
            ]
   let content = Aeson.object ["headers" .= headers, "rows" .= rows]
   return $ tableResponse content
@@ -331,10 +332,21 @@ runSubscription ctx (AT.SubscriptionCmdCreate sub) = do
 runSubscription ctx (AT.SubscriptionCmdDescribe sid) = do
   API.GetSubscriptionResponse { getSubscriptionResponseSubscription = Just subscription}
     <- HC.getSubscription ctx (def { API.getSubscriptionRequestId = sid})
-  let headers = ["Subscription ID" :: Text, "Stream Name", "Timeout"]
-      rows = [[API.subscriptionSubscriptionId subscription, API.subscriptionStreamName subscription, Text.pack (show $ API.subscriptionAckTimeoutSeconds subscription)]]
+  let headers = ["Subscription ID" :: Text, "Stream Name", "Timeout", "Max Unacked", "CreatedTime", "Sub Offset"]
+      rows = [[ API.subscriptionSubscriptionId subscription
+              , API.subscriptionStreamName subscription
+              , Text.pack (show $ API.subscriptionAckTimeoutSeconds subscription)
+              , Text.pack (show $ API.subscriptionMaxUnackedRecords subscription)
+              , Text.pack (maybe "Unknown" (show . timestampToMsTimestamp) $ API.subscriptionCreationTime subscription)
+              , formatSpecialOffset $ API.subscriptionOffset subscription
+             ]]
       content = Aeson.object ["headers" .= headers, "rows" .= rows]
   return $ tableResponse content
+ where
+   formatSpecialOffset offset = case offset of
+      Enumerated (Right API.SpecialOffsetEARLIEST) -> "EARLIEST"
+      Enumerated (Right API.SpecialOffsetLATEST)   -> "LATEST"
+      _                                            -> "Unknown Offset"
 
 -------------------------------------------------------------------------------
 -- Admin View Command
