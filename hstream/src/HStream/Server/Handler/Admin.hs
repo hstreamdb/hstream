@@ -270,11 +270,11 @@ runMetaTask ServerContext{..} (AT.MetaTaskGet resType rId) = do
 
 runStream :: ServerContext -> AT.StreamCommand -> IO Text
 runStream ctx AT.StreamCmdList = do
-  let headers = ["name" :: Text, "replication_property"]
+  let headers = ["Stream Name" :: Text, "Replication Factor"]
   streams <- HC.listStreams ctx API.ListStreamsRequest
   rows <- V.forM streams $ \stream -> do
     return [ API.streamStreamName stream
-           , "node:" <> Text.pack (show $ API.streamReplicationFactor stream)
+           , Text.pack (show $ API.streamReplicationFactor stream)
            ]
   let content = Aeson.object ["headers" .= headers, "rows" .= rows]
   return $ tableResponse content
@@ -289,7 +289,7 @@ runStream ctx (AT.StreamCmdDelete stream force) = do
 runStream ctx (AT.StreamCmdDescribe sName) = do
   API.GetStreamResponse { getStreamResponseStream = Just stream}
     <- HC.getStream ctx (def {API.getStreamRequestName = sName})
-  let headers = ["name" :: Text, "replication_property"]
+  let headers = ["Stream Name" :: Text, "Replication Factor"]
       rows = [[API.streamStreamName stream, Text.pack (show $ API.streamReplicationFactor stream)]]
       content = Aeson.object ["headers" .= headers, "rows" .= rows]
   return $ tableResponse content
@@ -299,7 +299,7 @@ runStream ctx (AT.StreamCmdDescribe sName) = do
 
 runSubscription :: ServerContext -> AT.SubscriptionCommand -> IO Text
 runSubscription ctx AT.SubscriptionCmdList = do
-  let headers = ["id" :: Text, "stream_name", "timeout"]
+  let headers = ["Subscription ID" :: Text, "Stream Name", "Timeout"]
   subs <- HC.listSubscriptions ctx
   rows <- V.forM subs $ \sub -> do
     return [ API.subscriptionSubscriptionId sub
@@ -331,7 +331,7 @@ runSubscription ctx (AT.SubscriptionCmdCreate sub) = do
 runSubscription ctx (AT.SubscriptionCmdDescribe sid) = do
   API.GetSubscriptionResponse { getSubscriptionResponseSubscription = Just subscription}
     <- HC.getSubscription ctx (def { API.getSubscriptionRequestId = sid})
-  let headers = ["id" :: Text, "stream_name", "timeout"]
+  let headers = ["Subscription ID" :: Text, "Stream Name", "Timeout"]
       rows = [[API.subscriptionSubscriptionId subscription, API.subscriptionStreamName subscription, Text.pack (show $ API.subscriptionAckTimeoutSeconds subscription)]]
       content = Aeson.object ["headers" .= headers, "rows" .= rows]
   return $ tableResponse content
@@ -341,7 +341,7 @@ runSubscription ctx (AT.SubscriptionCmdDescribe sid) = do
 
 runView :: ServerContext -> AT.ViewCommand -> IO Text
 runView serverContext AT.ViewCmdList = do
-  let headers = ["id" :: Text, "status", "createdTime"]
+  let headers = ["View ID" :: Text, "Status", "CreatedTime"]
   views <- HC.listViews serverContext
   rows <- forM views $ \view -> do
     return [ API.viewViewId view
@@ -417,7 +417,7 @@ runQuery sc AT.QueryCmdList = do
 runConnector :: ServerContext -> AT.ConnectorCommand -> IO Text
 runConnector ServerContext{..} AT.ConnectorCmdList = do
   connectors <- HC.listIOTasks scIOWorker
-  let headers = ["Connector Name" :: Text, "Type", "Target", "Status", "Created Time"]
+  let headers = ["Connector Name" :: Text, "Type", "Target", "Status", "CreatedTime"]
   rows <- forM connectors $ \API.Connector{..} -> do
     return [ connectorName
            , connectorType
@@ -462,14 +462,14 @@ runConnector ServerContext{..} (AT.ConnectorCmdDescribe cId) = do
 runStatus :: ServerContext -> IO Text.Text
 runStatus ServerContext{..} = do
   values <- HM.elems <$> getClusterStatus gossipContext
-  let headers = ["node_id" :: Text.Text, "state", "address"]
+  let headers = ["Node ID" :: Text.Text, "State", "Address"]
       rows = map consRow values
       content = Aeson.object ["headers" .= headers, "rows" .= rows]
   return $ tableResponse content
   where
     show' = Text.pack . show
     consRow API.ServerNodeStatus{..} =
-      let nodeID = maybe "UNKNOWN" (show' . API.serverNodeId) serverNodeStatusNode
+      let nodeID   = maybe "UNKNOWN" (show' . API.serverNodeId) serverNodeStatusNode
           nodeHost = maybe "UNKNOWN" API.serverNodeHost serverNodeStatusNode
           nodePort = maybe "UNKNOWN" (show' . API.serverNodePort) serverNodeStatusNode
        in [ nodeID
