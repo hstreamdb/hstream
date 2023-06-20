@@ -321,17 +321,14 @@ streamingFetchCore ctx SFetchCoreDirect = \initReq consumerClosed callbacksGen -
             Nothing -> retry
             req     -> return $ Right req)
   let streamRecv = atomically streamRecv'
-  withAsync (recvAcks ctx scwState scwContext consumerCtx streamRecv) wait
-  -- `onException` do
-  --   case tid_m of
-  --     Just tid -> killThread tid
-  --     Nothing  -> return ()
+  recvAcks ctx scwState scwContext consumerCtx streamRecv
+
 streamingFetchCore ctx SFetchCoreInteractive = \(streamSend, streamRecv, requestUri, userAgent) -> do
   StreamingFetchRequest {..} <- firstRecv streamRecv
   Log.info $ "Receive streaming fetch request for sub " <> Log.build streamingFetchRequestSubscriptionId
   (SubscribeContextWrapper {..}, _) <- initSub ctx streamingFetchRequestSubscriptionId
   consumerCtx <- initConsumer scwContext streamingFetchRequestConsumerName (Just requestUri) (Just userAgent) streamSend
-  async (recvAcks ctx scwState scwContext consumerCtx streamRecv) >>= wait
+  recvAcks ctx scwState scwContext consumerCtx streamRecv
   where
     firstRecv :: StreamRecv StreamingFetchRequest -> IO StreamingFetchRequest
     firstRecv streamRecv =
