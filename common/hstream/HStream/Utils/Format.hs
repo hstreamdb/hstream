@@ -36,7 +36,8 @@ import qualified HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils.BuildRecord
 import           HStream.Utils.Converter          (structToJsonObject,
                                                    valueToJsonValue)
-import           HStream.Utils.RPC                (showNodeStatus)
+import           HStream.Utils.RPC                (handleGRPCIOError,
+                                                   showNodeStatus)
 
 --------------------------------------------------------------------------------
 
@@ -102,14 +103,14 @@ instance Format API.HStreamVersion where
 
 instance Format a => Format (ClientResult 'Normal a) where
   formatResult (ClientNormalResponse response _ _ _ _) = formatResult response
-  formatResult (ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode _code details)))
-    = "Server Error: " <> BS.unpack (unStatusDetails details) <> "\n"
+  formatResult (ClientErrorResponse (ClientIOError e))
+    = handleGRPCIOError e <> "\n"
   formatResult (ClientErrorResponse err) = "Error: " <> show err <> "\n"
 
 instance Format a => Format (ClientResult 'ServerStreaming a) where
   formatResult (ClientReaderResponse _ _ _) = "Read Done.\n"
-  formatResult (ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode _code details)))
-    = "Server Error: " <> BS.unpack (unStatusDetails details) <> "\n"
+  formatResult (ClientErrorResponse (ClientIOError (e)))
+    = handleGRPCIOError e <> "\n"
   formatResult (ClientErrorResponse err) = "Error: " <> show err <> "\n"
 
 instance Format API.ListStreamsResponse where

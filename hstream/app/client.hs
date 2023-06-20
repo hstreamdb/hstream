@@ -22,8 +22,6 @@ import qualified Data.Text.Encoding               as T
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated (ClientError (..),
                                                    ClientResult (..),
-                                                   GRPCIOError (..),
-                                                   StatusDetails (..),
                                                    withGRPCClient)
 import qualified Options.Applicative              as O
 import           System.Exit                      (exitFailure)
@@ -66,7 +64,9 @@ import qualified HStream.Server.HStreamApi        as API
 import           HStream.ThirdParty.Protobuf      (Empty (Empty))
 import           HStream.Utils                    (ResourceType (..),
                                                    fillWithJsonString',
-                                                   formatResult, newRandomText,
+                                                   formatResult,
+                                                   handleGRPCIOError,
+                                                   newRandomText,
                                                    pattern EnumPB)
 import qualified HStream.Utils.Aeson              as AesonComp
 
@@ -204,7 +204,5 @@ getNodes RefinedCliConnOpts{..} =
     res <- hstreamApiDescribeCluster (mkClientNormalRequest' Empty)
     case res of
       ClientNormalResponse resp _ _ _ _ -> return resp
-      ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode x details))
-        -> putStrLn (show x <> " Error: "  <> show (unStatusDetails details))
-           >> exitFailure
+      ClientErrorResponse (ClientIOError e) -> putStrLn (handleGRPCIOError e) >> exitFailure
       ClientErrorResponse err -> error $ "Server Error: " <> show err <> "\n"
