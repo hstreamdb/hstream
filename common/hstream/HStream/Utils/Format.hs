@@ -252,8 +252,10 @@ renderViewsToTable views = showTable titles rows
 renderServerNodesToTable :: [API.ServerNode] -> String
 renderServerNodesToTable values = showTable titles rows
   where
-    titles = ["Server Id"]
-    formatRow API.ServerNode {..} = [[show serverNodeId]]
+    titles = ["Server Id", "Address"]
+    formatRow API.ServerNode {..} = [ [show serverNodeId ]
+                                    , [T.unpack serverNodeHost <> ":" <> show serverNodePort]
+                                    ]
     rows = map formatRow values
 
 renderServerNodesStatusToTable :: [API.ServerNodeStatus] -> String

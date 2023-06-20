@@ -11,8 +11,8 @@ module HStream.Client.Internal
 
 import           Control.Concurrent               (threadDelay)
 import           Control.Monad                    (void, when)
-import           Data.IORef                       (IORef (..), newIORef,
-                                                   readIORef, writeIORef)
+import           Data.IORef                       (IORef, newIORef, readIORef,
+                                                   writeIORef)
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated (ClientRequest (..))
@@ -43,7 +43,7 @@ streamingFetch :: HStreamCliContext -> T.Text -> API.HStreamApi ClientRequest re
 streamingFetch = streamingFetch' (putStr . formatResult @PB.Struct) False
 
 streamingFetch' :: (PB.Struct -> IO ()) -> Bool -> HStreamCliContext -> T.Text -> API.HStreamApi ClientRequest response -> IO ()
-streamingFetch' handleResult recovered ctx subId api@API.HStreamApi{..} = do
+streamingFetch' handleResult recovered ctx subId API.HStreamApi{..} = do
   when recovered $ putStrLn "Query is recovered"
   clientId <- genClientId
   void $ hstreamApiStreamingFetch (ClientBiDiRequest 10000 mempty (action clientId))
