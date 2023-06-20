@@ -50,19 +50,30 @@ executeShowPlan ctx showObject =
     SQueries    -> execute_ ctx listQueries
     SConnectors -> execute_ ctx listConnectors
 
-execute_ :: Format a => HStreamCliContext
-  -> Action a -> IO ()
+execute_
+  :: Format a
+  => HStreamCliContext
+  -> Action a
+  -> IO ()
 execute_ ctx@HStreamCliContext{..} action = do
   addr <- readMVar currentServer
   void $ executeWithAddr_ ctx addr action printResult
 
-executeWithLookupResource_ :: Format a => HStreamCliContext
-  -> Resource -> (HStreamClientApi -> IO a)  -> IO ()
+executeWithLookupResource_
+  :: Format a
+  => HStreamCliContext
+  -> Resource
+  -> (HStreamClientApi -> IO a)
+  -> IO ()
 executeWithLookupResource_ ctx rtype action =
   executeWithLookupResource ctx rtype action >>= printResult
 
-executeWithLookupResource :: Format a => HStreamCliContext
-  -> Resource -> (HStreamClientApi -> IO a)  -> IO a
+executeWithLookupResource
+  :: Format a
+  => HStreamCliContext
+  -> Resource
+  -> (HStreamClientApi -> IO a)
+  -> IO a
 executeWithLookupResource ctx@HStreamCliContext{..} rtype action = do
   addr <- readMVar currentServer
   lookupWithAddr ctx addr rtype

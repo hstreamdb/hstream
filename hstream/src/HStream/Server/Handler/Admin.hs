@@ -30,7 +30,8 @@ import qualified HsGrpc.Server                    as G
 import           Network.GRPC.HighLevel.Generated
 import qualified Options.Applicative              as O
 import qualified Options.Applicative.Help         as O
-import           Proto3.Suite                     (HasDefault (def))
+import           Proto3.Suite                     (Enumerated (Enumerated),
+                                                   HasDefault (def))
 import qualified Z.Data.CBytes                    as CB
 import           Z.Data.CBytes                    (CBytes)
 
@@ -140,15 +141,15 @@ handleParseResult (O.CompletionInvoked compl) = throwParsingErr =<< O.execComple
 runStats :: Stats.StatsHolder -> AT.StatsCommand -> IO Text
 runStats statsHolder AT.StatsCommand{..} = do
   case statsCategory of
-    AT.PerStreamStats -> doStats Stats.stream_stat_getall "stream_name"
-    AT.PerStreamTimeSeries -> doPerStreamTimeSeries statsName statsIntervals
-    AT.PerSubscriptionStats -> doStats Stats.subscription_stat_getall "subscription_id"
+    AT.PerStreamStats            -> doStats Stats.stream_stat_getall "stream_name"
+    AT.PerStreamTimeSeries       -> doPerStreamTimeSeries statsName statsIntervals
+    AT.PerSubscriptionStats      -> doStats Stats.subscription_stat_getall "subscription_id"
     AT.PerSubscriptionTimeSeries -> doPerSubscriptionTimeSeries statsName statsIntervals
-    AT.PerHandleTimeSeries -> doPerHandleTimeSeries statsName statsIntervals
-    AT.PerConnectorStats -> doStats Stats.connector_stat_getall "task_name"
-    AT.PerQueryStats -> doStats Stats.query_stat_getall "query_name"
-    AT.PerViewStats -> doStats Stats.view_stat_getall "view_name"
-    AT.ServerHistogram -> doServerHistogram statsName
+    AT.PerHandleTimeSeries       -> doPerHandleTimeSeries statsName statsIntervals
+    AT.PerConnectorStats         -> doStats Stats.connector_stat_getall "task_name"
+    AT.PerQueryStats             -> doStats Stats.query_stat_getall "query_name"
+    AT.PerViewStats              -> doStats Stats.view_stat_getall "view_name"
+    AT.ServerHistogram           -> doServerHistogram statsName
   where
     doStats getstats label = do
       m <- getstats statsHolder statsName
@@ -182,11 +183,12 @@ runStats statsHolder AT.StatsCommand{..} = do
           content = Aeson.object ["headers" .= headers, "rows" .= rows]
       return $ tableResponse content
 
-doTimeSeries :: CBytes
-             -> CBytes
-             -> [Interval]
-             -> (CBytes -> [Int] -> IO (Either String (Map CBytes [Double])))
-             -> IO Text
+doTimeSeries
+  :: CBytes
+  -> CBytes
+  -> [Interval]
+  -> (CBytes -> [Int] -> IO (Either String (Map CBytes [Double])))
+  -> IO Text
 doTimeSeries stat_name x intervals f = do
   m <- f stat_name (map interval2ms intervals)
   case m of
@@ -237,17 +239,17 @@ runMeta :: ServerContext -> AT.MetaCommand -> IO Text
 runMeta ServerContext{..} (AT.MetaCmdList resType) = do
   case resType of
     "subscription" -> pure <$> tableResponse . renderSubscriptionWrapToTable  =<< M.listMeta @SubscriptionWrap metaHandle
-    "query-info" -> pure <$> plainResponse . renderQueryInfosToTable =<< M.listMeta @QueryInfo metaHandle
-    "view-info" -> pure <$> plainResponse . renderViewInfosToTable =<< M.listMeta @ViewInfo metaHandle
-    "qv-relation" -> pure <$> tableResponse . renderQVRelationToTable =<< M.listMeta @QVRelation metaHandle
+    "query-info"   -> pure <$> plainResponse . renderQueryInfosToTable =<< M.listMeta @QueryInfo metaHandle
+    "view-info"    -> pure <$> plainResponse . renderViewInfosToTable =<< M.listMeta @ViewInfo metaHandle
+    "qv-relation"  -> pure <$> tableResponse . renderQVRelationToTable =<< M.listMeta @QVRelation metaHandle
     _ -> return $ errorResponse "invalid resource type, try [subscription|query-info|view-info|qv-relateion]"
 runMeta ServerContext{..} (AT.MetaCmdGet resType rId) = do
   case resType of
     "subscription" -> pure <$> maybe (plainResponse "Not Found") (tableResponse . renderSubscriptionWrapToTable .L.singleton) =<< M.getMeta @SubscriptionWrap rId metaHandle
-    "query-info" -> pure <$> maybe (plainResponse "Not Found") (plainResponse . renderQueryInfosToTable . L.singleton) =<< M.getMeta @QueryInfo rId metaHandle
+    "query-info"   -> pure <$> maybe (plainResponse "Not Found") (plainResponse . renderQueryInfosToTable . L.singleton) =<< M.getMeta @QueryInfo rId metaHandle
     "query-status" -> pure <$> maybe (plainResponse "Not Found") (tableResponse . renderQueryStatusToTable . L.singleton) =<< M.getMeta @QueryStatus rId metaHandle
-    "view-info" -> pure <$> maybe (plainResponse "Not Found") (plainResponse . renderViewInfosToTable . L.singleton) =<< M.getMeta @ViewInfo rId metaHandle
-    "qv-relation" -> pure <$> maybe (plainResponse "Not Found") (tableResponse . renderQVRelationToTable . L.singleton) =<< M.getMeta @QVRelation rId metaHandle
+    "view-info"    -> pure <$> maybe (plainResponse "Not Found") (plainResponse . renderViewInfosToTable . L.singleton) =<< M.getMeta @ViewInfo rId metaHandle
+    "qv-relation"  -> pure <$> maybe (plainResponse "Not Found") (tableResponse . renderQVRelationToTable . L.singleton) =<< M.getMeta @QVRelation rId metaHandle
     _ -> return $ errorResponse "invalid resource type, try [subscription|query-info|query-status|view-info|qv-relateion]"
 runMeta ServerContext{serverOpts=ServerOpts{..}} AT.MetaCmdInfo = do
   let headers = ["Meta Type" :: Text, "Connection Info"]
@@ -269,11 +271,11 @@ runMetaTask ServerContext{..} (AT.MetaTaskGet resType rId) = do
 
 runStream :: ServerContext -> AT.StreamCommand -> IO Text
 runStream ctx AT.StreamCmdList = do
-  let headers = ["name" :: Text, "replication_property"]
+  let headers = ["Stream Name" :: Text, "Replication Factor"]
   streams <- HC.listStreams ctx API.ListStreamsRequest
   rows <- V.forM streams $ \stream -> do
     return [ API.streamStreamName stream
-           , "node:" <> Text.pack (show $ API.streamReplicationFactor stream)
+           , Text.pack (show $ API.streamReplicationFactor stream)
            ]
   let content = Aeson.object ["headers" .= headers, "rows" .= rows]
   return $ tableResponse content
@@ -288,7 +290,7 @@ runStream ctx (AT.StreamCmdDelete stream force) = do
 runStream ctx (AT.StreamCmdDescribe sName) = do
   API.GetStreamResponse { getStreamResponseStream = Just stream}
     <- HC.getStream ctx (def {API.getStreamRequestName = sName})
-  let headers = ["name" :: Text, "replication_property"]
+  let headers = ["Stream Name" :: Text, "Replication Factor"]
       rows = [[API.streamStreamName stream, Text.pack (show $ API.streamReplicationFactor stream)]]
       content = Aeson.object ["headers" .= headers, "rows" .= rows]
   return $ tableResponse content
@@ -298,12 +300,12 @@ runStream ctx (AT.StreamCmdDescribe sName) = do
 
 runSubscription :: ServerContext -> AT.SubscriptionCommand -> IO Text
 runSubscription ctx AT.SubscriptionCmdList = do
-  let headers = ["id" :: Text, "stream_name", "timeout"]
+  let headers = ["Subscription ID" :: Text, "Stream Name", "CreatedTime"]
   subs <- HC.listSubscriptions ctx
   rows <- V.forM subs $ \sub -> do
     return [ API.subscriptionSubscriptionId sub
            , API.subscriptionStreamName sub
-           , Text.pack . show $ API.subscriptionAckTimeoutSeconds sub
+           , Text.pack (maybe "Unknown" (show . timestampToMsTimestamp) $ API.subscriptionCreationTime sub)
            ]
   let content = Aeson.object ["headers" .= headers, "rows" .= rows]
   return $ tableResponse content
@@ -330,17 +332,28 @@ runSubscription ctx (AT.SubscriptionCmdCreate sub) = do
 runSubscription ctx (AT.SubscriptionCmdDescribe sid) = do
   API.GetSubscriptionResponse { getSubscriptionResponseSubscription = Just subscription}
     <- HC.getSubscription ctx (def { API.getSubscriptionRequestId = sid})
-  let headers = ["id" :: Text, "stream_name", "timeout"]
-      rows = [[API.subscriptionSubscriptionId subscription, API.subscriptionStreamName subscription, Text.pack (show $ API.subscriptionAckTimeoutSeconds subscription)]]
+  let headers = ["Subscription ID" :: Text, "Stream Name", "Timeout", "Max Unacked", "CreatedTime", "Sub Offset"]
+      rows = [[ API.subscriptionSubscriptionId subscription
+              , API.subscriptionStreamName subscription
+              , Text.pack (show $ API.subscriptionAckTimeoutSeconds subscription)
+              , Text.pack (show $ API.subscriptionMaxUnackedRecords subscription)
+              , Text.pack (maybe "Unknown" (show . timestampToMsTimestamp) $ API.subscriptionCreationTime subscription)
+              , formatSpecialOffset $ API.subscriptionOffset subscription
+             ]]
       content = Aeson.object ["headers" .= headers, "rows" .= rows]
   return $ tableResponse content
+ where
+   formatSpecialOffset offset = case offset of
+      Enumerated (Right API.SpecialOffsetEARLIEST) -> "EARLIEST"
+      Enumerated (Right API.SpecialOffsetLATEST)   -> "LATEST"
+      _                                            -> "Unknown Offset"
 
 -------------------------------------------------------------------------------
 -- Admin View Command
 
 runView :: ServerContext -> AT.ViewCommand -> IO Text
 runView serverContext AT.ViewCmdList = do
-  let headers = ["id" :: Text, "status", "createdTime"]
+  let headers = ["View ID" :: Text, "Status", "CreatedTime"]
   views <- HC.listViews serverContext
   rows <- forM views $ \view -> do
     return [ API.viewViewId view
@@ -416,7 +429,7 @@ runQuery sc AT.QueryCmdList = do
 runConnector :: ServerContext -> AT.ConnectorCommand -> IO Text
 runConnector ServerContext{..} AT.ConnectorCmdList = do
   connectors <- HC.listIOTasks scIOWorker
-  let headers = ["Connector Name" :: Text, "Type", "Target", "Status", "Created Time"]
+  let headers = ["Connector Name" :: Text, "Type", "Target", "Status", "CreatedTime"]
   rows <- forM connectors $ \API.Connector{..} -> do
     return [ connectorName
            , connectorType
@@ -461,14 +474,14 @@ runConnector ServerContext{..} (AT.ConnectorCmdDescribe cId) = do
 runStatus :: ServerContext -> IO Text.Text
 runStatus ServerContext{..} = do
   values <- HM.elems <$> getClusterStatus gossipContext
-  let headers = ["node_id" :: Text.Text, "state", "address"]
+  let headers = ["Node ID" :: Text.Text, "State", "Address"]
       rows = map consRow values
       content = Aeson.object ["headers" .= headers, "rows" .= rows]
   return $ tableResponse content
   where
     show' = Text.pack . show
     consRow API.ServerNodeStatus{..} =
-      let nodeID = maybe "UNKNOWN" (show' . API.serverNodeId) serverNodeStatusNode
+      let nodeID   = maybe "UNKNOWN" (show' . API.serverNodeId) serverNodeStatusNode
           nodeHost = maybe "UNKNOWN" API.serverNodeHost serverNodeStatusNode
           nodePort = maybe "UNKNOWN" (show' . API.serverNodePort) serverNodeStatusNode
        in [ nodeID

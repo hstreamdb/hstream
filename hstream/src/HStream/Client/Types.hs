@@ -48,13 +48,13 @@ commandParser :: O.Parser HStreamCommand
 commandParser = HStreamCommand
   <$> connOptsParser
   <*> O.hsubparser
-      (  O.command "sql"   (O.info (HStreamSql <$> hstreamSqlOptsParser) (O.progDesc "Start HStream SQL Shell"))
+      (  O.command "sql" (O.info (HStreamSql <$> hstreamSqlOptsParser) (O.progDesc "Start HStream SQL Shell"))
       <> O.command "node" (O.info (HStreamNodes <$> hstreamNodesParser) (O.progDesc "Manage HStream Server Cluster"))
-      <> O.command "init"  (O.info (HStreamInit <$> hstreamInitOptsParser ) (O.progDesc "Init HStream Server Cluster"))
-      <> O.command "stream"        (O.info (HStreamStream <$> streamCmdParser ) (O.progDesc "Manage Streams in HStreamDB"))
-      <> O.command "subscription"  (O.info (HStreamSubscription <$> subscriptionCmdParser) (O.progDesc "Manage Subscriptions in HStreamDB (`sub` is an alias for this command)"))
+      <> O.command "init" (O.info (HStreamInit <$> hstreamInitOptsParser ) (O.progDesc "Init HStream Server Cluster"))
+      <> O.command "stream" (O.info (HStreamStream <$> streamCmdParser ) (O.progDesc "Manage Streams in HStreamDB"))
+      <> O.command "subscription" (O.info (HStreamSubscription <$> subscriptionCmdParser) (O.progDesc "Manage Subscriptions in HStreamDB (`sub` is an alias for this command)"))
       -- Also see: https://github.com/pcapriotti/optparse-applicative#command-groups
-      <> O.command "sub"  (O.info (HStreamSubscription <$> subscriptionCmdParser) (O.progDesc "Alias for the command `subscription`"))
+      <> O.command "sub" (O.info (HStreamSubscription <$> subscriptionCmdParser) (O.progDesc "Alias for the command `subscription`"))
       )
 
 data StreamCommand
@@ -71,21 +71,20 @@ streamCmdParser = O.hsubparser
   ( O.command "list" (O.info (pure StreamCmdList) (O.progDesc "Get all streams"))
  <> O.command "create" (O.info (StreamCmdCreate <$> streamParser) (O.progDesc "Create a stream"))
  <> O.command "describe" (O.info (StreamCmdDescribe <$> O.strArgument ( O.metavar "STREAM_NAME"
-                                                                      <> O.help "The name of the stream"))
-                               (O.progDesc "Get the details of a stream"))
+                                                                     <> O.help "The name of the stream"))
+                                 (O.progDesc "Get the details of a stream"))
  <> O.command "delete" (O.info (StreamCmdDelete <$> O.strArgument ( O.metavar "STREAM_NAME"
-                                                               <> O.help "The name of the stream to delete")
+                                                                 <> O.help "The name of the stream to delete")
                                                 <*> O.switch ( O.long "force"
                                                             <> O.short 'f'
                                                             <> O.help "Whether to enable force deletion" ))
-                               (O.progDesc "Delete a stream")
-                        )
+                               (O.progDesc "Delete a stream"))
  <> O.command "list-shard" (O.info (StreamCmdListShard <$> O.strArgument
                                                                ( O.metavar "STREAM_NAME"
                                                               <> O.help "The name of the stream to be queried"))
-                             (O.progDesc "List shards of specific stream"))
+                                   (O.progDesc "List shards of specific stream"))
  <> O.command "read-shard" (O.info (StreamCmdReadShard <$> readShardRequestParser)
-                             (O.progDesc "Read records from specific shard"))
+                                   (O.progDesc "Read records from specific shard"))
   )
 
 data ReadShardArgs = ReadShardArgs
@@ -147,7 +146,7 @@ timestampParser = API.TimestampOffset
                        <> O.metavar "TIMESTAMP"
                        <> O.help "Read from specific millisecond time stamp")
   <*> (not <$> O.switch ( O.long "approximate"
-              <> O.help "Use approximate timestamp"))
+                       <> O.help "Use approximate timestamp"))
 
 data SubscriptionCommand
   = SubscriptionCmdList
@@ -165,11 +164,11 @@ subscriptionCmdParser = O.hsubparser
                                                                            <> O.help "The ID of the subscription"))
                                  (O.progDesc "Get the details of a subscription"))
  <> O.command "delete" (O.info (SubscriptionCmdDelete <$> O.strArgument ( O.metavar "SUB_ID"
-                                                                      <> O.help "The ID of the subscription")
+                                                                       <> O.help "The ID of the subscription")
                                                       <*> O.switch ( O.long "force"
-                                                                  <> O.short 'f' ))
-                               (O.progDesc "Delete a subscription")
-                       )
+                                                                  <> O.short 'f'
+                                                                  <> O.help "Whether to enable force deletion"))
+                               (O.progDesc "Delete a subscription"))
   )
 
 data HStreamCliContext = HStreamCliContext
@@ -198,7 +197,6 @@ hstreamSqlOptsParser = HStreamSqlOpts
   <$> O.option O.auto (O.long "update-interval" <> O.metavar "INT" <> O.showDefault <> O.value 30 <> O.help "interval to update available servers in seconds")
   <*> O.option O.auto (O.long "retry-interval" <> O.metavar "INT" <> O.showDefault <> O.value 5 <> O.help "interval to retry request to server")
   <*> O.option O.auto (O.long "retry-limit" <> O.metavar "INT" <> O.showDefault <> O.value 3 <> O.help "maximum number of retries allowed")
-
   <*> (O.optional . O.option O.str) (O.long "execute" <> O.short 'e' <> O.metavar "STRING" <> O.help "execute the statement and quit")
   <*> (O.optional . O.option O.str) (O.long "history-file" <> O.metavar "STRING" <> O.help "history file path to write interactively executed statements")
 
@@ -235,15 +233,15 @@ data CliConnOpts = CliConnOpts
 serverHost :: O.Parser ByteString
 serverHost =
   O.strOption ( O.long "host" <> O.metavar "SERVER-HOST"
-              <> O.showDefault <> O.value "127.0.0.1"
-              <> O.help "Server host value"
+             <> O.showDefault <> O.value "127.0.0.1"
+             <> O.help "Server host value"
               )
 
 serverPort :: O.Parser Int
 serverPort =
   O.option O.auto ( O.long "port" <> O.metavar "INT"
-                  <> O.showDefault <> O.value 6570
-                  <> O.help "Server port value"
+                 <> O.showDefault <> O.value 6570
+                 <> O.help "Server port value"
                   )
 
 connOptsParser :: O.Parser CliConnOpts
@@ -253,8 +251,8 @@ connOptsParser = CliConnOpts
   <*> (O.optional . O.option O.str) (O.long "tls-ca"   <> O.metavar "STRING" <> O.help "path name of the file that contains list of trusted TLS Certificate Authorities")
   <*> (O.optional . O.option O.str) (O.long "tls-key"  <> O.metavar "STRING" <> O.help "path name of the client TLS private key file")
   <*> (O.optional . O.option O.str) (O.long "tls-cert" <> O.metavar "STRING" <> O.help "path name of the client TLS public key certificate file")
-  <*> O.option O.auto (O.long "retry-timeout"   <> O.metavar "INT" <> O.showDefault <> O.value 60 <> O.help "timeout to retry connecting to a server in seconds")
-  <*> (O.optional . O.option (O.maybeReader parseURI)) (O.long "service-url"  <> O.help "The endpoint to connect to")
+  <*> O.option O.auto (O.long "retry-timeout" <> O.metavar "INT" <> O.showDefault <> O.value 60 <> O.help "timeout to retry connecting to a server in seconds")
+  <*> (O.optional . O.option (O.maybeReader parseURI)) (O.long "service-url" <> O.help "The endpoint to connect to")
 
 data RefinedCliConnOpts = RefinedCliConnOpts {
     addr         :: SocketAddr
@@ -298,7 +296,7 @@ refineCliConnOpts CliConnOpts {..} = do
       if BS.null host then errorWithoutStackTrace "Incomplete URI"
       else case uriPort of
         []     -> SocketAddr host _serverPort
-        (x:xs) -> case readMaybe xs of
+        (_:xs) -> case readMaybe xs of
           Nothing   -> SocketAddr host _serverPort
           Just port -> SocketAddr host port
     uriAuthToSocketAddress Nothing = errorWithoutStackTrace "Incomplete URI"
