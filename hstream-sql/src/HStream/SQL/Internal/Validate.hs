@@ -719,6 +719,11 @@ instance Validate Insert where
     mapM_ isConstExpr exprs
     return insert
 
+  validate insert@(InsertSelect _ hIdent select) = do
+
+    return insert
+
+
   validate insert@(InsertRawOrJson _ hIdent exprCast) = do
     _ <- validate hIdent
     let (valExpr, valTyp, pos) = unifyValueExprCast exprCast

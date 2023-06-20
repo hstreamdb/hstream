@@ -120,6 +120,7 @@ data HStreamPlan
   | PushSelectPlan      [StreamName] StreamName TaskBuilder Persist
   | CreateBySelectPlan  [StreamName] StreamName TaskBuilder RStreamOptions Persist
   | CreateViewPlan      [StreamName] StreamName ViewName TaskBuilder Persist
+  | InsertBySelectPlan  [StreamName] StreamName TaskBuilder Persist
 
 --------------------------------------------------------------------------------
 streamCodegen :: HasCallStack => Text -> IO HStreamPlan
@@ -146,6 +147,12 @@ hstreamCodegen = \case
   RQCreate (RCreate stream rOptions) -> return $ CreatePlan stream rOptions
   RQCreate (RCreateConnector cType cName cTarget ifNotExist (RConnectorOptions cOptions)) ->
     return $ CreateConnectorPlan cType cName cTarget ifNotExist cOptions
+
+  RQInsert (RInsertSelect stream select) -> do
+    tName <- genTaskName
+    (builder, srcs, sink, persist) <- elabRSelect tName (Just stream) select
+    return $ InsertBySelectPlan srcs sink (HS.build builder) persist
+    
   RQInsert (RInsert stream tuples)   -> do
     let jsonObj = HsAeson.fromList $
           bimap HsAeson.fromText (flowValueToJsonValue . constantToFlowValue) <$> tuples

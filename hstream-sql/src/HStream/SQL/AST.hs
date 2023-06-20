@@ -885,6 +885,7 @@ data RInsertRawOrJsonPayloadType = RInsertRawOrJsonPayloadTypeRaw | RInsertRawOr
 ---- INSERT
 data RInsert = RInsert Text [(FieldName,Constant)]
              | RInsertRawOrJson Text BS.ByteString RInsertRawOrJsonPayloadType
+             | RInsertSelect Text RSelect
              deriving (Show, Generic, Aeson.ToJSON, Aeson.FromJSON)
 type instance RefinedType Insert = RInsert
 instance Refine Insert where
@@ -905,6 +906,7 @@ instance Refine Insert where
                           TypeJson _ -> RInsertRawOrJsonPayloadTypeJson
                           _          -> error errMsg
     in RInsertRawOrJson (extractHIdent streamName) (encodeUtf8 rVal) rTyp
+  refine (InsertSelect _ hIdent select) = RInsertSelect (refine hIdent) (refine select)
 
 ---- SHOW
 data RShow

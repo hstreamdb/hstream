@@ -212,7 +212,54 @@ createQueryWithNamespace'
                 , qRConsumerClosed =  consumerClosed
                 }
               hstreamQueryToQuery metaHandle qInfo
-            _ -> throw $ HE.WrongExecutionPlan "Create query only support create stream/view <name> as select statements"
+            _ -> throw $ HE.WrongExecutionPlan "Create query only support create1 stream/view <name> as select statements"
+
+        RQInsert (RInsertSelect stream select) ->
+          hstreamCodegen (RQInsert (RInsertSelect (namespace <> stream)
+                                              (modifySelect namespace select)
+                                              )) >>= \case
+            InsertBySelectPlan sources sink builder persist -> do
+              -- validate names
+              mapM_ (validateNameAndThrow ResStream) sources
+              validateNameAndThrow ResStream sink 
+              -- check source streams
+              roles_m <- mapM (findIdentifierRole sc) sources
+              unless (all isJust roles_m) $ do
+                Log.warning $ "At least one of the streams/views do not exist: "
+                    <> Log.buildString (show sources)
+                throwIO $ HE.StreamNotFound $ "At least one of the streams/views do not exist: " <> T.pack (show sources)
+              unless (all (== Just RoleStream) roles_m) $ do
+                Log.warning "CREATE STREAM only supports sources of stream type"
+                throwIO $ HE.InvalidSqlStatement "CREATE STREAM only supports sources of stream type"
+              -- check & prepare sink stream
+              S.doesStreamExist scLDClient (transToStreamName sink) >>= \case
+                False  -> do
+                  Log.warning $ "Sink stream not found: " <> Log.buildString (show sink)
+                  throwIO $ HE.StreamNotFound sink
+                True -> do
+                  Core.createStream sc def {
+                    streamStreamName = sink
+                  , streamReplicationFactor = 1
+                  , streamBacklogDuration = 7 * 24 * 3600
+                  , streamShardCount = 1
+                  }
+              -- update metadata
+              let relatedStreams = (sources, sink)
+              qInfo <- P.createInsertQueryInfo createQueryRequestQueryName createQueryRequestSql relatedStreams rSQL serverID metaHandle
+              -- run core task
+              consumerClosed <- newTVarIO False
+              createQueryAndRun sc QueryRunner {
+                  qRTaskBuilder = builder
+                , qRQueryName   = createQueryRequestQueryName
+                , qRQueryString = createQueryRequestSql
+                , qRWhetherToHStore = True
+                , qRQuerySources = sources
+                , qRConsumerClosed =  consumerClosed
+                }
+              hstreamQueryToQuery metaHandle qInfo
+            _ -> throw $ HE.WrongExecutionPlan "Insert query only support Insert stream <name>  select statements"
+
+
         RQCreate (RCreateView view select) ->
           hstreamCodegen (RQCreate (RCreateView (namespace <> view)
                                                 (modifySelect namespace select)
@@ -221,8 +268,10 @@ createQueryWithNamespace'
               validateNameAndThrow ResView view
               Core.createView' sc view sources sink builder persist createQueryRequestSql rSQL createQueryRequestQueryName
               >>= hstreamViewToQuery metaHandle
-            _ -> throw $ HE.WrongExecutionPlan "Create query only support create stream/view <name> as select statements"
-        _ -> throw $ HE.WrongExecutionPlan "Create query only support create stream/view <name> as select statements"
+            _ -> throw $ HE.WrongExecutionPlan "Create query only support create2 stream/view <name> as select statements"
+        _ -> throw $ HE.WrongExecutionPlan "Create query only support create3 stream/view <name> as select statements"
+        
+        
 #endif
 
 listQueries :: ServerContext -> IO [Query]

@@ -53,6 +53,7 @@ import           HStream.Server.HStreamApi        (CommandQuery (..),
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.SQL                      (HStreamPlan (..),
                                                    PauseObject (..),
+                                                   RInsert (..),
                                                    RCreate (..), RSQL (..),
                                                    RStreamOptions (..),
                                                    ResumeObject (..),
@@ -134,6 +135,9 @@ commandExec HStreamSqlContext{hstreamCliContext = cliCtx@HStreamCliContext{..},.
         qName <-  ("cli_generated_" <>) <$> newRandomText 10
         executeWithLookupResource_ cliCtx (Resource ResQuery qName) (createStreamBySelectWithCustomQueryName xs qName)
       RQCreate RCreateView {} -> do
+        qName <-  ("cli_generated_" <>) <$> newRandomText 10
+        executeWithLookupResource_ cliCtx (Resource ResQuery qName) (createStreamBySelectWithCustomQueryName xs qName)
+      RQInsert RInsertSelect {} -> do
         qName <-  ("cli_generated_" <>) <$> newRandomText 10
         executeWithLookupResource_ cliCtx (Resource ResQuery qName) (createStreamBySelectWithCustomQueryName xs qName)
       rSql' -> hstreamCodegen rSql' >>= \case

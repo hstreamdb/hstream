@@ -71,6 +71,7 @@ DInsert. Insert ::= "INSERT" "INTO" HIdent "(" [ColumnIdent] ")" "VALUES" "(" [V
 separator ColumnIdent "," ;
 separator ValueExpr "," ;
 InsertRawOrJson. Insert ::= "INSERT" "INTO" HIdent "VALUES" ExprCast ;
+InsertSelect.    Insert ::= "INSERT" "INTO" HIdent Select ;
 
 ---- Show Query
 DShow. ShowQ ::= "SHOW" ShowOption ;
