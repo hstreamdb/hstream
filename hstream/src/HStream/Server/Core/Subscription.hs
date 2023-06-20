@@ -582,6 +582,7 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
               -- FIXME: the same code
               successSendRecords <- sendReceivedRecordsVecs receivedRecordsVecs
               atomically $ addUnackedRecords subCtx successSendRecords
+              loop isFirstSendRef
             else do
               -- FIXME: the same code
               successSendRecords <- sendReceivedRecordsVecs receivedRecordsVecs
