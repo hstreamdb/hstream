@@ -83,11 +83,8 @@ describeCluster ServerContext{gossipContext = gc@GossipContext{..}, ..} = do
 
     updateServerVersion version node = node { serverNodeVersion = Just version }
 
-lookupResource :: ServerContext -> LookupResourceRequest -> IO ServerNode
-lookupResource sc LookupResourceRequest{..} = do
-  case lookupResourceRequestResType of
-    Enumerated (Right rType) -> lookupResource' sc rType lookupResourceRequestResId
-    x -> throwIO $ HE.InvalidResourceType (show x)
+lookupResource :: ServerContext -> ResourceType -> T.Text -> IO ServerNode
+lookupResource = lookupResource'
 
 -- TODO: Currently we use the old version of lookup for minimal impact on performance
 lookupShard :: ServerContext -> LookupShardRequest -> IO LookupShardResponse

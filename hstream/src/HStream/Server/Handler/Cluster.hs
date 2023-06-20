@@ -1,7 +1,6 @@
 {-# LANGUAGE BlockArguments      #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
-{-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module HStream.Server.Handler.Cluster
@@ -22,12 +21,16 @@ module HStream.Server.Handler.Cluster
 import qualified HsGrpc.Server                    as G
 import           Network.GRPC.HighLevel.Generated
 
+import           Control.Exception                (throwIO)
+import qualified HStream.Exception                as HE
 import qualified HStream.Server.Core.Cluster      as C
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
 import           HStream.Server.Types             (ServerContext (..))
 import           HStream.ThirdParty.Protobuf      (Empty)
-import           HStream.Utils                    (returnResp)
+import           HStream.Utils                    (returnResp,
+                                                   validateNameAndThrow)
+import           Proto3.Suite                     (Enumerated (..))
 
 -------------------------------------------------------------------------------
 
@@ -42,8 +45,13 @@ lookupResourceHandler
   :: ServerContext
   -> ServerRequest 'Normal LookupResourceRequest ServerNode
   -> IO (ServerResponse 'Normal ServerNode)
-lookupResourceHandler sc (ServerNormalRequest _meta req) =
-  defaultExceptionHandle $ returnResp =<< C.lookupResource sc req
+lookupResourceHandler sc (ServerNormalRequest _meta LookupResourceRequest{..}) =
+  defaultExceptionHandle $ do
+  case lookupResourceRequestResType of
+    Enumerated (Right rType) -> do
+      validateNameAndThrow rType lookupResourceRequestResId
+      returnResp =<< C.lookupResource sc rType lookupResourceRequestResId
+    x -> throwIO $ HE.InvalidResourceType (show x)
 
 lookupShardHandler
   :: ServerContext
@@ -74,7 +82,12 @@ handleDescribeCluster :: ServerContext -> G.UnaryHandler Empty DescribeClusterRe
 handleDescribeCluster sc _ _ = catchDefaultEx $ C.describeCluster sc
 
 handleLookupResource :: ServerContext -> G.UnaryHandler LookupResourceRequest ServerNode
-handleLookupResource sc _ req = catchDefaultEx $ C.lookupResource sc req
+handleLookupResource sc _ LookupResourceRequest{..} = catchDefaultEx $ do
+  case lookupResourceRequestResType of
+    Enumerated (Right rType) -> do
+      validateNameAndThrow rType lookupResourceRequestResId
+      C.lookupResource sc rType lookupResourceRequestResId
+    x -> throwIO $ HE.InvalidResourceType (show x)
 
 handleLookupShard :: ServerContext -> G.UnaryHandler LookupShardRequest LookupShardResponse
 handleLookupShard sc _ req = catchDefaultEx $ C.lookupShard sc req
