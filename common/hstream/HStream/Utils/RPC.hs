@@ -28,6 +28,7 @@ module HStream.Utils.RPC
   , msTimestampToProto
   , timestampToMsTimestamp
   , isSuccessful
+  , handleGRPCIOError
 
   , pattern EnumPB
   , showNodeStatus
@@ -37,10 +38,13 @@ module HStream.Utils.RPC
   ) where
 
 import           Control.Monad
-import           Data.Aeson                       (FromJSON, ToJSON)
+import           Data.Aeson                       (FromJSON, ToJSON, withObject,
+                                                   (.:), (.=))
 import           Data.ByteString                  (ByteString)
 import qualified Data.ByteString.Char8            as BSC
+import qualified Data.ByteString.Lazy             as BSL
 import           Data.String                      (IsString)
+import qualified Data.Text                        as T
 import           Data.Time.Clock.System           (SystemTime (MkSystemTime),
                                                    getSystemTime)
 import qualified Data.Vector                      as V
@@ -52,6 +56,7 @@ import           Network.GRPC.HighLevel.Server
 import qualified Proto3.Suite                     as PB
 import           Z.Data.JSON                      (JSON)
 
+import qualified Data.Aeson                       as Aeson
 import           Data.Int                         (Int64)
 import           HStream.Server.HStreamApi
 import           HStream.ThirdParty.Protobuf      (Struct (..), Timestamp (..))
@@ -114,6 +119,25 @@ returnCommandQueryEmptyResp :: Monad m => m (ServerResponse 'Normal CommandQuery
 returnCommandQueryEmptyResp = returnResp $ CommandQueryResponse V.empty
 {-# INLINE returnCommandQueryEmptyResp #-}
 
+data ErrorInfo = ErrorInfo
+  { code    :: Int
+  , message :: T.Text
+  , extra   :: T.Text
+  } deriving (Show)
+
+instance FromJSON ErrorInfo where
+  parseJSON = withObject "ErrorInfo" $ \v -> ErrorInfo
+    <$> v .: "error"
+    <*> v .: "message"
+    <*> v .: "extra"
+
+instance ToJSON ErrorInfo where
+  toJSON (ErrorInfo err msg ext) =
+    Aeson.object [ "error"   .= err
+                 , "message" .= msg
+                 , "extra"   .= ext
+                 ]
+
 -- | Extract response value from ClientResult, if there is any error happened,
 -- throw IOException.
 getServerResp :: ClientResult 'Normal a -> IO a
@@ -121,11 +145,17 @@ getServerResp result = do
   case result of
     ClientNormalResponse x _meta1 _meta2 StatusOk _details -> return x
     ClientNormalResponse _resp _meta1 _meta2 _status _details -> do
-      error $ "Impossible happened..." <> show _status
-    ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode x details))
-        -> errorWithoutStackTrace ("Server Error: "  <> BSC.unpack (unStatusDetails details))
+      Prelude.error $ "Impossible happened..." <> show _status
+    ClientErrorResponse (ClientIOError e) -> errorWithoutStackTrace $ handleGRPCIOError e
     ClientErrorResponse err -> errorWithoutStackTrace ("Error: " <> show err )
 {-# INLINE getServerResp #-}
+
+handleGRPCIOError :: GRPCIOError -> String
+handleGRPCIOError (GRPCIOBadStatusCode _ details) =
+  case Aeson.decode (BSL.fromStrict $ unStatusDetails details) of
+    Just (ErrorInfo{..}) -> if T.null extra then show message else show $ message <> ": " <> extra
+    Nothing -> "Grpc error: " <> BSC.unpack (unStatusDetails details)
+handleGRPCIOError err = errorWithoutStackTrace ("Grpc error: " <> show err)
 
 getServerRespPure :: ClientResult 'Normal a -> Either String a
 getServerRespPure result = do
