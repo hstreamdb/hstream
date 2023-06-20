@@ -72,6 +72,10 @@ foreign import ccall unsafe "hs_stats.h prefix##add_##name"                    \
   prefix##add_##name                                                           \
     :: Ptr CStatsHolder -> BA# Word8 -> Int64 -> IO ();                        \
                                                                                \
+foreign import ccall unsafe "hs_stats.h prefix##set_##name"                    \
+  prefix##set_##name                                                           \
+    :: Ptr CStatsHolder -> BA# Word8 -> Int64 -> IO ();                        \
+                                                                               \
 foreign import ccall unsafe "hs_stats.h prefix##get_##name"                    \
   prefix##get_##name                                                           \
     :: Ptr CStats -> BA# Word8 -> IO Int64;                                    \

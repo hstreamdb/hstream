@@ -54,6 +54,7 @@ import qualified HStream.Stats                 as Stats
 import qualified HStream.Store                 as S
 import           HStream.Utils                 (ResourceType (..),
                                                 decompressBatchedRecord,
+                                                getCurrentMsTimestamp,
                                                 getProtoTimestamp,
                                                 mkBatchedRecord, textToCBytes)
 
@@ -238,6 +239,8 @@ deleteSubscription ServerContext{..} DeleteSubscriptionRequest{ deleteSubscripti
       -- to update the checkpoints in memory.
       S.freeSubscrCheckpointId scLDClient subIdCBytes
       Stats.subscription_stat_erase scStatsHolder subIdCBytes
+      -- FIXME: Find another way to delete unused stats totally
+      Stats.subscription_stat_set_checklist_size scStatsHolder subIdCBytes 0
 
     getSubState :: STM (Maybe (SubscribeContext, TVar SubscribeState))
     getSubState = do
@@ -588,9 +591,8 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
     updateClockAndDoResend = do
       -- Note: non-strict behaviour in STM!
       --       Please refer to https://github.com/haskell/stm/issues/30
-      newTime <- getCurrentTimestamp <&> fromIntegral
+      newTime <- getCurrentMsTimestamp <&> fromIntegral
       timeoutList <- atomically $ do
-        ct <- readTVar subCurrentTime
         checkList <- readTVar subWaitingCheckedRecordIds
         let (!timeoutList, !leftList) = Heap.span (\CheckedRecordIds {..} -> crDeadline <= newTime) checkList
         -- traceM $ "newTime=" <> show newTime <> ", timeoutList=" <> show timeoutList <> ", leftList=" <> show leftList
@@ -598,6 +600,7 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
         writeTVar subWaitingCheckedRecordIds leftList
         return timeoutList
       forM_ timeoutList (\r@CheckedRecordIds {..} -> buildShardRecordIds r >>= resendTimeoutRecords crLogId crBatchId )
+      Stats.subscription_stat_set_checklist_size scStatsHolder (textToCBytes subSubscriptionId) (fromIntegral . Heap.size $ timeoutList)
       where
         buildShardRecordIds  CheckedRecordIds {..} = atomically $ do
           batchIndexes <- readTVar crBatchIndexes

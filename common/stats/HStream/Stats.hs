@@ -10,7 +10,7 @@
 -- And then you can @cat common/stats/HStream/Stats.hspp@
 
 #define CounterExports(cat, name) \
-    cat##_stat_add_##name, cat##_stat_get_##name, cat##_stat_getall_##name
+    cat##_stat_add_##name, cat##_stat_get_##name, cat##_stat_getall_##name, cat##_stat_set_##name
 
 module HStream.Stats
   ( -- * StatsHolder
@@ -51,6 +51,7 @@ module HStream.Stats
   , CounterExports(subscription, received_acks)
   , CounterExports(subscription, request_messages)
   , CounterExports(subscription, response_messages)
+  , CounterExports(subscription, checklist_size)
     -- ** Time series
   , subscription_time_series_add_send_out_bytes
   , subscription_time_series_add_send_out_records
@@ -140,6 +141,13 @@ PREFIX##add_##STATS_NAME (StatsHolder holder) key val =                        \
   withCBytesUnsafe key $ \key' ->                                              \
     I.PREFIX##add_##STATS_NAME holder' (BA# key') val;
 
+#define PER_X_STAT_SET(PREFIX, STATS_NAME)                                     \
+PREFIX##set_##STATS_NAME :: StatsHolder -> CBytes -> Int64 -> IO ();           \
+PREFIX##set_##STATS_NAME (StatsHolder holder) key val =                        \
+  withForeignPtr holder $ \holder' ->                                          \
+  withCBytesUnsafe key $ \key' ->                                              \
+    I.PREFIX##set_##STATS_NAME holder' (BA# key') val;
+
 -- TODO:
 --
 -- 1. Error while return value is a negative number.
@@ -198,6 +206,7 @@ PER_X_STAT(view_)
 
 #define STAT_DEFINE(name, _)                                                   \
 PER_X_STAT_ADD(stream_stat_, name)                                             \
+PER_X_STAT_SET(stream_stat_, name)                                             \
 PER_X_STAT_GET(stream_stat_, name)                                             \
 PER_X_STAT_GETALL_SEP(stream_stat_, name)
 #include "../include/per_stream_stats.inc"
@@ -279,6 +288,7 @@ stream_time_series_getall (StatsHolder holder) name intervals =
 -- Connector
 #define STAT_DEFINE(name, _)                                                   \
 PER_X_STAT_ADD(connector_stat_, name)                                          \
+PER_X_STAT_SET(connector_stat_, name)                                          \
 PER_X_STAT_GET(connector_stat_, name)                                          \
 PER_X_STAT_GETALL_SEP(connector_stat_, name)
 #include "../include/per_connector_stats.inc"
@@ -286,6 +296,7 @@ PER_X_STAT_GETALL_SEP(connector_stat_, name)
 -- Query
 #define STAT_DEFINE(name, _)                                                   \
 PER_X_STAT_ADD(query_stat_, name)                                              \
+PER_X_STAT_SET(query_stat_, name)                                              \
 PER_X_STAT_GET(query_stat_, name)                                              \
 PER_X_STAT_GETALL_SEP(query_stat_, name)
 #include "../include/per_query_stats.inc"
@@ -293,12 +304,14 @@ PER_X_STAT_GETALL_SEP(query_stat_, name)
 -- View
 #define STAT_DEFINE(name, _)                                                   \
 PER_X_STAT_ADD(view_stat_, name)                                               \
+PER_X_STAT_SET(view_stat_, name)                                               \
 PER_X_STAT_GET(view_stat_, name)                                               \
 PER_X_STAT_GETALL_SEP(view_stat_, name)
 #include "../include/per_view_stats.inc"
 
 #define STAT_DEFINE(name, _)                                                   \
 PER_X_STAT_ADD(subscription_stat_, name)                                       \
+PER_X_STAT_SET(subscription_stat_, name)                                       \
 PER_X_STAT_GET(subscription_stat_, name)                                       \
 PER_X_STAT_GETALL_SEP(subscription_stat_, name)
 #include "../include/per_subscription_stats.inc"

@@ -51,6 +51,11 @@ statsSpec = describe "HStream.Stats" $ do
     stream_stat_get_append_total s "/topic_1" `shouldReturn` 2
     stream_stat_get_append_total s "/topic_2" `shouldReturn` 1
 
+  setSpec "per subscription set stats"
+          subscription_stat_add_checklist_size
+          subscription_stat_get_checklist_size
+          subscription_stat_set_checklist_size
+
   eraseSpec "per stream stats"
             stream_stat_add_append_in_bytes
             stream_stat_get_append_in_bytes
@@ -277,3 +282,28 @@ eraseSpec label stat_add stat_get stat_getall stat_erase = do
     m' <- stat_getall s
     Map.lookup "topic_1" m' `shouldBe` (Just 200)
     Map.lookup "topic_2" m' `shouldBe` Nothing
+
+-------------------------------------------------------------------------------
+
+setSpec
+  :: String
+  -> (StatsHolder -> CBytes -> Int64 -> IO ())
+  -> (Stats -> CBytes -> IO Int64)
+  -> (StatsHolder -> CBytes -> Int64 -> IO ())
+  -> Spec
+setSpec label stat_add stat_get stat_set = do
+  it (label <> ": set 1") $ do
+    h <- newStatsHolder True
+    stat_add h "topic_1" 100
+    stat_add h "topic_1" 100
+    s <- newAggregateStats h
+    stat_get s "topic_1" `shouldReturn` 200
+    stat_set h "topic_1" 1000
+    s <- newAggregateStats h
+    stat_get s "topic_1" `shouldReturn` 1000
+
+  it (label <> ": set 2") $ do
+    h <- newStatsHolder True
+    stat_set h "topic_1" 100
+    s <- newAggregateStats h
+    stat_get s "topic_1" `shouldReturn` 100
