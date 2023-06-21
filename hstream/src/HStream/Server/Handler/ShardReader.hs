@@ -30,7 +30,7 @@ import           Network.GRPC.HighLevel.Generated
 import           Control.Monad                    (unless)
 import qualified HStream.Exception                as HE
 import qualified HStream.Logger                   as Log
-import           HStream.Server.Core.Common       (lookupResource')
+import           HStream.Server.Core.Common       (lookupResource)
 import qualified HStream.Server.Core.ShardReader  as C
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
@@ -73,7 +73,7 @@ deleteShardReaderHandler
 deleteShardReaderHandler sc@ServerContext{..} (ServerNormalRequest _metadata request@DeleteShardReaderRequest{..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive Delete ShardReader Request" <> Log.buildString' (show request)
   validateNameAndThrow ResShardReader deleteShardReaderRequestReaderId
-  ServerNode{..} <- lookupResource' sc ResShardReader deleteShardReaderRequestReaderId
+  ServerNode{..} <- lookupResource sc ResShardReader deleteShardReaderRequestReaderId
   unless (serverNodeId == serverID) $
     throwIO $ HE.WrongServer "ShardReader is bound to a different node"
   C.deleteShardReader sc request >> returnResp Empty
@@ -84,7 +84,7 @@ handleDeleteShardReader
 handleDeleteShardReader sc@ServerContext{..} _ req@DeleteShardReaderRequest{..} = catchDefaultEx $ do
   Log.debug $ "Receive Delete ShardReader Request" <> Log.buildString' (show req)
   validateNameAndThrow ResShardReader deleteShardReaderRequestReaderId
-  ServerNode{..} <- lookupResource' sc ResShardReader deleteShardReaderRequestReaderId
+  ServerNode{..} <- lookupResource sc ResShardReader deleteShardReaderRequestReaderId
   unless (serverNodeId == serverID) $
     throwIO $ HE.WrongServer "ShardReader is bound to a different node"
   C.deleteShardReader sc req >> pure Empty

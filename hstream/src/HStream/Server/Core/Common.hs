@@ -1,5 +1,4 @@
-{-# LANGUAGE CPP             #-}
-{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE CPP #-}
 
 module HStream.Server.Core.Common where
 
@@ -218,12 +217,12 @@ allocationKeyP = do
   rid <- AP.takeWhile (const True)
   return (rtype, rid)
 
-lookupResource' :: ServerContext -> ResourceType -> Text -> IO ServerNode
-lookupResource' sc@ServerContext{..} ResView rid = do
+lookupResource :: ServerContext -> ResourceType -> Text -> IO ServerNode
+lookupResource sc@ServerContext{..} ResView rid = do
   M.getMeta @P.ViewInfo rid metaHandle >>= \case
     Nothing             -> throwIO $ HE.ViewNotFound rid
-    Just P.ViewInfo{..} -> lookupResource' sc ResQuery (P.queryId viewQuery)
-lookupResource' sc@ServerContext{..} rtype rid = do
+    Just P.ViewInfo{..} -> lookupResource sc ResQuery (P.queryId viewQuery)
+lookupResource sc@ServerContext{..} rtype rid = do
   let metaId = mkAllocationKey rtype rid
   -- FIXME: it will insert the results of lookup no matter the resource exists or not
   M.getMetaWithVer @P.TaskAllocation metaId metaHandle >>= \case
@@ -232,7 +231,7 @@ lookupResource' sc@ServerContext{..} rtype rid = do
       theNode <- getResNode hashRing rid scAdvertisedListenersKey
       try (M.insertMeta @P.TaskAllocation metaId (P.TaskAllocation epoch (serverNodeId theNode)) metaHandle) >>=
         \case
-          Left (_e :: SomeException) -> lookupResource' sc rtype rid
+          Left (_e :: SomeException) -> lookupResource sc rtype rid
           Right ()                   -> return theNode
     Just (P.TaskAllocation epoch nodeId, version) -> do
       serverList <- getMemberList gossipContext >>= fmap V.concat . mapM (fromInternalServerNodeWithKey scAdvertisedListenersKey)
@@ -245,7 +244,7 @@ lookupResource' sc@ServerContext{..} rtype rid = do
               theNode' <- getResNode hashRing rid scAdvertisedListenersKey
               try (M.updateMeta @P.TaskAllocation metaId (P.TaskAllocation epoch' (serverNodeId theNode')) (Just version) metaHandle) >>=
                 \case
-                  Left (_e :: SomeException) -> lookupResource' sc rtype rid
+                  Left (_e :: SomeException) -> lookupResource sc rtype rid
                   Right ()                   -> return theNode'
             else do
               Log.warning "LookupResource: the server has not yet synced with the latest member list "

@@ -24,6 +24,7 @@ import           Network.GRPC.HighLevel.Generated
 import           Control.Exception                (throwIO)
 import qualified HStream.Exception                as HE
 import qualified HStream.Server.Core.Cluster      as C
+import           HStream.Server.Core.Common       (lookupResource)
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
 import           HStream.Server.Types             (ServerContext (..))
@@ -50,7 +51,7 @@ lookupResourceHandler sc (ServerNormalRequest _meta LookupResourceRequest{..}) =
   case lookupResourceRequestResType of
     Enumerated (Right rType) -> do
       validateNameAndThrow rType lookupResourceRequestResId
-      returnResp =<< C.lookupResource sc rType lookupResourceRequestResId
+      returnResp =<< lookupResource sc rType lookupResourceRequestResId
     x -> throwIO $ HE.InvalidResourceType (show x)
 
 lookupShardHandler

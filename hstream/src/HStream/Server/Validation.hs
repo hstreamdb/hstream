@@ -20,7 +20,7 @@ import           Data.Word                  (Word32)
 import           GHC.Stack                  (HasCallStack)
 
 import qualified HStream.Exception          as HE
-import           HStream.Server.Core.Common (lookupResource')
+import           HStream.Server.Core.Common (lookupResource)
 import qualified HStream.Server.HStreamApi  as API
 import           HStream.Server.Types
 import           HStream.Utils              (ResourceType (..),
@@ -91,5 +91,5 @@ validateResLookup
   :: HasCallStack
   => ServerContext -> ResourceType -> T.Text -> String -> IO ()
 validateResLookup ctx resType name errmsg = do
-  API.ServerNode{..} <- lookupResource' ctx resType name
+  API.ServerNode{..} <- lookupResource ctx resType name
   unless (serverNodeId == serverID ctx) $ throwIO $ HE.WrongServer errmsg

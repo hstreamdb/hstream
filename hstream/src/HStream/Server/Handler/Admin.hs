@@ -47,7 +47,7 @@ import qualified HStream.Logger                   as Log
 import qualified HStream.MetaStore.Types          as M
 import           HStream.Server.Config            (MetaStoreAddr (..),
                                                    ServerOpts (ServerOpts, _metaStore))
-import           HStream.Server.Core.Common       (lookupResource',
+import           HStream.Server.Core.Common       (lookupResource,
                                                    mkAllocationKey)
 import qualified HStream.Server.Core.Query        as HC
 import qualified HStream.Server.Core.Stream       as HC
@@ -215,7 +215,7 @@ runResetStats stats_holder = do
 
 runLookup :: ServerContext -> AT.LookupCommand -> IO Text
 runLookup ctx (AT.LookupCommand resType rId) = do
-  API.ServerNode{..} <- lookupResource' ctx (getResType resType) rId
+  API.ServerNode{..} <- lookupResource ctx (getResType resType) rId
   let headers = ["Resource ID" :: Text, "Host", "Port"]
       rows = [[rId, serverNodeHost, Text.pack .show $ serverNodePort]]
       content = Aeson.object ["headers" .= headers, "rows" .= rows]

@@ -64,8 +64,6 @@ import           HStream.Server.Config            (AdvertisedListeners,
                                                    advertisedListenersToPB,
                                                    cliOptionsParser, getConfig)
 import qualified HStream.Server.Core.Cluster      as Cluster
-import           HStream.Server.Core.Common       (lookupResource',
-                                                   parseAllocationKey)
 import           HStream.Server.Handler           (handlers)
 import qualified HStream.Server.HsGrpcHandler     as HsGrpc
 import           HStream.Server.HStreamApi        (NodeState (..),
