@@ -592,15 +592,15 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
       -- Note: non-strict behaviour in STM!
       --       Please refer to https://github.com/haskell/stm/issues/30
       newTime <- getCurrentMsTimestamp <&> fromIntegral
-      timeoutList <- atomically $ do
+      (timeoutList, leftList) <- atomically $ do
         checkList <- readTVar subWaitingCheckedRecordIds
         let (!timeoutList, !leftList) = Heap.span (\CheckedRecordIds {..} -> crDeadline <= newTime) checkList
         -- traceM $ "newTime=" <> show newTime <> ", timeoutList=" <> show timeoutList <> ", leftList=" <> show leftList
         writeTVar subCurrentTime newTime
         writeTVar subWaitingCheckedRecordIds leftList
-        return timeoutList
+        return (timeoutList, leftList)
       forM_ timeoutList (\r@CheckedRecordIds {..} -> buildShardRecordIds r >>= resendTimeoutRecords crLogId crBatchId )
-      Stats.subscription_stat_set_checklist_size scStatsHolder (textToCBytes subSubscriptionId) (fromIntegral . Heap.size $ timeoutList)
+      Stats.subscription_stat_set_checklist_size scStatsHolder (textToCBytes subSubscriptionId) (fromIntegral . Heap.size $ leftList)
       where
         buildShardRecordIds  CheckedRecordIds {..} = atomically $ do
           batchIndexes <- readTVar crBatchIndexes
