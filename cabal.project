@@ -43,9 +43,11 @@ package hs-grpc-server
   tests: false
 
 package grpc-haskell
+  flags: +grpc_eliminate_insecure_build
   tests: false
 
 package grpc-haskell-core
+  flags: +grpc_eliminate_insecure_build
   tests: false
 
 package rocksdb-haskell-bindings

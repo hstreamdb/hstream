@@ -91,6 +91,7 @@ library
   extra-libraries:
     stdc++
     atomic
+    absl_synchronization
     grpc++
     gpr
     grpc++_reflection
