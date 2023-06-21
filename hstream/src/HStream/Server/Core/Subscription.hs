@@ -11,8 +11,8 @@ module HStream.Server.Core.Subscription where
 import           Control.Concurrent
 import           Control.Concurrent.Async      (async, link, wait, withAsync)
 import           Control.Concurrent.STM
-import           Control.Exception             (catch, handle, onException,
-                                                throwIO)
+import           Control.Exception             (catch, fromException, handle,
+                                                onException, throwIO)
 import           Control.Monad
 import qualified Data.ByteString               as BS
 import           Data.Foldable                 (foldl')
@@ -321,14 +321,14 @@ streamingFetchCore ctx SFetchCoreDirect = \initReq consumerClosed callbacksGen -
             Nothing -> retry
             req     -> return $ Right req)
   let streamRecv = atomically streamRecv'
-  recvAcks ctx scwState scwContext consumerCtx streamRecv
+  async (recvAcks ctx scwState scwContext consumerCtx streamRecv) >>= wait
 
 streamingFetchCore ctx SFetchCoreInteractive = \(streamSend, streamRecv, requestUri, userAgent) -> do
   StreamingFetchRequest {..} <- firstRecv streamRecv
   Log.info $ "Receive streaming fetch request for sub " <> Log.build streamingFetchRequestSubscriptionId
   (SubscribeContextWrapper {..}, _) <- initSub ctx streamingFetchRequestSubscriptionId
   consumerCtx <- initConsumer scwContext streamingFetchRequestConsumerName (Just requestUri) (Just userAgent) streamSend
-  recvAcks ctx scwState scwContext consumerCtx streamRecv
+  async (recvAcks ctx scwState scwContext consumerCtx streamRecv) >>= wait
   where
     firstRecv :: StreamRecv StreamingFetchRequest -> IO StreamingFetchRequest
     firstRecv streamRecv =
@@ -369,14 +369,20 @@ initSub serverCtx@ServerContext {..} subId = M.getMeta subId metaHandle >>= \cas
           putTMVar scnwContext subCtx
           writeTVar scnwState SubscribeStateRunning
           return SubscribeContextWrapper {scwState = scnwState, scwContext = subCtx}
+        subTid <- myThreadId
         let errHandler = \case
-              Left e  -> do
-                          Log.fatal $ Log.buildString "An unexpected error happened while subscription "
-                            <> Log.build subId <> " running: " <> Log.build (show e)
-                          let SubscribeContext{..} = subCtx
-                          atomically $ writeTVar scnwState SubscribeStateFailed
-                          atomically $ removeSubFromCtx serverCtx subId
-                          stopCompactedWorker subLdTrimCkpWorker
+              Left e -> do
+                          let ex = fromException e :: Maybe HE.SubscriptionIsDeleting
+                          case ex of
+                            Just _ -> throwTo subTid e
+                            Nothing -> do
+                                        Log.fatal $ Log.buildString "An unexpected error happened while subscription "
+                                          <> Log.build subId <> " running: " <> Log.build (show e)
+                                        let SubscribeContext{..} = subCtx
+                                        atomically $ writeTVar scnwState SubscribeStateFailed
+                                        atomically $ removeSubFromCtx serverCtx subId
+                                        stopCompactedWorker subLdTrimCkpWorker
+                                        throwTo subTid e
               Right _ -> pure ()
         tid <- forkFinally (sendRecords serverCtx scwState scwContext) errHandler
         return (wrapper, Just tid)
@@ -585,8 +591,9 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
               successSendRecords <- sendReceivedRecordsVecs receivedRecordsVecs
               atomically $ addUnackedRecords subCtx successSendRecords
               loop isFirstSendRef
-        SubscribeStateStopping ->
+        SubscribeStateStopping -> do
             Log.warning $ "Subscription " <> Log.build subSubscriptionId <> " is stopping, exit sendRecords loop."
+            throwIO $ HE.SubscriptionIsDeleting (show subSubscriptionId)
         SubscribeStateStopped ->
             Log.warning $ "Subscription " <> Log.build subSubscriptionId <> " is stopped."
         _ ->
