@@ -36,7 +36,7 @@ import qualified HStream.Gossip.Types           as Gossip
 import qualified HStream.Logger                 as Log
 import           HStream.MetaStore.Types        (MetaStore (..))
 import qualified HStream.MetaStore.Types        as Meta
-import           HStream.Server.Core.Common     (getResNode, lookupResource',
+import           HStream.Server.Core.Common     (getResNode, lookupResource,
                                                  parseAllocationKey)
 import           HStream.Server.HStreamApi
 import qualified HStream.Server.HStreamApi      as API
@@ -83,12 +83,6 @@ describeCluster ServerContext{gossipContext = gc@GossipContext{..}, ..} = do
 
     updateServerVersion version node = node { serverNodeVersion = Just version }
 
-lookupResource :: ServerContext -> LookupResourceRequest -> IO ServerNode
-lookupResource sc LookupResourceRequest{..} = do
-  case lookupResourceRequestResType of
-    Enumerated (Right rType) -> lookupResource' sc rType lookupResourceRequestResId
-    x -> throwIO $ HE.InvalidResourceType (show x)
-
 -- TODO: Currently we use the old version of lookup for minimal impact on performance
 lookupShard :: ServerContext -> LookupShardRequest -> IO LookupShardResponse
 lookupShard ServerContext{..} req@LookupShardRequest {
@@ -109,7 +103,7 @@ lookupSubscription
 lookupSubscription sc req@LookupSubscriptionRequest{
   lookupSubscriptionRequestSubscriptionId = subId} = do
   Log.info $ "receive lookupSubscription request: " <> Log.buildString (show req)
-  theNode <- lookupResource' sc ResSubscription subId
+  theNode <- lookupResource sc ResSubscription subId
   return $ LookupSubscriptionResponse
     { lookupSubscriptionResponseSubscriptionId = subId
     , lookupSubscriptionResponseServerNode     = Just theNode
@@ -118,7 +112,7 @@ lookupSubscription sc req@LookupSubscriptionRequest{
 {-# DEPRECATED lookupShardReader "Use lookupResource instead" #-}
 lookupShardReader :: ServerContext -> LookupShardReaderRequest -> IO LookupShardReaderResponse
 lookupShardReader sc req@LookupShardReaderRequest{lookupShardReaderRequestReaderId=readerId} = do
-  theNode <- lookupResource' sc ResShardReader readerId
+  theNode <- lookupResource sc ResShardReader readerId
   Log.info $ "receive lookupShardReader request: " <> Log.buildString' req <> ", should send to " <> Log.buildString' (show theNode)
   return $ LookupShardReaderResponse
     { lookupShardReaderResponseReaderId    = readerId
@@ -153,7 +147,7 @@ recoverLocalTasks sc@ServerContext{..} tm = do
 recoverTasks ::  Types.TaskManager a => ServerContext -> a -> [T.Text] -> IO ()
 recoverTasks sc@ServerContext{..} tm tasks =
   forM_ tasks $ \task -> do
-    taskNode <- lookupResource' sc (Types.resourceType tm) task
+    taskNode <- lookupResource sc (Types.resourceType tm) task
     when (serverID == API.serverNodeId taskNode) $
       catches (Types.recoverTask tm task) [
           Handler (\(err :: HE.QueryAlreadyTerminated) -> return ())

@@ -43,7 +43,7 @@ import           Network.GRPC.HighLevel.Generated
 
 import qualified HStream.Exception                as HE
 import qualified HStream.Logger                   as Log
-import           HStream.Server.Core.Common       (lookupResource')
+import           HStream.Server.Core.Common       (lookupResource)
 import qualified HStream.Server.Core.Query        as Core
 import           HStream.Server.Exception         (defaultExHandlers,
                                                    defaultHandlers)
@@ -230,7 +230,7 @@ handleResumeQuery ctx _ API.ResumeQueryRequest{..} = catchQueryEx $ do
 
 validateQueryAllocation :: ServerContext -> T.Text -> IO ()
 validateQueryAllocation ctx name = do
-  API.ServerNode{..} <- lookupResource' ctx ResQuery name
+  API.ServerNode{..} <- lookupResource ctx ResQuery name
   unless (serverNodeId == serverID ctx) $
     throwIO $ HE.WrongServer "The Query is allocated to a different node"
 
