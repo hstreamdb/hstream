@@ -594,8 +594,6 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
         SubscribeStateStopping -> do
             Log.warning $ "Subscription " <> Log.build subSubscriptionId <> " is stopping, exit sendRecords loop."
             throwIO $ HE.SubscriptionIsDeleting (show subSubscriptionId)
-        SubscribeStateStopped ->
-            Log.warning $ "Subscription " <> Log.build subSubscriptionId <> " is stopped."
         _ ->
             Log.fatal $ "Subscription " <> Log.build subSubscriptionId <> " is in an impossible state, there must be an error in the code!"
 
