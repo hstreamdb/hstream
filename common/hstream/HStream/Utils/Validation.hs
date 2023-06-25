@@ -16,10 +16,17 @@ validMarks :: String
 validMarks = "-_"
 
 validateNameAndThrow :: API.ResourceType -> T.Text -> IO ()
-validateNameAndThrow rType n =
-  case validateNameText n of
-    Left s   -> do
-      Log.warning $ "{" <> Log.build n <> "} is a Invalid Object Identifier:" <> Log.build s
+validateNameAndThrow = validateAndThrow validateNameText
+
+validateResourceIdAndThrow :: API.ResourceType -> T.Text -> IO ()
+validateResourceIdAndThrow = validateAndThrow validateResourceId
+
+validateAndThrow :: (T.Text -> Either String T.Text) -> API.ResourceType -> T.Text -> IO ()
+validateAndThrow validateAction rType n =
+  case validateAction n of
+    Left s  -> do
+      Log.info $ "{" <> Log.build n <> "} is a Invalid Object Identifier:" <> Log.build s
+              <> ", resource type: " <> Log.build (show rType)
       throwIO (invalidIdentifier rType s)
     Right _ -> return ()
 
@@ -45,4 +52,7 @@ reservedName = ["zookeeper"]
 validateNameText :: T.Text -> Either String T.Text
 validateNameText x = validateLength x >> validateHead x
   >> T.foldr ((>>) . validateChar) (Right x) x
+
+validateResourceId :: T.Text -> Either String T.Text
+validateResourceId x = validateLength x >> T.foldr ((>>) . validateChar) (Right x) x
 
