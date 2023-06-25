@@ -101,10 +101,6 @@ library
   extra-libraries:
     stdc++
     atomic
-    grpc++
-    gpr
-    grpc++_reflection
-    protobuf
     folly
     logdevice
     ldquery
