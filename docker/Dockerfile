@@ -39,7 +39,6 @@ RUN rm -rf /root/.cabal/bin && \
     cabal update && \
     cd /hstream && \
     HSTREAM_VERSION=${HSTREAM_VERSION} HSTREAM_VERSION_COMMIT=${HSTREAM_VERSION_COMMIT} make && \
-    cabal build --flags "${BUILD_TYPE}" all && \
     cabal install --flags "${BUILD_TYPE}" hstream hstream-admin hstream-store && \
     cabal install --flags "${BUILD_TYPE}" \
       --constraint="hstream +hstream_use_grpc_haskell" \
