@@ -42,13 +42,6 @@ jobs:
           echo "CURRENT_COMMIT=$(git rev-parse HEAD)" >> $GITHUB_ENV
           echo "LATEST_TAG: $LATEST_TAG, CURRENT_COMMIT: $CURRENT_COMMIT"
 
-      - name: Build builder
-        run: |
-          docker build . -f docker/Dockerfile --target builder \
-            -t ${BUILDER_IMAGE_NAME}:latest
-          # For cache
-          docker push ${BUILDER_IMAGE_NAME}:latest
-
       - name: Docker build
         run: |
           docker build . -f docker/Dockerfile \
@@ -60,6 +53,18 @@ jobs:
 
       - name: Push image to dockerhub
         run: docker push ${IMAGE_NAME}:${{ matrix.tag }}
+
+      - name: Build and push builder
+        run: |
+          docker build . -f docker/Dockerfile \
+            --build-arg HS_IMAGE=${{ matrix.hs_image }} \
+            --build-arg LD_IMAGE=${{ matrix.ld_image }} \
+            --build-arg HSTREAM_VERSION=${{ env.LATEST_TAG }} \
+            --build-arg HSTREAM_VERSION_COMMIT=${{ env.CURRENT_COMMIT }} \
+            --target builder \
+            -t ${BUILDER_IMAGE_NAME}:latest
+          # For cache
+          docker push ${BUILDER_IMAGE_NAME}:latest
 
   trigger:
     runs-on: ubuntu-latest
