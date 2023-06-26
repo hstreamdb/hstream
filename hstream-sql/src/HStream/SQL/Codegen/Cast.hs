@@ -60,27 +60,6 @@ mkCanNotParseTextErr x typ = Left . ERR $
   "CAST Error: Can not parse value <" <> T.pack (show x) <> "> of type <Text>"
     <> " to type <" <> typ <> ">"
 
-showTypeOfFlowValue :: FlowValue -> T.Text
-showTypeOfFlowValue = \case
-  FlowNull        -> "Null"
-  FlowInt _       -> "Integer"
-  FlowFloat _     -> "Float"
-  FlowBoolean _   -> "Boolean"
-  FlowByte _      -> "Byte"
-  FlowText _      -> "Text"
-  FlowDate _      -> "Date"
-  FlowTime _      -> "Time"
-  FlowTimestamp _ -> "Timestamp"
-  FlowInterval _  -> "Interval"
-  FlowArray xs    -> inferFlowArrayType xs
-  FlowSubObject _ -> "Jsonb"
-  where
-    inferFlowArrayType :: [FlowValue] -> T.Text
-    inferFlowArrayType = \case
-      []    -> "Array@[UNKNOW]"
-      x : _ -> "Array@[" <> T.pack (show $ showTypeOfFlowValue x) <> "]"
-
-
 --------------------------------------------------------------------------------
 castToInteger :: FlowValue -> Either ERROR_TYPE FlowValue
 castToInteger x =

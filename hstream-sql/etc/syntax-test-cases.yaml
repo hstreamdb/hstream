@@ -87,3 +87,35 @@ testSuiteCases:
     Nothing]) (RFrom (RTableRefSimple "s" Nothing)) RWhereEmpty RGroupByEmpty RHavingEmpty)
   testCaseStmts:
   - select SPLIT('a.b.c', x) from s emit changes;
+- testCaseFail: null
+  testCaseLabel: BETWEEN
+  testCaseResult: RQPushSelect (RSelect (RSel [RSelectItemProject (RExprTerOp "xBETWEEN0AND42"
+    OpBetweenAnd (RExprCol "x" Nothing "x") (RExprConst "0" (ConstantInt 0)) (RExprConst
+    "42" (ConstantInt 42))) Nothing]) (RFrom (RTableRefSimple "s" Nothing)) RWhereEmpty
+    RGroupByEmpty RHavingEmpty)
+  testCaseStmts:
+  - select x between 0 and 42 from s emit changes;
+- testCaseFail: null
+  testCaseLabel: BETWEEN
+  testCaseResult: RQPushSelect (RSelect (RSel [RSelectItemProject (RExprTerOp "xNOTBETWEEN0AND42"
+    OpNotBetweenAnd (RExprCol "x" Nothing "x") (RExprConst "0" (ConstantInt 0)) (RExprConst
+    "42" (ConstantInt 42))) Nothing]) (RFrom (RTableRefSimple "s" Nothing)) RWhereEmpty
+    RGroupByEmpty RHavingEmpty)
+  testCaseStmts:
+  - select x not between 0 and 42 from s emit changes;
+- testCaseFail: null
+  testCaseLabel: BETWEEN
+  testCaseResult: RQPushSelect (RSelect (RSel [RSelectItemProject (RExprTerOp "xBETWEENSYMMETRIC0AND42"
+    OpBetweenSymAnd (RExprCol "x" Nothing "x") (RExprConst "0" (ConstantInt 0)) (RExprConst
+    "42" (ConstantInt 42))) Nothing]) (RFrom (RTableRefSimple "s" Nothing)) RWhereEmpty
+    RGroupByEmpty RHavingEmpty)
+  testCaseStmts:
+  - select x between symmetric 0 and 42 from s emit changes;
+- testCaseFail: null
+  testCaseLabel: BETWEEN
+  testCaseResult: RQPushSelect (RSelect (RSel [RSelectItemProject (RExprTerOp "xNOTBETWEENSYMMETRIC0AND42"
+    OpNotBetweenSymAnd (RExprCol "x" Nothing "x") (RExprConst "0" (ConstantInt 0))
+    (RExprConst "42" (ConstantInt 42))) Nothing]) (RFrom (RTableRefSimple "s" Nothing))
+    RWhereEmpty RGroupByEmpty RHavingEmpty)
+  testCaseStmts:
+  - select x not between symmetric 0 and 42 from s emit changes;

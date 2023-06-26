@@ -115,13 +115,14 @@ scanRelationExpr p trans_m r = if p r then
                                   in (fst tup1 <|> fst tup2, Union (snd tup1) (snd tup2))
 
 data ScalarExpr
-  = ColumnRef  Text (Maybe Text) -- fieldName, streamName_m
-  | Literal    Constant
-  | CallUnary  UnaryOp  ScalarExpr
-  | CallBinary BinaryOp ScalarExpr ScalarExpr
-  | CallCast   ScalarExpr RDataType
-  | CallJson   JsonOp ScalarExpr ScalarExpr
-  | ValueArray [ScalarExpr]
+  = ColumnRef   Text (Maybe Text) -- fieldName, streamName_m
+  | Literal     Constant
+  | CallUnary   UnaryOp  ScalarExpr
+  | CallBinary  BinaryOp ScalarExpr ScalarExpr
+  | CallTernary TerOp    ScalarExpr ScalarExpr ScalarExpr
+  | CallCast    ScalarExpr RDataType
+  | CallJson    JsonOp ScalarExpr ScalarExpr
+  | ValueArray  [ScalarExpr]
   | AccessArray ScalarExpr RArrayAccessRhs
   deriving (Eq, Ord)
 
@@ -139,6 +140,7 @@ instance Decouple RValueExpr where
     RExprConst _ constant      -> Literal constant
     RExprBinOp _ op e1 e2      -> CallBinary op (decouple e1) (decouple e2)
     RExprUnaryOp _ op e        -> CallUnary op (decouple e)
+    RExprTerOp _ op e1 e2 e3   -> CallTernary op (decouple e1) (decouple e2) (decouple e3)
     RExprCast _ e typ          -> CallCast (decouple e) typ
     RExprAccessJson _ op e1 e2 -> CallJson op (decouple e1) (decouple e2)
     RExprAggregate name _      -> ColumnRef (T.pack name) Nothing
@@ -400,6 +402,7 @@ instance HasAggregates RValueExpr where
     RExprAccessArray _ e _    -> getAggregates e
     RExprAccessJson _ _ e1 e2 -> L.nubBy ((==) `on` snd) $ getAggregates e1 ++ getAggregates e2
     RExprBinOp _ _ e1 e2      -> L.nubBy ((==) `on` snd) $ getAggregates e1 ++ getAggregates e2
+    RExprTerOp _ _ e1 e2 e3   -> L.nubBy ((==) `on` snd) $ getAggregates e1 ++ getAggregates e2 ++ getAggregates e3
     RExprUnaryOp _ _ e        -> getAggregates e
     -- RExprSubquery _ _         -> [] -- do not support subquery in SELECT/HAVING now
 

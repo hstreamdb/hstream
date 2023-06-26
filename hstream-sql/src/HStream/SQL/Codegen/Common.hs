@@ -25,6 +25,7 @@ import           HStream.SQL.Codegen.BinOp
 import           HStream.SQL.Codegen.Cast
 import           HStream.SQL.Codegen.ColumnCatalog
 import           HStream.SQL.Codegen.JsonOp
+import           HStream.SQL.Codegen.TerOp
 import           HStream.SQL.Codegen.UnaryOp
 import           HStream.SQL.Planner
 import           HStream.SQL.Planner.Pretty        ()
@@ -51,6 +52,11 @@ scalarExprToFun scalar o = case scalar of
     v1 <- scalarExprToFun scalar1 o
     v2 <- scalarExprToFun scalar2 o
     binOpOnValue op v1 v2
+  CallTernary op scalar1 scalar2 scalar3 -> do
+    v1 <- scalarExprToFun scalar1 o
+    v2 <- scalarExprToFun scalar2 o
+    v3 <- scalarExprToFun scalar3 o
+    terOpOnValue op v1 v2 v3
   CallCast scalar typ -> do
     v1 <- scalarExprToFun scalar o
     castOnValue typ v1

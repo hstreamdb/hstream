@@ -8,11 +8,12 @@ module HStream.SQL.Extra
   , extractSingleQuoted
   , extractRefNameFromExpr
   , trimSpacesPrint
-  , unifyValueExprCast,
-  parseFlowDateValue,
-  parseFlowTimeValue,
-  parseFlowTimestampValue,
-  parseFlowIntervalValue
+  , unifyValueExprCast
+  , exprBetweenVals
+  , parseFlowDateValue
+  , parseFlowTimeValue
+  , parseFlowTimestampValue
+  , parseFlowIntervalValue
   ) where
 
 import           Data.Char                (isSpace)
@@ -96,6 +97,15 @@ unifyValueExprCast :: ExprCast -> (ValueExpr, DataType, BNFC'Position)
 unifyValueExprCast = \case
   ExprCast1 pos x y -> (x, y, pos)
   ExprCast2 pos x y -> (x, y, pos)
+
+exprBetweenVals :: Between -> (ValueExpr, ValueExpr, ValueExpr)
+exprBetweenVals expr = case expr of
+  BetweenAnd       _ x y z -> h x y z
+  NotBetweenAnd    _ x y z -> h x y z
+  BetweenSymAnd    _ x y z -> h x y z
+  NotBetweenSymAnd _ x y z -> h x y z
+  where
+    h x y z = (x, y, z)
 
 parseFlowDateValue :: Text.Text -> Maybe Time.Day
 parseFlowDateValue = iso8601ParseM . Text.unpack . Text.tail . Text.init
