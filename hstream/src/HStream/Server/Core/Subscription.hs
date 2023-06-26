@@ -9,10 +9,10 @@
 module HStream.Server.Core.Subscription where
 
 import           Control.Concurrent
-import           Control.Concurrent.Async      (async, wait, withAsync)
+import           Control.Concurrent.Async      (async, link, wait, withAsync)
 import           Control.Concurrent.STM
-import           Control.Exception             (catch, handle, onException,
-                                                throwIO)
+import           Control.Exception             (catch, fromException, handle,
+                                                onException, throwIO)
 import           Control.Monad
 import qualified Data.ByteString               as BS
 import           Data.Foldable                 (foldl')
@@ -185,7 +185,7 @@ createSubscription ServerContext{..} sub@Subscription{..} = do
 deleteSubscription
   :: HasCallStack
   => ServerContext -> DeleteSubscriptionRequest -> IO ()
-deleteSubscription ServerContext{..} DeleteSubscriptionRequest{ deleteSubscriptionRequestSubscriptionId = subId, deleteSubscriptionRequestForce = force} = do
+deleteSubscription sc@ServerContext{..} DeleteSubscriptionRequest{ deleteSubscriptionRequestSubscriptionId = subId, deleteSubscriptionRequestForce = force} = do
   subscription <- M.getMeta @SubscriptionWrap subId metaHandle
   when (isNothing subscription) $ do
     Log.info $ "delete subscription failed because sub " <> Log.build subId <> " not found."
@@ -212,6 +212,7 @@ deleteSubscription ServerContext{..} DeleteSubscriptionRequest{ deleteSubscripti
               pure (CanDelete, Just (subCtx, stateVar))
           SubscribeStateStopping -> pure (Signaled, Just (subCtx, stateVar))
           SubscribeStateStopped  -> pure (Signaled, Just (subCtx, stateVar))
+          SubscribeStateFailed -> pure (NotExist, Just (subCtx, stateVar))
   Log.info $ "State of the subscription(" <> Log.build subId <> ") to be deleted: " <> Log.buildString' status
   case status of
     NotExist  -> doRemove
@@ -219,7 +220,7 @@ deleteSubscription ServerContext{..} DeleteSubscriptionRequest{ deleteSubscripti
       let (subCtx@SubscribeContext{..}, subState) = fromJust msub
       atomically $ waitingStopped subCtx subState
       Log.info "Subscription stopped, start deleting "
-      atomically removeSubFromCtx
+      atomically $ removeSubFromCtx sc subId
       stopCompactedWorker subLdTrimCkpWorker
       doRemove
     CanNotDelete -> do
@@ -268,10 +269,10 @@ deleteSubscription ServerContext{..} DeleteSubscriptionRequest{ deleteSubscripti
       else retry
       writeTVar subState SubscribeStateStopped
 
-    removeSubFromCtx :: STM ()
-    removeSubFromCtx =  do
-      scs <- readTVar scSubscribeContexts
-      writeTVar scSubscribeContexts (HM.delete subId scs)
+removeSubFromCtx :: ServerContext -> Text -> STM ()
+removeSubFromCtx ServerContext{..} subId =  do
+  scs <- readTVar scSubscribeContexts
+  writeTVar scSubscribeContexts (HM.delete subId scs)
 
 data DeleteSubStatus = NotExist | CanDelete | CanNotDelete | Signaled
   deriving (Show)
@@ -320,11 +321,8 @@ streamingFetchCore ctx SFetchCoreDirect = \initReq consumerClosed callbacksGen -
             Nothing -> retry
             req     -> return $ Right req)
   let streamRecv = atomically streamRecv'
-  withAsync (recvAcks ctx scwState scwContext consumerCtx streamRecv) wait
-  -- `onException` do
-  --   case tid_m of
-  --     Just tid -> killThread tid
-  --     Nothing  -> return ()
+  async (recvAcks ctx scwState scwContext consumerCtx streamRecv) >>= wait
+
 streamingFetchCore ctx SFetchCoreInteractive = \(streamSend, streamRecv, requestUri, userAgent) -> do
   StreamingFetchRequest {..} <- firstRecv streamRecv
   Log.info $ "Receive streaming fetch request for sub " <> Log.build streamingFetchRequestSubscriptionId
@@ -371,9 +369,20 @@ initSub serverCtx@ServerContext {..} subId = M.getMeta subId metaHandle >>= \cas
           putTMVar scnwContext subCtx
           writeTVar scnwState SubscribeStateRunning
           return SubscribeContextWrapper {scwState = scnwState, scwContext = subCtx}
-        tid <- myThreadId
+        subTid <- myThreadId
         let errHandler = \case
-              Left e  -> throwTo tid e
+              Left e -> do
+                          let ex = fromException e :: Maybe HE.SubscriptionIsDeleting
+                          case ex of
+                            Just _ -> throwTo subTid e
+                            Nothing -> do
+                                        Log.fatal $ Log.buildString "An unexpected error happened while subscription "
+                                          <> Log.build subId <> " running: " <> Log.build (show e)
+                                        let SubscribeContext{..} = subCtx
+                                        atomically $ writeTVar scnwState SubscribeStateFailed
+                                        atomically $ removeSubFromCtx serverCtx subId
+                                        stopCompactedWorker subLdTrimCkpWorker
+                                        throwTo subTid e
               Right _ -> pure ()
         tid <- forkFinally (sendRecords serverCtx scwState scwContext) errHandler
         return (wrapper, Just tid)
@@ -528,64 +537,65 @@ sendRecords :: ServerContext -> TVar SubscribeState -> SubscribeContext -> IO ()
 sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
   threadDelay 10000
   isFirstSendRef <- newIORef True
-  isSubscriptionDeleted <- newIORef False
-  loop isFirstSendRef isSubscriptionDeleted
+  loop isFirstSendRef
   where
-    loop !isFirstSendRef !isSubscriptionDeleted = do
+    loop !isFirstSendRef = do
       -- Log.debug "enter sendRecords loop"
       state <- readTVarIO subState
-      if state == SubscribeStateRunning
-        then do
-          newShards <- getNewShards
-          unless (L.null newShards) $ do
-            addNewShardsToSubCtx subCtx newShards
-            Log.info $ "Subscription " <> Log.build subSubscriptionId <> " get new shards " <> Log.build (show newShards)
-          atomically $ do
-            checkAvailable subShardContexts
-            checkAvailable subConsumerContexts
-          atomically $ do
-            assignWaitingConsumers subAssignment
+      case state of
+        SubscribeStateRunning ->
+          do
+            newShards <- getNewShards
+            unless (L.null newShards) $ do
+              addNewShardsToSubCtx subCtx newShards
+              Log.info $ "Subscription " <> Log.build subSubscriptionId <> " get new shards " <> Log.build (show newShards)
+            atomically $ do
+              checkAvailable subShardContexts
+              checkAvailable subConsumerContexts
+            atomically $ do
+              assignWaitingConsumers subAssignment
 
-          addRead subLdCkpReader subAssignment subStartOffsets
-          atomically checkUnackedRecords
-          recordBatches <- readRecordBatches
-          receivedRecordsVecs <- forM recordBatches decodeRecordBatch
-          isFirstSend <- readIORef isFirstSendRef
-          if isFirstSend
-          then do
-            writeIORef isFirstSendRef False
-            tid1 <- forkIO . fix $ \f -> do
-              isSubDeleted <- readIORef isSubscriptionDeleted
-              unless isSubDeleted $ do
-                threadDelay (100 * 1000)
-                updateClockAndDoResend
-                f
+            addRead subLdCkpReader subAssignment subStartOffsets
+            atomically checkUnackedRecords
+            recordBatches <- readRecordBatches
+            receivedRecordsVecs <- forM recordBatches decodeRecordBatch
+            isFirstSend <- readIORef isFirstSendRef
+            if isFirstSend
+            then do
+              writeIORef isFirstSendRef False
+              resendJob <- async . fix $ \f -> do
+                state <- readTVarIO subState
+                when (state == SubscribeStateRunning) $ do
+                  threadDelay (100 * 1000)
+                  updateClockAndDoResend
+                  f
 
-            tid2 <- forkIO . fix $ \f -> do
-              isSubDeleted <- readIORef isSubscriptionDeleted
-              unless isSubDeleted $ do
-                threadDelay (1000 * 1000)
-                -- traceM $ "==== Start sub " <> show subSubscriptionId <> " shard assign"
-                atomically $ assignShards subSubscriptionId subAssignment
-                -- traceM $ "==== Finish sub " <> show subSubscriptionId <> " shard assign"
-                f
+              assignJob <- async . fix $ \f -> do
+                state <- readTVarIO subState
+                when (state == SubscribeStateRunning) $ do
+                  threadDelay (1000 * 1000)
+                  -- traceM $ "==== Start sub " <> show subSubscriptionId <> " shard assign"
+                  atomically $ assignShards subSubscriptionId subAssignment
+                  -- traceM $ "==== Finish sub " <> show subSubscriptionId <> " shard assign"
+                  f
 
-            -- FIXME: the same code
-            successSendRecords <- sendReceivedRecordsVecs receivedRecordsVecs
-            atomically $ addUnackedRecords subCtx successSendRecords
-            -- Note: automically kill child threads when the parent thread is killed
-            loop isFirstSendRef isSubscriptionDeleted `onException` (killThread tid1 >> killThread tid2)
-          else do
-            -- FIXME: the same code
-            successSendRecords <- sendReceivedRecordsVecs receivedRecordsVecs
-            atomically $ addUnackedRecords subCtx successSendRecords
-            loop isFirstSendRef isSubscriptionDeleted
-        else do
-          Log.info $ "subscription " <> Log.build subSubscriptionId <> " is not running, exit sendRecords loop."
-          when (state == SubscribeStateStopping) $ do
-            throwIO $ HE.SubscriptionInvalidError "Invalid Subscription"
-          when (state == SubscribeStateStopped) $ do
-            writeIORef isSubscriptionDeleted True
+              link resendJob
+              link assignJob
+
+              -- FIXME: the same code
+              successSendRecords <- sendReceivedRecordsVecs receivedRecordsVecs
+              atomically $ addUnackedRecords subCtx successSendRecords
+              loop isFirstSendRef
+            else do
+              -- FIXME: the same code
+              successSendRecords <- sendReceivedRecordsVecs receivedRecordsVecs
+              atomically $ addUnackedRecords subCtx successSendRecords
+              loop isFirstSendRef
+        SubscribeStateStopping -> do
+            Log.warning $ "Subscription " <> Log.build subSubscriptionId <> " is stopping, exit sendRecords loop."
+            throwIO $ HE.SubscriptionIsDeleting (show subSubscriptionId)
+        _ ->
+            Log.fatal $ "Subscription " <> Log.build subSubscriptionId <> " is in an impossible state, there must be an error in the code!"
 
     updateClockAndDoResend :: IO ()
     updateClockAndDoResend = do

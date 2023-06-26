@@ -127,6 +127,7 @@ data SubscribeState
   | SubscribeStateRunning
   | SubscribeStateStopping
   | SubscribeStateStopped
+  | SubscribeStateFailed
   deriving (Eq, Show)
 
 data SubscribeContext = SubscribeContext
