@@ -200,6 +200,14 @@ instance Validate ValueExpr where
   validate expr@(ExprDate _ expr')        = validate expr' >> pure expr
   validate expr@(ExprTime _ expr')        = validate expr' >> pure expr
   validate expr@(ExprTimestamp _ expr')   = validate expr' >> pure expr
+  validate expr@(ExprBetween _ expr')     = case expr' of
+    BetweenAnd       _ x y z -> h x y z
+    NotBetweenAnd    _ x y z -> h x y z
+    BetweenSymAnd    _ x y z -> h x y z
+    NotBetweenSymAnd _ x y z -> h x y z
+    where
+      h x y z = validate x >> validate y >> validate z >> pure expr
+
 
 isNumExpr :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
 isNumExpr expr = case expr of
@@ -239,6 +247,7 @@ isNumExpr expr = case expr of
     let funcType = getScalarFuncType f
      in if isTypeNum funcType then return expr
                               else Left $ buildSQLException ParseException (getPos f) "Argument type mismatched"
+  ExprBetween pos _ -> Left $ buildSQLException ParseException pos "Expected a numeric expression but got a boolean"
   where
     isNumType :: DataType -> Either SomeSQLException DataType
     isNumType typ = case typ of
@@ -284,6 +293,7 @@ isFloatExpr expr = case expr of
     let funcType = getScalarFuncType f
      in if isTypeFloat funcType then return expr
                                 else Left $ buildSQLException ParseException (getPos f) "Argument type mismatched"
+  ExprBetween pos _ -> Left $ buildSQLException ParseException pos "Expected a float expression but got a boolean"
   where
     isFloatType :: DataType -> Either SomeSQLException DataType
     isFloatType typ = case typ of
@@ -328,6 +338,7 @@ isOrdExpr expr = case expr of
     let funcType = getScalarFuncType f
      in if isTypeOrd funcType then return expr
                               else Left $ buildSQLException ParseException (getPos f) "Argument type mismatched"
+  ExprBetween pos _ -> Left $ buildSQLException ParseException pos "Expected a comparable expression but got a boolean"
   where
     isOrdType :: DataType -> Either SomeSQLException DataType
     isOrdType typ = case typ of
@@ -380,6 +391,8 @@ isBoolExpr expr = case expr of
     let funcType = getScalarFuncType f
      in if isTypeBool funcType then return expr
                                else Left $ buildSQLException ParseException (getPos f) "Argument type mismatched"
+  ExprBetween _ betweenExpr -> let (x, y, z) = exprBetweenVals betweenExpr in
+    validate x >> validate y >> validate z >> pure expr
   where
     isBoolType :: DataType -> Either SomeSQLException DataType
     isBoolType typ = case typ of
@@ -425,6 +438,7 @@ isIntExpr expr = case expr of
     let funcType = getScalarFuncType f
      in if isTypeInt funcType then return expr
                               else Left $ buildSQLException ParseException (getPos f) "Argument type mismatched"
+  ExprBetween pos _ -> Left $ buildSQLException ParseException pos "Expected an integral expression but got a boolean"
   where
     isIntType :: DataType -> Either SomeSQLException DataType
     isIntType typ = case typ of
@@ -469,6 +483,7 @@ isStringExpr expr = case expr of
     let funcType = getScalarFuncType f
      in if isTypeString funcType then return expr
                                  else Left $ buildSQLException ParseException (getPos f) "Argument type mismatched"
+  ExprBetween pos _ -> Left $ buildSQLException ParseException pos "Expected an String expression but got a boolean"
   where
     isStringType :: DataType -> Either SomeSQLException DataType
     isStringType typ = case typ of
@@ -498,6 +513,8 @@ notAggregateExpr expr@(ExprMul _ e1 e2) = notAggregateExpr e1 >> notAggregateExp
 notAggregateExpr expr@(ExprNot _ e)     = notAggregateExpr e >> pure expr
 notAggregateExpr expr@(ExprAnd _ e1 e2) = notAggregateExpr e1 >> notAggregateExpr e2 >> return expr
 notAggregateExpr expr@(ExprOr  _ e1 e2) = notAggregateExpr e1 >> notAggregateExpr e2 >> return expr
+notAggregateExpr expr@(ExprBetween _ betweenExpr) = let (x, y, z) = exprBetweenVals betweenExpr in
+  notAggregateExpr x >> notAggregateExpr y >> notAggregateExpr z >> pure expr
 notAggregateExpr expr = return expr
 
 -- For validating Insert

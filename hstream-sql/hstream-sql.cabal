@@ -62,6 +62,7 @@ library
     HStream.SQL.Codegen.ColumnCatalog
     HStream.SQL.Codegen.Common
     HStream.SQL.Codegen.JsonOp
+    HStream.SQL.Codegen.TerOp
     HStream.SQL.Codegen.UnaryOp
     HStream.SQL.Codegen.Utils
     HStream.SQL.Codegen.V1

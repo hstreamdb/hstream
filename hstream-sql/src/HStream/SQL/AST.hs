@@ -108,6 +108,26 @@ instance Show FlowValue where
     FlowArray arr    -> show arr
     FlowSubObject o  -> show o
 
+showTypeOfFlowValue :: FlowValue -> Text.Text
+showTypeOfFlowValue = \case
+  FlowNull        -> "Null"
+  FlowInt _       -> "Integer"
+  FlowFloat _     -> "Float"
+  FlowBoolean _   -> "Boolean"
+  FlowByte _      -> "Byte"
+  FlowText _      -> "Text"
+  FlowDate _      -> "Date"
+  FlowTime _      -> "Time"
+  FlowTimestamp _ -> "Timestamp"
+  FlowInterval _  -> "Interval"
+  FlowArray xs    -> inferFlowArrayType xs
+  FlowSubObject _ -> "Jsonb"
+  where
+    inferFlowArrayType :: [FlowValue] -> Text.Text
+    inferFlowArrayType = \case
+      []    -> "Array@[UNKNOW]"
+      x : _ -> "Array@[" <> Text.pack (show $ showTypeOfFlowValue x) <> "]"
+
 --------------
 flowValueToJsonValue :: FlowValue -> Aeson.Value
 flowValueToJsonValue flowValue = case flowValue of
@@ -203,15 +223,16 @@ class HasName a where
 
 instance HasName RValueExpr where
   getName expr = case expr of
-    RExprCast        name _ _   -> name
-    RExprArray       name _     -> name
-    RExprAccessArray name _ _   -> name
-    RExprCol         name _ _   -> name
-    RExprConst       name _     -> name
-    RExprAggregate   name _     -> name
-    RExprAccessJson  name _ _ _ -> name
-    RExprBinOp       name _ _ _ -> name
-    RExprUnaryOp     name _ _   -> name
+    RExprCast        name _ _     -> name
+    RExprArray       name _       -> name
+    RExprAccessArray name _ _     -> name
+    RExprCol         name _ _     -> name
+    RExprConst       name _       -> name
+    RExprAggregate   name _       -> name
+    RExprAccessJson  name _ _ _   -> name
+    RExprBinOp       name _ _ _   -> name
+    RExprUnaryOp     name _ _     -> name
+    RExprTerOp       name _ _ _ _ -> name
     -- RExprSubquery    name _     -> name
 
 ----------------------------- Refinement details -------------------------------
@@ -393,6 +414,9 @@ data UnaryOp  = OpSin      | OpSinh    | OpAsin   | OpAsinh  | OpCos   | OpCosh
               | OpNot
               deriving (Eq, Show, Ord, Generic, Aeson.ToJSON, Aeson.FromJSON)
 
+data TerOp = OpBetweenAnd | OpNotBetweenAnd | OpBetweenSymAnd | OpNotBetweenSymAnd
+  deriving (Show, Eq, Ord, Generic, Aeson.ToJSON, Aeson.FromJSON)
+
 data JsonOp
   = JOpArrow -- json -> text = value
   | JOpLongArrow -- json ->> text = text
@@ -469,6 +493,7 @@ data RValueExpr = RExprCast        ExprName RValueExpr RDataType
                 | RExprAccessJson  ExprName JsonOp RValueExpr RValueExpr
                 | RExprBinOp       ExprName BinaryOp RValueExpr RValueExpr
                 | RExprUnaryOp     ExprName UnaryOp RValueExpr
+                | RExprTerOp       ExprName TerOp RValueExpr RValueExpr RValueExpr
                 -- | RExprSubquery    ExprName RSelect
                 deriving (Show, Eq, Generic, Aeson.ToJSON, Aeson.FromJSON)
 -- FIXME:
@@ -518,6 +543,15 @@ instance Refine ValueExpr where
     ExprColName _ col -> refine col
     -- 8. Subquery
     -- (ExprSubquery _ select) -> RExprSubquery (trimSpacesPrint expr) (refine select)
+
+    ExprBetween _ between -> case between of
+      BetweenAnd       _ x y z -> h x y z OpBetweenAnd
+      NotBetweenAnd    _ x y z -> h x y z OpNotBetweenAnd
+      BetweenSymAnd    _ x y z -> h x y z OpBetweenSymAnd
+      NotBetweenSymAnd _ x y z -> h x y z OpNotBetweenSymAnd
+      where
+        h x y z op = RExprTerOp (trimSpacesPrint expr) op
+          (refine x) (refine y) (refine z)
 
 type instance RefinedType ScalarFunc = RValueExpr
 instance Refine ScalarFunc where

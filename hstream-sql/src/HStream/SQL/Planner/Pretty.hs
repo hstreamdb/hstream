@@ -78,6 +78,7 @@ instance Show ScalarExpr where
                 Literal constant         -> show constant
                 CallUnary op e           -> show op <> "(" <> show e <> ")"
                 CallBinary op e1 e2      -> show op <> "(" <> show e1 <> ", " <> show e2 <> ")"
+                CallTernary op e1 e2 e3  -> show op <> "(" <> show e1 <> ", " <> show e2 <> ", " <> show e3 <> ")"
                 CallCast e typ           -> show e <> "::" <> show typ
                 CallJson op e1 e2        -> show e1 <> show op <> show e2
                 ValueArray arr           -> "Array" <> show arr
