@@ -7,6 +7,7 @@ on:
 
 env:
   IMAGE_NAME: "hstreamdb/hstream"
+  BUILDER_IMAGE_NAME: "hstreamdb/hstream-builder"
 
 jobs:
   build:
@@ -14,10 +15,10 @@ jobs:
     strategy:
       matrix:
         include:
-          - builder_image: "hstreamdb/haskell:9.2"
+          - hs_image: "hstreamdb/haskell:9.2"
             ld_image: "hstreamdb/logdevice:latest"
             tag: "${GITHUB_REF#refs/*/}"
-          - builder_image: "hstreamdb/haskell:rqlite_9.2"
+          - hs_image: "hstreamdb/haskell:rqlite_9.2"
             ld_image: "hstreamdb/logdevice:rqlite"
             tag: "rqlite_${GITHUB_REF#refs/*/}"
     steps:
@@ -29,26 +30,33 @@ jobs:
           # We need tags. Also see: https://github.com/actions/checkout/issues/701
           fetch-depth: 0
 
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Get version info
         run: |
           echo "LATEST_TAG=$(git describe --tag --abbrev=0)" >> $GITHUB_ENV
           echo "CURRENT_COMMIT=$(git rev-parse HEAD)" >> $GITHUB_ENV
           echo "LATEST_TAG: $LATEST_TAG, CURRENT_COMMIT: $CURRENT_COMMIT"
 
+      - name: Build builder
+        run: |
+          docker build . -f docker/Dockerfile --target builder \
+            -t ${BUILDER_IMAGE_NAME}:latest
+          # For cache
+          docker push ${BUILDER_IMAGE_NAME}:latest
+
       - name: Docker build
         run: |
           docker build . -f docker/Dockerfile \
-            --build-arg BUILDER_IMAGE=${{ matrix.builder_image }} \
+            --build-arg HS_IMAGE=${{ matrix.hs_image }} \
             --build-arg LD_IMAGE=${{ matrix.ld_image }} \
             --build-arg HSTREAM_VERSION=${{ env.LATEST_TAG }} \
             --build-arg HSTREAM_VERSION_COMMIT=${{ env.CURRENT_COMMIT }} \
             -t ${IMAGE_NAME}:${{ matrix.tag }}
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v2
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Push image to dockerhub
         run: docker push ${IMAGE_NAME}:${{ matrix.tag }}

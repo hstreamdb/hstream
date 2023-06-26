@@ -1,12 +1,30 @@
 # ------------------------------------------------------------------------------
 # Global args (should be on the top of dockerfile)
 
-ARG BUILDER_IMAGE="hstreamdb/haskell:latest"
+ARG HS_IMAGE="hstreamdb/haskell:latest"
 ARG LD_IMAGE="hstreamdb/logdevice:latest"
+# Options: "cache", "cache_dist" or "no_cache"
+ARG BUILD_CACHE="cache"
 
 # ------------------------------------------------------------------------------
 
-FROM ${BUILDER_IMAGE} as builder
+# FIXME: we cann't use ONBUILD COPY --from=hstreamdb/hstream-builder directly,
+# see this issue: https://github.com/moby/buildkit/issues/816
+FROM hstreamdb/hstream-builder AS cache
+
+FROM ${HS_IMAGE} as builder_cache
+ONBUILD COPY --from=cache /root/.cabal/ /root/.cabal/
+
+FROM ${HS_IMAGE} as builder_cache_dist
+ONBUILD COPY --from=cache /root/.cabal/ /root/.cabal/
+ONBUILD COPY --from=cache /hstream/dist-newstyle/ /hstream/dist-newstyle/
+
+FROM ${HS_IMAGE} as builder_no_cache
+
+# ------------------------------------------------------------------------------
+
+# NOTE: this is a builder image so that we won't do any house clean here.
+FROM builder_${BUILD_CACHE} as builder
 
 COPY . /hstream
 
@@ -17,7 +35,8 @@ ARG BUILD_TYPE="ReleaseBuild"
 ARG HSTREAM_VERSION="unknown"
 ARG HSTREAM_VERSION_COMMIT="unknown"
 
-RUN cabal update && \
+RUN rm -rf /root/.cabal/bin && \
+    cabal update && \
     cd /hstream && \
     HSTREAM_VERSION=${HSTREAM_VERSION} HSTREAM_VERSION_COMMIT=${HSTREAM_VERSION_COMMIT} make && \
     cabal build --flags "${BUILD_TYPE}" all && \
@@ -25,12 +44,13 @@ RUN cabal update && \
     cabal install --flags "${BUILD_TYPE}" \
       --constraint="hstream +hstream_use_grpc_haskell" \
       --constraint="hstream-gossip +hstream_use_grpc_haskell" \
-      --program-suffix="-old" hstream && \
-    rm -rf /hstream
+      --program-suffix="-old" hstream
 
 # ------------------------------------------------------------------------------
 
 FROM ${LD_IMAGE} as ld_image
+
+# ------------------------------------------------------------------------------
 
 FROM ubuntu:focal
 
