@@ -176,6 +176,7 @@ jobs:
       - name: test
         run: |
           ${{ env.SHELL }} "'make syntax-test-run'"
+          ${{ env.SHELL }} "'make plan-test-run'"
           ${{ env.CABAL }} ${{ env.EXTRA_CABAL_ARGS }} test --test-show-details=direct all
 
       - name: collect hserver logs
