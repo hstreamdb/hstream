@@ -10,6 +10,7 @@ import os
 import sys
 import getpass
 from pathlib import Path
+import hashlib
 import time
 import subprocess
 import re
@@ -39,9 +40,17 @@ HOOGLE_HOME = os.getenv("HOOGLE_HOME", f"{HOME}/.hoogle")
 GOPATH = os.getenv("GOPATH", f"{HOME}/.go")
 GOCACHE = os.getenv("GOCACHE", f"{HOME}/.cache/.go-build")
 
-PROJECT_ROOT = os.path.dirname(
-    os.path.dirname(os.path.realpath(os.path.abspath(__file__)))
+PROJECT_ROOT = os.getenv(
+    "PROJECT_ROOT",
+    os.path.dirname(
+        os.path.dirname(os.path.realpath(os.path.abspath(__file__)))
+    ),
 )
+# 10 should be enough
+SHORT_PROJECT_ROOT = hashlib.shake_256(PROJECT_ROOT.encode("utf-8")).hexdigest(
+    10
+)
+
 CUID, CGID = os.getuid(), os.getgid()
 CUSERNAME = getpass.getuser()
 CWD = os.getcwd()
@@ -77,10 +86,11 @@ IMAGES = {
     "RQLITE_IMAGE": "rqlite/rqlite",
 }
 
+
 SERVICES = {
-    "zookeeper": f"hstream-test-zookeeper-{CUID}",
-    "store": f"logdevice-dev-cluster-{CUID}",
-    "rqlite": f"hstream-test-rqlite-{CUID}",
+    "zookeeper": f"devtools-zookeeper-{CUSERNAME}-{SHORT_PROJECT_ROOT}",
+    "store": f"devtools-hstore-{CUSERNAME}-{SHORT_PROJECT_ROOT}",
+    "rqlite": f"devtools-rqlite-{CUSERNAME}-{SHORT_PROJECT_ROOT}",
 }
 
 HSTREAM_SERVER_PORT_ENV = "SERVER_LOCAL_PORT"
