@@ -140,6 +140,8 @@ using PerSubscriptionTimeSeries = MultiLevelTimeSeriesWrapper<int64_t>;
 struct PerSubscriptionStats {
 #define STAT_DEFINE(name, _) StatsCounter name##_counter{};
 #include "per_subscription_stats.inc"
+#define STAT_DEFINE(name, _) StatsCounter name##_counter{};
+#include "per_subscription_assign.inc"
   void aggregate(PerSubscriptionStats const& other,
                  StatsAggOptional agg_override);
   // Show all per_stream_stats to a json formatted string.

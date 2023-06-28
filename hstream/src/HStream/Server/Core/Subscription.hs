@@ -240,8 +240,6 @@ deleteSubscription sc@ServerContext{..} DeleteSubscriptionRequest{ deleteSubscri
       -- to update the checkpoints in memory.
       S.freeSubscrCheckpointId scLDClient subIdCBytes
       Stats.subscription_stat_erase scStatsHolder subIdCBytes
-      -- FIXME: Find another way to delete unused stats totally
-      Stats.subscription_stat_set_checklist_size scStatsHolder subIdCBytes 0
 
     getSubState :: STM (Maybe (SubscribeContext, TVar SubscribeState))
     getSubState = do

@@ -90,6 +90,25 @@ foreign import ccall unsafe "hs_stats.h prefix##getall_##name"                 \
     -> MBA# (Ptr (StdVector Int64))                                            \
     -> IO ();
 
+#define PER_X_ASSIGN_DEFINE(prefix, name) \
+foreign import ccall unsafe "hs_stats.h prefix##set_##name"                    \
+  prefix##set_##name                                                           \
+    :: Ptr CStatsHolder -> BA# Word8 -> Int64 -> IO ();                        \
+                                                                               \
+foreign import ccall unsafe "hs_stats.h prefix##get_##name"                    \
+  prefix##get_##name                                                           \
+    :: Ptr CStats -> BA# Word8 -> IO Int64;                                    \
+                                                                               \
+foreign import ccall unsafe "hs_stats.h prefix##getall_##name"                 \
+  prefix##getall_##name                                                        \
+    :: Ptr CStats                                                              \
+    -> MBA# Int                                                                \
+    -> MBA# (Ptr StdString)                                                    \
+    -> MBA# (Ptr Int64)                                                        \
+    -> MBA# (Ptr (StdVector StdString))                                        \
+    -> MBA# (Ptr (StdVector Int64))                                            \
+    -> IO ();
+
 #define STAT_DEFINE(name, _) PER_X_STAT_DEFINE(stream_stat_, name)
 #include "../include/per_stream_stats.inc"
 
@@ -104,6 +123,9 @@ foreign import ccall unsafe "hs_stats.h prefix##getall_##name"                 \
 
 #define STAT_DEFINE(name, _) PER_X_STAT_DEFINE(subscription_stat_, name)
 #include "../include/per_subscription_stats.inc"
+
+#define STAT_DEFINE(name, _) PER_X_ASSIGN_DEFINE(subscription_stat_, name)
+#include "../include/per_subscription_assign.inc"
 
 #define TIME_SERIES_DEFINE(name, _, __, ___)                                   \
 foreign import ccall unsafe "hs_stats.h stream_time_series_add_##name"         \

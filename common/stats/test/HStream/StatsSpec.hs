@@ -1,11 +1,15 @@
 module HStream.StatsSpec (spec) where
 
 import           Control.Concurrent
+import           Control.Exception
+import           Control.Monad
 import           Data.Bits              (shiftL)
 import           Data.Either
 import           Data.Int
 import qualified Data.Map.Strict        as Map
 import           Data.Maybe             (fromJust)
+import           GHC.IO                 (catchException)
+import           System.Random
 import           Test.Hspec
 import           Z.Data.CBytes          (CBytes)
 
@@ -52,9 +56,9 @@ statsSpec = describe "HStream.Stats" $ do
     stream_stat_get_append_total s "/topic_2" `shouldReturn` 1
 
   setSpec "per subscription set stats"
-          subscription_stat_add_checklist_size
-          subscription_stat_get_checklist_size
           subscription_stat_set_checklist_size
+          subscription_stat_get_checklist_size
+          subscription_stat_getall_checklist_size
 
   eraseSpec "per stream stats"
             stream_stat_add_append_in_bytes
@@ -289,21 +293,34 @@ setSpec
   :: String
   -> (StatsHolder -> CBytes -> Int64 -> IO ())
   -> (Stats -> CBytes -> IO Int64)
-  -> (StatsHolder -> CBytes -> Int64 -> IO ())
+  -> (Stats -> IO (Map.Map CBytes Int64))
   -> Spec
-setSpec label stat_add stat_get stat_set = do
-  it (label <> ": set 1") $ do
+setSpec label stat_set stat_get stat_getall = do
+  it (label <> ": basic set") $ do
     h <- newStatsHolder True
-    stat_add h "topic_1" 100
-    stat_add h "topic_1" 100
-    s <- newAggregateStats h
-    stat_get s "topic_1" `shouldReturn` 200
     stat_set h "topic_1" 1000
+    stat_set h "topic_1" 2000
+    stat_set h "topic_2" 1000
     s <- newAggregateStats h
-    stat_get s "topic_1" `shouldReturn` 1000
+    stat_get s "topic_1" `shouldReturn` 2000
+    stat_get s "topic_2" `shouldReturn` 1000
+    m <- stat_getall s
+    Map.lookup "topic_1" m `shouldBe` Just 2000
+    Map.lookup "topic_2" m `shouldBe` Just 1000
 
-  it (label <> ": set 2") $ do
+  it "Run set stats in an unbounded thread should be OK" $ do
     h <- newStatsHolder True
-    stat_set h "topic_1" 100
-    s <- newAggregateStats h
-    stat_get s "topic_1" `shouldReturn` 100
+    let action =
+          do x <- randomRIO (0, 2000)
+             stat_set h "topic_1" x
+             s <- newAggregateStats h
+             stat_get s "topic_1" `shouldReturn` x
+    -- NOTE: here we use a new thread created by forkIO to make "more unbounded"
+    -- (do not use 'Control.Concurrent.runInUnboundThread' directly)
+    replicateM_ 1000 $ do
+      mv <- newEmptyMVar
+      mask $ \restore -> do
+        tid <- forkIO $ try (restore action) >>= putMVar mv
+        let wait = takeMVar mv `catchException` \(e :: SomeException) ->
+                     throwTo tid e >> wait
+        wait >>= (either (throwIO @SomeException) return)

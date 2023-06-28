@@ -77,7 +77,7 @@ std::string PerStreamStats::toJson() {
 }
 
 void PerConnectorStats::aggregate(PerConnectorStats const& other,
-                               StatsAggOptional agg_override) {
+                                  StatsAggOptional agg_override) {
 #define STAT_DEFINE(name, agg)                                                 \
   aggregateStat(StatsAgg::agg, agg_override, name##_counter,                   \
                 other.name##_counter);
@@ -114,12 +114,10 @@ folly::dynamic PerQueryStats::toJsonObj() {
   return map;
 }
 
-std::string PerQueryStats::toJson() {
-  return folly::toJson(this->toJsonObj());
-}
+std::string PerQueryStats::toJson() { return folly::toJson(this->toJsonObj()); }
 
 void PerViewStats::aggregate(PerViewStats const& other,
-                              StatsAggOptional agg_override) {
+                             StatsAggOptional agg_override) {
 #define STAT_DEFINE(name, agg)                                                 \
   aggregateStat(StatsAgg::agg, agg_override, name##_counter,                   \
                 other.name##_counter);
@@ -135,9 +133,7 @@ folly::dynamic PerViewStats::toJsonObj() {
   return map;
 }
 
-std::string PerViewStats::toJson() {
-  return folly::toJson(this->toJsonObj());
-}
+std::string PerViewStats::toJson() { return folly::toJson(this->toJsonObj()); }
 
 void PerSubscriptionStats::aggregate(PerSubscriptionStats const& other,
                                      StatsAggOptional agg_override) {
@@ -145,6 +141,10 @@ void PerSubscriptionStats::aggregate(PerSubscriptionStats const& other,
   aggregateStat(StatsAgg::agg, agg_override, name##_counter,                   \
                 other.name##_counter);
 #include "per_subscription_stats.inc"
+#define STAT_DEFINE(name, agg)                                                 \
+  aggregateStat(StatsAgg::agg, agg_override, name##_counter,                   \
+                other.name##_counter);
+#include "per_subscription_assign.inc"
 }
 
 folly::dynamic PerSubscriptionStats::toJsonObj() {
@@ -153,6 +153,10 @@ folly::dynamic PerSubscriptionStats::toJsonObj() {
   /* we know that all names are unique */                                      \
   map[#name] = name##_counter.load();
 #include "per_subscription_stats.inc"
+#define STAT_DEFINE(name, _)                                                   \
+  /* we know that all names are unique */                                      \
+  map[#name] = name##_counter.load();
+#include "per_subscription_assign.inc"
   return map;
 }
 

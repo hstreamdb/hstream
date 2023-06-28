@@ -10,7 +10,10 @@
 -- And then you can @cat common/stats/HStream/Stats.hspp@
 
 #define CounterExports(cat, name) \
-    cat##_stat_add_##name, cat##_stat_get_##name, cat##_stat_getall_##name, cat##_stat_set_##name
+    cat##_stat_add_##name, cat##_stat_get_##name, cat##_stat_getall_##name
+
+#define AssignExports(cat, name) \
+    cat##_stat_set_##name, cat##_stat_get_##name, cat##_stat_getall_##name
 
 module HStream.Stats
   ( -- * StatsHolder
@@ -51,7 +54,8 @@ module HStream.Stats
   , CounterExports(subscription, received_acks)
   , CounterExports(subscription, request_messages)
   , CounterExports(subscription, response_messages)
-  , CounterExports(subscription, checklist_size)
+    -- ** Assignments
+  , AssignExports(subscription, checklist_size)
     -- ** Time series
   , subscription_time_series_add_send_out_bytes
   , subscription_time_series_add_send_out_records
@@ -95,7 +99,9 @@ module HStream.Stats
   , serverHistogramEstimatePercentile
   ) where
 
-import           Control.Monad            (forM_, when)
+import           Control.Concurrent
+import           Control.Exception
+import           Control.Monad            (forM_, forever, when)
 import           Control.Monad.ST         (RealWorld)
 import           Data.Int
 import qualified Data.Map.Strict          as Map
@@ -114,39 +120,71 @@ import qualified HStream.Stats.Internal   as I
 -------------------------------------------------------------------------------
 
 newtype Stats = Stats (ForeignPtr I.CStats)
-newtype StatsHolder = StatsHolder (ForeignPtr I.CStatsHolder)
 
+data StatsHolder = StatsHolder
+  { cStatsHolder   :: !(ForeignPtr I.CStatsHolder)
+  , statsAssignOpt :: !(MVar (AssignOpt ()))
+  , statsAssignTid :: !(ThreadId)
+  }
+
+-- TODO: kill the runAssignOpt thread
 newStatsHolder :: Bool -> IO StatsHolder
-newStatsHolder isServer = StatsHolder <$>
-  (newForeignPtr I.c_delete_stats_holder_fun =<< I.c_new_stats_holder isServer)
+newStatsHolder isServer = do
+  assignOptVar <- newEmptyMVar
+  tid <- runAssignOpt assignOptVar
+  holder <-
+    newForeignPtr I.c_delete_stats_holder_fun =<< I.c_new_stats_holder isServer
+  pure $ StatsHolder holder assignOptVar tid
 
 newServerStatsHolder :: IO StatsHolder
 newServerStatsHolder = newStatsHolder True
 
 newAggregateStats :: StatsHolder -> IO Stats
-newAggregateStats (StatsHolder holder) = withForeignPtr holder $ \holder' ->
+newAggregateStats holder = withForeignPtr (cStatsHolder holder) $ \holder' ->
   Stats <$> (newForeignPtr I.c_delete_stats_fun =<< I.c_new_aggregate_stats holder')
 
 -- TODO: add Show instance for StatsHolder
 printStatsHolder :: StatsHolder -> IO ()
-printStatsHolder (StatsHolder holder) = withForeignPtr holder I.c_stats_holder_print
+printStatsHolder holder =
+  withForeignPtr (cStatsHolder holder) I.c_stats_holder_print
 
 resetStatsHolder :: StatsHolder -> IO ()
-resetStatsHolder (StatsHolder holder) = withForeignPtr holder I.stats_holder_reset
+resetStatsHolder holder = withForeignPtr (cStatsHolder holder) I.stats_holder_reset
 
 #define PER_X_STAT_ADD(PREFIX, STATS_NAME)                                     \
 PREFIX##add_##STATS_NAME :: StatsHolder -> CBytes -> Int64 -> IO ();           \
-PREFIX##add_##STATS_NAME (StatsHolder holder) key val =                        \
-  withForeignPtr holder $ \holder' ->                                          \
+PREFIX##add_##STATS_NAME holder key val =                                      \
+  withForeignPtr (cStatsHolder holder) $ \holder' ->                           \
   withCBytesUnsafe key $ \key' ->                                              \
     I.PREFIX##add_##STATS_NAME holder' (BA# key') val;
 
+data AssignOpt a = AssignOpt
+  { assignOptSetter   :: IO a
+  , assignOptComplete :: MVar (Either SomeException a)
+  }
+
+-- TODO: more safely exception
+--
+-- - what if takeMVar/putMVar failed ?
+runAssignOpt :: MVar (AssignOpt a) -> IO ThreadId
+runAssignOpt assignOptVar = forkOS $ forever $ do
+  AssignOpt{..} <- takeMVar assignOptVar
+  !a <- try $ assignOptSetter
+  putMVar assignOptComplete a
+
+-- TODO: more safely exception
 #define PER_X_STAT_SET(PREFIX, STATS_NAME)                                     \
 PREFIX##set_##STATS_NAME :: StatsHolder -> CBytes -> Int64 -> IO ();           \
-PREFIX##set_##STATS_NAME (StatsHolder holder) key val =                        \
-  withForeignPtr holder $ \holder' ->                                          \
-  withCBytesUnsafe key $ \key' ->                                              \
-    I.PREFIX##set_##STATS_NAME holder' (BA# key') val;
+PREFIX##set_##STATS_NAME StatsHolder{..} key val =                             \
+  let setter = withForeignPtr cStatsHolder $ \holder' ->                       \
+               withCBytesUnsafe key $ \key' ->                                 \
+                 I.PREFIX##set_##STATS_NAME holder' (BA# key') val;            \
+   in (do                                                                      \
+        comp <- newEmptyMVar;                                                  \
+        putMVar statsAssignOpt (AssignOpt setter comp);                        \
+        r <- takeMVar comp;                                                    \
+        either throwIO pure r;                                                 \
+      );
 
 -- TODO:
 --
@@ -173,13 +211,13 @@ PREFIX##getall_##STATS_NAME (Stats stats) =                                    \
 -- 1. Error while return value is a negative number.
 #define PER_X_STAT(PREFIX)                                                     \
 PREFIX##stat_getall :: StatsHolder -> CBytes -> IO (Map.Map CBytes Int64);     \
-PREFIX##stat_getall (StatsHolder stats_holder) stat_name =                     \
-  withForeignPtr stats_holder $ \stats_holder' ->                              \
+PREFIX##stat_getall holder stat_name =                                         \
+  withForeignPtr (cStatsHolder holder) $ \holder' ->                           \
   {- NOTE: the parentheses for do block is required to make the macro work -}  \
   withCBytesUnsafe stat_name $ \stat_name' -> (do                              \
     (ret, statMap) <-                                                          \
       peekCppMap                                                               \
-        (I.PREFIX##stat_getall stats_holder' (BA# stat_name'))                 \
+        (I.PREFIX##stat_getall holder' (BA# stat_name'))                       \
         peekStdStringToCBytesN c_delete_vector_of_string                       \
         peekN c_delete_vector_of_int64 ;                                       \
     if ret == 0 then pure statMap                                              \
@@ -187,10 +225,10 @@ PREFIX##stat_getall (StatsHolder stats_holder) stat_name =                     \
                         pure Map.empty;);                                      \
                                                                                \
 PREFIX##stat_erase :: StatsHolder -> CBytes -> IO ();                          \
-PREFIX##stat_erase (StatsHolder stats_holder) name =                           \
-  withForeignPtr stats_holder $ \stats_holder' ->                              \
+PREFIX##stat_erase holder name =                                               \
+  withForeignPtr (cStatsHolder holder) $ \holder' ->                           \
   withCBytesUnsafe name $ \name' -> (do                                        \
-    r{- Total erases -} <- I.PREFIX##stat_erase stats_holder' (BA# name');     \
+    r{- Total erases -} <- I.PREFIX##stat_erase holder' (BA# name');           \
     when (r < 0) (Log.fatal "PREFIX##stat_erase failed!"));
 
 -- stream_stat_getall, stream_stat_erase
@@ -206,7 +244,6 @@ PER_X_STAT(view_)
 
 #define STAT_DEFINE(name, _)                                                   \
 PER_X_STAT_ADD(stream_stat_, name)                                             \
-PER_X_STAT_SET(stream_stat_, name)                                             \
 PER_X_STAT_GET(stream_stat_, name)                                             \
 PER_X_STAT_GETALL_SEP(stream_stat_, name)
 #include "../include/per_stream_stats.inc"
@@ -218,8 +255,8 @@ PER_X_STAT_ADD(stream_time_series_, name)
 stream_time_series_get
   :: StatsHolder -> CBytes -> CBytes -> [Int] -> IO (Maybe [Double])
 stream_time_series_get _ _ _ [] = pure Nothing
-stream_time_series_get (StatsHolder holder) method_name stream_name intervals =
-  withForeignPtr holder $ \holder' ->
+stream_time_series_get holder method_name stream_name intervals =
+  withForeignPtr (cStatsHolder holder) $ \holder' ->
   withCBytesUnsafe method_name $ \method_name' ->
   withCBytesUnsafe stream_name $ \stream_name' -> do
     let interval_len = length intervals
@@ -237,8 +274,8 @@ stream_time_series_get (StatsHolder holder) method_name stream_name intervals =
 {-# DEPRECATED stream_time_series_getall_by_name "Don't use this, use stream_time_series_getall instead" #-}
 stream_time_series_getall_by_name
   :: StatsHolder -> CBytes -> [Int] -> IO (Map.Map CBytes [Double])
-stream_time_series_getall_by_name (StatsHolder holder) name intervals =
-  withForeignPtr holder $ \holder' ->
+stream_time_series_getall_by_name holder name intervals =
+  withForeignPtr (cStatsHolder holder) $ \holder' ->
   withCBytesUnsafe name $ \name' -> do
     let interval_len = length intervals
     -- NOTE only for unsafe ffi
@@ -262,8 +299,8 @@ stream_time_series_getall
   -> CBytes
   -> [Int]
   -> IO (Either String (Map.Map CBytes [Double]))
-stream_time_series_getall (StatsHolder holder) name intervals =
-  withForeignPtr holder $ \holder' ->
+stream_time_series_getall holder name intervals =
+  withForeignPtr (cStatsHolder holder) $ \holder' ->
   withCBytesUnsafe name $ \name' -> do
     let interval_len = length intervals
     -- NOTE only for unsafe ffi
@@ -288,7 +325,6 @@ stream_time_series_getall (StatsHolder holder) name intervals =
 -- Connector
 #define STAT_DEFINE(name, _)                                                   \
 PER_X_STAT_ADD(connector_stat_, name)                                          \
-PER_X_STAT_SET(connector_stat_, name)                                          \
 PER_X_STAT_GET(connector_stat_, name)                                          \
 PER_X_STAT_GETALL_SEP(connector_stat_, name)
 #include "../include/per_connector_stats.inc"
@@ -296,7 +332,6 @@ PER_X_STAT_GETALL_SEP(connector_stat_, name)
 -- Query
 #define STAT_DEFINE(name, _)                                                   \
 PER_X_STAT_ADD(query_stat_, name)                                              \
-PER_X_STAT_SET(query_stat_, name)                                              \
 PER_X_STAT_GET(query_stat_, name)                                              \
 PER_X_STAT_GETALL_SEP(query_stat_, name)
 #include "../include/per_query_stats.inc"
@@ -304,17 +339,21 @@ PER_X_STAT_GETALL_SEP(query_stat_, name)
 -- View
 #define STAT_DEFINE(name, _)                                                   \
 PER_X_STAT_ADD(view_stat_, name)                                               \
-PER_X_STAT_SET(view_stat_, name)                                               \
 PER_X_STAT_GET(view_stat_, name)                                               \
 PER_X_STAT_GETALL_SEP(view_stat_, name)
 #include "../include/per_view_stats.inc"
 
 #define STAT_DEFINE(name, _)                                                   \
 PER_X_STAT_ADD(subscription_stat_, name)                                       \
-PER_X_STAT_SET(subscription_stat_, name)                                       \
 PER_X_STAT_GET(subscription_stat_, name)                                       \
 PER_X_STAT_GETALL_SEP(subscription_stat_, name)
 #include "../include/per_subscription_stats.inc"
+
+#define STAT_DEFINE(name, _)                                                   \
+PER_X_STAT_SET(subscription_stat_, name)                                       \
+PER_X_STAT_GET(subscription_stat_, name)                                       \
+PER_X_STAT_GETALL_SEP(subscription_stat_, name)
+#include "../include/per_subscription_assign.inc"
 
 #define TIME_SERIES_DEFINE(name, _, __, ___)                                   \
 PER_X_STAT_ADD(subscription_time_series_, name)
@@ -323,8 +362,8 @@ PER_X_STAT_ADD(subscription_time_series_, name)
 subscription_time_series_get
   :: StatsHolder -> CBytes -> CBytes -> [Int] -> IO (Maybe [Double])
 subscription_time_series_get _ _ _ [] = pure Nothing
-subscription_time_series_get (StatsHolder holder) method_name stream_name intervals =
-  withForeignPtr holder $ \holder' ->
+subscription_time_series_get holder method_name stream_name intervals =
+  withForeignPtr (cStatsHolder holder) $ \holder' ->
   withCBytesUnsafe method_name $ \method_name' ->
   withCBytesUnsafe stream_name $ \stream_name' -> do
     let interval_len = length intervals
@@ -342,8 +381,8 @@ subscription_time_series_getall
   -> CBytes
   -> [Int]
   -> IO (Either String (Map.Map CBytes [Double]))
-subscription_time_series_getall (StatsHolder holder) name intervals =
-  withForeignPtr holder $ \holder' ->
+subscription_time_series_getall holder name intervals =
+  withForeignPtr (cStatsHolder holder) $ \holder' ->
   withCBytesUnsafe name $ \name' -> do
     let interval_len = length intervals
     -- NOTE only for unsafe ffi
@@ -372,8 +411,8 @@ PER_X_STAT_ADD(handle_time_series_, name)
 handle_time_series_get
   :: StatsHolder -> CBytes -> CBytes -> [Int] -> IO (Maybe [Double])
 handle_time_series_get _ _ _ [] = pure Nothing
-handle_time_series_get (StatsHolder holder) method_name key_name intervals =
-  withForeignPtr holder $ \holder' ->
+handle_time_series_get holder method_name key_name intervals =
+  withForeignPtr (cStatsHolder holder) $ \holder' ->
   withCBytesUnsafe method_name $ \method_name' ->
   withCBytesUnsafe key_name $ \key_name' -> do
     let interval_len = length intervals
@@ -391,8 +430,8 @@ handle_time_series_getall
   -> CBytes
   -> [Int]
   -> IO (Either String (Map.Map CBytes [Double]))
-handle_time_series_getall (StatsHolder holder) name intervals =
-  withForeignPtr holder $ \holder' ->
+handle_time_series_getall holder name intervals =
+  withForeignPtr (cStatsHolder holder) $ \holder' ->
   withCBytesUnsafe name $ \name' -> do
     let interval_len = length intervals
     -- NOTE only for unsafe ffi
@@ -440,8 +479,8 @@ instance Read ServerHistogramLabel where
         x -> errorWithoutStackTrace $ "cannot parse ServerHistogramLabel: " <> show x
 
 serverHistogramAdd :: StatsHolder -> ServerHistogramLabel -> Int64 -> IO ()
-serverHistogramAdd (StatsHolder holder) label val =
-  withForeignPtr holder $ \holder' ->
+serverHistogramAdd holder label val =
+  withForeignPtr (cStatsHolder holder) $ \holder' ->
   withCBytesUnsafe (packServerHistogramLabel label) $ \label' -> do
     ret <- I.server_histogram_add holder' (BA# label') val
     when (ret /= 0) $ error "serverHistogramAdd failed!"
@@ -450,8 +489,8 @@ serverHistogramAdd (StatsHolder holder) label val =
 serverHistogramEstimatePercentiles
   :: StatsHolder -> ServerHistogramLabel -> [Double] -> IO [Int64]
 serverHistogramEstimatePercentiles _ _ [] = pure []
-serverHistogramEstimatePercentiles (StatsHolder holder) label ps =
-  withForeignPtr holder $ \holder' ->
+serverHistogramEstimatePercentiles holder label ps =
+  withForeignPtr (cStatsHolder holder) $ \holder' ->
   withCBytesUnsafe (packServerHistogramLabel label) $ \label' -> do
     let len = length ps
     (mpa@(MutablePrimArray mba#) :: MutablePrimArray RealWorld Int64) <- newPrimArray len
@@ -466,7 +505,7 @@ serverHistogramEstimatePercentiles (StatsHolder holder) label ps =
 
 serverHistogramEstimatePercentile
   :: StatsHolder -> ServerHistogramLabel -> Double -> IO Int64
-serverHistogramEstimatePercentile (StatsHolder holder) label p =
-  withForeignPtr holder $ \holder' ->
+serverHistogramEstimatePercentile holder label p =
+  withForeignPtr (cStatsHolder holder) $ \holder' ->
   withCBytesUnsafe (packServerHistogramLabel label) $ \label' -> do
     I.server_histogram_estimatePercentile holder' (BA# label') p

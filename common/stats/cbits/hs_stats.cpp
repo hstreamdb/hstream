@@ -77,6 +77,11 @@ void setPerSubscriptionStatsMember(
     member_ptr = &PerSubscriptionStats::name##_counter;                        \
   }
 #include "per_subscription_stats.inc"
+#define STAT_DEFINE(name, _)                                                   \
+  if (#name == std::string(stat_name)) {                                       \
+    member_ptr = &PerSubscriptionStats::name##_counter;                        \
+  }
+#include "per_subscription_assign.inc"
 }
 
 void setPerHandleTimeSeriesMember(
@@ -191,6 +196,10 @@ PER_X_STAT(view_, PerViewStats, per_view_stats, setPerViewStatsMember)
   PER_X_STAT_DEFINE(subscription_stat_, per_subscription_stats,                \
                     PerSubscriptionStats, name)
 #include "per_subscription_stats.inc"
+#define STAT_DEFINE(name, _)                                                   \
+  PER_X_STAT_DEFINE(subscription_stat_, per_subscription_stats,                \
+                    PerSubscriptionStats, name)
+#include "per_subscription_assign.inc"
 
 #define TIME_SERIES_DEFINE(name, _, __, ___)                                   \
   PER_X_TIME_SERIES_DEFINE(subscription_time_series_, per_subscription_stats,  \
