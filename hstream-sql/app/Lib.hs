@@ -20,7 +20,7 @@ import           Options.Applicative
 import           System.IO
 
 class HasRunTest a where
-  runTest :: a -> T.Text -> IO T.Text
+  runTest :: a -> T.Text -> IO (Either T.Text T.Text)
   getTestName :: a -> String
 
 mkMain :: HasRunTest a => a -> IO ()
@@ -164,11 +164,7 @@ getTestSuite :: FilePath -> IO TestSuite
 getTestSuite = Y.decodeFileThrow
 
 getRunTestResultText :: HasRunTest a => a -> T.Text -> IO (Either T.Text T.Text)
-getRunTestResultText x stmt = do
-  runTestResult <- try @SomeException (runTest x stmt)
-  pure $ case runTestResult of
-    Right ok -> Right ok
-    Left err -> Left . T.pack . head . lines $ show err
+getRunTestResultText = runTest
 
 newtype TestSuite = TestSuite
   { testSuiteCases :: V.Vector TestCase

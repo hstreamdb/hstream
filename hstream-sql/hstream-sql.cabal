@@ -166,3 +166,20 @@ executable syntax-test-runner
 
   default-language: GHC2021
   ghc-options:      -Wall -Wextra
+
+executable plan-test-runner
+  main-is:          PlanTestRunner.hs
+  hs-source-dirs:   app
+  other-modules:    Lib
+  build-depends:
+    , aeson
+    , base
+    , bytestring
+    , hstream-sql
+    , optparse-applicative
+    , text
+    , vector
+    , yaml
+
+  default-language: GHC2021
+  ghc-options:      -Wall -Wextra
