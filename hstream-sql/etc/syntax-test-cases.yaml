@@ -201,9 +201,3 @@ testSuiteCases:
     RGroupByEmpty RHavingEmpty)
   testCaseStmts:
   - select ['aa', 'bb', 'cc'] from s;
-- testCaseFail: null
-  testCaseLabel: ARRAY format -- FIXME
-  testCaseResult: 'ParseException at <unknown position>: syntax error at line 1, column
-    8 before `[]'''
-  testCaseStmts:
-  - select [] from s;
