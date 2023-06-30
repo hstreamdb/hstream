@@ -217,8 +217,8 @@ helpInfos = M.fromList [
   |]),
   ("INSERT",[r|
   INSERT INTO <stream_name> ( {field_name} ) VALUES ( {field_value} );
-  INSERT INTO <stream_name> VALUES '<json_value>';
-  INSERT INTO <stream_name> VALUES "<binary_value>";
+  INSERT INTO <stream_name> VALUES CAST ('json_value'   AS JSONB);
+  INSERT INTO <stream_name> VALUES CAST ('binary_value' AS BYTEA);
   |]),
   ("SELECT", [r|
   SELECT <* | {expression [ AS field_alias ]}>
@@ -237,7 +237,7 @@ helpInfos = M.fromList [
   TERMINATE <QUERY <query_id>|ALL>;
   |]),
   ("DROP", [r|
-  DROP <STREAM <stream_name>|VIEW <view_name>> [IF EXISTS];
+  DROP <STREAM <stream_name>|VIEW <view_name>|QUERY <query_id>> [IF EXISTS];
   |])
   ]
 
