@@ -109,6 +109,7 @@ module HStream.Store.Stream
   , LD.readerSetIncludeByteOffset
   , LD.readerSetWaitOnlyWhenNoData
   , LD.readerStopReading
+  , LD.readerIsReadingAny
     -- ** Checkpointed Reader
   , FFI.LDSyncCkpReader
   , newLDFileCkpReader

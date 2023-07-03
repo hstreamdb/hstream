@@ -29,6 +29,7 @@ import qualified Proto3.Suite                     as PB
 #if __GLASGOW_HASKELL__ < 902
 import qualified HStream.Admin.Store.API          as AA
 #endif
+import           Data.IORef                       (IORef)
 import           HStream.Base.Timer               (CompactedWorker)
 import           HStream.Common.ConsistentHashing (HashRing)
 import           HStream.Gossip.Types             (Epoch, GossipContext)
@@ -256,10 +257,11 @@ instance TaskManager IO.Worker where
 data ShardReader = ShardReader
   { reader          :: S.LDReader
   , timestampOffset :: Maybe Int64
+  , totalBatches    :: Maybe (IORef Word64)
   }
 
-mkShardReader :: S.LDReader -> Maybe Int64 -> ShardReader
-mkShardReader reader timestamp = ShardReader { reader = reader, timestampOffset = timestamp }
+mkShardReader :: S.LDReader -> Maybe Int64 -> Maybe (IORef Word64) -> ShardReader
+mkShardReader reader timestampOffset totalBatches = ShardReader {..}
 
 --------------------------------------------------------------------------------
 
