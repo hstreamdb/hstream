@@ -110,6 +110,7 @@ data HStreamPlan
   = CreatePlan          StreamName RStreamOptions
   | CreateConnectorPlan ConnectorType ConnectorName Text Bool (HM.HashMap Text Value)
   | InsertPlan          StreamName InsertType ByteString
+  | InsertBySelectPlan  StreamName RSelect Bool
   | DropPlan            CheckIfExist DropObject
   | ShowPlan            ShowObject
   | TerminatePlan       TerminateObject
@@ -156,6 +157,7 @@ hstreamCodegen = \case
       RInsertRawOrJsonPayloadTypeJson -> InsertPlan stream JsonFormat $
         BL.toStrict . PB.toLazyByteString . jsonObjectToStruct . fromJust . Aeson.decode
           $ BL.fromStrict bs
+  RQInsert (RInsertSel stream rSel isPush) -> pure $ InsertBySelectPlan stream rSel isPush
   RQShow (RShow RShowStreams)        -> return $ ShowPlan SStreams
   RQShow (RShow RShowQueries)        -> return $ ShowPlan SQueries
   RQShow (RShow RShowConnectors)     -> return $ ShowPlan SConnectors

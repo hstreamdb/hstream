@@ -116,6 +116,7 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
     CreatePlan {} -> discard "CreateStream"
     CreateConnectorPlan {} -> discard "CreateConnector"
     InsertPlan {} -> discard "Append"
+    InsertBySelectPlan {} -> discard "Append"
     DropPlan {} -> discard "Delete"
     ShowPlan {} -> discard "List"
     TerminatePlan {} -> discard "TerminateQuery"

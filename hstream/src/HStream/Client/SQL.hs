@@ -11,12 +11,13 @@
 
 module HStream.Client.SQL where
 
-import           Control.Concurrent               (forkFinally, myThreadId,
-                                                   readMVar, threadDelay,
-                                                   throwTo)
+import           Control.Concurrent               (forkFinally, forkIO,
+                                                   myThreadId, readMVar,
+                                                   threadDelay, throwTo)
 import           Control.Exception                (SomeException, handle, try)
 import           Control.Monad                    (forM_, forever, void, (>=>))
 import           Control.Monad.IO.Class           (liftIO)
+import qualified Data.ByteString.Lazy             as BL
 import           Data.Char                        (toUpper)
 import qualified Data.Map                         as M
 import qualified Data.Text                        as T
@@ -24,6 +25,7 @@ import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Client    (ClientRequest (..),
                                                    ClientResult (..))
 import           Network.GRPC.HighLevel.Generated (withGRPCClient)
+import qualified Proto3.Suite                     as PB
 import qualified System.Console.Haskeline         as RL
 import qualified System.Console.Haskeline.History as RL
 import           Text.RawString.QQ                (r)
@@ -38,9 +40,10 @@ import           HStream.Client.Action            (createConnector,
                                                    resumeConnector, resumeQuery,
                                                    retry, terminateQuery)
 import           HStream.Client.Execute           (execute, executeShowPlan,
+                                                   executeWithLookupResource,
                                                    executeWithLookupResource_,
                                                    execute_, updateClusterInfo)
-import           HStream.Client.Internal          (cliFetch)
+import           HStream.Client.Internal          (cliFetch, cliFetch')
 import           HStream.Client.Types             (HStreamCliContext (..),
                                                    HStreamSqlContext (..),
                                                    Resource (..))
@@ -52,9 +55,10 @@ import           HStream.Server.HStreamApi        (CommandQuery (..),
                                                    hstreamApiClient)
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.SQL                      (HStreamPlan (..),
+                                                   InsertType (..),
                                                    PauseObject (..),
                                                    RCreate (..), RSQL (..),
-                                                   RStreamOptions (..),
+                                                   RSelect, RStreamOptions (..),
                                                    ResumeObject (..),
                                                    TerminateObject (..),
                                                    hstreamCodegen,
@@ -72,7 +76,7 @@ import           HStream.SQL.Exception            (SomeSQLException,
 import           HStream.Utils                    (HStreamClientApi,
                                                    ResourceType (..),
                                                    formatCommandQueryResponse,
-                                                   formatResult,
+                                                   formatResult, getServerResp,
                                                    mkGRPCClientConfWithSSL,
                                                    newRandomText)
 
@@ -110,7 +114,7 @@ interactiveSQLApp sqlCtx@HStreamSqlContext{hstreamCliContext = cliCtx@HStreamCli
               loop
 
 commandExec :: HStreamSqlContext -> String -> IO ()
-commandExec HStreamSqlContext{hstreamCliContext = cliCtx@HStreamCliContext{..},..} xs = case words xs of
+commandExec ctx@HStreamSqlContext{hstreamCliContext = cliCtx@HStreamCliContext{..},..} xs = case words xs of
   [] -> return ()
 
   -- -- The Following commands are for testing only
@@ -149,6 +153,7 @@ commandExec HStreamSqlContext{hstreamCliContext = cliCtx@HStreamCliContext{..},.
                   Nothing  -> putStrLn "Failed to calculate shard id"
                   Just sid -> executeWithLookupResource_ cliCtx (Resource ResShard (T.pack $ show sid)) (retry retryLimit retryInterval $ insertIntoStream sName sid insertType payload)
               Nothing -> putStrLn "No shards found"
+        InsertBySelectPlan stream rSel isPush -> execInsertBySelectPlan ctx stream rSel isPush xs
         CreateConnectorPlan cType cName cTarget _ cfg  -> do
           let cfgText = TL.toStrict (J.encodeToLazyText cfg)
           executeWithLookupResource_ cliCtx (Resource ResConnector cName) (createConnector cName cType cTarget cfgText)
@@ -162,6 +167,43 @@ commandExec HStreamSqlContext{hstreamCliContext = cliCtx@HStreamCliContext{..},.
           addr <- readMVar currentServer
           withGRPCClient (HStream.Utils.mkGRPCClientConfWithSSL addr sslConfig)
             (hstreamApiClient >=> \api -> sqlAction api (T.pack xs))
+
+execInsertBySelectPlan :: HStreamSqlContext -> T.Text -> RSelect -> Bool -> String -> IO ()
+execInsertBySelectPlan HStreamSqlContext {..} stream rSel isPush rawSql = do
+  let selSql = getSel rawSql
+  case isPush of
+    True  -> do
+      _ <- forkIO $ do
+        shardId <- getShardId
+        cliFetch' (pure $ cliFetchAction shardId) hstreamCliContext selSql
+      pure ()
+    False -> do
+      SelectPlan srcs _ _ _ <- (parseAndRefine $ T.pack selSql) >>= hstreamCodegen
+      API.ExecuteViewQueryResponse pbStructVec <- getServerResp =<< executeWithLookupResource hstreamCliContext
+        (Resource ResView (head srcs))
+        (executeViewQuery selSql)
+      shardId <- getShardId
+      V.mapM_ (cliFetchAction shardId) pbStructVec
+  pure ()
+  where
+    getSel :: String -> String
+    getSel xs = unwords $ h (words xs)
+    h (x : xs) = if (toUpper <$> x) == "SELECT"
+                      then x : xs
+                      else h xs
+
+    getShardId = do
+      (execute hstreamCliContext $ listShards stream) >>= \case
+        Nothing -> putStrLn "No shards found" >> undefined
+        Just (API.ListShardsResponse shards) ->
+          case calculateShardId "" (V.toList shards) of
+            Nothing      -> putStrLn "Failed to calculate shard id" >> undefined
+            Just shardId -> pure shardId
+
+    cliFetchAction shardId pbStruct = executeWithLookupResource_ hstreamCliContext (Resource ResShard (T.pack $ show shardId)) $
+      retry retryLimit retryInterval $
+        insertIntoStream stream shardId JsonFormat (BL.toStrict . PB.toLazyByteString $ pbStruct)
+
 
 
 readToSQL :: T.Text -> RL.InputT IO (Maybe String)
