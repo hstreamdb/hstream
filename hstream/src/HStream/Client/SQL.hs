@@ -35,10 +35,12 @@ import           HStream.Client.Action            (createConnector,
                                                    createStreamBySelect,
                                                    createStreamBySelectWithCustomQueryName,
                                                    dropAction, executeViewQuery,
-                                                   insertIntoStream, listShards,
-                                                   pauseConnector, pauseQuery,
-                                                   resumeConnector, resumeQuery,
-                                                   retry, terminateQuery)
+                                                   insertIntoStream,
+                                                   insertIntoStream',
+                                                   listShards, pauseConnector,
+                                                   pauseQuery, resumeConnector,
+                                                   resumeQuery, retry,
+                                                   terminateQuery)
 import           HStream.Client.Execute           (execute, executeShowPlan,
                                                    executeWithLookupResource,
                                                    executeWithLookupResource_,
@@ -183,7 +185,7 @@ execInsertBySelectPlan HStreamSqlContext {..} stream rSel isPush rawSql = do
         (Resource ResView (head srcs))
         (executeViewQuery selSql)
       shardId <- getShardId
-      V.mapM_ (cliFetchAction shardId) pbStructVec
+      cliFetchActionBatch shardId pbStructVec
   pure ()
   where
     getSel :: String -> String
@@ -200,9 +202,10 @@ execInsertBySelectPlan HStreamSqlContext {..} stream rSel isPush rawSql = do
             Nothing      -> putStrLn "Failed to calculate shard id" >> undefined
             Just shardId -> pure shardId
 
-    cliFetchAction shardId pbStruct = executeWithLookupResource_ hstreamCliContext (Resource ResShard (T.pack $ show shardId)) $
+    cliFetchAction      shardId pbStruct    = cliFetchActionBatch shardId (pure pbStruct)
+    cliFetchActionBatch shardId pbStructVec = executeWithLookupResource_ hstreamCliContext (Resource ResShard (T.pack $ show shardId)) $
       retry retryLimit retryInterval $
-        insertIntoStream stream shardId JsonFormat (BL.toStrict . PB.toLazyByteString $ pbStruct)
+        insertIntoStream' stream shardId JsonFormat (BL.toStrict . PB.toLazyByteString <$> pbStructVec)
 
 
 
