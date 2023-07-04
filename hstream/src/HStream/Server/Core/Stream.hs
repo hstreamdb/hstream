@@ -12,6 +12,7 @@ module HStream.Server.Core.Stream
   , append
   , appendStream
   , listShards
+  , getTailRecordId
   ) where
 
 import           Control.Concurrent        (modifyMVar_)
@@ -152,6 +153,17 @@ getStreamInfo ServerContext{..} stream = do
      case PT.fromByteString . BSL.toStrict . cBytesToLazyByteString $ tmp of
        Left _          -> Nothing
        Right timestamp -> Just timestamp
+
+getTailRecordId :: ServerContext -> API.GetTailRecordIdRequest -> IO API.GetTailRecordIdResponse
+getTailRecordId ServerContext{..} API.GetTailRecordIdRequest{getTailRecordIdRequestShardId=sId} = do
+  shardExists <- S.logIdHasGroup scLDClient sId
+  unless shardExists $ throwIO $ HE.ShardNotFound $ "Shard with id " <> T.pack (show sId) <> " is not found."
+  lsn <- S.getTailLSN scLDClient sId
+  let recordId = API.RecordId { recordIdShardId    = sId
+                              , recordIdBatchId    = lsn
+                              , recordIdBatchIndex = 0
+                              }
+  return $ API.GetTailRecordIdResponse { getTailRecordIdResponseTailRecordId = Just recordId}
 
 append :: HasCallStack
        => ServerContext
