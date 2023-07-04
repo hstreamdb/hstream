@@ -203,6 +203,8 @@ refineLogRecord (Left (Just gap)) = Left gap
 refineLogRecord (Left Nothing)    = error "Unexpected Error!"
 refineLogRecord (Right payload)   = Right payload
 
+-- | Checks if a log is being read. Can be used to find out if the `until`
+-- LSN (passed to startReading()) was reached (for a log that was being read).
 readerIsReading :: LDReader -> C_LogID -> IO Bool
 readerIsReading reader logid =
   withForeignPtr reader $ \ptr ->
@@ -213,6 +215,8 @@ checkpointedReaderIsReading reader logid =
   withForeignPtr reader $ \ptr ->
     cbool2bool <$> c_ld_checkpointed_reader_is_reading ptr logid
 
+-- | Checks if any log is being read.  Can be used to find out if the end was
+-- reached for *all* logs that were being read.
 readerIsReadingAny :: LDReader -> IO Bool
 readerIsReadingAny reader = withForeignPtr reader $
   fmap cbool2bool . c_ld_reader_is_reading_any

@@ -24,6 +24,7 @@ import           Network.GRPC.HighLevel.Generated (ClientError (..),
                                                    ClientResult (..),
                                                    withGRPCClient)
 import qualified Options.Applicative              as O
+import           Proto3.Suite                     (def)
 import           System.Exit                      (exitFailure)
 import           System.Timeout                   (timeout)
 import           Text.RawString.QQ                (r)
@@ -179,10 +180,10 @@ hstreamStream connOpts@RefinedCliConnOpts{..} cmd = do
    getRequest :: ReadShardArgs -> IO API.ReadShardStreamRequest
    getRequest ReadShardArgs{..} = do
      suffix <- newRandomText 32
-     return API.ReadShardStreamRequest { API.readShardStreamRequestReaderId = "reader_" <> suffix
-                                       , API.readShardStreamRequestShardId = shardIdArgs
-                                       , API.readShardStreamRequestShardOffset = shardOffsetArgs
-                                       }
+     return def { API.readShardStreamRequestReaderId = "reader_" <> suffix
+                , API.readShardStreamRequestShardId = shardIdArgs
+                , API.readShardStreamRequestFrom = shardOffsetArgs
+                }
 
 hstreamSubscription :: RefinedCliConnOpts -> SubscriptionCommand -> IO ()
 hstreamSubscription connOpts@RefinedCliConnOpts{..} = \case

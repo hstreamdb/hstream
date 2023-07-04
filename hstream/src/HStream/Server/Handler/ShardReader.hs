@@ -114,7 +114,7 @@ readShardStreamHandler sc (ServerWriterRequest _meta req streamSend) =
     C.readShardStream sc req streamWrite
     return $ ServerWriterResponse mempty StatusUnknown "should not reach here"
   where
-    streamWrite x = first show <$> (streamSend x)
+    streamWrite x = first show <$> streamSend x
 
 handleReadShardStream
   :: ServerContext
