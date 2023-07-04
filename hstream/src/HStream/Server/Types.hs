@@ -255,13 +255,14 @@ instance TaskManager IO.Worker where
   recoverTask = IO.recoverTask
 
 data ShardReader = ShardReader
-  { reader          :: S.LDReader
-  , timestampOffset :: Maybe Int64
-  , totalBatches    :: Maybe (IORef Word64)
+  { reader       :: S.LDReader
+  , totalBatches :: Maybe (IORef Word64)
+  , startTs      :: Maybe Int64
+  , endTs        :: Maybe Int64
   }
 
-mkShardReader :: S.LDReader -> Maybe Int64 -> Maybe (IORef Word64) -> ShardReader
-mkShardReader reader timestampOffset totalBatches = ShardReader {..}
+mkShardReader :: S.LDReader ->  Maybe (IORef Word64) -> Maybe Int64 -> Maybe Int64 -> ShardReader
+mkShardReader reader totalBatches startTs endTs = ShardReader {..}
 
 --------------------------------------------------------------------------------
 
