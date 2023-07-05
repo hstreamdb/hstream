@@ -110,7 +110,6 @@ data HStreamPlan
   = CreatePlan          StreamName RStreamOptions
   | CreateConnectorPlan ConnectorType ConnectorName Text Bool (HM.HashMap Text Value)
   | InsertPlan          StreamName InsertType ByteString
-  | InsertBySelectPlan  StreamName RSelect Bool
   | DropPlan            CheckIfExist DropObject
   | ShowPlan            ShowObject
   | TerminatePlan       TerminateObject
@@ -121,6 +120,7 @@ data HStreamPlan
   | PushSelectPlan      [StreamName] StreamName TaskBuilder Persist
   | CreateBySelectPlan  [StreamName] StreamName TaskBuilder RStreamOptions Persist
   | CreateViewPlan      [StreamName] StreamName ViewName TaskBuilder Persist
+  | InsertBySelectPlan  [StreamName] StreamName TaskBuilder Persist
 
 --------------------------------------------------------------------------------
 streamCodegen :: HasCallStack => Text -> IO HStreamPlan
@@ -140,6 +140,10 @@ hstreamCodegen = \case
     tName <- genTaskName
     (builder, srcs, sink, persist) <- elabRSelect tName (Just stream) select
     return $ CreateBySelectPlan srcs sink (HS.build builder) rOptions persist
+  RQInsert (RInsertSel stream select isPush@True) -> do
+    tName <- genTaskName
+    (builder, srcs, sink, persist) <- elabRSelect tName (Just stream) select
+    pure $ InsertBySelectPlan srcs sink (HS.build builder) persist
   RQCreate (RCreateView view select) -> do
     tName <- genTaskName
     (builder, srcs, sink, persist) <- elabRSelect tName (Just view) select
@@ -157,7 +161,6 @@ hstreamCodegen = \case
       RInsertRawOrJsonPayloadTypeJson -> InsertPlan stream JsonFormat $
         BL.toStrict . PB.toLazyByteString . jsonObjectToStruct . fromJust . Aeson.decode
           $ BL.fromStrict bs
-  RQInsert (RInsertSel stream rSel isPush) -> pure $ InsertBySelectPlan stream rSel isPush
   RQShow (RShow RShowStreams)        -> return $ ShowPlan SStreams
   RQShow (RShow RShowQueries)        -> return $ ShowPlan SQueries
   RQShow (RShow RShowConnectors)     -> return $ ShowPlan SConnectors

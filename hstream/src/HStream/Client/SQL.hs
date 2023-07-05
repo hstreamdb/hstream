@@ -155,7 +155,9 @@ commandExec ctx@HStreamSqlContext{hstreamCliContext = cliCtx@HStreamCliContext{.
                   Nothing  -> putStrLn "Failed to calculate shard id"
                   Just sid -> executeWithLookupResource_ cliCtx (Resource ResShard (T.pack $ show sid)) (retry retryLimit retryInterval $ insertIntoStream sName sid insertType payload)
               Nothing -> putStrLn "No shards found"
-        InsertBySelectPlan stream rSel isPush -> execInsertBySelectPlan ctx stream rSel isPush xs
+        InsertBySelectPlan {} -> do
+          qName <-  ("cli_generated_" <>) <$> newRandomText 10
+          executeWithLookupResource_ cliCtx (Resource ResQuery qName) (createStreamBySelectWithCustomQueryName xs qName)
         CreateConnectorPlan cType cName cTarget _ cfg  -> do
           let cfgText = TL.toStrict (J.encodeToLazyText cfg)
           executeWithLookupResource_ cliCtx (Resource ResConnector cName) (createConnector cName cType cTarget cfgText)

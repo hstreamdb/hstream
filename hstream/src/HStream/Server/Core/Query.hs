@@ -116,7 +116,7 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
     CreatePlan {} -> discard "CreateStream"
     CreateConnectorPlan {} -> discard "CreateConnector"
     InsertPlan {} -> discard "Append"
-    InsertBySelectPlan {} -> discard "Append"
+    InsertBySelectPlan {} -> discard "CreateQuery"
     DropPlan {} -> discard "Delete"
     ShowPlan {} -> discard "List"
     TerminatePlan {} -> discard "TerminateQuery"
@@ -214,6 +214,31 @@ createQueryWithNamespace'
                 }
               hstreamQueryToQuery metaHandle qInfo
             _ -> throw $ HE.WrongExecutionPlan "Create query only support create stream/view <name> as select statements"
+
+        RQInsert (RInsertSel streamName rSel isPush@True) -> do
+          InsertBySelectPlan srcs sink builder persist <- hstreamCodegen $ RQInsert (RInsertSel streamName (modifySelect namespace rSel) isPush)
+          -- check sink streams
+          -- check source streams
+          -- update metadata
+          qInfo <- P.createInsertQueryInfo createQueryRequestQueryName createQueryRequestSql
+            (srcs, sink)
+            rSQL serverID metaHandle
+          -- run core task
+          consumerClosed <- newTVarIO False
+          let qRunner = QueryRunner
+                { qRTaskBuilder = builder
+                , qRQueryName   = createQueryRequestQueryName
+                , qRQueryString = createQueryRequestSql
+                , qRWhetherToHStore = True
+                , qRQuerySources    = srcs
+                , qRConsumerClosed  = consumerClosed
+                }
+          logId <- S.getUnderlyingLogId scLDClient
+            (transToStreamName streamName)
+            Nothing
+          runQuery sc qRunner logId
+          hstreamQueryToQuery metaHandle qInfo
+
         RQCreate (RCreateView view select) ->
           hstreamCodegen (RQCreate (RCreateView (namespace <> view)
                                                 (modifySelect namespace select)
