@@ -3,7 +3,7 @@
 
 ARG HS_IMAGE="hstreamdb/haskell:latest"
 ARG LD_IMAGE="hstreamdb/logdevice:latest"
-# Options: "cache", "cache_dist" or "no_cache"
+# Options: "cache", "no_cache" or "cache_dist"(NOT Recommended)
 ARG BUILD_CACHE="cache"
 
 # ------------------------------------------------------------------------------
@@ -14,16 +14,17 @@ FROM hstreamdb/hstream-builder AS cache
 
 FROM ${HS_IMAGE} as builder_cache
 ONBUILD COPY --from=cache /root/.cabal/ /root/.cabal/
+ONBUILD COPY --from=cache /usr/local/bin/cabal-store-gc /usr/local/bin/cabal-store-gc
 
 FROM ${HS_IMAGE} as builder_cache_dist
 ONBUILD COPY --from=cache /root/.cabal/ /root/.cabal/
 ONBUILD COPY --from=cache /hstream/dist-newstyle/ /hstream/dist-newstyle/
+ONBUILD COPY --from=cache /usr/local/bin/cabal-store-gc /usr/local/bin/cabal-store-gc
 
 FROM ${HS_IMAGE} as builder_no_cache
 
 # ------------------------------------------------------------------------------
 
-# NOTE: this is a builder image so that we won't do any house clean here.
 FROM builder_${BUILD_CACHE} as builder
 
 COPY . /hstream
@@ -36,14 +37,47 @@ ARG HSTREAM_VERSION="unknown"
 ARG HSTREAM_VERSION_COMMIT="unknown"
 
 RUN rm -rf /root/.cabal/bin && \
-    cabal update && \
     cd /hstream && \
+    cabal update && \
     HSTREAM_VERSION=${HSTREAM_VERSION} HSTREAM_VERSION_COMMIT=${HSTREAM_VERSION_COMMIT} make && \
-    cabal install --flags "${BUILD_TYPE}" hstream hstream-admin hstream-store && \
     cabal install --flags "${BUILD_TYPE}" \
+      --install-method copy \
+      hstream hstream-admin hstream-store && \
+    cabal install --flags "${BUILD_TYPE}" \
+      --install-method copy \
       --constraint="hstream +hstream_use_grpc_haskell" \
       --constraint="hstream-gossip +hstream_use_grpc_haskell" \
-      --program-suffix="-old" hstream
+      --program-suffix="-old" \
+      hstream
+
+# Since cabal doesn't support gc the store, here we use cabal-store-gc
+# See: https://github.com/haskell/cabal/issues/3333
+#
+# This is only for reducing the size of builder image. Building hstream doesn't
+# require this.
+#
+# FIXME:
+#
+# 1. ~/.ghc is requred for running 'cabal-store-gc --collect'
+#    Because it will call a subprocess "cwd=/root/.ghc /opt/ghc/9.2.8/lib/ghc-9.2.8/bin/ghc-pkg --version"
+# 2. Because of this https://github.com/phadej/cabal-extras/issues/75, I use my own fork.
+RUN set -eux; \
+    export TEMP_STORE=$(mktemp -d); \
+    if [ -z "$(command -v cabal-store-gc)" ]; then \
+      git clone https://github.com/4eUeP/cabal-extras.git; \
+      cd cabal-extras; \
+      cabal --store-dir $TEMP_STORE install \
+        --with-compiler ghc \
+        --installdir /usr/local/bin \
+        --install-method copy \
+        cabal-store-gc; \
+      rm -rf /cabal-extras; rm -rf $TEMP_STORE; \
+    fi; \
+    cd /hstream; \
+    cabal-store-gc --add-project-root; \
+    mkdir /root/.ghc; \
+    cabal-store-gc --collect; \
+    rm -rf /root/.cabal/store/roots;
 
 # ------------------------------------------------------------------------------
 
