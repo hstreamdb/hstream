@@ -22,6 +22,7 @@ import qualified HStream.Server.HStreamApi     as API
 import           HStream.Server.Types          (ServerID)
 import           HStream.Utils                 (ResourceType, SocketAddr (..),
                                                 mkGRPCClientConfWithSSL)
+import           Options.Applicative.Types
 import           Proto3.Suite                  (Enumerated (Enumerated))
 
 data CliCmd = CliCmd HStreamCommand | GetVersionCmd
@@ -102,16 +103,18 @@ readShardRequestParser = ReadShardArgs
                                                      <> O.help ( "Read from offset, e.g. earliest, latest, "
                                                               <> "recordId:1789764666323849-4294967385-0, "
                                                               <> "timestamp:1684486287810")
-                                                      )
-      )
+                                                      ))
   <*> O.optional (shardOffsetToPb <$> O.option O.auto ( O.metavar "UNTIL_OFFSET"
                                                      <> O.long "until"
                                                      <> O.help ( "Read until offset, e.g. earliest, latest, "
                                                               <> "recordId:1789764666323849-4294967385-0, "
                                                               <> "timestamp:1684486287810")
-                                                      )
-      )
-  <*> O.option O.auto ( O.long "total" <> O.metavar "INT" <> O.value 0 <> O.help "Max total number of batches read by reader")
+                                                      ))
+  <*> (fromIntegral <$> O.option positiveNumParser ( O.long "total"
+                                                  <> O.metavar "INT"
+                                                  <> O.value 0
+                                                  <> O.help "Max total number of batches read by reader"
+                                                   ))
 
 data ShardOffset = EARLIEST
                  | LATEST
@@ -144,6 +147,14 @@ shardOffsetToPb (RecordId recordIdShardId recordIdBatchId recordIdBatchIndex) =
   API.ShardOffset . Just . API.ShardOffsetOffsetRecordOffset $ API.RecordId {..}
 shardOffsetToPb (Timestamp t) = API.ShardOffset . Just . API.ShardOffsetOffsetTimestampOffset $
   API.TimestampOffset {timestampOffsetTimestampInMs = t, timestampOffsetStrictAccuracy = True}
+
+positiveNumParser :: ReadM Int
+positiveNumParser = do
+  s <- readerAsk
+  case Read.readMaybe s of
+    Just n | n >= 0 -> return n
+    _               -> readerError $ "Expected positive integer but get: " ++ s
+
 
 data SubscriptionCommand
   = SubscriptionCmdList
