@@ -180,9 +180,11 @@ hstreamStream connOpts@RefinedCliConnOpts{..} cmd = do
    getRequest :: ReadShardArgs -> IO API.ReadShardStreamRequest
    getRequest ReadShardArgs{..} = do
      suffix <- newRandomText 32
-     return def { API.readShardStreamRequestReaderId = "reader_" <> suffix
-                , API.readShardStreamRequestShardId = shardIdArgs
-                , API.readShardStreamRequestFrom = shardOffsetArgs
+     return def { API.readShardStreamRequestReaderId       = "reader_" <> suffix
+                , API.readShardStreamRequestShardId        = shardIdArgs
+                , API.readShardStreamRequestFrom           = startOffset
+                , API.readShardStreamRequestUntil          = endOffset
+                , API.readShardStreamRequestMaxReadBatches = maxReadBatches
                 }
 
 hstreamSubscription :: RefinedCliConnOpts -> SubscriptionCommand -> IO ()
