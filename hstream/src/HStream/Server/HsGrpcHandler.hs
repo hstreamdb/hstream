@@ -37,6 +37,7 @@ handlers sc =
   , unary (GRPC :: GRPC P.HStreamApi "listStreams") (H.handleListStreams sc)
   , unary (GRPC :: GRPC P.HStreamApi "listStreamsWithPrefix") (H.handleListStreamsWithPrefix sc)
   , unary (GRPC :: GRPC P.HStreamApi "listShards") (H.handleListShard sc)
+  , unary (GRPC :: GRPC P.HStreamApi "getTailRecordId") (H.handleGetTailRecordId sc)
     -- Reader
   , unary (GRPC :: GRPC P.HStreamApi "listShardReaders") (H.handleListShardReaders sc)
   , unary (GRPC :: GRPC P.HStreamApi "createShardReader") (H.handleCreateShardReader sc)

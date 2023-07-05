@@ -15,6 +15,7 @@ module HStream.Server.Handler.Stream
   , listStreamsWithPrefixHandler
   , listShardsHandler
   , appendHandler
+  , getTailRecordIdHandler
     -- * For hs-grpc-server
   , handleCreateStream
   , handleDeleteStream
@@ -23,6 +24,7 @@ module HStream.Server.Handler.Stream
   , handleListStreamsWithPrefix
   , handleAppend
   , handleListShard
+  , handleGetTailRecordId
   ) where
 
 import           Control.Exception
@@ -126,6 +128,19 @@ handleListStreamsWithPrefix sc _ req = catchDefaultEx $ do
   Log.debug "Receive List Stream Request"
   validateNameAndThrow ResStream $ listStreamsWithPrefixRequestPrefix req
   ListStreamsResponse <$> C.listStreamsWithPrefix sc req
+
+handleGetTailRecordId :: ServerContext -> G.UnaryHandler GetTailRecordIdRequest GetTailRecordIdResponse
+handleGetTailRecordId sc _ req = catchDefaultEx $ do
+  Log.debug $ "Receive Get TailRecordId Request: " <> Log.buildString' req
+  C.getTailRecordId sc req
+
+getTailRecordIdHandler
+  :: ServerContext
+  -> ServerRequest 'Normal GetTailRecordIdRequest GetTailRecordIdResponse
+  -> IO (ServerResponse 'Normal GetTailRecordIdResponse)
+getTailRecordIdHandler sc (ServerNormalRequest _metadata req) = defaultExceptionHandle $ do
+  Log.debug $ "Receive Get TailRecordId Request: " <> Log.buildString' req
+  C.getTailRecordId sc req >>= returnResp
 
 appendHandler
   :: ServerContext

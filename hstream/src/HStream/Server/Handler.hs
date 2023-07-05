@@ -43,6 +43,7 @@ handlers serverContext@ServerContext{..} =
         hstreamApiListStreams = listStreamsHandler serverContext,
         hstreamApiListStreamsWithPrefix = listStreamsWithPrefixHandler serverContext,
         hstreamApiAppend = appendHandler serverContext,
+        hstreamApiGetTailRecordId = getTailRecordIdHandler serverContext,
 
         -- Subscribe
         hstreamApiCreateSubscription = createSubscriptionHandler serverContext,
