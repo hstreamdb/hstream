@@ -264,21 +264,22 @@ createQueryAndRun ctx@ServerContext{..} sink insWithRole outWithRole builder com
   modifyMVar_ runningQueries (return . HM.insert queryId tid)
   return qInfo
   where
+    msgPrefix = "createQueryAndRun (from CREATE AS SELECT or INSERT SELECT): query "
     action qid taskName = do
       Log.debug . Log.buildString
-        $ "CREATE AS SELECT: query " <> show qid
+        $ msgPrefix <> show qid
        <> " has stared working on " <> show commandQueryStmtText
       runTask ctx taskName sink insWithRole outWithRole builder
     cleanup qid =
       [ Handler (\(e :: AsyncException) -> do
                     Log.debug . Log.buildString
-                       $ "CREATE AS SELECT: query " <> show qid
+                       $ msgPrefix <> show qid
                       <> " is killed because of " <> show e
                     M.updateMeta qid P.QueryTerminated Nothing metaHandle
                     void $ releasePid qid)
       , Handler (\(e :: SomeException) -> do
                     Log.warning . Log.buildString
-                       $ "CREATE AS SELECT: query " <> show qid
+                       $ msgPrefix <> show qid
                       <> " died because of " <> show e
                     M.updateMeta qid P.QueryAborted Nothing metaHandle
                     void $ releasePid qid)
@@ -416,7 +417,7 @@ restoreStateAndRun ctx@ServerContext{..} qRunner@QueryRunner{..} = do
   runQuery ctx qRunner {qRTaskBuilder = newBuilder} logId
 
 restoreState :: ServerContext -> QueryRunner -> IO (TaskBuilder, S.C_LogID)
-restoreState ServerContext{..} qRunner@QueryRunner{..} = do
+restoreState ServerContext{..} QueryRunner{..} = do
   (builder_1, lsn_1) <- case querySnapshotter of
     Nothing -> do
       Log.warning "Snapshot is not available. Roll back to changelog-based restoration..."
@@ -446,7 +447,7 @@ restoreState ServerContext{..} qRunner@QueryRunner{..} = do
   tailLSN <- S.getTailLSN scLDClient logId
   reader <- S.newLDReader scLDClient 1 Nothing
   S.readerStartReading reader logId lsn_1 tailLSN
-  newBuilder <- fix (\f (builder, lsn)-> do
+  newBuilder <- fix (\f (builder, _lsn)-> do
                        new@(newBuilder, endLsn) <- reconstruct reader builder
                        if endLsn >= tailLSN then return newBuilder else f new)
                     (builder_1, lsn_1)
@@ -455,12 +456,12 @@ restoreState ServerContext{..} qRunner@QueryRunner{..} = do
   where
     reconstruct reader oldBuilder = S.readerReadAllowGap reader 10 >>= \case
       Right dataRecords ->
-        foldlM (\(acc_builder, acc_lsn) dr@S.DataRecord{..} -> do
+        foldlM (\(acc_builder, _acc_lsn) dr@S.DataRecord{..} -> do
                  let (cl :: StateStoreChangelog K V Ser) = fromJust (Aeson.decode $ BL.fromStrict recordPayload)
                  builder' <- applyStateStoreChangelog acc_builder cl
                  return (builder', S.recordLSN dr)
            ) (oldBuilder, S.LSN_MIN) dataRecords
-      Left gp@S.GapRecord{..} -> return (oldBuilder, gapHiLSN)
+      Left S.GapRecord{..} -> return (oldBuilder, gapHiLSN)
 
 runQuery :: HasCallStack => ServerContext -> QueryRunner -> S.C_LogID -> IO ()
 runQuery ctx@ServerContext{..} QueryRunner{..} logId = do
@@ -468,6 +469,7 @@ runQuery ctx@ServerContext{..} QueryRunner{..} logId = do
   tid <- forkIO $ catches action cleanup
   modifyMVar_ runningQueries (return . HM.insert qRQueryName (tid, qRConsumerClosed))
   where
+    msgPrefix = "createQueryAndRun (from CREATE AS SELECT or INSERT SELECT): query "
     sinkConnector = if qRWhetherToHStore then HStore.hstoreSinkConnector ctx
                                          else HStore.blackholeSinkConnector
     sourceConnector = HStore.hstoreSourceConnectorWithoutCkp ctx qRQueryName qRConsumerClosed
@@ -478,14 +480,14 @@ runQuery ctx@ServerContext{..} QueryRunner{..} logId = do
     cleanup =
       [ Handler (\(e :: HE.StreamReadClose) -> do
                     Log.info . Log.buildString
-                       $ "CREATE AS SELECT: query " <> show qRQueryName
+                       $ msgPrefix <> show qRQueryName
                       <> " is killed because of " <> show e
                     M.updateMeta qRQueryName P.QueryTerminated Nothing metaHandle
                     releasePid
                 )
       , Handler (\(e :: SomeException) -> do
                     Log.warning . Log.buildString
-                       $ "CREATE AS SELECT: query " <> show qRQueryName
+                       $ msgPrefix <> show qRQueryName
                       <> " died because of " <> show e
                     M.updateMeta qRQueryName P.QueryAborted Nothing metaHandle
                     releasePid
