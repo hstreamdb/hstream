@@ -201,3 +201,21 @@ testSuiteCases:
     RGroupByEmpty RHavingEmpty)
   testCaseStmts:
   - select ['aa', 'bb', 'cc'] from s;
+- testCaseFail: null
+  testCaseLabel: Create Connectors
+  testCaseResult: RQCreate (RCreateConnector "SOURCE" "source01" "mysql" False (RConnectorOptions
+    (fromList [("port",Object (fromList [("contents",Number 3306.0),("tag",String
+    "ConstantInt")])),("host",Object (fromList [("contents",String "mysql-s1"),("tag",String
+    "ConstantText")])),("password",Object (fromList [("contents",String "password"),("tag",String
+    "ConstantText")])),("user",Object (fromList [("contents",String "root"),("tag",String
+    "ConstantText")])),("database",Object (fromList [("contents",String "d1"),("tag",String
+    "ConstantText")])),("table",Object (fromList [("contents",String "person"),("tag",String
+    "ConstantText")])),("stream",Object (fromList [("contents",String "stream01"),("tag",String
+    "ConstantText")]))])))
+  testCaseStmts:
+  - create source connector source01 from mysql with (host = 'mysql-s1', port = 3306,
+    user = 'root', password = 'password', database = 'd1', table = 'person', "stream"
+    = 'stream01');
+  - create source connector source01 from mysql with ("host" = 'mysql-s1', "port"
+    = 3306, "user" = 'root', "password" = 'password', "database" = 'd1', "table" =
+    'person', "stream" = 'stream01');

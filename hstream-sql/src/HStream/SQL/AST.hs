@@ -898,7 +898,7 @@ instance Refine [ConnectorOption] where
   refine ps = RConnectorOptions $ foldr (insert . toPair) HM.empty ps
     where insert (k, v) = HM.insert k v
           toPair :: ConnectorOption -> (Text, Aeson.Value)
-          toPair (ConnectorProperty _ key expr) = (Text.pack key, toValue (refine expr))
+          toPair (ConnectorProperty _ key expr) = (extractHIdent key, toValue (refine expr))
           toValue (RExprConst _ c) = Aeson.toJSON c
 
 type instance RefinedType Create = RCreate
