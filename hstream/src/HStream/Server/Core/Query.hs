@@ -21,8 +21,10 @@ module HStream.Server.Core.Query
   ) where
 
 import           Control.Concurrent.STM           (newTVarIO)
-import           Control.Exception                (throw, throwIO)
+import           Control.Exception                (SomeException, throw,
+                                                   throwIO, try)
 import           Control.Monad
+import           Data.Foldable
 import           Data.Functor                     ((<&>))
 import qualified Data.HashMap.Strict              as HM
 import qualified Data.List                        as L
@@ -215,8 +217,8 @@ createQueryWithNamespace'
               hstreamQueryToQuery metaHandle qInfo
             _ -> throw $ HE.WrongExecutionPlan "Create query only support create stream/view <name> as select statements"
 
-        RQInsert (RInsertSel streamName rSel isPush@True) -> do
-          InsertBySelectPlan srcs sink builder persist <- hstreamCodegen $ RQInsert (RInsertSel streamName (modifySelect namespace rSel) isPush)
+        RQInsert (RInsertSel streamName rSel) -> do
+          InsertBySelectPlan srcs sink builder persist <- hstreamCodegen $ RQInsert (RInsertSel streamName $ modifySelect namespace rSel)
           -- check sink streams
           -- check source streams
           -- update metadata
@@ -225,18 +227,14 @@ createQueryWithNamespace'
             rSQL serverID metaHandle
           -- run core task
           consumerClosed <- newTVarIO False
-          let qRunner = QueryRunner
-                { qRTaskBuilder = builder
-                , qRQueryName   = createQueryRequestQueryName
-                , qRQueryString = createQueryRequestSql
-                , qRWhetherToHStore = True
-                , qRQuerySources    = srcs
-                , qRConsumerClosed  = consumerClosed
-                }
-          logId <- S.getUnderlyingLogId scLDClient
-            (transToStreamName streamName)
-            Nothing
-          runQuery sc qRunner logId
+          createQueryAndRun sc QueryRunner {
+              qRTaskBuilder = builder
+            , qRQueryName   = createQueryRequestQueryName
+            , qRQueryString = createQueryRequestSql
+            , qRWhetherToHStore = True
+            , qRQuerySources = srcs
+            , qRConsumerClosed =  consumerClosed
+            }
           hstreamQueryToQuery metaHandle qInfo
 
         RQCreate (RCreateView view select) ->

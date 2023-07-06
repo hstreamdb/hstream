@@ -72,8 +72,7 @@ separator ColumnIdent "," ;
 separator ValueExpr "," ;
 InsertRawOrJson. Insert ::= "INSERT" "INTO" HIdent "VALUES" ExprCast ;
 
-InsertSel.     InsertSel ::= "INSERT" "INTO" HIdent Select                  ;
-InsertPushSel. InsertSel ::= "INSERT" "INTO" HIdent Select "EMIT" "CHANGES" ;
+InsSel. InsertSel ::= "INSERT" "INTO" HIdent Select ;
 
 DInsertSel. Insert ::= InsertSel ;
 

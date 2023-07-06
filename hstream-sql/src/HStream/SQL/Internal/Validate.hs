@@ -737,8 +737,7 @@ instance Validate Insert where
     return insert
 
   validate insSel@(DInsertSel _ xs) = case xs of
-    InsertSel     _ streamName sel -> h streamName sel
-    InsertPushSel _ streamName sel -> h streamName sel
+    InsSel _ streamName sel -> h streamName sel
     where h streamName sel = do
             _ <- validate streamName
             _ <- validate sel

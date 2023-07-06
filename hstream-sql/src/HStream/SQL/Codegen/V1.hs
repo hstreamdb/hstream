@@ -140,7 +140,7 @@ hstreamCodegen = \case
     tName <- genTaskName
     (builder, srcs, sink, persist) <- elabRSelect tName (Just stream) select
     return $ CreateBySelectPlan srcs sink (HS.build builder) rOptions persist
-  RQInsert (RInsertSel stream select isPush@True) -> do
+  RQInsert (RInsertSel stream select) -> do
     tName <- genTaskName
     (builder, srcs, sink, persist) <- elabRSelect tName (Just stream) select
     pure $ InsertBySelectPlan srcs sink (HS.build builder) persist

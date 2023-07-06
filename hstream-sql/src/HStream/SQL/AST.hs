@@ -920,7 +920,7 @@ data RInsertRawOrJsonPayloadType = RInsertRawOrJsonPayloadTypeRaw | RInsertRawOr
 ---- INSERT
 data RInsert = RInsert          Text [(FieldName, Constant)]
              | RInsertRawOrJson Text BS.ByteString RInsertRawOrJsonPayloadType
-             | RInsertSel       Text RSelect Bool -- is push
+             | RInsertSel       Text RSelect
              deriving (Show, Generic, Aeson.ToJSON, Aeson.FromJSON)
 type instance RefinedType Insert = RInsert
 instance Refine Insert where
@@ -943,8 +943,7 @@ instance Refine Insert where
     in RInsertRawOrJson (extractHIdent streamName) (encodeUtf8 rVal) rTyp
 
   refine (DInsertSel _ insSel) = case insSel of
-    InsertSel     _ streamName sel -> h streamName sel False
-    InsertPushSel _ streamName sel -> h streamName sel True
+    InsSel _ streamName sel -> h streamName sel
     where h streamName sel = RInsertSel (extractHIdent streamName) (refine sel)
 
 ---- SHOW
