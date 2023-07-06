@@ -120,6 +120,7 @@ data HStreamPlan
   | PushSelectPlan      [StreamName] StreamName TaskBuilder Persist
   | CreateBySelectPlan  [StreamName] StreamName TaskBuilder RStreamOptions Persist
   | CreateViewPlan      [StreamName] StreamName ViewName TaskBuilder Persist
+  | InsertBySelectPlan  [StreamName] StreamName TaskBuilder Persist
 
 --------------------------------------------------------------------------------
 streamCodegen :: HasCallStack => Text -> IO HStreamPlan
@@ -139,6 +140,10 @@ hstreamCodegen = \case
     tName <- genTaskName
     (builder, srcs, sink, persist) <- elabRSelect tName (Just stream) select
     return $ CreateBySelectPlan srcs sink (HS.build builder) rOptions persist
+  RQInsert (RInsertSel stream select) -> do
+    tName <- genTaskName
+    (builder, srcs, sink, persist) <- elabRSelect tName (Just stream) select
+    pure $ InsertBySelectPlan srcs sink (HS.build builder) persist
   RQCreate (RCreateView view select) -> do
     tName <- genTaskName
     (builder, srcs, sink, persist) <- elabRSelect tName (Just view) select

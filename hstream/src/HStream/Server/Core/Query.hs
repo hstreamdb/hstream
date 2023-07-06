@@ -21,12 +21,14 @@ module HStream.Server.Core.Query
   ) where
 
 import           Control.Concurrent.STM           (newTVarIO)
-import           Control.Exception                (throw, throwIO)
+import           Control.Exception                (SomeException, throw,
+                                                   throwIO, try)
 import           Control.Monad
+import           Data.Foldable
 import           Data.Functor                     ((<&>))
 import qualified Data.HashMap.Strict              as HM
 import qualified Data.List                        as L
-import           Data.Maybe                       (fromJust, isJust)
+import           Data.Maybe                       (fromJust, isJust, isNothing)
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import           GHC.Stack                        (HasCallStack)
@@ -116,6 +118,7 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
     CreatePlan {} -> discard "CreateStream"
     CreateConnectorPlan {} -> discard "CreateConnector"
     InsertPlan {} -> discard "Append"
+    InsertBySelectPlan {} -> discard "CreateQuery"
     DropPlan {} -> discard "Delete"
     ShowPlan {} -> discard "List"
     TerminatePlan {} -> discard "TerminateQuery"
@@ -208,11 +211,56 @@ createQueryWithNamespace'
                 , qRQueryName   = createQueryRequestQueryName
                 , qRQueryString = createQueryRequestSql
                 , qRWhetherToHStore = True
-                , qRQuerySources = sources
-                , qRConsumerClosed =  consumerClosed
+                , qRQuerySources    = sources
+                , qRConsumerClosed  = consumerClosed
                 }
               hstreamQueryToQuery metaHandle qInfo
             _ -> throw $ HE.WrongExecutionPlan "Create query only support create stream/view <name> as select statements"
+
+        RQInsert (RInsertSel streamName rSel) -> do
+          (hstreamCodegen $ RQInsert (RInsertSel
+            (namespace <> streamName)
+            (modifySelect namespace rSel))
+            ) >>= \case
+            InsertBySelectPlan srcs sink builder persist -> do
+              -- validate names
+              traverse_ (validateNameAndThrow ResStream) (sink : srcs)
+              -- find all roles
+              rolesM <- mapM (\x -> ((,) x) <$> findIdentifierRole sc x) srcs
+              let notExistNames = filter (\(_, x) -> isNothing x) rolesM
+              -- FIXME: Currently, we can use `L.head` here because we does not have const query (select without srcs) now.
+              --        This check does not work as it should work, since we can construction many conditions to do evil.
+              when (not (null srcs) && sink == head srcs) $ do
+                Log.warning "Insert by Select: Can not insert by select the sink stream itself"
+                throwIO $ HE.InvalidSqlStatement "Insert by Select: Can not insert by select the sink stream itself"
+              when (notExistNames /= []) $ do
+                Log.warning $ "Insert by Select: Streams not found: " <> Log.buildString (show srcs)
+                throwIO . HE.StreamNotFound $ "Streams not found: " <> T.pack (show srcs)
+              when (not $ all (\(_, x) -> x == Just RoleStream) rolesM) $ do
+                Log.warning "Insert by Select only supports all sources of same resource type STREAM"
+                throw $ HE.InvalidSqlStatement "Insert by Select only supports all sources of same resource type STREAM"
+              -- check sink stream
+              foundSink <- S.doesStreamExist scLDClient (transToStreamName sink)
+              when (not foundSink) $ do
+                Log.warning $ "Insert by Select: Stream not found: " <> Log.buildString (show streamName)
+                throw $ HE.StreamNotFound $ "Stream " <> streamName <> " not found"
+              -- update metadata
+              qInfo <- P.createInsertQueryInfo createQueryRequestQueryName createQueryRequestSql
+                (srcs, sink)
+                rSQL serverID metaHandle
+              -- run core task
+              consumerClosed <- newTVarIO False
+              createQueryAndRun sc QueryRunner
+                { qRTaskBuilder = builder
+                , qRQueryName   = createQueryRequestQueryName
+                , qRQueryString = createQueryRequestSql
+                , qRWhetherToHStore = True
+                , qRQuerySources    = srcs
+                , qRConsumerClosed  = consumerClosed
+                }
+              hstreamQueryToQuery metaHandle qInfo
+            _ -> throw $ HE.WrongExecutionPlan "Insert by Select query only supports `INSERT INTO <stream_name> SELECT FROM STREAM`"
+
         RQCreate (RCreateView view select) ->
           hstreamCodegen (RQCreate (RCreateView (namespace <> view)
                                                 (modifySelect namespace select)
@@ -265,10 +313,10 @@ resumeQuery ctx@ServerContext{..} qRQueryName = do
     Just P.QueryTerminated -> throwIO $ HE.QueryAlreadyTerminated qRQueryName
     Just state -> throwIO $ HE.QueryNotAborted (T.pack $ show state)
   getMeta @P.QueryInfo qRQueryName metaHandle >>= \case
-    Just qInfo@P.QueryInfo{..} -> do
+    Just P.QueryInfo{..} -> do
       (qRTaskBuilder, qRWhetherToHStore, qRQuerySources) <- hstreamCodegen queryRefinedAST >>= \case
-        CreateBySelectPlan sources sink builder _ _ -> checkSources sources >> return (builder, True, sources)
-        CreateViewPlan sources sink view builder persist  -> do
+        CreateBySelectPlan sources _sink builder _ _ -> checkSources sources >> return (builder, True, sources)
+        CreateViewPlan sources _sink view builder persist  -> do
           checkSources sources
           let accumulation = L.head (snd persist)
           atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert view accumulation hm, ()))

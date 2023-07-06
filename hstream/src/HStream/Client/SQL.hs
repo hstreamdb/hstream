@@ -17,6 +17,7 @@ import           Control.Concurrent               (forkFinally, myThreadId,
 import           Control.Exception                (SomeException, handle, try)
 import           Control.Monad                    (forM_, forever, void, (>=>))
 import           Control.Monad.IO.Class           (liftIO)
+import qualified Data.ByteString.Lazy             as BL
 import           Data.Char                        (toUpper)
 import qualified Data.Map                         as M
 import qualified Data.Text                        as T
@@ -24,6 +25,7 @@ import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Client    (ClientRequest (..),
                                                    ClientResult (..))
 import           Network.GRPC.HighLevel.Generated (withGRPCClient)
+import qualified Proto3.Suite                     as PB
 import qualified System.Console.Haskeline         as RL
 import qualified System.Console.Haskeline.History as RL
 import           Text.RawString.QQ                (r)
@@ -33,11 +35,14 @@ import           HStream.Client.Action            (createConnector,
                                                    createStreamBySelect,
                                                    createStreamBySelectWithCustomQueryName,
                                                    dropAction, executeViewQuery,
-                                                   insertIntoStream, listShards,
-                                                   pauseConnector, pauseQuery,
-                                                   resumeConnector, resumeQuery,
-                                                   retry, terminateQuery)
+                                                   insertIntoStream,
+                                                   insertIntoStream',
+                                                   listShards, pauseConnector,
+                                                   pauseQuery, resumeConnector,
+                                                   resumeQuery, retry,
+                                                   terminateQuery)
 import           HStream.Client.Execute           (execute, executeShowPlan,
+                                                   executeWithLookupResource,
                                                    executeWithLookupResource_,
                                                    execute_, updateClusterInfo)
 import           HStream.Client.Internal          (cliFetch)
@@ -52,9 +57,10 @@ import           HStream.Server.HStreamApi        (CommandQuery (..),
                                                    hstreamApiClient)
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.SQL                      (HStreamPlan (..),
+                                                   InsertType (..),
                                                    PauseObject (..),
                                                    RCreate (..), RSQL (..),
-                                                   RStreamOptions (..),
+                                                   RSelect, RStreamOptions (..),
                                                    ResumeObject (..),
                                                    TerminateObject (..),
                                                    hstreamCodegen,
@@ -72,7 +78,7 @@ import           HStream.SQL.Exception            (SomeSQLException,
 import           HStream.Utils                    (HStreamClientApi,
                                                    ResourceType (..),
                                                    formatCommandQueryResponse,
-                                                   formatResult,
+                                                   formatResult, getServerResp,
                                                    mkGRPCClientConfWithSSL,
                                                    newRandomText)
 
@@ -149,6 +155,9 @@ commandExec HStreamSqlContext{hstreamCliContext = cliCtx@HStreamCliContext{..},.
                   Nothing  -> putStrLn "Failed to calculate shard id"
                   Just sid -> executeWithLookupResource_ cliCtx (Resource ResShard (T.pack $ show sid)) (retry retryLimit retryInterval $ insertIntoStream sName sid insertType payload)
               Nothing -> putStrLn "No shards found"
+        InsertBySelectPlan {} -> do
+          qName <-  ("cli_generated_" <>) <$> newRandomText 10
+          executeWithLookupResource_ cliCtx (Resource ResQuery qName) (createStreamBySelectWithCustomQueryName xs qName)
         CreateConnectorPlan cType cName cTarget _ cfg  -> do
           let cfgText = TL.toStrict (J.encodeToLazyText cfg)
           executeWithLookupResource_ cliCtx (Resource ResConnector cName) (createConnector cName cType cTarget cfgText)
@@ -162,7 +171,6 @@ commandExec HStreamSqlContext{hstreamCliContext = cliCtx@HStreamCliContext{..},.
           addr <- readMVar currentServer
           withGRPCClient (HStream.Utils.mkGRPCClientConfWithSSL addr sslConfig)
             (hstreamApiClient >=> \api -> sqlAction api (T.pack xs))
-
 
 readToSQL :: T.Text -> RL.InputT IO (Maybe String)
 readToSQL acc = do

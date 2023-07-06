@@ -72,6 +72,10 @@ separator ColumnIdent "," ;
 separator ValueExpr "," ;
 InsertRawOrJson. Insert ::= "INSERT" "INTO" HIdent "VALUES" ExprCast ;
 
+InsSel. InsertSel ::= "INSERT" "INTO" HIdent Select ;
+
+DInsertSel. Insert ::= InsertSel ;
+
 ---- Show Query
 DShow. ShowQ ::= "SHOW" ShowOption ;
 ShowQueries.    ShowOption ::= "QUERIES"    ;

@@ -239,6 +239,7 @@ executable hstream
     , hstream-store
     , network
     , optparse-applicative
+    , proto3-suite
     , random
     , raw-strings-qq
     , split
@@ -247,7 +248,6 @@ executable hstream
     , unordered-containers
     , vector
     , Z-Data
-    , proto3-suite
 
   default-language: Haskell2010
   ghc-options:      -threaded -rtsopts -with-rtsopts=-N

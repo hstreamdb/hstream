@@ -18,6 +18,7 @@ module HStream.Client.Action
   , listShards
   , readShard
   , insertIntoStream
+  , insertIntoStream'
 
   , createSubscription
   , createSubscription'
@@ -132,12 +133,18 @@ dropAction ignoreNonExist dropObject API.HStreamApi{..}  = do
 insertIntoStream
   :: StreamName -> Word64 -> InsertType -> BS.ByteString
   -> Action API.AppendResponse
-insertIntoStream sName shardId insertType payload API.HStreamApi{..} = do
+insertIntoStream sName shardId insertType payload api =
+  insertIntoStream' sName shardId insertType (pure payload) api
+
+insertIntoStream'
+  :: StreamName -> Word64 -> InsertType -> V.Vector BS.ByteString
+  -> Action API.AppendResponse
+insertIntoStream' sName shardId insertType payloadVec API.HStreamApi{..} = do
   let header = case insertType of
         JsonFormat -> buildRecordHeader API.HStreamRecordHeader_FlagJSON Map.empty clientDefaultKey
         RawFormat  -> buildRecordHeader API.HStreamRecordHeader_FlagRAW Map.empty clientDefaultKey
-      hsRecord = mkHStreamRecord header payload
-      record = mkBatchedRecord (PT.Enumerated (Right CompressionTypeNone)) Nothing 1 (V.singleton hsRecord)
+      hsRecord = V.map (mkHStreamRecord header) payloadVec
+      record = mkBatchedRecord (PT.Enumerated (Right CompressionTypeNone)) Nothing (fromIntegral $ V.length payloadVec) hsRecord
   hstreamApiAppend (mkClientNormalRequest' def
     { API.appendRequestShardId    = shardId
     , API.appendRequestStreamName = sName

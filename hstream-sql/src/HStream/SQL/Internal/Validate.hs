@@ -736,6 +736,13 @@ instance Validate Insert where
     mapM_ isConstExpr exprs
     return insert
 
+  validate insSel@(DInsertSel _ xs) = case xs of
+    InsSel _ streamName sel -> h streamName sel
+    where h streamName sel = do
+            _ <- validate streamName
+            _ <- validate sel
+            pure insSel
+
   validate insert@(InsertRawOrJson _ hIdent exprCast) = do
     _ <- validate hIdent
     let (valExpr, valTyp, pos) = unifyValueExprCast exprCast
