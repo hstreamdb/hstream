@@ -3,7 +3,6 @@ module HStream.Client.Types where
 import           Control.Concurrent            (MVar)
 import           Data.ByteString               (ByteString)
 import qualified Data.ByteString               as BS
-import           Data.List.Split               (splitOn)
 import           Data.Maybe                    (isNothing)
 import           Data.Text                     (Text)
 import qualified Data.Text                     as T
@@ -14,14 +13,16 @@ import           Network.GRPC.HighLevel.Client (ClientConfig (..),
                                                 ClientSSLKeyCertPair (..))
 import           Network.URI
 import qualified Options.Applicative           as O
-import           Text.Read                     (readMaybe)
+import qualified Text.Read                     as Read
 
+import           Data.Int                      (Int64)
 import           HStream.Common.CliParsers     (streamParser,
                                                 subscriptionParser)
 import qualified HStream.Server.HStreamApi     as API
 import           HStream.Server.Types          (ServerID)
 import           HStream.Utils                 (ResourceType, SocketAddr (..),
                                                 mkGRPCClientConfWithSSL)
+import           Options.Applicative.Types
 import           Proto3.Suite                  (Enumerated (Enumerated))
 
 data CliCmd = CliCmd HStreamCommand | GetVersionCmd
@@ -88,65 +89,72 @@ streamCmdParser = O.hsubparser
   )
 
 data ReadShardArgs = ReadShardArgs
-  { shardIdArgs     :: Word64
-  , shardOffsetArgs :: Maybe API.ShardOffset
+  { shardIdArgs    :: Word64
+  , startOffset    :: Maybe API.ShardOffset
+  , endOffset      :: Maybe API.ShardOffset
+  , maxReadBatches :: Word64
   } deriving (Show)
 
 readShardRequestParser :: O.Parser ReadShardArgs
 readShardRequestParser = ReadShardArgs
   <$> O.argument O.auto ( O.metavar "SHARD_ID" <> O.help "The shard you want to read" )
-  <*> (Just <$> offsetParser)
+  <*> O.optional (shardOffsetToPb <$> O.option O.auto ( O.metavar "FROM_OFFSET"
+                                                     <> O.long "from"
+                                                     <> O.help ( "Read from offset, e.g. earliest, latest, "
+                                                              <> "recordId:1789764666323849-4294967385-0, "
+                                                              <> "timestamp:1684486287810")
+                                                      ))
+  <*> O.optional (shardOffsetToPb <$> O.option O.auto ( O.metavar "UNTIL_OFFSET"
+                                                     <> O.long "until"
+                                                     <> O.help ( "Read until offset, e.g. earliest, latest, "
+                                                              <> "recordId:1789764666323849-4294967385-0, "
+                                                              <> "timestamp:1684486287810")
+                                                      ))
+  <*> (fromIntegral <$> O.option positiveNumParser ( O.long "total"
+                                                  <> O.metavar "INT"
+                                                  <> O.value 0
+                                                  <> O.help "Max total number of batches read by reader"
+                                                   ))
 
-offsetParser :: O.Parser API.ShardOffset
-offsetParser = specialOffsetParser O.<|> recordOffsetParser O.<|> timestampOffsetParser
-  O.<|> (pure . API.ShardOffset . Just . API.ShardOffsetOffsetSpecialOffset . Enumerated . Right $ API.SpecialOffsetEARLIEST)
+data ShardOffset = EARLIEST
+                 | LATEST
+                 | RecordId Word64 Word64 Word32
+                 | Timestamp Int64
+  deriving (Show)
 
-specialOffsetParser :: O.Parser API.ShardOffset
-specialOffsetParser = API.ShardOffset . Just . API.ShardOffsetOffsetSpecialOffset . Enumerated . Right
-  <$> (specialOffsetToAPI <$> specialOffsetParser')
+instance Read ShardOffset where
+  readPrec = do
+    l <- Read.lexP
+    case l of
+      Read.Ident "earliest" -> return EARLIEST
+      Read.Ident "latest" -> return LATEST
+      Read.Ident "timestamp" -> do Read.Symbol ":" <- Read.lexP
+                                   t :: Int64 <- Read.readPrec
+                                   return $ Timestamp t
+      Read.Ident "recordId" -> do Read.Symbol ":" <- Read.lexP
+                                  sId :: Word64 <- Read.readPrec
+                                  Read.Symbol "-" <- Read.lexP
+                                  bId :: Word64 <- Read.readPrec
+                                  Read.Symbol "-" <- Read.lexP
+                                  idx :: Word32 <- Read.readPrec
+                                  return $ RecordId sId bId idx
+      x -> errorWithoutStackTrace $ "cannot parse StatsCategory: " <> show x
 
-data SpecialOffset = Earliest | Latest
+shardOffsetToPb :: ShardOffset -> API.ShardOffset
+shardOffsetToPb EARLIEST = API.ShardOffset . Just . API.ShardOffsetOffsetSpecialOffset . Enumerated . Right $ API.SpecialOffsetEARLIEST
+shardOffsetToPb LATEST   = API.ShardOffset . Just . API.ShardOffsetOffsetSpecialOffset . Enumerated . Right $ API.SpecialOffsetLATEST
+shardOffsetToPb (RecordId recordIdShardId recordIdBatchId recordIdBatchIndex) =
+  API.ShardOffset . Just . API.ShardOffsetOffsetRecordOffset $ API.RecordId {..}
+shardOffsetToPb (Timestamp t) = API.ShardOffset . Just . API.ShardOffsetOffsetTimestampOffset $
+  API.TimestampOffset {timestampOffsetTimestampInMs = t, timestampOffsetStrictAccuracy = True}
 
-specialOffsetToAPI :: SpecialOffset -> API.SpecialOffset
-specialOffsetToAPI offset = case offset of
-  Earliest -> API.SpecialOffsetEARLIEST
-  Latest   -> API.SpecialOffsetLATEST
+positiveNumParser :: ReadM Int
+positiveNumParser = do
+  s <- readerAsk
+  case Read.readMaybe s of
+    Just n | n >= 0 -> return n
+    _               -> readerError $ "Expected positive integer but get: " ++ s
 
-specialOffsetParser' :: O.Parser SpecialOffset
-specialOffsetParser' =
-   O.flag' Latest ( O.long "latest" <> O.help "Read from latest offset" )
-   O.<|> O.flag' Earliest ( O.long "earliest" <> O.help "Read from earliest offset" )
-
-recordOffsetParser :: O.Parser API.ShardOffset
-recordOffsetParser = API.ShardOffset . Just . API.ShardOffsetOffsetRecordOffset <$> recordIdParser
-
-recordIdParser :: O.Parser API.RecordId
-recordIdParser = O.option parseRecordId ( O.long "record"
-                                       <> O.metavar "RECORDID"
-                                       <> O.help "Read from specific recordId")
-
-parseRecordId :: O.ReadM API.RecordId
-parseRecordId = O.eitherReader parseRecordId'
- where
-   parseRecordId' :: String -> Either String API.RecordId
-   parseRecordId' s =
-    let res = splitOn "-" s
-     in if length res /= 3 then Left $ "invalied recordId " <> s
-                           else Right API.RecordId { recordIdShardId = read $ head res
-                                                   , recordIdBatchId = read $ res !! 1
-                                                   , recordIdBatchIndex = read $ res !! 2
-                                                   }
-
-timestampOffsetParser :: O.Parser API.ShardOffset
-timestampOffsetParser = API.ShardOffset . Just . API.ShardOffsetOffsetTimestampOffset <$> timestampParser
-
-timestampParser :: O.Parser API.TimestampOffset
-timestampParser = API.TimestampOffset
-  <$> O.option O.auto ( O.long "timestamp"
-                       <> O.metavar "TIMESTAMP"
-                       <> O.help "Read from specific millisecond time stamp")
-  <*> (not <$> O.switch ( O.long "approximate"
-                       <> O.help "Use approximate timestamp"))
 
 data SubscriptionCommand
   = SubscriptionCmdList
@@ -296,7 +304,7 @@ refineCliConnOpts CliConnOpts {..} = do
       if BS.null host then errorWithoutStackTrace "Incomplete URI"
       else case uriPort of
         []     -> SocketAddr host _serverPort
-        (_:xs) -> case readMaybe xs of
+        (_:xs) -> case Read.readMaybe xs of
           Nothing   -> SocketAddr host _serverPort
           Just port -> SocketAddr host port
     uriAuthToSocketAddress Nothing = errorWithoutStackTrace "Incomplete URI"

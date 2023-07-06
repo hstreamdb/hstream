@@ -194,7 +194,7 @@ readShardStream ServerContext{..}
        Just bs -> do
          remains <- fromIntegral <$> readIORef bs
          let diff = remains - V.length res
-         if diff >= 0
+         if diff > 0
            then do
              writeIORef bs $ fromIntegral diff
              streamWrite (API.ReadShardStreamResponse res) >>= return <$> (not isEnd &&) . isRight
