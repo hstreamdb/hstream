@@ -229,10 +229,15 @@ createQueryWithNamespace'
               rolesM <- mapM (\x -> ((,) x) <$> findIdentifierRole sc x) srcs
               let notExistNames = filter (\(_, x) -> isNothing x) rolesM
               when (notExistNames /= []) $ do
-                throwIO . HE.StreamNotFound $ "Streams/Views not found: " <> T.pack (show srcs)
+                Log.warning $ "Insert by Select: Streams not found: " <> Log.buildString (show srcs)
+                throwIO . HE.StreamNotFound $ "Streams not found: " <> T.pack (show srcs)
+              when (not $ all (\(_, x) -> x == Just RoleStream) rolesM) $ do
+                Log.warning "Insert by Select only supports all sources of same resource type STREAM"
+                throw $ HE.InvalidSqlStatement "Insert by Select only supports all sources of same resource type STREAM"
               -- check sink stream
               foundSink <- S.doesStreamExist scLDClient (transToStreamName sink)
-              when (not foundSink) $
+              when (not foundSink) $ do
+                Log.warning $ "Insert by Select: Stream not found: " <> Log.buildString (show streamName)
                 throw $ HE.StreamNotFound $ "Stream " <> streamName <> " not found"
               -- update metadata
               qInfo <- P.createInsertQueryInfo createQueryRequestQueryName createQueryRequestSql
