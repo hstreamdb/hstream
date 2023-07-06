@@ -242,8 +242,8 @@ readShardStream ServerContext{..}
 
    deleteReader ShardReader{..} = do
      Log.info $ "shard reader " <> Log.build rReaderId <> " stop reading"
-     allStoped <- S.readerIsReadingAny shardReader
-     unless allStoped $ S.readerStopReading shardReader rShardId
+     isReading <- S.readerIsReadingAny shardReader
+     when isReading $ S.readerStopReading shardReader rShardId
 
    readRecords s@ShardReader{..} = do
      whileM $ do
