@@ -228,7 +228,9 @@ createQueryWithNamespace'
               -- find all roles
               rolesM <- mapM (\x -> ((,) x) <$> findIdentifierRole sc x) srcs
               let notExistNames = filter (\(_, x) -> isNothing x) rolesM
-              when (sink == head srcs) $ do
+              -- FIXME: Currently, we can use `L.head` here because we does not have const query (select without srcs) now.
+              --        This check does not work as it should work, since we can construction many conditions to do evil.
+              when (not (null srcs) && sink == head srcs) $ do
                 Log.warning "Insert by Select: Can not insert by select the sink stream itself"
                 throwIO $ HE.InvalidSqlStatement "Insert by Select: Can not insert by select the sink stream itself"
               when (notExistNames /= []) $ do
