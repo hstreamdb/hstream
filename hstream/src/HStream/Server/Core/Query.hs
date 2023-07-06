@@ -228,6 +228,9 @@ createQueryWithNamespace'
               -- find all roles
               rolesM <- mapM (\x -> ((,) x) <$> findIdentifierRole sc x) srcs
               let notExistNames = filter (\(_, x) -> isNothing x) rolesM
+              when (sink == head srcs) $ do
+                Log.warning "Insert by Select: Can not insert by select the sink stream itself"
+                throwIO $ HE.InvalidSqlStatement "Insert by Select: Can not insert by select the sink stream itself"
               when (notExistNames /= []) $ do
                 Log.warning $ "Insert by Select: Streams not found: " <> Log.buildString (show srcs)
                 throwIO . HE.StreamNotFound $ "Streams not found: " <> T.pack (show srcs)
