@@ -7,6 +7,7 @@ module HStream.Server.Core.ShardReader
   , listShardReaders
   , readShard
   , readShardStream
+  , readStream
   )
 where
 
@@ -16,17 +17,21 @@ import           ZooKeeper.Exception        (ZNONODE (..), throwIO)
 
 import           Control.Concurrent         (modifyMVar_, newEmptyMVar, putMVar,
                                              readMVar, takeMVar, withMVar)
-import           Control.Exception          (bracket, catch)
-import           Control.Monad              (forM, unless, when)
+import           Control.Exception          (bracket, catch, throw)
+import           Control.Monad              (forM, forM_, unless, when)
 import           Data.ByteString            (ByteString)
 import           Data.Either                (isRight)
 import qualified Data.Foldable              as F
 import qualified Data.HashMap.Strict        as HM
 import           Data.Int                   (Int64)
-import           Data.IORef                 (newIORef, readIORef, writeIORef)
+import           Data.IORef                 (IORef, newIORef, readIORef,
+                                             writeIORef)
+import qualified Data.Map.Strict            as M
 import           Data.Maybe                 (fromJust, isJust)
 import qualified Data.Text                  as T
+import           Data.Vector                (Vector)
 import qualified Data.Vector                as V
+import           Data.Word                  (Word64)
 import           GHC.Stack                  (HasCallStack)
 import           HsGrpc.Server              (whileM)
 import qualified HStream.Exception          as HE
@@ -37,7 +42,9 @@ import           HStream.Server.HStreamApi  (CreateShardReaderRequest (..))
 import qualified HStream.Server.HStreamApi  as API
 import qualified HStream.Server.MetaData    as P
 import           HStream.Server.Types       (ServerContext (..),
-                                             ShardReader (..), mkShardReader)
+                                             ShardReader (..),
+                                             StreamReader (..), mkShardReader,
+                                             mkStreamReader, transToStreamName)
 import qualified HStream.Store              as S
 
 createShardReader
@@ -52,8 +59,7 @@ createShardReader ServerContext{..} API.CreateShardReaderRequest{createShardRead
   when exist $ throwIO $ HE.ShardReaderExists $ "ShardReader with id " <> rId <> " already exists."
   shardExists <- S.logIdHasGroup scLDClient rShardId
   unless shardExists $ throwIO $ HE.ShardNotFound $ "Shard with id " <> T.pack (show rShardId) <> " is not found."
-  -- (startLSN, timestamp) <- getLogLSN scLDClient rShardId rOffset
-  (startLSN, timestamp) <- maybe (return (S.LSN_MIN, Nothing)) (getLogLSN scLDClient rShardId) rOffset
+  (startLSN, timestamp) <- maybe (return (S.LSN_MIN, Nothing)) (getLogLSN scLDClient rShardId . toOffset) rOffset
   let shardReaderMeta = mkShardReaderMeta timestamp startLSN
   Log.info $ "create shardReader " <> Log.buildString' (show shardReaderMeta)
 
@@ -109,7 +115,7 @@ readShard ServerContext{..} API.ReadShardRequest{..} = do
          S.readerSetTimeout reader (fromIntegral readerReadTimeout)
          readerMvar <- newEmptyMVar
          modifyMVar_ shardReaderMap $ return . HM.insert readShardRequestReaderId readerMvar
-         return $ mkShardReader reader Nothing startTimestamp Nothing
+         return $ mkShardReader reader readerShardId Nothing startTimestamp Nothing
 
    putReader reader = do
     withMVar shardReaderMap $ \mp -> do
@@ -118,8 +124,8 @@ readShard ServerContext{..} API.ReadShardRequest{..} = do
         Just readerMvar -> putMVar readerMvar reader
 
    readRecords ShardReader{..} = do
-     records <- S.readerRead reader (fromIntegral readShardRequestMaxRecords)
-     let (records', _) = filterRecords startTs endTs records
+     records <- S.readerRead shardReader (fromIntegral readShardRequestMaxRecords)
+     let (records', _) = filterRecords shardReaderStartTs shardReaderEndTs records
      receivedRecordsVecs <- forM records' decodeRecordBatch
      let res = V.fromList $ map (\(_, _, _, record) -> record) receivedRecordsVecs
      Log.debug $ "reader " <> Log.build readShardRequestReaderId
@@ -127,6 +133,77 @@ readShard ServerContext{..} API.ReadShardRequest{..} = do
      return res
 
 -----------------------------------------------------------------------------------------------------
+--
+
+readStream
+  :: HasCallStack
+  => ServerContext
+  -> API.ReadStreamRequest
+  -> (API.ReadStreamResponse -> IO (Either String ()))
+  -- ^ Stream write function
+  -> IO ()
+readStream ServerContext{..}
+                API.ReadStreamRequest{ readStreamRequestReaderId       = rReaderId
+                                     , readStreamRequestStreamName     = rStreamName
+                                     , readStreamRequestFrom           = rStart
+                                     , readStreamRequestMaxReadBatches = rMaxBatches
+                                     , readStreamRequestUntil          = rEnd
+                                     }
+                streamWrite = do
+  bracket createReader deleteReader readRecords
+ where
+   ldReaderBufferSize = 10
+   maxReadBatch = 10
+   streamId = transToStreamName rStreamName
+
+   createReader = do
+     shards <- M.elems <$> S.listStreamPartitions scLDClient streamId
+     reader <- S.newLDReader scLDClient 1 (Just ldReaderBufferSize)
+     totalBatches <- if rMaxBatches == 0 then return Nothing else Just <$> newIORef rMaxBatches
+     S.readerSetTimeout reader 60000
+     S.readerSetWaitOnlyWhenNoData reader
+     tsMapList <- forM shards $ \shard -> do
+       (sTimestamp, eTimestamp) <- startReadingShard scLDClient reader rReaderId shard (toOffset <$> rStart) (toOffset <$> rEnd)
+       return (shard, (sTimestamp, eTimestamp))
+     let mp = HM.fromList tsMapList
+     return $ mkStreamReader reader totalBatches mp
+
+   deleteReader StreamReader{..} = do
+     let shards = HM.keys streamReaderTsLimits
+     forM_ shards $ \shard -> do
+       isReading <- S.readerIsReading streamReader shard
+       when isReading $ S.readerStopReading streamReader shard
+     Log.info $ "shard reader " <> Log.build rReaderId <> " stop reading"
+
+   readRecords s@StreamReader{..} = do
+     whileM $ do
+       records <- S.readerRead streamReader (fromIntegral maxReadBatch)
+       if null records then S.readerIsReadingAny streamReader
+                       else sendRecords s records
+     Log.info $ "shard reader " <> Log.build rReaderId <> " read stream done."
+
+   sendRecords StreamReader{..} records = do
+     -- group records with same logId
+     let groupRecords = F.foldr'
+          (
+            \r acc -> let logId = S.recordLogID r
+                       in HM.insertWith (++) logId [r] acc
+          )
+          HM.empty
+          records
+
+     res <- V.concat . HM.elems <$> HM.traverseWithKey
+       (
+          \key value -> do
+             case HM.lookup key streamReaderTsLimits of
+               Just (startTs, endTs) -> do
+                 getResponseRecords streamReader key value rReaderId startTs endTs
+               Nothing -> return V.empty
+       ) groupRecords
+
+     Log.debug $ "stream reader " <> Log.build rReaderId <> " read " <> Log.build (V.length res) <> " batchRecords"
+     isEnd <- S.readerIsReadingAny streamReader
+     streamSend streamWrite rReaderId streamReaderTotalBatches isEnd res
 
 readShardStream
   :: HasCallStack
@@ -151,59 +228,101 @@ readShardStream ServerContext{..}
    createReader = do
      shardExists <- S.logIdHasGroup scLDClient rShardId
      unless shardExists $ throwIO $ HE.ShardNotFound $ "Shard with id " <> T.pack (show rShardId) <> " is not found."
-     (startLSN, sTimestamp) <- maybe (return (S.LSN_MIN, Nothing)) (getLogLSN scLDClient rShardId) rStart
-     (endLSN,   eTimestamp) <- maybe (return (S.LSN_MAX, Nothing)) (getLogLSN scLDClient rShardId) rEnd
-     when (endLSN < startLSN) $ throwIO . HE.ConflictShardReaderOffset $ "startLSN(" <> show startLSN <>") should less than and equal to endLSN(" <> show endLSN <> ")"
-     -- Since the LSN obtained by timestamp is not accurate, for scenarios where the endLSN is determined using a timestamp,
-     -- set the endLSN to LSN_MAX and do not rely on the underlying reader mechanism to determine the end of the read
-     let endLSN' = if isJust eTimestamp then S.LSN_MAX else endLSN
      reader <- S.newLDReader scLDClient 1 (Just ldReaderBufferSize)
-     S.readerStartReading reader rShardId startLSN endLSN'
+     Log.info $ "Create shardReader " <> Log.build rReaderId
      -- When there is data, reader read will return immediately, the maximum number of returned data is maxReadBatch,
      -- If there is no data, it will wait up to 1min and return 0.
      -- Setting the timeout to 1min instead of infinite is to give us some information on whether
      -- the current reader is still alive or not.
      S.readerSetTimeout reader 60000
      S.readerSetWaitOnlyWhenNoData reader
-     Log.info $ "create shardReader for shard " <> Log.build rShardId <> " success, from = " <> Log.build (show startLSN) <> ", to = " <> Log.build (show endLSN')
+     (sTimestamp, eTimestamp) <- startReadingShard scLDClient reader rReaderId rShardId (toOffset <$> rStart) (toOffset <$> rEnd)
      totalBatches <- if rMaxBatches == 0 then return Nothing else Just <$> newIORef rMaxBatches
-     return $ mkShardReader reader totalBatches sTimestamp eTimestamp
+     return $ mkShardReader reader rShardId totalBatches sTimestamp eTimestamp
 
    deleteReader ShardReader{..} = do
      Log.info $ "shard reader " <> Log.build rReaderId <> " stop reading"
-     allStoped <- S.readerIsReadingAny reader
-     unless allStoped $ S.readerStopReading reader rShardId
+     allStoped <- S.readerIsReadingAny shardReader
+     unless allStoped $ S.readerStopReading shardReader rShardId
 
    readRecords s@ShardReader{..} = do
      whileM $ do
-       records <- S.readerRead reader (fromIntegral maxReadBatch)
-       if null records then S.readerIsReadingAny reader
+       records <- S.readerRead shardReader (fromIntegral maxReadBatch)
+       if null records then S.readerIsReadingAny shardReader
                        else sendRecords s records
      Log.info $ "shard reader " <> Log.build rReaderId <> " read stream done."
 
    sendRecords ShardReader{..} records = do
-     let (records', isEnd) = filterRecords startTs endTs records
-     receivedRecordsVecs <- forM records' decodeRecordBatch
-     let res = V.fromList $ map (\(_, _, _, record) -> record) receivedRecordsVecs
-     Log.debug $ "reader " <> Log.build rReaderId
-              <> " read " <> Log.build (V.length res) <> " batchRecords"
+     res <- getResponseRecords shardReader targetShard records rReaderId shardReaderStartTs shardReaderEndTs
+     isEnd <- S.readerIsReadingAny shardReader
+     streamSend streamWrite rReaderId shardReaderTotalBatches isEnd res
 
-     when isEnd $ Log.info $ "shard reader " <> Log.build rReaderId <> " reach end timestamp, will finish reading."
+----------------------------------------------------------------------------------------------------------------------------------
+-- helper
 
-     case totalBatches of
-       Just bs -> do
-         remains <- fromIntegral <$> readIORef bs
-         let diff = remains - V.length res
-         if diff > 0
-           then do
-             writeIORef bs $ fromIntegral diff
-             streamWrite (API.ReadShardStreamResponse res) >>= return <$> (not isEnd &&) . isRight
-           else do
-             let res' = V.take remains res
-             _ <- streamWrite (API.ReadShardStreamResponse res')
-             Log.info $ "shard reader " <> Log.build rReaderId <> " finish read max batches."
-             return False
-       Nothing -> streamWrite (API.ReadShardStreamResponse res) >>= return <$> (not isEnd &&) . isRight
+class StreamSend s where
+  convert :: Vector API.ReceivedRecord -> s
+  streamSend :: (s -> IO (Either String ())) -> T.Text -> Maybe (IORef Word64) -> Bool -> Vector API.ReceivedRecord -> IO Bool
+  streamSend streamWrite readerId totalCnt isEnd res = case totalCnt of
+    Just bs -> do
+      remains <- fromIntegral <$> readIORef bs
+      let diff = remains - V.length res
+      if diff > 0
+        then do
+          writeIORef bs $ fromIntegral diff
+          streamWrite (convert res) >>= return <$> (not isEnd &&) . isRight
+        else do
+          let res' = V.take remains res
+          _ <- streamWrite (convert res')
+          Log.info $ "shard reader " <> Log.build readerId <> " finish read max batches."
+          return False
+    Nothing -> streamWrite (convert res) >>= return <$> (not isEnd &&) . isRight
+
+instance StreamSend API.ReadShardStreamResponse where
+  convert = API.ReadShardStreamResponse
+
+instance StreamSend API.ReadStreamResponse where
+  convert = API.ReadStreamResponse
+
+data Offset = OffsetEarliest
+            | OffsetLatest
+            | OffsetRecordId API.RecordId
+            | OffsetTimestamp API.TimestampOffset
+ deriving (Show)
+
+class ToOffset g where
+  toOffset :: g -> Offset
+
+instance ToOffset API.ShardOffset where
+  toOffset offset = case fromJust . API.shardOffsetOffset $ offset of
+    API.ShardOffsetOffsetSpecialOffset (Enumerated (Right API.SpecialOffsetEARLIEST)) -> OffsetEarliest
+    API.ShardOffsetOffsetSpecialOffset (Enumerated (Right API.SpecialOffsetLATEST))   -> OffsetLatest
+    API.ShardOffsetOffsetRecordOffset rid                                             -> OffsetRecordId rid
+    API.ShardOffsetOffsetTimestampOffset timestamp                                    -> OffsetTimestamp timestamp
+    _                                                                                 -> throw $ HE.InvalidShardOffset "UnKnownShardOffset"
+
+instance ToOffset API.StreamOffset where
+  toOffset offset = case fromJust . API.streamOffsetOffset $ offset of
+    API.StreamOffsetOffsetSpecialOffset (Enumerated (Right API.SpecialOffsetEARLIEST)) -> OffsetEarliest
+    API.StreamOffsetOffsetSpecialOffset (Enumerated (Right API.SpecialOffsetLATEST))   -> OffsetLatest
+    API.StreamOffsetOffsetTimestampOffset timestamp                                    -> OffsetTimestamp timestamp
+    _                                                                                  -> throw $ HE.InvalidShardOffset "UnKnownShardOffset"
+
+-- if the offset is timestampOffset, then return (LSN, Just timestamp)
+-- , otherwise return (LSN, Nothing)
+getLogLSN :: S.LDClient -> S.C_LogID -> Offset -> IO (S.LSN, Maybe Int64)
+getLogLSN scLDClient logId offset =
+  case offset of
+    OffsetEarliest -> return (S.LSN_MIN, Nothing)
+    OffsetLatest -> do
+      startLSN <- (+ 1) <$> S.getTailLSN scLDClient logId
+      return (startLSN, Nothing)
+    OffsetRecordId API.RecordId{..} ->
+      return (recordIdBatchId, Nothing)
+    OffsetTimestamp API.TimestampOffset{..} -> do
+      let accuracy = if timestampOffsetStrictAccuracy then S.FindKeyStrict else S.FindKeyApproximate
+      startLSN <- S.findTime scLDClient logId timestampOffsetTimestampInMs accuracy
+      return (startLSN, Just timestampOffsetTimestampInMs)
 
 -- Removes data that is not in the specified timestamp range.
 -- If endTimestamp is set, also check if endTimestamp has been reached
@@ -237,21 +356,40 @@ filterRecords startTs endTs records =
        ([], False)
        rds
 
--- if the offset is timestampOffset, then return (LSN, Just timestamp)
--- , otherwise return (LSN, Nothing)
-getLogLSN :: S.LDClient -> S.C_LogID -> API.ShardOffset -> IO (S.LSN, Maybe Int64)
-getLogLSN scLDClient logId offset =
-  case fromJust . API.shardOffsetOffset $ offset of
-    API.ShardOffsetOffsetSpecialOffset (Enumerated (Right API.SpecialOffsetEARLIEST)) ->
-      return (S.LSN_MIN, Nothing)
-    API.ShardOffsetOffsetSpecialOffset (Enumerated (Right API.SpecialOffsetLATEST)) -> do
-      startLSN <- (+ 1) <$> S.getTailLSN scLDClient logId
-      return (startLSN, Nothing)
-    API.ShardOffsetOffsetRecordOffset API.RecordId{..} ->
-      return (recordIdBatchId, Nothing)
-    API.ShardOffsetOffsetTimestampOffset API.TimestampOffset{..} -> do
-      let accuracy = if timestampOffsetStrictAccuracy then S.FindKeyStrict else S.FindKeyApproximate
-      startLSN <- S.findTime scLDClient logId timestampOffsetTimestampInMs accuracy
-      return (startLSN, Just timestampOffsetTimestampInMs)
-    _ ->
-      throwIO $ HE.InvalidShardOffset "UnKnownShardOffset"
+startReadingShard
+  :: S.LDClient
+  -> S.LDReader
+  -> T.Text        -- readerId, use for log
+  -> S.C_LogID
+  -> Maybe Offset  -- startOffset
+  -> Maybe Offset  -- endOffset
+  -> IO (Maybe Int64, Maybe Int64)
+startReadingShard scLDClient reader readerId rShardId rStart rEnd = do
+  (startLSN, sTimestamp) <- maybe (return (S.LSN_MIN, Nothing)) (getLogLSN scLDClient rShardId) rStart
+  (endLSN,   eTimestamp) <- maybe (return (S.LSN_MAX, Nothing)) (getLogLSN scLDClient rShardId) rEnd
+  when (endLSN < startLSN) $ throwIO . HE.ConflictShardReaderOffset $ "startLSN(" <> show startLSN <>") should less than and equal to endLSN(" <> show endLSN <> ")"
+  -- Since the LSN obtained by timestamp is not accurate, for scenarios where the endLSN is determined using a timestamp,
+  -- set the endLSN to LSN_MAX and do not rely on the underlying reader mechanism to determine the end of the read
+  let endLSN' = if isJust eTimestamp then S.LSN_MAX else endLSN
+  S.readerStartReading reader rShardId startLSN endLSN'
+  Log.info $ "ShardReader " <> Log.build readerId <> " start reading shard " <> Log.build rShardId <> " from = " <> Log.build (show startLSN) <> ", to = " <> Log.build (show endLSN')
+  return (sTimestamp, eTimestamp)
+
+getResponseRecords
+  :: S.LDReader
+  -> S.C_LogID
+  -> [S.DataRecord ByteString]
+  -> T.Text
+  -> Maybe Int64
+  -> Maybe Int64
+  -> IO (Vector API.ReceivedRecord)
+getResponseRecords reader shard records readerId startTs endTs = do
+  let (records', isEnd) = filterRecords startTs endTs records
+  receivedRecordsVecs <- forM records' decodeRecordBatch
+  let res = V.fromList $ map (\(_, _, _, record) -> record) receivedRecordsVecs
+  Log.debug $ "reader " <> Log.build readerId
+           <> " read " <> Log.build (V.length res) <> " batchRecords"
+  when isEnd $ Log.info $ "stream reader " <> Log.build readerId <> " stop reading shard " <> Log.build shard <> " since reach end timestamp."
+  S.readerStopReading reader shard
+  return res
+

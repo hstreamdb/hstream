@@ -12,6 +12,7 @@ import           Control.Concurrent               (MVar, ThreadId)
 import           Control.Concurrent.STM
 import           Data.Aeson                       (FromJSON (..), ToJSON (..))
 import qualified Data.Aeson                       as Aeson
+import           Data.HashMap.Strict              (HashMap)
 import qualified Data.HashMap.Strict              as HM
 import qualified Data.Heap                        as Heap
 import           Data.Int                         (Int32, Int64)
@@ -255,14 +256,25 @@ instance TaskManager IO.Worker where
   recoverTask = IO.recoverTask
 
 data ShardReader = ShardReader
-  { reader       :: S.LDReader
-  , totalBatches :: Maybe (IORef Word64)
-  , startTs      :: Maybe Int64
-  , endTs        :: Maybe Int64
+  { shardReader             :: S.LDReader
+  , shardReaderTotalBatches :: Maybe (IORef Word64)
+  , shardReaderStartTs      :: Maybe Int64
+  , shardReaderEndTs        :: Maybe Int64
+  , targetShard             :: S.C_LogID
   }
 
-mkShardReader :: S.LDReader ->  Maybe (IORef Word64) -> Maybe Int64 -> Maybe Int64 -> ShardReader
-mkShardReader reader totalBatches startTs endTs = ShardReader {..}
+mkShardReader :: S.LDReader -> S.C_LogID -> Maybe (IORef Word64) -> Maybe Int64 -> Maybe Int64 -> ShardReader
+mkShardReader shardReader targetShard shardReaderTotalBatches shardReaderStartTs shardReaderEndTs = ShardReader {..}
+
+data StreamReader = StreamReader
+  { streamReader             :: S.LDReader
+  , streamReaderTotalBatches :: Maybe (IORef Word64)
+  , streamReaderTsLimits     :: HashMap S.C_LogID (Maybe Int64, Maybe Int64)
+    -- ^ shardId -> (startTs, endTs)
+  }
+
+mkStreamReader :: S.LDReader ->  Maybe (IORef Word64) -> HashMap S.C_LogID (Maybe Int64, Maybe Int64) -> StreamReader
+mkStreamReader streamReader streamReaderTotalBatches streamReaderTsLimits = StreamReader {..}
 
 --------------------------------------------------------------------------------
 

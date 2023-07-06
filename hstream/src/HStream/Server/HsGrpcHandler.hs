@@ -55,6 +55,7 @@ handlers sc =
     -- Read
   , unary (GRPC :: GRPC P.HStreamApi "readShard") (H.handleReadShard sc)
   , serverStream (GRPC :: GRPC P.HStreamApi "readShardStream") (H.handleReadShardStream sc)
+  , serverStream (GRPC :: GRPC P.HStreamApi "readStream") (H.handleReadStream sc)
     -- Subscribe
   , bidiStream (GRPC :: GRPC P.HStreamApi "streamingFetch") (H.handleStreamingFetch sc)
     -- Stats
