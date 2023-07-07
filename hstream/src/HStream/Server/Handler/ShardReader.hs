@@ -13,12 +13,16 @@ module HStream.Server.Handler.ShardReader
   , readShardHandler
   , listShardReadersHandler
   , readShardStreamHandler
+  , readStreamHandler
+  , readSingleShardStreamHandler
     -- * For hs-grpc-server
   , handleListShardReaders
   , handleCreateShardReader
   , handleDeleteShardReader
   , handleReadShard
   , handleReadShardStream
+  , handleReadStream
+  , handleReadSingleShardStream
   )
 where
 
@@ -122,3 +126,41 @@ handleReadShardStream
 handleReadShardStream sc _ req stream = catchDefaultEx $ do
   Log.debug $ "Receive read shard stream Request: " <> Log.build (show req)
   C.readShardStream sc req (G.streamWrite stream . Just)
+
+readStreamHandler
+  :: ServerContext
+  -> ServerRequest 'ServerStreaming ReadStreamRequest ReadStreamResponse
+  -> IO (ServerResponse 'ServerStreaming ReadStreamResponse)
+readStreamHandler sc (ServerWriterRequest _meta req streamSend) =
+  defaultServerStreamExceptionHandle $ do
+    Log.debug $ "Receive read shard stream Request: " <> Log.build (show req)
+    C.readStream sc req streamWrite
+    return $ ServerWriterResponse mempty StatusUnknown "should not reach here"
+  where
+    streamWrite x = first show <$> streamSend x
+
+handleReadStream
+  :: ServerContext
+  -> G.ServerStreamHandler ReadStreamRequest ReadStreamResponse ()
+handleReadStream sc _ req stream = catchDefaultEx $ do
+  Log.debug $ "Receive read shard stream Request: " <> Log.build (show req)
+  C.readStream sc req (G.streamWrite stream . Just)
+
+readSingleShardStreamHandler
+  :: ServerContext
+  -> ServerRequest 'ServerStreaming ReadSingleShardStreamRequest ReadSingleShardStreamResponse
+  -> IO (ServerResponse 'ServerStreaming ReadSingleShardStreamResponse)
+readSingleShardStreamHandler sc (ServerWriterRequest _meta req streamSend) =
+  defaultServerStreamExceptionHandle $ do
+    Log.debug $ "Receive read single shard stream Request: " <> Log.build (show req)
+    C.readSingleShardStream sc req streamWrite
+    return $ ServerWriterResponse mempty StatusUnknown "should not reach here"
+  where
+    streamWrite x = first show <$> streamSend x
+
+handleReadSingleShardStream
+  :: ServerContext
+  -> G.ServerStreamHandler ReadSingleShardStreamRequest ReadSingleShardStreamResponse ()
+handleReadSingleShardStream sc _ req stream = catchDefaultEx $ do
+  Log.debug $ "Receive read single shard stream Request: " <> Log.build (show req)
+  C.readSingleShardStream sc req (G.streamWrite stream . Just)

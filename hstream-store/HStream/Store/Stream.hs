@@ -110,6 +110,7 @@ module HStream.Store.Stream
   , LD.readerSetWaitOnlyWhenNoData
   , LD.readerStopReading
   , LD.readerIsReadingAny
+  , LD.readerIsReading
     -- ** Checkpointed Reader
   , FFI.LDSyncCkpReader
   , newLDFileCkpReader

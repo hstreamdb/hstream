@@ -50,6 +50,7 @@ module HStream.Exception
   , InvalidQuerySql (InvalidQuerySql)
   , SQLNotSupportedByParseSQL(SQLNotSupportedByParseSQL)
   , ConflictShardReaderOffset (ConflictShardReaderOffset)
+  , TooManyShardCount (TooManyShardCount)
 
     -- * Exception: SomeDeadlineExceeded
     --
@@ -427,6 +428,7 @@ MAKE_EX_1_DEFMSG(SomeInvalidArgument, InvalidConnectorType, Text, API.ErrorCodeC
 MAKE_EX_1_DEFMSG(SomeInvalidArgument, SQLNotSupportedByParseSQL, Text, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeInvalidArgument, InvalidQuerySql, String, API.ErrorCodeQueryInvalidSQL)
 MAKE_EX_1_DEFMSG(SomeInvalidArgument, ConflictShardReaderOffset, String, API.ErrorCodeShardReaderConflictOffset)
+MAKE_EX_1_DEFMSG(SomeInvalidArgument, TooManyShardCount, String, API.ErrorCodeShardReaderTooManyShards)
 
 invalidIdentifier :: API.ResourceType -> String -> InvalidObjectIdentifier
 invalidIdentifier API.ResourceTypeResStream       = InvalidObjectIdentifier API.ErrorCodeStreamInvalidObjectIdentifier
