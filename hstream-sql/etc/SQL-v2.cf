@@ -214,7 +214,7 @@ BoolFalse. Boolean ::= "FALSE" ;
 ExprBool. ValueExpr7 ::= Boolean ;
 
 -- Non-Scalar Type (Array and Map)
-ExprArr. ValueExpr ::= "[" [ValueExpr] "]" ; -- array
+ExprArr. ValueExpr ::= "{" [ValueExpr] "}" ; -- array
 ExprMap. ValueExpr ::= "{" [LabelledValueExpr] "}" ; -- map
 DLabelledValueExpr. LabelledValueExpr ::= ValueExpr ":" ValueExpr ;
 separator LabelledValueExpr "," ;
