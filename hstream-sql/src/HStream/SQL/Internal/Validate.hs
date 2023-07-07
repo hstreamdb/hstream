@@ -529,12 +529,16 @@ isConstExpr expr@(ExprLEQ _ e1 e2) = isConstExpr e1 >> isConstExpr e2 >> return 
 isConstExpr expr@(ExprGEQ _ e1 e2) = isConstExpr e1 >> isConstExpr e2 >> return expr
 isConstExpr expr@(ExprAccessArray _ e _) = isConstExpr e >> return expr
 
-isConstExpr expr@ExprInt{}      = Right expr
-isConstExpr expr@ExprNum{}      = Right expr
-isConstExpr expr@ExprString{}   = Right expr
-isConstExpr expr@ExprNull{}     = Right expr
-isConstExpr expr@ExprBool{}     = Right expr
-isConstExpr expr@ExprInterval{} = Right expr
+isConstExpr expr@ExprInt{}       = Right expr
+isConstExpr expr@ExprNum{}       = Right expr
+isConstExpr expr@ExprString{}    = Right expr
+isConstExpr expr@ExprNull{}      = Right expr
+isConstExpr expr@ExprBool{}      = Right expr
+isConstExpr expr@ExprInterval{}  = Right expr
+isConstExpr expr@ExprTimestamp{} = Right expr
+isConstExpr expr@ExprTime{}      = Right expr
+isConstExpr expr@ExprDate{}      = Right expr
+
 isConstExpr _ = Left $ buildSQLException ParseException Nothing "INSERT only supports constant values"
 
 ------------------------------------- SELECT -----------------------------------
