@@ -8,6 +8,7 @@ module HStream.Server.Core.ShardReader
   , readShard
   , readShardStream
   , readStream
+  , readSingleShardStream
   )
 where
 
@@ -212,7 +213,7 @@ readShardStream
   -> (API.ReadShardStreamResponse -> IO (Either String ()))
   -- ^ Stream write function
   -> IO ()
-readShardStream ServerContext{..}
+readShardStream sc
                 API.ReadShardStreamRequest{ readShardStreamRequestReaderId       = rReaderId
                                           , readShardStreamRequestShardId        = rShardId
                                           , readShardStreamRequestFrom           = rStart
@@ -220,6 +221,42 @@ readShardStream ServerContext{..}
                                           , readShardStreamRequestUntil          = rEnd
                                           }
                 streamWrite = do
+    readShardStream' sc rReaderId rShardId rStart rEnd rMaxBatches streamWrite
+
+readSingleShardStream
+  :: HasCallStack
+  => ServerContext
+  -> API.ReadSingleShardStreamRequest
+  -> (API.ReadSingleShardStreamResponse -> IO (Either String ()))
+  -- ^ Stream write function
+  -> IO ()
+readSingleShardStream sc@ServerContext{..}
+                API.ReadSingleShardStreamRequest{ readSingleShardStreamRequestReaderId       = rReaderId
+                                                , readSingleShardStreamRequestStreamName     = rStreamName
+                                                , readSingleShardStreamRequestFrom           = rStart
+                                                , readSingleShardStreamRequestMaxReadBatches = rMaxBatches
+                                                , readSingleShardStreamRequestUntil          = rEnd
+                                                }
+                streamWrite = do
+    let streamId = transToStreamName rStreamName
+    shards <- M.elems <$> S.listStreamPartitions scLDClient streamId
+    when (length shards /= 1) $ throwIO $ HE.TooManyShardCount $ "Stream " <> show rStreamName <> " has more than one shard"
+    readShardStream' sc rReaderId (head shards) rStart rEnd rMaxBatches streamWrite
+----------------------------------------------------------------------------------------------------------------------------------
+-- helper
+
+readShardStream'
+  :: (HasCallStack, StreamSend s)
+  => ServerContext
+  -> T.Text
+  -> S.C_LogID
+  -> Maybe API.ShardOffset
+  -> Maybe API.ShardOffset
+  -> Word64
+  -> (s -> IO (Either String ()))
+  -- ^ Stream write function
+  -> IO ()
+readShardStream' ServerContext{..} rReaderId rShardId rStart rEnd rMaxBatches streamWrite = do
   bracket createReader deleteReader readRecords
  where
    ldReaderBufferSize = 10
@@ -254,35 +291,35 @@ readShardStream ServerContext{..}
 
    sendRecords ShardReader{..} records = do
      res <- getResponseRecords shardReader targetShard records rReaderId shardReaderStartTs shardReaderEndTs
-     isEnd <- S.readerIsReadingAny shardReader
-     streamSend streamWrite rReaderId shardReaderTotalBatches isEnd res
-
-----------------------------------------------------------------------------------------------------------------------------------
--- helper
+     isReading <- S.readerIsReadingAny shardReader
+     streamSend streamWrite rReaderId shardReaderTotalBatches isReading res
 
 class StreamSend s where
   convert :: Vector API.ReceivedRecord -> s
   streamSend :: (s -> IO (Either String ())) -> T.Text -> Maybe (IORef Word64) -> Bool -> Vector API.ReceivedRecord -> IO Bool
-  streamSend streamWrite readerId totalCnt isEnd res = case totalCnt of
+  streamSend streamWrite readerId totalCnt isReading res = case totalCnt of
     Just bs -> do
       remains <- fromIntegral <$> readIORef bs
       let diff = remains - V.length res
       if diff > 0
         then do
           writeIORef bs $ fromIntegral diff
-          streamWrite (convert res) >>= return <$> (not isEnd &&) . isRight
+          streamWrite (convert res) >>= return <$> (isReading &&) . isRight
         else do
           let res' = V.take remains res
           _ <- streamWrite (convert res')
           Log.info $ "shard reader " <> Log.build readerId <> " finish read max batches."
           return False
-    Nothing -> streamWrite (convert res) >>= return <$> (not isEnd &&) . isRight
+    Nothing -> streamWrite (convert res) >>= return <$> (isReading &&) . isRight
 
 instance StreamSend API.ReadShardStreamResponse where
   convert = API.ReadShardStreamResponse
 
 instance StreamSend API.ReadStreamResponse where
   convert = API.ReadStreamResponse
+
+instance StreamSend API.ReadSingleShardStreamResponse where
+  convert = API.ReadSingleShardStreamResponse
 
 data Offset = OffsetEarliest
             | OffsetLatest
@@ -359,7 +396,7 @@ filterRecords startTs endTs records =
 startReadingShard
   :: S.LDClient
   -> S.LDReader
-  -> T.Text        -- readerId, use for log
+  -> T.Text        -- readerId, use for logging
   -> S.C_LogID
   -> Maybe Offset  -- startOffset
   -> Maybe Offset  -- endOffset
@@ -367,12 +404,14 @@ startReadingShard
 startReadingShard scLDClient reader readerId rShardId rStart rEnd = do
   (startLSN, sTimestamp) <- maybe (return (S.LSN_MIN, Nothing)) (getLogLSN scLDClient rShardId) rStart
   (endLSN,   eTimestamp) <- maybe (return (S.LSN_MAX, Nothing)) (getLogLSN scLDClient rShardId) rEnd
-  when (endLSN < startLSN) $ throwIO . HE.ConflictShardReaderOffset $ "startLSN(" <> show startLSN <>") should less than and equal to endLSN(" <> show endLSN <> ")"
+  when (endLSN < startLSN) $
+    throwIO . HE.ConflictShardReaderOffset $ "startLSN(" <> show startLSN <>") should less than and equal to endLSN(" <> show endLSN <> ")"
   -- Since the LSN obtained by timestamp is not accurate, for scenarios where the endLSN is determined using a timestamp,
   -- set the endLSN to LSN_MAX and do not rely on the underlying reader mechanism to determine the end of the read
   let endLSN' = if isJust eTimestamp then S.LSN_MAX else endLSN
   S.readerStartReading reader rShardId startLSN endLSN'
-  Log.info $ "ShardReader " <> Log.build readerId <> " start reading shard " <> Log.build rShardId <> " from = " <> Log.build (show startLSN) <> ", to = " <> Log.build (show endLSN')
+  Log.info $ "ShardReader " <> Log.build readerId <> " start reading shard " <> Log.build rShardId
+          <> " from = " <> Log.build (show startLSN) <> ", to = " <> Log.build (show endLSN')
   return (sTimestamp, eTimestamp)
 
 getResponseRecords
@@ -389,7 +428,10 @@ getResponseRecords reader shard records readerId startTs endTs = do
   let res = V.fromList $ map (\(_, _, _, record) -> record) receivedRecordsVecs
   Log.debug $ "reader " <> Log.build readerId
            <> " read " <> Log.build (V.length res) <> " batchRecords"
-  when isEnd $ Log.info $ "stream reader " <> Log.build readerId <> " stop reading shard " <> Log.build shard <> " since reach end timestamp."
-  S.readerStopReading reader shard
+  when isEnd $ do
+    Log.info $ "stream reader "
+            <> Log.build readerId <> " stop reading shard "
+            <> Log.build shard <> " since reach end timestamp."
+    S.readerStopReading reader shard
   return res
 
