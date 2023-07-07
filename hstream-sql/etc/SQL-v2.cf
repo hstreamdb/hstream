@@ -57,7 +57,7 @@ separator ConnectorOption "," ;
 
 CreateView. Create ::= "CREATE" "VIEW" HIdent "AS" Select ;
 
-ConnectorProperty. ConnectorOption ::= String "=" ValueExpr ;
+ConnectorProperty. ConnectorOption ::= HIdent "=" ValueExpr ;
 
 ---- Pause Query
 PauseConnector. Pause ::= "PAUSE" "CONNECTOR" HIdent ;

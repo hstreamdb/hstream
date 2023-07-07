@@ -56,7 +56,7 @@ separator ConnectorOption "," ;
 
 CreateView. Create ::= "CREATE" "VIEW" HIdent "AS" Select ;
 
-ConnectorProperty. ConnectorOption ::= String "=" ValueExpr ;
+ConnectorProperty. ConnectorOption ::= HIdent "=" ValueExpr ;
 
 ---- Pause Query
 PauseConnector. Pause ::= "PAUSE" "CONNECTOR" HIdent ;
@@ -64,7 +64,7 @@ PauseQuery.     Pause ::= "PAUSE" "QUERY"     HIdent ;
 
 ---- Resume Query
 ResumeConnector. Resume ::= "RESUME" "CONNECTOR" HIdent ;
-ResumeQuery.     Resume  ::= "RESUME" "QUERY"    HIdent ;
+ResumeQuery.     Resume ::= "RESUME" "QUERY"     HIdent ;
 
 ---- Insert Query
 DInsert. Insert ::= "INSERT" "INTO" HIdent "(" [ColumnIdent] ")" "VALUES" "(" [ValueExpr] ")" ;
