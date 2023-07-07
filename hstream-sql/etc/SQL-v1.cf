@@ -247,7 +247,7 @@ DInterval. Interval ::= "INTERVAL" Integer IntervalUnit ;
 ExprInterval. ValueExpr10 ::= Interval ;
 
 -- Non-Scalar Type (Array)
-ExprArr. ValueExpr ::= "[" [ValueExpr] "]" ; -- array
+ExprArr. ValueExpr ::= "{" [ValueExpr] "}" ; -- array
 
 -- SubQuery
 -- ExprSubquery. ValueExpr10 ::= "(" Select ")" ;
