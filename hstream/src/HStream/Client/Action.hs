@@ -132,20 +132,19 @@ dropAction ignoreNonExist dropObject API.HStreamApi{..}  = do
                       })
 
 insertIntoStream
-  :: StreamName -> Word64 -> InsertType -> BS.ByteString
+  :: StreamName -> Word64 -> Bool -> BS.ByteString
   -> Action API.AppendResponse
-insertIntoStream sName shardId insertType payload api =
-  insertIntoStream' sName shardId insertType (pure payload) api
+insertIntoStream sName shardId isHRecord payload =
+  insertIntoStream' sName shardId isHRecord (pure payload) API.CompressionTypeNone
 
 insertIntoStream'
-  :: StreamName -> Word64 -> InsertType -> V.Vector BS.ByteString
+  :: StreamName -> Word64 -> Bool -> V.Vector BS.ByteString -> API.CompressionType
   -> Action API.AppendResponse
-insertIntoStream' sName shardId insertType payloadVec API.HStreamApi{..} = do
-  let header = case insertType of
-        JsonFormat -> buildRecordHeader API.HStreamRecordHeader_FlagJSON Map.empty clientDefaultKey
-        RawFormat  -> buildRecordHeader API.HStreamRecordHeader_FlagRAW Map.empty clientDefaultKey
+insertIntoStream' sName shardId isHRecord payloadVec compressionType API.HStreamApi{..} = do
+  let header = if isHRecord then buildRecordHeader API.HStreamRecordHeader_FlagJSON Map.empty clientDefaultKey
+                            else buildRecordHeader API.HStreamRecordHeader_FlagRAW Map.empty clientDefaultKey
       hsRecord = V.map (mkHStreamRecord header) payloadVec
-      record = mkBatchedRecord (PT.Enumerated (Right API.CompressionTypeNone)) Nothing (fromIntegral $ V.length payloadVec) hsRecord
+      record = mkBatchedRecord (PT.Enumerated (Right compressionType)) Nothing (fromIntegral $ V.length payloadVec) hsRecord
   hstreamApiAppend (mkClientNormalRequest' def
     { API.appendRequestShardId    = shardId
     , API.appendRequestStreamName = sName
