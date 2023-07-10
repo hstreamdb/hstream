@@ -227,7 +227,6 @@ getSubscription sid HStreamApi{..} = hstreamApiGetSubscription $ mkClientNormalR
 executeViewQuery :: String -> Action ExecuteViewQueryResponse
 executeViewQuery sql HStreamApi{..} = hstreamApiExecuteViewQuery $ mkClientNormalRequest' def { executeViewQueryRequestSql = T.pack sql }
 
-
 streamReading :: Format a => IO (Either GRPCIOError (Maybe a)) -> IO ()
 streamReading recv = recv >>= \case
    Left (err :: GRPCIOError) -> errorWithoutStackTrace ("error: " <> show err)

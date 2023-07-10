@@ -424,7 +424,6 @@ getResponseRecords
   -> IO (Vector API.ReceivedRecord)
 getResponseRecords reader shard records readerId startTs endTs = do
   let (records', isEnd) = filterRecords startTs endTs records
-  Log.debug $ "after filterRecords, isEnd = " <> Log.build (show isEnd)
   receivedRecordsVecs <- forM records' decodeRecordBatch
   let res = V.fromList $ map (\(_, _, _, record) -> record) receivedRecordsVecs
   Log.debug $ "reader " <> Log.build readerId
