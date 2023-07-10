@@ -66,7 +66,7 @@ import           Proto3.Suite.Class               (def)
 
 import           HStream.Client.Types             (Resource (..))
 import           HStream.Client.Utils
-import           HStream.Server.HStreamApi
+-- import           HStream.Server.HStreamApi
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.SQL.AST                  (StreamName)
 #ifdef HStreamUseV2Engine
@@ -145,7 +145,7 @@ insertIntoStream' sName shardId insertType payloadVec API.HStreamApi{..} = do
         JsonFormat -> buildRecordHeader API.HStreamRecordHeader_FlagJSON Map.empty clientDefaultKey
         RawFormat  -> buildRecordHeader API.HStreamRecordHeader_FlagRAW Map.empty clientDefaultKey
       hsRecord = V.map (mkHStreamRecord header) payloadVec
-      record = mkBatchedRecord (PT.Enumerated (Right CompressionTypeNone)) Nothing (fromIntegral $ V.length payloadVec) hsRecord
+      record = mkBatchedRecord (PT.Enumerated (Right API.CompressionTypeNone)) Nothing (fromIntegral $ V.length payloadVec) hsRecord
   hstreamApiAppend (mkClientNormalRequest' def
     { API.appendRequestShardId    = shardId
     , API.appendRequestStreamName = sName
@@ -170,62 +170,61 @@ createConnector name typ target cfg API.HStreamApi{..} =
     , API.createConnectorRequestTarget = target
     , API.createConnectorRequestConfig = cfg })
 
-
 listShards :: T.Text -> Action API.ListShardsResponse
 listShards sName API.HStreamApi{..} = do
   hstreamApiListShards $ mkClientNormalRequest' def {
-    listShardsRequestStreamName = sName
+    API.listShardsRequestStreamName = sName
   }
 
 lookupResource :: Resource -> Action API.ServerNode
 lookupResource (Resource rType rid) API.HStreamApi{..} = hstreamApiLookupResource $
   mkClientNormalRequest' def
-    { lookupResourceRequestResId   = rid
-    , lookupResourceRequestResType = PT.Enumerated $ Right rType
+    { API.lookupResourceRequestResId   = rid
+    , API.lookupResourceRequestResType = PT.Enumerated $ Right rType
     }
 
 describeCluster :: Action API.DescribeClusterResponse
 describeCluster API.HStreamApi{..} = hstreamApiDescribeCluster clientDefaultRequest
 
 pauseConnector :: T.Text -> Action Empty
-pauseConnector cid HStreamApi{..} = hstreamApiPauseConnector $
-  mkClientNormalRequest' def { pauseConnectorRequestName = cid }
+pauseConnector cid API.HStreamApi{..} = hstreamApiPauseConnector $
+  mkClientNormalRequest' def { API.pauseConnectorRequestName = cid }
 
 resumeConnector :: T.Text -> Action Empty
-resumeConnector cid HStreamApi{..} = hstreamApiResumeConnector $
-  mkClientNormalRequest' def { resumeConnectorRequestName = cid }
+resumeConnector cid API.HStreamApi{..} = hstreamApiResumeConnector $
+  mkClientNormalRequest' def { API.resumeConnectorRequestName = cid }
 
 pauseQuery :: T.Text -> Action Empty
-pauseQuery qid HStreamApi{..} = hstreamApiPauseQuery $
-  mkClientNormalRequest' def { pauseQueryRequestId = qid }
+pauseQuery qid API.HStreamApi{..} = hstreamApiPauseQuery $
+  mkClientNormalRequest' def { API.pauseQueryRequestId = qid }
 
 resumeQuery :: T.Text -> Action Empty
-resumeQuery qid HStreamApi{..} = hstreamApiResumeQuery $
-  mkClientNormalRequest' def { resumeQueryRequestId = qid }
+resumeQuery qid API.HStreamApi{..} = hstreamApiResumeQuery $
+  mkClientNormalRequest' def { API.resumeQueryRequestId = qid }
 
-createSubscription :: T.Text -> T.Text -> Action Subscription
+createSubscription :: T.Text -> T.Text -> Action API.Subscription
 createSubscription subId sName = createSubscription' (subscriptionWithDefaultSetting subId sName)
 
-createSubscription' :: Subscription -> Action Subscription
-createSubscription' sub HStreamApi{..} = hstreamApiCreateSubscription $ mkClientNormalRequest' sub
+createSubscription' :: API.Subscription -> Action API.Subscription
+createSubscription' sub API.HStreamApi{..} = hstreamApiCreateSubscription $ mkClientNormalRequest' sub
 
 deleteSubscription :: T.Text -> Bool -> Action Empty
-deleteSubscription subId force HStreamApi{..} = hstreamApiDeleteSubscription $
-  mkClientNormalRequest' def { deleteSubscriptionRequestSubscriptionId = subId
-                             , deleteSubscriptionRequestForce = force}
+deleteSubscription subId force API.HStreamApi{..} = hstreamApiDeleteSubscription $
+  mkClientNormalRequest' def { API.deleteSubscriptionRequestSubscriptionId = subId
+                             , API.deleteSubscriptionRequestForce = force}
 deleteStream :: T.Text -> Bool -> Action Empty
-deleteStream sName force HStreamApi{..} = hstreamApiDeleteStream $
-  mkClientNormalRequest' def { deleteStreamRequestStreamName = sName
-                             , deleteStreamRequestForce = force}
+deleteStream sName force API.HStreamApi{..} = hstreamApiDeleteStream $
+  mkClientNormalRequest' def { API.deleteStreamRequestStreamName = sName
+                             , API.deleteStreamRequestForce = force}
 
-getStream :: T.Text -> Action GetStreamResponse
-getStream sName HStreamApi{..} = hstreamApiGetStream $ mkClientNormalRequest' def { getStreamRequestName = sName }
+getStream :: T.Text -> Action API.GetStreamResponse
+getStream sName API.HStreamApi{..} = hstreamApiGetStream $ mkClientNormalRequest' def { API.getStreamRequestName = sName }
 
-getSubscription :: T.Text -> Action GetSubscriptionResponse
-getSubscription sid HStreamApi{..} = hstreamApiGetSubscription $ mkClientNormalRequest' def { getSubscriptionRequestId = sid }
+getSubscription :: T.Text -> Action API.GetSubscriptionResponse
+getSubscription sid API.HStreamApi{..} = hstreamApiGetSubscription $ mkClientNormalRequest' def { API.getSubscriptionRequestId = sid }
 
-executeViewQuery :: String -> Action ExecuteViewQueryResponse
-executeViewQuery sql HStreamApi{..} = hstreamApiExecuteViewQuery $ mkClientNormalRequest' def { executeViewQueryRequestSql = T.pack sql }
+executeViewQuery :: String -> Action API.ExecuteViewQueryResponse
+executeViewQuery sql API.HStreamApi{..} = hstreamApiExecuteViewQuery $ mkClientNormalRequest' def { API.executeViewQueryRequestSql = T.pack sql }
 
 streamReading :: Format a => IO (Either GRPCIOError (Maybe a)) -> IO ()
 streamReading recv = recv >>= \case
@@ -237,7 +236,7 @@ streamReading recv = recv >>= \case
        Just res' -> (putStr . formatResult $ res') >> streamReading recv
 
 readShard :: API.ReadShardStreamRequest -> HStreamClientApi -> IO (ClientResult 'ServerStreaming API.ReadShardStreamResponse)
-readShard req HStreamApi{..} = hstreamApiReadShardStream $
+readShard req API.HStreamApi{..} = hstreamApiReadShardStream $
   ClientReaderRequest req requestTimeout (MetadataMap mempty) $ \cancel _meta recv ->
     withInterrupt (clientCallCancel cancel) (streamReading recv)
 
