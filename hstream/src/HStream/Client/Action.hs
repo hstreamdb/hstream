@@ -17,6 +17,7 @@ module HStream.Client.Action
   , listStreams
   , listShards
   , readShard
+  , readStream
   , insertIntoStream
   , insertIntoStream'
 
@@ -226,19 +227,25 @@ getSubscription sid HStreamApi{..} = hstreamApiGetSubscription $ mkClientNormalR
 executeViewQuery :: String -> Action ExecuteViewQueryResponse
 executeViewQuery sql HStreamApi{..} = hstreamApiExecuteViewQuery $ mkClientNormalRequest' def { executeViewQueryRequestSql = T.pack sql }
 
+
+streamReading :: Format a => IO (Either GRPCIOError (Maybe a)) -> IO ()
+streamReading recv = recv >>= \case
+   Left (err :: GRPCIOError) -> errorWithoutStackTrace ("error: " <> show err)
+   Right Nothing             -> pure ()  -- do `not` call cancel here
+   Right (res :: Maybe a) ->
+     case res of
+       Nothing   -> streamReading recv
+       Just res' -> (putStr . formatResult $ res') >> streamReading recv
+
 readShard :: API.ReadShardStreamRequest -> HStreamClientApi -> IO (ClientResult 'ServerStreaming API.ReadShardStreamResponse)
 readShard req HStreamApi{..} = hstreamApiReadShardStream $
   ClientReaderRequest req requestTimeout (MetadataMap mempty) $ \cancel _meta recv ->
-    withInterrupt (clientCallCancel cancel) (readStream recv)
- where
-   readStream recv = recv >>= \case
-      Left (err :: GRPCIOError) -> errorWithoutStackTrace ("error: " <> show err)
-      Right Nothing             -> pure ()  -- do `not` call cancel here
-      Right (res :: Maybe API.ReadShardStreamResponse) ->
-        case res of
-          Nothing   -> readStream recv
-          Just res' -> (putStr . formatResult $ res') >> readStream recv
+    withInterrupt (clientCallCancel cancel) (streamReading recv)
 
+readStream :: API.ReadStreamRequest -> HStreamClientApi -> IO (ClientResult 'ServerStreaming API.ReadStreamResponse)
+readStream req HStreamApi{..} = hstreamApiReadStream $
+  ClientReaderRequest req requestTimeout (MetadataMap mempty) $ \cancel _meta recv ->
+    withInterrupt (clientCallCancel cancel) (streamReading recv)
 --------------------------------------------------------------------------------
 
 fakeMap :: (a -> b) -> ClientResult 'Normal a -> ClientResult 'Normal b
