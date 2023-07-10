@@ -56,6 +56,11 @@ data MetaHandle
 -- TODO
 --  | LocalHandle FHandle
 
+instance Show MetaHandle where
+  show (ZkHandle _)   = "Zookeeper Handle"
+  show (RLHandle _)   = "RQLite Handle"
+  show (FileHandle _) = "LocalFile Handle"
+
 data MetaOp
   = InsertOp Path Key BS.ByteString
   | UpdateOp Path Key BS.ByteString (Maybe Version)

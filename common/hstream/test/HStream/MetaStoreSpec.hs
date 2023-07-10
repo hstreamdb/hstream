@@ -13,10 +13,7 @@ import           System.Directory                 (getTemporaryDirectory,
                                                    removeFile)
 import           System.Environment               (lookupEnv)
 import           System.IO                        (hClose, openTempFile)
-import           Test.Hspec                       (HasCallStack, Spec,
-                                                   afterAll_, anyException,
-                                                   describe, hspec, it, runIO,
-                                                   shouldReturn, shouldThrow)
+import           Test.Hspec
 import           Test.QuickCheck                  (generate)
 import           ZooKeeper                        (withResource,
                                                    zookeeperResInit)
@@ -62,20 +59,19 @@ spec = do
     pure file
   afterAll_ (removeFile tmpfile) (smokeTest $ FileHandle tmpfile)
 
-smokeTest :: HasCallStack => MetaHandle -> Spec
-smokeTest h = do
-  hName <- case h of
+initMeta :: MetaHandle -> IO ()
+initMeta h =
+  case h of
     ZkHandle zk -> do
-      runIO $ tryCreate zk (textToCBytes $ myRootPath @MetaExample @ZHandle)
-      return "Zookeeper Handle"
+      tryCreate zk (textToCBytes $ myRootPath @MetaExample @ZHandle)
     RLHandle (RHandle m url) -> do
-      runIO $ createTable m url (myRootPath @MetaExample @RHandle)
-      return "RQLite Handle"
+      createTable m url (myRootPath @MetaExample @RHandle)
     FileHandle fh -> do
-      runIO $ File.createTable (myRootPath @MetaExample @FHandle) fh
-      return "Local File IO Handle"
+      File.createTable (myRootPath @MetaExample @FHandle) fh
 
-  describe ("Run with " <> hName) $ do
+smokeTest :: HasCallStack => MetaHandle -> Spec
+smokeTest h = beforeAll_ (initMeta h) $ do
+  describe ("Run with " <> show h) $ do
     it "Basic Meta Test " $ do
       meta@Meta{metaId = id_1} <- generate metaGen
       meta2@Meta{metaId = id_2} <- generate metaGen
