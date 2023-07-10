@@ -387,8 +387,8 @@ filterRecords startTs endTs records =
   filterRecordAfterTimestamp rds timestamp =
      F.foldr'
        (
-          \r acc@(acc', _) -> let tmp = S.recordTimestamp r
-                               in if tmp <= timestamp then (r : acc', tmp == timestamp) else acc
+          \r (acc', isEnd) -> let tmp = S.recordTimestamp r
+                               in if tmp <= timestamp then (r : acc', isEnd || tmp == timestamp) else (acc', True)
        )
        ([], False)
        rds
@@ -424,6 +424,7 @@ getResponseRecords
   -> IO (Vector API.ReceivedRecord)
 getResponseRecords reader shard records readerId startTs endTs = do
   let (records', isEnd) = filterRecords startTs endTs records
+  Log.debug $ "after filterRecords, isEnd = " <> Log.build (show isEnd)
   receivedRecordsVecs <- forM records' decodeRecordBatch
   let res = V.fromList $ map (\(_, _, _, record) -> record) receivedRecordsVecs
   Log.debug $ "reader " <> Log.build readerId
