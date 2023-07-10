@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package hstream.common.prototypes;
+
+message SlotValueAttrs {
+  map<string, string> attrs = 1;
+}
+
+message Slot {
+  map<uint64, SlotValueAttrs> vals = 1;
+  map<string, string> attrs = 2;
+}

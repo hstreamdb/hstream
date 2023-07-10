@@ -12,6 +12,7 @@ module HStream.Utils.Converter
   , zJsonValueToValue
     --
   , bs2str
+  , lbs2text
   , cBytesToText
   , cbytes2bs
   , cBytesToLazyText
@@ -146,6 +147,9 @@ cbytes2bs = ZF.toByteString . ZCB.toBytes
 
 bs2str :: BS.ByteString -> String
 bs2str = Text.unpack . Text.decodeUtf8
+
+lbs2text :: BL.ByteString -> Text
+lbs2text = Text.decodeUtf8 . BL.toStrict
 
 cBytesToLazyText :: ZCB.CBytes -> TL.Text
 cBytesToLazyText = TL.fromStrict . cBytesToText

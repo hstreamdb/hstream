@@ -98,6 +98,7 @@ module HStream.Exception
     --
     -- $resourceExhausted
   , SomeResourceExhausted
+  , NoMoreSlots (NoMoreSlots)
 
     -- * Exception: SomeFailedPrecondition
     --
@@ -113,7 +114,6 @@ module HStream.Exception
   , ShardCanNotMerge (ShardCanNotMerge)
   , RQLiteRowBadVersion (RQLiteRowBadVersion)
   , LocalMetaStoreObjectBadVersion (LocalMetaStoreObjectBadVersion)
-  , ResourceAllocationException (ResourceAllocationException)
   , QueryNotTerminated (QueryNotTerminated)
   , FoundAssociatedView (FoundAssociatedView)
   , QueryAlreadyTerminated(QueryAlreadyTerminated)
@@ -153,6 +153,7 @@ module HStream.Exception
   , RQLiteDecodeErr (RQLiteDecodeErr)
   , RQLiteUnspecifiedErr (RQLiteUnspecifiedErr)
   , LocalMetaStoreInternalErr (LocalMetaStoreInternalErr)
+  , SlotAllocDecodeError (SlotAllocDecodeError)
   , DiscardedMethod (DiscardedMethod)
   , PushQuerySendError (PushQuerySendError)
   , ConnectorProcessError (ConnectorProcessError)
@@ -162,6 +163,7 @@ module HStream.Exception
     -- * Exception: SomeUnavailable
   , SomeUnavailable
   , ServerNotAvailable (ServerNotAvailable)
+  , ResourceAllocationException (ResourceAllocationException)
 
     -- * Exception: SomeDataLoss
   , SomeDataLoss
@@ -508,7 +510,6 @@ MAKE_EX_1_DEFMSG(SomeAlreadyExists, ConnectorExists, Text, API.ErrorCodeConnecto
 -- pre-conditions.
 MAKE_SUB_EX(SomeHServerException, SomePermissionDenied)
 
-
 -------------------------------------------------------------------------------
 -- Exception: SomeResourceExhausted
 
@@ -517,6 +518,9 @@ MAKE_SUB_EX(SomeHServerException, SomePermissionDenied)
 -- Some resource has been exhausted, perhaps a per-user quota, or perhaps the
 -- entire file system is out of space.
 MAKE_SUB_EX(SomeHServerException, SomeResourceExhausted)
+
+MAKE_EX_0(SomeResourceExhausted, NoMoreSlots, API.ErrorCodeInternalError,
+    "This slot group is full!")
 
 -------------------------------------------------------------------------------
 -- Exception: SomeFailedPrecondition
@@ -606,6 +610,7 @@ MAKE_EX_1_DEFMSG(SomeInternal, RQLiteNetworkErr, String, API.ErrorCodeInternalEr
 MAKE_EX_1_DEFMSG(SomeInternal, RQLiteDecodeErr, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeInternal, RQLiteUnspecifiedErr, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeInternal, LocalMetaStoreInternalErr, String, API.ErrorCodeInternalError)
+MAKE_EX_1_DEFMSG(SomeInternal, SlotAllocDecodeError, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeInternal, DiscardedMethod, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeInternal, PushQuerySendError, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeInternal, ConnectorProcessError, String, API.ErrorCodeInternalError)
