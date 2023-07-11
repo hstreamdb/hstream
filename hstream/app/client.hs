@@ -35,7 +35,8 @@ import           HStream.Client.Action            (createSubscription',
                                                    deleteSubscription,
                                                    getStream, getSubscription,
                                                    listShards, listStreams,
-                                                   listSubscriptions, readShard)
+                                                   listSubscriptions, readShard,
+                                                   readStream)
 import           HStream.Client.Execute           (executeWithLookupResource_,
                                                    initCliContext,
                                                    simpleExecute)
@@ -48,6 +49,7 @@ import           HStream.Client.Types             (CliCmd (..), Command (..),
                                                    HStreamSqlContext (..),
                                                    HStreamSqlOpts (..),
                                                    ReadShardArgs (..),
+                                                   ReadStreamArgs (..),
                                                    RefinedCliConnOpts (..),
                                                    Resource (..),
                                                    StreamCommand (..),
@@ -172,20 +174,26 @@ hstreamStream connOpts@RefinedCliConnOpts{..} cmd = do
     StreamCmdDescribe sName ->
       simpleExecute clientConfig (getStream sName) >>= printResult
     StreamCmdListShard stream -> simpleExecute clientConfig (listShards stream) >>= printResult
-    StreamCmdReadShard args -> do
-      req <- getRequest args
+    StreamCmdReadShard ReadShardArgs{..} -> do
+      suffix <- newRandomText 32
+      let req = def { API.readShardStreamRequestReaderId       = "reader_" <> suffix
+                    , API.readShardStreamRequestShardId        = shardIdArgs
+                    , API.readShardStreamRequestFrom           = startOffset
+                    , API.readShardStreamRequestUntil          = endOffset
+                    , API.readShardStreamRequestMaxReadBatches = maxReadBatches
+                    }
       ctx <- initCliContext connOpts
       executeWithLookupResource_ ctx (Resource ResShardReader (API.readShardStreamRequestReaderId req)) (readShard req)
- where
-   getRequest :: ReadShardArgs -> IO API.ReadShardStreamRequest
-   getRequest ReadShardArgs{..} = do
-     suffix <- newRandomText 32
-     return def { API.readShardStreamRequestReaderId       = "reader_" <> suffix
-                , API.readShardStreamRequestShardId        = shardIdArgs
-                , API.readShardStreamRequestFrom           = startOffset
-                , API.readShardStreamRequestUntil          = endOffset
-                , API.readShardStreamRequestMaxReadBatches = maxReadBatches
-                }
+    StreamCmdReadStream ReadStreamArgs{..} -> do
+      suffix <- newRandomText 32
+      let req = def { API.readStreamRequestReaderId       = "reader_" <> suffix
+                    , API.readStreamRequestStreamName     = readStreamStreamNameArgs
+                    , API.readStreamRequestFrom           = readStreamStartOffset
+                    , API.readStreamRequestUntil          = readStreamEndOffset
+                    , API.readStreamRequestMaxReadBatches = readStreamMaxReadBatches
+                    }
+      ctx <- initCliContext connOpts
+      executeWithLookupResource_ ctx (Resource ResShardReader (API.readStreamRequestReaderId req)) (readStream req)
 
 hstreamSubscription :: RefinedCliConnOpts -> SubscriptionCommand -> IO ()
 hstreamSubscription connOpts@RefinedCliConnOpts{..} = \case

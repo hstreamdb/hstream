@@ -127,6 +127,8 @@ instance Format API.ListShardsResponse where
   formatResult = formatResult . V.toList . API.listShardsResponseShards
 instance Format API.ReadShardStreamResponse where
   formatResult = formatResult . V.toList . API.readShardStreamResponseReceivedRecords
+instance Format API.ReadStreamResponse where
+  formatResult = formatResult . V.toList . API.readStreamResponseReceivedRecords
 
 instance Format API.GetStreamResponse where
   formatResult = formatResult . maybeToList . API.getStreamResponseStream

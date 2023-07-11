@@ -65,6 +65,7 @@ data StreamCommand
   | StreamCmdDescribe Text
   | StreamCmdListShard Text
   | StreamCmdReadShard ReadShardArgs
+  | StreamCmdReadStream ReadStreamArgs
   deriving (Show)
 
 streamCmdParser :: O.Parser StreamCommand
@@ -86,7 +87,35 @@ streamCmdParser = O.hsubparser
                                    (O.progDesc "List shards of specific stream"))
  <> O.command "read-shard" (O.info (StreamCmdReadShard <$> readShardRequestParser)
                                    (O.progDesc "Read records from specific shard"))
+ <> O.command "read-stream" (O.info (StreamCmdReadStream <$> readStreamRequestParser)
+                                    (O.progDesc "Read records from specific stream"))
   )
+
+data ReadStreamArgs = ReadStreamArgs
+  { readStreamStreamNameArgs :: T.Text
+  , readStreamStartOffset    :: Maybe API.StreamOffset
+  , readStreamEndOffset      :: Maybe API.StreamOffset
+  , readStreamMaxReadBatches :: Word64
+  } deriving (Show)
+
+readStreamRequestParser :: O.Parser ReadStreamArgs
+readStreamRequestParser = ReadStreamArgs
+  <$> O.strArgument ( O.metavar "STREAM_NAME" <> O.help "The stream you want to read" )
+  <*> O.optional (shardOffsetToPbStreamOffset <$> O.option O.auto ( O.metavar "FROM_OFFSET"
+                                                                 <> O.long "from"
+                                                                 <> O.help ( "Read from offset, e.g. earliest, latest, "
+                                                                          <> "timestamp:1684486287810")
+                                                                  ))
+  <*> O.optional (shardOffsetToPbStreamOffset <$> O.option O.auto ( O.metavar "UNTIL_OFFSET"
+                                                                 <> O.long "until"
+                                                                 <> O.help ( "Read until offset, e.g. earliest, latest, "
+                                                                          <> "timestamp:1684486287810")
+                                                                  ))
+  <*> (fromIntegral <$> O.option positiveNumParser ( O.long "total"
+                                                  <> O.metavar "INT"
+                                                  <> O.value 0
+                                                  <> O.help "Max total number of batches read by reader"
+                                                   ))
 
 data ReadShardArgs = ReadShardArgs
   { shardIdArgs    :: Word64
@@ -155,6 +184,12 @@ positiveNumParser = do
     Just n | n >= 0 -> return n
     _               -> readerError $ "Expected positive integer but get: " ++ s
 
+shardOffsetToPbStreamOffset :: ShardOffset -> API.StreamOffset
+shardOffsetToPbStreamOffset EARLIEST = API.StreamOffset . Just . API.StreamOffsetOffsetSpecialOffset . Enumerated . Right $ API.SpecialOffsetEARLIEST
+shardOffsetToPbStreamOffset LATEST   = API.StreamOffset . Just . API.StreamOffsetOffsetSpecialOffset . Enumerated . Right $ API.SpecialOffsetLATEST
+shardOffsetToPbStreamOffset RecordId {} = errorWithoutStackTrace "invalid offset"
+shardOffsetToPbStreamOffset (Timestamp t) = API.StreamOffset . Just . API.StreamOffsetOffsetTimestampOffset $
+  API.TimestampOffset {timestampOffsetTimestampInMs = t, timestampOffsetStrictAccuracy = True}
 
 data SubscriptionCommand
   = SubscriptionCmdList

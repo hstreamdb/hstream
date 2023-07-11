@@ -387,8 +387,8 @@ filterRecords startTs endTs records =
   filterRecordAfterTimestamp rds timestamp =
      F.foldr'
        (
-          \r acc@(acc', _) -> let tmp = S.recordTimestamp r
-                               in if tmp <= timestamp then (r : acc', tmp == timestamp) else acc
+          \r (acc', isEnd) -> let tmp = S.recordTimestamp r
+                               in if tmp <= timestamp then (r : acc', isEnd || tmp == timestamp) else (acc', True)
        )
        ([], False)
        rds
