@@ -29,7 +29,7 @@ checkGroupBySel gbs (RSelectItemProject expr _)  = checkGroupBySelExpr gbs expr
     checkGroupBySelExpr gbs (RExprBinOp       _ _BinaryOp expr1 expr2) = checkGroupBySelExpr gbs expr1 >> checkGroupBySelExpr gbs expr2
     checkGroupBySelExpr gbs (RExprUnaryOp     _ _UnaryOp  expr)        = checkGroupBySelExpr gbs expr
     checkGroupBySelExpr _   (RExprConst       _ _)                     = Right ()
-    checkGroupBySelExpr _ _ = error "REFACTOR_FIXME"
+    checkGroupBySelExpr _ _ = Left $ buildSQLException ParseException Nothing "Invalid GROUP BY clause"
 checkGroupBySel _ RSelectProjectQualifiedAll{} = Left $ buildSQLException ParseException Nothing "GROUP BY clause does not allow wildcards"
 checkGroupBySel _ RSelectProjectAll            = Left $ buildSQLException ParseException Nothing "GROUP BY clause does not allow wildcards"
 

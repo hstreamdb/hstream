@@ -102,6 +102,8 @@ castToBoolean x =
       typName = "Boolean"
       mkOk :: Bool -> Either ERROR_TYPE FlowValue
       mkOk = Right . FlowBoolean
+      mkErr :: Either ERROR_TYPE FlowValue
+      mkErr = mkCanNotCastErr x typName
   in case x of
     FlowInt   x   -> mkOk $ x /= 0
     FlowFloat x   -> mkOk $ x /= 0.0
@@ -114,7 +116,7 @@ castToBoolean x =
         "T"     -> mkOk True
         "F"     -> mkOk False
         _       -> mkCanNotParseTextErr x typName
-    _ -> error "REFACTOR_FIXME"
+    _ -> mkErr
 
 castToByte :: FlowValue -> Either ERROR_TYPE FlowValue
 castToByte x =

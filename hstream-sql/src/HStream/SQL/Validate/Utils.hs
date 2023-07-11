@@ -188,8 +188,10 @@ instance HavePos TableRef where
     TableRefNaturalJoin pos _ _ _ _ -> pos
     TableRefJoinOn pos _ _ _ _ _    -> pos
     TableRefJoinUsing pos _ _ _ _ _ -> pos
+    TableRefTumbling pos _ _        -> pos
+    TableRefHopping pos _ _ _       -> pos
+    TableRefSession pos _ _         -> pos
 #endif
-    _                               -> error "REFACTOR_FIXME"
 
 --------------------------------------------------------------------------------
 -- mask

@@ -319,8 +319,8 @@ instance Decouple RTableRef where
     let base_1 = decouple ref1
         base_2 = decouple ref2
      in LoopJoinUsing base_1 base_2 cols typ (calendarDiffTimeToMs t)
+  decouple (RTableRefWindowed _ _) = undefined
 #endif
-  decouple _ = error "REFACTOR_FIXME"
 
 type instance DecoupledType RFrom = RelationExpr
 instance Decouple RFrom where

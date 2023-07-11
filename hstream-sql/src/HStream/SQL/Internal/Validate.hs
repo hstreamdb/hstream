@@ -244,7 +244,9 @@ isNumExpr expr = case expr of
      in if isTypeNum funcType then return expr
                               else Left $ buildSQLException ParseException (getPos f) "Argument type mismatched"
   ExprBetween pos _ -> Left $ buildSQLException ParseException pos "Expected a numeric expression but got a boolean"
-  _ -> error "REFACTOR_FIXME"
+  ExprDate      pos _ -> Left $ buildSQLException ParseException pos "Expected an numeric expression but got a Date"
+  ExprTime      pos _ -> Left $ buildSQLException ParseException pos "Expected an numeric expression but got a Time"
+  ExprTimestamp pos _ -> Left $ buildSQLException ParseException pos "Expected an numeric expression but got a Timestamp"
   where
     isNumType :: DataType -> Either SomeSQLException DataType
     isNumType typ = case typ of
@@ -291,7 +293,9 @@ isFloatExpr expr = case expr of
      in if isTypeFloat funcType then return expr
                                 else Left $ buildSQLException ParseException (getPos f) "Argument type mismatched"
   ExprBetween pos _ -> Left $ buildSQLException ParseException pos "Expected a float expression but got a boolean"
-  _ -> error "REFACTOR_FIXME"
+  ExprDate      pos _ -> Left $ buildSQLException ParseException pos "Expected an float expression but got a Date"
+  ExprTime      pos _ -> Left $ buildSQLException ParseException pos "Expected an float expression but got a Time"
+  ExprTimestamp pos _ -> Left $ buildSQLException ParseException pos "Expected an float expression but got a Timestamp"
   where
     isFloatType :: DataType -> Either SomeSQLException DataType
     isFloatType typ = case typ of
@@ -337,7 +341,9 @@ isOrdExpr expr = case expr of
      in if isTypeOrd funcType then return expr
                               else Left $ buildSQLException ParseException (getPos f) "Argument type mismatched"
   ExprBetween pos _ -> Left $ buildSQLException ParseException pos "Expected a comparable expression but got a boolean"
-  _ -> error "REFACTOR_FIXME"
+  ExprDate _ _ -> pure expr
+  ExprTime _ _ -> pure expr
+  ExprTimestamp _ _ -> pure expr
   where
     isOrdType :: DataType -> Either SomeSQLException DataType
     isOrdType typ = case typ of
@@ -392,7 +398,9 @@ isBoolExpr expr = case expr of
                                else Left $ buildSQLException ParseException (getPos f) "Argument type mismatched"
   ExprBetween _ betweenExpr -> let (x, y, z) = exprBetweenVals betweenExpr in
     validate x >> validate y >> validate z >> pure expr
-  _ -> error "REFACTOR_FIXME"
+  ExprDate      pos _ -> Left $ buildSQLException ParseException pos "Expected an boolean expression but got a Date"
+  ExprTime      pos _ -> Left $ buildSQLException ParseException pos "Expected an boolean expression but got a Time"
+  ExprTimestamp pos _ -> Left $ buildSQLException ParseException pos "Expected an boolean expression but got a Timestamp"
   where
     isBoolType :: DataType -> Either SomeSQLException DataType
     isBoolType typ = case typ of
@@ -439,7 +447,9 @@ isIntExpr expr = case expr of
      in if isTypeInt funcType then return expr
                               else Left $ buildSQLException ParseException (getPos f) "Argument type mismatched"
   ExprBetween pos _ -> Left $ buildSQLException ParseException pos "Expected an integral expression but got a boolean"
-  _ -> error "REFACTOR_FIXME"
+  ExprDate      pos _ -> Left $ buildSQLException ParseException pos "Expected an integral expression but got a Date"
+  ExprTime      pos _ -> Left $ buildSQLException ParseException pos "Expected an integral expression but got a Time"
+  ExprTimestamp pos _ -> Left $ buildSQLException ParseException pos "Expected an integral expression but got a Timestamp"
   where
     isIntType :: DataType -> Either SomeSQLException DataType
     isIntType typ = case typ of
@@ -485,7 +495,9 @@ isStringExpr expr = case expr of
      in if isTypeString funcType then return expr
                                  else Left $ buildSQLException ParseException (getPos f) "Argument type mismatched"
   ExprBetween pos _ -> Left $ buildSQLException ParseException pos "Expected an String expression but got a boolean"
-  _ -> error "REFACTOR_FIXME"
+  ExprDate      pos _ -> Left $ buildSQLException ParseException pos "Expected an String expression but got a Date"
+  ExprTime      pos _ -> Left $ buildSQLException ParseException pos "Expected an String expression but got a Time"
+  ExprTimestamp pos _ -> Left $ buildSQLException ParseException pos "Expected an String expression but got a Timestamp"
   where
     isStringType :: DataType -> Either SomeSQLException DataType
     isStringType typ = case typ of

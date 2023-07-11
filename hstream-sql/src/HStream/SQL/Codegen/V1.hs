@@ -34,7 +34,8 @@ import qualified Proto3.Suite                                    as PB
 import           RIO
 import qualified RIO.ByteString.Lazy                             as BL
 
-import           HStream.Base                                    (genUnique)
+import           HStream.Base                                    (genUnique,
+                                                                  throwIOError)
 import           HStream.Processing.Encoding                     (Serde (..),
                                                                   Serializer (..))
 import           HStream.Processing.Processor                    (Record (..),
@@ -491,7 +492,7 @@ genStreamSinkConfig sinkStream' relationExpr = do
                           , sicKeySerde = sessionWindowKeySerde flowObjectSerde (timeWindowSerde $ calendarDiffTimeToMs i)
                           , sicValueSerde = flowObjectSerde
                           }
-    _ -> error "REFACTOR_FIXME"
+    _ -> throwIOError ("Invalid StreamSinkConfig" :: String)
 
 genTaskName :: IO Text
 -- Please do not encode the this id to other forms,

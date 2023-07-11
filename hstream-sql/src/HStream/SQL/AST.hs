@@ -797,10 +797,10 @@ data RGroupBy = RGroupByEmpty
 type instance RefinedType GroupBy = RGroupBy
 instance Refine GroupBy where
   refine (DGroupByEmpty _) = RGroupByEmpty
-  refine (DGroupBy _ cols) = RGroupBy
+  refine (DGroupBy pos cols) = RGroupBy
     (L.map (\col -> case refine col of
       RExprCol _ m_stream field -> (m_stream, field)
-      _                         -> error "REFACTOR_FIXME"
+      _                         -> throwSQLException RefineException pos "Group By Columns should be RExprCol"
       ) cols
     ) Nothing
   -- refine (DGroupByWin pos cols win) =
@@ -883,14 +883,14 @@ instance Refine [StreamOption] where
         factor = maybe (rRepFactor def)
                        (\case
                         OptionRepFactor _ n' -> fromInteger $ extractPNInteger n'
-                        _ -> error "REFACTOR_FIXME"
+                        _ -> throwSQLException RefineException Nothing "Invalid StreamOption OptionRepFactor"
                         )
                        factor_m
         duration = maybe (rBacklogDuration def)
                          (\case
                           OptionDuration _ interval ->
                             fromIntegral (calendarDiffTimeToMs (refine (interval :: Interval))) `div` 1000
-                          _ -> error "REFACTOR_FIXME"
+                          _ -> throwSQLException RefineException Nothing "Invalid StreamOption OptionDuration"
                          )
                          duration_m
      in RStreamOptions { rRepFactor       = factor
@@ -904,7 +904,7 @@ instance Refine [ConnectorOption] where
           toPair :: ConnectorOption -> (Text, Aeson.Value)
           toPair (ConnectorProperty _ key expr) = (extractHIdent key, toValue (refine expr))
           toValue (RExprConst _ c) = Aeson.toJSON c
-          toValue _                = error "REFACTOR_FIXME"
+          toValue _                = throwSQLException RefineException Nothing "Connector Property should be const literal expression"
 
 type instance RefinedType Create = RCreate
 instance Refine Create where
