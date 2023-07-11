@@ -401,7 +401,7 @@ data UnaryOp  = OpSin      | OpSinh    | OpAsin   | OpAsinh  | OpCos   | OpCosh
               | OpAbs      | OpCeil    | OpFloor  | OpRound  | OpSign
               | OpSqrt     | OpLog     | OpLog2   | OpLog10  | OpExp
               | OpIsInt    | OpIsFloat | OpIsBool | OpIsStr
-              | OpIsArr    | OpIsDate  | OpIsTime
+              | OpIsArr    | OpIsDate  | OpIsTime | OpIsNum
               | OpToStr
               | OpToLower  | OpToUpper | OpTrim   | OpLTrim  | OpRTrim
               | OpReverse  | OpStrLen
@@ -602,6 +602,7 @@ instance Refine ScalarFunc where
     ScalarFuncIsArr   _ e -> RExprUnaryOp (trimSpacesPrint func) OpIsArr   (refine e)
     ScalarFuncIsDate  _ e -> RExprUnaryOp (trimSpacesPrint func) OpIsDate  (refine e)
     ScalarFuncIsTime  _ e -> RExprUnaryOp (trimSpacesPrint func) OpIsTime  (refine e)
+    ScalarFuncIsNum   _ e -> RExprUnaryOp (trimSpacesPrint func) OpIsNum   (refine e)
     ScalarFuncToStr   _ e -> RExprUnaryOp (trimSpacesPrint func) OpToStr   (refine e)
     ScalarFuncToLower _ e -> RExprUnaryOp (trimSpacesPrint func) OpToLower (refine e)
     ScalarFuncToUpper _ e -> RExprUnaryOp (trimSpacesPrint func) OpToUpper (refine e)
@@ -616,7 +617,7 @@ instance Refine ScalarFunc where
     ArrayFuncMax      _ e -> RExprUnaryOp (trimSpacesPrint func) OpArrMax  (refine e)
     ArrayFuncMin      _ e -> RExprUnaryOp (trimSpacesPrint func) OpArrMin  (refine e)
     ArrayFuncSort     _ e -> RExprUnaryOp (trimSpacesPrint func) OpSort    (refine e)
-    _ -> error "REFACTOR_FIXME"
+
 
 type instance RefinedType SetFunc = RValueExpr
 instance Refine SetFunc where

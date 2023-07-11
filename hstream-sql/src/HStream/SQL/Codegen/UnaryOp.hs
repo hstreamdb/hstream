@@ -51,6 +51,7 @@ unaryOpOnValue OpExp   v    = op_exp v
 unaryOpOnValue OpIsInt v    = op_isInt v
 unaryOpOnValue OpIsFloat v  = op_isFloat v
 unaryOpOnValue OpIsBool v   = op_isBool v
+unaryOpOnValue OpIsNum v    = op_isNum v
 unaryOpOnValue OpIsStr v    = op_isStr v
 unaryOpOnValue OpIsArr v    = op_isArr v
 unaryOpOnValue OpIsDate v   = op_isDate v
@@ -249,6 +250,13 @@ op_isFloat _             = Right $ FlowBoolean False
 op_isBool :: FlowValue -> Either ERROR_TYPE FlowValue
 op_isBool (FlowBoolean _) = Right $ FlowBoolean True
 op_isBool _               = Right $ FlowBoolean False
+
+op_isNum :: FlowValue -> Either ERROR_TYPE FlowValue
+op_isNum = Right . FlowBoolean . h where
+  h = \case
+    FlowInt   _ -> True
+    FlowFloat _ -> True
+    _           -> False
 
 op_isStr :: FlowValue -> Either ERROR_TYPE FlowValue
 op_isStr (FlowText _) = Right $ FlowBoolean True
