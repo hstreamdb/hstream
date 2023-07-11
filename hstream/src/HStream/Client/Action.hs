@@ -66,7 +66,6 @@ import           Proto3.Suite.Class               (def)
 
 import           HStream.Client.Types             (Resource (..))
 import           HStream.Client.Utils
--- import           HStream.Server.HStreamApi
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.SQL.AST                  (StreamName)
 #ifdef HStreamUseV2Engine

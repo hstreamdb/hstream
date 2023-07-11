@@ -23,7 +23,8 @@ import           HStream.Common.CliParsers     (streamParser,
 import qualified HStream.Server.HStreamApi     as API
 import           HStream.Server.Types          (ServerID)
 import           HStream.Utils                 (ResourceType, SocketAddr (..),
-                                                mkGRPCClientConfWithSSL, clientDefaultKey)
+                                                clientDefaultKey,
+                                                mkGRPCClientConfWithSSL)
 import           Options.Applicative.Types
 import           Proto3.Suite                  (Enumerated (Enumerated))
 
@@ -95,6 +96,42 @@ streamCmdParser = O.hsubparser
  <> O.command "read-stream" (O.info (StreamCmdReadStream <$> readStreamRequestParser)
                                     (O.progDesc "Read records from specific stream"))
   )
+
+data AppendArgs = AppendArgs
+  { appendStream          :: T.Text
+  , appendRecordKey       :: T.Text
+  , appendRecord          :: [ByteString]
+  , appendCompressionType :: API.CompressionType
+  , isHRecord             :: Bool
+
+instance Read API.CompressionType where
+  readPrec = do
+    l <- Read.lexP
+    case l of
+      Read.Ident "none" -> return API.CompressionTypeNone
+      Read.Ident "gzip" -> return API.CompressionTypeGzip
+      Read.Ident "zstd" -> return API.CompressionTypeZstd
+      x -> errorWithoutStackTrace $ "cannot parse compression type: " <> show x
+
+appendArgsParser :: O.Parser AppendArgs
+appendArgsParser = AppendArgs
+  <$> O.strArgument ( O.metavar "STREAM_NAME" <> O.help "The stream you want to write to")
+  <*> O.strOption ( O.long "partition-key"
+                 <> O.short 'k'
+                 <> O.metavar "TEXT"
+                 <> O.value clientDefaultKey
+                 <> O.showDefault
+                 <> O.help "Partition key of append record"
+                 )
+  <*> O.many (O.strOption ( O.long "payload" <> O.short 'p' <> O.help "Records you want to append"))
+  <*> O.option O.auto ( O.long "compression"
+                     <> O.short 'o'
+                     <> O.metavar "[none|gzip|zstd]"
+                     <> O.value API.CompressionTypeNone
+                     <> O.showDefault
+                     <> O.help "Compresstion type"
+                     )
+  <*> O.switch ( O.long "json" <> O.short 'j' <> O.help "Is json record")
 
 data ReadStreamArgs = ReadStreamArgs
   { readStreamStreamNameArgs :: T.Text

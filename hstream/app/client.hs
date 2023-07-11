@@ -42,7 +42,8 @@ import           HStream.Client.Execute           (executeWithLookupResource_,
                                                    simpleExecute)
 import           HStream.Client.SQL               (commandExec,
                                                    interactiveSQLApp)
-import           HStream.Client.Types             (CliCmd (..), Command (..),
+import           HStream.Client.Types             (AppendArgs (..), CliCmd (..),
+                                                   Command (..),
                                                    HStreamCommand (..),
                                                    HStreamInitOpts (..),
                                                    HStreamNodes (..),
@@ -55,9 +56,10 @@ import           HStream.Client.Types             (CliCmd (..), Command (..),
                                                    StreamCommand (..),
                                                    SubscriptionCommand (..),
                                                    cliCmdParser,
-                                                   refineCliConnOpts, AppendArgs (..))
-import           HStream.Client.Utils             (mkClientNormalRequest',
-                                                   printResult, calculateShardId)
+                                                   refineCliConnOpts)
+import           HStream.Client.Utils             (calculateShardId,
+                                                   mkClientNormalRequest',
+                                                   printResult)
 import           HStream.Common.Types             (getHStreamVersion)
 import           HStream.Server.HStreamApi        (DescribeClusterResponse (..),
                                                    HStreamApi (..),
@@ -67,13 +69,11 @@ import qualified HStream.Server.HStreamApi        as API
 import           HStream.ThirdParty.Protobuf      (Empty (Empty))
 import           HStream.Utils                    (ResourceType (..),
                                                    fillWithJsonString',
-                                                   formatResult,
+                                                   formatResult, getServerResp,
                                                    handleGRPCIOError,
                                                    newRandomText,
-                                                   getServerResp,
-                                                   pattern EnumPB, getServerResp)
+                                                   pattern EnumPB)
 import qualified HStream.Utils.Aeson              as AesonComp
-import HStream.SQL.Codegen.V1 (InsertType(RawFormat))
 
 main :: IO ()
 main = runCommand =<<
