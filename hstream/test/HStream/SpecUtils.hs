@@ -5,7 +5,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections       #-}
 
-
 -- TODO: consider moving this module to common package
 module HStream.SpecUtils where
 
@@ -249,7 +248,7 @@ runInsertSql api sql = do
   InsertPlan sName insertType payload <- streamCodegen sql
   ListShardsResponse shards <- getServerResp =<<listShards sName api
   let Shard{..}:_ = V.toList shards
-  resp <- getServerResp =<< insertIntoStream sName shardShardId insertType payload api
+  resp <- getServerResp =<< insertIntoStream sName shardShardId (insertType == JsonFormat) payload api
   appendResponseStreamName resp `shouldBe` sName
 
 runCreateWithSelectSql :: HStreamClientApi -> T.Text -> Expectation
