@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -Wno-orphans #-}
+
 module HStream.Client.Types where
 
 import           Control.Concurrent            (MVar)
@@ -21,7 +23,7 @@ import           HStream.Common.CliParsers     (streamParser,
 import qualified HStream.Server.HStreamApi     as API
 import           HStream.Server.Types          (ServerID)
 import           HStream.Utils                 (ResourceType, SocketAddr (..),
-                                                mkGRPCClientConfWithSSL)
+                                                mkGRPCClientConfWithSSL, clientDefaultKey)
 import           Options.Applicative.Types
 import           Proto3.Suite                  (Enumerated (Enumerated))
 
@@ -66,6 +68,7 @@ data StreamCommand
   | StreamCmdListShard Text
   | StreamCmdReadShard ReadShardArgs
   | StreamCmdReadStream ReadStreamArgs
+  | StreamCmdAppend AppendArgs
   deriving (Show)
 
 streamCmdParser :: O.Parser StreamCommand
@@ -81,6 +84,8 @@ streamCmdParser = O.hsubparser
                                                             <> O.short 'f'
                                                             <> O.help "Whether to enable force deletion" ))
                                (O.progDesc "Delete a stream"))
+ <> O.command "append" (O.info (StreamCmdAppend <$> appendArgsParser)
+                               (O.progDesc "Append record into stream"))
  <> O.command "list-shard" (O.info (StreamCmdListShard <$> O.strArgument
                                                                ( O.metavar "STREAM_NAME"
                                                               <> O.help "The name of the stream to be queried"))
@@ -190,6 +195,43 @@ shardOffsetToPbStreamOffset LATEST   = API.StreamOffset . Just . API.StreamOffse
 shardOffsetToPbStreamOffset RecordId {} = errorWithoutStackTrace "invalid offset"
 shardOffsetToPbStreamOffset (Timestamp t) = API.StreamOffset . Just . API.StreamOffsetOffsetTimestampOffset $
   API.TimestampOffset {timestampOffsetTimestampInMs = t, timestampOffsetStrictAccuracy = True}
+
+data AppendArgs = AppendArgs
+  { appendStream          :: T.Text
+  , appendRecordKey       :: T.Text
+  , appendRecord          :: [ByteString]
+  , appendCompressionType :: API.CompressionType
+  , isHRecord             :: Bool
+  } deriving (Show)
+
+instance Read API.CompressionType where
+  readPrec = do
+    l <- Read.lexP
+    case l of
+      Read.Ident "none" -> return API.CompressionTypeNone
+      Read.Ident "gzip" -> return API.CompressionTypeGzip
+      Read.Ident "zstd" -> return API.CompressionTypeZstd
+      x -> errorWithoutStackTrace $ "cannot parse compression type: " <> show x
+
+appendArgsParser :: O.Parser AppendArgs
+appendArgsParser = AppendArgs
+  <$> O.strArgument ( O.metavar "STREAM_NAME" <> O.help "The stream you want to write to")
+  <*> O.strOption ( O.long "partition-key"
+                 <> O.short 'k'
+                 <> O.metavar "TEXT"
+                 <> O.value clientDefaultKey
+                 <> O.showDefault
+                 <> O.help "Partition key of append record"
+                 )
+  <*> O.many (O.strOption ( O.long "payload" <> O.short 'p' <> O.help "Records you want to append"))
+  <*> O.option O.auto ( O.long "compression"
+                     <> O.short 'o'
+                     <> O.metavar "[none|gzip|zstd]"
+                     <> O.value API.CompressionTypeNone
+                     <> O.showDefault
+                     <> O.help "Compresstion type"
+                     )
+  <*> O.switch ( O.long "json" <> O.short 'j' <> O.help "Is json record")
 
 data SubscriptionCommand
   = SubscriptionCmdList

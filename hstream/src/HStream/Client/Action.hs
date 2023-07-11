@@ -135,14 +135,14 @@ insertIntoStream
   :: StreamName -> Word64 -> Bool -> BS.ByteString
   -> Action API.AppendResponse
 insertIntoStream sName shardId isHRecord payload =
-  insertIntoStream' sName shardId isHRecord (pure payload) API.CompressionTypeNone
+  insertIntoStream' sName shardId isHRecord (pure payload) API.CompressionTypeNone clientDefaultKey
 
 insertIntoStream'
-  :: StreamName -> Word64 -> Bool -> V.Vector BS.ByteString -> API.CompressionType
+  :: StreamName -> Word64 -> Bool -> V.Vector BS.ByteString -> API.CompressionType -> T.Text
   -> Action API.AppendResponse
-insertIntoStream' sName shardId isHRecord payloadVec compressionType API.HStreamApi{..} = do
-  let header = if isHRecord then buildRecordHeader API.HStreamRecordHeader_FlagJSON Map.empty clientDefaultKey
-                            else buildRecordHeader API.HStreamRecordHeader_FlagRAW Map.empty clientDefaultKey
+insertIntoStream' sName shardId isHRecord payloadVec compressionType partitionKey API.HStreamApi{..} = do
+  let header = if isHRecord then buildRecordHeader API.HStreamRecordHeader_FlagJSON Map.empty partitionKey
+                            else buildRecordHeader API.HStreamRecordHeader_FlagRAW Map.empty partitionKey
       hsRecord = V.map (mkHStreamRecord header) payloadVec
       record = mkBatchedRecord (PT.Enumerated (Right compressionType)) Nothing (fromIntegral $ V.length payloadVec) hsRecord
   hstreamApiAppend (mkClientNormalRequest' def
