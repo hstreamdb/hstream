@@ -239,7 +239,7 @@ readShard req API.HStreamApi{..} = hstreamApiReadShardStream $
     withInterrupt (clientCallCancel cancel) (streamReading recv)
 
 readStream :: API.ReadStreamRequest -> HStreamClientApi -> IO (ClientResult 'ServerStreaming API.ReadStreamResponse)
-readStream req HStreamApi{..} = hstreamApiReadStream $
+readStream req API.HStreamApi{..} = hstreamApiReadStream $
   ClientReaderRequest req requestTimeout (MetadataMap mempty) $ \cancel _meta recv ->
     withInterrupt (clientCallCancel cancel) (streamReading recv)
 --------------------------------------------------------------------------------

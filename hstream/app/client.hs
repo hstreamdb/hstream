@@ -34,9 +34,10 @@ import           HStream.Client.Action            (createSubscription',
                                                    deleteStream,
                                                    deleteSubscription,
                                                    getStream, getSubscription,
+                                                   insertIntoStream',
                                                    listShards, listStreams,
                                                    listSubscriptions, readShard,
-                                                   readStream,  insertIntoStream')
+                                                   readStream)
 import           HStream.Client.Execute           (executeWithLookupResource_,
                                                    initCliContext,
                                                    simpleExecute)
