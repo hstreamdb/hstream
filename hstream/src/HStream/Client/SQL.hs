@@ -153,7 +153,7 @@ commandExec HStreamSqlContext{hstreamCliContext = cliCtx@HStreamCliContext{..},.
               Just (API.ListShardsResponse shards) -> do
                 case calculateShardId "" (V.toList shards) of
                   Nothing  -> putStrLn "Failed to calculate shard id"
-                  Just sid -> executeWithLookupResource_ cliCtx (Resource ResShard (T.pack $ show sid)) (retry retryLimit retryInterval $ insertIntoStream sName sid insertType payload)
+                  Just sid -> executeWithLookupResource_ cliCtx (Resource ResShard (T.pack $ show sid)) (retry retryLimit retryInterval $ insertIntoStream sName sid (insertType == JsonFormat) payload)
               Nothing -> putStrLn "No shards found"
         InsertBySelectPlan {} -> do
           qName <-  ("cli_generated_" <>) <$> newRandomText 10

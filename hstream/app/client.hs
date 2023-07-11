@@ -34,6 +34,7 @@ import           HStream.Client.Action            (createSubscription',
                                                    deleteStream,
                                                    deleteSubscription,
                                                    getStream, getSubscription,
+                                                   insertIntoStream',
                                                    listShards, listStreams,
                                                    listSubscriptions, readShard,
                                                    readStream)
@@ -42,7 +43,8 @@ import           HStream.Client.Execute           (executeWithLookupResource_,
                                                    simpleExecute)
 import           HStream.Client.SQL               (commandExec,
                                                    interactiveSQLApp)
-import           HStream.Client.Types             (CliCmd (..), Command (..),
+import           HStream.Client.Types             (AppendArgs (..), CliCmd (..),
+                                                   Command (..),
                                                    HStreamCommand (..),
                                                    HStreamInitOpts (..),
                                                    HStreamNodes (..),
@@ -56,7 +58,8 @@ import           HStream.Client.Types             (CliCmd (..), Command (..),
                                                    SubscriptionCommand (..),
                                                    cliCmdParser,
                                                    refineCliConnOpts)
-import           HStream.Client.Utils             (mkClientNormalRequest',
+import           HStream.Client.Utils             (calculateShardId,
+                                                   mkClientNormalRequest',
                                                    printResult)
 import           HStream.Common.Types             (getHStreamVersion)
 import           HStream.Server.HStreamApi        (DescribeClusterResponse (..),
@@ -67,7 +70,7 @@ import qualified HStream.Server.HStreamApi        as API
 import           HStream.ThirdParty.Protobuf      (Empty (Empty))
 import           HStream.Utils                    (ResourceType (..),
                                                    fillWithJsonString',
-                                                   formatResult,
+                                                   formatResult, getServerResp,
                                                    handleGRPCIOError,
                                                    newRandomText,
                                                    pattern EnumPB)
@@ -194,6 +197,15 @@ hstreamStream connOpts@RefinedCliConnOpts{..} cmd = do
                     }
       ctx <- initCliContext connOpts
       executeWithLookupResource_ ctx (Resource ResShardReader (API.readStreamRequestReaderId req)) (readStream req)
+    StreamCmdAppend AppendArgs{..} -> do
+          ctx <- initCliContext connOpts
+          shards <- fmap API.listShardsResponseShards . getServerResp =<< simpleExecute clientConfig (listShards appendStream)
+          case calculateShardId appendRecordKey (V.toList shards) of
+            Just sid -> do
+              executeWithLookupResource_ ctx (Resource ResShard (T.pack $ show sid))
+                (insertIntoStream' appendStream sid isHRecord (V.fromList appendRecord) appendCompressionType appendRecordKey)
+            Nothing  -> errorWithoutStackTrace $ "Failed to calculate shardId with stream: "
+                                               <> show appendStream <> ", parition key: " <> show appendRecordKey
 
 hstreamSubscription :: RefinedCliConnOpts -> SubscriptionCommand -> IO ()
 hstreamSubscription connOpts@RefinedCliConnOpts{..} = \case
