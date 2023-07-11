@@ -10,7 +10,6 @@ module HStream.SQL.Codegen.Common where
 
 import qualified Data.HashMap.Strict               as HM
 import qualified Data.List                         as L
-import qualified Data.Map.Strict                   as Map
 import           Data.Maybe
 import qualified Data.Text                         as T
 
@@ -110,7 +109,7 @@ composeAggs aggs =
   }
   where folder cur x = case cur of
           Left (e,v) -> case x of
-            Left (e',v') -> Left (e, HM.union v v') -- FIXME: e <> e'
+            Left (_, v') -> Left (e, HM.union v v') -- FIXME: e <> e'
             Right v'     -> Left (e, HM.union v v')
           Right v    -> case x of
             Left (e',v') -> Left (e', HM.union v v')
@@ -176,7 +175,7 @@ genAggregateComponent agg cata = case agg of
     { aggregateInit = HM.singleton cata (binaryAggInitValue bAgg)
     , aggregateF = \acc row ->
         case getField cata acc of
-          Just (key, acc_v) ->
+          Just (_, acc_v) ->
             case scalarExprToFun exprK row of
               Left e    -> Left (e, HM.fromList [(cata, FlowNull)])
               Right k_v ->

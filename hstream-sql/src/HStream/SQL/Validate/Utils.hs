@@ -189,6 +189,7 @@ instance HavePos TableRef where
     TableRefJoinOn pos _ _ _ _ _    -> pos
     TableRefJoinUsing pos _ _ _ _ _ -> pos
 #endif
+    _                               -> error "REFACTOR_FIXME"
 
 --------------------------------------------------------------------------------
 -- mask

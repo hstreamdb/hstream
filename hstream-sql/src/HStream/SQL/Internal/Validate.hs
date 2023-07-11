@@ -11,18 +11,14 @@ module HStream.SQL.Internal.Validate
   ( Validate (..)
   ) where
 
-import           Control.Monad              (Monad (return), unless, void, when)
+import           Control.Monad              (unless, void)
 import qualified Data.Aeson                 as Aeson
 import qualified Data.ByteString.Lazy       as BSL
-import           Data.Char                  (isNumber)
 import qualified Data.List                  as L
-import           Data.List.Extra            (anySame)
 import qualified Data.Text                  as Text
 import           Data.Text.Encoding         (encodeUtf8)
-import           Data.Time.Calendar         (isLeapYear)
 import           GHC.Stack                  (HasCallStack)
 import           HStream.SQL.Abs
-import           HStream.SQL.Abs            (SelectItem)
 import           HStream.SQL.Exception      (SomeSQLException (..),
                                              buildSQLException)
 import           HStream.SQL.Extra
@@ -98,7 +94,7 @@ instance Validate Boolean where
 instance Validate IntervalUnit where
   validate = return
 instance Validate Interval where
-  validate interval@(DInterval pos n iUnit) = do
+  validate interval@(DInterval _ _n iUnit) = do
     -- TODO: validate n range?
     validate iUnit >> return interval
 
@@ -248,6 +244,7 @@ isNumExpr expr = case expr of
      in if isTypeNum funcType then return expr
                               else Left $ buildSQLException ParseException (getPos f) "Argument type mismatched"
   ExprBetween pos _ -> Left $ buildSQLException ParseException pos "Expected a numeric expression but got a boolean"
+  _ -> error "REFACTOR_FIXME"
   where
     isNumType :: DataType -> Either SomeSQLException DataType
     isNumType typ = case typ of
@@ -294,6 +291,7 @@ isFloatExpr expr = case expr of
      in if isTypeFloat funcType then return expr
                                 else Left $ buildSQLException ParseException (getPos f) "Argument type mismatched"
   ExprBetween pos _ -> Left $ buildSQLException ParseException pos "Expected a float expression but got a boolean"
+  _ -> error "REFACTOR_FIXME"
   where
     isFloatType :: DataType -> Either SomeSQLException DataType
     isFloatType typ = case typ of
@@ -339,6 +337,7 @@ isOrdExpr expr = case expr of
      in if isTypeOrd funcType then return expr
                               else Left $ buildSQLException ParseException (getPos f) "Argument type mismatched"
   ExprBetween pos _ -> Left $ buildSQLException ParseException pos "Expected a comparable expression but got a boolean"
+  _ -> error "REFACTOR_FIXME"
   where
     isOrdType :: DataType -> Either SomeSQLException DataType
     isOrdType typ = case typ of
@@ -393,6 +392,7 @@ isBoolExpr expr = case expr of
                                else Left $ buildSQLException ParseException (getPos f) "Argument type mismatched"
   ExprBetween _ betweenExpr -> let (x, y, z) = exprBetweenVals betweenExpr in
     validate x >> validate y >> validate z >> pure expr
+  _ -> error "REFACTOR_FIXME"
   where
     isBoolType :: DataType -> Either SomeSQLException DataType
     isBoolType typ = case typ of
@@ -439,6 +439,7 @@ isIntExpr expr = case expr of
      in if isTypeInt funcType then return expr
                               else Left $ buildSQLException ParseException (getPos f) "Argument type mismatched"
   ExprBetween pos _ -> Left $ buildSQLException ParseException pos "Expected an integral expression but got a boolean"
+  _ -> error "REFACTOR_FIXME"
   where
     isIntType :: DataType -> Either SomeSQLException DataType
     isIntType typ = case typ of
@@ -484,6 +485,7 @@ isStringExpr expr = case expr of
      in if isTypeString funcType then return expr
                                  else Left $ buildSQLException ParseException (getPos f) "Argument type mismatched"
   ExprBetween pos _ -> Left $ buildSQLException ParseException pos "Expected an String expression but got a boolean"
+  _ -> error "REFACTOR_FIXME"
   where
     isStringType :: DataType -> Either SomeSQLException DataType
     isStringType typ = case typ of
@@ -588,16 +590,16 @@ instance Validate TableRef where
   validate r@(TableRefAs _ hIdent alias) = validate hIdent >> validate alias >> return r
   validate r@(TableRefCrossJoin _ ref1 _ ref2 i) = validate ref1 >> validate ref2 >> validate i >> return r
   validate r@(TableRefNaturalJoin _ ref1 _ ref2 i) = validate ref1 >> validate ref2 >> validate i >> return r
-  validate r@(TableRefJoinOn _ ref1 jointype ref2 expr i) = validate ref1 >> validate ref2 >> validate expr >> validate i >> return r
-  validate r@(TableRefJoinUsing _ ref1 jointype ref2 cols i) = do
-    validate ref1
-    validate ref2
+  validate r@(TableRefJoinOn _ ref1 _joinType ref2 expr i) = validate ref1 >> validate ref2 >> validate expr >> validate i >> return r
+  validate r@(TableRefJoinUsing _ ref1 _joinType ref2 cols i) = do
+    _ <- validate ref1
+    _ <- validate ref2
     mapM_ (\col -> case col of
               ColNameSimple{} -> return col
               ColNameStream pos _ _ ->
                 Left $ buildSQLException ParseException pos "JOIN USING can only use column names without stream name"
           ) cols
-    validate i
+    _ <- validate i
     return r
   validate r@(TableRefIdent _ hIdent) = validate hIdent >> Right r
   -- validate r@(TableRefSubquery _ select) = validate select >> return r
@@ -630,7 +632,8 @@ instance Validate Having where
 ---- Select
 
 instance Validate Select where
-  validate select@(DSelect _ sel@(DSel selPos selList) frm@(DFrom _ refs) whr grp hav) = do
+  validate select@(DSelect _ sel@(DSel _ selList) frm@(DFrom _ refs) whr grp hav) = do
+    _ <- validate selList
 #ifndef HStreamUseV2Engine
     case grp of
       DGroupByEmpty pos -> case refs of
@@ -698,7 +701,7 @@ instance Validate StreamOption where
     let n = extractPNInteger n'
     unless (n > 0) (Left $ buildSQLException ParseException pos "Replicate factor can only be positive integers")
     return op
-  validate op@(OptionDuration pos interval) = validate interval >> return op
+  validate op@(OptionDuration _ interval) = validate interval >> return op
 
 newtype StreamOptions = StreamOptions [StreamOption]
 
@@ -709,7 +712,7 @@ instance Validate StreamOptions where
 newtype ConnectorOptions = ConnectorOptions [ConnectorOption]
 
 instance Validate ConnectorOptions where
-  validate ops@(ConnectorOptions options) = return ops
+  validate ops@(ConnectorOptions _) = return ops
   --   if any (\case PropertyConnector _ _ -> True; _ -> False) options && any (\case PropertyStreamName _ _ -> True; _ -> False) options
   --   then mapM_ validate options >> return ops
   --   else Left $ buildSQLException ParseException Nothing "Options STREAM (name) or TYPE (of Connector) missing"

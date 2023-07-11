@@ -8,14 +8,13 @@ module HStream.SQL.Codegen.TerOp
     )
  where
 
-import           GHC.Stack                 (HasCallStack)
+import           GHC.Stack                (HasCallStack)
 #ifdef HStreamUseV2Engine
 import           DiffFlow.Error
 #else
 import           HStream.Processing.Error
 #endif
 import           HStream.SQL.AST
-import           HStream.SQL.Codegen.Utils
 
 #ifdef HStreamUseV2Engine
 #define ERROR_TYPE DiffFlowError

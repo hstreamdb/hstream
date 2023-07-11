@@ -17,28 +17,22 @@
 module HStream.SQL.Codegen.V1 where
 
 #ifndef HStreamUseV2Engine
-import           Data.Aeson                                      (Object,
-                                                                  Value (Bool, Null, Number, String))
+import           Data.Aeson                                      (Value)
 import qualified Data.Aeson                                      as Aeson
 import           Data.Bifunctor
-import qualified Data.ByteString.Char8                           as BSC
 import           Data.Function
 import           Data.Functor
 import qualified Data.HashMap.Strict                             as HM
+import           Data.Kind                                       (Type)
 import qualified Data.List                                       as L
 import           Data.Maybe
-import           Data.Scientific                                 (fromFloatDigits,
-                                                                  scientific)
 import           Data.Text                                       (pack)
 import qualified Data.Text                                       as T
 import           Data.Text.Prettyprint.Doc                       as PP
 import           Data.Text.Prettyprint.Doc.Render.Text           as PP
-import           Data.Time                                       (diffTimeToPicoseconds,
-                                                                  showGregorian)
 import qualified Proto3.Suite                                    as PB
 import           RIO
 import qualified RIO.ByteString.Lazy                             as BL
-import qualified Z.Data.CBytes                                   as CB
 
 import           HStream.Base                                    (genUnique)
 import           HStream.Processing.Encoding                     (Serde (..),
@@ -61,13 +55,11 @@ import qualified HStream.Processing.Stream.SessionWindowedStream as HSW
 import           HStream.Processing.Stream.SessionWindows        (mkSessionWindows,
                                                                   sessionWindowKeySerde)
 import qualified HStream.Processing.Stream.TimeWindowedStream    as HTW
-import           HStream.Processing.Stream.TimeWindows           (TimeWindow (..),
-                                                                  TimeWindowKey (..),
+import           HStream.Processing.Stream.TimeWindows           (TimeWindowKey (..),
                                                                   mkHoppingWindow,
                                                                   mkTumblingWindow,
                                                                   timeWindowKeySerde)
 import qualified HStream.Processing.Table                        as HT
-import qualified HStream.Processing.Type                         as HPT
 import           HStream.SQL.AST
 import           HStream.SQL.Codegen.ColumnCatalog
 import           HStream.SQL.Codegen.Common
@@ -212,7 +204,7 @@ data EStream where
   EStream1 :: Stream K V Ser -> EStream
   EStream2 :: Stream (TimeWindowKey K) V Ser -> EStream
 
-type family BTK (b :: Bool) (k :: *) where
+type family BTK (b :: Bool) (k :: Type) where
   BTK 'False k = k
   BTK 'True  k = TimeWindowKey k
 
@@ -221,16 +213,16 @@ data SK (b :: Bool) where
   SKT :: SK 'True
 
 withEStreamM :: Monad m => EStream -> SK b -> (Stream K V Ser -> m (Stream (BTK b K) V Ser)) -> (Stream (TimeWindowKey K) V Ser -> m (Stream (BTK b (TimeWindowKey K)) V Ser)) -> m EStream
-withEStreamM (EStream1 s) SK f1 f2 = do
+withEStreamM (EStream1 s) SK f1 _f2 = do
   s' <- f1 s
   return $ EStream1 s'
-withEStreamM (EStream1 s) SKT f1 f2 = do
+withEStreamM (EStream1 s) SKT f1 _f2 = do
   s' <- f1 s
   return $ EStream2 s'
-withEStreamM (EStream2 ts) SK f1 f2 = do
+withEStreamM (EStream2 ts) SK _f1 f2 = do
   ts' <- f2 ts
   return $ EStream2 ts'
-withEStreamM (EStream2 ts) SKT f1 f2 = throwSQLException CodegenException Nothing "Applying a time window to a time-windowed stream is not supported"
+withEStreamM (EStream2 _) SKT _ _ = throwSQLException CodegenException Nothing "Applying a time window to a time-windowed stream is not supported"
 
 renameMapR :: Text -> Record k V -> Record k V
 renameMapR alias = \record@Record{..} -> record{ recordValue = streamRenamer alias recordValue }
@@ -239,7 +231,7 @@ filterFilterR :: ScalarExpr -> Record k V -> Bool
 filterFilterR scalar =
   \Record{..} ->
     case scalarExprToFun scalar recordValue of
-      Left e  -> False -- FIXME: log error message
+      Left _  -> False -- FIXME: log error message
       Right v -> v == FlowBoolean True
 
 projectMapR :: [(ColumnCatalog, ColumnCatalog)] -> [Text] -> Record k V -> Record k V
@@ -263,7 +255,7 @@ affiliateMapR tups =
     let recordValue' =
           L.foldr (\(cata,scalar) acc ->
                      case scalarExprToFun scalar recordValue of
-                       Left e  -> HM.insert cata FlowNull acc
+                       Left _  -> HM.insert cata FlowNull acc -- FIXME: log error?
                        Right v -> HM.insert cata v acc
                   ) recordValue tups
      in record{ recordValue = recordValue' }
@@ -301,11 +293,11 @@ relationExprToGraph relation builder = case relation of
         s' <- HS.joinStream s2 joiner joinCond newKeySelector joinWindows streamJoined s1
         return (EStream1 s', srcs1++srcs2, streamJoined:joins1++joins2, mats1++mats2)
       _ -> throwSQLException CodegenException Nothing "Joining time-windowed and non-time-windowed streams is not supported"
-  LoopJoinOn r1 r2 expr typ t -> do
+  LoopJoinOn r1 r2 expr _typ t -> do
     let joiner = HM.union
         joinCond = \record1 record2 ->
           case scalarExprToFun expr (recordValue record1 <> recordValue record2) of
-            Left e  -> False -- FIXME: log error message
+            Left _  -> False -- FIXME: log error message
             Right v -> v == FlowBoolean True
         newKeySelector = \_ _ -> HM.fromList [] -- Default key is empty. See HStream.Processing.Stream#joinStreamProcessor
         joinWindows = JoinWindows
@@ -322,7 +314,7 @@ relationExprToGraph relation builder = case relation of
         s' <- HS.joinStream s2 joiner joinCond newKeySelector joinWindows streamJoined s1
         return (EStream1 s', srcs1++srcs2, streamJoined:joins1++joins2, mats1++mats2)
       _ -> throwSQLException CodegenException Nothing "Joining time-windowed and non-time-windowed streams is not supported"
-  LoopJoinUsing r1 r2 cols typ t -> do
+  LoopJoinUsing r1 r2 cols _typ t -> do
     let joiner = HM.union
         joinCond = \record1 record2 ->
           HM.mapKeys (\(ColumnCatalog f _) -> ColumnCatalog f Nothing) (HM.filterWithKey (\(ColumnCatalog f s_m) _ -> isJust s_m && L.elem f cols) (recordValue record1)) ==
@@ -342,7 +334,7 @@ relationExprToGraph relation builder = case relation of
         s' <- HS.joinStream s2 joiner joinCond newKeySelector joinWindows streamJoined s1
         return (EStream1 s', srcs1++srcs2, streamJoined:joins1++joins2, mats1++mats2)
       _ -> throwSQLException CodegenException Nothing "Joining time-windowed and non-time-windowed streams is not supported"
-  LoopJoinNatural r1 r2 typ t -> do
+  LoopJoinNatural r1 r2 _typ t -> do
     let joiner = HM.union
         joinCond = \record1 record2 ->
           HM.foldlWithKey (\acc _k@(ColumnCatalog f _) v ->
@@ -389,16 +381,16 @@ relationExprToGraph relation builder = case relation of
                         Left _  -> HM.insert cata FlowNull acc
                         Right v -> HM.insert cata v acc
                   ) HM.empty keyTups
-    let aggComp@AggregateComponent{..} =
+    let AggregateComponent{..} =
           composeAggs (L.map (\(cata,agg) -> genAggregateComponent agg cata) aggTups)
     let aggregateR = \acc Record{..} ->
           case aggregateF acc recordValue of
-            Left (e,v) -> v -- FIXME: log error message
-            Right v    -> v
+            Left (_, v) -> v -- FIXME: log error message
+            Right v     -> v
         aggregateMerge' = \k o1 o2 ->
           case aggregateMergeF k o1 o2 of
-            Left (e,v) -> v
-            Right v    -> v
+            Left (_, v) -> v
+            Right v     -> v
 
     materialized  <- genMaterialized win_m
 
@@ -457,9 +449,9 @@ relationExprToGraph relation builder = case relation of
                                     materialized
                   >>= HT.toStream
             return (EStream2 s', srcs, joins, materialized:mats)
-  Distinct r -> do
+  Distinct _ -> do
     throwSQLException CodegenException Nothing "Distinct is not supported"
-  Union r1 r2 -> do
+  Union _ _ -> do
     throwSQLException CodegenException Nothing "Union is not supported"
 
 data SinkConfigType = SinkConfigType StreamName (HS.StreamSinkConfig K V Ser)
@@ -499,6 +491,7 @@ genStreamSinkConfig sinkStream' relationExpr = do
                           , sicKeySerde = sessionWindowKeySerde flowObjectSerde (timeWindowSerde $ calendarDiffTimeToMs i)
                           , sicValueSerde = flowObjectSerde
                           }
+    _ -> error "REFACTOR_FIXME"
 
 genTaskName :: IO Text
 -- Please do not encode the this id to other forms,
@@ -520,7 +513,7 @@ elabRelationExpr :: Text
                  -> Maybe StreamName
                  -> RelationExpr
                  -> IO (StreamBuilder, [StreamName], StreamName, Persist)
-elabRelationExpr taskName sinkStream' relationExpr = do
+elabRelationExpr _taskName sinkStream' relationExpr = do
   sinkConfig <- genStreamSinkConfig sinkStream' relationExpr
   builder    <- newRandomText 20 >>= HS.mkStreamBuilder
   (es,srcs,joins,mats) <- relationExprToGraph relationExpr builder

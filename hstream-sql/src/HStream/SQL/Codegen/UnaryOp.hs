@@ -7,7 +7,6 @@ module HStream.SQL.Codegen.UnaryOp
   ) where
 
 import qualified Data.List                 as L
-import           Data.Scientific
 import qualified Data.Text                 as T
 #ifdef HStreamUseV2Engine
 import           DiffFlow.Error

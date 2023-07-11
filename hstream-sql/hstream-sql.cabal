@@ -37,8 +37,9 @@ flag hstream_use_v2_engine
 
 common shared-properties
   ghc-options:
-    -Wall -Wcompat -Widentities -Wincomplete-record-updates
-    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+    -Wall -Wextra -Werror -Wno-name-shadowing -Wno-orphans -Wcompat
+    -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns
+    -Wpartial-fields -Wredundant-constraints
 
   if flag(releasebuild)
     ghc-options:

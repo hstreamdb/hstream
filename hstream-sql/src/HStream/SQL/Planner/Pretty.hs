@@ -3,7 +3,6 @@
 module HStream.SQL.Planner.Pretty where
 
 import qualified Data.List                               as L
-import qualified Data.Map                                as Map
 import qualified Data.Text                               as T
 import           Data.Text.Prettyprint.Doc
 import           Data.Text.Prettyprint.Doc.Render.String

@@ -16,7 +16,7 @@ getField :: ColumnCatalog -> FlowObject -> Maybe (ColumnCatalog, FlowValue)
 getField (ColumnCatalog k stream_m) o =
   let filterCond = case stream_m of
         Nothing -> \(ColumnCatalog f _) _   -> f == k
-        Just s  -> \(ColumnCatalog f s_m) _ -> f == k && s_m == stream_m
+        Just _  -> \(ColumnCatalog f s_m) _ -> f == k && s_m == stream_m
    in case HM.toList (HM.filterWithKey filterCond o) of
         []      -> Nothing
         [(k,v)] -> Just (k, v)
@@ -39,5 +39,5 @@ streamRenamer :: Text -> FlowObject -> FlowObject
 streamRenamer newName =
   HM.mapKeys (\cata@(ColumnCatalog f s_m) -> case s_m of
                  Nothing -> cata
-                 Just s  -> ColumnCatalog f (Just newName)
+                 Just _  -> ColumnCatalog f (Just newName)
              )

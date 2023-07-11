@@ -16,7 +16,6 @@ import           HStream.SQL.AST
 import           HStream.SQL.Codegen.Utils
 
 import           Data.Typeable
-import           Debug.Trace
 
 #ifdef HStreamUseV2Engine
 #define ERROR_TYPE DiffFlowError

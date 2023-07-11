@@ -4,18 +4,16 @@
 
 module HStream.SQL.Planner where
 
-import           Control.Applicative   ((<|>))
-import           Data.Function         (on)
-import           Data.Int              (Int64)
-import           Data.Kind             (Type)
-import qualified Data.List             as L
-import qualified Data.Map              as Map
-import           Data.Maybe            (fromMaybe)
-import           Data.Text             (Text)
-import qualified Data.Text             as T
+import           Control.Applicative ((<|>))
+import           Data.Function       (on)
+import           Data.Int            (Int64)
+import           Data.Kind           (Type)
+import qualified Data.List           as L
+import           Data.Maybe          (fromMaybe)
+import           Data.Text           (Text)
+import qualified Data.Text           as T
 
 import           HStream.SQL.AST
-import           HStream.SQL.Exception
 
 data RelationExpr
   = StreamScan   Text
@@ -179,7 +177,7 @@ rSelToProjectItems (RSel items) =
                  case item of
                    RSelectItemProject expr alias_m ->
                      case expr of
-                       RExprCol name stream_m field ->
+                       RExprCol _name stream_m field ->
                          let cata_get = ColumnCatalog
                                         { columnName = field
                                         , columnStream = stream_m
@@ -322,6 +320,7 @@ instance Decouple RTableRef where
         base_2 = decouple ref2
      in LoopJoinUsing base_1 base_2 cols typ (calendarDiffTimeToMs t)
 #endif
+  decouple _ = error "REFACTOR_FIXME"
 
 type instance DecoupledType RFrom = RelationExpr
 instance Decouple RFrom where
@@ -417,7 +416,7 @@ instance HasAggregates RSelectItem where
                        { columnName = alias
                        , columnStream = Nothing
                        }
-               in L.map (\(c, a) -> (cata, a)) tups
+               in L.map (\(_, a) -> (cata, a)) tups
     _                            -> []
 
 instance HasAggregates RSel where

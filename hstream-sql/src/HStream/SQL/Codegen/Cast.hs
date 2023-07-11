@@ -7,8 +7,6 @@ module HStream.SQL.Codegen.Cast
   ( castOnValue
   ) where
 
-import qualified Data.Map.Strict                as Map
-import           Data.Scientific
 import qualified Data.Text                      as T
 import           Data.Time                      as Time
 import           Data.Time.Calendar.OrdinalDate (fromOrdinalDate)
@@ -20,7 +18,6 @@ import           HStream.Processing.Error
 #endif
 import           Data.Time.Format.ISO8601       (iso8601ParseM)
 import           HStream.SQL.AST
-import           HStream.SQL.Exception
 import qualified Z.Data.CBytes                  as CB
 
 #ifdef HStreamUseV2Engine
@@ -105,8 +102,6 @@ castToBoolean x =
       typName = "Boolean"
       mkOk :: Bool -> Either ERROR_TYPE FlowValue
       mkOk = Right . FlowBoolean
-      mkErr :: Either ERROR_TYPE FlowValue
-      mkErr = mkCanNotCastErr x typName
   in case x of
     FlowInt   x   -> mkOk $ x /= 0
     FlowFloat x   -> mkOk $ x /= 0.0
@@ -119,6 +114,7 @@ castToBoolean x =
         "T"     -> mkOk True
         "F"     -> mkOk False
         _       -> mkCanNotParseTextErr x typName
+    _ -> error "REFACTOR_FIXME"
 
 castToByte :: FlowValue -> Either ERROR_TYPE FlowValue
 castToByte x =

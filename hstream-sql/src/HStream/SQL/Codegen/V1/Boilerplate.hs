@@ -5,6 +5,7 @@
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving  #-}
+{-# LANGUAGE TypeApplications    #-}
 
 module HStream.SQL.Codegen.V1.Boilerplate where
 
@@ -14,10 +15,7 @@ import qualified Data.Binary                           as B
 import           Data.Binary.Get
 import qualified Data.ByteString.Builder               as BB
 import qualified Data.ByteString.Lazy                  as BL
-import qualified Data.HashMap.Strict                   as HM
 import           Data.Maybe                            (fromJust)
-import           Data.Scientific                       (Scientific (coefficient),
-                                                        coefficient, scientific)
 import qualified Data.Text                             as T
 import qualified Data.Text.Lazy                        as TL
 import qualified Data.Text.Lazy.Encoding               as TLE
@@ -131,8 +129,8 @@ timeWindowObjectSerde :: Serde TimeWindow Object
 timeWindowObjectSerde =
   Serde
   { serializer = Serializer $ \TimeWindow{..} ->
-      let startTime = Time.utcToZonedTime Time.utc (Time.posixSecondsToUTCTime $ realToFrac (fromIntegral tWindowStart * 0.001))
-          endTime   = Time.utcToZonedTime Time.utc (Time.posixSecondsToUTCTime $ realToFrac (fromIntegral tWindowEnd   * 0.001))
+      let startTime = Time.utcToZonedTime Time.utc (Time.posixSecondsToUTCTime $ realToFrac (fromIntegral @Int64 @Double tWindowStart * 0.001))
+          endTime   = Time.utcToZonedTime Time.utc (Time.posixSecondsToUTCTime $ realToFrac (fromIntegral @Int64 @Double tWindowEnd   * 0.001))
           winStart  = [( HsAeson.fromText winStartText
                        , Aeson.Object $ HsAeson.fromList
                          [ ( HsAeson.fromText "$timestamp"
@@ -154,8 +152,8 @@ timeWindowObjectSerde =
         Aeson.String s2 <- HsAeson.lookup "$timestamp" oe
         (tsStart :: Time.ZonedTime) <- iso8601ParseM (T.unpack s1)
         (tsEnd   :: Time.ZonedTime) <- iso8601ParseM (T.unpack s2)
-        let startTime = fromIntegral . floor . (1000 *) . Time.utcTimeToPOSIXSeconds . Time.zonedTimeToUTC $ tsStart
-            endTime   = fromIntegral . floor . (1000 *) . Time.utcTimeToPOSIXSeconds . Time.zonedTimeToUTC $ tsEnd
+        let startTime = fromIntegral @Int . floor . (1000 *) . Time.utcTimeToPOSIXSeconds . Time.zonedTimeToUTC $ tsStart
+            endTime   = fromIntegral @Int . floor . (1000 *) . Time.utcTimeToPOSIXSeconds . Time.zonedTimeToUTC $ tsEnd
         return (startTime, endTime) of
          Nothing -> throwSQLException CodegenException Nothing ("Error when deserializing timewindow " <> show obj)
          Just (startTime, endTime) -> TimeWindow { tWindowStart = startTime
