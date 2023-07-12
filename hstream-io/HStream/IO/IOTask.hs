@@ -76,11 +76,11 @@ runIOTask ioTask@IOTask{..} = do
         " -v " , taskPath, ":/data",
         " " , T.unpack tcImage,
         " run",
-        " --config /data/config.json"
+        " --config /data/config.json 2>&1"
       ]
     taskProcessConfig = TP.setStdin TP.createPipe
       . TP.setStdout TP.createPipe
-      . TP.setStderr TP.createPipe
+      . TP.setStderr TP.closed
       $ TP.shell taskCmd
 
 getDockerStatus :: IOTask -> IO T.Text
@@ -195,7 +195,7 @@ monitorProcess ioTask@IOTask{..} = do
           Just _  -> return FAILED
       _ -> return status
 
-tryWaitProcessWithTimeout :: TP.Process IO.Handle IO.Handle IO.Handle -> Int -> IO (Maybe TP.ExitCode)
+tryWaitProcessWithTimeout :: TaskProcess -> Int -> IO (Maybe TP.ExitCode)
 tryWaitProcessWithTimeout tp timeoutSec = do
   Async.race (C.threadDelay $ timeoutSec * 1000000) (TP.waitExitCode tp) >>= \case
     Left _     -> return Nothing
