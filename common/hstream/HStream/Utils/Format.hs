@@ -320,12 +320,14 @@ formatReceivedRecord :: API.ReceivedRecord -> Maybe (V.Vector String)
 formatReceivedRecord API.ReceivedRecord{..} = do
   records <- decompressBatchedRecord <$> receivedRecordRecord
   let createTs = formatMaybeTimestamp $ getTimeStamp <$> receivedRecordRecord
-  V.mapM formatHStreamRecord records >>= pure <$> V.zip receivedRecordRecordIds >>= V.mapM (pure <$> formatRecords createTs)
+      keys     = V.map (maybe clientDefaultKey API.hstreamRecordHeaderKey . API.hstreamRecordHeader) records
+  V.mapM formatHStreamRecord records >>= pure <$> V.zip3 receivedRecordRecordIds keys >>= V.mapM (pure <$> formatRecords createTs)
  where
-   formatRecords :: String -> (API.RecordId, String) -> String
-   formatRecords ts (API.RecordId{..}, record) = "publishTimestamp: " <> show ts
-                                              <> ", rid: " <> show recordIdShardId <> "-" <> show recordIdBatchId <> "-" <> show recordIdBatchIndex
-                                              <> ", record: " <> record
+   formatRecords :: String -> (API.RecordId, T.Text, String) -> String
+   formatRecords ts (API.RecordId{..}, key, record) = "timestamp: " <> show ts
+                                                   <> ", id: " <> show recordIdShardId <> "-" <> show recordIdBatchId <> "-" <> show recordIdBatchIndex
+                                                   <> ", key: " <> show key
+                                                   <> ", record: " <> record
 
    formatHStreamRecord :: API.HStreamRecord -> Maybe String
    formatHStreamRecord API.HStreamRecord{..} = do
