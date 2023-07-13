@@ -89,7 +89,7 @@ type ViewSchema = [String]
 data ShowObject = SStreams | SQueries | SConnectors | SViews
 data DropObject = DStream Text | DView Text | DConnector Text | DQuery Text
 data TerminateObject = TQuery Text
-data InsertType = JsonFormat | RawFormat
+data InsertType = JsonFormat | RawFormat deriving (Show, Eq)
 data PauseObject
   = PauseObjectConnector Text
   | PauseObjectQuery Text

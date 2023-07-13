@@ -127,6 +127,7 @@ hserver:
       postgresql: hstreamdb/sink-postgresql:latest
       mongodb: hstreamdb/sink-mongodb:latest
       blackhole: hstreamdb/sink-blackhole:latest
+      elasticsearch: hstreamdb/sink-elasticsearch:latest
 
 # Configuration for HStream Store
 # The configuration for hstore is **Optional**. When the values are not provided,
