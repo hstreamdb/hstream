@@ -67,10 +67,6 @@ createStream ServerContext{..} stream@API.Stream{
     let shard = mkShardWithDefaultId streamId startKey endKey (fromIntegral shardCount)
     createShard scLDClient shard
   Log.debug $ "create shards for stream " <> Log.build streamStreamName <> ": " <> Log.buildString' (show shards)
-
-  shardMp <- mkSharedShardMapWithShards shards
-  let shardDict = foldl' (\acc Shard{startKey=key, shardId=sId} -> M.insert key sId acc) M.empty shards
-  modifyMVar_ shardTable $ return . HM.insert streamStreamName shardDict
   return stream{API.streamCreationTime = Just timeStamp}
 
 deleteStream :: ServerContext

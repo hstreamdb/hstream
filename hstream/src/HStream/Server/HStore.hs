@@ -256,6 +256,7 @@ commitCheckpointToHStore ldclient reader streamId offset = do
     Latest     -> throwIO $ WrongOffset "expect normal offset, but get Latest"
     Offset lsn -> S.writeCheckpoints reader (M.singleton logId lsn) 10{-retries-}
 
+-- TODO performance: do not call getShardId every time, let others pass it.
 writeRecordToHStore :: ServerContext
                     -> (BL.ByteString -> Maybe BL.ByteString)
                     -> (BL.ByteString -> Maybe BL.ByteString)
@@ -306,15 +307,12 @@ getShardId ServerContext{..} sName = do
    streamID   = S.mkStreamId S.StreamTypeStream streamName
    streamName = textToCBytes sName
 
-   getShardDict = modifyMVar shardTable $ \mp -> do
-     case HM.lookup sName mp of
-       Just shards -> return (mp, shards)
-       Nothing     -> do
-         -- loading shard infomation for stream first.
-         shards <- M.elems <$> S.listStreamPartitions scLDClient streamID
-         shardDict <- foldM insertShardDict M.empty shards
-         Log.debug $ "build shardDict for stream " <> Log.build sName <> ": " <> Log.buildString' (show shardDict)
-         return (HM.insert sName shardDict mp, shardDict)
+   getShardDict = do
+     -- loading shard infomation for stream first.
+     shards <- M.elems <$> S.listStreamPartitions scLDClient streamID
+     shardDict <- foldM insertShardDict M.empty shards
+     Log.debug $ "build shardDict for stream " <> Log.build sName <> ": " <> Log.buildString' (show shardDict)
+     return shardDict
 
    insertShardDict dict shardId = do
      attrs <- S.getStreamPartitionExtraAttrs scLDClient shardId

@@ -85,7 +85,6 @@ initializeServer opts@ServerOpts{..} gossipContext hh db_m = do
       (IO.HStreamConfig (cBytesToText ("hstream://" <> CB.pack _serverAddress <> ":" <> CB.pack (show _serverPort))))
       _ioOptions
 
-  shardTable <- newMVar HM.empty
   shardReaderMap <- newMVar HM.empty
 
   -- recovery tasks
@@ -109,7 +108,6 @@ initializeServer opts@ServerOpts{..} gossipContext hh db_m = do
       , scIOWorker               = ioWorker
       , gossipContext            = gossipContext
       , serverOpts               = opts
-      , shardTable               = shardTable
       , shardReaderMap           = shardReaderMap
       , querySnapshotPath        = _querySnapshotPath
       , querySnapshotter         = db_m
