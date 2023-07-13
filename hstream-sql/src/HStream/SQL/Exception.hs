@@ -15,7 +15,7 @@ module HStream.SQL.Exception
   , isEOF
   ) where
 
-import           Control.Exception (Exception, throw, try)
+import           Control.Exception (Exception, throw)
 import           GHC.Stack         (CallStack, HasCallStack, callStack,
                                     prettyCallStack)
 import           HStream.SQL.Abs   (BNFC'Position)

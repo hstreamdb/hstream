@@ -14,10 +14,7 @@
 module HStream.SQL.AST where
 
 import qualified Data.Aeson               as Aeson
-import qualified Data.Aeson.Types         as Aeson
 import qualified Data.ByteString          as BS
-import qualified Data.ByteString.Char8    as BSC
-import qualified Data.ByteString.Lazy     as BL
 import           Data.Default
 import           Data.Hashable
 import qualified Data.HashMap.Strict      as HM
@@ -25,7 +22,6 @@ import           Data.Int                 (Int64)
 import           Data.Kind                (Type)
 import qualified Data.List                as L
 import           Data.List.Extra          (anySame)
-import qualified Data.Map.Strict          as Map
 import           Data.Maybe               (fromJust)
 import qualified Data.Scientific          as Scientific
 import           Data.Text                (Text)
@@ -43,8 +39,7 @@ import           HStream.SQL.Abs
 import           HStream.SQL.Exception    (SomeSQLException (..),
                                            throwSQLException)
 import           HStream.SQL.Extra
-import           HStream.SQL.Print        (printTree)
-import           HStream.Utils            (cBytesToText, textToCBytes)
+import           HStream.Utils            (textToCBytes)
 import qualified HStream.Utils.Aeson      as HsAeson
 import           Text.Read                (readMaybe)
 import qualified Z.Data.CBytes            as CB
@@ -160,9 +155,9 @@ jsonValueToFlowValue v = case v of
   Aeson.Null       -> FlowNull
   Aeson.Bool b     -> FlowBoolean b
   Aeson.String t   -> FlowText t
-  Aeson.Number n   -> case Scientific.floatingOrInteger n of
+  Aeson.Number n   -> case Scientific.floatingOrInteger @Double @Int n of
     Left  f -> FlowFloat f
-    Right i -> FlowInt (fromIntegral i)
+    Right i -> FlowInt i
   Aeson.Array arr  -> FlowArray (V.toList $ jsonValueToFlowValue <$> arr)
   Aeson.Object obj -> case HsAeson.toList obj of
     [("$numberLong", Aeson.String t)] ->
@@ -195,7 +190,6 @@ jsonValueToFlowValue v = case v of
         Just i -> FlowInterval i
         Nothing -> throwSQLException RefineException Nothing ("Invalid $interval value" <> Text.unpack t)
     _ -> FlowSubObject (jsonObjectToFlowObject' obj)
-  _ -> throwSQLException RefineException Nothing ("Invalid json value: " <> show v)
 
 flowObjectToJsonObject :: FlowObject -> Aeson.Object
 flowObjectToJsonObject hm =
@@ -407,7 +401,7 @@ data UnaryOp  = OpSin      | OpSinh    | OpAsin   | OpAsinh  | OpCos   | OpCosh
               | OpAbs      | OpCeil    | OpFloor  | OpRound  | OpSign
               | OpSqrt     | OpLog     | OpLog2   | OpLog10  | OpExp
               | OpIsInt    | OpIsFloat | OpIsBool | OpIsStr
-              | OpIsArr    | OpIsDate  | OpIsTime
+              | OpIsArr    | OpIsDate  | OpIsTime | OpIsNum
               | OpToStr
               | OpToLower  | OpToUpper | OpTrim   | OpLTrim  | OpRTrim
               | OpReverse  | OpStrLen
@@ -608,6 +602,7 @@ instance Refine ScalarFunc where
     ScalarFuncIsArr   _ e -> RExprUnaryOp (trimSpacesPrint func) OpIsArr   (refine e)
     ScalarFuncIsDate  _ e -> RExprUnaryOp (trimSpacesPrint func) OpIsDate  (refine e)
     ScalarFuncIsTime  _ e -> RExprUnaryOp (trimSpacesPrint func) OpIsTime  (refine e)
+    ScalarFuncIsNum   _ e -> RExprUnaryOp (trimSpacesPrint func) OpIsNum   (refine e)
     ScalarFuncToStr   _ e -> RExprUnaryOp (trimSpacesPrint func) OpToStr   (refine e)
     ScalarFuncToLower _ e -> RExprUnaryOp (trimSpacesPrint func) OpToLower (refine e)
     ScalarFuncToUpper _ e -> RExprUnaryOp (trimSpacesPrint func) OpToUpper (refine e)
@@ -622,6 +617,7 @@ instance Refine ScalarFunc where
     ArrayFuncMax      _ e -> RExprUnaryOp (trimSpacesPrint func) OpArrMax  (refine e)
     ArrayFuncMin      _ e -> RExprUnaryOp (trimSpacesPrint func) OpArrMin  (refine e)
     ArrayFuncSort     _ e -> RExprUnaryOp (trimSpacesPrint func) OpSort    (refine e)
+
 
 type instance RefinedType SetFunc = RValueExpr
 instance Refine SetFunc where
@@ -755,7 +751,7 @@ instance Refine TableRef where
   refine (TableRefJoinUsing _ r1 typ r2 cols interval) = RTableRefJoinUsing (refine r1) (refine typ) (refine r2) (extractStreamNameFromColName <$> cols) (refine interval)
     where extractStreamNameFromColName col = case col of
             ColNameSimple _ colIdent -> refine colIdent
-            ColNameStream pos _ _    -> throwImpossible
+            ColNameStream _ _ _      -> throwImpossible
   refine (TableRefTumbling _ ref interval) = RTableRefWindowed (refine ref) (Tumbling (refine interval))
   refine (TableRefHopping _ ref len hop)   = RTableRefWindowed (refine ref) (Hopping (refine len) (refine hop))
   refine (TableRefSession _ ref interval)  = RTableRefWindowed (refine ref) (Session (refine interval))
@@ -801,9 +797,11 @@ data RGroupBy = RGroupByEmpty
 type instance RefinedType GroupBy = RGroupBy
 instance Refine GroupBy where
   refine (DGroupByEmpty _) = RGroupByEmpty
-  refine (DGroupBy _ cols) = RGroupBy
-    (L.map (\col -> let (RExprCol _ m_stream field) = refine col
-                    in (m_stream, field)) cols
+  refine (DGroupBy pos cols) = RGroupBy
+    (L.map (\col -> case refine col of
+      RExprCol _ m_stream field -> (m_stream, field)
+      _                         -> throwSQLException RefineException pos "Group By Columns should be RExprCol"
+      ) cols
     ) Nothing
   -- refine (DGroupByWin pos cols win) =
   --   let (RGroupBy tups Nothing) = refine (DGroupBy pos cols)
@@ -847,7 +845,7 @@ instance Refine Explain where
   refine (ExplainCreate _ (CreateAs _ _ select))     = refine select
   refine (ExplainCreate _ (CreateAsOp _ _ select _)) = refine select
   refine (ExplainCreate _ (CreateView _ _ select))   = refine select
-  refine (ExplainCreate pos _)                       = throwImpossible
+  refine (ExplainCreate _ _)                         = throwImpossible
 
 ---- CREATE
 data RStreamOptions = RStreamOptions
@@ -883,11 +881,16 @@ instance Refine [StreamOption] where
                                    _                -> False
                             ) options
         factor = maybe (rRepFactor def)
-                       (\(OptionRepFactor _ n') -> fromInteger $ extractPNInteger n')
+                       (\case
+                        OptionRepFactor _ n' -> fromInteger $ extractPNInteger n'
+                        _ -> throwSQLException RefineException Nothing "Invalid StreamOption OptionRepFactor"
+                        )
                        factor_m
         duration = maybe (rBacklogDuration def)
-                         (\(OptionDuration _ interval) ->
+                         (\case
+                          OptionDuration _ interval ->
                             fromIntegral (calendarDiffTimeToMs (refine (interval :: Interval))) `div` 1000
+                          _ -> throwSQLException RefineException Nothing "Invalid StreamOption OptionDuration"
                          )
                          duration_m
      in RStreamOptions { rRepFactor       = factor
@@ -901,6 +904,7 @@ instance Refine [ConnectorOption] where
           toPair :: ConnectorOption -> (Text, Aeson.Value)
           toPair (ConnectorProperty _ key expr) = (extractHIdent key, toValue (refine expr))
           toValue (RExprConst _ c) = Aeson.toJSON c
+          toValue _                = throwSQLException RefineException Nothing "Connector Property should be const literal expression"
 
 type instance RefinedType Create = RCreate
 instance Refine Create where
