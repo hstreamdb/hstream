@@ -76,7 +76,7 @@ sql:: sql-deps
 		hstream-sql/gen-sql/HStream/SQL/Lex.x > hstream-sql/gen-sql/HStream/SQL/Lex.x.new)
 	(diff hstream-sql/gen-sql/HStream/SQL/Lex.x hstream-sql/gen-sql/HStream/SQL/Lex.x.new || true)
 	(cd hstream-sql/gen-sql && mv HStream/SQL/Lex.x.new HStream/SQL/Lex.x && make)
-	(find hstream-sql/gen-sql -type f -name '*.hs' -exec sed -i '1i{-# OPTIONS_GHC -w #-}\n' {} \;)
+	(find hstream-sql/gen-sql/ -type f -name '*.hs' -exec sed -i '1i{-# OPTIONS_GHC -w #-}\n' {} \;)
 
 sql-deps::
 	# Change to a temporary dir to avoid create hstream dists.
