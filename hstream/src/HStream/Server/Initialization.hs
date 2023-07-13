@@ -85,7 +85,6 @@ initializeServer opts@ServerOpts{..} gossipContext hh db_m = do
       (IO.HStreamConfig (cBytesToText ("hstream://" <> CB.pack _serverAddress <> ":" <> CB.pack (show _serverPort))))
       _ioOptions
 
-  shardInfo  <- newMVar HM.empty
   shardTable <- newMVar HM.empty
   shardReaderMap <- newMVar HM.empty
 
@@ -110,7 +109,6 @@ initializeServer opts@ServerOpts{..} gossipContext hh db_m = do
       , scIOWorker               = ioWorker
       , gossipContext            = gossipContext
       , serverOpts               = opts
-      , shardInfo                = shardInfo
       , shardTable               = shardTable
       , shardReaderMap           = shardReaderMap
       , querySnapshotPath        = _querySnapshotPath

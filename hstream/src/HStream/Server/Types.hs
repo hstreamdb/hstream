@@ -105,8 +105,6 @@ data ServerContext = ServerContext
   , scIOWorker               :: IO.Worker
   , gossipContext            :: GossipContext
   , serverOpts               :: ServerOpts
-  , shardInfo                :: MVar (HM.HashMap Text SharedShardMap)
-    -- ^ streamName -> ShardMap, use to manipulate shards
   , shardTable               :: MVar (HM.HashMap Text ShardDict)
     -- ^ streamName -> Map startKey shardId, use to find target shard quickly when append
   , shardReaderMap           :: MVar (HM.HashMap Text (MVar ShardReader))
