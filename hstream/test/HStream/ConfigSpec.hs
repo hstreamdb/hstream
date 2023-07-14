@@ -86,7 +86,7 @@ defaultConfig = ServerOpts
   , _metaStore                 = ZkAddr "127.0.0.1:2181"
   , _ldConfigPath              = "/data/store/logdevice.conf"
   , _topicRepFactor            = 1
-  , _ckpRepFactor              = 3
+  , _ckpRepFactor              = 1
   , _compression               = CompressionNone
   , _maxRecordSize             = 1024 * 1024 * 1024
   , _tlsConfig                 = Nothing
@@ -242,7 +242,7 @@ instance Arbitrary ServerOpts where
     _metaStore                 <- arbitrary
     let _ldConfigPath   = "/data/store/logdevice.conf"
     let _topicRepFactor = 1
-    let _ckpRepFactor   = 3
+    let _ckpRepFactor   = 1
     let _compression = CompressionNone
     _maxRecordSize             <- arbitrary
     _tlsConfig                 <- arbitrary

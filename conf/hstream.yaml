@@ -134,7 +134,7 @@ hserver:
 # hstreamdb will use the following configuration as the default configuration.
 hstore:
   #log-level: info
-  # checkpoint-replication-factor: 3
+  # checkpoint-replication-factor: 1
 
   ## Store admin section specify the client config when connecting to the storage admin server
   ##
