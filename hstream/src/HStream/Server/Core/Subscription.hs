@@ -594,8 +594,11 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
         SubscribeStateStopping -> do
             Log.warning $ "Subscription " <> Log.build subSubscriptionId <> " is stopping, exit sendRecords loop."
             throwIO $ HE.SubscriptionIsDeleting (show subSubscriptionId)
+        SubscribeStateStopped -> do
+            Log.warning $ "Subscription " <> Log.build subSubscriptionId <> " is stopped, exit sendRecords loop."
+            throwIO $ HE.SubscriptionIsDeleting (show subSubscriptionId)
         _ ->
-            Log.fatal $ "Subscription " <> Log.build subSubscriptionId <> " is in an impossible state, there must be an error in the code!"
+            Log.fatal $ "Subscription " <> Log.build subSubscriptionId <> " is in an impossible state: " <> Log.build (show state) <> ", there must be an error in the code!"
 
     updateClockAndDoResend :: IO ()
     updateClockAndDoResend = do
