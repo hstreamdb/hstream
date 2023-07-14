@@ -184,7 +184,9 @@ data ConsumerContext = ConsumerContext
     ccIsValid       :: TVar Bool,
     -- use MVar for streamSend because only on thread can use streamSend at the
     -- same time
-    ccStreamSend    :: MVar (StreamSend StreamingFetchResponse)
+    ccStreamSend    :: MVar (StreamSend StreamingFetchResponse),
+    -- threadId of the thread handling streamingFetchRequest for this consumer
+    ccThreadId      :: ThreadId
   }
 
 data SubscribeShardContext = SubscribeShardContext

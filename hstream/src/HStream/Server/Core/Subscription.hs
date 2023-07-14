@@ -11,8 +11,8 @@ module HStream.Server.Core.Subscription where
 import           Control.Concurrent
 import           Control.Concurrent.Async      (async, link, wait, withAsync)
 import           Control.Concurrent.STM
-import           Control.Exception             (catch, fromException, handle,
-                                                onException, throwIO)
+import           Control.Exception             (Exception, catch, fromException,
+                                                handle, onException, throwIO)
 import           Control.Monad
 import qualified Data.ByteString               as BS
 import           Data.Foldable                 (foldl')
@@ -369,12 +369,11 @@ initSub serverCtx@ServerContext {..} subId = M.getMeta subId metaHandle >>= \cas
           putTMVar scnwContext subCtx
           writeTVar scnwState SubscribeStateRunning
           return SubscribeContextWrapper {scwState = scnwState, scwContext = subCtx}
-        subTid <- myThreadId
         let errHandler = \case
               Left e -> do
                           let ex = fromException e :: Maybe HE.SubscriptionIsDeleting
                           case ex of
-                            Just _ -> throwTo subTid e
+                            Just _ -> throwToAllConsumers subCtx e
                             Nothing -> do
                                         Log.fatal $ Log.buildString "An unexpected error happened while subscription "
                                           <> Log.build subId <> " running: " <> Log.build (show e)
@@ -382,7 +381,7 @@ initSub serverCtx@ServerContext {..} subId = M.getMeta subId metaHandle >>= \cas
                                         atomically $ writeTVar scnwState SubscribeStateFailed
                                         atomically $ removeSubFromCtx serverCtx subId
                                         stopCompactedWorker subLdTrimCkpWorker
-                                        throwTo subTid e
+                                        throwToAllConsumers subCtx e
               Right _ -> pure ()
         tid <- forkFinally (sendRecords serverCtx scwState scwContext) errHandler
         return (wrapper, Just tid)
@@ -515,18 +514,21 @@ initConsumer
   -> IO ConsumerContext
 initConsumer SubscribeContext {subAssignment = Assignment{..}, ..} consumerName uri agent streamSend = do
   sender <- newMVar streamSend
+  tid <- myThreadId
   res <- atomically $ do
     cMap <- readTVar subConsumerContexts
     when (HM.member consumerName cMap) $ throwSTM (HE.ConsumerExists $ T.unpack consumerName)
     modifyTVar' waitingConsumers (\consumers -> consumers ++ [consumerName])
 
     isValid <- newTVar True
+
     let cc = ConsumerContext
               { ccConsumerName = consumerName,
                 ccConsumerUri = uri,
                 ccConsumerAgent = agent,
                 ccIsValid = isValid,
-                ccStreamSend = sender
+                ccStreamSend = sender,
+                ccThreadId = tid
               }
     writeTVar subConsumerContexts (HM.insert consumerName cc cMap)
     return cc
@@ -1238,3 +1240,11 @@ addUnackedRecords SubscribeContext {..} count = do
 checkSubscriptionExist :: ServerContext -> Text -> IO Bool
 checkSubscriptionExist ServerContext{..} sid =
   M.checkMetaExists @SubscriptionWrap sid metaHandle
+
+throwToAllConsumers :: Exception e => SubscribeContext -> e -> IO ()
+throwToAllConsumers SubscribeContext{..} e = do
+  consumerCtxs <- atomically $ do
+    consumerCtxs <- readTVar subConsumerContexts
+    return $ HM.elems consumerCtxs
+  forM_ consumerCtxs (\ConsumerContext{..} -> throwTo ccThreadId e)
+
