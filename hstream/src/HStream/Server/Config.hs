@@ -254,7 +254,7 @@ parseJSONToOptions CliOptions {..} obj = do
   -- Store Config
   storeCfgObj         <- obj .:? "hstore" .!= mempty
   storeLogLevel       <- readWithErrLog "store log-level" <$> storeCfgObj .:? "log-level" .!= "info"
-  storeCkpReplica     <- storeCfgObj .:? "checkpoint-replication-factor" .!= 3
+  storeCkpReplica     <- storeCfgObj .:? "checkpoint-replication-factor" .!= 1
   sAdminCfgObj        <- storeCfgObj .:? "store-admin" .!= mempty
   storeAdminHost      <- BSC.pack <$> sAdminCfgObj .:? "host" .!= "127.0.0.1"
   storeAdminPort      <- sAdminCfgObj .:? "port" .!= 6440
