@@ -22,6 +22,18 @@ jobs:
             ld_image: "hstreamdb/logdevice:rqlite"
             tag: "rqlite_${GITHUB_REF#refs/*/}"
     steps:
+      - name: Free disk space
+        run: |
+          echo "Before..."
+          df -h
+          sudo rm -rf \
+            /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /usr/local/share/powershell /usr/share/swift /usr/local/.ghcup \
+            "/usr/local/share/boost" \
+            /usr/lib/jvm || true
+          echo "After..."
+          df -h
+
       - run: |
           echo "${{ matrix.tag }}"
       - uses: actions/checkout@v3
