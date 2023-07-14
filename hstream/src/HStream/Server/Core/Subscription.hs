@@ -1243,8 +1243,10 @@ checkSubscriptionExist ServerContext{..} sid =
 
 throwToAllConsumers :: Exception e => SubscribeContext -> e -> IO ()
 throwToAllConsumers SubscribeContext{..} e = do
+  subMasterTid <- myThreadId
   consumerCtxs <- atomically $ do
     consumerCtxs <- readTVar subConsumerContexts
     return $ HM.elems consumerCtxs
-  forM_ consumerCtxs (\ConsumerContext{..} -> throwTo ccThreadId e)
+  forM_ consumerCtxs (\ConsumerContext{..} -> when (ccThreadId /= subMasterTid) $ throwTo ccThreadId e )
+  throwIO e
 
