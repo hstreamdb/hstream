@@ -77,6 +77,9 @@ RUN set -eux; \
     cabal-store-gc --add-project-root; \
     mkdir /root/.ghc; \
     cabal-store-gc --collect; \
+    rm -rf /root/.cabal/bin; \
+    rm -rf /root/.cabal/logs; \
+    rm -rf /root/.cabal/store/ghc-$(ghc --numeric-version)/hstream*; \
     rm -rf /root/.cabal/store/roots;
 
 # ------------------------------------------------------------------------------
