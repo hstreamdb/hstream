@@ -52,7 +52,6 @@ jobs:
         run: |
           echo "LATEST_TAG=$(git describe --tag --abbrev=0)" >> $GITHUB_ENV
           echo "CURRENT_COMMIT=$(git rev-parse HEAD)" >> $GITHUB_ENV
-          echo "LATEST_TAG: $LATEST_TAG, CURRENT_COMMIT: $CURRENT_COMMIT"
 
       - name: Docker build
         run: |
