@@ -1,4 +1,4 @@
-{-# LANGUAGE StrictData        #-}
+{-# LANGUAGE StrictData #-}
 
 module HStream.Server.ConnectorTypes
   ( SourceConnector (..),

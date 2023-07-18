@@ -14,6 +14,7 @@ module HStream.Server.Handler.Stream
   , listStreamsHandler
   , listStreamsWithPrefixHandler
   , listShardsHandler
+  , trimShardHandler
   , appendHandler
   , getTailRecordIdHandler
     -- * For hs-grpc-server
@@ -24,15 +25,17 @@ module HStream.Server.Handler.Stream
   , handleListStreamsWithPrefix
   , handleAppend
   , handleListShard
+  , handleTrimShard
   , handleGetTailRecordId
   ) where
 
 import           Control.Exception
-import           Data.Maybe                       (fromJust)
+import           Data.Maybe                       (fromJust, isNothing)
 import qualified HsGrpc.Server                    as G
 import qualified HsGrpc.Server.Types              as G
 import           Network.GRPC.HighLevel.Generated
 
+import           Control.Monad                    (when)
 import qualified HStream.Exception                as HE
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Stream       as C
@@ -183,6 +186,24 @@ handleListShard sc _ req = listShardsExHandle $ do
   Log.debug "Receive List Shards Request"
   validateNameAndThrow ResStream $ listShardsRequestStreamName req
   ListShardsResponse <$> C.listShards sc req
+
+trimShardHandler
+  :: ServerContext
+  -> ServerRequest 'Normal TrimShardRequest Empty
+  -> IO (ServerResponse 'Normal Empty)
+trimShardHandler sc (ServerNormalRequest _metadata request@TrimShardRequest{..}) = defaultExceptionHandle $ do
+  Log.info $ "Receive trim shard Request: " <> Log.buildString' request
+  when (isNothing trimShardRequestTrimPoint) $
+    throwIO . HE.InvalidTrimPoint $ "invalid trim point: " <> show trimShardRequestTrimPoint
+  C.trimShard sc trimShardRequestShardId (fromJust trimShardRequestTrimPoint)
+  returnResp Empty
+
+handleTrimShard :: ServerContext -> G.UnaryHandler TrimShardRequest Empty
+handleTrimShard sc _ request@TrimShardRequest{..} = catchDefaultEx $ do
+  Log.info $ "Receive trim shard Request: " <> Log.buildString' request
+  when (isNothing trimShardRequestTrimPoint) $
+    throwIO . HE.InvalidTrimPoint $ "invalid trim point: " <> show trimShardRequestTrimPoint
+  C.trimShard sc trimShardRequestShardId (fromJust trimShardRequestTrimPoint) >> pure Empty
 
 --------------------------------------------------------------------------------
 -- Exception Handlers

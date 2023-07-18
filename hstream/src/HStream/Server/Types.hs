@@ -30,16 +30,19 @@ import qualified Proto3.Suite                     as PB
 #if __GLASGOW_HASKELL__ < 902
 import qualified HStream.Admin.Store.API          as AA
 #endif
+import           Control.Exception                (throw)
 import           Data.IORef                       (IORef)
+import           Data.Maybe                       (fromJust)
 import           HStream.Base.Timer               (CompactedWorker)
 import           HStream.Common.ConsistentHashing (HashRing)
+import qualified HStream.Exception                as HE
 import           HStream.Gossip.Types             (Epoch, GossipContext)
 import qualified HStream.IO.Types                 as IO
 import qualified HStream.IO.Worker                as IO
 import           HStream.MetaStore.Types          (MetaHandle)
 import           HStream.Server.Config
 import qualified HStream.Server.ConnectorTypes    as HCT
-import qualified HStream.Server.HStreamApi as API
+import qualified HStream.Server.HStreamApi        as API
 import           HStream.Server.Shard             (ShardKey, SharedShardMap)
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as HS
@@ -47,9 +50,6 @@ import qualified HStream.Store                    as S
 import           HStream.Utils                    (ResourceType (ResConnector),
                                                    textToCBytes,
                                                    timestampToMsTimestamp)
-import qualified HStream.Exception          as HE
-import Data.Maybe (fromJust)
-import Control.Exception (throw)
 
 protocolVersion :: Text
 protocolVersion = "0.1.0"

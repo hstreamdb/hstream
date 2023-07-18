@@ -13,6 +13,7 @@ module HStream.Server.Core.Stream
   , appendStream
   , listShards
   , getTailRecordId
+  , trimShard
   ) where
 
 import           Control.Concurrent        (modifyMVar_)
@@ -23,7 +24,7 @@ import qualified Data.ByteString.Lazy      as BSL
 import           Data.Foldable             (foldl')
 import qualified Data.HashMap.Strict       as HM
 import qualified Data.Map.Strict           as M
-import           Data.Maybe                (fromMaybe)
+import           Data.Maybe                (fromJust, fromMaybe, isNothing)
 import qualified Data.Text                 as T
 import qualified Data.Vector               as V
 import           GHC.Stack                 (HasCallStack)
@@ -40,8 +41,8 @@ import           HStream.Server.Shard      (Shard (..), createShard,
                                             devideKeySpace,
                                             mkShardWithDefaultId,
                                             mkSharedShardMapWithShards)
-import           HStream.Server.Types      (ServerContext (..),
-                                            transToStreamName)
+import           HStream.Server.Types      (ServerContext (..), ToOffset (..),
+                                            getLogLSN, transToStreamName)
 import qualified HStream.Stats             as Stats
 import qualified HStream.Store             as S
 import           HStream.Utils
@@ -246,3 +247,17 @@ listShards ServerContext{..} API.ListShardsRequest{..} = do
      endHashRangeKey   <- cBytesToText <$> M.lookup endKey mp
      shardEpoch        <- read . CB.unpack <$> M.lookup epoch mp
      return (startHashRangeKey, endHashRangeKey, shardEpoch)
+
+trimShard
+  :: HasCallStack
+  => ServerContext
+  -> Word64
+  -> API.ShardOffset
+  -> IO ()
+trimShard ServerContext{..} shardId trimPoint = do
+   shardExists <- S.logIdHasGroup scLDClient shardId
+   unless shardExists $ throwIO $ HE.ShardNotFound $ "Shard with id " <> T.pack (show shardId) <> " is not found."
+   getTrimLSN >>= S.trim scLDClient shardId
+ where
+   getTrimLSN = do
+     fst <$> getLogLSN scLDClient shardId (toOffset trimPoint)

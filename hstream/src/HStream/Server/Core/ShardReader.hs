@@ -42,9 +42,11 @@ import           HStream.Server.HStreamApi  (CreateShardReaderRequest (..))
 import qualified HStream.Server.HStreamApi  as API
 import qualified HStream.Server.MetaData    as P
 import           HStream.Server.Types       (ServerContext (..),
+                                             ServerInternalOffset,
                                              ShardReader (..),
-                                             StreamReader (..), mkShardReader,
-                                             mkStreamReader, transToStreamName, ServerInternalOffset, getLogLSN, ToOffset (..))
+                                             StreamReader (..), ToOffset (..),
+                                             getLogLSN, mkShardReader,
+                                             mkStreamReader, transToStreamName)
 import qualified HStream.Store              as S
 
 createShardReader

@@ -51,6 +51,7 @@ module HStream.Exception
   , SQLNotSupportedByParseSQL(SQLNotSupportedByParseSQL)
   , ConflictShardReaderOffset (ConflictShardReaderOffset)
   , TooManyShardCount (TooManyShardCount)
+  , InvalidTrimPoint (InvalidTrimPoint)
 
     -- * Exception: SomeDeadlineExceeded
     --
@@ -417,7 +418,8 @@ MAKE_EX_0(SomeInvalidArgument, EmptyBatchedRecord, API.ErrorCodeStreamEmptyBatch
 MAKE_EX_1(SomeInvalidArgument, InvalidRecordSize, Int, API.ErrorCodeStreamInvalidRecordSize,
     "Record size exceeds the maximum size limit")
 MAKE_EX_1_DEFMSG(SomeInvalidArgument, InvalidResourceType, String, API.ErrorCodeInternalError)
-MAKE_EX_1_DEFMSG(SomeInvalidArgument, InvalidShardOffset, String, API.ErrorCodeInternalError)
+MAKE_EX_1_DEFMSG(SomeInvalidArgument, InvalidShardOffset, String, API.ErrorCodeStreamInvalidOffset)
+MAKE_EX_1_DEFMSG(SomeInvalidArgument, InvalidTrimPoint, String, API.ErrorCodeStreamInvalidOffset)
 MAKE_EX_0_DEFMSG(SomeInvalidArgument, InvalidSubscriptionOffset, API.ErrorCodeSubscriptionInvalidOffset)
 MAKE_EX_1_DEFMSG(SomeInvalidArgument, DecodeHStreamRecordErr, String, API.ErrorCodeInternalError)
 MAKE_EX_0(SomeInvalidArgument, NoRecordHeader, API.ErrorCodeInternalError,
