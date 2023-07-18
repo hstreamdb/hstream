@@ -32,6 +32,7 @@ import qualified Data.Text                     as T
 import qualified Data.Vector                   as V
 import           Data.Word                     (Word32, Word64)
 import           GHC.Stack                     (HasCallStack)
+import           HStream.Base.Time             (getSystemMsTimestamp)
 import           Network.GRPC.HighLevel        (StreamRecv, StreamSend)
 import           Proto3.Suite                  (Enumerated (Enumerated), def)
 
@@ -54,7 +55,6 @@ import qualified HStream.Stats                 as Stats
 import qualified HStream.Store                 as S
 import           HStream.Utils                 (ResourceType (..),
                                                 decompressBatchedRecord,
-                                                getCurrentMsTimestamp,
                                                 getProtoTimestamp,
                                                 mkBatchedRecord, textToCBytes)
 
@@ -606,7 +606,7 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
     updateClockAndDoResend = do
       -- Note: non-strict behaviour in STM!
       --       Please refer to https://github.com/haskell/stm/issues/30
-      newTime <- getCurrentMsTimestamp <&> fromIntegral
+      newTime <- getSystemMsTimestamp <&> fromIntegral
       (timeoutList, leftList) <- atomically $ do
         checkList <- readTVar subWaitingCheckedRecordIds
         let (!timeoutList, !leftList) = Heap.span (\CheckedRecordIds {..} -> crDeadline <= newTime) checkList
@@ -1252,4 +1252,3 @@ throwToAllConsumers SubscribeContext{..} e = do
     return $ HM.elems consumerCtxs
   forM_ consumerCtxs (\ConsumerContext{..} -> when (ccThreadId /= subMasterTid) $ throwTo ccThreadId e )
   throwIO e
-

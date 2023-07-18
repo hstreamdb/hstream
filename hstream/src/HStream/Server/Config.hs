@@ -6,6 +6,7 @@
 
 module HStream.Server.Config
   ( ServerOpts (..)
+  , ExperimentalFeature (..)
   , CliOptions (..)
   , cliOptionsParser
   , TlsConfig (..)
@@ -50,6 +51,7 @@ import           Options.Applicative            as O (Alternative (many, (<|>)),
                                                       long, maybeReader,
                                                       metavar, option, optional,
                                                       short, strOption, value)
+import qualified Options.Applicative            as O
 import           System.Directory               (makeAbsolute)
 import           Text.Read                      (readEither)
 import qualified Z.Data.CBytes                  as CB
@@ -92,6 +94,11 @@ data MetaStoreAddr
   | FileAddr FilePath
   deriving (Eq)
 
+instance Show MetaStoreAddr where
+  show (ZkAddr addr)   = "zk://" <> CB.unpack addr
+  show (RqAddr addr)   = "rq://" <> T.unpack addr
+  show (FileAddr addr) = "file://" <> addr
+
 data ServerOpts = ServerOpts
   { _serverHost                   :: !ByteString
   , _serverPort                   :: !Word16
@@ -126,6 +133,7 @@ data ServerOpts = ServerOpts
   , _ioOptions                    :: !IO.IOOptions
 
   , _querySnapshotPath            :: !FilePath
+  , experimentalFeatures          :: ![ExperimentalFeature]
   } deriving (Show, Eq)
 
 getConfig :: CliOptions -> IO ServerOpts
@@ -170,6 +178,8 @@ data CliOptions = CliOptions
   , _ioConnectorImages_            :: ![Text]
 
   , _querySnapshotPath_            :: !(Maybe FilePath)
+
+  , cliExperimentalFeatures        :: ![ExperimentalFeature]
   } deriving Show
 
 cliOptionsParser :: O.Parser CliOptions
@@ -201,10 +211,11 @@ cliOptionsParser = do
   _ioTasksNetwork_     <- optional ioTasksNetwork
   _ioConnectorImages_  <- ioConnectorImage
   _querySnapshotPath_  <- optional querySnapshotPath
-  return CliOptions {..}
+  cliExperimentalFeatures <- many experimentalFeatureParser
+  return CliOptions{..}
 
 parseJSONToOptions :: CliOptions -> Y.Object -> Y.Parser ServerOpts
-parseJSONToOptions CliOptions {..} obj = do
+parseJSONToOptions CliOptions{..} obj = do
   nodeCfgObj  <- obj .: "hserver"
   nodeId              <- nodeCfgObj .:  "id"
   nodeHost            <- fromString <$> nodeCfgObj .:? "bind-address" .!= "0.0.0.0"
@@ -318,7 +329,24 @@ parseJSONToOptions CliOptions {..} obj = do
   processingCfg <- nodeCfgObj .:? "hstream-processing" .!= mempty
   snapshotPath <- processingCfg .:? "query-snapshot-path" .!= "/data/query_snapshots"
   let !_querySnapshotPath = fromMaybe snapshotPath _querySnapshotPath_
+
+  let experimentalFeatures = cliExperimentalFeatures
+
   return ServerOpts {..}
+
+-------------------------------------------------------------------------------
+
+data ExperimentalFeature = ExperimentalStreamV2
+  deriving (Show, Eq)
+
+parseExperimentalFeature :: O.ReadM ExperimentalFeature
+parseExperimentalFeature = O.eitherReader $ \case
+  "stream-v2" -> Right ExperimentalStreamV2
+  x           -> Left $ "cannot parse experimental feature: " <> x
+
+experimentalFeatureParser :: O.Parser ExperimentalFeature
+experimentalFeatureParser = option parseExperimentalFeature $
+  long "experimental" <> metavar "ExperimentalFeature"
 
 -------------------------------------------------------------------------------
 
@@ -550,10 +578,6 @@ listenerP = do
 --     | otherwise -> errorWithoutStackTrace $ "Invalid meta store address, unsupported scheme: " <> uriScheme
 --   Nothing -> errorWithoutStackTrace $ "Invalid meta store address, no Auth: " <> str
 -- Nothing  -> errorWithoutStackTrace $ "Invalid meta store address, no parse: " <> str
-
-instance Show MetaStoreAddr where
-  show (ZkAddr addr) = "zk://" <> CB.unpack addr
-  show (RqAddr addr) = "rq://" <> T.unpack addr
 
 readWithErrLog :: Read a => String -> String -> a
 readWithErrLog opt v = case readEither v of

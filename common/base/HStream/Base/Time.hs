@@ -1,3 +1,6 @@
+{-# LANGUAGE BangPatterns       #-}
+{-# LANGUAGE NumericUnderscores #-}
+
 module HStream.Base.Time
   ( UT.UnixTime (..)
   , UT.Format
@@ -13,12 +16,15 @@ module HStream.Base.Time
   , formatSystemTimeGMT
   , parseSystemTime
   , parseSystemTimeGMT
-  , CTime (CTime)
+  , getSystemMsTimestamp
+  , getSystemNsTimestamp
     -- Re-export
+  , CTime (CTime)
   , module Data.Time.Clock.System
   ) where
 
 import           Data.ByteString        (ByteString)
+import           Data.Int
 import           Data.Time.Clock.System
 import qualified Data.UnixTime          as UT
 import           Foreign.C.Types        (CTime (CTime))
@@ -88,6 +94,19 @@ parseSystemTime fmt str = unixtime2sys $ UT.parseUnixTime fmt str
 parseSystemTimeGMT :: UT.Format -> ByteString -> SystemTime
 parseSystemTimeGMT fmt str = unixtime2sys $ UT.parseUnixTimeGMT fmt str
 {-# INLINABLE parseSystemTimeGMT #-}
+
+-------------------------------------------------------------------------------
+
+getSystemMsTimestamp :: IO Int64
+getSystemMsTimestamp = do
+  MkSystemTime sec nano <- getSystemTime
+  let !ts = floor @Double $ (fromIntegral sec * 1e3) + (fromIntegral nano / 1e6)
+  return ts
+
+getSystemNsTimestamp :: IO Int64
+getSystemNsTimestamp = do
+  MkSystemTime sec nano <- getSystemTime
+  return $ sec * 1_000_000_000 + (fromIntegral nano)
 
 -------------------------------------------------------------------------------
 

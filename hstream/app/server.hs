@@ -57,6 +57,7 @@ import           HStream.MetaStore.Types          as M (MetaHandle (..),
                                                         RHandle (..))
 import           HStream.Server.Config            (AdvertisedListeners,
                                                    CliOptions (..),
+                                                   ExperimentalFeature (..),
                                                    ListenersSecurityProtocolMap,
                                                    MetaStoreAddr (..),
                                                    SecurityProtocolMap,
@@ -64,8 +65,9 @@ import           HStream.Server.Config            (AdvertisedListeners,
                                                    advertisedListenersToPB,
                                                    cliOptionsParser, getConfig)
 import qualified HStream.Server.Core.Cluster      as Cluster
+import qualified HStream.Server.Experimental      as Exp
 import           HStream.Server.Handler           (handlers)
-import qualified HStream.Server.HsGrpcHandler     as HsGrpc
+import qualified HStream.Server.HsGrpcHandler     as HsGrpcHandler
 import           HStream.Server.HStreamApi        (NodeState (..),
                                                    ServerNode (ServerNode),
                                                    hstreamApiServer)
@@ -182,21 +184,31 @@ app config@ServerOpts{..} = do
       void . forkIO $ updateHashRing gossipContext (loadBalanceHashRing serverContext)
 
       Async.withAsync
-        (serve _serverHost _serverPort _securityProtocolMap serverContext
-               _serverAdvertisedListeners _listenersSecurityProtocolMap) $ \a -> do
-        a1 <- startGossip _serverHost gossipContext
-        Async.link2Only (const True) a a1
-        waitGossipBoot gossipContext
-        Async.wait a
+        (serve _serverHost _serverPort
+               serverContext
+               _securityProtocolMap
+               _serverAdvertisedListeners
+               _listenersSecurityProtocolMap
+               (ExperimentalStreamV2 `elem` experimentalFeatures)
+        ) $ \a -> do
+          a1 <- startGossip _serverHost gossipContext
+          Async.link2Only (const True) a a1
+          waitGossipBoot gossipContext
+          Async.wait a
 
 serve :: ByteString
       -> Word16
-      -> SecurityProtocolMap
       -> ServerContext
+      -> SecurityProtocolMap
       -> AdvertisedListeners
       -> ListenersSecurityProtocolMap
+      -> Bool
+      -- ^ Experimental features
       -> IO ()
-serve host port securityMap sc@ServerContext{..} listeners listenerSecurityMap = do
+serve host port
+      sc@ServerContext{..}
+      securityMap listeners listenerSecurityMap
+      enableExpStreamV2 = do
   Log.i "************************"
   hPutStrLn stderr $ [r|
    _  _   __ _____ ___ ___  __  __ __
@@ -270,7 +282,11 @@ serve host port securityMap sc@ServerContext{..} listeners listenerSecurityMap =
                                  , HsGrpc.serverOnStarted = Just listenerOnStarted
                                  , HsGrpc.serverSslOptions = newSslOpts
                                  }
-        HsGrpc.runServer grpcOpts' (HsGrpc.handlers sc')
+        if enableExpStreamV2
+           then do Log.info "Enable experimental feature: stream-v2"
+                   slotConfig <- Exp.doStreamV2Init sc'
+                   HsGrpc.runServer grpcOpts' (Exp.streamV2Handlers sc' slotConfig)
+           else HsGrpc.runServer grpcOpts' (HsGrpcHandler.handlers sc')
 #endif
 
 #ifdef HStreamUseGrpcHaskell
@@ -279,7 +295,11 @@ serve host port securityMap sc@ServerContext{..} listeners listenerSecurityMap =
   hstreamApiServer api grpcOpts
 #else
   Log.info "Starting server with hs-grpc-server..."
-  HsGrpc.runServer grpcOpts (HsGrpc.handlers sc)
+  if enableExpStreamV2
+     then do Log.info "Enable experimental feature: stream-v2"
+             slotConfig <- Exp.doStreamV2Init sc
+             HsGrpc.runServer grpcOpts (Exp.streamV2Handlers sc slotConfig)
+     else HsGrpc.runServer grpcOpts (HsGrpcHandler.handlers sc)
 #endif
 
 --------------------------------------------------------------------------------
