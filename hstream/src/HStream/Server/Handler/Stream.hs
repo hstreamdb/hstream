@@ -10,6 +10,7 @@ module HStream.Server.Handler.Stream
   ( -- * For grpc-haskell
     createStreamHandler
   , deleteStreamHandler
+  , trimStreamHandler
   , getStreamHandler
   , listStreamsHandler
   , listStreamsWithPrefixHandler
@@ -20,6 +21,7 @@ module HStream.Server.Handler.Stream
     -- * For hs-grpc-server
   , handleCreateStream
   , handleDeleteStream
+  , handleTrimStream
   , handleGetStream
   , handleListStreams
   , handleListStreamsWithPrefix
@@ -131,6 +133,26 @@ handleListStreamsWithPrefix sc _ req = catchDefaultEx $ do
   Log.debug "Receive List Stream Request"
   validateNameAndThrow ResStream $ listStreamsWithPrefixRequestPrefix req
   ListStreamsResponse <$> C.listStreamsWithPrefix sc req
+
+trimStreamHandler
+  :: ServerContext
+  -> ServerRequest 'Normal TrimStreamRequest Empty
+  -> IO (ServerResponse 'Normal Empty)
+trimStreamHandler sc (ServerNormalRequest _metadata request@TrimStreamRequest{..}) = defaultExceptionHandle $ do
+  Log.info $ "Receive trim stream Request: " <> Log.buildString' request
+  validateNameAndThrow ResStream trimStreamRequestStreamName
+  when (isNothing trimStreamRequestTrimPoint) $
+    throwIO . HE.InvalidTrimPoint $ "invalid trim point: " <> show trimStreamRequestTrimPoint
+  C.trimStream sc trimStreamRequestStreamName (fromJust trimStreamRequestTrimPoint)
+  returnResp Empty
+
+handleTrimStream :: ServerContext -> G.UnaryHandler TrimStreamRequest Empty
+handleTrimStream sc _ request@TrimStreamRequest{..} = catchDefaultEx $ do
+  Log.info $ "Receive trim stram Request: " <> Log.buildString' request
+  validateNameAndThrow ResStream trimStreamRequestStreamName
+  when (isNothing trimStreamRequestTrimPoint) $
+    throwIO . HE.InvalidTrimPoint $ "invalid trim point: " <> show trimStreamRequestTrimPoint
+  C.trimStream sc trimStreamRequestStreamName (fromJust trimStreamRequestTrimPoint) >> pure Empty
 
 handleGetTailRecordId :: ServerContext -> G.UnaryHandler GetTailRecordIdRequest GetTailRecordIdResponse
 handleGetTailRecordId sc _ req = catchDefaultEx $ do

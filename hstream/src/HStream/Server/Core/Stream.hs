@@ -14,17 +14,15 @@ module HStream.Server.Core.Stream
   , listShards
   , getTailRecordId
   , trimShard
+  , trimStream
   ) where
 
-import           Control.Concurrent        (modifyMVar_)
 import           Control.Exception         (catch, throwIO)
-import           Control.Monad             (forM, unless, when)
+import           Control.Monad             (forM, forM_, unless, when)
 import qualified Data.ByteString           as BS
 import qualified Data.ByteString.Lazy      as BSL
-import           Data.Foldable             (foldl')
-import qualified Data.HashMap.Strict       as HM
 import qualified Data.Map.Strict           as M
-import           Data.Maybe                (fromJust, fromMaybe, isNothing)
+import           Data.Maybe                (fromMaybe)
 import qualified Data.Text                 as T
 import qualified Data.Vector               as V
 import           GHC.Stack                 (HasCallStack)
@@ -37,10 +35,8 @@ import qualified HStream.Exception         as HE
 import qualified HStream.Logger            as Log
 import qualified HStream.Server.HStreamApi as API
 import qualified HStream.Server.MetaData   as P
-import           HStream.Server.Shard      (Shard (..), createShard,
-                                            devideKeySpace,
-                                            mkShardWithDefaultId,
-                                            mkSharedShardMapWithShards)
+import           HStream.Server.Shard      (createShard, devideKeySpace,
+                                            mkShardWithDefaultId)
 import           HStream.Server.Types      (ServerContext (..), ToOffset (..),
                                             getLogLSN, transToStreamName)
 import qualified HStream.Stats             as Stats
@@ -133,6 +129,21 @@ listStreamsWithPrefix
 listStreamsWithPrefix sc@ServerContext{..} API.ListStreamsWithPrefixRequest{..} = do
   streams <- filter (T.isPrefixOf listStreamsWithPrefixRequestPrefix . T.pack . S.showStreamName) <$> S.findStreams scLDClient S.StreamTypeStream
   V.forM (V.fromList streams) (getStreamInfo sc)
+
+trimStream
+  :: HasCallStack
+  => ServerContext
+  -> T.Text
+  -> API.StreamOffset
+  -> IO ()
+trimStream ServerContext{..} streamName trimPoint = do
+   streamExists <- S.doesStreamExist scLDClient streamId
+   unless streamExists $ throwIO $ HE.StreamNotFound $ "stream " <> T.pack (show streamName) <> " is not found."
+   shards <- M.elems <$> S.listStreamPartitions scLDClient streamId
+   forM_ shards $ \shardId -> do
+     getTrimLSN scLDClient shardId trimPoint >>= S.trim scLDClient shardId
+ where
+   streamId = transToStreamName streamName
 
 getStreamInfo :: ServerContext -> S.StreamId -> IO API.Stream
 getStreamInfo ServerContext{..} stream = do
@@ -257,7 +268,11 @@ trimShard
 trimShard ServerContext{..} shardId trimPoint = do
    shardExists <- S.logIdHasGroup scLDClient shardId
    unless shardExists $ throwIO $ HE.ShardNotFound $ "Shard with id " <> T.pack (show shardId) <> " is not found."
-   getTrimLSN >>= S.trim scLDClient shardId
- where
-   getTrimLSN = do
-     fst <$> getLogLSN scLDClient shardId (toOffset trimPoint)
+   getTrimLSN scLDClient shardId trimPoint >>= S.trim scLDClient shardId
+
+--------------------------------------------------------------------------------
+-- helper
+
+getTrimLSN :: ToOffset g => S.LDClient -> Word64 -> g -> IO S.LSN
+getTrimLSN client shardId trimPoint = do
+  fst <$> getLogLSN client shardId (toOffset trimPoint)
