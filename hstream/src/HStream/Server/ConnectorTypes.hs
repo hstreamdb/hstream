@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE StrictData        #-}
 
 module HStream.Server.ConnectorTypes
@@ -23,8 +21,6 @@ import qualified Data.Text                 as T
 import           Data.Time
 import           Data.Time.Clock.POSIX
 import           Data.Word                 (Word64)
-import qualified HStream.Server.HStreamApi as API
-
 import qualified HStream.Server.HStreamApi as API
 
 type Timestamp = Int64 -- ms
@@ -90,7 +86,7 @@ data SourceConnectorWithoutCkp = SourceConnectorWithoutCkp
                               -> IO ()
   }
 
-data SinkConnector = SinkConnector
+newtype SinkConnector = SinkConnector
   { writeRecord :: (BL.ByteString -> Maybe BL.ByteString)
                 -> (BL.ByteString -> Maybe BL.ByteString)
                 -> SinkRecord
