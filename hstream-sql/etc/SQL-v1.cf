@@ -114,23 +114,21 @@ SelectItemWildcard.          SelectItem ::= "*" ;
 -- From
 DFrom. From ::= "FROM" TableRef;
 
-_. TableRef  ::= TableRef1;
-_. TableRef  ::= TableRef3;
-_. TableRef1 ::= TableRef2;
+TableRefCrossJoin.   TableRef ::= TableRef           JoinTypeWithoutCond "JOIN" TableRef1                           "WITHIN" "(" Interval ")" ;
+TableRefNaturalJoin. TableRef ::= TableRef "NATURAL" JoinTypeWithCond    "JOIN" TableRef1                           "WITHIN" "(" Interval ")" ;
+TableRefJoinOn.      TableRef ::= TableRef           JoinTypeWithCond    "JOIN" TableRef1 "ON" ValueExpr            "WITHIN" "(" Interval ")" ;
+TableRefJoinUsing.   TableRef ::= TableRef           JoinTypeWithCond    "JOIN" TableRef1 "USING" "(" [ColumnIdent] ")" "WITHIN" "(" Interval ")" ;
 
-TableRefCrossJoin.   TableRef1 ::= TableRef1           JoinTypeWithoutCond "JOIN" TableRef2                           "WITHIN" "(" Interval ")" ;
-TableRefNaturalJoin. TableRef1 ::= TableRef1 "NATURAL" JoinTypeWithCond    "JOIN" TableRef2                           "WITHIN" "(" Interval ")" ;
-TableRefJoinOn.      TableRef1 ::= TableRef1           JoinTypeWithCond    "JOIN" TableRef2 "ON" ValueExpr            "WITHIN" "(" Interval ")" ;
-TableRefJoinUsing.   TableRef1 ::= TableRef1           JoinTypeWithCond    "JOIN" TableRef2 "USING" "(" [ColName] ")" "WITHIN" "(" Interval ")" ;
+TableRefAs.       TableRef1 ::= TableRef2 "AS" HIdent ;
 
-TableRefTumbling. TableRef3 ::= "TUMBLE"   "(" HIdent "," Interval              ")" ;
-TableRefHopping.  TableRef3 ::= "HOP"      "(" HIdent "," Interval "," Interval ")" ;
-TableRefSession.  TableRef3 ::= "SESSION"  "(" HIdent "," Interval              ")" ;
+TableRefTumbling. TableRef2 ::= "TUMBLE"   "(" TableRef3 "," Interval              ")" ;
+TableRefHopping.  TableRef2 ::= "HOP"      "(" TableRef3 "," Interval "," Interval ")" ;
+TableRefSession.  TableRef2 ::= "SESSION"  "(" TableRef3 "," Interval              ")" ;
 
-TableRefAs.    TableRef2 ::= HIdent "AS" HIdent ;
-TableRefIdent. TableRef2 ::= HIdent ;
+TableRefIdent.    TableRef3 ::= HIdent ;
+TableRefSubquery. TableRef3 ::= "(" Select ")" ;
 
-separator ColName "," ;
+coercions TableRef 3 ;
 
 JoinInner1. JoinTypeWithCond    ::=         "INNER" ;
 JoinInner2. JoinTypeWithCond    ::=         ""      ;
@@ -256,6 +254,7 @@ ExprArr. ValueExpr ::= "{" [ValueExpr] "}" ; -- array
 ColNameSimple. ColName ::= ColumnIdent ;
 ColNameStream. ColName ::= HIdent "." ColumnIdent ;
 ExprColName. ValueExpr10 ::= ColName ;
+separator nonempty ColName "," ;
 
 -- Set Functions
 SetFuncCountAll. SetFunc ::= "COUNT" "(" "*"       ")" ;

@@ -743,18 +743,23 @@ instance Refine TableRef where
   refine (TableRefSliding _ ref interval) = RTableRefWindowed (refine ref) (Sliding (refine interval)) Nothing
 #else
   refine (TableRefIdent _ hIdent) = RTableRefSimple (refine hIdent) Nothing
-  -- refine (TableRefSubquery _ select) = RTableRefSubquery (refine select) Nothing
-  refine (TableRefAs _ hIdent alias) = RTableRefSimple (refine hIdent) (Just $ refine alias)
+  refine (TableRefSubquery pos _) = throwSQLException RefineException pos "Subquery is not supported yet"
+  refine (TableRefAs pos r alias) = case r of
+    TableRefIdent _ hIdent -> RTableRefSimple (refine hIdent) (Just $ refine alias)
+    _ -> throwSQLException RefineException pos "Aliases is only supported for simple table reference yet"
   refine (TableRefCrossJoin _ r1 _ r2 interval) = RTableRefCrossJoin (refine r1) (refine r2) (refine interval)
   refine (TableRefNaturalJoin _ r1 typ r2 interval) = RTableRefNaturalJoin (refine r1) (refine typ) (refine r2) (refine interval)
   refine (TableRefJoinOn _ r1 typ r2 e interval) = RTableRefJoinOn (refine r1) (refine typ) (refine r2) (refine e) (refine interval)
-  refine (TableRefJoinUsing _ r1 typ r2 cols interval) = RTableRefJoinUsing (refine r1) (refine typ) (refine r2) (extractStreamNameFromColName <$> cols) (refine interval)
-    where extractStreamNameFromColName col = case col of
-            ColNameSimple _ colIdent -> refine colIdent
-            ColNameStream _ _ _      -> throwImpossible
-  refine (TableRefTumbling _ ref interval) = RTableRefWindowed (refine ref) (Tumbling (refine interval))
-  refine (TableRefHopping _ ref len hop)   = RTableRefWindowed (refine ref) (Hopping (refine len) (refine hop))
-  refine (TableRefSession _ ref interval)  = RTableRefWindowed (refine ref) (Session (refine interval))
+  refine (TableRefJoinUsing _ r1 typ r2 cols interval) = RTableRefJoinUsing (refine r1) (refine typ) (refine r2) (refine <$> cols) (refine interval)
+  refine (TableRefTumbling pos ref interval) = case ref of
+    TableRefIdent _ hIdent -> RTableRefWindowed (refine hIdent) (Tumbling (refine interval))
+    _ -> throwSQLException RefineException pos "Tumbling is only supported for simple table reference yet"
+  refine (TableRefHopping pos ref len hop)   = case ref of
+    TableRefIdent _ hIdent -> RTableRefWindowed (refine hIdent) (Hopping (refine len) (refine hop))
+    _ -> throwSQLException RefineException pos "Hopping is only supported for simple table reference yet"
+  refine (TableRefSession pos ref interval)  = case ref of
+    TableRefIdent _ hIdent -> RTableRefWindowed (refine hIdent) (Session (refine interval))
+    _ -> throwSQLException RefineException pos "Session is only supported for simple table reference yet"
 #endif
 
 #ifdef HStreamUseV2Engine
