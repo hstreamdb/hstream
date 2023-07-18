@@ -766,6 +766,7 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
                       <> ", num of records=" <> Log.build (V.length shardRecordIds) <> "\n"
                       <> "will remove the consumer " <> Log.build consumerName <> ": " <> Log.buildString (show err)
              atomically $ invalidConsumer subCtx consumerName
+             Log.warning $ "Sub " <> Log.build subSubscriptionId <> " invalided consumer " <> Log.build consumerName
              if isResent
              then registerResend logId batchId shardRecordIds
              else resetReadingOffset logId batchId
@@ -989,11 +990,13 @@ recvAcks ServerContext {..} subState subCtx@SubscribeContext{..} ConsumerContext
                    <> " trigger a streamRecv error: " <> Log.build (show err)
           -- invalid consumer
           atomically $ invalidConsumer subCtx ccConsumerName
+          Log.warning $ "Sub " <> Log.build subSubscriptionId <> " invalided consumer " <> Log.build ccConsumerName
           throwIO $ HE.StreamReadError "Consumer recv error"
         Right Nothing -> do
           Log.info $ "Consumer " <> Log.build ccConsumerName <> " finished ack-sending stream to sub " <> Log.build subSubscriptionId
           -- This means that the consumer finished sending acks actively.
           atomically $ invalidConsumer subCtx ccConsumerName
+          Log.warning $ "Sub " <> Log.build subSubscriptionId <> " invalided consumer " <> Log.build ccConsumerName
           -- throwIO $ HE.StreamReadClose "Consumer is closed"
         Right (Just StreamingFetchRequest {..}) -> do
           Log.debug $ "Sub " <> Log.build subSubscriptionId <> " receive " <> Log.build (V.length streamingFetchRequestAckIds)
@@ -1194,8 +1197,8 @@ invalidConsumer SubscribeContext{subAssignment = Assignment{..}, ..} consumer = 
                   modifyTVar consumerWorkloads
                     (Set.filter (\ConsumerWorkload{..} ->
                                     cwConsumerName /= consumer))
-              let newConsumerCtx = HM.delete consumer ccs
-              writeTVar subConsumerContexts newConsumerCtx
+        let newConsumerCtx = HM.delete consumer ccs
+        writeTVar subConsumerContexts newConsumerCtx
       else do
          -- traceM "consumer is invalid, just return"
          pure ()
