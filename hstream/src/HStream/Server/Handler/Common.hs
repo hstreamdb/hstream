@@ -348,6 +348,7 @@ doSnapshot h1 h2 Task{..} = do
 
 --------------------------------------------------------------------------------
 
+-- This function may throw exceptions just like 'runTask'.
 runTaskWrapper :: ServerContext -> SourceConnectorWithoutCkp -> SinkConnector -> TaskBuilder -> Text -> S.C_LogID -> IO ()
 runTaskWrapper ServerContext{..} sourceConnector sinkConnector taskBuilder queryId logId = do
   -- RUN TASK
