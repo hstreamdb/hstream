@@ -11,8 +11,10 @@
 {-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeFamilies        #-}
 
+-- This module is only compiled when 'hstream_enable_schema' is disabled.
 module HStream.SQL.AST where
 
+#ifndef HStreamEnableSchema
 import qualified Data.Aeson               as Aeson
 import qualified Data.ByteString          as BS
 import           Data.Default
@@ -35,17 +37,20 @@ import qualified Data.Vector              as V
 import           Data.Word                (Word32)
 import           GHC.Generics
 import           GHC.Stack                (HasCallStack)
-import           HStream.SQL.Abs
-import           HStream.SQL.Exception    (SomeSQLException (..),
-                                           throwSQLException)
-import           HStream.SQL.Extra
-import           HStream.Utils            (textToCBytes)
-import qualified HStream.Utils.Aeson      as HsAeson
 import           Text.Read                (readMaybe)
 import qualified Z.Data.CBytes            as CB
 import           Z.Data.CBytes            (CBytes)
 import qualified Z.Data.Text              as ZT
 import qualified Z.Data.Vector.Base64     as Base64
+
+import           HStream.SQL.Abs
+import           HStream.SQL.Exception    (SomeSQLException (..),
+                                           throwSQLException)
+import           HStream.SQL.Extra
+import           HStream.SQL.Rts
+import           HStream.Utils            (textToCBytes)
+import qualified HStream.Utils.Aeson      as HsAeson
+
 
 ----------------------------- Refinement Main class ----------------------------
 type family RefinedType a :: Type
@@ -53,166 +58,8 @@ type family RefinedType a :: Type
 class Refine a where
   refine :: HasCallStack => a -> RefinedType a
 
---------------------------- Processing runtime types ---------------------------
-data ColumnCatalog = ColumnCatalog
-  { columnName   :: Text
-  , columnStream :: Maybe Text
-  } deriving ( Eq, Ord, Generic, Hashable, Typeable
-             , Aeson.FromJSON, Aeson.FromJSONKey
-             , Aeson.ToJSON, Aeson.ToJSONKey
-             )
-instance Show ColumnCatalog where
-  show ColumnCatalog{..} = case columnStream of
-                             Nothing -> Text.unpack columnName
-                             Just s  -> Text.unpack s <> "." <> Text.unpack columnName
-
-type FlowObject = HM.HashMap ColumnCatalog FlowValue
-deriving instance Typeable FlowObject
-deriving instance Aeson.FromJSONKey FlowObject
-deriving instance Aeson.ToJSONKey FlowObject
-
-data FlowValue
-  = FlowNull
-  | FlowInt Int
-  | FlowFloat Double
-  | FlowBoolean Bool
-  | FlowByte CBytes
-  | FlowText Text
-  | FlowDate Time.Day
-  | FlowTime Time.TimeOfDay
-  | FlowTimestamp Time.ZonedTime
-  | FlowInterval Time.CalendarDiffTime
-  | FlowArray [FlowValue]
-  | FlowSubObject FlowObject
-  deriving ( Eq, Ord, Generic, Hashable, Typeable
-           , Aeson.ToJSONKey, Aeson.ToJSON
-           , Aeson.FromJSONKey, Aeson.FromJSON
-           )
-
-instance Show FlowValue where
-  show value = case value of
-    FlowNull         -> "NULL"
-    FlowInt n        -> show n
-    FlowFloat n      -> show n
-    FlowBoolean b    -> show b
-    FlowByte bs      -> show bs
-    FlowText t       -> Text.unpack t
-    FlowDate day     -> show day
-    FlowTime time    -> show time
-    FlowTimestamp ts -> show ts
-    FlowInterval i   -> show i
-    FlowArray arr    -> show arr
-    FlowSubObject o  -> show o
-
-showTypeOfFlowValue :: FlowValue -> Text.Text
-showTypeOfFlowValue = \case
-  FlowNull        -> "Null"
-  FlowInt _       -> "Integer"
-  FlowFloat _     -> "Float"
-  FlowBoolean _   -> "Boolean"
-  FlowByte _      -> "Byte"
-  FlowText _      -> "Text"
-  FlowDate _      -> "Date"
-  FlowTime _      -> "Time"
-  FlowTimestamp _ -> "Timestamp"
-  FlowInterval _  -> "Interval"
-  FlowArray xs    -> inferFlowArrayType xs
-  FlowSubObject _ -> "Jsonb"
-  where
-    inferFlowArrayType :: [FlowValue] -> Text.Text
-    inferFlowArrayType = \case
-      []    -> "Array@[UNKNOW]"
-      x : _ -> "Array@[" <> Text.pack (show $ showTypeOfFlowValue x) <> "]"
-
---------------
-flowValueToJsonValue :: FlowValue -> Aeson.Value
-flowValueToJsonValue flowValue = case flowValue of
-  FlowNull      -> Aeson.Null
-  FlowInt n     -> Aeson.Object $ HsAeson.fromList [(HsAeson.fromText "$numberLong"  , Aeson.String (Text.pack $ show n))]
-  FlowFloat n   -> Aeson.Object $ HsAeson.fromList [(HsAeson.fromText "$numberDouble", Aeson.String (Text.pack $ show n))]
-  FlowBoolean b -> Aeson.Bool b
-  FlowByte bs   -> Aeson.Object $ HsAeson.fromList
-    [( HsAeson.fromText "$binary"
-     , Aeson.Object $ HsAeson.fromList
-       [ (HsAeson.fromText "base64" , Aeson.String (Text.pack $ ZT.unpack . Base64.base64EncodeText $ CB.toBytes bs))
-       , (HsAeson.fromText "subType", Aeson.String "00")
-       ]
-     )]
-  FlowText t -> Aeson.String t
-  FlowDate d -> Aeson.Object $ HsAeson.fromList
-    [(HsAeson.fromText "$date", Aeson.String (Text.pack $ iso8601Show d))]
-  FlowTime t -> Aeson.Object $ HsAeson.fromList
-    [(HsAeson.fromText "$time", Aeson.String (Text.pack $ iso8601Show t))]
-  FlowTimestamp ts -> Aeson.Object $ HsAeson.fromList
-    [(HsAeson.fromText "$timestamp", Aeson.String (Text.pack $ iso8601Show ts))]
-  FlowInterval i   -> Aeson.Object $ HsAeson.fromList
-    [(HsAeson.fromText "$interval", Aeson.String (Text.pack $ iso8601Show i))]
-  FlowArray vs         -> Aeson.Array (V.fromList $ flowValueToJsonValue <$> vs)
-  FlowSubObject object -> Aeson.Object (flowObjectToJsonObject object)
-
-jsonValueToFlowValue :: Aeson.Value -> FlowValue
-jsonValueToFlowValue v = case v of
-  Aeson.Null       -> FlowNull
-  Aeson.Bool b     -> FlowBoolean b
-  Aeson.String t   -> FlowText t
-  Aeson.Number n   -> case Scientific.floatingOrInteger @Double @Int n of
-    Left  f -> FlowFloat f
-    Right i -> FlowInt i
-  Aeson.Array arr  -> FlowArray (V.toList $ jsonValueToFlowValue <$> arr)
-  Aeson.Object obj -> case HsAeson.toList obj of
-    [("$numberLong", Aeson.String t)] ->
-      case readMaybe (Text.unpack t) of
-        Just n  -> FlowInt n
-        Nothing -> throwSQLException RefineException Nothing ("Invalid $numberLong value" <> Text.unpack t)
-    [("$numberDouble", Aeson.String t)] ->
-      case readMaybe (Text.unpack t) of
-        Just n  -> FlowFloat n
-        Nothing -> throwSQLException RefineException Nothing ("Invalid $numberDouble value" <> Text.unpack t)
-    [("$binary", Aeson.Object obj')] -> case do
-      Aeson.String t <- HsAeson.lookup "base64" obj'
-      Base64.base64Decode (CB.toBytes $ textToCBytes t) of
-        Nothing -> throwSQLException RefineException Nothing ("Invalid $binary value" <> show obj')
-        Just bs -> FlowByte (CB.fromBytes bs)
-    [("$date", Aeson.String t)] ->
-      case iso8601ParseM (Text.unpack t) of
-        Just d  -> FlowDate d
-        Nothing -> throwSQLException RefineException Nothing ("Invalid $date value" <> Text.unpack t)
-    [("$time", Aeson.String t)] ->
-      case iso8601ParseM (Text.unpack t) of
-        Just t  -> FlowTime t
-        Nothing -> throwSQLException RefineException Nothing ("Invalid $time value" <> Text.unpack t)
-    [("$timestamp", Aeson.String t)] ->
-      case iso8601ParseM (Text.unpack t) of
-        Just ts -> FlowTimestamp ts
-        Nothing -> throwSQLException RefineException Nothing ("Invalid $timestamp value" <> Text.unpack t)
-    [("$interval", Aeson.String t)] ->
-      case iso8601ParseM (Text.unpack t) of
-        Just i -> FlowInterval i
-        Nothing -> throwSQLException RefineException Nothing ("Invalid $interval value" <> Text.unpack t)
-    _ -> FlowSubObject (jsonObjectToFlowObject' obj)
-
-flowObjectToJsonObject :: FlowObject -> Aeson.Object
-flowObjectToJsonObject hm =
-  let anySameFields = anySame $ L.map (\(ColumnCatalog k _) -> k) (HM.keys hm)
-      list = L.map (\(ColumnCatalog k s_m, v) ->
-                      let key = case s_m of
-                                  Nothing -> k
-                                  Just s  -> if anySameFields then s <> "." <> k else k
-                       in (HsAeson.fromText key, flowValueToJsonValue v)
-                   ) (HM.toList hm)
-   in HsAeson.fromList list
-
-jsonObjectToFlowObject :: Text -> Aeson.Object -> FlowObject
-jsonObjectToFlowObject streamName object =
-  HM.mapKeys (\k -> ColumnCatalog (HsAeson.toText k) (Just streamName))
-             (HM.map jsonValueToFlowValue $ HsAeson.toHashMap object)
-
-jsonObjectToFlowObject' :: Aeson.Object -> FlowObject
-jsonObjectToFlowObject' object =
-  HM.mapKeys (\k -> ColumnCatalog (HsAeson.toText k) Nothing)
-             (HM.map jsonValueToFlowValue $ HsAeson.toHashMap object)
-
 --------------------------------------------------------------------------------
+-- In new version, defined in HStream.SQL.Binder.Common
 class HasName a where
   getName :: a -> String
 
@@ -282,14 +129,6 @@ instance Refine Boolean where
   refine (BoolTrue _ ) = True
   refine (BoolFalse _) = False
 
--- FIXME: FromJSON & ToJSON of ByteString...
---        Another instance of lazy ByteString is at processing/ChangeLog.hs
-instance Aeson.FromJSON BS.ByteString where
-  parseJSON v = let pText = Aeson.parseJSON v in encodeUtf8 <$> pText
-
-instance Aeson.ToJSON BS.ByteString where
-  toJSON cb = Aeson.toJSON (decodeUtf8 cb)
-
 ------- date & time -------
 type RTimezone = Time.TimeZone
 
@@ -313,13 +152,6 @@ instance Refine Timestamp where
   refine (DTimestamp _ (SingleQuoted timestamp)) =
     fromJust . iso8601ParseM . tail . init $ Text.unpack timestamp
 
-instance Eq Time.ZonedTime where
-  z1 == z2 = Time.zonedTimeToUTC z1 == Time.zonedTimeToUTC z2
-instance Ord Time.ZonedTime where
-  z1 `compare` z2 = Time.zonedTimeToUTC z1 `compare` Time.zonedTimeToUTC z2
-instance Hashable Time.ZonedTime where
-  hashWithSalt salt z = hashWithSalt salt (Time.zonedTimeToUTC z)
-
 type RIntervalUnit = (Integer, Integer) -- from/toMonth, Second
 type instance RefinedType IntervalUnit = RIntervalUnit
 instance Refine IntervalUnit where
@@ -340,24 +172,8 @@ type instance RefinedType Interval = RInterval
 instance Refine Interval where
   refine (DInterval _ n iUnit) = fromUnitToDiffTime (refine iUnit) n
 
-instance Ord Time.CalendarDiffTime where
-  d1 `compare` d2 =
-    case (Time.ctMonths d1) `compare` (Time.ctMonths d2) of
-      GT -> GT
-      LT -> LT
-      EQ -> Time.ctTime d1 `compare` Time.ctTime d2
-instance Hashable Time.CalendarDiffTime where
-  hashWithSalt salt d = hashWithSalt salt (show d)
-
-
--- helper
-calendarDiffTimeToMs :: Time.CalendarDiffTime -> Int64
-calendarDiffTimeToMs Time.CalendarDiffTime{..} =
-  let t1 = ctMonths * 30 * 86400 * 1000
-      t2 = floor . (1e3 *) . Time.nominalDiffTimeToSeconds $ ctTime
-   in fromIntegral (t1 + t2)
-
 --------------------------------------------------------------------------------
+-- In new version, defined in HStream.SQL.Binder.Basic
 data Constant = ConstantNull
               | ConstantInt       Int
               | ConstantFloat     Double
@@ -1058,6 +874,8 @@ instance Refine SQL where
   refine (QResume     _ resume)  =  RQResume      (refine  resume)
 
 --------------------------------------------------------------------------------
-
+-- In new version, defined in HStream.SQL.Binder.Common
 throwImpossible :: a
 throwImpossible = throwSQLException RefineException Nothing "Impossible happened"
+
+#endif

@@ -1,14 +1,19 @@
+{-# LANGUAGE CPP               #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes        #-}
 {-# LANGUAGE StrictData        #-}
 
+-- This module is only compiled when 'hstream_enable_schema' is disabled.
 module HStream.SQL.Codegen.ColumnCatalog where
 
+#ifndef HStreamEnableSchema
 import qualified Data.HashMap.Strict as HM
 import qualified Data.List           as L
 import           Data.Text           (Text)
 import           HStream.SQL.AST
+import           HStream.SQL.Rts
 
+--------------------------------------------------------------------------------
 alwaysTrueJoinCond :: FlowObject -> FlowObject -> Bool
 alwaysTrueJoinCond _ _ = True
 
@@ -41,3 +46,4 @@ streamRenamer newName =
                  Nothing -> cata
                  Just _  -> ColumnCatalog f (Just newName)
              )
+#endif

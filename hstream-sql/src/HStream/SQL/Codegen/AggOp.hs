@@ -20,6 +20,11 @@ import           DiffFlow.Error
 import           HStream.Processing.Error
 #endif
 import           HStream.SQL.AST
+import           HStream.SQL.Rts
+-- basic operators. defined in AST in schemaless version
+#ifdef HStreamEnableSchema
+import           HStream.SQL.Binder
+#endif
 
 #ifdef HStreamUseV2Engine
 #define ERROR_TYPE DiffFlowError

@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                 #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE LambdaCase          #-}
@@ -41,8 +42,13 @@ import           HStream.Client.Action            (createSubscription',
 import           HStream.Client.Execute           (executeWithLookupResource_,
                                                    initCliContext,
                                                    simpleExecute)
+#ifdef HStreamEnableSchema
+import           HStream.Client.SQLNew            (commandExec,
+                                                   interactiveSQLApp)
+#else
 import           HStream.Client.SQL               (commandExec,
                                                    interactiveSQLApp)
+#endif
 import           HStream.Client.Types             (AppendArgs (..), CliCmd (..),
                                                    Command (..),
                                                    HStreamCommand (..),

@@ -31,11 +31,6 @@ import           HStream.Server.HStreamApi
 import qualified HStream.Server.MetaData          as P
 import           HStream.Server.Types
 import           HStream.SQL
-#ifdef HStreamUseV2Engine
-import           HStream.SQL.Codegen
-#else
-import           HStream.SQL.Codegen.V1
-#endif
 import qualified HStream.Store                    as HS
 import           HStream.Utils                    (ResourceType (..),
                                                    decodeByteStringBatch,
@@ -272,6 +267,16 @@ listSubscriptions ServerContext{..} sName = do
      if archived then return sub {subscriptionStreamName = "__deleted_stream__"}
                  else return sub
 
+#ifdef HStreamEnableSchema
+modifySelect :: Text -> BoundSelect -> BoundSelect
+modifySelect namespace (BoundSelect cols a (BoundFrom t) b c d) = BoundSelect cols a (BoundFrom (modifyTableRef t)) b c d
+  where
+    modifyTableRef :: BoundTableRef -> BoundTableRef
+    modifyTableRef (BoundTableRefSimple                   x) = BoundTableRefSimple      (namespace <> x)
+    modifyTableRef (BoundTableRefJoin name t1 j t2 v i) = BoundTableRefJoin     name (modifyTableRef t1) j (modifyTableRef t2) v i
+    modifyTableRef (BoundTableRefSubquery name subq) = BoundTableRefSubquery name (modifySelect namespace subq)
+    modifyTableRef (BoundTableRefWindowed name subq win) = BoundTableRefWindowed name (modifyTableRef subq) win
+#else
 modifySelect :: Text -> RSelect -> RSelect
 modifySelect namespace (RSelect a (RFrom t) b c d) = RSelect a (RFrom (modifyTableRef t)) b c d
   where
@@ -281,3 +286,4 @@ modifySelect namespace (RSelect a (RFrom t) b c d) = RSelect a (RFrom (modifyTab
     modifyTableRef (RTableRefNaturalJoin      t1 j t2 i) = RTableRefNaturalJoin (modifyTableRef t1) j (modifyTableRef t2) i
     modifyTableRef (RTableRefJoinOn         t1 j t2 v i) = RTableRefJoinOn      (modifyTableRef t1) j (modifyTableRef t2) v i
     modifyTableRef (RTableRefJoinUsing   t1 j t2 cols i) = RTableRefJoinUsing   (modifyTableRef t1) j (modifyTableRef t2) cols i
+#endif

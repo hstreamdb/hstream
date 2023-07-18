@@ -6,8 +6,10 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StrictData          #-}
 
+-- This module is only compiled when 'hstream_enable_schema' is disabled.
 module HStream.SQL.Codegen.Common where
 
+#ifndef HStreamEnableSchema
 import qualified Data.HashMap.Strict               as HM
 import qualified Data.List                         as L
 import           Data.Maybe
@@ -28,6 +30,7 @@ import           HStream.SQL.Codegen.TerOp
 import           HStream.SQL.Codegen.UnaryOp
 import           HStream.SQL.Planner
 import           HStream.SQL.Planner.Pretty        ()
+import           HStream.SQL.Rts
 
 #ifdef HStreamUseV2Engine
 #define ERROR_TYPE DiffFlowError
@@ -201,3 +204,4 @@ genAggregateComponent agg cata = case agg of
           _           -> let e = ERR $ T.pack (show bAgg) <> ": internal error. Please report this as a bug"
                           in Left (e, HM.fromList [(cata, FlowNull)])
     }
+#endif

@@ -65,7 +65,6 @@ import           HStream.Server.HStreamApi         (ServerNode (..),
 import           HStream.Server.MetaData.Exception
 import           HStream.Server.Types              (ServerID,
                                                     SubscriptionWrap (..))
-import qualified HStream.SQL.AST                   as AST
 import qualified HStream.Store                     as S
 import qualified HStream.ThirdParty.Protobuf       as Proto
 import           HStream.Utils
@@ -73,9 +72,15 @@ import           HStream.Utils
 import           DiffFlow.Types
 #else
 import qualified HStream.Processing.Stream         as HS
-import           HStream.SQL.Codegen.V1
+import           HStream.SQL                       (K, V)
+import qualified HStream.SQL                       as SQL
 #endif
 --------------------------------------------------------------------------------
+#ifdef HStreamEnableSchema
+type SQLIRType = SQL.BoundSQL
+#else
+type SQLIRType = SQL.RSQL
+#endif
 
 newtype QueryStatus = QueryStatus { queryState :: TaskStatus }
   deriving (Generic, Show, FromJSON, ToJSON)
@@ -100,7 +105,7 @@ data QueryInfo = QueryInfo
   , querySql         :: Text
   , queryCreatedTime :: Int64
   , queryStreams     :: RelatedStreams
-  , queryRefinedAST  :: AST.RSQL
+  , queryRefinedAST  :: SQLIRType -- FIXME: use a proper name
   , workerNodeId     :: Word32
   , queryType        :: QType
   } deriving (Generic, Show, FromJSON, ToJSON)
@@ -296,7 +301,7 @@ getQuerySink QueryInfo{..} = snd queryStreams
 getQuerySources :: QueryInfo -> SourceStreams
 getQuerySources QueryInfo{..} = fst queryStreams
 
-createInsertQueryInfo :: Text -> Text -> RelatedStreams -> AST.RSQL -> Word32 -> MetaHandle -> IO QueryInfo
+createInsertQueryInfo :: Text -> Text -> RelatedStreams -> SQLIRType -> Word32 -> MetaHandle -> IO QueryInfo
 createInsertQueryInfo queryId querySql queryStreams queryRefinedAST workerNodeId h = do
   MkSystemTime queryCreatedTime _ <- getSystemTime
   let queryType = QueryCreateStream
@@ -304,7 +309,7 @@ createInsertQueryInfo queryId querySql queryStreams queryRefinedAST workerNodeId
   insertQuery qInfo h
   return qInfo
 
-createInsertViewQueryInfo :: Text -> Text -> AST.RSQL -> RelatedStreams -> Text -> Word32 -> MetaHandle -> IO ViewInfo
+createInsertViewQueryInfo :: Text -> Text -> SQLIRType -> RelatedStreams -> Text -> Word32 -> MetaHandle -> IO ViewInfo
 createInsertViewQueryInfo queryId querySql queryRefinedAST queryStreams viewName workerNodeId h = do
   MkSystemTime queryCreatedTime _ <- getSystemTime
   let queryType = QueryCreateView

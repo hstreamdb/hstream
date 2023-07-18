@@ -7,8 +7,10 @@
 {-# LANGUAGE StandaloneDeriving  #-}
 {-# LANGUAGE TypeApplications    #-}
 
+-- This module is only compiled when 'hstream_enable_schema' is disabled.
 module HStream.SQL.Codegen.V1.Boilerplate where
 
+#ifndef HStreamEnableSchema
 import           Data.Aeson
 import qualified Data.Aeson                            as Aeson
 import qualified Data.Binary                           as B
@@ -23,12 +25,14 @@ import qualified Data.Time                             as Time
 import qualified Data.Time.Clock.POSIX                 as Time
 import           Data.Time.Format.ISO8601              (iso8601ParseM,
                                                         iso8601Show)
+import           RIO                                   (Int64, Void)
+
 import           HStream.Processing.Encoding
 import           HStream.Processing.Stream.TimeWindows
 import           HStream.SQL.AST
 import           HStream.SQL.Exception
+import           HStream.SQL.Rts
 import qualified HStream.Utils.Aeson                   as HsAeson
-import           RIO                                   (Int64, Void)
 
 winStartText :: T.Text
 winStartText = "window_start"
@@ -174,3 +178,4 @@ sessionWindowFlowObjectSerde =
   { serializer = Serializer $ \tw -> (jsonObjectToFlowObject "") $ (runSer . serializer $ timeWindowObjectSerde) tw
   , deserializer = Deserializer $ \fo -> (runDeser . deserializer $ timeWindowObjectSerde) (flowObjectToJsonObject fo)
   }
+#endif

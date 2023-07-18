@@ -35,6 +35,11 @@ flag hstream_use_v2_engine
   default:     False
   description: Use v2 processing engine
 
+flag hstream_enable_schema
+  default:     False
+  description:
+    Save schema with streams and enable schema-related pipelines
+
 common shared-properties
   ghc-options:
     -Wall -Wextra -Wcompat -Widentities -Wincomplete-record-updates
@@ -49,30 +54,54 @@ common shared-properties
   if flag(hstream_use_v2_engine)
     cpp-options: -DHStreamUseV2Engine
 
+  if flag(hstream_enable_schema)
+    cpp-options: -DHStreamEnableSchema
+
 library
   import:             shared-properties
   exposed-modules:
     HStream.SQL
     HStream.SQL.Abs
     HStream.SQL.AST
-    HStream.SQL.Codegen
+    HStream.SQL.Binder
+    HStream.SQL.Binder.Basic
+    HStream.SQL.Binder.Common
+    HStream.SQL.Binder.DDL
+    HStream.SQL.Binder.DML
+    HStream.SQL.Binder.Select
+    HStream.SQL.Binder.SQL
+    HStream.SQL.Binder.ValueExpr
     HStream.SQL.Codegen.AggOp
     HStream.SQL.Codegen.BinOp
     HStream.SQL.Codegen.Cast
     HStream.SQL.Codegen.ColumnCatalog
+    HStream.SQL.Codegen.ColumnCatalogNew
     HStream.SQL.Codegen.Common
+    HStream.SQL.Codegen.CommonNew
     HStream.SQL.Codegen.JsonOp
     HStream.SQL.Codegen.TerOp
     HStream.SQL.Codegen.UnaryOp
     HStream.SQL.Codegen.Utils
     HStream.SQL.Codegen.V1
     HStream.SQL.Codegen.V1.Boilerplate
+    HStream.SQL.Codegen.V1New
+    HStream.SQL.Codegen.V1New.Boilerplate
+    HStream.SQL.Codegen.V2
     HStream.SQL.Exception
     HStream.SQL.Internal.Check
     HStream.SQL.Internal.Validate
     HStream.SQL.Parse
+    HStream.SQL.ParseNew
     HStream.SQL.Planner
     HStream.SQL.Planner.Pretty
+    HStream.SQL.PlannerNew
+    HStream.SQL.PlannerNew.Expr
+    HStream.SQL.PlannerNew.Extra
+    HStream.SQL.PlannerNew.Pretty
+    HStream.SQL.PlannerNew.Types
+    HStream.SQL.Rts
+    HStream.SQL.Rts.New
+    HStream.SQL.Rts.Old
 
   other-modules:
     HStream.SQL.ErrM
@@ -88,6 +117,7 @@ library
     , aeson
     , array
     , base                  >=4.11  && <5
+    , bimap
     , binary
     , bytestring
     , containers
@@ -98,6 +128,7 @@ library
     , hstream-common
     , hstream-common-base
     , hstream-processing
+    , mtl
     , prettyprinter         ^>=1.6
     , proto3-suite
     , rio

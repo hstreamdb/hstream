@@ -2,8 +2,10 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeFamilies      #-}
 
+-- This module is only compiled when 'hstream_enable_schema' is disabled.
 module HStream.SQL.Planner where
 
+#ifndef HStreamEnableSchema
 import           Control.Applicative ((<|>))
 import           Data.Function       (on)
 import           Data.Int            (Int64)
@@ -14,6 +16,8 @@ import           Data.Text           (Text)
 import qualified Data.Text           as T
 
 import           HStream.SQL.AST
+import           HStream.SQL.Extra
+import           HStream.SQL.Rts
 
 data RelationExpr
   = StreamScan   Text
@@ -425,3 +429,4 @@ instance HasAggregates RSel where
 instance HasAggregates RHaving where
   getAggregates RHavingEmpty = []
   getAggregates (RHaving e)  = getAggregates e
+#endif

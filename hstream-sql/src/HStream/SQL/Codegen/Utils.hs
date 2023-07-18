@@ -22,6 +22,7 @@ import           HStream.Base.Time     (UnixTime (..), formatUnixTimeGMT,
 import           HStream.SQL.AST
 import           HStream.SQL.Exception (SomeSQLException (..),
                                         throwSQLException)
+import           HStream.SQL.Rts
 
 funcOnScientific :: RealFloat a => (a -> a) -> Scientific -> Scientific
 funcOnScientific f = fromFloatDigits . f . toRealFloat

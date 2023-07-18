@@ -1,9 +1,15 @@
+{-# LANGUAGE CPP #-}
+
 module HStream.Server.QueryWorker where
 
-import           HStream.Server.Core.Query (listQueries, resumeQuery)
-import qualified HStream.Server.HStreamApi as API
-import           HStream.Server.Types      (ServerContext, TaskManager (..))
-import           HStream.Utils             (ResourceType (ResQuery))
+#ifdef HStreamEnableSchema
+import           HStream.Server.Core.QueryNew (listQueries, resumeQuery)
+#else
+import           HStream.Server.Core.Query    (listQueries, resumeQuery)
+#endif
+import qualified HStream.Server.HStreamApi    as API
+import           HStream.Server.Types         (ServerContext, TaskManager (..))
+import           HStream.Utils                (ResourceType (ResQuery))
 
 -- TODO: modularize query worker(e.g. replace runningQueries with QueryWorker)
 newtype QueryWorker = QueryWorker

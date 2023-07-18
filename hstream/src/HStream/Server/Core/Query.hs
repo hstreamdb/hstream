@@ -3,8 +3,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
-module HStream.Server.Core.Query
-  ( executeQuery
+-- This module is only compiled when 'hstream_enable_schema' is disabled.
+module HStream.Server.Core.Query (
+#ifndef HStreamEnableSchema
+    executeQuery
 
   , createQuery
   , createQueryWithNamespace
@@ -18,8 +20,10 @@ module HStream.Server.Core.Query
 
   -- re-export
   , terminateQuery
+#endif
   ) where
 
+#ifndef HStreamEnableSchema
 import           Control.Concurrent.STM           (newTVarIO)
 import           Control.Exception                (SomeException, throw,
                                                    throwIO, try)
@@ -61,8 +65,7 @@ import           DiffFlow.Types                   (DataChange (..),
                                                    DataChangeBatch (..),
                                                    emptyDataChangeBatch)
 import           HStream.Server.ConnectorTypes    hiding (StreamName, Timestamp)
-import           HStream.SQL.Codegen
-import qualified HStream.SQL.Codegen              as HSC
+import qualified HStream.SQL.Codegen.V2           as HSC
 #else
 import           Data.IORef
 import           HStream.Processing.Connector
@@ -373,3 +376,4 @@ hstreamViewToQuery h P.ViewInfo{viewQuery = P.QueryInfo{..},..} = do
 --   S.createStream client streamId (S.def{ S.logReplicationFactor = S.defAttr1 factor })
 --   let extrAttr = Map.fromList [(Shard.shardStartKey, Shard.keyToCBytes minBound), (Shard.shardEndKey, Shard.keyToCBytes maxBound), (Shard.shardEpoch, "1")]
 --   void $ S.createStreamPartition client streamId (Just shardName) extrAttr
+#endif

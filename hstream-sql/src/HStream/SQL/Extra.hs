@@ -1,4 +1,5 @@
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE LambdaCase      #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module HStream.SQL.Extra
   ( extractPNInteger
@@ -7,6 +8,9 @@ module HStream.SQL.Extra
   , extractHIdent
   , extractSingleQuoted
   , extractRefNameFromExpr
+
+  , calendarDiffTimeToMs
+
   , trimSpacesPrint
   , unifyValueExprCast
   , exprBetweenVals
@@ -16,14 +20,27 @@ module HStream.SQL.Extra
   , parseFlowIntervalValue
   ) where
 
+import qualified Data.Aeson               as Aeson
+import qualified Data.ByteString          as BS
 import           Data.Char                (isSpace)
+import           Data.Int                 (Int64)
 import qualified Data.List                as L
 import           Data.Text                (Text)
 import qualified Data.Text                as Text
+import           Data.Text.Encoding       (decodeUtf8, encodeUtf8)
 import qualified Data.Time                as Time
 import           Data.Time.Format.ISO8601 (iso8601ParseM)
 import           HStream.SQL.Abs
 import           HStream.SQL.Print        (Print, printTree)
+
+--------------------------------------------------------------------------------
+-- FIXME: FromJSON & ToJSON of ByteString...
+--        Another instance of lazy ByteString is at processing/ChangeLog.hs
+instance Aeson.FromJSON BS.ByteString where
+  parseJSON v = let pText = Aeson.parseJSON v in encodeUtf8 <$> pText
+
+instance Aeson.ToJSON BS.ByteString where
+  toJSON cb = Aeson.toJSON (decodeUtf8 cb)
 
 --------------------------------------------------------------------------------
 extractPNInteger :: PNInteger -> Integer
@@ -52,6 +69,12 @@ extractSingleQuoted (SingleQuoted x) = Text.tail . Text.init $ x
 trimSpacesPrint :: Print a => a -> String
 trimSpacesPrint = removeSpace . printTree
   where removeSpace = L.filter (not . isSpace)
+
+calendarDiffTimeToMs :: Time.CalendarDiffTime -> Int64
+calendarDiffTimeToMs Time.CalendarDiffTime{..} =
+  let t1 = ctMonths * 30 * 86400 * 1000
+      t2 = floor . (1e3 *) . Time.nominalDiffTimeToSeconds $ ctTime
+   in fromIntegral (t1 + t2)
 
 --------------------------------------------------------------------------------
 

@@ -1,4 +1,5 @@
 {-# LANGUAGE BlockArguments      #-}
+{-# LANGUAGE CPP                 #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE OverloadedStrings   #-}
@@ -26,7 +27,11 @@ import qualified HsGrpc.Server                    as G
 import           Network.GRPC.HighLevel.Generated
 
 import qualified HStream.Logger                   as Log
+#ifdef HStreamEnableSchema
+import qualified HStream.Server.Core.ViewNew      as Core
+#else
 import qualified HStream.Server.Core.View         as Core
+#endif
 import           HStream.Server.Exception         (catchDefaultEx,
                                                    defaultExceptionHandle)
 import           HStream.Server.HStreamApi

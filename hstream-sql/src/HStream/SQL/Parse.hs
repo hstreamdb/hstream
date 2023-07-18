@@ -1,8 +1,10 @@
-module HStream.SQL.Parse
-  ( parse
-  , parseAndRefine
-  ) where
+{-# LANGUAGE CPP #-}
 
+-- This module is only compiled when 'hstream_enable_schema' is disabled.
+-- If enabled, use HStream.SQL.ParseNew instead.
+module HStream.SQL.Parse where
+
+#ifndef HStreamEnableSchema
 import           Control.Exception             (throw)
 import           Data.Functor                  ((<&>))
 import           Data.Text                     (Text)
@@ -32,3 +34,4 @@ parseAndRefine :: HasCallStack => Text -> IO RSQL
 parseAndRefine input = do
   rsql <- parse input <&> refine
   case check rsql of Left e -> throw e; Right _ -> return rsql
+#endif
