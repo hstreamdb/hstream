@@ -55,6 +55,7 @@ library
     HStream.Common.GrpcHaskell
     HStream.Common.Query
     HStream.Common.Types
+    HStream.Common.ZookeeperSlotAlloc
     HStream.Exception
     HStream.Instances
     HStream.MetaStore.FileUtils
@@ -174,6 +175,7 @@ test-suite hstream-common-test
     HStream.TestUtils
     HStream.UtilsSpec
     HStream.ValidationSpec
+    HStream.ZookeeperSlotAllocSpec
 
   build-depends:
     , aeson
