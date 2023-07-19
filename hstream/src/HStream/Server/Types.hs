@@ -275,9 +275,9 @@ mkStreamReader :: S.LDReader ->  Maybe (IORef Word64) -> HashMap S.C_LogID (Mayb
 mkStreamReader streamReader streamReaderTotalBatches streamReaderTsLimits = StreamReader {..}
 
 data ServerInternalOffset = OffsetEarliest
-            | OffsetLatest
-            | OffsetRecordId API.RecordId
-            | OffsetTimestamp API.TimestampOffset
+                          | OffsetLatest
+                          | OffsetRecordId API.RecordId
+                          | OffsetTimestamp API.TimestampOffset
  deriving (Show)
 
 class ToOffset g where

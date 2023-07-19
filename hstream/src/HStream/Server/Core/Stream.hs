@@ -139,7 +139,9 @@ trimStream
   -> IO ()
 trimStream ServerContext{..} streamName trimPoint = do
   streamExists <- S.doesStreamExist scLDClient streamId
-  unless streamExists $ throwIO $ HE.StreamNotFound $ "stream " <> T.pack (show streamName) <> " is not found."
+  unless streamExists $ do
+    Log.info $ "trimStream failed because stream " <> Log.build streamName <> " is not found."
+    throwIO $ HE.StreamNotFound $ "stream " <> T.pack (show streamName) <> " is not found."
   shards <- M.elems <$> S.listStreamPartitions scLDClient streamId
   forM_ shards $ \shardId -> do
     getTrimLSN scLDClient shardId trimPoint >>= S.trim scLDClient shardId
@@ -268,15 +270,21 @@ trimShard
   -> IO ()
 trimShard ServerContext{..} shardId trimPoint = do
   shardExists <- S.logIdHasGroup scLDClient shardId
-  unless shardExists $ throwIO $ HE.ShardNotFound $ "Shard with id " <> T.pack (show shardId) <> " is not found."
+  unless shardExists $ do
+    Log.info $ "trimShard failed because shard " <> Log.build shardId <> " is not exist."
+    throwIO $ HE.ShardNotFound $ "Shard with id " <> T.pack (show shardId) <> " is not found."
   getTrimLSN scLDClient shardId trimPoint >>= S.trim scLDClient shardId
 
 --------------------------------------------------------------------------------
 -- helper
 
-getTrimLSN :: ToOffset g => S.LDClient -> Word64 -> g -> IO S.LSN
+getTrimLSN :: (ToOffset g, Show g) => S.LDClient -> Word64 -> g -> IO S.LSN
 getTrimLSN client shardId trimPoint = do
-  getLSN client shardId (toOffset trimPoint)
+  lsn <- getLSN client shardId (toOffset trimPoint)
+  Log.info $ "getTrimLSN for shard " <> Log.build (show shardId)
+          <> ", trimPoint: " <> Log.build (show trimPoint)
+          <> ", lsn: " <> Log.build (show lsn)
+  return lsn
  where
   getLSN :: S.LDClient -> S.C_LogID -> ServerInternalOffset -> IO S.LSN
   getLSN scLDClient logId offset =
