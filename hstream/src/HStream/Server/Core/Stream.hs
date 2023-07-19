@@ -37,8 +37,9 @@ import qualified HStream.Server.HStreamApi as API
 import qualified HStream.Server.MetaData   as P
 import           HStream.Server.Shard      (createShard, devideKeySpace,
                                             mkShardWithDefaultId)
-import           HStream.Server.Types      (ServerContext (..), ToOffset (..),
-                                            getLogLSN, transToStreamName)
+import           HStream.Server.Types      (ServerContext (..),
+                                            ServerInternalOffset (..),
+                                            ToOffset (..), transToStreamName)
 import qualified HStream.Stats             as Stats
 import qualified HStream.Store             as S
 import           HStream.Utils
@@ -137,11 +138,11 @@ trimStream
   -> API.StreamOffset
   -> IO ()
 trimStream ServerContext{..} streamName trimPoint = do
-   streamExists <- S.doesStreamExist scLDClient streamId
-   unless streamExists $ throwIO $ HE.StreamNotFound $ "stream " <> T.pack (show streamName) <> " is not found."
-   shards <- M.elems <$> S.listStreamPartitions scLDClient streamId
-   forM_ shards $ \shardId -> do
-     getTrimLSN scLDClient shardId trimPoint >>= S.trim scLDClient shardId
+  streamExists <- S.doesStreamExist scLDClient streamId
+  unless streamExists $ throwIO $ HE.StreamNotFound $ "stream " <> T.pack (show streamName) <> " is not found."
+  shards <- M.elems <$> S.listStreamPartitions scLDClient streamId
+  forM_ shards $ \shardId -> do
+    getTrimLSN scLDClient shardId trimPoint >>= S.trim scLDClient shardId
  where
    streamId = transToStreamName streamName
 
@@ -266,13 +267,24 @@ trimShard
   -> API.ShardOffset
   -> IO ()
 trimShard ServerContext{..} shardId trimPoint = do
-   shardExists <- S.logIdHasGroup scLDClient shardId
-   unless shardExists $ throwIO $ HE.ShardNotFound $ "Shard with id " <> T.pack (show shardId) <> " is not found."
-   getTrimLSN scLDClient shardId trimPoint >>= S.trim scLDClient shardId
+  shardExists <- S.logIdHasGroup scLDClient shardId
+  unless shardExists $ throwIO $ HE.ShardNotFound $ "Shard with id " <> T.pack (show shardId) <> " is not found."
+  getTrimLSN scLDClient shardId trimPoint >>= S.trim scLDClient shardId
 
 --------------------------------------------------------------------------------
 -- helper
 
 getTrimLSN :: ToOffset g => S.LDClient -> Word64 -> g -> IO S.LSN
 getTrimLSN client shardId trimPoint = do
-  fst <$> getLogLSN client shardId (toOffset trimPoint)
+  getLSN client shardId (toOffset trimPoint)
+ where
+  getLSN :: S.LDClient -> S.C_LogID -> ServerInternalOffset -> IO S.LSN
+  getLSN scLDClient logId offset =
+    case offset of
+      OffsetEarliest -> return S.LSN_MIN
+      OffsetLatest -> S.getTailLSN scLDClient logId
+      OffsetRecordId API.RecordId{..} -> return recordIdBatchId
+      OffsetTimestamp API.TimestampOffset{..} -> do
+        let accuracy = if timestampOffsetStrictAccuracy then S.FindKeyStrict else S.FindKeyApproximate
+        S.findTime scLDClient logId timestampOffsetTimestampInMs accuracy
+
