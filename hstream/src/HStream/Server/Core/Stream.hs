@@ -15,33 +15,47 @@ module HStream.Server.Core.Stream
   , getTailRecordId
   , trimShard
   , trimStream
+  , createStreamV2
+  , deleteStreamV2
+  , listShardsV2
   ) where
 
-import           Control.Exception         (catch, throwIO)
-import           Control.Monad             (forM, forM_, unless, when)
-import qualified Data.ByteString           as BS
-import qualified Data.ByteString.Lazy      as BSL
-import qualified Data.Map.Strict           as M
-import           Data.Maybe                (fromMaybe)
-import qualified Data.Text                 as T
-import qualified Data.Vector               as V
-import           GHC.Stack                 (HasCallStack)
-import           Google.Protobuf.Timestamp (Timestamp)
-import qualified Proto3.Suite              as PT
-import qualified Z.Data.CBytes             as CB
+import           Control.Concurrent                (modifyMVar_)
+import           Control.Exception                 (catch, throwIO)
+import           Control.Monad                     (forM, forM_, unless, when)
+import qualified Data.ByteString                   as BS
+import qualified Data.ByteString.Lazy              as BSL
+import           Data.Foldable                     (foldl')
+import           Data.Functor                      ((<&>))
+import qualified Data.HashMap.Strict               as HM
+import qualified Data.Map.Strict                   as M
+import           Data.Maybe                        (fromMaybe)
+import qualified Data.Text                         as T
+import qualified Data.Vector                       as V
+import           Data.Word                         (Word64)
+import           GHC.Stack                         (HasCallStack)
+import           Google.Protobuf.Timestamp         (Timestamp)
+import qualified Proto3.Suite                      as PT
+import qualified Z.Data.CBytes                     as CB
+import qualified ZooKeeper.Exception               as ZK
 
-import           Data.Word                 (Word64)
-import qualified HStream.Exception         as HE
-import qualified HStream.Logger            as Log
-import qualified HStream.Server.HStreamApi as API
-import qualified HStream.Server.MetaData   as P
-import           HStream.Server.Shard      (createShard, devideKeySpace,
-                                            mkShardWithDefaultId)
-import           HStream.Server.Types      (ServerContext (..),
-                                            ServerInternalOffset (..),
-                                            ToOffset (..), transToStreamName)
-import qualified HStream.Stats             as Stats
-import qualified HStream.Store             as S
+import           HStream.Base.Time                 (getSystemNsTimestamp)
+import qualified HStream.Common.ZookeeperSlotAlloc as Slot
+import qualified HStream.Exception                 as HE
+import qualified HStream.Logger                    as Log
+import qualified HStream.Server.HStreamApi         as API
+import qualified HStream.Server.MetaData           as P
+import           HStream.Server.Shard              (Shard (..), createShard,
+                                                    devideKeySpace,
+                                                    mkShardAttrs,
+                                                    mkShardWithDefaultId,
+                                                    mkSharedShardMapWithShards)
+import           HStream.Server.Types              (ServerContext (..),
+                                                    ServerInternalOffset (..),
+                                                    ToOffset (..),
+                                                    transToStreamName)
+import qualified HStream.Stats                     as Stats
+import qualified HStream.Store                     as S
 import           HStream.Utils
 
 -------------------------------------------------------------------------------
@@ -66,6 +80,26 @@ createStream ServerContext{..} stream@API.Stream{
     createShard scLDClient shard
   Log.debug $ "create shards for stream " <> Log.build streamStreamName <> ": " <> Log.buildString' (show shards)
   return stream{API.streamCreationTime = Just timeStamp}
+
+-- NOTE:
+-- 1. We will ignore streamReplicationFactor,streamBacklogDuration setting in the request
+createStreamV2
+  :: HasCallStack
+  => ServerContext -> Slot.SlotConfig
+  -> API.Stream -> IO API.Stream
+createStreamV2 ServerContext{..} slotConfig stream@API.Stream{..} = do
+  -- NOTE: the bytestring get from getProtoTimestamp is not a valid utf8
+  timeStamp <- getSystemNsTimestamp
+  let !extraAttr = M.fromList [("createTime", T.pack $ show timeStamp)]
+      partitions = devideKeySpace (fromIntegral streamShardCount)
+      shardAttrs = partitions <&> (\(startKey, endKey) -> Slot.SlotValueAttrs $
+        mkShardAttrs startKey endKey (fromIntegral streamShardCount))
+
+  shards <- catch (Slot.allocateSlot slotConfig (textToCBytes streamStreamName) extraAttr shardAttrs) $
+    \(_ :: ZK.ZNODEEXISTS) -> throwIO $ HE.StreamExists streamStreamName
+
+  Log.debug $ "create shards for stream " <> Log.build streamStreamName <> ": " <> Log.buildString' (show shards)
+  return stream{API.streamCreationTime = Just $ nsTimestampToProto timeStamp}
 
 deleteStream :: ServerContext
              -> API.DeleteStreamRequest
@@ -92,6 +126,34 @@ deleteStream ServerContext{..} API.DeleteStreamRequest{deleteStreamRequestForce 
              P.updateSubscription metaHandle sName (cBytesToText $ S.getArchivedStreamName _archivedStream)
            else
              throwIO HE.FoundSubscription
+
+-- NOTE:
+-- 1. do not support archive stream
+deleteStreamV2
+  :: ServerContext -> Slot.SlotConfig
+  -> API.DeleteStreamRequest -> IO ()
+deleteStreamV2 ServerContext{..} slotConfig
+               API.DeleteStreamRequest{ deleteStreamRequestForce = force
+                                      , deleteStreamRequestStreamName = sName
+                                      , ..
+                                      } = do
+  storeExists <- Slot.doesSlotExist slotConfig streamName
+  if storeExists
+     then doDelete
+     else unless deleteStreamRequestIgnoreNonExist $ throwIO $ HE.StreamNotFound sName
+  where
+    streamName = textToCBytes sName
+    -- TODO: archive stream
+    doDelete = do
+      subs <- P.getSubscriptionWithStream metaHandle sName
+      if null subs
+         then deallocate
+         else if force then deallocate else throwIO HE.FoundSubscription
+    deallocate = do
+      logids <- Slot.deallocateSlot slotConfig streamName
+      -- delete all data in the logid
+      forM_ logids $ S.trimLast scLDClient
+      Stats.stream_stat_erase scStatsHolder (textToCBytes sName)
 
 getStream :: ServerContext -> API.GetStreamRequest -> IO API.GetStreamResponse
 getStream ServerContext{..} API.GetStreamRequest{ getStreamRequestName = sName} = do
@@ -225,8 +287,6 @@ appendStream ServerContext{..} streamName shardId record = do
   where
     cStreamName = textToCBytes streamName
 
---------------------------------------------------------------------------------
-
 listShards
   :: HasCallStack
   => ServerContext
@@ -262,6 +322,42 @@ listShards ServerContext{..} API.ListShardsRequest{..} = do
      shardEpoch        <- read . CB.unpack <$> M.lookup epoch mp
      return (startHashRangeKey, endHashRangeKey, shardEpoch)
 
+listShardsV2
+  :: HasCallStack
+  => ServerContext
+  -> Slot.SlotConfig
+  -> API.ListShardsRequest
+  -> IO (V.Vector API.Shard)
+listShardsV2 ServerContext{..} slotConfig API.ListShardsRequest{..} = do
+  let streamName = textToCBytes listShardsRequestStreamName
+  Slot.Slot{..} <- Slot.getSlotByName slotConfig streamName
+  V.foldM' getShardInfo V.empty (V.fromList $ M.toList slotVals)
+ where
+   startKey = "startKey"
+   endKey   = "endKey"
+   epoch    = "epoch"
+
+   getShardInfo shards (logId, m_attr) = do
+     case getInfo m_attr of
+       -- FIXME: should raise an exception when get Nothing
+       Nothing -> return shards
+       Just (sKey, eKey, ep) -> return . V.snoc shards $
+         API.Shard{ API.shardStreamName        = listShardsRequestStreamName
+                  , API.shardShardId           = logId
+                  , API.shardStartHashRangeKey = sKey
+                  , API.shardEndHashRangeKey   = eKey
+                  , API.shardEpoch             = ep
+                  -- FIXME: neet a way to find if this shard is active
+                  , API.shardIsActive          = True
+                  }
+
+   getInfo m_mp = do
+     Slot.SlotValueAttrs mp <- m_mp
+     startHashRangeKey <- M.lookup startKey mp
+     endHashRangeKey   <- M.lookup endKey mp
+     shardEpoch        <- read . T.unpack <$> M.lookup epoch mp
+     return (startHashRangeKey, endHashRangeKey, shardEpoch)
+
 trimShard
   :: HasCallStack
   => ServerContext
@@ -295,4 +391,3 @@ getTrimLSN client shardId trimPoint = do
       OffsetTimestamp API.TimestampOffset{..} -> do
         let accuracy = if timestampOffsetStrictAccuracy then S.FindKeyStrict else S.FindKeyApproximate
         S.findTime scLDClient logId timestampOffsetTimestampInMs accuracy
-

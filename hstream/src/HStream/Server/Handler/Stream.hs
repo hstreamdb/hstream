@@ -29,25 +29,31 @@ module HStream.Server.Handler.Stream
   , handleListShard
   , handleTrimShard
   , handleGetTailRecordId
+    -- ** Experimental feature
+  , handleCreateStreamV2
+  , handleDeleteStreamV2
+  , handleListShardV2
   ) where
 
 import           Control.Exception
-import           Data.Maybe                       (fromJust, isNothing)
-import qualified HsGrpc.Server                    as G
-import qualified HsGrpc.Server.Types              as G
+import           Data.Maybe                        (fromJust, isNothing)
+import qualified HsGrpc.Server                     as G
+import qualified HsGrpc.Server.Types               as G
 import           Network.GRPC.HighLevel.Generated
+import qualified ZooKeeper.Exception               as ZK
 
-import           Control.Monad                    (when)
-import qualified HStream.Exception                as HE
-import qualified HStream.Logger                   as Log
-import qualified HStream.Server.Core.Stream       as C
+import           Control.Monad                     (when)
+import qualified HStream.Common.ZookeeperSlotAlloc as Slot
+import qualified HStream.Exception                 as HE
+import qualified HStream.Logger                    as Log
+import qualified HStream.Server.Core.Stream        as C
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
-import           HStream.Server.Types             (ServerContext (..))
+import           HStream.Server.Types              (ServerContext (..))
 import           HStream.Server.Validation
-import qualified HStream.Stats                    as Stats
-import qualified HStream.Store                    as Store
-import           HStream.ThirdParty.Protobuf      as PB
+import qualified HStream.Stats                     as Stats
+import qualified HStream.Store                     as Store
+import           HStream.ThirdParty.Protobuf       as PB
 import           HStream.Utils
 
 --------------------------------------------------------------------------------
@@ -66,6 +72,12 @@ handleCreateStream sc _ stream = catchDefaultEx $ do
   Log.debug $ "Receive Create Stream Request: " <> Log.buildString' stream
   validateStream stream
   C.createStream sc stream
+
+handleCreateStreamV2 :: ServerContext -> Slot.SlotConfig -> G.UnaryHandler Stream Stream
+handleCreateStreamV2 sc slotConfig _ stream = catchDefaultEx $ do
+  Log.debug $ "Receive Create Stream Request: " <> Log.buildString' stream
+  validateStream stream
+  C.createStreamV2 sc slotConfig stream
 
 -- DeleteStream have two mod: force delete or normal delete
 -- For normal delete, if current stream have active subscription, the delete request will return error.
@@ -90,6 +102,12 @@ handleDeleteStream sc _ req = catchDefaultEx $ do
   Log.debug $ "Receive Delete Stream Request: " <> Log.buildString' req
   validateNameAndThrow ResStream $ deleteStreamRequestStreamName req
   C.deleteStream sc req >> pure Empty
+
+handleDeleteStreamV2 :: ServerContext -> Slot.SlotConfig -> G.UnaryHandler DeleteStreamRequest Empty
+handleDeleteStreamV2 sc slotConfig _ req = catchDefaultEx $ do
+  Log.debug $ "Receive Delete Stream Request: " <> Log.buildString' req
+  validateNameAndThrow ResStream $ deleteStreamRequestStreamName req
+  C.deleteStreamV2 sc slotConfig req >> pure Empty
 
 getStreamHandler
   :: ServerContext
@@ -209,6 +227,12 @@ handleListShard sc _ req = listShardsExHandle $ do
   validateNameAndThrow ResStream $ listShardsRequestStreamName req
   ListShardsResponse <$> C.listShards sc req
 
+handleListShardV2 :: ServerContext -> Slot.SlotConfig -> G.UnaryHandler ListShardsRequest ListShardsResponse
+handleListShardV2 sc slotConfig _ req = listShardsExHandleV2 $ do
+  Log.debug "Receive List Shards Request"
+  validateNameAndThrow ResStream $ listShardsRequestStreamName req
+  ListShardsResponse <$> C.listShardsV2 sc slotConfig req
+
 trimShardHandler
   :: ServerContext
   -> ServerRequest 'Normal TrimShardRequest Empty
@@ -273,6 +297,14 @@ listShardsExHandle = HE.mkExceptionHandle handlers
   where
     handlers =
       [ Handler $ \(err :: Store.NOTFOUND) -> do
+          G.throwGrpcError $ HE.mkGrpcStatus err G.StatusUnavailable
+      ] ++ defaultExHandlers
+
+listShardsExHandleV2 :: IO a -> IO a
+listShardsExHandleV2 = HE.mkExceptionHandle handlers
+  where
+    handlers =
+      [ Handler $ \(err :: ZK.ZNONODE) -> do
           G.throwGrpcError $ HE.mkGrpcStatus err G.StatusUnavailable
       ] ++ defaultExHandlers
 

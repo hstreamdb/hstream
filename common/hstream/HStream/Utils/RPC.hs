@@ -1,10 +1,11 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
-{-# LANGUAGE DataKinds         #-}
-{-# LANGUAGE DeriveAnyClass    #-}
-{-# LANGUAGE DeriveGeneric     #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GADTs             #-}
-{-# LANGUAGE PatternSynonyms   #-}
+{-# LANGUAGE DataKinds          #-}
+{-# LANGUAGE DeriveAnyClass     #-}
+{-# LANGUAGE DeriveGeneric      #-}
+{-# LANGUAGE FlexibleInstances  #-}
+{-# LANGUAGE GADTs              #-}
+{-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE PatternSynonyms    #-}
 
 module HStream.Utils.RPC
   ( HStreamClientApi
@@ -25,6 +26,7 @@ module HStream.Utils.RPC
   , getServerResp
   , getServerRespPure
   , getProtoTimestamp
+  , nsTimestampToProto
   , msTimestampToProto
   , timestampToMsTimestamp
   , isSuccessful
@@ -170,6 +172,11 @@ getProtoTimestamp :: IO Timestamp
 getProtoTimestamp = do
   MkSystemTime sec nano <- getSystemTime
   return $ Timestamp sec (fromIntegral nano)
+
+nsTimestampToProto :: Int64 -> Timestamp
+nsTimestampToProto ns =
+  let (sec, nano) = ns `divMod` 1_000_000_000
+   in Timestamp sec (fromIntegral nano)
 
 msTimestampToProto :: Int64 -> Timestamp
 msTimestampToProto millis =

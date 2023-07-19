@@ -2,42 +2,43 @@
 {-# LANGUAGE NamedFieldPuns            #-}
 {-# LANGUAGE OverloadedStrings         #-}
 
-module HStream.Server.Shard(
-  Shard (..),
-  ShardKey (..),
-  mkShard,
-  mkShardWithDefaultId,
-  splitShardByKey,
-  halfSplit,
-  mergeShard,
-  devideKeySpace,
-  createShard,
+module HStream.Server.Shard
+  ( Shard (..)
+  , ShardKey (..)
+  , mkShard
+  , mkShardWithDefaultId
+  , splitShardByKey
+  , halfSplit
+  , mergeShard
+  , devideKeySpace
+  , createShard
+  , mkShardAttrs
 
-  ShardMap,
-  mkShardMap,
-  getShard,
-  insertShard,
-  deleteShard,
+  , ShardMap
+  , mkShardMap
+  , getShard
+  , insertShard
+  , deleteShard
 
-  SharedShardMap,
-  -- mkSharedShardMap,
-  mkSharedShardMapWithShards,
-  getShardMap,
-  putShardMap,
-  readShardMap,
-  getShardByKey,
-  getShardMapIdx,
-  splitByKey,
-  splitHalf,
-  mergeTwoShard,
+  , SharedShardMap
+  -- , mkSharedShardMap
+  , mkSharedShardMapWithShards
+  , getShardMap
+  , putShardMap
+  , readShardMap
+  , getShardByKey
+  , getShardMapIdx
+  , splitByKey
+  , splitHalf
+  , mergeTwoShard
 
-  hashShardKey,
-  keyToCBytes,
-  cBytesToKey,
-  shardStartKey,
-  shardEndKey,
-  shardEpoch
-) where
+  , hashShardKey
+  , keyToCBytes
+  , cBytesToKey
+  , shardStartKey
+  , shardEndKey
+  , shardEpoch
+  ) where
 
 import           Control.Concurrent.STM (STM, TMVar, atomically, newTMVarIO,
                                          putTMVar, readTMVar, swapTMVar,
@@ -52,6 +53,7 @@ import           Data.Hashable          (Hashable (hash))
 import           Data.List              (iterate')
 import           Data.Map.Strict        (Map)
 import qualified Data.Map.Strict        as M
+import           Data.Text              (Text)
 import qualified Data.Text              as T
 import           Data.Text.Encoding     (encodeUtf8)
 import           Data.Typeable          (cast)
@@ -345,6 +347,13 @@ createShard client shard@Shard{..} = do
   let attr = M.fromList [(shardStartKey, keyToCBytes startKey), (shardEndKey, keyToCBytes endKey), (shardEpoch, CB.pack . show $ epoch)]
   newShardId <- S.createStreamPartition client streamId (Just $ getShardName startKey endKey) attr
   return $ shard {shardId = newShardId}
+
+mkShardAttrs :: ShardKey -> ShardKey -> Word64 -> Map Text Text
+mkShardAttrs (ShardKey start) (ShardKey end) epoch = M.fromList
+  [ ("startKey", T.pack $ show start)
+  , ("endKey", T.pack $ show end)
+  , ("epoch", T.pack $ show epoch)
+  ]
 
 getShardName :: ShardKey -> ShardKey -> CB.CBytes
 getShardName startKey endKey = "shard-" <> keyToCBytes startKey <> "-" <> keyToCBytes endKey
