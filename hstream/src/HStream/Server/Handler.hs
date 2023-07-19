@@ -44,6 +44,7 @@ handlers serverContext@ServerContext{..} =
         hstreamApiListStreamsWithPrefix = listStreamsWithPrefixHandler serverContext,
         hstreamApiAppend = appendHandler serverContext,
         hstreamApiGetTailRecordId = getTailRecordIdHandler serverContext,
+        hstreamApiTrimStream  = trimStreamHandler serverContext,
 
         -- Subscribe
         hstreamApiCreateSubscription = createSubscriptionHandler serverContext,
@@ -58,6 +59,7 @@ handlers serverContext@ServerContext{..} =
 
         -- Shards
         hstreamApiListShards = listShardsHandler serverContext,
+        hstreamApiTrimShard  = trimShardHandler serverContext,
         -- Reader
         hstreamApiListShardReaders  = listShardReadersHandler serverContext,
         hstreamApiCreateShardReader = createShardReaderHandler serverContext,

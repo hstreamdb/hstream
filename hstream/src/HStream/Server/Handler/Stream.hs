@@ -10,29 +10,34 @@ module HStream.Server.Handler.Stream
   ( -- * For grpc-haskell
     createStreamHandler
   , deleteStreamHandler
+  , trimStreamHandler
   , getStreamHandler
   , listStreamsHandler
   , listStreamsWithPrefixHandler
   , listShardsHandler
+  , trimShardHandler
   , appendHandler
   , getTailRecordIdHandler
     -- * For hs-grpc-server
   , handleCreateStream
   , handleDeleteStream
+  , handleTrimStream
   , handleGetStream
   , handleListStreams
   , handleListStreamsWithPrefix
   , handleAppend
   , handleListShard
+  , handleTrimShard
   , handleGetTailRecordId
   ) where
 
 import           Control.Exception
-import           Data.Maybe                       (fromJust)
+import           Data.Maybe                       (fromJust, isNothing)
 import qualified HsGrpc.Server                    as G
 import qualified HsGrpc.Server.Types              as G
 import           Network.GRPC.HighLevel.Generated
 
+import           Control.Monad                    (when)
 import qualified HStream.Exception                as HE
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Stream       as C
@@ -129,6 +134,26 @@ handleListStreamsWithPrefix sc _ req = catchDefaultEx $ do
   validateNameAndThrow ResStream $ listStreamsWithPrefixRequestPrefix req
   ListStreamsResponse <$> C.listStreamsWithPrefix sc req
 
+trimStreamHandler
+  :: ServerContext
+  -> ServerRequest 'Normal TrimStreamRequest Empty
+  -> IO (ServerResponse 'Normal Empty)
+trimStreamHandler sc (ServerNormalRequest _metadata request@TrimStreamRequest{..}) = defaultExceptionHandle $ do
+  Log.info $ "Receive trim stream Request: " <> Log.buildString' request
+  validateNameAndThrow ResStream trimStreamRequestStreamName
+  when (isNothing trimStreamRequestTrimPoint) $
+    throwIO . HE.InvalidTrimPoint $ "invalid trim point: " <> show trimStreamRequestTrimPoint
+  C.trimStream sc trimStreamRequestStreamName (fromJust trimStreamRequestTrimPoint)
+  returnResp Empty
+
+handleTrimStream :: ServerContext -> G.UnaryHandler TrimStreamRequest Empty
+handleTrimStream sc _ request@TrimStreamRequest{..} = catchDefaultEx $ do
+  Log.info $ "Receive trim stram Request: " <> Log.buildString' request
+  validateNameAndThrow ResStream trimStreamRequestStreamName
+  when (isNothing trimStreamRequestTrimPoint) $
+    throwIO . HE.InvalidTrimPoint $ "invalid trim point: " <> show trimStreamRequestTrimPoint
+  C.trimStream sc trimStreamRequestStreamName (fromJust trimStreamRequestTrimPoint) >> pure Empty
+
 handleGetTailRecordId :: ServerContext -> G.UnaryHandler GetTailRecordIdRequest GetTailRecordIdResponse
 handleGetTailRecordId sc _ req = catchDefaultEx $ do
   Log.debug $ "Receive Get TailRecordId Request: " <> Log.buildString' req
@@ -183,6 +208,24 @@ handleListShard sc _ req = listShardsExHandle $ do
   Log.debug "Receive List Shards Request"
   validateNameAndThrow ResStream $ listShardsRequestStreamName req
   ListShardsResponse <$> C.listShards sc req
+
+trimShardHandler
+  :: ServerContext
+  -> ServerRequest 'Normal TrimShardRequest Empty
+  -> IO (ServerResponse 'Normal Empty)
+trimShardHandler sc (ServerNormalRequest _metadata request@TrimShardRequest{..}) = defaultExceptionHandle $ do
+  Log.info $ "Receive trim shard Request: " <> Log.buildString' request
+  when (isNothing trimShardRequestTrimPoint) $
+    throwIO . HE.InvalidTrimPoint $ "invalid trim point: " <> show trimShardRequestTrimPoint
+  C.trimShard sc trimShardRequestShardId (fromJust trimShardRequestTrimPoint)
+  returnResp Empty
+
+handleTrimShard :: ServerContext -> G.UnaryHandler TrimShardRequest Empty
+handleTrimShard sc _ request@TrimShardRequest{..} = catchDefaultEx $ do
+  Log.info $ "Receive trim shard Request: " <> Log.buildString' request
+  when (isNothing trimShardRequestTrimPoint) $
+    throwIO . HE.InvalidTrimPoint $ "invalid trim point: " <> show trimShardRequestTrimPoint
+  C.trimShard sc trimShardRequestShardId (fromJust trimShardRequestTrimPoint) >> pure Empty
 
 --------------------------------------------------------------------------------
 -- Exception Handlers

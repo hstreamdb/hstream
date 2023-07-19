@@ -30,19 +30,19 @@ import qualified Proto3.Suite                     as PB
 #if __GLASGOW_HASKELL__ < 902
 import qualified HStream.Admin.Store.API          as AA
 #endif
+import           Control.Exception                (throw)
 import           Data.IORef                       (IORef)
+import           Data.Maybe                       (fromJust)
 import           HStream.Base.Timer               (CompactedWorker)
 import           HStream.Common.ConsistentHashing (HashRing)
+import qualified HStream.Exception                as HE
 import           HStream.Gossip.Types             (Epoch, GossipContext)
 import qualified HStream.IO.Types                 as IO
 import qualified HStream.IO.Worker                as IO
 import           HStream.MetaStore.Types          (MetaHandle)
 import           HStream.Server.Config
-import           HStream.Server.ConnectorTypes    as HCT
-import           HStream.Server.HStreamApi        (NodeState, ResourceType,
-                                                   SpecialOffset (..),
-                                                   StreamingFetchResponse,
-                                                   Subscription (..))
+import qualified HStream.Server.ConnectorTypes    as HCT
+import qualified HStream.Server.HStreamApi        as API
 import           HStream.Server.Shard             (ShardKey, SharedShardMap)
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as HS
@@ -58,7 +58,7 @@ serverVersion :: Text
 serverVersion = "0.9.1"
 
 data SubscriptionWrap = SubscriptionWrap
-  { originSub  :: Subscription
+  { originSub  :: API.Subscription
   , subOffsets :: HM.HashMap S.C_LogID S.LSN
   } deriving (Generic, Show, FromJSON, ToJSON)
 
@@ -68,11 +68,11 @@ renderSubscriptionWrapToTable subs =
       rows = map formatSubscriptionWrap subs
    in Aeson.object ["headers" Aeson..= headers, "rows" Aeson..= rows]
  where
-   formatSubscriptionWrap SubscriptionWrap{originSub=Subscription{..}, ..} =
+   formatSubscriptionWrap SubscriptionWrap{originSub=API.Subscription{..}, ..} =
      let offset = case subscriptionOffset of
-                    (PB.Enumerated (Right SpecialOffsetEARLIEST)) -> "EARLIEST"
-                    (PB.Enumerated (Right SpecialOffsetLATEST))   -> "LATEST"
-                    _                                             -> "UNKNOWN"
+                    (PB.Enumerated (Right API.SpecialOffsetEARLIEST)) -> "EARLIEST"
+                    (PB.Enumerated (Right API.SpecialOffsetLATEST))   -> "LATEST"
+                    _                                                 -> "UNKNOWN"
       in [ subscriptionSubscriptionId
          , subscriptionStreamName
          , T.pack . show $ subscriptionAckTimeoutSeconds
@@ -84,7 +84,7 @@ renderSubscriptionWrapToTable subs =
 
 type Timestamp = Int64
 type ServerID = Word32
-type ServerState = PB.Enumerated NodeState
+type ServerState = PB.Enumerated API.NodeState
 type ShardDict = M.Map ShardKey HS.C_LogID
 
 data ServerContext = ServerContext
@@ -133,7 +133,7 @@ data SubscribeContext = SubscribeContext
   , subStreamName        :: !T.Text
   , subAckTimeoutSeconds :: !Int32
   , subMaxUnackedRecords :: !Word32
-  , subStartOffset       :: !(PB.Enumerated SpecialOffset)
+  , subStartOffset       :: !(PB.Enumerated API.SpecialOffset)
   , subLdCkpReader       :: !HS.LDSyncCkpReader
   , subLdTrimCkpWorker   :: !CompactedWorker
   , subLdReader          :: !(MVar HS.LDReader)
@@ -180,7 +180,7 @@ data ConsumerContext = ConsumerContext
     ccIsValid       :: TVar Bool,
     -- use MVar for streamSend because only on thread can use streamSend at the
     -- same time
-    ccStreamSend    :: MVar (StreamSend StreamingFetchResponse),
+    ccStreamSend    :: MVar (StreamSend API.StreamingFetchResponse),
     -- threadId of the thread handling streamingFetchRequest for this consumer
     ccThreadId      :: ThreadId
   }
@@ -273,6 +273,46 @@ data StreamReader = StreamReader
 
 mkStreamReader :: S.LDReader ->  Maybe (IORef Word64) -> HashMap S.C_LogID (Maybe Int64, Maybe Int64) -> StreamReader
 mkStreamReader streamReader streamReaderTotalBatches streamReaderTsLimits = StreamReader {..}
+
+data ServerInternalOffset = OffsetEarliest
+                          | OffsetLatest
+                          | OffsetRecordId API.RecordId
+                          | OffsetTimestamp API.TimestampOffset
+ deriving (Show)
+
+class ToOffset g where
+  toOffset :: g -> ServerInternalOffset
+
+instance ToOffset API.ShardOffset where
+  toOffset offset = case fromJust . API.shardOffsetOffset $ offset of
+    API.ShardOffsetOffsetSpecialOffset (PB.Enumerated (Right API.SpecialOffsetEARLIEST)) -> OffsetEarliest
+    API.ShardOffsetOffsetSpecialOffset (PB.Enumerated (Right API.SpecialOffsetLATEST))   -> OffsetLatest
+    API.ShardOffsetOffsetRecordOffset rid                                                -> OffsetRecordId rid
+    API.ShardOffsetOffsetTimestampOffset timestamp                                       -> OffsetTimestamp timestamp
+    _                                                                                    -> throw $ HE.InvalidShardOffset "UnKnownShardOffset"
+
+instance ToOffset API.StreamOffset where
+  toOffset offset = case fromJust . API.streamOffsetOffset $ offset of
+    API.StreamOffsetOffsetSpecialOffset (PB.Enumerated (Right API.SpecialOffsetEARLIEST)) -> OffsetEarliest
+    API.StreamOffsetOffsetSpecialOffset (PB.Enumerated (Right API.SpecialOffsetLATEST))   -> OffsetLatest
+    API.StreamOffsetOffsetTimestampOffset timestamp                                       -> OffsetTimestamp timestamp
+    _                                                                                     -> throw $ HE.InvalidShardOffset "UnKnownShardOffset"
+
+-- if the offset is timestampOffset, then return (LSN, Just timestamp)
+-- , otherwise return (LSN, Nothing)
+getLogLSN :: S.LDClient -> S.C_LogID -> ServerInternalOffset -> IO (S.LSN, Maybe Int64)
+getLogLSN scLDClient logId offset =
+  case offset of
+    OffsetEarliest -> return (S.LSN_MIN, Nothing)
+    OffsetLatest -> do
+      startLSN <- (+ 1) <$> S.getTailLSN scLDClient logId
+      return (startLSN, Nothing)
+    OffsetRecordId API.RecordId{..} ->
+      return (recordIdBatchId, Nothing)
+    OffsetTimestamp API.TimestampOffset{..} -> do
+      let accuracy = if timestampOffsetStrictAccuracy then S.FindKeyStrict else S.FindKeyApproximate
+      startLSN <- S.findTime scLDClient logId timestampOffsetTimestampInMs accuracy
+      return (startLSN, Just timestampOffsetTimestampInMs)
 
 --------------------------------------------------------------------------------
 

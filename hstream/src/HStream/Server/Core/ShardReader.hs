@@ -13,12 +13,11 @@ module HStream.Server.Core.ShardReader
 where
 
 import           Data.Functor               ((<&>))
-import           Proto3.Suite               (Enumerated (Enumerated))
 import           ZooKeeper.Exception        (ZNONODE (..), throwIO)
 
 import           Control.Concurrent         (modifyMVar_, newEmptyMVar, putMVar,
                                              readMVar, takeMVar, withMVar)
-import           Control.Exception          (bracket, catch, throw)
+import           Control.Exception          (bracket, catch)
 import           Control.Monad              (forM, forM_, unless, when)
 import           Data.ByteString            (ByteString)
 import           Data.Either                (isRight)
@@ -28,7 +27,7 @@ import           Data.Int                   (Int64)
 import           Data.IORef                 (IORef, newIORef, readIORef,
                                              writeIORef)
 import qualified Data.Map.Strict            as M
-import           Data.Maybe                 (fromJust, isJust)
+import           Data.Maybe                 (isJust)
 import qualified Data.Text                  as T
 import           Data.Vector                (Vector)
 import qualified Data.Vector                as V
@@ -43,8 +42,10 @@ import           HStream.Server.HStreamApi  (CreateShardReaderRequest (..))
 import qualified HStream.Server.HStreamApi  as API
 import qualified HStream.Server.MetaData    as P
 import           HStream.Server.Types       (ServerContext (..),
+                                             ServerInternalOffset,
                                              ShardReader (..),
-                                             StreamReader (..), mkShardReader,
+                                             StreamReader (..), ToOffset (..),
+                                             getLogLSN, mkShardReader,
                                              mkStreamReader, transToStreamName)
 import qualified HStream.Store              as S
 
@@ -321,46 +322,6 @@ instance StreamSend API.ReadStreamResponse where
 instance StreamSend API.ReadSingleShardStreamResponse where
   convert = API.ReadSingleShardStreamResponse
 
-data Offset = OffsetEarliest
-            | OffsetLatest
-            | OffsetRecordId API.RecordId
-            | OffsetTimestamp API.TimestampOffset
- deriving (Show)
-
-class ToOffset g where
-  toOffset :: g -> Offset
-
-instance ToOffset API.ShardOffset where
-  toOffset offset = case fromJust . API.shardOffsetOffset $ offset of
-    API.ShardOffsetOffsetSpecialOffset (Enumerated (Right API.SpecialOffsetEARLIEST)) -> OffsetEarliest
-    API.ShardOffsetOffsetSpecialOffset (Enumerated (Right API.SpecialOffsetLATEST))   -> OffsetLatest
-    API.ShardOffsetOffsetRecordOffset rid                                             -> OffsetRecordId rid
-    API.ShardOffsetOffsetTimestampOffset timestamp                                    -> OffsetTimestamp timestamp
-    _                                                                                 -> throw $ HE.InvalidShardOffset "UnKnownShardOffset"
-
-instance ToOffset API.StreamOffset where
-  toOffset offset = case fromJust . API.streamOffsetOffset $ offset of
-    API.StreamOffsetOffsetSpecialOffset (Enumerated (Right API.SpecialOffsetEARLIEST)) -> OffsetEarliest
-    API.StreamOffsetOffsetSpecialOffset (Enumerated (Right API.SpecialOffsetLATEST))   -> OffsetLatest
-    API.StreamOffsetOffsetTimestampOffset timestamp                                    -> OffsetTimestamp timestamp
-    _                                                                                  -> throw $ HE.InvalidShardOffset "UnKnownShardOffset"
-
--- if the offset is timestampOffset, then return (LSN, Just timestamp)
--- , otherwise return (LSN, Nothing)
-getLogLSN :: S.LDClient -> S.C_LogID -> Offset -> IO (S.LSN, Maybe Int64)
-getLogLSN scLDClient logId offset =
-  case offset of
-    OffsetEarliest -> return (S.LSN_MIN, Nothing)
-    OffsetLatest -> do
-      startLSN <- (+ 1) <$> S.getTailLSN scLDClient logId
-      return (startLSN, Nothing)
-    OffsetRecordId API.RecordId{..} ->
-      return (recordIdBatchId, Nothing)
-    OffsetTimestamp API.TimestampOffset{..} -> do
-      let accuracy = if timestampOffsetStrictAccuracy then S.FindKeyStrict else S.FindKeyApproximate
-      startLSN <- S.findTime scLDClient logId timestampOffsetTimestampInMs accuracy
-      return (startLSN, Just timestampOffsetTimestampInMs)
-
 -- Removes data that is not in the specified timestamp range.
 -- If endTimestamp is set, also check if endTimestamp has been reached
 filterRecords :: Maybe Int64 -> Maybe Int64 -> [S.DataRecord ByteString] -> ([S.DataRecord ByteString], Bool)
@@ -396,10 +357,10 @@ filterRecords startTs endTs records =
 startReadingShard
   :: S.LDClient
   -> S.LDReader
-  -> T.Text        -- readerId, use for logging
+  -> T.Text                      -- readerId, use for logging
   -> S.C_LogID
-  -> Maybe Offset  -- startOffset
-  -> Maybe Offset  -- endOffset
+  -> Maybe ServerInternalOffset  -- startOffset
+  -> Maybe ServerInternalOffset  -- endOffset
   -> IO (Maybe Int64, Maybe Int64)
 startReadingShard scLDClient reader readerId rShardId rStart rEnd = do
   (startLSN, sTimestamp) <- maybe (return (S.LSN_MIN, Nothing)) (getLogLSN scLDClient rShardId) rStart

@@ -13,15 +13,14 @@ module HStream.Server.Core.Stream
   , appendStream
   , listShards
   , getTailRecordId
+  , trimShard
+  , trimStream
   ) where
 
-import           Control.Concurrent        (modifyMVar_)
 import           Control.Exception         (catch, throwIO)
-import           Control.Monad             (forM, unless, when)
+import           Control.Monad             (forM, forM_, unless, when)
 import qualified Data.ByteString           as BS
 import qualified Data.ByteString.Lazy      as BSL
-import           Data.Foldable             (foldl')
-import qualified Data.HashMap.Strict       as HM
 import qualified Data.Map.Strict           as M
 import           Data.Maybe                (fromMaybe)
 import qualified Data.Text                 as T
@@ -36,12 +35,11 @@ import qualified HStream.Exception         as HE
 import qualified HStream.Logger            as Log
 import qualified HStream.Server.HStreamApi as API
 import qualified HStream.Server.MetaData   as P
-import           HStream.Server.Shard      (Shard (..), createShard,
-                                            devideKeySpace,
-                                            mkShardWithDefaultId,
-                                            mkSharedShardMapWithShards)
+import           HStream.Server.Shard      (createShard, devideKeySpace,
+                                            mkShardWithDefaultId)
 import           HStream.Server.Types      (ServerContext (..),
-                                            transToStreamName)
+                                            ServerInternalOffset (..),
+                                            ToOffset (..), transToStreamName)
 import qualified HStream.Stats             as Stats
 import qualified HStream.Store             as S
 import           HStream.Utils
@@ -132,6 +130,23 @@ listStreamsWithPrefix
 listStreamsWithPrefix sc@ServerContext{..} API.ListStreamsWithPrefixRequest{..} = do
   streams <- filter (T.isPrefixOf listStreamsWithPrefixRequestPrefix . T.pack . S.showStreamName) <$> S.findStreams scLDClient S.StreamTypeStream
   V.forM (V.fromList streams) (getStreamInfo sc)
+
+trimStream
+  :: HasCallStack
+  => ServerContext
+  -> T.Text
+  -> API.StreamOffset
+  -> IO ()
+trimStream ServerContext{..} streamName trimPoint = do
+  streamExists <- S.doesStreamExist scLDClient streamId
+  unless streamExists $ do
+    Log.info $ "trimStream failed because stream " <> Log.build streamName <> " is not found."
+    throwIO $ HE.StreamNotFound $ "stream " <> T.pack (show streamName) <> " is not found."
+  shards <- M.elems <$> S.listStreamPartitions scLDClient streamId
+  forM_ shards $ \shardId -> do
+    getTrimLSN scLDClient shardId trimPoint >>= S.trim scLDClient shardId
+ where
+   streamId = transToStreamName streamName
 
 getStreamInfo :: ServerContext -> S.StreamId -> IO API.Stream
 getStreamInfo ServerContext{..} stream = do
@@ -246,3 +261,38 @@ listShards ServerContext{..} API.ListShardsRequest{..} = do
      endHashRangeKey   <- cBytesToText <$> M.lookup endKey mp
      shardEpoch        <- read . CB.unpack <$> M.lookup epoch mp
      return (startHashRangeKey, endHashRangeKey, shardEpoch)
+
+trimShard
+  :: HasCallStack
+  => ServerContext
+  -> Word64
+  -> API.ShardOffset
+  -> IO ()
+trimShard ServerContext{..} shardId trimPoint = do
+  shardExists <- S.logIdHasGroup scLDClient shardId
+  unless shardExists $ do
+    Log.info $ "trimShard failed because shard " <> Log.build shardId <> " is not exist."
+    throwIO $ HE.ShardNotFound $ "Shard with id " <> T.pack (show shardId) <> " is not found."
+  getTrimLSN scLDClient shardId trimPoint >>= S.trim scLDClient shardId
+
+--------------------------------------------------------------------------------
+-- helper
+
+getTrimLSN :: (ToOffset g, Show g) => S.LDClient -> Word64 -> g -> IO S.LSN
+getTrimLSN client shardId trimPoint = do
+  lsn <- getLSN client shardId (toOffset trimPoint)
+  Log.info $ "getTrimLSN for shard " <> Log.build (show shardId)
+          <> ", trimPoint: " <> Log.build (show trimPoint)
+          <> ", lsn: " <> Log.build (show lsn)
+  return lsn
+ where
+  getLSN :: S.LDClient -> S.C_LogID -> ServerInternalOffset -> IO S.LSN
+  getLSN scLDClient logId offset =
+    case offset of
+      OffsetEarliest -> return S.LSN_MIN
+      OffsetLatest -> S.getTailLSN scLDClient logId
+      OffsetRecordId API.RecordId{..} -> return recordIdBatchId
+      OffsetTimestamp API.TimestampOffset{..} -> do
+        let accuracy = if timestampOffsetStrictAccuracy then S.FindKeyStrict else S.FindKeyApproximate
+        S.findTime scLDClient logId timestampOffsetTimestampInMs accuracy
+

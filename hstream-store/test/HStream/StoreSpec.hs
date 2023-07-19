@@ -33,6 +33,8 @@ base = describe "Base" $ do
     S.trim client logid sn0
     readPayload' logid (Just sn0) `shouldReturn` []
     readPayload logid (Just sn1) `shouldReturn` "world"
+    -- trim lsn beyond tailLSN should fail
+    S.trim client logid (sn1 + 1) `shouldThrow` anyException
 
   loggroupAround' $ do
     it "trim last" $ \(_lgname, ranlogid) -> do
