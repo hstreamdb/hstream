@@ -31,6 +31,7 @@ module HStream.Store.Stream
   , doesStreamExist
   , listStreamPartitions
   , doesStreamPartitionExist
+  , doesStreamPartitionValExist
   , getStreamExtraAttrs
   , updateStreamExtraAttrs
     -- ** helpers
@@ -503,6 +504,22 @@ doesStreamPartitionExist client streamid m_key = do
     Left (_ :: E.NOTFOUND) -> return False
     Right _loggroup        -> return True
 #endif
+
+doesStreamPartitionValExist
+  :: HasCallStack
+  => FFI.LDClient
+  -> StreamId
+  -> FFI.C_LogID
+  -> IO Bool
+doesStreamPartitionValExist client streamid logid = do
+  r <- try $ do
+    dir_path <- getStreamDirPath streamid
+    keys <- LD.logDirLogsNames =<< LD.getLogDirectory client dir_path
+    logids <- forM keys $ getUnderlyingLogId client streamid . Just
+    pure $ logid `elem` logids
+  case r of
+    Left (_ :: E.NOTFOUND) -> return False
+    Right x                -> return x
 
 -------------------------------------------------------------------------------
 -- StreamAttrs
