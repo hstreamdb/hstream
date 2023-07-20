@@ -14,6 +14,11 @@ import           HStream.Processing.Error
 #endif
 import           HStream.SQL.AST
 import           HStream.SQL.Codegen.ColumnCatalog
+import           HStream.SQL.Rts
+-- basic operators. defined in AST in schemaless version
+#ifdef HStreamEnableSchema
+import           HStream.SQL.Binder
+#endif
 
 #ifdef HStreamUseV2Engine
 #define ERROR_TYPE DiffFlowError
@@ -25,6 +30,7 @@ import           HStream.SQL.Codegen.ColumnCatalog
 
 --------------------------------------------------------------------------------
 jsonOpOnValue :: JsonOp -> FlowValue -> FlowValue -> Either ERROR_TYPE FlowValue
+#ifndef HStreamEnableSchema
 jsonOpOnValue op v1 v2 = case v1 of
   FlowSubObject o1 -> case op of
     JOpArrow ->
@@ -72,3 +78,7 @@ jsonOpOnValue op v1 v2 = case v1 of
             _             -> let e = ERR $ "Operator #> or #>>: type mismatch on " <> T.pack (show value) <> " and " <> T.pack (show v)
                               in Left e
         _ -> Left . ERR $ "Value " <> T.pack (show v) <> " is not supported on operator #> or #>>"
+
+#else
+jsonOpOnValue = undefined
+#endif

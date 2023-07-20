@@ -1,7 +1,10 @@
 {-# LANGUAGE CPP #-}
 
+-- This module is only compiled when 'hstream_enable_schema' is disabled.
+-- If enabled, see HStream.SQL.Planner.* instead.
 module HStream.SQL.Planner.Pretty where
 
+#ifndef HStreamEnableSchema
 import qualified Data.List                               as L
 import qualified Data.Text                               as T
 import           Data.Text.Prettyprint.Doc
@@ -85,3 +88,4 @@ instance Show ScalarExpr where
 
 instance HasName ScalarExpr where
   getName = show
+#endif

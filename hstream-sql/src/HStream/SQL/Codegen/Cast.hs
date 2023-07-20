@@ -17,8 +17,14 @@ import           DiffFlow.Error
 import           HStream.Processing.Error
 #endif
 import           Data.Time.Format.ISO8601       (iso8601ParseM)
-import           HStream.SQL.AST
 import qualified Z.Data.CBytes                  as CB
+
+import           HStream.SQL.AST
+import           HStream.SQL.Rts
+-- basic operators. defined in AST in schemaless version
+#ifdef HStreamEnableSchema
+import           HStream.SQL.Binder
+#endif
 
 #ifdef HStreamUseV2Engine
 #define ERROR_TYPE DiffFlowError
@@ -29,6 +35,20 @@ import qualified Z.Data.CBytes                  as CB
 #endif
 
 --------------------------------------------------------------------------------
+#ifdef HStreamEnableSchema
+castOnValue :: BoundDataType -> FlowValue -> Either ERROR_TYPE FlowValue
+castOnValue BTypeInteger     v = castToInteger v
+castOnValue BTypeFloat       v = castToFloat v
+castOnValue BTypeBoolean     v = castToBoolean v
+castOnValue BTypeBytea       v = castToByte v
+castOnValue BTypeText        v = castToText v
+castOnValue BTypeDate        v = castToDate v
+castOnValue BTypeTime        v = castToTime v
+castOnValue BTypeTimestamp   v = castToTimestamp v
+castOnValue BTypeInterval    v = castToInterval v
+castOnValue BTypeJsonb       v = castToJson v
+castOnValue (BTypeArray t)   v = castToArray t v
+#else
 castOnValue :: RDataType -> FlowValue -> Either ERROR_TYPE FlowValue
 castOnValue RTypeInteger     v = castToInteger v
 castOnValue RTypeFloat       v = castToFloat v
@@ -41,7 +61,7 @@ castOnValue RTypeTimestamp   v = castToTimestamp v
 castOnValue RTypeInterval    v = castToInterval v
 castOnValue RTypeJsonb       v = castToJson v
 castOnValue (RTypeArray t)   v = castToArray t v
-
+#endif
 --------------------------------------------------------------------------------
 mkCanNotCastErr :: FlowValue -> T.Text -> Either ERROR_TYPE FlowValue
 mkCanNotCastErr rawVal toTyp = Left . ERR $
@@ -223,8 +243,16 @@ castToJson x =
     -- TODO: should we parse JSON here?
     _               -> mkErr
 
+#ifdef HStreamEnableSchema
+castToArray :: BoundDataType -> FlowValue -> Either ERROR_TYPE FlowValue
+castToArray typ (FlowArray vs) = do
+  vs' <- mapM (castOnValue typ) vs
+  Right $ FlowArray vs'
+castToArray typ v = mkCanNotCastErr v $ "Array@[" <> T.pack (show typ) <> "]"
+#else
 castToArray :: RDataType -> FlowValue -> Either ERROR_TYPE FlowValue
 castToArray typ (FlowArray vs) = do
   vs' <- mapM (castOnValue typ) vs
   Right $ FlowArray vs'
 castToArray typ v = mkCanNotCastErr v $ "Array@[" <> T.pack (show typ) <> "]"
+#endif

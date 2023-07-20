@@ -37,6 +37,7 @@ import qualified HStream.Server.HStore                 as HStore
 import qualified HStream.Server.MetaData               as P
 import           HStream.Server.Types
 import           HStream.SQL.AST
+import           HStream.SQL.Rts
 import qualified HStream.Store                         as S
 import           HStream.Utils                         (cBytesToText,
                                                         lazyByteStringToBytes,
@@ -52,13 +53,13 @@ import           HStream.Server.ConnectorTypes         (SinkConnector (..),
                                                         SourceConnectorWithoutCkp (..),
                                                         SourceRecord (..))
 import qualified HStream.Server.ConnectorTypes         as HCT
-import           HStream.SQL.Codegen
+import           HStream.SQL.Codegen.V2
 #else
 import           HStream.Processing.Connector
 import           HStream.Processing.Processor
 import           HStream.Processing.Processor.Snapshot
 import           HStream.Processing.Store
-import           HStream.SQL.Codegen.V1
+import           HStream.SQL
 #endif
 
 --------------------------------------------------------------------------------
@@ -373,6 +374,9 @@ runTaskWrapper ServerContext{..} sourceConnector sinkConnector taskBuilder query
               (scLDClient,logId)
               ()
               (\_ -> return ())
+#ifdef HStreamEnableSchema
+              getSchema
+#endif
               transKSrc
               transVSrc
               transKSnk
@@ -386,6 +390,9 @@ runTaskWrapper ServerContext{..} sourceConnector sinkConnector taskBuilder query
               (scLDClient,logId)
               db
               (doSnapshot (scLDClient,logId) db)
+#ifdef HStreamEnableSchema
+              getSchema
+#endif
               transKSrc
               transVSrc
               transKSnk

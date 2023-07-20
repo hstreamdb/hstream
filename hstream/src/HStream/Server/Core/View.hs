@@ -1,16 +1,9 @@
 {-# LANGUAGE CPP #-}
 
-module HStream.Server.Core.View
-  ( deleteView
-  , getView
-  , listViews
-  , executeViewQuery
-  , executeViewQueryWithNamespace
-  , createView
-  , createView'
-  , hstreamViewToView
-  ) where
+-- This module is only compiled when 'hstream_enable_schema' is disabled.
+module HStream.Server.Core.View where
 
+#ifndef HStreamEnableSchema
 import           Control.Applicative           (liftA2)
 import           Control.Concurrent.STM        (newTVarIO)
 import           Control.Exception             (throw, throwIO)
@@ -43,6 +36,7 @@ import           HStream.Server.MetaData.Types (ViewInfo (viewName))
 import           HStream.Server.Types
 import           HStream.SQL                   (flowObjectToJsonObject,
                                                 parseAndRefine)
+import           HStream.SQL.Rts
 import           HStream.ThirdParty.Protobuf   (Empty (..), Struct)
 import           HStream.Utils                 (TaskStatus (..),
                                                 jsonObjectToStruct,
@@ -50,7 +44,7 @@ import           HStream.Utils                 (TaskStatus (..),
 #ifdef HStreamUseV2Engine
 import           DiffFlow.Graph                (GraphBuilder)
 import           DiffFlow.Types                (DataChangeBatch)
-import           HStream.SQL.Codegen           (HStreamPlan (..), In (..),
+import           HStream.SQL.Codegen.V2        (HStreamPlan (..), In (..),
                                                 Out (..), Row,
                                                 TerminationSelection (..),
                                                 streamCodegen)
@@ -269,3 +263,4 @@ hstreamViewToView h P.ViewInfo{viewQuery = P.QueryInfo{..},..} = do
     , viewSql = querySql
     , viewQueryName = queryId
     }
+#endif

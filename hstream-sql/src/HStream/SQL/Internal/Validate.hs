@@ -603,18 +603,13 @@ instance Validate TableRef where
   validate r@(TableRefCrossJoin _ ref1 _ ref2 i) = validate ref1 >> validate ref2 >> validate i >> return r
   validate r@(TableRefNaturalJoin _ ref1 _ ref2 i) = validate ref1 >> validate ref2 >> validate i >> return r
   validate r@(TableRefJoinOn _ ref1 _joinType ref2 expr i) = validate ref1 >> validate ref2 >> validate expr >> validate i >> return r
-  validate r@(TableRefJoinUsing _ ref1 _joinType ref2 cols i) = do
+  validate r@(TableRefJoinUsing _ ref1 _joinType ref2 _cols i) = do
     _ <- validate ref1
     _ <- validate ref2
-    mapM_ (\col -> case col of
-              ColNameSimple{} -> return col
-              ColNameStream pos _ _ ->
-                Left $ buildSQLException ParseException pos "JOIN USING can only use column names without stream name"
-          ) cols
     _ <- validate i
     return r
   validate r@(TableRefIdent _ hIdent) = validate hIdent >> Right r
-  -- validate r@(TableRefSubquery _ select) = validate select >> return r
+  validate r@(TableRefSubquery _ select) = validate select >> return r
 #endif
 
 -- Where

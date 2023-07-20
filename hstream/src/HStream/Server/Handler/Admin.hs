@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP       #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs     #-}
 {-# OPTIONS_GHC -Werror=incomplete-patterns #-}
@@ -49,10 +50,15 @@ import           HStream.Server.Config            (MetaStoreAddr (..),
                                                    ServerOpts (ServerOpts, _metaStore))
 import           HStream.Server.Core.Common       (lookupResource,
                                                    mkAllocationKey)
-import qualified HStream.Server.Core.Query        as HC
 import qualified HStream.Server.Core.Stream       as HC
 import qualified HStream.Server.Core.Subscription as HC
+#ifdef HStreamEnableSchema
+import qualified HStream.Server.Core.QueryNew     as HC
+import qualified HStream.Server.Core.ViewNew      as HC
+#else
+import qualified HStream.Server.Core.Query        as HC
 import qualified HStream.Server.Core.View         as HC
+#endif
 import           HStream.Server.Exception         (catchDefaultEx,
                                                    defaultExceptionHandle)
 import qualified HStream.Server.HStreamApi        as API

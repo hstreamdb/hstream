@@ -6,7 +6,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StrictData          #-}
 
-module HStream.SQL.Codegen where
+module HStream.SQL.Codegen.V2 where
 
 #ifdef HStreamUseV2Engine
 import           Control.Concurrent

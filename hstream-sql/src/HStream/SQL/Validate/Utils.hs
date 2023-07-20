@@ -184,6 +184,7 @@ instance HavePos TableRef where
     TableRefHopping pos _ _ _       -> pos
     TableRefSliding pos _ _         -> pos
 #else
+    TableRefSubquery pos _          -> pos
     TableRefCrossJoin pos _ _ _ _   -> pos
     TableRefNaturalJoin pos _ _ _ _ -> pos
     TableRefJoinOn pos _ _ _ _ _    -> pos

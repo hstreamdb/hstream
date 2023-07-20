@@ -36,6 +36,11 @@ flag hstream_use_v2_engine
   default:     False
   description: Use v2 processing engine
 
+flag hstream_enable_schema
+  default:     False
+  description:
+    Save schema with streams and enable schema-related pipelines
+
 common shared-properties
   ghc-options:
     -Wall -Wcompat -Widentities -Wincomplete-record-updates
@@ -50,6 +55,9 @@ common shared-properties
   if flag(hstream_use_v2_engine)
     cpp-options: -DHStreamUseV2Engine
 
+  if flag(hstream_enable_schema)
+    cpp-options: -DHStreamEnableSchema
+
 library
   import:             shared-properties
   exposed-modules:
@@ -57,6 +65,7 @@ library
     HStream.Client.Execute
     HStream.Client.Internal
     HStream.Client.SQL
+    HStream.Client.SQLNew
     HStream.Client.Types
     HStream.Client.Utils
     HStream.Server.Config
@@ -78,10 +87,12 @@ library
 
   other-modules:
     HStream.Server.Core.Query
+    HStream.Server.Core.QueryNew
     HStream.Server.Core.ShardReader
     HStream.Server.Core.Stream
     HStream.Server.Core.Subscription
     HStream.Server.Core.View
+    HStream.Server.Core.ViewNew
     HStream.Server.Experimental.StreamV2
     HStream.Server.Handler.Admin
     HStream.Server.Handler.Cluster

@@ -7,6 +7,7 @@ module HStream.SQL.Codegen.BinOp
 
 import qualified Data.List                 as L
 import qualified Data.Text                 as T
+import           Data.Typeable
 #ifdef HStreamUseV2Engine
 import           DiffFlow.Error
 #else
@@ -14,8 +15,11 @@ import           HStream.Processing.Error
 #endif
 import           HStream.SQL.AST
 import           HStream.SQL.Codegen.Utils
-
-import           Data.Typeable
+import           HStream.SQL.Rts
+-- basic operators. defined in AST in schemaless version
+#ifdef HStreamEnableSchema
+import           HStream.SQL.Binder
+#endif
 
 #ifdef HStreamUseV2Engine
 #define ERROR_TYPE DiffFlowError

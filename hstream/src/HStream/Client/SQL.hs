@@ -9,8 +9,10 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
 
+-- This module is only compiled when 'hstream_enable_schema' is disabled.
 module HStream.Client.SQL where
 
+#ifndef HStreamEnableSchema
 import           Control.Concurrent               (forkFinally, myThreadId,
                                                    readMVar, threadDelay,
                                                    throwTo)
@@ -30,6 +32,8 @@ import qualified System.Console.Haskeline         as RL
 import qualified System.Console.Haskeline.History as RL
 import           Text.RawString.QQ                (r)
 
+import qualified Data.Aeson.Text                  as J
+import qualified Data.Text.Lazy                   as TL
 import           HStream.Client.Action            (createConnector,
                                                    createStream,
                                                    createStreamBySelect,
@@ -56,7 +60,8 @@ import           HStream.Server.HStreamApi        (CommandQuery (..),
                                                    HStreamApi (..),
                                                    hstreamApiClient)
 import qualified HStream.Server.HStreamApi        as API
-import           HStream.SQL                      (HStreamPlan (..),
+import           HStream.SQL                      (DropObject (..),
+                                                   HStreamPlan (..),
                                                    InsertType (..),
                                                    PauseObject (..),
                                                    RCreate (..), RSQL (..),
@@ -65,13 +70,6 @@ import           HStream.SQL                      (HStreamPlan (..),
                                                    TerminateObject (..),
                                                    hstreamCodegen,
                                                    parseAndRefine)
-#ifdef HStreamUseV2Engine
-import           HStream.SQL.Codegen              (DropObject (..))
-#else
-import           HStream.SQL.Codegen.V1           (DropObject (..))
-#endif
-import qualified Data.Aeson.Text                  as J
-import qualified Data.Text.Lazy                   as TL
 import           HStream.SQL.Exception            (SomeSQLException,
                                                    formatSomeSQLException,
                                                    isEOF)
@@ -258,3 +256,4 @@ runActionWithGrpc HStreamCliContext{..} action= do
   addr <- readMVar currentServer
   withGRPCClient (HStream.Utils.mkGRPCClientConfWithSSL addr sslConfig)
     (hstreamApiClient >=> action)
+#endif

@@ -1,5 +1,9 @@
+{-# LANGUAGE CPP #-}
+
+-- This module is only compiled when 'hstream_enable_schema' is disabled.
 module HStream.SQL.Internal.Check where
 
+#ifndef HStreamEnableSchema
 import           GHC.Stack             (HasCallStack)
 
 import           HStream.SQL.AST
@@ -37,3 +41,4 @@ checkGroupBySel _ RSelectProjectAll            = Left $ buildSQLException ParseE
 instance Check RSQL where
   check (RQSelect rselect) = check rselect
   check _                  = Right ()
+#endif

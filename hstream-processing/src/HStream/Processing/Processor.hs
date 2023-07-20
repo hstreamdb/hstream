@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                 #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE NoImplicitPrelude   #-}
@@ -142,12 +143,32 @@ runTask
   -> h1
   -> h2
   -> (Task -> IO ())
+#ifdef HStreamEnableSchema
+  -> (T.Text -> IO (Maybe schema))
+  -> (schema -> BL.ByteString -> Maybe BL.ByteString) -- FIXME: schema actually only belongs to value
+  -> (schema -> BL.ByteString -> Maybe BL.ByteString)
+#else
   -> (T.Text -> BL.ByteString -> Maybe BL.ByteString)
   -> (T.Text -> BL.ByteString -> Maybe BL.ByteString)
+#endif
   -> (BL.ByteString -> Maybe BL.ByteString)
   -> (BL.ByteString -> Maybe BL.ByteString)
   -> IO ()
-runTask statsHolder SourceConnectorWithoutCkp {..} sinkConnector taskBuilder@TaskTopologyConfig {..} qid changeLogger snapshotter doSnapshot transKSrc transVSrc transKSnk transVSnk = do
+runTask statsHolder
+        SourceConnectorWithoutCkp {..}
+        sinkConnector
+        taskBuilder@TaskTopologyConfig {..}
+        qid
+        changeLogger
+        snapshotter
+        doSnapshot
+#ifdef HStreamEnableSchema
+        getSchema
+#endif
+        transKSrc
+        transVSrc
+        transKSnk
+        transVSnk = do
   -- build and add internalSinkProcessor
   let sinkProcessors =
         HM.map
@@ -207,8 +228,13 @@ runTask statsHolder SourceConnectorWithoutCkp {..} sinkConnector taskBuilder@Tas
               False -> return ()  )
   where
     f :: TChan ([SourceRecord], MVar ()) -> TVar Bool -> T.Text -> IO ()
-    f chan consumerClosed sourceStreamName =
+    f chan consumerClosed sourceStreamName = do
+#ifdef HStreamEnableSchema
+      schema <- getSchema sourceStreamName <&> fromJust
+      withReadRecordsWithoutCkp sourceStreamName (transKSrc schema) (transVSrc schema) consumerClosed $ \sourceRecords -> do
+#else
       withReadRecordsWithoutCkp sourceStreamName (transKSrc sourceStreamName) (transVSrc sourceStreamName) consumerClosed $ \sourceRecords -> do
+#endif
         mvar <- RIO.newEmptyMVar
         let callback  = do
               query_stat_add_total_input_records statsHolder (textToCBytes qid) (fromIntegral . length $ sourceRecords)

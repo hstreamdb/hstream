@@ -1,4 +1,5 @@
 {-# LANGUAGE BlockArguments      #-}
+{-# LANGUAGE CPP                 #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE OverloadedLists     #-}
@@ -44,7 +45,11 @@ import           Network.GRPC.HighLevel.Generated
 import qualified HStream.Exception                as HE
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Core.Common       (lookupResource)
+#ifdef HStreamEnableSchema
+import qualified HStream.Server.Core.QueryNew     as Core
+#else
 import qualified HStream.Server.Core.Query        as Core
+#endif
 import           HStream.Server.Exception         (defaultExHandlers,
                                                    defaultHandlers)
 import qualified HStream.Server.HStreamApi        as API

@@ -25,13 +25,7 @@ import           HStream.Client.Types             (HStreamCliContext,
                                                    Resource (..))
 import           HStream.Client.Utils
 import qualified HStream.Server.HStreamApi        as API
-#ifdef HStreamUseV2Engine
-import           HStream.SQL.Codegen              (DropObject (..),
-                                                   TerminationSelection (..))
-#else
-import           HStream.SQL.Codegen.V1           (DropObject (..),
-                                                   TerminateObject (..))
-#endif
+import           HStream.SQL                      (DropObject (..))
 import qualified HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils                    (ResourceType (..),
                                                    decompressBatchedRecord,

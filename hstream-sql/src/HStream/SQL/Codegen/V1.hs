@@ -14,8 +14,10 @@
 {-# LANGUAGE StrictData            #-}
 {-# LANGUAGE TypeFamilies          #-}
 
+-- This module is only compiled when 'hstream_enable_schema' is disabled.
 module HStream.SQL.Codegen.V1 where
 
+#ifndef HStreamEnableSchema
 #ifndef HStreamUseV2Engine
 import           Data.Aeson                                      (Value)
 import qualified Data.Aeson                                      as Aeson
@@ -68,9 +70,11 @@ import           HStream.SQL.Codegen.Utils
 import           HStream.SQL.Codegen.V1.Boilerplate
 import           HStream.SQL.Exception                           (SomeSQLException (..),
                                                                   throwSQLException)
+import           HStream.SQL.Extra
 import           HStream.SQL.Parse                               (parseAndRefine)
 import           HStream.SQL.Planner
 import qualified HStream.SQL.Planner                             as Planner
+import           HStream.SQL.Rts
 import           HStream.Utils                                   (jsonObjectToStruct,
                                                                   newRandomText)
 import qualified HStream.Utils.Aeson                             as HsAeson
@@ -531,4 +535,5 @@ elabRelationExpr _taskName sinkStream' relationExpr = do
           builder <- HS.to conf s
           return (builder, srcs, sink, (joins,mats))
         SinkConfigType _ _ -> throwSQLException CodegenException Nothing "SinkConfig does not match"
+#endif
 #endif

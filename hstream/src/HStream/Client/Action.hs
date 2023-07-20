@@ -67,16 +67,8 @@ import           Proto3.Suite.Class               (def)
 import           HStream.Client.Types             (Resource (..))
 import           HStream.Client.Utils
 import qualified HStream.Server.HStreamApi        as API
-import           HStream.SQL.AST                  (StreamName)
-#ifdef HStreamUseV2Engine
-import           HStream.SQL.Codegen              (DropObject (..),
-                                                   InsertType (..),
-                                                   TerminationSelection (..))
-#else
-import           HStream.SQL.Codegen.V1           (DropObject (..),
-                                                   InsertType (..),
-                                                   TerminateObject (..))
-#endif
+import           HStream.SQL                      (DropObject (..),
+                                                   InsertType (..), StreamName)
 import           HStream.ThirdParty.Protobuf      (Empty (..))
 import           HStream.Utils
 
