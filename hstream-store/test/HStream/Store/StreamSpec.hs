@@ -58,6 +58,9 @@ base = describe "BaseSpec" $ do
 
     log_id <- S.createStreamPartition client stream1 key Map.empty
     S.doesStreamPartitionExist client stream1 key `shouldReturn` True
+    log_id `shouldNotBe` 1234
+    S.doesStreamPartitionValExist client stream1 1234 `shouldReturn` False
+    S.doesStreamPartitionValExist client stream1 log_id `shouldReturn` True
     S.listStreamPartitions client stream1 >>= (`shouldSatisfy` M.member keyString)
 
     S.renameStream' client stream1 streamName2
