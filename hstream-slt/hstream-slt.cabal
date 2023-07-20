@@ -1,0 +1,40 @@
+cabal-version: 3.4
+name:          hstream-slt
+version:       0.1.0.0
+author:        Alissa Tung
+maintainer:    alissa-tung@outlook.com
+build-type:    Simple
+
+common warnings
+  ghc-options: -Wall -Wextra
+
+executable hstream-slt
+  import:             warnings
+  main-is:            Main.hs
+  other-modules:
+    HStream.Slt.Executor
+    HStream.Slt.Executor.HStream
+    HStream.Slt.Executor.SQLite
+    HStream.Slt.Format
+    HStream.Slt.Plan
+    HStream.Slt.Plan.RandomNoTablePlan
+    HStream.Slt.Utils
+
+  default-extensions:
+    LambdaCase
+    OverloadedStrings
+
+  build-depends:
+    , aeson
+    , base
+    , bytestring
+    , megaparsec
+    , mtl
+    , optparse-applicative
+    , QuickCheck
+    , sqlite-simple
+    , text
+    , time
+
+  hs-source-dirs:     app
+  default-language:   GHC2021

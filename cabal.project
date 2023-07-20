@@ -23,6 +23,7 @@ packages:
   hstream-diffflow
   hstream-processing
   hstream-sql
+  hstream-slt
   hstream-io
   hstream-gossip
   hstream-admin/server/hstream-admin-server.cabal
