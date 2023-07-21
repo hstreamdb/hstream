@@ -116,7 +116,7 @@ readShardStreamHandler sc (ServerWriterRequest _meta req streamSend) =
   defaultServerStreamExceptionHandle $ do
     Log.debug $ "Receive read shard stream Request: " <> Log.build (show req)
     C.readShardStream sc req streamWrite
-    return $ ServerWriterResponse mempty StatusUnknown "should not reach here"
+    returnServerStreamingResp StatusOk ""
   where
     streamWrite x = first show <$> streamSend x
 
@@ -135,7 +135,7 @@ readStreamHandler sc (ServerWriterRequest _meta req streamSend) =
   defaultServerStreamExceptionHandle $ do
     Log.debug $ "Receive read shard stream Request: " <> Log.build (show req)
     C.readStream sc req streamWrite
-    return $ ServerWriterResponse mempty StatusUnknown "should not reach here"
+    returnServerStreamingResp StatusOk ""
   where
     streamWrite x = first show <$> streamSend x
 
@@ -154,7 +154,7 @@ readSingleShardStreamHandler sc (ServerWriterRequest _meta req streamSend) =
   defaultServerStreamExceptionHandle $ do
     Log.debug $ "Receive read single shard stream Request: " <> Log.build (show req)
     C.readSingleShardStream sc req streamWrite
-    return $ ServerWriterResponse mempty StatusUnknown "should not reach here"
+    returnServerStreamingResp StatusOk ""
   where
     streamWrite x = first show <$> streamSend x
 
