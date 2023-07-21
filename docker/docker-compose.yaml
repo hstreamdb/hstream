@@ -8,7 +8,9 @@ services:
   hserver1: &hserver
     image: hstreamdb/hstream
     depends_on:
-      - zookeeper
+      - zoo1
+      - zoo2
+      - zoo3
       - hstore1
       - hstore2
       - hstore3
@@ -27,14 +29,14 @@ services:
       - "-c"
       - |
         set -e
-        /usr/local/script/wait-for-storage.sh hstore-admin-server 6440 zookeeper 2181 600 \
+        /usr/local/script/wait-for-storage.sh hstore-admin-server 6440 zoo1 2181 600 \
         /usr/local/bin/hstream-server \
         --bind-address 0.0.0.0 --port 6570 \
         --internal-port 6571 \
         --server-id 100 \
         --seed-nodes "hserver1:6571,hserver2:6571,hserver3:6571" \
         --advertised-address $$(hostname -I | awk '{print $$1}') \
-        --metastore-uri zk://zookeeper:2181 \
+        --metastore-uri zk://zoo1:2181,zoo2:2181,zoo3:2181 \
         --store-config /etc/logdevice/logdevice.json \
         --store-admin-host hstore-admin-server --store-admin-port 6440 \
         --io-tasks-path /tmp/io/tasks \
@@ -47,14 +49,14 @@ services:
       - "-c"
       - |
         set -e
-        /usr/local/script/wait-for-storage.sh hstore-admin-server 6440 zookeeper 2181 600 \
+        /usr/local/script/wait-for-storage.sh hstore-admin-server 6440 zoo1 2181 600 \
         /usr/local/bin/hstream-server \
         --bind-address 0.0.0.0 --port 6570 \
         --internal-port 6571 \
         --server-id 101 \
         --seed-nodes "hserver1:6571,hserver2:6571,hserver3:6571" \
         --advertised-address $$(hostname -I | awk '{print $$1}') \
-        --metastore-uri zk://zookeeper:2181 \
+        --metastore-uri zk://zoo1:2181,zoo2:2181,zoo3:2181 \
         --store-config /etc/logdevice/logdevice.json \
         --store-admin-host hstore-admin-server --store-admin-port 6440 \
         --io-tasks-path /tmp/io/tasks \
@@ -67,14 +69,14 @@ services:
       - "-c"
       - |
         set -e
-        /usr/local/script/wait-for-storage.sh hstore-admin-server 6440 zookeeper 2181 600 \
+        /usr/local/script/wait-for-storage.sh hstore-admin-server 6440 zoo1 2181 600 \
         /usr/local/bin/hstream-server \
         --bind-address 0.0.0.0 --port 6570 \
         --internal-port 6571 \
         --server-id 102 \
         --seed-nodes "hserver1:6571,hserver2:6571,hserver3:6571" \
         --advertised-address $$(hostname -I | awk '{print $$1}') \
-        --metastore-uri zk://zookeeper:2181 \
+        --metastore-uri zk://zoo1:2181,zoo2:2181,zoo3:2181 \
         --store-config /etc/logdevice/logdevice.json \
         --store-admin-host hstore-admin-server --store-admin-port 6440 \
         --io-tasks-path /tmp/io/tasks \
@@ -108,10 +110,12 @@ services:
   hstore-admin-server:
     image: hstreamdb/hstream
     depends_on:
-      - zookeeper
+      - zoo1
+      - zoo2
+      - zoo3
     networks:
       hstream-local-cluster:
-        ipv4_address: 172.16.156.20
+        ipv4_address: 172.16.157.20
     volumes:
       - ./logdevice.json:/etc/logdevice/logdevice.json
     command:
@@ -125,11 +129,13 @@ services:
   hstore1:
     image: hstreamdb/hstream
     depends_on:
-      - zookeeper
+      - zoo1
+      - zoo2
+      - zoo3
       - hstore-admin-server
     networks:
       hstream-local-cluster:
-        ipv4_address: 172.16.156.21
+        ipv4_address: 172.16.157.21
     volumes:
       - data_store_1:/data/logdevice
       - ./logdevice.json:/etc/logdevice/logdevice.json
@@ -139,8 +145,8 @@ services:
       - |
         echo 1 | tee /data/logdevice/NSHARDS
         timeout=60
-        until (echo -n > /dev/tcp/zookeeper/2181) >/dev/null 2>&1; do
-            >&2 echo "Waiting for zookeeper zookeeper:2181..."
+        until (echo -n > /dev/tcp/zoo1/2181) >/dev/null 2>&1; do
+            >&2 echo "Waiting for zookeeper zoo1:2181..."
             sleep 1
             timeout=$$((timeout - 1))
             [ $$timeout -le 0 ] && echo "Timeout!" && exit 1;
@@ -153,11 +159,13 @@ services:
   hstore2:
     image: hstreamdb/hstream
     depends_on:
-      - zookeeper
+      - zoo1
+      - zoo2
+      - zoo3
       - hstore-admin-server
     networks:
       hstream-local-cluster:
-        ipv4_address: 172.16.156.22
+        ipv4_address: 172.16.157.22
     volumes:
       - data_store_2:/data/logdevice
       - ./logdevice.json:/etc/logdevice/logdevice.json
@@ -167,8 +175,8 @@ services:
       - |
         echo 1 | tee /data/logdevice/NSHARDS
         timeout=60
-        until (echo -n > /dev/tcp/zookeeper/2181) >/dev/null 2>&1; do
-            >&2 echo "Waiting for zookeeper zookeeper:2181..."
+        until (echo -n > /dev/tcp/zoo1/2181) >/dev/null 2>&1; do
+            >&2 echo "Waiting for zookeeper zoo1:2181..."
             sleep 1
             timeout=$$((timeout - 1))
             [ $$timeout -le 0 ] && echo "Timeout!" && exit 1;
@@ -181,11 +189,13 @@ services:
   hstore3:
     image: hstreamdb/hstream
     depends_on:
-      - zookeeper
+      - zoo1
+      - zoo2
+      - zoo3
       - hstore-admin-server
     networks:
       hstream-local-cluster:
-        ipv4_address: 172.16.156.23
+        ipv4_address: 172.16.157.23
     volumes:
       - data_store_3:/data/logdevice
       - ./logdevice.json:/etc/logdevice/logdevice.json
@@ -195,8 +205,8 @@ services:
       - |
         echo 1 | tee /data/logdevice/NSHARDS
         timeout=60
-        until (echo -n > /dev/tcp/zookeeper/2181) >/dev/null 2>&1; do
-            >&2 echo "Waiting for zookeeper zookeeper:2181..."
+        until (echo -n > /dev/tcp/zoo1/2181) >/dev/null 2>&1; do
+            >&2 echo "Waiting for zookeeper zoo1:2181..."
             sleep 1
             timeout=$$((timeout - 1))
             [ $$timeout -le 0 ] && echo "Timeout!" && exit 1;
@@ -234,23 +244,42 @@ services:
         hadmin store --host hstore-admin-server \
           nodes-config bootstrap --metadata-replicate-across node:3
 
-  zookeeper:
+  zoo1:
     image: zookeeper
-    # expose:
-    #   - 2181
+    # restart: always
     networks:
-      hstream-local-cluster:
-        ipv4_address: 172.16.156.10
-    volumes:
-      - data_zk_data:/data
-      - data_zk_datalog:/datalog
+      - hstream-local-cluster
+    hostname: zoo1
+    environment:
+      ZOO_MY_ID: 1
+      ZOO_SERVERS: server.1=zoo1:2888:3888;2181 server.2=zoo2:2888:3888;2181 server.3=zoo3:2888:3888;2181
+
+  zoo2:
+    image: zookeeper
+    # restart: always
+    networks:
+      - hstream-local-cluster
+    hostname: zoo2
+    environment:
+      ZOO_MY_ID: 2
+      ZOO_SERVERS: server.1=zoo1:2888:3888;2181 server.2=zoo2:2888:3888;2181 server.3=zoo3:2888:3888;2181
+
+  zoo3:
+    image: zookeeper
+    # restart: always
+    networks:
+      - hstream-local-cluster
+    hostname: zoo3
+    environment:
+      ZOO_MY_ID: 3
+      ZOO_SERVERS: server.1=zoo1:2888:3888;2181 server.2=zoo2:2888:3888;2181 server.3=zoo3:2888:3888;2181
 
 networks:
   hstream-local-cluster:
     ipam:
       driver: default
       config:
-        - subnet: "172.16.156.0/24"
+        - subnet: "172.16.157.0/24"
 
 volumes:
   data_store_1:
