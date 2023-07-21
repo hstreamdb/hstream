@@ -16,11 +16,12 @@ data SelectNoTableItem
   deriving (Show)
 
 pMetaCol :: Parser T.Text
-pMetaCol = (T.pack . (: []) <$> P.satisfy (== '$')) <> pColIdent
+pMetaCol = P.satisfy (== '$') *> pColIdent
 
 pFnApp :: Parser (T.Text, [T.Text])
 pFnApp = do
   fn <- lexeme pColIdent
+  -- FIXME: nested
   args <- P.between (symbol "(") (symbol ")") (pArgList <|> pure [])
   pure (fn, args)
   where

@@ -123,20 +123,23 @@ randKvByColInfo info =
     <$> forM
       info
       ( \(k, v) -> do
-          x <- case v of
-            INTEGER   -> h VINTEGER
-            FLOAT     -> h VFLOAT
-            BOOLEAN   -> h VBOOLEAN
-            BYTEA     -> h VBYTEA
-            STRING    -> h VSTRING
-            DATE      -> h VDATE
-            TIME      -> h VTIME
-            TIMESTAMP -> h VTIMESTAMP
-            INTERVAL  -> h VINTERVAL
-            JSONB     -> error "currently unsupported"
-            NULL      -> pure VNULL
+          x <- randSqlDataValue v
           pure (A.fromText k, x)
       )
+
+randSqlDataValue :: SqlDataType -> IO SqlDataValue
+randSqlDataValue = \case
+  INTEGER   -> h VINTEGER
+  FLOAT     -> h VFLOAT
+  BOOLEAN   -> h VBOOLEAN
+  BYTEA     -> h VBYTEA
+  STRING    -> h VSTRING
+  DATE      -> h VDATE
+  TIME      -> h VTIME
+  TIMESTAMP -> h VTIMESTAMP
+  INTERVAL  -> h VINTERVAL
+  JSONB     -> error "currently unsupported"
+  NULL      -> pure VNULL
   where
     h :: Arbitrary a => (a -> SqlDataValue) -> IO SqlDataValue
     h = (<$> generate arbitrary)
