@@ -296,17 +296,18 @@ instance ToOffset API.StreamOffset where
     API.StreamOffsetOffsetSpecialOffset (PB.Enumerated (Right API.SpecialOffsetEARLIEST)) -> OffsetEarliest
     API.StreamOffsetOffsetSpecialOffset (PB.Enumerated (Right API.SpecialOffsetLATEST))   -> OffsetLatest
     API.StreamOffsetOffsetTimestampOffset timestamp                                       -> OffsetTimestamp timestamp
-    _                                                                                     -> throw $ HE.InvalidShardOffset "UnKnownShardOffset"
+    _                                                                                     -> throw $ HE.InvalidShardOffset "InvalidShardOffset"
 
 -- if the offset is timestampOffset, then return (LSN, Just timestamp)
 -- , otherwise return (LSN, Nothing)
-getLogLSN :: S.LDClient -> S.C_LogID -> ServerInternalOffset -> IO (S.LSN, Maybe Int64)
-getLogLSN scLDClient logId offset =
+getLogLSN :: S.LDClient -> S.C_LogID -> Bool -> ServerInternalOffset -> IO (S.LSN, Maybe Int64)
+getLogLSN scLDClient logId isEndOffset offset =
   case offset of
     OffsetEarliest -> return (S.LSN_MIN, Nothing)
     OffsetLatest -> do
-      startLSN <- (+ 1) <$> S.getTailLSN scLDClient logId
-      return (startLSN, Nothing)
+      startLSN <- S.getTailLSN scLDClient logId
+      if isEndOffset then return (startLSN, Nothing)
+                     else return (startLSN + 1, Nothing)
     OffsetRecordId API.RecordId{..} ->
       return (recordIdBatchId, Nothing)
     OffsetTimestamp API.TimestampOffset{..} -> do
