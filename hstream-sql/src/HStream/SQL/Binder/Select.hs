@@ -11,6 +11,7 @@
 module HStream.SQL.Binder.Select where
 
 import           Control.Applicative          ((<|>))
+import           Control.Monad.Reader
 import           Control.Monad.State
 import qualified Data.Aeson                   as Aeson
 import qualified Data.Bimap                   as Bimap
@@ -131,6 +132,7 @@ instance Bind TableRef where
 #else
   bind' (TableRefIdent _ hIdent) = do
     streamName <- bind hIdent
+    getSchema <- ask
     liftIO (getSchema streamName) >>= \case
       Nothing     -> error $ "stream " <> T.unpack streamName <> " not exist"
       Just schema -> do

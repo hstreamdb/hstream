@@ -9,27 +9,28 @@
 
 module HStream.SQL.PlannerNew.Types where
 
-import           Control.Applicative ((<|>))
+import           Control.Applicative  ((<|>))
+import           Control.Monad.Reader
 import           Control.Monad.State
-import qualified Data.Aeson          as Aeson
-import qualified Data.Bimap          as Bimap
-import           Data.Function       (on)
+import qualified Data.Aeson           as Aeson
+import qualified Data.Bimap           as Bimap
+import           Data.Function        (on)
 import           Data.Hashable
-import qualified Data.HashMap.Strict as HM
-import           Data.Int            (Int64)
-import           Data.IntMap         (IntMap)
-import qualified Data.IntMap         as IntMap
-import           Data.Kind           (Type)
-import qualified Data.List           as L
-import           Data.Maybe          (fromMaybe)
-import           Data.Set            (Set)
-import qualified Data.Set            as Set
-import           Data.Text           (Text)
-import qualified Data.Text           as T
-import           GHC.Generics        (Generic)
+import qualified Data.HashMap.Strict  as HM
+import           Data.Int             (Int64)
+import           Data.IntMap          (IntMap)
+import qualified Data.IntMap          as IntMap
+import           Data.Kind            (Type)
+import qualified Data.List            as L
+import           Data.Maybe           (fromMaybe)
+import           Data.Set             (Set)
+import qualified Data.Set             as Set
+import           Data.Text            (Text)
+import qualified Data.Text            as T
+import           GHC.Generics         (Generic)
 import           GHC.Stack
 
-import           HStream.SQL.Binder  hiding (lookupColumn, (<::>))
+import           HStream.SQL.Binder   hiding (lookupColumn, (<::>))
 
 type AggregateExpr = Aggregate ScalarExpr
 
@@ -150,5 +151,8 @@ lookupColumnName (PlanContext m) k =
 ----------------------------------------
 type family PlannedType a :: Type
 class Plan a where
-  plan  :: (HasCallStack, MonadIO m) => a
-        -> StateT PlanContext m (PlannedType a)
+  plan  :: ( HasCallStack
+           , MonadIO m
+           , MonadReader (Text -> IO (Maybe Schema)) m
+           , MonadState PlanContext m
+           ) => a -> m (PlannedType a)

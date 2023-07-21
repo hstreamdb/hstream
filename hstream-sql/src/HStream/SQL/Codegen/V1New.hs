@@ -116,7 +116,7 @@ data ResumeObject
 type Persist = ([HS.StreamJoined K V K V Ser], [HS.Materialized K V V])
 
 data HStreamPlan
-  = CreatePlan          StreamName BoundStreamOptions
+  = CreatePlan          StreamName Schema BoundStreamOptions
   | CreateConnectorPlan ConnectorType ConnectorName Text Bool (HM.HashMap Text Value)
   | InsertPlan          StreamName InsertType ByteString
   | DropPlan            CheckIfExist DropObject
@@ -132,34 +132,34 @@ data HStreamPlan
   | InsertBySelectPlan  [StreamName] StreamName TaskBuilder Persist
 
 --------------------------------------------------------------------------------
-streamCodegen :: HasCallStack => Text -> IO HStreamPlan
-streamCodegen input = parseAndBind input >>= hstreamCodegen
+streamCodegen :: HasCallStack => Text -> (Text -> IO (Maybe Schema)) -> IO HStreamPlan
+streamCodegen input getSchema = parseAndBind input getSchema >>= (flip hstreamCodegen) getSchema
 
-hstreamCodegen :: HasCallStack => BoundSQL -> IO HStreamPlan
-hstreamCodegen = \case
+hstreamCodegen :: HasCallStack => BoundSQL -> (Text -> IO (Maybe Schema)) -> IO HStreamPlan
+hstreamCodegen bsql getSchema = case bsql of
   BoundQSelect select -> do
     tName <- genTaskName
-    (builder, srcs, sink, persist) <- elabRSelect tName Nothing select
+    (builder, srcs, sink, persist) <- elabRSelect tName Nothing select getSchema
     return $ SelectPlan srcs sink (HS.build builder) persist
   BoundQPushSelect select -> do
     tName <- genTaskName
-    (builder, srcs, sink, persist) <- elabRSelect tName Nothing select
+    (builder, srcs, sink, persist) <- elabRSelect tName Nothing select getSchema
     return $ PushSelectPlan srcs sink (HS.build builder) persist
   BoundQCreate (BoundCreateAs stream select rOptions) -> do
     tName <- genTaskName
-    (builder, srcs, sink, persist) <- elabRSelect tName (Just stream) select
+    (builder, srcs, sink, persist) <- elabRSelect tName (Just stream) select getSchema
     return $ CreateBySelectPlan srcs sink (HS.build builder) rOptions persist
 {-
   BoundQInsert (BoundInsertSel stream select) -> do
     tName <- genTaskName
-    (builder, srcs, sink, persist) <- elabRSelect tName (Just stream) select
+    (builder, srcs, sink, persist) <- elabRSelect tName (Just stream) select getSchema
     pure $ InsertBySelectPlan srcs sink (HS.build builder) persist
 -}
   BoundQCreate (BoundCreateView view select) -> do
     tName <- genTaskName
-    (builder, srcs, sink, persist) <- elabRSelect tName (Just view) select
+    (builder, srcs, sink, persist) <- elabRSelect tName (Just view) select getSchema
     return $ CreateViewPlan srcs sink view (HS.build builder) persist
-  BoundQCreate (BoundCreate stream rOptions) -> return $ CreatePlan stream rOptions
+  BoundQCreate (BoundCreate stream schema rOptions) -> return $ CreatePlan stream schema rOptions
   BoundQCreate (BoundCreateConnector cType cName cTarget ifNotExist (BoundConnectorOptions cOptions)) ->
     return $ CreateConnectorPlan cType cName cTarget ifNotExist cOptions
   BoundQInsert (BoundInsertKVs stream tuples)   -> do
@@ -186,7 +186,7 @@ hstreamCodegen = \case
   BoundQDrop (BoundDropIf BoundDropQuery x)      -> return $ DropPlan True (DQuery x)
   BoundQTerminate (BoundTerminateQuery qid)  -> return $ TerminatePlan (TQuery qid)
   BoundQExplain rselect                  -> do
-    relationExpr <- planIO rselect
+    relationExpr <- planIO rselect getSchema
     return $ ExplainPlan (PP.renderStrict $ PP.layoutPretty PP.defaultLayoutOptions (PP.pretty relationExpr))
   BoundQPause  (BoundPauseConnector name)    -> return $ PausePlan (PauseObjectConnector name)
   BoundQPause  (BoundPauseQuery name)        -> return $ PausePlan (PauseObjectQuery name)
@@ -437,9 +437,10 @@ genTaskName = pack . show <$> genUnique
 elabRSelect :: Text
             -> Maybe StreamName
             -> BoundSelect
+            -> (Text -> IO (Maybe Schema))
             -> IO (StreamBuilder, [StreamName], StreamName, Persist)
-elabRSelect taskName sinkStream' select = do
-  relation <- evalStateT (plan select) defaultPlanContext
+elabRSelect taskName sinkStream' select getSchema = do
+  relation <- evalStateT (runReaderT (plan select) getSchema) defaultPlanContext
   elabRelationExpr taskName sinkStream' relation
 
 elabRelationExpr :: Text

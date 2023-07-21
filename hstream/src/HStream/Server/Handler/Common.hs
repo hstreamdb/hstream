@@ -375,7 +375,7 @@ runTaskWrapper ServerContext{..} sourceConnector sinkConnector taskBuilder query
               ()
               (\_ -> return ())
 #ifdef HStreamEnableSchema
-              getSchema
+              P.getSchema
 #endif
               transKSrc
               transVSrc
@@ -391,7 +391,7 @@ runTaskWrapper ServerContext{..} sourceConnector sinkConnector taskBuilder query
               db
               (doSnapshot (scLDClient,logId) db)
 #ifdef HStreamEnableSchema
-              getSchema
+              P.getSchema
 #endif
               transKSrc
               transVSrc

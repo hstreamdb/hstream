@@ -6,6 +6,7 @@ module HStream.SQL.ParseNew where
 
 #ifdef HStreamEnableSchema
 import           Control.Exception             (throw)
+import           Control.Monad.Reader
 import           Control.Monad.State
 import           Data.Functor                  ((<&>))
 import           Data.Text                     (Text)
@@ -30,9 +31,9 @@ parse input = do
         Left exception -> throw exception
         Right vsql     -> return vsql
 
-parseAndBind :: HasCallStack => Text -> IO BoundSQL
-parseAndBind input = do
+parseAndBind :: HasCallStack => Text -> (Text -> IO (Maybe Schema)) -> IO BoundSQL
+parseAndBind input getSchema = do
   sql <- parse input
-  boundSql <- evalStateT (bind sql) defaultBindContext
+  boundSql <- evalStateT (runReaderT (bind sql) getSchema) defaultBindContext
   return boundSql
 #endif

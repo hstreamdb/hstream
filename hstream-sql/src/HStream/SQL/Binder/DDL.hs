@@ -13,6 +13,7 @@ import           Control.Monad.State
 import qualified Data.Aeson                   as Aeson
 import           Data.Default
 import qualified Data.HashMap.Strict          as HM
+import qualified Data.IntMap                  as IntMap
 import qualified Data.List                    as L
 import           Data.Text                    (Text)
 import qualified Data.Text                    as Text
@@ -26,6 +27,29 @@ import           HStream.SQL.Binder.ValueExpr
 import           HStream.SQL.Extra
 
 -- Create
+type instance BoundType (HIdent, [SchemaColumn]) = Schema
+instance Bind (HIdent, [SchemaColumn]) where
+  bind (hIdent, cols) = do
+    sName <- bind hIdent
+    tups <-
+      mapM (\(i, (DSchemaColumn _ colIdent typ)) -> do
+             colName <- bind colIdent
+             colType <- bind typ
+             let cata = ColumnCatalog
+                      { columnId         = i
+                      , columnName       = colName
+                      , columnStreamId   = 0
+                      , columnStream     = sName
+                      , columnType       = colType
+                      , columnIsNullable = True
+                      , columnIsHidden   = False
+                      }
+             return (i, cata)
+         ) ([0..] `zip` cols)
+    return $ Schema { schemaOwner   = sName
+                    , schemaColumns = IntMap.fromList tups
+                    }
+
 data BoundStreamOptions = BoundStreamOptions
   { bRepFactor       :: Int
   , bBacklogDuration :: Word32
@@ -42,7 +66,7 @@ newtype BoundConnectorOptions
   deriving (Show, Generic, Aeson.ToJSON, Aeson.FromJSON)
 
 data BoundCreate
-  = BoundCreate   Text BoundStreamOptions
+  = BoundCreate   Text Schema BoundStreamOptions
   | BoundCreateAs Text BoundSelect BoundStreamOptions
     -- BoundCreateConnector <SOURCE|SINK> <Name> <Target> <EXISTS> <OPTIONS>
   | BoundCreateConnector Text Text Text Bool BoundConnectorOptions
@@ -86,19 +110,21 @@ instance Bind [ConnectorOption] where
 
 type instance BoundType Create = BoundCreate
 instance Bind Create where
-  bind (DCreate  _ hIdent)                     = do
-    ident <- bind hIdent
-    opt   <- bind ([] :: [StreamOption])
-    return $ BoundCreate ident opt
+  bind (DCreate  _ hIdent)                     =
+    error $ "CREATE STREAM should have a schema. If you want to create a stream without schema, disable flag `hstream_enable_schema`."
   bind (CreateOp _ hIdent options)             = do
-    ident <- bind hIdent
-    opt   <- bind options
-    return $ BoundCreate ident opt
+    error $ "CREATE STREAM should have a schema. If you want to create a stream without schema, disable flag `hstream_enable_schema`."
+  bind (DCreateWithSchema _ hIdent schemaCols) = do
+    ident  <- bind hIdent
+    schema <- bind (hIdent, schemaCols)
+    return $ BoundCreate ident schema def
+  -- FIXME: add schema
   bind (CreateAs   _ hIdent select)            = do
     ident <- bind hIdent
     sel   <- bind select
     opt   <- bind ([] :: [StreamOption])
     return $ BoundCreateAs ident sel opt
+  -- FIXME: add schema
   bind (CreateAsOp _ hIdent select options)    = do
     ident <- bind hIdent
     sel   <- bind select

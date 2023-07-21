@@ -19,6 +19,7 @@ module HStream.SQL.PlannerNew (
 
 #ifdef HStreamEnableSchema
 import           Control.Applicative           ((<|>))
+import           Control.Monad.Reader
 import           Control.Monad.State
 import           Data.Function                 (on)
 import           Data.Functor                  ((<&>))
@@ -46,6 +47,7 @@ import           HStream.SQL.PlannerNew.Types
 type instance PlannedType BoundTableRef = RelationExpr
 instance Plan BoundTableRef where
   plan (BoundTableRefSimple name) = do
+    getSchema <- ask
     schema <- liftIO $ getSchema name <&> fromJust -- FIXME: fromJust
     -- 1-in/1-out
     let schema' = setSchemaStreamId 0 schema
@@ -192,19 +194,21 @@ instance Plan BoundSQL where
   plan _                     = undefined
 
 
-planIO :: (Plan a, PlannedType a ~ RelationExpr) => a -> IO RelationExpr
-planIO bound = evalStateT (plan bound) defaultPlanContext
+planIO :: (Plan a, PlannedType a ~ RelationExpr)
+       => a -> (Text -> IO (Maybe Schema)) -> IO RelationExpr
+planIO bound getSchema =
+  evalStateT (runReaderT (plan bound) getSchema) defaultPlanContext
 
 ----------------------------------------
 --             module
 ----------------------------------------
-planning :: Text -> IO ()
-planning sql = do
+planning :: Text -> (Text -> IO (Maybe Schema)) -> IO ()
+planning sql getSchema = do
   abs <- parse sql
-  bound <- evalStateT (bind abs) defaultBindContext
+  bound <- evalStateT (runReaderT (bind abs) getSchema) defaultBindContext
   print $ "====== bind ======="
   print bound
-  planned <- evalStateT (plan bound) defaultPlanContext
+  planned <- evalStateT (runReaderT (plan bound) getSchema) defaultPlanContext
   print $ "====== plan ======="
   print planned
 #endif

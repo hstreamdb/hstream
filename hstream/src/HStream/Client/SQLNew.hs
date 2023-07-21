@@ -59,6 +59,7 @@ import           HStream.Server.HStreamApi        (CommandQuery (..),
                                                    HStreamApi (..),
                                                    hstreamApiClient)
 import qualified HStream.Server.HStreamApi        as API
+import qualified HStream.Server.MetaData.Types    as P
 import           HStream.SQL                      (BoundCreate (..),
                                                    BoundSQL (..), BoundSelect,
                                                    BoundStreamOptions (..),
@@ -130,7 +131,7 @@ commandExec HStreamSqlContext{hstreamCliContext = cliCtx@HStreamCliContext{..},.
   ":help":x:_ -> forM_ (M.lookup (map toUpper x) helpInfos) putStrLn
 
   (_:_)       -> liftIO $ handle (\(e :: SomeSQLException) -> putStrLn . formatSomeSQLException $ e) $ do
-    bSQL <- parseAndBind $ T.pack xs
+    bSQL <- parseAndBind (T.pack xs) P.getSchema
     case bSQL of
       BoundQPushSelect{} -> cliFetch cliCtx xs
       BoundQCreate BoundCreateAs {} -> do
@@ -139,10 +140,12 @@ commandExec HStreamSqlContext{hstreamCliContext = cliCtx@HStreamCliContext{..},.
       BoundQCreate BoundCreateView {} -> do
         qName <-  ("cli_generated_" <>) <$> newRandomText 10
         executeWithLookupResource_ cliCtx (Resource ResQuery qName) (createStreamBySelectWithCustomQueryName xs qName)
-      bSql' -> hstreamCodegen bSql' >>= \case
+      bSql' -> hstreamCodegen bSql' P.getSchema >>= \case
         ShowPlan showObj      -> executeShowPlan cliCtx showObj
         DropPlan checkIfExists dropObj -> executeWithLookupResource_ cliCtx (dropPlanToResType dropObj) $ dropAction checkIfExists dropObj
-        CreatePlan sName rOptions -> execute_ cliCtx $ createStream sName (bRepFactor rOptions) (bBacklogDuration rOptions)
+        CreatePlan sName schema rOptions -> do
+          P.registerSchema schema
+          execute_ cliCtx $ createStream sName (bRepFactor rOptions) (bBacklogDuration rOptions)
         TerminatePlan (TQuery qName) -> executeWithLookupResource_ cliCtx (Resource ResQuery qName) $ terminateQuery qName
         InsertPlan sName insertType payload -> do
             result <- execute cliCtx $ listShards sName
@@ -171,7 +174,7 @@ commandExec HStreamSqlContext{hstreamCliContext = cliCtx@HStreamCliContext{..},.
 
 readToSQL :: T.Text -> RL.InputT IO (Maybe String)
 readToSQL acc = do
-    x <- liftIO $ try @SomeSQLException $ parseAndBind acc
+    x <- liftIO $ try @SomeSQLException $ parseAndBind acc P.getSchema
     case x of
       Left err ->
         if isEOF err

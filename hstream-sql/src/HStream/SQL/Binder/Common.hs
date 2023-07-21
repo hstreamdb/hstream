@@ -9,6 +9,7 @@
 
 module HStream.SQL.Binder.Common where
 
+import           Control.Monad.Reader
 import           Control.Monad.State
 import qualified Data.Aeson            as Aeson
 import qualified Data.Bimap            as Bimap
@@ -25,6 +26,7 @@ import qualified Data.Set              as Set
 import           Data.Text             (Text)
 import qualified Data.Text             as T
 import           GHC.Generics          (Generic)
+import           GHC.Stack
 
 import           HStream.SQL.Abs
 import           HStream.SQL.Exception
@@ -85,8 +87,8 @@ instance Show Schema where
                  <> ", columns=" <> show schemaColumns
                  <> "}"
 
-getSchema :: Text -> IO (Maybe Schema)
-getSchema s
+mockGetSchema :: Text -> IO (Maybe Schema)
+mockGetSchema s
   | s == "s1" = return . Just $ Schema { schemaOwner = "s1"
                                        , schemaColumns = IntMap.fromList [ (0, ColumnCatalog 0 "a" 0 "s1" BTypeInteger False False)
                                                                          , (1, ColumnCatalog 1 "b" 0 "s1" BTypeText    False False)
@@ -227,8 +229,16 @@ scanColumns layer1 layer2 =
 ----------------------------------------
 type family BoundType a :: Type
 class Bind a where
-  bind' :: MonadIO m => a -> StateT BindContext m (BoundType a, Int)
-  bind  :: MonadIO m => a -> StateT BindContext m (BoundType a)
+  bind' :: ( HasCallStack
+           , MonadIO m
+           , MonadReader (Text -> IO (Maybe Schema)) m
+           , MonadState BindContext m
+           ) => a -> m (BoundType a, Int)
+  bind  :: ( HasCallStack
+           , MonadIO m
+           , MonadReader (Text -> IO (Maybe Schema)) m
+           , MonadState BindContext m
+           ) => a -> m (BoundType a)
   bind a = fst <$> bind' a
   bind' a = do
     result <- bind a
