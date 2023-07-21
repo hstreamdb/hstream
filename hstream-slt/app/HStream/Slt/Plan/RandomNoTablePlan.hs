@@ -1,12 +1,12 @@
 module Slt.Plan.RandomNoTablePlan where
 
-import           Control.Monad
-import           Data.Function
-import           Data.Maybe    (fromMaybe)
-import qualified Data.Text     as T
-import           Slt.Executor
-import           Slt.Plan
-import           Slt.Utils
+import Control.Monad
+import Data.Function
+import Data.Maybe (fromMaybe)
+import Data.Text qualified as T
+import Slt.Executor
+import Slt.Plan
+import Slt.Utils
 
 defaultRowNum :: Int
 defaultRowNum = 200
@@ -16,5 +16,5 @@ evalRandomNoTablePlan executor RandomNoTablePlan {colInfo = ColInfo info, rowNum
   forM [0 .. fromMaybe defaultRowNum rowNum] $ \_ -> do
     executor & selectWithoutFrom (randInstantiateSelectWithoutFromSql info sql)
 
-randInstantiateSelectWithoutFromSql :: [(T.Text, SqlDataType)] -> T.Text -> T.Text
+randInstantiateSelectWithoutFromSql :: [(T.Text, SqlDataType)] -> T.Text -> [T.Text]
 randInstantiateSelectWithoutFromSql = undefined
