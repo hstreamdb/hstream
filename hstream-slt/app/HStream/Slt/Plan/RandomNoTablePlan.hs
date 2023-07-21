@@ -14,7 +14,8 @@ defaultRowNum = 200
 evalRandomNoTablePlan :: SltExecutor executor => executor -> RandomNoTablePlan -> IO [Kv]
 evalRandomNoTablePlan executor RandomNoTablePlan {colInfo = ColInfo info, rowNum, sql} = do
   forM [0 .. fromMaybe defaultRowNum rowNum] $ \_ -> do
-    executor & selectWithoutFrom (randInstantiateSelectWithoutFromSql info sql)
+    values <- randInstantiateSelectWithoutFromSql info sql
+    executor & selectWithoutFrom values
 
-randInstantiateSelectWithoutFromSql :: [(T.Text, SqlDataType)] -> T.Text -> [T.Text]
+randInstantiateSelectWithoutFromSql :: [(T.Text, SqlDataType)] -> T.Text -> IO [T.Text]
 randInstantiateSelectWithoutFromSql = undefined

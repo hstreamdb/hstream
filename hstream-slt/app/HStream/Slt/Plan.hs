@@ -3,8 +3,8 @@ module Slt.Plan where
 import qualified Data.Text       as T
 import           Slt.Format
 import           Slt.Utils       (SqlDataType)
-import qualified Text.Megaparsec as P
 import           Text.Megaparsec (many)
+import qualified Text.Megaparsec as P
 
 ----------------------------------------
 -- Slt Suite & Plan

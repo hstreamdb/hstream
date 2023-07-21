@@ -8,6 +8,7 @@ import qualified Data.Aeson.KeyMap                    as A
 import           Data.Bifunctor
 import qualified Data.ByteString                      as BS
 import qualified Data.Text                            as T
+import qualified Data.Text.Encoding                   as T
 import qualified Data.Time                            as Time
 import qualified Database.SQLite.Simple.FromField     as S
 import qualified Database.SQLite.Simple.Ok            as S
@@ -139,3 +140,23 @@ randKvByColInfo info =
   where
     h :: Arbitrary a => (a -> SqlDataValue) -> IO SqlDataValue
     h = (<$> generate arbitrary)
+
+----------------------------------------
+
+sqlDataTypeToAnsiLiteral :: SqlDataValue -> T.Text
+sqlDataTypeToAnsiLiteral = \case
+  VINTEGER x   -> h x
+  VFLOAT x     -> h x
+  VBOOLEAN x   -> h x
+  VBYTEA x     -> esc $ T.decodeUtf8 x
+  VSTRING x    -> esc x
+  VDATE x      -> h x
+  VTIME x      -> h x
+  VTIMESTAMP x -> h x
+  VINTERVAL x  -> h x
+  VJSONB _     -> error "currently unsupported"
+  VNULL        -> "NULL"
+  where
+    h :: Show a => a -> T.Text
+    h = T.pack . show
+    esc x = "'" <> T.tail (T.init x) <> "'"
