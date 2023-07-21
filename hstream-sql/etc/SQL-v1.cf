@@ -39,6 +39,10 @@ QPause.       SQL ::= Pause       ";" ;
 QResume.      SQL ::= Resume      ";" ;
 
 ---- Create Query
+DCreateWithSchema. Create ::= "CREATE" "STREAM" HIdent "(" [SchemaColumn] ")" ;
+DSchemaColumn. SchemaColumn ::= ColumnIdent DataType ;
+separator nonempty SchemaColumn "," ;
+
 DCreate.    Create ::= "CREATE" "STREAM" HIdent ;
 CreateOp.   Create ::= "CREATE" "STREAM" HIdent             "WITH" "(" [StreamOption] ")" ;
 CreateAs.   Create ::= "CREATE" "STREAM" HIdent "AS" Select ;

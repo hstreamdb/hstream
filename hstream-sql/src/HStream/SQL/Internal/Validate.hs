@@ -672,6 +672,8 @@ instance Validate Explain where
         "EXPLAIN can not give any execution plan for CREATE STREAM without a SELECT clause"
       CreateOp{}   -> Left $ buildSQLException ParseException pos
         "EXPLAIN can not give any execution plan for CREATE STREAM without a SELECT clause"
+      DCreateWithSchema{} -> Left $ buildSQLException ParseException pos
+        "EXPLAIN can not give any execution plan for CREATE STREAM without a SELECT clause"
       _            -> Left $ buildSQLException ParseException pos
         "EXPLAIN can not give any execution plan for CREATE CONNECTOR"
 
@@ -702,6 +704,11 @@ instance Validate Create where
       _ -> pure ()
 #endif
     validate hIdent >> validate select >> return create
+  validate create@(DCreateWithSchema _ hIdent scs) =
+    validate hIdent >> mapM_ validate scs >> return create
+
+instance Validate SchemaColumn where
+  validate sc@(DSchemaColumn _ hIdent dataType) = validate hIdent >> validate dataType >> return sc
 
 instance Validate StreamOption where
   validate op@(OptionRepFactor pos n') = do
@@ -711,13 +718,11 @@ instance Validate StreamOption where
   validate op@(OptionDuration _ interval) = validate interval >> return op
 
 newtype StreamOptions = StreamOptions [StreamOption]
-
 instance Validate StreamOptions where
   validate ops@(StreamOptions options) =
     mapM_ validate options >> return ops
 
 newtype ConnectorOptions = ConnectorOptions [ConnectorOption]
-
 instance Validate ConnectorOptions where
   validate ops@(ConnectorOptions _) = return ops
   --   if any (\case PropertyConnector _ _ -> True; _ -> False) options && any (\case PropertyStreamName _ _ -> True; _ -> False) options

@@ -738,6 +738,7 @@ instance Refine Create where
   refine (CreateSinkConnector _ s t options) = RCreateConnector "SINK" (refine s) (refine t) False (refine options)
   refine (CreateSinkConnectorIf _ s t options) = RCreateConnector "SINK" (refine s) (refine t) True (refine options)
   refine (CreateView _ s select) = RCreateView (refine s) (refine select)
+  refine (DCreateWithSchema _ _ _) = throwSQLException RefineException Nothing "CreateWithSchema is not supported without `hstream_enable_schema` flag."
 
 data RInsertRawOrJsonPayloadType = RInsertRawOrJsonPayloadTypeRaw | RInsertRawOrJsonPayloadTypeJson
   deriving (Show, Generic, Aeson.ToJSON, Aeson.FromJSON)

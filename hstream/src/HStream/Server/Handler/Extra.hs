@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP        #-}
 {-# LANGUAGE DataKinds  #-}
 {-# LANGUAGE GADTs      #-}
 {-# LANGUAGE LambdaCase #-}
@@ -11,6 +12,7 @@ import           Network.GRPC.HighLevel.Generated
 import qualified HStream.Exception                as HE
 import           HStream.Server.Handler.Query
 import           HStream.Server.HStreamApi        as API
+import qualified HStream.Server.MetaData.Types    as P
 import           HStream.Server.Types             (ServerContext (..))
 import           HStream.SQL
 import           HStream.Utils
@@ -27,7 +29,11 @@ handleParseSql _ _ req = catchQueryEx $ parseSql req
 
 parseSql :: API.ParseSqlRequest  -> IO API.ParseSqlResponse
 parseSql API.ParseSqlRequest{..} = do
-  streamCodegen parseSqlRequestSql >>= \case
+#ifdef HStreamEnableSchema
+  streamCodegen parseSqlRequestSql P.getSchema >>= \case
+#else
+  streamCodegen parseSqlRequestSql             >>= \case
+#endif
     SelectPlan sources _ _ _ -> return $
       ParseSqlResponse (Just $ ParseSqlResponseSqlEvqSql $ ExecuteViewQuerySql (head sources))
     _ -> throwIO $ HE.SQLNotSupportedByParseSQL parseSqlRequestSql

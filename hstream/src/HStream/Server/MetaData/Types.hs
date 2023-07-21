@@ -34,6 +34,13 @@ module HStream.Server.MetaData.Types
   , renderViewInfosToTable
   , renderQVRelationToTable
   , renderTaskAllocationsToTable
+
+#ifdef HStreamEnableSchema
+  , schemaRegistry
+  , registerSchema
+  , getSchema
+  , removeSchema
+#endif
   ) where
 
 import           Control.Exception                 (catches)
@@ -327,3 +334,23 @@ groupbyStores = unsafePerformIO $ newIORef HM.empty
 {-# NOINLINE groupbyStores #-}
 #endif
 --------------------------------------------------------------------------------
+
+#ifdef HStreamEnableSchema
+schemaRegistry :: IORef (HM.HashMap Text SQL.Schema)
+schemaRegistry = unsafePerformIO $ newIORef HM.empty
+{-# NOINLINE schemaRegistry #-}
+
+registerSchema :: SQL.Schema -> IO ()
+registerSchema schema = do
+  let schemaName = SQL.schemaOwner schema
+  modifyIORef' schemaRegistry (HM.insert schemaName schema)
+
+getSchema :: Text -> IO (Maybe SQL.Schema)
+getSchema schemaName = do
+  schemas <- readIORef schemaRegistry
+  return $ HM.lookup schemaName schemas
+
+removeSchema :: Text -> IO ()
+removeSchema schemaName = do
+  modifyIORef' schemaRegistry (HM.delete schemaName)
+#endif

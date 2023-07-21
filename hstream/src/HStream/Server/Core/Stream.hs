@@ -1,4 +1,5 @@
 {-# LANGUAGE BangPatterns      #-}
+{-# LANGUAGE CPP               #-}
 {-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE OverloadedLists   #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -118,6 +119,9 @@ deleteStream ServerContext{..} API.DeleteStreamRequest{deleteStreamRequestForce 
       if null subs
       then do S.removeStream scLDClient streamId
               Stats.stream_stat_erase scStatsHolder (textToCBytes sName)
+#ifdef HStreamEnableSchema
+              P.removeSchema sName
+#endif
       else if force
            then do
              -- TODO:
@@ -125,6 +129,9 @@ deleteStream ServerContext{..} API.DeleteStreamRequest{deleteStreamRequestForce 
              -- 2. erase stats for archived stream
              _archivedStream <- S.archiveStream scLDClient streamId
              P.updateSubscription metaHandle sName (cBytesToText $ S.getArchivedStreamName _archivedStream)
+#ifdef HStreamEnableSchema
+             P.removeSchema sName
+#endif
            else
              throwIO HE.FoundSubscription
 
