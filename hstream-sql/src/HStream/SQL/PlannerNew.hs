@@ -56,7 +56,8 @@ instance Plan BoundTableRef where
   plan (BoundTableRefSubquery name sel) = do
     relationExpr <- plan sel
     -- 1-in/1-out
-    let schema = setSchemaStreamId 0 (relationExprSchema relationExpr)
+    let schema = setSchemaStream name $
+          setSchemaStreamId 0 (relationExprSchema relationExpr)
     let ctx = PlanContext (IntMap.singleton 0 schema)
     put ctx
     return relationExpr
@@ -83,8 +84,9 @@ instance Plan BoundTableRef where
     let win = calendarDiffTimeToMs interval
 
     -- 1-out!
-    let schema = setSchemaStreamId 0 $ Schema
-                 { schemaOwner = "" -- FIXME
+    let schema = setSchemaStream name $
+          setSchemaStreamId 0 $ Schema
+                 { schemaOwner = name
                  , schemaColumns = schemaColumns schema1
                              <:+:> schemaColumns schema2
                  }
