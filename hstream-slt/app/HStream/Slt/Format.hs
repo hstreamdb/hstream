@@ -37,6 +37,9 @@ lexeme = L.lexeme sc
 symbol :: T.Text -> Parser T.Text
 symbol = L.symbol sc
 
+symbol' :: T.Text -> Parser T.Text
+symbol' = L.symbol' sc
+
 takeToNewline1 :: Parser T.Text
 takeToNewline1 = P.takeWhile1P Nothing (/= '\n') <* scn
 
