@@ -5,6 +5,7 @@ module HStream.SQL.PlannerNew.Extra where
 import           Control.Applicative          ((<|>))
 import           Data.Int                     (Int64)
 import qualified Data.IntMap                  as IntMap
+import           Data.Text                    (Text)
 import qualified Data.Time                    as Time
 
 import           HStream.SQL.Binder
@@ -18,6 +19,12 @@ setSchemaStreamId :: Int -> Schema -> Schema
 setSchemaStreamId n Schema{..} =
   Schema { schemaOwner = schemaOwner
          , schemaColumns = IntMap.map (\catalog -> catalog{columnStreamId = n}) schemaColumns
+         }
+
+setSchemaStream :: Text -> Schema -> Schema
+setSchemaStream streamName Schema{..} =
+  Schema { schemaOwner = streamName
+         , schemaColumns = IntMap.map (\catalog -> catalog{columnStream = streamName}) schemaColumns
          }
 
 -- | Scan a 'BoundExpr' and and look up all aggregate exprs in it. It assumes

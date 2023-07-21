@@ -462,7 +462,16 @@ instance Bind Select where
             Nothing  -> BoundGroupBy tups Nothing
             Just win -> BoundGroupBy tups (Just win)
     -- cols
+    -- IMPORTANT: always use column name WITHOUT stream in context
+    --            because we only use column name to lookup a column
+    --            in context, see `ValueExpr.hs`.
+    --            Consider `SELECT a FROM (SELECT s1.a FROM s1)`.
     let (BoundSel (BoundSelectItemProject tups)) = boundSel
-    let cols = L.map (\(expr,alias_m) -> fromMaybe (T.pack $ getName expr) alias_m) tups
+    let cols = L.map (\(expr,alias_m) -> case expr of
+                         BoundExprCol _ _ colName _ ->
+                           fromMaybe colName alias_m
+                         _ ->
+                           fromMaybe (T.pack $ getName expr) alias_m
+                     ) tups
     return (BoundSelect cols boundSel boundFrm boundWhr boundGrp' boundHav, frm_n)
 #endif
