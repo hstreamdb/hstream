@@ -1,20 +1,20 @@
 module Slt.Utils where
 
-import Control.Exception (SomeException)
-import Control.Monad
-import Control.Monad.Except (ExceptT)
-import Data.Aeson.Key qualified as A
-import Data.Aeson.KeyMap qualified as A
-import Data.Bifunctor
-import Data.ByteString qualified as BS
-import Data.Text qualified as T
-import Data.Time qualified as Time
-import Database.SQLite.Simple.FromField qualified as S
-import Database.SQLite.Simple.Ok qualified as S
-import Test.QuickCheck
-import Test.QuickCheck.Instances.ByteString ()
-import Test.QuickCheck.Instances.Text ()
-import Test.QuickCheck.Instances.Time ()
+import           Control.Exception                    (SomeException)
+import           Control.Monad
+import           Control.Monad.Except                 (ExceptT)
+import qualified Data.Aeson.Key                       as A
+import qualified Data.Aeson.KeyMap                    as A
+import           Data.Bifunctor
+import qualified Data.ByteString                      as BS
+import qualified Data.Text                            as T
+import qualified Data.Time                            as Time
+import qualified Database.SQLite.Simple.FromField     as S
+import qualified Database.SQLite.Simple.Ok            as S
+import           Test.QuickCheck
+import           Test.QuickCheck.Instances.ByteString ()
+import           Test.QuickCheck.Instances.Text       ()
+import           Test.QuickCheck.Instances.Time       ()
 
 ----------------------------------------
 
@@ -72,20 +72,34 @@ data SqlDataValue
   | VNULL
   deriving (Show)
 
+getSqlDataType :: SqlDataValue -> SqlDataType
+getSqlDataType = \case
+  VINTEGER _   -> INTEGER
+  VFLOAT _     -> FLOAT
+  VBOOLEAN _   -> BOOLEAN
+  VBYTEA _     -> BYTEA
+  VSTRING _    -> STRING
+  VDATE _      -> DATE
+  VTIME _      -> TIME
+  VTIMESTAMP _ -> TIMESTAMP
+  VINTERVAL _  -> INTERVAL
+  VJSONB _     -> JSONB
+  VNULL        -> NULL
+
 textToSqlDataType :: T.Text -> SqlDataType
 textToSqlDataType = \case
-  "INTEGER" -> INTEGER
-  "FLOAT" -> FLOAT
-  "BOOLEAN" -> BOOLEAN
-  "BYTEA" -> BYTEA
-  "STRING" -> STRING
-  "DATE" -> DATE
-  "TIME" -> TIME
+  "INTEGER"   -> INTEGER
+  "FLOAT"     -> FLOAT
+  "BOOLEAN"   -> BOOLEAN
+  "BYTEA"     -> BYTEA
+  "STRING"    -> STRING
+  "DATE"      -> DATE
+  "TIME"      -> TIME
   "TIMESTAMP" -> TIMESTAMP
-  "INTERVAL" -> INTERVAL
-  "JSONB" -> JSONB
-  "NULL" -> NULL
-  _ -> error "textToSqlDataType: no parse"
+  "INTERVAL"  -> INTERVAL
+  "JSONB"     -> JSONB
+  "NULL"      -> NULL
+  _           -> error "textToSqlDataType: no parse"
 
 -- SQLite
 instance S.FromField SqlDataValue where
@@ -94,11 +108,11 @@ instance S.FromField SqlDataValue where
     where
       h :: [String] -> SqlDataValue
       h ["SQLInteger", x] = VINTEGER $ read x
-      h ["SQLFloat", x] = VFLOAT $ read x
-      h ["SQLText", x] = VSTRING $ read x
-      h ["SQLBlob", x] = VBYTEA $ read x
-      h ["SQLNull"] = VNULL
-      h _ = error "fromField: no parse @SqlDataValue"
+      h ["SQLFloat", x]   = VFLOAT $ read x
+      h ["SQLText", x]    = VSTRING $ read x
+      h ["SQLBlob", x]    = VBYTEA $ read x
+      h ["SQLNull"]       = VNULL
+      h _                 = error "fromField: no parse @SqlDataValue"
 
 ----------------------------------------
 
@@ -109,17 +123,17 @@ randKvByColInfo info =
       info
       ( \(k, v) -> do
           x <- case v of
-            INTEGER -> h VINTEGER
-            FLOAT -> h VFLOAT
-            BOOLEAN -> h VBOOLEAN
-            BYTEA -> h VBYTEA
-            STRING -> h VSTRING
-            DATE -> h VDATE
-            TIME -> h VTIME
+            INTEGER   -> h VINTEGER
+            FLOAT     -> h VFLOAT
+            BOOLEAN   -> h VBOOLEAN
+            BYTEA     -> h VBYTEA
+            STRING    -> h VSTRING
+            DATE      -> h VDATE
+            TIME      -> h VTIME
             TIMESTAMP -> h VTIMESTAMP
-            INTERVAL -> h VINTERVAL
-            JSONB -> undefined
-            NULL -> pure VNULL
+            INTERVAL  -> h VINTERVAL
+            JSONB     -> error "currently unsupported"
+            NULL      -> pure VNULL
           pure (A.fromText k, x)
       )
   where

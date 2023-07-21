@@ -1,12 +1,12 @@
 module Slt.Plan.RandomNoTablePlan where
 
-import Control.Monad
-import Data.Function
-import Data.Maybe (fromMaybe)
-import Data.Text qualified as T
-import Slt.Executor
-import Slt.Plan
-import Slt.Utils
+import           Control.Monad
+import           Data.Function
+import           Data.Maybe    (fromMaybe)
+import qualified Data.Text     as T
+import           Slt.Executor
+import           Slt.Plan
+import           Slt.Utils
 
 defaultRowNum :: Int
 defaultRowNum = 200

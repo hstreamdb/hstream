@@ -32,6 +32,7 @@ executable hstream-slt
     , mtl
     , optparse-applicative
     , QuickCheck
+    , quickcheck-instances
     , sqlite-simple
     , text
     , time
