@@ -44,7 +44,7 @@
     }
   },
   "zookeeper": {
-    "zookeeper_uri": "ip://172.16.156.10:2181",
+    "zookeeper_uri": "ip://zoo1:2181,zoo2:2181,zoo3:2181",
     "timeout": "30s"
   }
 }
