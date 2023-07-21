@@ -33,6 +33,7 @@ module HStream.Server.Handler.Stream
   , handleCreateStreamV2
   , handleDeleteStreamV2
   , handleListShardV2
+  , handleGetTailRecordIdV2
   ) where
 
 import           Control.Exception
@@ -176,6 +177,13 @@ handleGetTailRecordId :: ServerContext -> G.UnaryHandler GetTailRecordIdRequest 
 handleGetTailRecordId sc _ req = catchDefaultEx $ do
   Log.debug $ "Receive Get TailRecordId Request: " <> Log.buildString' req
   C.getTailRecordId sc req
+
+handleGetTailRecordIdV2
+  :: ServerContext -> Slot.SlotConfig
+  -> G.UnaryHandler GetTailRecordIdRequest GetTailRecordIdResponse
+handleGetTailRecordIdV2 sc slotConfig _ req = catchDefaultEx $ do
+  Log.debug $ "Receive Get TailRecordId Request: " <> Log.buildString' req
+  C.getTailRecordIdV2 sc slotConfig req
 
 getTailRecordIdHandler
   :: ServerContext

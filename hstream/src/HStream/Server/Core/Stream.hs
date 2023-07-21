@@ -18,6 +18,7 @@ module HStream.Server.Core.Stream
   , createStreamV2
   , deleteStreamV2
   , listShardsV2
+  , getTailRecordIdV2
   ) where
 
 import           Control.Concurrent                (modifyMVar_)
@@ -228,8 +229,29 @@ getStreamInfo ServerContext{..} stream = do
 
 getTailRecordId :: ServerContext -> API.GetTailRecordIdRequest -> IO API.GetTailRecordIdResponse
 getTailRecordId ServerContext{..} API.GetTailRecordIdRequest{getTailRecordIdRequestShardId=sId} = do
+  -- FIXME: this should be 'S.doesStreamPartitionValExist', however, at most
+  -- time S.logIdHasGroup should also work, and is faster than
+  -- 'S.doesStreamPartitionValExist'
   shardExists <- S.logIdHasGroup scLDClient sId
   unless shardExists $ throwIO $ HE.ShardNotFound $ "Shard with id " <> T.pack (show sId) <> " is not found."
+  lsn <- S.getTailLSN scLDClient sId
+  let recordId = API.RecordId { recordIdShardId    = sId
+                              , recordIdBatchId    = lsn
+                              , recordIdBatchIndex = 0
+                              }
+  return $ API.GetTailRecordIdResponse { getTailRecordIdResponseTailRecordId = Just recordId}
+
+getTailRecordIdV2
+  :: ServerContext
+  -> Slot.SlotConfig
+  -> API.GetTailRecordIdRequest -> IO API.GetTailRecordIdResponse
+getTailRecordIdV2 ServerContext{..} slotConfig API.GetTailRecordIdRequest{..} = do
+  let streamName = textToCBytes getTailRecordIdRequestStreamName
+      sId = getTailRecordIdRequestShardId
+  shardExists <- Slot.doesSlotValueExist slotConfig streamName sId
+  unless shardExists $ throwIO $ HE.ShardNotFound $
+       "Stream " <> getTailRecordIdRequestStreamName
+    <> " with shard id " <> T.pack (show sId) <> " is not found."
   lsn <- S.getTailLSN scLDClient sId
   let recordId = API.RecordId { recordIdShardId    = sId
                               , recordIdBatchId    = lsn
@@ -297,9 +319,9 @@ listShards ServerContext{..} API.ListShardsRequest{..} = do
   V.foldM' getShardInfo V.empty $ V.fromList shards
  where
    streamId = transToStreamName listShardsRequestStreamName
-   startKey = CB.pack "startKey"
-   endKey   = CB.pack "endKey"
-   epoch    = CB.pack "epoch"
+   startKey = "startKey"
+   endKey   = "endKey"
+   epoch    = "epoch"
 
    getShardInfo shards logId = do
      attr <- S.getStreamPartitionExtraAttrs scLDClient logId
