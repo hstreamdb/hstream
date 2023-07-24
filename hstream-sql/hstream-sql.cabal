@@ -182,6 +182,7 @@ library
 --
 
 executable syntax-test-runner
+  import:           shared-properties
   main-is:          SyntaxTestRunner.hs
   hs-source-dirs:   app
   other-modules:    Lib
@@ -189,6 +190,7 @@ executable syntax-test-runner
     , aeson
     , base
     , bytestring
+    , containers
     , hstream-sql
     , optparse-applicative
     , text
@@ -199,6 +201,7 @@ executable syntax-test-runner
   ghc-options:      -Wall -Wextra
 
 executable plan-test-runner
+  import:           shared-properties
   main-is:          PlanTestRunner.hs
   hs-source-dirs:   app
   other-modules:    Lib
@@ -206,6 +209,7 @@ executable plan-test-runner
     , aeson
     , base
     , bytestring
+    , containers
     , hstream-sql
     , optparse-applicative
     , text
