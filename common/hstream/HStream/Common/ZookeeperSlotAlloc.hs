@@ -9,7 +9,9 @@ module HStream.Common.ZookeeperSlotAlloc
   , allocateSlot
   , deallocateSlot
   , doesSlotExist
+  , doesSlotValueExist
   , getSlotByName
+  , getSlotValueByName
   ) where
 
 import           Control.Exception         (throwIO, try)
@@ -143,11 +145,23 @@ doesSlotExist SlotConfig{..} name = do
   let path = slotRoot <> "/name/" <> name
   isJust <$> ZK.zooExists slotZkHandler path
 
+doesSlotValueExist :: SlotConfig -> CBytes -> SlotValue -> IO Bool
+doesSlotValueExist c name value = do
+  let path = slotRoot c <> "/name/" <> name
+      errmsg = "Impossible empty value: " <> show path
+  e <- try $ slotGet c path errmsg
+  case e of
+    Left (_ :: ZK.ZNONODE) -> pure False
+    Right HT.Slot{..}      -> pure $ Map.member value slotVals
+
 getSlotByName :: HasCallStack => SlotConfig -> CBytes -> IO HT.Slot
 getSlotByName c name = do
   let path = slotRoot c <> "/name/" <> name
       errmsg = "Get slot failed, name: " <> show name
   slotGet c path errmsg
+
+getSlotValueByName :: HasCallStack => SlotConfig -> CBytes -> IO [SlotValue]
+getSlotValueByName c name = Map.keys . HT.slotVals <$> getSlotByName c name
 
 -------------------------------------------------------------------------------
 

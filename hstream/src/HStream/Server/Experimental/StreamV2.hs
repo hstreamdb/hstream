@@ -68,7 +68,7 @@ streamV2Handlers sc slotConfig =
   , unary (GRPC :: GRPC P.HStreamApi "listShards") (H.handleListShardV2 sc slotConfig)
   --, unary (GRPC :: GRPC P.HStreamApi "trimStream") (H.handleTrimStream sc)
   --, unary (GRPC :: GRPC P.HStreamApi "trimShard") (H.handleTrimShard sc)
-  --, unary (GRPC :: GRPC P.HStreamApi "getTailRecordId") (H.handleGetTailRecordId sc)
+  , unary (GRPC :: GRPC P.HStreamApi "getTailRecordId") (H.handleGetTailRecordIdV2 sc slotConfig)
     -- Reader
   --, unary (GRPC :: GRPC P.HStreamApi "listShardReaders") (H.handleListShardReaders sc)
   --, unary (GRPC :: GRPC P.HStreamApi "createShardReader") (H.handleCreateShardReader sc)
