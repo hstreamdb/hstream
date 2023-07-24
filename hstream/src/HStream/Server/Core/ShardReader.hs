@@ -61,7 +61,7 @@ createShardReader ServerContext{..} API.CreateShardReaderRequest{createShardRead
   when exist $ throwIO $ HE.ShardReaderExists $ "ShardReader with id " <> rId <> " already exists."
   shardExists <- S.logIdHasGroup scLDClient rShardId
   unless shardExists $ throwIO $ HE.ShardNotFound $ "Shard with id " <> T.pack (show rShardId) <> " is not found."
-  (startLSN, timestamp) <- maybe (return (S.LSN_MIN, Nothing)) (getLogLSN scLDClient rShardId . toOffset) rOffset
+  (startLSN, timestamp) <- maybe (return (S.LSN_MIN, Nothing)) (getLogLSN scLDClient rShardId False . toOffset) rOffset
   let shardReaderMeta = mkShardReaderMeta timestamp startLSN
   Log.info $ "create shardReader " <> Log.buildString' (show shardReaderMeta)
 
@@ -363,8 +363,8 @@ startReadingShard
   -> Maybe ServerInternalOffset  -- endOffset
   -> IO (Maybe Int64, Maybe Int64)
 startReadingShard scLDClient reader readerId rShardId rStart rEnd = do
-  (startLSN, sTimestamp) <- maybe (return (S.LSN_MIN, Nothing)) (getLogLSN scLDClient rShardId) rStart
-  (endLSN,   eTimestamp) <- maybe (return (S.LSN_MAX, Nothing)) (getLogLSN scLDClient rShardId) rEnd
+  (startLSN, sTimestamp) <- maybe (return (S.LSN_MIN, Nothing)) (getLogLSN scLDClient rShardId False) rStart
+  (endLSN,   eTimestamp) <- maybe (return (S.LSN_MAX, Nothing)) (getLogLSN scLDClient rShardId True) rEnd
   when (endLSN < startLSN) $
     throwIO . HE.ConflictShardReaderOffset $ "startLSN(" <> show startLSN <>") should less than and equal to endLSN(" <> show endLSN <> ")"
   -- Since the LSN obtained by timestamp is not accurate, for scenarios where the endLSN is determined using a timestamp,
