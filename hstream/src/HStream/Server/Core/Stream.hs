@@ -120,7 +120,7 @@ deleteStream ServerContext{..} API.DeleteStreamRequest{deleteStreamRequestForce 
       then do S.removeStream scLDClient streamId
               Stats.stream_stat_erase scStatsHolder (textToCBytes sName)
 #ifdef HStreamEnableSchema
-              P.removeSchema sName
+              P.unregisterSchema metaHandle sName
 #endif
       else if force
            then do
@@ -130,7 +130,7 @@ deleteStream ServerContext{..} API.DeleteStreamRequest{deleteStreamRequestForce 
              _archivedStream <- S.archiveStream scLDClient streamId
              P.updateSubscription metaHandle sName (cBytesToText $ S.getArchivedStreamName _archivedStream)
 #ifdef HStreamEnableSchema
-             P.removeSchema sName
+             P.unregisterSchema metaHandle sName
 #endif
            else
              throwIO HE.FoundSubscription

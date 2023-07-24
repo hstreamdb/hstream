@@ -100,6 +100,7 @@ library
     HStream.Server.Handler.Connector
     HStream.Server.Handler.Extra
     HStream.Server.Handler.Query
+    HStream.Server.Handler.Schema
     HStream.Server.Handler.ShardReader
     HStream.Server.Handler.Stats
     HStream.Server.Handler.Stream

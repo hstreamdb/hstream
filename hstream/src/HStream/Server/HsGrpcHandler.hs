@@ -10,6 +10,7 @@ import qualified HStream.Server.Handler.Cluster      as H
 import qualified HStream.Server.Handler.Connector    as H
 import qualified HStream.Server.Handler.Extra        as H
 import qualified HStream.Server.Handler.Query        as H
+import qualified HStream.Server.Handler.Schema       as H
 import qualified HStream.Server.Handler.ShardReader  as H
 import qualified HStream.Server.Handler.Stats        as H
 import qualified HStream.Server.Handler.Stream       as H
@@ -93,6 +94,12 @@ handlers sc =
   , unary (GRPC :: GRPC P.HStreamApi "deleteQuery") (H.handleDeleteQuery sc)
   , unary (GRPC :: GRPC P.HStreamApi "resumeQuery") (H.handleResumeQuery sc)
   , unary (GRPC :: GRPC P.HStreamApi "parseSql") (H.handleParseSql sc)
+
+#ifdef HStreamEnableSchema
+  , unary (GRPC :: GRPC P.HStreamApi "registerSchema") (H.handleRegisterSchema sc)
+  , unary (GRPC :: GRPC P.HStreamApi "getSchema") (H.handleGetSchema sc)
+  , unary (GRPC :: GRPC P.HStreamApi "unregisterSchema") (H.handleUnregisterSchema sc)
+#endif
   ]
 
 handleEcho :: UnaryHandler A.EchoRequest A.EchoResponse

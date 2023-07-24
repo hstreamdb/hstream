@@ -38,6 +38,12 @@ module HStream.Client.Action
   , pauseQuery
   , resumeQuery
 
+#ifdef HStreamEnableSchema
+  , registerSchema
+  , getSchema
+  , unregisterSchema
+#endif
+
   , dropAction
   , lookupResource
   , describeCluster
@@ -67,8 +73,10 @@ import           Proto3.Suite.Class               (def)
 import           HStream.Client.Types             (Resource (..))
 import           HStream.Client.Utils
 import qualified HStream.Server.HStreamApi        as API
+import qualified HStream.Server.MetaData.Types    as P
 import           HStream.SQL                      (DropObject (..),
                                                    InsertType (..), StreamName)
+import qualified HStream.SQL                      as SQL
 import           HStream.ThirdParty.Protobuf      (Empty (..))
 import           HStream.Utils
 
@@ -191,6 +199,20 @@ pauseQuery qid API.HStreamApi{..} = hstreamApiPauseQuery $
 resumeQuery :: T.Text -> Action Empty
 resumeQuery qid API.HStreamApi{..} = hstreamApiResumeQuery $
   mkClientNormalRequest' def { API.resumeQueryRequestId = qid }
+
+#ifdef HStreamEnableSchema
+registerSchema :: SQL.Schema -> Action Empty
+registerSchema schema API.HStreamApi{..} = hstreamApiRegisterSchema $
+  mkClientNormalRequest' (P.hstreamSchemaToSchema schema)
+
+getSchema :: T.Text -> Action API.Schema
+getSchema schemaOwner API.HStreamApi{..} = hstreamApiGetSchema $
+  mkClientNormalRequest' def { API.getSchemaRequestOwner = schemaOwner }
+
+unregisterSchema :: T.Text -> Action Empty
+unregisterSchema schemaOwner API.HStreamApi{..} = hstreamApiUnregisterSchema $
+  mkClientNormalRequest' def { API.unregisterSchemaRequestOwner = schemaOwner }
+#endif
 
 createSubscription :: T.Text -> T.Text -> Action API.Subscription
 createSubscription subId sName = createSubscription' (subscriptionWithDefaultSetting subId sName)
