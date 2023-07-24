@@ -36,27 +36,36 @@ module HStream.Server.MetaData.Types
   , renderTaskAllocationsToTable
 
 #ifdef HStreamEnableSchema
-  , schemaRegistry
+  , hstreamColumnCatalogToColumnCatalog
+  , columnCatalogToHStreamColumnCatalog
+  , hstreamSchemaToSchema
+  , schemaToHStreamSchema
+
   , registerSchema
   , getSchema
-  , removeSchema
+  , unregisterSchema
 #endif
   ) where
 
-import           Control.Exception                 (catches)
+import           Control.Exception                 (SomeException (..), catch,
+                                                    catches)
 import           Data.Aeson                        (FromJSON (..), ToJSON (..))
 import qualified Data.HashMap.Strict               as HM
 import           Data.Int                          (Int64)
+import qualified Data.IntMap                       as IntMap
 import           Data.IORef
+import qualified Data.List                         as L
 import           Data.Text                         (Text)
 import qualified Data.Text                         as T
 import qualified Data.Text.Lazy                    as TL
 import qualified Data.Text.Lazy.Encoding           as TL
 import           Data.Time.Clock.System            (SystemTime (MkSystemTime),
                                                     getSystemTime)
+import qualified Data.Vector                       as V
 import           Data.Word                         (Word32, Word64)
 import           GHC.Generics                      (Generic)
 import           GHC.IO                            (unsafePerformIO)
+import           GHC.Stack
 import           ZooKeeper.Types                   (ZHandle)
 
 import           Control.Monad                     (forM)
@@ -69,6 +78,7 @@ import           HStream.MetaStore.Types           (FHandle, HasPath (..),
 import qualified HStream.Server.ConnectorTypes     as HCT
 import           HStream.Server.HStreamApi         (ServerNode (..),
                                                     Subscription (..))
+import qualified HStream.Server.HStreamApi         as API
 import           HStream.Server.MetaData.Exception
 import           HStream.Server.Types              (ServerID,
                                                     SubscriptionWrap (..))
@@ -336,21 +346,68 @@ groupbyStores = unsafePerformIO $ newIORef HM.empty
 --------------------------------------------------------------------------------
 
 #ifdef HStreamEnableSchema
-schemaRegistry :: IORef (HM.HashMap Text SQL.Schema)
-schemaRegistry = unsafePerformIO $ newIORef HM.empty
-{-# NOINLINE schemaRegistry #-}
+instance HasPath SQL.Schema ZHandle where
+  myRootPath = rootPath <> "/schemas"
+instance HasPath SQL.Schema FHandle where
+  myRootPath = "schemas"
+instance HasPath SQL.Schema RHandle where
+  myRootPath = "schemas"
 
-registerSchema :: SQL.Schema -> IO ()
-registerSchema schema = do
-  let schemaName = SQL.schemaOwner schema
-  modifyIORef' schemaRegistry (HM.insert schemaName schema)
+hstreamColumnCatalogToColumnCatalog :: SQL.ColumnCatalog -> API.ColumnCatalog
+hstreamColumnCatalogToColumnCatalog SQL.ColumnCatalog{..} =
+  API.ColumnCatalog
+  { API.columnCatalogIndex = fromIntegral columnId
+  , API.columnCatalogName = columnName
+  , API.columnCatalogType = T.pack (show columnType)
+  , API.columnCatalogIsNullable = columnIsNullable
+  , API.columnCatalogIsHidden = columnIsHidden
+  }
 
-getSchema :: Text -> IO (Maybe SQL.Schema)
-getSchema schemaName = do
-  schemas <- readIORef schemaRegistry
-  return $ HM.lookup schemaName schemas
+columnCatalogToHStreamColumnCatalog :: Text -> API.ColumnCatalog -> SQL.ColumnCatalog
+columnCatalogToHStreamColumnCatalog streamName API.ColumnCatalog{..} =
+  SQL.ColumnCatalog
+  { SQL.columnId = fromIntegral columnCatalogIndex
+  , SQL.columnName = columnCatalogName
+  , SQL.columnType = read (T.unpack columnCatalogType)
+  , SQL.columnIsNullable = columnCatalogIsNullable
+  , SQL.columnIsHidden = columnCatalogIsHidden
+  , SQL.columnStream = streamName
+  , SQL.columnStreamId = 0
+  }
 
-removeSchema :: Text -> IO ()
-removeSchema schemaName = do
-  modifyIORef' schemaRegistry (HM.delete schemaName)
+hstreamSchemaToSchema :: SQL.Schema -> API.Schema
+hstreamSchemaToSchema SQL.Schema{..} =
+  API.Schema
+  { API.schemaOwner = schemaOwner
+  , API.schemaColumns = V.map hstreamColumnCatalogToColumnCatalog (V.fromList $ IntMap.elems schemaColumns)
+  }
+
+schemaToHStreamSchema :: API.Schema -> SQL.Schema
+schemaToHStreamSchema API.Schema{..} =
+  SQL.Schema
+  { SQL.schemaOwner = schemaOwner
+  , SQL.schemaColumns = IntMap.fromList $
+    L.map (\col -> (fromIntegral (API.columnCatalogIndex col), columnCatalogToHStreamColumnCatalog schemaOwner col)) (V.toList schemaColumns)
+  }
+
+registerSchema :: ( MetaType SQL.Schema handle
+                  , HasCallStack
+                  )
+               => handle -> SQL.Schema -> IO ()
+registerSchema h schema = do
+  insertMeta (SQL.schemaOwner schema) schema h
+
+getSchema :: ( MetaType SQL.Schema handle
+             , HasCallStack
+             ) => handle -> Text -> IO (Maybe SQL.Schema)
+getSchema h schemaName = do
+  schemas <- listMeta @SQL.Schema h
+  return $ L.find (\schema -> SQL.schemaOwner schema == schemaName) schemas
+
+unregisterSchema :: ( MetaType SQL.Schema handle
+                    , HasCallStack
+                    ) => handle -> Text -> IO ()
+unregisterSchema h schemaName = do
+  deleteMeta @SQL.Schema schemaName Nothing h
+  `catch` (\(_ :: SomeException) -> return ()) -- FIXME
 #endif

@@ -76,7 +76,7 @@ import           HStream.Processing.Type
 executeQuery :: ServerContext -> CommandQuery -> IO CommandQueryResponse
 executeQuery sc@ServerContext{..} CommandQuery{..} = do
   Log.debug $ "Receive Query Request: " <> Log.build commandQueryStmtText
-  plan <- streamCodegen commandQueryStmtText P.getSchema
+  plan <- streamCodegen commandQueryStmtText (P.getSchema metaHandle)
   case plan of
 #ifdef HStreamUseV2Engine
     SelectPlan ins out builder -> do
@@ -173,11 +173,11 @@ createQueryWithNamespace'
               >>= hstreamQueryToQuery metaHandle
         _ -> throw $ HE.WrongExecutionPlan "Create query only support select / create stream as select statements"
 #else
-      parseAndBind createQueryRequestSql P.getSchema >>= \bSQL -> case bSQL of
+      parseAndBind createQueryRequestSql (P.getSchema metaHandle) >>= \bSQL -> case bSQL of
         BoundQCreate (BoundCreateAs stream select rOptions) ->
           hstreamCodegen (BoundQCreate (BoundCreateAs (namespace <> stream)
                                                       (modifySelect namespace select)
-                                                      rOptions)) P.getSchema >>= \case
+                                                      rOptions)) (P.getSchema metaHandle) >>= \case
             CreateBySelectPlan sources sink builder factor persist -> do
               -- validate names
               mapM_ (validateNameAndThrow ResStream) sources
@@ -266,7 +266,7 @@ createQueryWithNamespace'
         BoundQCreate (BoundCreateView view select) ->
           hstreamCodegen (BoundQCreate (BoundCreateView (namespace <> view)
                                                         (modifySelect namespace select)
-                                   )) P.getSchema >>= \case
+                                   )) (P.getSchema metaHandle) >>= \case
             CreateViewPlan sources sink view builder persist -> do
               validateNameAndThrow ResView view
               Core.createView' sc view sources sink builder persist createQueryRequestSql bSQL createQueryRequestQueryName
@@ -316,7 +316,7 @@ resumeQuery ctx@ServerContext{..} qRQueryName = do
     Just state -> throwIO $ HE.QueryNotAborted (T.pack $ show state)
   getMeta @P.QueryInfo qRQueryName metaHandle >>= \case
     Just P.QueryInfo{..} -> do
-      (qRTaskBuilder, qRWhetherToHStore, qRQuerySources) <- hstreamCodegen queryRefinedAST P.getSchema >>= \case
+      (qRTaskBuilder, qRWhetherToHStore, qRQuerySources) <- hstreamCodegen queryRefinedAST (P.getSchema metaHandle) >>= \case
         CreateBySelectPlan sources _sink builder _ _ -> checkSources sources >> return (builder, True, sources)
         CreateViewPlan sources _sink view builder persist  -> do
           checkSources sources

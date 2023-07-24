@@ -38,12 +38,12 @@ import           HStream.Client.Action            (createConnector,
                                                    createStreamBySelect,
                                                    createStreamBySelectWithCustomQueryName,
                                                    dropAction, executeViewQuery,
-                                                   insertIntoStream,
+                                                   getSchema, insertIntoStream,
                                                    insertIntoStream',
                                                    listShards, pauseConnector,
-                                                   pauseQuery, resumeConnector,
-                                                   resumeQuery, retry,
-                                                   terminateQuery)
+                                                   pauseQuery, registerSchema,
+                                                   resumeConnector, resumeQuery,
+                                                   retry, terminateQuery)
 import           HStream.Client.Execute           (execute, executeShowPlan,
                                                    executeWithLookupResource,
                                                    executeWithLookupResource_,
@@ -70,6 +70,7 @@ import           HStream.SQL                      (BoundCreate (..),
                                                    ResumeObject (..),
                                                    TerminateObject (..),
                                                    hstreamCodegen, parseAndBind)
+import qualified HStream.SQL                      as SQL
 import           HStream.SQL.Exception            (SomeSQLException,
                                                    formatSomeSQLException,
                                                    isEOF)
@@ -107,7 +108,7 @@ interactiveSQLApp sqlCtx@HStreamSqlContext{hstreamCliContext = cliCtx@HStreamCli
           | (head . head . take 1 . words) str == ':'    -> liftIO (commandExec sqlCtx str) >> loop
           | otherwise -> do
               RL.getHistory >>= RL.putHistory . RL.addHistoryUnlessConsecutiveDupe str
-              str' <- readToSQL $ T.pack str
+              str' <- readToSQL sqlCtx (T.pack str)
               case str' of
                 Just str'' -> liftIO (handle (\(e :: SomeException) -> print e) $ commandExec sqlCtx str'')
                 Nothing    -> pure ()
@@ -131,7 +132,7 @@ commandExec HStreamSqlContext{hstreamCliContext = cliCtx@HStreamCliContext{..},.
   ":help":x:_ -> forM_ (M.lookup (map toUpper x) helpInfos) putStrLn
 
   (_:_)       -> liftIO $ handle (\(e :: SomeSQLException) -> putStrLn . formatSomeSQLException $ e) $ do
-    bSQL <- parseAndBind (T.pack xs) P.getSchema
+    bSQL <- parseAndBind (T.pack xs) (cliGetSchema cliCtx)
     case bSQL of
       BoundQPushSelect{} -> cliFetch cliCtx xs
       BoundQCreate BoundCreateAs {} -> do
@@ -140,11 +141,11 @@ commandExec HStreamSqlContext{hstreamCliContext = cliCtx@HStreamCliContext{..},.
       BoundQCreate BoundCreateView {} -> do
         qName <-  ("cli_generated_" <>) <$> newRandomText 10
         executeWithLookupResource_ cliCtx (Resource ResQuery qName) (createStreamBySelectWithCustomQueryName xs qName)
-      bSql' -> hstreamCodegen bSql' P.getSchema >>= \case
+      bSql' -> hstreamCodegen bSql' (cliGetSchema cliCtx) >>= \case
         ShowPlan showObj      -> executeShowPlan cliCtx showObj
         DropPlan checkIfExists dropObj -> executeWithLookupResource_ cliCtx (dropPlanToResType dropObj) $ dropAction checkIfExists dropObj
         CreatePlan sName schema rOptions -> do
-          P.registerSchema schema
+          execute_ cliCtx (registerSchema schema)
           execute_ cliCtx $ createStream sName (bRepFactor rOptions) (bBacklogDuration rOptions)
         TerminatePlan (TQuery qName) -> executeWithLookupResource_ cliCtx (Resource ResQuery qName) $ terminateQuery qName
         InsertPlan sName insertType payload -> do
@@ -172,9 +173,9 @@ commandExec HStreamSqlContext{hstreamCliContext = cliCtx@HStreamCliContext{..},.
           withGRPCClient (HStream.Utils.mkGRPCClientConfWithSSL addr sslConfig)
             (hstreamApiClient >=> \api -> sqlAction api (T.pack xs))
 
-readToSQL :: T.Text -> RL.InputT IO (Maybe String)
-readToSQL acc = do
-    x <- liftIO $ try @SomeSQLException $ parseAndBind acc P.getSchema
+readToSQL :: HStreamSqlContext -> T.Text -> RL.InputT IO (Maybe String)
+readToSQL sqlCtx acc = do
+    x <- liftIO $ try @SomeSQLException $ parseAndBind acc (cliGetSchema (hstreamCliContext sqlCtx))
     case x of
       Left err ->
         if isEOF err
@@ -182,7 +183,7 @@ readToSQL acc = do
               line <- RL.getInputLine "| "
               case line of
                 Nothing   -> pure . Just $ T.unpack acc
-                Just line -> readToSQL $ acc <> " " <> T.pack line
+                Just line -> readToSQL sqlCtx (acc <> " " <> T.pack line)
             else do
               RL.outputStrLn . formatSomeSQLException $ err
               pure Nothing
@@ -258,4 +259,9 @@ runActionWithGrpc HStreamCliContext{..} action= do
   addr <- readMVar currentServer
   withGRPCClient (HStream.Utils.mkGRPCClientConfWithSSL addr sslConfig)
     (hstreamApiClient >=> action)
+
+cliGetSchema :: HStreamCliContext -> T.Text -> IO (Maybe SQL.Schema)
+cliGetSchema cliCtx schemaOwner = do
+  m <- execute cliCtx (getSchema schemaOwner)
+  return (P.schemaToHStreamSchema <$> m)
 #endif

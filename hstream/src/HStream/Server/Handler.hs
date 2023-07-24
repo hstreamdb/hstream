@@ -19,6 +19,7 @@ import           HStream.Server.Handler.Cluster
 import           HStream.Server.Handler.Connector
 import           HStream.Server.Handler.Extra
 import           HStream.Server.Handler.Query
+import           HStream.Server.Handler.Schema
 import           HStream.Server.Handler.ShardReader
 import qualified HStream.Server.Handler.Stats        as H
 import           HStream.Server.Handler.Stream
@@ -85,6 +86,12 @@ handlers serverContext@ServerContext{..} =
         hstreamApiListQueries = listQueriesHandler serverContext,
         hstreamApiDeleteQuery = deleteQueryHandler serverContext,
         hstreamApiResumeQuery = resumeQueryHandler serverContext,
+
+#ifdef HStreamEnableSchema
+        hstreamApiRegisterSchema = registerSchemaHandler serverContext,
+        hstreamApiGetSchema = getSchemaHandler serverContext,
+        hstreamApiUnregisterSchema = unregisterSchemaHandler serverContext,
+#endif
 
         -- Connector
         hstreamApiCreateConnector = createConnectorHandler serverContext,

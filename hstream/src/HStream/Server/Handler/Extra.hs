@@ -21,18 +21,18 @@ parseSqlHandler
   :: ServerContext
   -> ServerRequest 'Normal API.ParseSqlRequest API.ParseSqlResponse
   -> IO (ServerResponse 'Normal API.ParseSqlResponse)
-parseSqlHandler _ (ServerNormalRequest _metadata req) = queryExceptionHandle $
-  parseSql req >>= returnResp
+parseSqlHandler sc (ServerNormalRequest _metadata req) = queryExceptionHandle $
+  parseSql sc req >>= returnResp
 
 handleParseSql :: ServerContext -> G.UnaryHandler API.ParseSqlRequest API.ParseSqlResponse
-handleParseSql _ _ req = catchQueryEx $ parseSql req
+handleParseSql sc _ req = catchQueryEx $ parseSql sc req
 
-parseSql :: API.ParseSqlRequest  -> IO API.ParseSqlResponse
-parseSql API.ParseSqlRequest{..} = do
+parseSql :: ServerContext -> API.ParseSqlRequest  -> IO API.ParseSqlResponse
+parseSql ServerContext{..} API.ParseSqlRequest{..} = do
 #ifdef HStreamEnableSchema
-  streamCodegen parseSqlRequestSql P.getSchema >>= \case
+  streamCodegen parseSqlRequestSql (P.getSchema metaHandle) >>= \case
 #else
-  streamCodegen parseSqlRequestSql             >>= \case
+  streamCodegen parseSqlRequestSql                          >>= \case
 #endif
     SelectPlan sources _ _ _ -> return $
       ParseSqlResponse (Just $ ParseSqlResponseSqlEvqSql $ ExecuteViewQuerySql (head sources))

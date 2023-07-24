@@ -86,11 +86,11 @@ createView' sc@ServerContext{..} view ins out builder accumulation sql = do
       throwIO $ HE.StreamNotFound $ "At least one of the streams/views do not exist: " <> T.pack (show sources)
 #else
 createView :: ServerContext -> T.Text -> T.Text -> IO P.ViewInfo
-createView sc sql queryName = do
-  plan <- streamCodegen sql P.getSchema
+createView sc@ServerContext{..} sql queryName = do
+  plan <- streamCodegen sql (P.getSchema metaHandle)
   case plan of
     CreateViewPlan srcs sink view builder persist -> do
-      bSQL <- parseAndBind sql P.getSchema
+      bSQL <- parseAndBind sql (P.getSchema metaHandle)
       createView' sc view srcs sink builder persist sql bSQL queryName
     _ ->  throw $ HE.WrongExecutionPlan "Create query only support create view as select statements"
 
@@ -161,12 +161,12 @@ executeViewQuery :: ServerContext -> T.Text -> IO (V.Vector Struct)
 executeViewQuery ctx sql = executeViewQueryWithNamespace ctx sql ""
 
 executeViewQueryWithNamespace :: ServerContext -> T.Text -> T.Text -> IO (V.Vector Struct)
-executeViewQueryWithNamespace sc@ServerContext{..} sql namespace = parseAndBind sql P.getSchema >>= \case
+executeViewQueryWithNamespace sc@ServerContext{..} sql namespace = parseAndBind sql (P.getSchema metaHandle) >>= \case
   BoundQSelect select_imm -> do
     -- FIXME: Very tricky hack, invasive to the SQL Planner.
     -- 1. the immediate query to the view
     let select_imm_namespaced = modifySelect namespace select_imm
-    relationExpr_imm <- planIO select_imm_namespaced P.getSchema
+    relationExpr_imm <- planIO select_imm_namespaced (P.getSchema metaHandle)
     taskName_imm <- genTaskName
     (_,_view_names,_,_) <- elabRelationExpr taskName_imm Nothing relationExpr_imm
     -- FIXME: immediate select from [views join views/streams]?
@@ -178,7 +178,7 @@ executeViewQueryWithNamespace sc@ServerContext{..} sql namespace = parseAndBind 
       <- M.getMeta @ViewInfo view_name metaHandle >>= \case
         Nothing    -> throwIO $ ViewNotFound view_name
         Just vInfo -> return $ P.queryRefinedAST (P.viewQuery vInfo)
-    relationExpr_v <- planIO select_v P.getSchema
+    relationExpr_v <- planIO select_v (P.getSchema metaHandle)
     -- 3.1 scan for HAVING
     let trans_m_having =
           case scanRelationExpr (\r -> case r of
