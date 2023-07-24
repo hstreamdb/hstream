@@ -14,10 +14,24 @@ import           Data.Text.Prettyprint.Doc.Render.String
 import           HStream.SQL.Binder
 import           HStream.SQL.PlannerNew.Types
 
+instance Pretty BoundDataType where
+  pretty typ = case typ of
+    BTypeInteger   -> "int"
+    BTypeFloat     -> "float"
+    BTypeBoolean   -> "bool"
+    BTypeBytea     -> "bytea"
+    BTypeText      -> "text"
+    BTypeDate      -> "date"
+    BTypeTime      -> "time"
+    BTypeTimestamp -> "timestamp"
+    BTypeInterval  -> "interval"
+    BTypeJsonb     -> "jsonb"
+    BTypeArray t   -> "[" <> pretty t <> "]"
+
 instance Pretty Schema where
   pretty (Schema _ cols) = "(" <>
     hcat (L.intersperse ", "
-           (L.map (\ColumnCatalog{..} -> pretty columnStreamId <> "_" <> pretty columnName <> ":" <> viaShow columnType)
+           (L.map (\ColumnCatalog{..} -> pretty columnStreamId <> "_" <> pretty columnName <> ":" <> pretty columnType)
              (IntMap.elems cols)
            )
          ) <>
@@ -57,5 +71,5 @@ instance Pretty RelationExpr where
                      <+> "|" <+> pretty schema
                      <> line <> (indent 2 $ pretty r1) <> line <> (indent 2 $ pretty r2)
 
-instance Show RelationExpr where
+instance {-# OVERLAPPABLE #-} Show RelationExpr where
   show expr = renderString $ layoutPretty defaultLayoutOptions (pretty expr)
