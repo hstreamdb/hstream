@@ -261,20 +261,8 @@ data BoundDataType
   | BTypeInterval | BTypeJsonb
   | BTypeArray BoundDataType
   deriving ( Eq, Ord, Generic, Aeson.ToJSON, Aeson.FromJSON
-           , Aeson.ToJSONKey, Aeson.FromJSONKey, Hashable)
-instance Show BoundDataType where
-  show typ = case typ of
-    BTypeInteger   -> "int"
-    BTypeFloat     -> "float"
-    BTypeBoolean   -> "bool"
-    BTypeBytea     -> "bytea"
-    BTypeText      -> "text"
-    BTypeDate      -> "date"
-    BTypeTime      -> "time"
-    BTypeTimestamp-> "timestamp"
-    BTypeInterval  -> "interval"
-    BTypeJsonb     -> "jsonb"
-    BTypeArray t   -> "[" <> show t <> "]"
+           , Aeson.ToJSONKey, Aeson.FromJSONKey, Hashable
+           , Show, Read)
 
 type instance BoundType DataType = BoundDataType
 instance Bind DataType where
