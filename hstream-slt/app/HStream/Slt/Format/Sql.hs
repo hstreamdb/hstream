@@ -1,9 +1,9 @@
 module Slt.Format.Sql where
 
-import           Control.Applicative
-import qualified Data.Text           as T
-import           Slt.Format
-import qualified Text.Megaparsec     as P
+import Control.Applicative
+import Data.Text qualified as T
+import Slt.Format
+import Text.Megaparsec qualified as P
 
 newtype SelectNoTable = SelectNoTable
   { selectNoTableItems :: [SelectNoTableItem]

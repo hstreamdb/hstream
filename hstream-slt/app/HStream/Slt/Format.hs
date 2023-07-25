@@ -1,15 +1,15 @@
 module Slt.Format where
 
-import           Data.Char                  (isSpace)
-import           Data.Foldable
-import           Data.Functor
-import qualified Data.Text                  as T
-import           Data.Void                  (Void)
-import           Slt.Utils
-import           Text.Megaparsec            (many, some, (<|>))
-import qualified Text.Megaparsec            as P
-import qualified Text.Megaparsec.Char       as C
-import qualified Text.Megaparsec.Char.Lexer as L
+import Data.Char (isSpace)
+import Data.Foldable
+import Data.Functor
+import Data.Text qualified as T
+import Data.Void (Void)
+import Slt.Utils
+import Text.Megaparsec (many, some, (<|>))
+import Text.Megaparsec qualified as P
+import Text.Megaparsec.Char qualified as C
+import Text.Megaparsec.Char.Lexer qualified as L
 
 ----------------------------------------
 -- Common Parser Utils
@@ -82,4 +82,4 @@ pIntOpt x = read @Int <$> do symbol x *> symbol "=" *> lexeme (some C.digitChar)
 
 isSpaceButNotNewline :: Char -> Bool
 isSpaceButNotNewline '\n' = False
-isSpaceButNotNewline x    = isSpace x
+isSpaceButNotNewline x = isSpace x

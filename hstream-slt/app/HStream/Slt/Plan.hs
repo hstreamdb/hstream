@@ -1,10 +1,10 @@
 module Slt.Plan where
 
-import qualified Data.Text       as T
-import           Slt.Format
-import           Slt.Utils       (SqlDataType)
-import           Text.Megaparsec (many)
-import qualified Text.Megaparsec as P
+import Data.Text qualified as T
+import Slt.Format
+import Slt.Utils (SqlDataType)
+import Text.Megaparsec (many)
+import Text.Megaparsec qualified as P
 
 ----------------------------------------
 -- Slt Suite & Plan
@@ -41,8 +41,8 @@ pPlan = PlanRandomNoTable <$> pPlanRandomNoTable
 
 data RandomNoTablePlan = RandomNoTablePlan
   { colInfo :: ColInfo,
-    rowNum  :: Maybe Int,
-    sql     :: T.Text
+    rowNum :: Maybe Int,
+    sql :: T.Text
   }
   deriving (Show)
 
