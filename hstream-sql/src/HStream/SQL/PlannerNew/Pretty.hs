@@ -31,7 +31,7 @@ instance Pretty BoundDataType where
 instance Pretty Schema where
   pretty (Schema _ cols) = "(" <>
     hcat (L.intersperse ", "
-           (L.map (\ColumnCatalog{..} -> pretty columnStreamId <> "_" <> pretty columnName <> ":" <> pretty columnType)
+           (L.map (\ColumnCatalog{..} -> "#" <> pretty columnId <> "_" <> pretty columnName <> ":" <> pretty columnType)
              (IntMap.elems cols)
            )
          ) <>

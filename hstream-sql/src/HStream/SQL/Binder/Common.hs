@@ -69,8 +69,8 @@ instance Eq ColumnCatalog where
 (<:+:>) m1 m2 =
   let tups1 = IntMap.toList m1
       tups2 = IntMap.toList m2
-      maxId1 = if null tups1 then 0 else fst (L.maximumBy (compare `on` fst) tups1)
-      tups2' = L.map (\(i,c) -> (i+maxId1+1, c)) tups2
+      maxId1 = if null tups1 then (-1) else fst (L.maximumBy (compare `on` fst) tups1)
+      tups2' = L.map (\(i,c) -> (i+maxId1+1, c {columnId = i+maxId1+1})) tups2
    in IntMap.fromList (tups1 <> tups2')
 
 regularizeColumnCatalogs :: Set ColumnCatalog -> Set ColumnCatalog
