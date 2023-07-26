@@ -24,6 +24,13 @@ class MonadIO (m executor) => ExecutorCtx m executor where
   pushSql :: T.Text -> m executor ()
   getSql :: m executor [T.Text]
 
+evalNewExecutorCtx :: forall m1 a m0 executor0 executor1. (ExecutorCtx m0 executor0, ExecutorCtx m1 executor1) => m1 executor1 a -> m0 executor0 a
+evalNewExecutorCtx xs = do
+  opts <- getOpts
+  liftIO $ evalExecutorCtx @m1 $ do
+    setOpts opts
+    xs
+
 ----------------------------------------
 
 newtype ExecutorM executor a = ExecutorM

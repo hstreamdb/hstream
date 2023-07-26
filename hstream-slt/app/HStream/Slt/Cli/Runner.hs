@@ -10,6 +10,7 @@ import           Slt.Cli.Parser
 import           Slt.Executor
 import           Slt.Executor.Dummy
 import           Slt.Executor.HStream   (HStreamExecutorCtx (HStreamExecutorCtx))
+import           Slt.Executor.SQLite
 import           Slt.Plan
 import           System.Directory
 
@@ -70,12 +71,10 @@ execSuite sltSuite executorKind = do
   if debug
     then pure $ pure ()
     else case executorKind of
-      ExecutorKindSQLite -> do
-        opts <- getOpts
-        liftIO $ evalExecutorCtx @HStreamExecutorCtx $ do
-          setOpts opts
-          pure _
-      ExecutorKindHStream -> undefined
+      ExecutorKindSQLite -> evalNewExecutorCtx @SQLiteExecutorCtx $ do
+        pure undefined
+      ExecutorKindHStream -> evalNewExecutorCtx @HStreamExecutorCtx $ do
+        pure undefined
 
 ----------------------------------------
 

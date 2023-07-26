@@ -1,4 +1,4 @@
-module Slt.Executor.SQLite (SQLiteExecutor (..)) where
+module Slt.Executor.SQLite (SQLiteExecutorCtx, SQLiteExecutor (..)) where
 
 import           Control.Monad.IO.Class
 import           Control.Monad.State
