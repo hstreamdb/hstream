@@ -256,6 +256,7 @@ serve host port
           , HsGrpc.serverParallelism = 0
           , HsGrpc.serverSslOptions = sslOpts
           , HsGrpc.serverOnStarted = Just serverOnStarted
+          , HsGrpc.serverInternalChannelSize = 64
           }
 #endif
   forM_ (Map.toList listeners) $ \(key, vs) ->
