@@ -78,3 +78,10 @@ pColInfo = ColInfo <$> pTypeInfo
 
 parseTest :: FilePath -> IO ()
 parseTest src = P.parseTest pSlt . T.pack =<< readFile src
+
+parsePlan :: FilePath -> IO SltSuite
+parsePlan file = do
+  src <- T.pack <$> readFile file
+  case P.parse pSlt [] src of
+    Left err -> error $ show err
+    Right ok -> pure ok
