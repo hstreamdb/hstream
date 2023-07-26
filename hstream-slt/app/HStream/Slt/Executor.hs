@@ -1,13 +1,28 @@
 module Slt.Executor where
 
-import Control.Monad (forM)
-import Control.Monad.State
-import Data.Aeson.Key qualified as A
-import Data.Aeson.KeyMap qualified as A
-import Data.Functor
-import Data.Text qualified as T
-import Slt.Cli.Parser (GlobalOpts)
-import Slt.Utils
+import           Control.Monad       (forM, when)
+import           Control.Monad.State
+import qualified Data.Aeson.Key      as A
+import qualified Data.Aeson.KeyMap   as A
+import           Data.Functor
+import           Data.Maybe
+import qualified Data.Text           as T
+import           Slt.Cli.Parser
+import           Slt.Utils
+
+----------------------------------------
+-- ExecutorCtx
+----------------------------------------
+
+class MonadIO (m executor) => ExecutorCtx m executor where
+  evalExecutorCtx :: m executor a -> IO a
+  setOpts :: GlobalOpts -> m executor ()
+  getOpts :: m executor GlobalOpts
+  setExecutor :: executor -> m executor ()
+  getExecutor :: m executor executor
+  isDebug :: m executor Bool
+
+----------------------------------------
 
 newtype ExecutorM executor a = ExecutorM
   { unExecutorM :: StateT (ExecutorState executor) IO a
@@ -15,32 +30,65 @@ newtype ExecutorM executor a = ExecutorM
   deriving (Functor, Applicative, Monad, MonadIO, MonadState (ExecutorState executor))
 
 data ExecutorState executor = ExecutorState
-  { executorStateOpts :: GlobalOpts,
+  { executorStateOpts     :: GlobalOpts,
     executorStateExecutor :: Maybe executor
   }
 
-setExecutor :: executor -> ExecutorM executor ()
-setExecutor executor = do
-  s <- get
-  put $ s {executorStateExecutor = Just executor}
+defaultExecutorState :: ExecutorState executor
+defaultExecutorState =
+  ExecutorState
+    { executorStateOpts =
+        GlobalOpts
+          { debug = False,
+            executorsAddr = []
+          },
+      executorStateExecutor = Nothing
+    }
 
-class MonadIO m => SltExecutor m where
-  open :: m ()
-  insertValues :: T.Text -> Kv -> m ()
-  selectWithoutFrom :: [T.Text] -> m Kv
-  sqlDataTypeToLiteral' :: SqlDataType -> m T.Text
-  sqlDataValueToLiteral :: SqlDataValue -> m T.Text
+instance ExecutorCtx ExecutorM executor where
+  evalExecutorCtx ExecutorM {unExecutorM = executor} =
+    evalStateT executor defaultExecutorState
+  setExecutor executor = do
+    s <- get
+    put $ s {executorStateExecutor = Just executor}
+  isDebug = gets $ debug . executorStateOpts
+  setOpts opts = do
+    s <- get
+    put $ s {executorStateOpts = opts}
+  getOpts = gets executorStateOpts
+  getExecutor = gets $ fromJust . executorStateExecutor
 
-sqlDataTypeToLiteral :: SltExecutor m => SqlDataValue -> m T.Text
+----------------------------------------
+
+debugPrint :: (ExecutorCtx m executor, Show a) => a -> m executor ()
+debugPrint x = do
+  debug <- isDebug
+  when debug $ do
+    liftIO $ print x
+
+----------------------------------------
+-- SltExecutor
+----------------------------------------
+
+class ExecutorCtx m executor => SltExecutor m executor | m -> executor where
+  open' :: m executor executor
+  open :: m executor ()
+  open = setExecutor =<< open'
+  insertValues :: T.Text -> Kv -> m executor ()
+  selectWithoutFrom :: [T.Text] -> m executor Kv
+  sqlDataTypeToLiteral' :: SqlDataType -> m executor T.Text
+  sqlDataValueToLiteral :: SqlDataValue -> m executor T.Text
+
+sqlDataTypeToLiteral :: SltExecutor m executor => SqlDataValue -> m executor T.Text
 sqlDataTypeToLiteral value = sqlDataTypeToLiteral' (getSqlDataType value)
 
-buildValues :: SltExecutor m => Kv -> m T.Text
+buildValues :: SltExecutor m executor => Kv -> m executor T.Text
 buildValues kv = do
   h0 <- hs0
   h1 <- hs1
   pure $ " (" <> T.intercalate ", " h0 <> ") VALUES ( " <> T.intercalate ", " h1 <> " )"
   where
-    hs0, hs1 :: SltExecutor m => m [T.Text]
+    hs0, hs1 :: SltExecutor m executor => m executor [T.Text]
     hs0 = pure $ A.keys kv <&> A.toText
     hs1 =
       forM (A.elems kv) $ \v -> do

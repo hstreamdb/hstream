@@ -1,27 +1,33 @@
 module Slt.Executor.SQLite (SQLiteExecutor (..)) where
 
-import Control.Monad.IO.Class
-import Control.Monad.State
-import Data.Maybe
-import Data.Text qualified as T
-import Database.SQLite.Simple qualified as S
-import GHC.Stack
-import Slt.Executor
-import Slt.Utils
+import           Control.Monad.IO.Class
+import           Control.Monad.State
+import           Data.Maybe
+import qualified Data.Text              as T
+import qualified Database.SQLite.Simple as S
+import           GHC.Stack
+import           Slt.Executor
+import           Slt.Utils
 
 newtype SQLiteExecutor = SQLiteExecutor
   { connection :: S.Connection
   }
 
-type SQLiteExecutorM = ExecutorM SQLiteExecutor
+newtype SQLiteExecutorCtx executor a = SQLiteExecutorCtx {unSQLiteExecutorCtx :: ExecutorM executor a}
+  deriving (Functor, Applicative, Monad, MonadIO, MonadState (ExecutorState executor))
 
-getConn :: SQLiteExecutorM S.Connection
-getConn = gets $ connection . fromJust . executorStateExecutor
+instance ExecutorCtx SQLiteExecutorCtx executor where
+  setExecutor = SQLiteExecutorCtx . setExecutor
+  isDebug = SQLiteExecutorCtx isDebug
+  evalExecutorCtx = evalExecutorCtx . unSQLiteExecutorCtx
+  setOpts = SQLiteExecutorCtx . setOpts
+  getOpts = SQLiteExecutorCtx getOpts
+  getExecutor = SQLiteExecutorCtx getExecutor
 
-instance SltExecutor (ExecutorM SQLiteExecutor) where
-  open = do
-    executor <- liftIO $ SQLiteExecutor <$> S.open []
-    setExecutor executor
+type SQLiteExecutorM = SQLiteExecutorCtx SQLiteExecutor
+
+instance SltExecutor SQLiteExecutorCtx SQLiteExecutor where
+  open' = liftIO $ SQLiteExecutor <$> S.open []
   selectWithoutFrom = selectWithoutFrom'
   insertValues = insertValues'
   sqlDataTypeToLiteral' = sqlDataTypeToLiteral''
@@ -54,17 +60,22 @@ insertValues' table kv = do
 
 sqlDataTypeToLiteral'' :: SqlDataType -> SQLiteExecutorM T.Text
 sqlDataTypeToLiteral'' typ = pure $ case typ of
-  INTEGER -> "INTEGER"
-  FLOAT -> "REAL"
-  BOOLEAN -> "NUMERIC"
-  BYTEA -> "BLOB"
-  STRING -> "TEXT"
-  DATE -> throwSQLiteUnsupported
-  TIME -> throwSQLiteUnsupported
+  INTEGER   -> "INTEGER"
+  FLOAT     -> "REAL"
+  BOOLEAN   -> "NUMERIC"
+  BYTEA     -> "BLOB"
+  STRING    -> "TEXT"
+  DATE      -> throwSQLiteUnsupported
+  TIME      -> throwSQLiteUnsupported
   TIMESTAMP -> throwSQLiteUnsupported
-  INTERVAL -> throwSQLiteUnsupported
-  JSONB -> throwSQLiteUnsupported
-  NULL -> "NULL"
+  INTERVAL  -> throwSQLiteUnsupported
+  JSONB     -> throwSQLiteUnsupported
+  NULL      -> "NULL"
 
 throwSQLiteUnsupported :: HasCallStack => a
 throwSQLiteUnsupported = error "SQLiteUnsupported"
+
+----------------------------------------
+
+getConn :: SQLiteExecutorM S.Connection
+getConn = gets $ connection . fromJust . executorStateExecutor

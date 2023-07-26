@@ -1,6 +1,6 @@
 module Slt.Cli.Parser where
 
-import Options.Applicative
+import           Options.Applicative
 
 mainOptsParser :: IO Opts
 mainOptsParser = execParser $ info (helper <*> parseOpts) mempty
@@ -11,23 +11,33 @@ mainOptsParser = execParser $ info (helper <*> parseOpts) mempty
 
 data Opts = Opts
   { globalOpts :: GlobalOpts,
-    globalCmd :: Cmd
+    globalCmd  :: Cmd
   }
+  deriving (Show)
 
 data GlobalOpts = GlobalOpts
-  { debug :: Bool,
+  { debug         :: Bool,
     executorsAddr :: [(ExecutorKind, String)]
   }
+  deriving (Show)
 
 data Cmd
-  = CmdParse [FilePath]
+  = CmdParse ParseOpts
   | CmdExec ExecOpts
-  | CmdComplete
+  | CmdComplete CompleteOpts
+  deriving (Show)
+
+newtype ParseOpts = ParseOpts {unParseOpts :: [FilePath]}
+  deriving (Show)
 
 data ExecOpts = ExecOpts
-  { files :: [FilePath],
+  { files     :: [FilePath],
     executors :: [ExecutorKind]
   }
+  deriving (Show)
+
+data CompleteOpts = CompleteOpts
+  deriving (Show)
 
 parseOpts :: Parser Opts
 parseOpts = Opts <$> parseGlobalOpts <*> parseCmd
@@ -48,13 +58,13 @@ parseCmd :: Parser Cmd
 parseCmd = parseCmdParse <|> parseCmdExec <|> parseCmdComplete
 
 parseCmdParse :: Parser Cmd
-parseCmdParse = CmdParse <$> some (argument str (metavar "FILES..."))
+parseCmdParse = CmdParse . ParseOpts <$> some (argument str (metavar "FILES..."))
 
 parseCmdExec :: Parser Cmd
 parseCmdExec = CmdExec <$> parseExecOpts
 
 parseCmdComplete :: Parser Cmd
-parseCmdComplete = pure CmdComplete
+parseCmdComplete = pure $ CmdComplete CompleteOpts
 
 parseExecOpts :: Parser ExecOpts
 parseExecOpts =
@@ -75,8 +85,9 @@ parseExecutorKind =
 data ExecutorKind
   = ExecutorKindHStream
   | ExecutorKindSQLite
+  deriving (Show)
 
 strExecutorKind :: ExecutorKind -> String
 strExecutorKind = \case
   ExecutorKindHStream -> "hstream"
-  ExecutorKindSQLite -> "sqlite"
+  ExecutorKindSQLite  -> "sqlite"
