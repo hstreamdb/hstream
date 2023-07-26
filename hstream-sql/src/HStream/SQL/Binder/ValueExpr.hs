@@ -16,6 +16,7 @@ import           GHC.Generics              (Generic)
 import           HStream.SQL.Abs
 import           HStream.SQL.Binder.Basic
 import           HStream.SQL.Binder.Common
+import           HStream.SQL.Exception
 import           HStream.SQL.Extra
 
 type ExprName   = String
@@ -138,21 +139,21 @@ instance Bind ValueExpr where
     ExprSetFunc    _ func -> bind func
     -- 7. Column access
     ExprColName _ col -> case col of
-      ColNameSimple _ colIdent        -> do
+      ColNameSimple pos colIdent        -> do
         ctx <- get
         col <- bind colIdent
         case lookupColumn ctx col of
           Nothing                 ->
-            error $ "Column " <> T.unpack col <> " not found in ctx " <> show ctx
+            throwSQLException BindException pos $ "Column " <> T.unpack col <> " not found in ctx " <> show ctx
           Just (stream, colId, _) ->
             return $ BoundExprCol (trimSpacesPrint expr) stream col colId
-      ColNameStream _ hIdent colIdent -> do
+      ColNameStream pos hIdent colIdent -> do
         ctx <- get
         stream <- bind hIdent
         col <- bind colIdent
         case lookupColumnWithStream ctx col stream of
           Nothing         ->
-            error $ "Column " <> T.unpack stream <> "." <> T.unpack col <> " not found in ctx " <> show ctx
+            throwSQLException BindException pos $ "Column " <> T.unpack stream <> "." <> T.unpack col <> " not found in ctx " <> show ctx
           Just (originalStream, colId, _) ->
             return $ BoundExprCol (trimSpacesPrint expr) originalStream col colId
     -- 8. Expand

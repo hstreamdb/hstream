@@ -29,6 +29,7 @@ import           HStream.SQL.Abs
 import           HStream.SQL.Binder.Basic
 import           HStream.SQL.Binder.Common
 import           HStream.SQL.Binder.ValueExpr
+import           HStream.SQL.Exception
 
 data WindowType
   = Tumbling BoundInterval
@@ -130,11 +131,11 @@ instance Bind TableRef where
   refine (TableRefHopping _ ref len hop) = RTableRefWindowed (refine ref) (Hopping (refine len) (refine hop)) Nothing
   refine (TableRefSliding _ ref interval) = RTableRefWindowed (refine ref) (Sliding (refine interval)) Nothing
 #else
-  bind' (TableRefIdent _ hIdent) = do
+  bind' (TableRefIdent pos hIdent) = do
     streamName <- bind hIdent
     getSchema <- ask
     liftIO (getSchema streamName) >>= \case
-      Nothing     -> error $ "stream " <> T.unpack streamName <> " not exist"
+      Nothing     -> throwSQLException BindException pos $ "stream " <> T.unpack streamName <> " not exist"
       Just schema -> do
         -- add alias to context (same as the original name)
         modify' (\ctx@BindContext{..} -> ctx { bindContextAliases = Bimap.insert streamName streamName bindContextAliases })
@@ -204,7 +205,7 @@ instance Bind TableRef where
     pushLayer layer
     return (BoundTableRefJoin joinName boundRef1 InnerJoin boundRef2 (BoundExprConst "TRUE" (ConstantBoolean True)) boundInterval, 1)
 
-  bind' (TableRefNaturalJoin _ ref1 typ ref2 interval) = do
+  bind' (TableRefNaturalJoin pos ref1 typ ref2 interval) = do
     (boundRef1, n1) <- bind' ref1
     (boundRef2, n2) <- bind' ref2
     boundTyp <- bind typ
@@ -223,9 +224,9 @@ instance Bind TableRef where
     let sameColumns = scanColumns (mconcat layers1) (mconcat layers2)
     expr <- foldM (\acc colName -> do
       case lookupColumn ctx_1 colName of
-          Nothing         -> error $ "column " <> T.unpack colName <> " is ambiguous in " <> show boundRef1
+          Nothing         -> throwSQLException BindException pos $ "column " <> T.unpack colName <> " is ambiguous in " <> show boundRef1
           Just (s1, i, _) -> case lookupColumn ctx_2 colName of
-            Nothing         -> error $ "column " <> T.unpack colName <> " is ambiguous in " <> show boundRef2
+            Nothing         -> throwSQLException BindException pos $ "column " <> T.unpack colName <> " is ambiguous in " <> show boundRef2
             Just (s2, j, _) -> do
               let col1 = BoundExprCol (T.unpack $ s1 <> "." <> colName) s1 colName i
                   col2 = BoundExprCol (T.unpack $ s2 <> "." <> colName) s2 colName j
@@ -254,7 +255,7 @@ instance Bind TableRef where
     boundExpr <- bind expr
     return (BoundTableRefJoin joinName boundRef1 boundTyp boundRef2 boundExpr boundInterval, 1)
 
-  bind' (TableRefJoinUsing _ ref1 typ ref2 cols interval) = do
+  bind' (TableRefJoinUsing pos ref1 typ ref2 cols interval) = do
     (boundRef1, n1) <- bind' ref1
     (boundRef2, n2) <- bind' ref2
     boundTyp <- bind typ
@@ -273,9 +274,9 @@ instance Bind TableRef where
 
     expr <- foldM (\acc colName ->
         case lookupColumn ctx_1 colName of
-          Nothing         -> error $ "column " <> T.unpack colName <> " is ambiguous in " <> show boundRef1
+          Nothing         -> throwSQLException BindException pos $ "column " <> T.unpack colName <> " is ambiguous in " <> show boundRef1
           Just (s1, i, _) -> case lookupColumn ctx_2 colName of
-            Nothing         -> error $ "column " <> T.unpack colName <> " is ambiguous in " <> show boundRef2
+            Nothing         -> throwSQLException BindException pos $ "column " <> T.unpack colName <> " is ambiguous in " <> show boundRef2
             Just (s2, j, _) -> do
               let col1 = BoundExprCol (T.unpack $ s1 <> "." <> colName) s1 colName i
                   col2 = BoundExprCol (T.unpack $ s2 <> "." <> colName) s2 colName j
@@ -391,18 +392,18 @@ instance Bind GroupBy where
   bind' (DGroupBy _ cols) = do
     exprs <- foldM (\acc col ->
               case col of
-                ColNameSimple _ colIdent -> do
+                ColNameSimple pos colIdent -> do
                   ctx <- get
                   colName <- bind colIdent
                   case lookupColumn ctx colName of
-                    Nothing      -> error $ "column not found: " <> show colName
+                    Nothing      -> throwSQLException BindException pos $ "column not found: " <> show colName
                     Just (s,i,_) -> return $ (BoundExprCol (T.unpack colName) s colName i):acc
-                ColNameStream _ hIdent colIdent -> do
+                ColNameStream pos hIdent colIdent -> do
                   ctx <- get
                   streamName <- bind hIdent
                   colName <- bind colIdent
                   case lookupColumnWithStream ctx colName streamName of
-                    Nothing    -> error $ "column not found: " <> show col
+                    Nothing    -> throwSQLException BindException pos $ "column not found: " <> show col
                     Just (originalStream,i,_) ->
                       return $ (BoundExprCol (T.unpack originalStream <> "." <> T.unpack colName)
                                              originalStream
@@ -447,7 +448,7 @@ instance Bind Select where
     RSelect (refine sel) (refine frm) (refine whr) (refine grp) (refine hav)
 #else
 instance Bind Select where
-  bind' (DSelect _ sel frm whr grp hav) = do
+  bind' (DSelect pos sel frm whr grp hav) = do
     (boundFrm, frm_n) <- bind' frm
     boundSel <- bind sel
     boundWhr <- bind whr
@@ -459,7 +460,7 @@ instance Bind Select where
     let boundGrp' = case boundGrp of
           BoundGroupByEmpty   -> case groupbyWin_m of
             Nothing  -> BoundGroupByEmpty
-            Just win -> error $ "empty GROUPBY encountered a window!"
+            Just win -> throwSQLException BindException pos $ "empty GROUPBY encountered a window!"
           BoundGroupBy tups _ -> case groupbyWin_m of
             Nothing  -> BoundGroupBy tups Nothing
             Just win -> BoundGroupBy tups (Just win)

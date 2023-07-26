@@ -141,7 +141,7 @@ lookupColumn (BindContext (x:xs) aliases n) col =
     Nothing -> lookupColumn (BindContext xs aliases n) col
     Just m  -> case HM.toList m of
       [(stream, (colId, bindType))] -> Just (stream, colId, bindType)
-      _                             -> error $ "ambiguous column name: " <> T.unpack col
+      _                             -> throwSQLException BindException Nothing $ "ambiguous column name: " <> T.unpack col
 
 lookupColumnWithStream :: BindContext -> Text -> Text -> Maybe (Text, Int, BindUnitType)
 lookupColumnWithStream (BindContext [] _ _) _ _ = Nothing
@@ -149,7 +149,7 @@ lookupColumnWithStream (BindContext (x:xs) aliases n) col stream =
   case HM.lookup col (layerColumnBindings x) of
     Nothing -> lookupColumnWithStream (BindContext xs aliases n) col stream
     Just m  -> case Bimap.lookup stream aliases of
-      Nothing           -> error $ "stream alias not found: " <> T.unpack stream <> ", what happened...?"
+      Nothing           -> throwSQLException BindException Nothing $ "stream alias not found: " <> T.unpack stream <> ", what happened...?"
       Just originalName -> case HM.lookup originalName m of
         Nothing -> lookupColumnWithStream (BindContext xs aliases n) col stream
         Just (colId, bindType) -> Just (originalName, colId, bindType)
@@ -164,7 +164,7 @@ listColumns (BindContext xs _ _) =
 listColumnsByStream :: BindContext -> Text -> [(Text, Text, Int)]
 listColumnsByStream (BindContext xs aliases _) stream =
   case Bimap.lookup stream aliases of
-    Nothing           -> error $ "stream alias not found: " <> T.unpack stream <> ", what happened...?"
+    Nothing           -> throwSQLException BindException Nothing $ "stream alias not found: " <> T.unpack stream <> ", what happened...?"
     Just originalName ->
       let hm = layerColumnBindings (mconcat xs)
       in foldr (\(col, hm') acc ->
@@ -181,7 +181,7 @@ popLayer :: MonadState BindContext m => m BindContextLayer
 popLayer = do
   ctx <- get
   case bindContextLayers ctx of
-    []     -> error "pop empty bind context"
+    []     -> throwSQLException BindException Nothing "impossible happened: pop empty bind context!"
     (x:xs) -> do
       put $ ctx { bindContextLayers = xs }
       return x

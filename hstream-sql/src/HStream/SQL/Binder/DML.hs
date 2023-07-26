@@ -17,7 +17,9 @@ import           HStream.SQL.Binder.Basic
 import           HStream.SQL.Binder.Common
 import           HStream.SQL.Binder.Select
 import           HStream.SQL.Binder.ValueExpr
+import           HStream.SQL.Exception
 import           HStream.SQL.Extra
+import           HStream.SQL.Validate.Utils
 
 -- Insert
 data BoundInsertPayloadType = BoundInsertPayloadTypeRaw
@@ -41,17 +43,17 @@ instance Bind Insert where
         expr' <- bind expr
         case expr' of
           BoundExprConst _ c -> return c
-          _                  -> error $ "INTERNAL ERROR: constant expr in DInsert is ensured by validate"
-  bind (InsertRawOrJson _ s valExprCast) = do
+          _                  -> throwSQLException BindException (getPos expr) $ "INTERNAL ERROR: constant expr in DInsert is ensured by validate"
+  bind (InsertRawOrJson pos s valExprCast) = do
     let (val, typ, _) = unifyValueExprCast valExprCast
         errMsg        = "INTERNAL ERROR: Insert RawRecord or HRecord syntax only supports string literals to be casted to `BYTEA` or `JSONB`, which is ensured by validate"
         rTyp          = case typ of
                           TypeByte _ -> BoundInsertPayloadTypeRaw
                           TypeJson _ -> BoundInsertPayloadTypeJson
-                          _          -> error errMsg
+                          _          -> throwSQLException BindException pos errMsg
     rVal <- case val of
               ExprString _ singleQuoted@(SingleQuoted _) -> bind singleQuoted
-              _                                          -> error errMsg
+              _                                          -> throwSQLException BindException (getPos val) errMsg
     return $ BoundInsertRawOrJson (extractHIdent s) (encodeUtf8 rVal) rTyp
 
 -- Explain
