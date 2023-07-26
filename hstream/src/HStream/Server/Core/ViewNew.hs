@@ -89,22 +89,23 @@ createView :: ServerContext -> T.Text -> T.Text -> IO P.ViewInfo
 createView sc@ServerContext{..} sql queryName = do
   plan <- streamCodegen sql (P.getSchema metaHandle)
   case plan of
-    CreateViewPlan srcs sink view builder persist -> do
+    CreateViewPlan srcs sink view schema builder persist -> do
       bSQL <- parseAndBind sql (P.getSchema metaHandle)
-      createView' sc view srcs sink builder persist sql bSQL queryName
+      createView' sc view srcs sink schema builder persist sql bSQL queryName
     _ ->  throw $ HE.WrongExecutionPlan "Create query only support create view as select statements"
 
 createView' :: ServerContext
             -> T.Text
             -> [T.Text]
             -> T.Text
+            -> Schema
             -> HP.TaskBuilder
             -> Persist
             -> T.Text
             -> BoundSQL
             -> T.Text
             -> IO ViewInfo
-createView' sc@ServerContext{..} view srcs sink builder persist sql bSQL queryName = do
+createView' sc@ServerContext{..} view srcs sink schema builder persist sql bSQL queryName = do
   roles_m <- mapM (findIdentifierRole sc) srcs
   case all isJust roles_m of
     True -> do
@@ -114,6 +115,7 @@ createView' sc@ServerContext{..} view srcs sink builder persist sql bSQL queryNa
           Log.warning "CREATE VIEW only supports sources of stream type"
           throwIO $ HE.InvalidSqlStatement "CREATE VIEW only supports sources of stream type"
         True  -> do
+          P.registerSchema metaHandle schema
           let relatedStreams = (srcs, sink)
           vInfo <- P.createInsertViewQueryInfo queryName sql bSQL relatedStreams view serverID metaHandle
           consumerClosed <- newTVarIO False
@@ -144,6 +146,7 @@ deleteView sc@ServerContext{..} name checkIfExist = do
         Just P.QueryStatus{..} -> when (queryState /= Terminated) $ do
            throwIO $ HE.QueryNotTerminated queryId
       P.deleteViewQuery name queryId metaHandle
+      P.unregisterSchema metaHandle name
       atomicModifyIORef' P.groupbyStores (\hm -> (HM.delete name hm, ()))
       Stats.view_stat_erase scStatsHolder (textToCBytes name)
       return Empty
@@ -168,7 +171,7 @@ executeViewQueryWithNamespace sc@ServerContext{..} sql namespace = parseAndBind 
     let select_imm_namespaced = modifySelect namespace select_imm
     relationExpr_imm <- planIO select_imm_namespaced (P.getSchema metaHandle)
     taskName_imm <- genTaskName
-    (_,_view_names,_,_) <- elabRelationExpr taskName_imm Nothing relationExpr_imm
+    (_,_view_names,_,_) <- elabRelationExpr taskName_imm relationExpr_imm
     -- FIXME: immediate select from [views join views/streams]?
     -- FIXME: L.head is partial
     let view_name = L.head _view_names
@@ -212,7 +215,7 @@ executeViewQueryWithNamespace sc@ServerContext{..} sql namespace = parseAndBind 
                            relationExpr_imm
     -- 5. generate plan for the modified immediate query
     (_builder, sources, sink, persist)
-      <- elabRelationExpr taskName_imm Nothing relationExpr_imm_new
+      <- elabRelationExpr taskName_imm relationExpr_imm_new
     let builder = HS.build _builder
     -- 6. run the plan
     isViews <- mapM (amIView sc) sources

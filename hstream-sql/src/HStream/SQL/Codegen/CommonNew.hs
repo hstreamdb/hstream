@@ -120,7 +120,7 @@ composeAggs aggs =
             Right v'     -> Right $ HM.union v v'
 
 genAggregateComponent :: Aggregate ScalarExpr
-                      -> ColumnCatalog
+                      -> ColumnCatalog -- WARNING: acc catalog, not income data catalog!
                       -> AggregateComponent
 genAggregateComponent agg cata = case agg of
   Nullary nAgg ->
