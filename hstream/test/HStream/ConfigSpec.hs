@@ -192,38 +192,38 @@ showProtocol pid | pid == binaryProtocolId  = "binary"
 #endif
 
 emptyCliOptions :: CliOptions
-emptyCliOptions = CliOptions {
-    _configPath          = ""
-  , _serverPort_         = Nothing
-  , _serverBindAddress_      = Nothing
-  , _serverGossipAddress_      = Nothing
-  , _serverAdvertisedAddress_   = Nothing
-  , _serverAdvertisedListeners_ = mempty
-  , _listenersSecurityProtocolMap_ = mempty
-  , _serverInternalPort_ = Nothing
-  , _serverID_           = Nothing
-  , _serverLogLevel_     = Nothing
-  , _serverLogWithColor_ = False
-  , _compression_        = Nothing
-  , _metaStore_          = Nothing
-  , _seedNodes_          = Nothing
+emptyCliOptions = CliOptions
+  { cliConfigPath          = ""
+  , cliServerPort         = Nothing
+  , cliServerBindAddress      = Nothing
+  , cliServerGossipAddress      = Nothing
+  , cliServerAdvertisedAddress   = Nothing
+  , cliServerAdvertisedListeners = mempty
+  , cliListenersSecurityProtocolMap = mempty
+  , cliServerInternalPort = Nothing
+  , cliServerID           = Nothing
+  , cliServerLogLevel     = Nothing
+  , cliServerLogWithColor = False
+  , cliStoreCompression   = Nothing
+  , cliMetaStore          = Nothing
+  , cliSeedNodes          = Nothing
 
-  , _enableTls_          = False
-  , _tlsKeyPath_         = Nothing
-  , _tlsCertPath_        = Nothing
-  , _tlsCaPath_          = Nothing
+  , cliEnableTls          = False
+  , cliTlsKeyPath         = Nothing
+  , cliTlsCertPath        = Nothing
+  , cliTlsCaPath          = Nothing
 
-  , _ldAdminHost_        = Nothing
-  , _ldAdminPort_        = Nothing
-  , _ldLogLevel_         = Nothing
-  , _storeConfigPath     = "/data/store/logdevice.conf"
-  , _ckpRepFactor_       = Nothing
+  , cliLdAdminHost        = Nothing
+  , cliLdAdminPort        = Nothing
+  , cliLdLogLevel         = Nothing
+  , cliStoreConfigPath    = "/data/store/logdevice.conf"
+  , cliCkpRepFactor       = Nothing
 
-  , _ioTasksPath_        = Nothing
-  , _ioTasksNetwork_     = Nothing
-  , _ioConnectorImages_  = []
+  , cliIoTasksPath        = Nothing
+  , cliIoTasksNetwork     = Nothing
+  , cliIoConnectorImages  = []
 
-  , _querySnapshotPath_  = Nothing
+  , cliQuerySnapshotPath  = Nothing
 
   , cliExperimentalFeatures = []
   }
@@ -271,33 +271,33 @@ instance Arbitrary ServerOpts where
 
 instance Arbitrary CliOptions where
   arbitrary = do
-    let _configPath = ""
-    let _ckpRepFactor_ = Nothing
-    _serverPort_         <- genMaybe $ fromIntegral <$> portGen
-    _serverBindAddress_  <- genMaybe $ encodeUtf8 . T.pack <$> addressGen
-    _serverGossipAddress_     <- genMaybe addressGen
-    _serverAdvertisedAddress_ <- genMaybe addressGen
-    _serverAdvertisedListeners_ <- arbitrary
-    _listenersSecurityProtocolMap_ <- M.fromList . zip (Map.keys _serverAdvertisedListeners_) . repeat <$> elements ["plaintext", "tls"]
-    _serverInternalPort_ <- genMaybe $ fromIntegral <$> portGen
-    _serverID_           <- arbitrary
-    _serverLogLevel_     <- genMaybe $ read <$> logLevelGen
-    _serverLogWithColor_ <- arbitrary
-    _compression_        <- arbitrary
-    _metaStore_          <- arbitrary
-    _seedNodes_          <- genMaybe seedNodesStringGen
-    _enableTls_          <- arbitrary
-    _tlsKeyPath_         <- genMaybe pathGen
-    _tlsCertPath_        <- genMaybe pathGen
-    _tlsCaPath_          <- genMaybe pathGen
-    _ldAdminHost_        <- genMaybe $ encodeUtf8 . T.pack <$> addressGen
-    _ldAdminPort_        <- genMaybe portGen
-    _ldLogLevel_         <- genMaybe $ read <$> ldLogLevelGen
-    _storeConfigPath     <- CB.pack <$> pathGen
-    _ioTasksPath_        <- genMaybe $ T.pack <$> pathGen
-    _ioTasksNetwork_     <- genMaybe $ T.pack <$> nameGen
-    _ioConnectorImages_  <- listOf5' $ T.pack <$> connectorImageCliOptGen
-    let _querySnapshotPath_ = Just "/data/query_snapshots"
+    let cliConfigPath = ""
+    let cliCkpRepFactor = Nothing
+    cliServerPort         <- genMaybe $ fromIntegral <$> portGen
+    cliServerBindAddress  <- genMaybe $ encodeUtf8 . T.pack <$> addressGen
+    cliServerGossipAddress     <- genMaybe addressGen
+    cliServerAdvertisedAddress <- genMaybe addressGen
+    cliServerAdvertisedListeners <- arbitrary
+    cliListenersSecurityProtocolMap <- M.fromList . zip (Map.keys cliServerAdvertisedListeners) . repeat <$> elements ["plaintext", "tls"]
+    cliServerInternalPort <- genMaybe $ fromIntegral <$> portGen
+    cliServerID           <- arbitrary
+    cliServerLogLevel     <- genMaybe $ read <$> logLevelGen
+    cliServerLogWithColor <- arbitrary
+    cliStoreCompression   <- arbitrary
+    cliMetaStore          <- arbitrary
+    cliSeedNodes          <- genMaybe seedNodesStringGen
+    cliEnableTls          <- arbitrary
+    cliTlsKeyPath         <- genMaybe pathGen
+    cliTlsCertPath        <- genMaybe pathGen
+    cliTlsCaPath          <- genMaybe pathGen
+    cliLdAdminHost        <- genMaybe $ encodeUtf8 . T.pack <$> addressGen
+    cliLdAdminPort        <- genMaybe portGen
+    cliLdLogLevel         <- genMaybe $ read <$> ldLogLevelGen
+    cliStoreConfigPath    <- CB.pack <$> pathGen
+    cliIoTasksPath        <- genMaybe $ T.pack <$> pathGen
+    cliIoTasksNetwork     <- genMaybe $ T.pack <$> nameGen
+    cliIoConnectorImages  <- listOf5' $ T.pack <$> connectorImageCliOptGen
+    let cliQuerySnapshotPath = Just "/data/query_snapshots"
     let cliExperimentalFeatures = []
     pure CliOptions{..}
 
@@ -411,38 +411,38 @@ seedNodesStringGen :: Gen Text
 seedNodesStringGen = T.intercalate ", " <$> listOf5' (T.pack <$> uriGen)
 
 updateServerOptsWithCliOpts :: CliOptions -> ServerOpts -> ServerOpts
-updateServerOptsWithCliOpts CliOptions {..} x@ServerOpts{..} = x {
-    _serverHost = fromMaybe _serverHost _serverBindAddress_
+updateServerOptsWithCliOpts CliOptions{..} x@ServerOpts{..} = x {
+    _serverHost = fromMaybe _serverHost cliServerBindAddress
   , _serverPort = port
-  , _serverInternalPort = fromMaybe _serverInternalPort _serverInternalPort_
-  , _serverAddress = fromMaybe _serverAddress _serverAdvertisedAddress_
-  , _serverGossipAddress = fromMaybe _serverGossipAddress _serverGossipAddress_
-  , _serverAdvertisedListeners = Map.union _serverAdvertisedListeners_ _serverAdvertisedListeners
-  , _listenersSecurityProtocolMap = Map.union _listenersSecurityProtocolMap_ _listenersSecurityProtocolMap
-  , _serverID = fromMaybe _serverID _serverID_
-  , _metaStore = fromMaybe _metaStore _metaStore_
-  , _ldConfigPath = _storeConfigPath
-  , _compression = fromMaybe _compression _compression_
-  , _tlsConfig = _tlsConfig_
-  , _serverLogLevel = fromMaybe _serverLogLevel _serverLogLevel_
-  , _serverLogWithColor = _serverLogWithColor || _serverLogWithColor_
-  , _seedNodes = fromMaybe _seedNodes $ parseCliSeeds =<< _seedNodes_
-  , _ldAdminHost = fromMaybe _ldAdminHost _ldAdminHost_
-  , _ldAdminPort = fromMaybe _ldAdminPort _ldAdminPort_
-  , _ldLogLevel = fromMaybe _ldLogLevel _ldLogLevel_
-  , _ckpRepFactor = fromMaybe _ckpRepFactor _ckpRepFactor_
-  , _ioOptions = _ioOptions_
-  , _securityProtocolMap = Map.insert "tls" _tlsConfig_ _securityProtocolMap}
+  , _serverInternalPort = fromMaybe _serverInternalPort cliServerInternalPort
+  , _serverAddress = fromMaybe _serverAddress cliServerAdvertisedAddress
+  , _serverGossipAddress = fromMaybe _serverGossipAddress cliServerGossipAddress
+  , _serverAdvertisedListeners = Map.union cliServerAdvertisedListeners _serverAdvertisedListeners
+  , _listenersSecurityProtocolMap = Map.union cliListenersSecurityProtocolMap _listenersSecurityProtocolMap
+  , _serverID = fromMaybe _serverID cliServerID
+  , _metaStore = fromMaybe _metaStore cliMetaStore
+  , _ldConfigPath = cliStoreConfigPath
+  , _compression = fromMaybe _compression cliStoreCompression
+  , _tlsConfig = tlsConfig
+  , _serverLogLevel = fromMaybe _serverLogLevel cliServerLogLevel
+  , _serverLogWithColor = _serverLogWithColor || cliServerLogWithColor
+  , _seedNodes = fromMaybe _seedNodes $ parseCliSeeds =<< cliSeedNodes
+  , _ldAdminHost = fromMaybe _ldAdminHost cliLdAdminHost
+  , _ldAdminPort = fromMaybe _ldAdminPort cliLdAdminPort
+  , _ldLogLevel = fromMaybe _ldLogLevel cliLdLogLevel
+  , _ckpRepFactor = fromMaybe _ckpRepFactor cliCkpRepFactor
+  , _ioOptions = cliIoOptions
+  , _securityProtocolMap = Map.insert "tls" tlsConfig _securityProtocolMap}
   where
-    port = fromMaybe _serverPort _serverPort_
+    port = fromMaybe _serverPort cliServerPort
     updateSeedsPort = second $ fromMaybe (fromIntegral port)
     parseCliSeeds = either (const Nothing) (Just . (updateSeedsPort <$>)) . parseHostPorts
 
-    _tlsConfig_  = case (_enableTls_ || isJust _tlsConfig, _tlsKeyPath_ <|> keyPath <$> _tlsConfig,  _tlsCertPath_ <|> certPath <$> _tlsConfig ) of
+    tlsConfig  = case (cliEnableTls || isJust _tlsConfig, cliTlsKeyPath <|> keyPath <$> _tlsConfig,  cliTlsCertPath <|> certPath <$> _tlsConfig ) of
         (False, _, _) -> Nothing
         (_, Nothing, _) -> errorWithoutStackTrace "enable-tls=true, but tls-key-path is empty"
         (_, _, Nothing) -> errorWithoutStackTrace "enable-tls=true, but tls-cert-path is empty"
-        (_, Just kp, Just cp) -> Just $ TlsConfig kp cp (_tlsCaPath_ <|> (caPath =<< _tlsConfig) )
+        (_, Just kp, Just cp) -> Just $ TlsConfig kp cp (cliTlsCaPath <|> (caPath =<< _tlsConfig) )
 
     (ssi,ski) = foldr
         (\img (ss, sk) -> do
@@ -455,10 +455,10 @@ updateServerOptsWithCliOpts CliOptions {..} x@ServerOpts{..} = x {
             "sink"   -> (ss, HM.insert ct di sk)
             _        -> (ss, sk)
         )
-        (optSourceImages _ioOptions, optSinkImages _ioOptions) _ioConnectorImages_
-    _ioOptions_ = IOOptions {
-            optTasksNetwork = fromMaybe (optTasksNetwork _ioOptions) _ioTasksNetwork_
-          , optTasksPath = fromMaybe (optTasksPath _ioOptions) _ioTasksPath_
+        (optSourceImages _ioOptions, optSinkImages _ioOptions) cliIoConnectorImages
+    cliIoOptions = IOOptions {
+            optTasksNetwork = fromMaybe (optTasksNetwork _ioOptions) cliIoTasksNetwork
+          , optTasksPath = fromMaybe (optTasksPath _ioOptions) cliIoTasksPath
           , optSourceImages = ssi
           , optSinkImages = ski
           }

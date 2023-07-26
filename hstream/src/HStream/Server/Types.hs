@@ -54,9 +54,6 @@ import           HStream.Utils                    (ResourceType (ResConnector),
 protocolVersion :: Text
 protocolVersion = "0.1.0"
 
-serverVersion :: Text
-serverVersion = "0.9.1"
-
 data SubscriptionWrap = SubscriptionWrap
   { originSub  :: API.Subscription
   , subOffsets :: HM.HashMap S.C_LogID S.LSN

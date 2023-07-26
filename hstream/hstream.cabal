@@ -86,6 +86,7 @@ library
     HStream.Server.Validation
 
   other-modules:
+    HStream.Server.Configuration.Cli
     HStream.Server.Core.Query
     HStream.Server.Core.QueryNew
     HStream.Server.Core.ShardReader
