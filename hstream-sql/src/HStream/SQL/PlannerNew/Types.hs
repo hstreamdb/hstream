@@ -107,7 +107,7 @@ defaultPlanContext = PlanContext mempty
 (<::>) m1 m2 =
   let tups1 = IntMap.toList m1
       tups2 = IntMap.toList m2
-      maxId1 = if null tups1 then 0 else maximum (map fst tups1)
+      maxId1 = if null tups1 then (-1) else maximum (map fst tups1)
       tups2' = map (\(i,s) -> (i+maxId1+1,s)) tups2
    in IntMap.fromList (tups1 <> tups2')
 

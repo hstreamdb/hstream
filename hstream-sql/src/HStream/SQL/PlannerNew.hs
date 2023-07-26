@@ -33,9 +33,11 @@ import           Data.Maybe                    (fromJust, fromMaybe)
 import           Data.Text                     (Text)
 import qualified Data.Text                     as T
 import           GHC.Stack
+import           Text.StringRandom             (stringRandomIO)
 
 import           HStream.SQL.Binder            hiding (lookupColumn)
 import           HStream.SQL.Exception
+import           HStream.SQL.Exception         (throwSQLException)
 import           HStream.SQL.Extra
 import           HStream.SQL.ParseNew
 import           HStream.SQL.PlannerNew.Expr
@@ -138,9 +140,9 @@ instance Plan BoundAgg where
                  ) selTups
            ) <&> L.concat
 
-      let grpsIntmap = IntMap.fromList $ L.map (\(i, (_,catalog)) -> (i, catalog)
+      let grpsIntmap = IntMap.fromList $ L.map (\(i, (_,catalog)) -> (i, catalog{columnId = i})
                                                ) ([0..] `zip` grps)
-          aggsIntmap = IntMap.fromList $ L.map (\(i, (_,catalog)) -> (i, catalog)
+          aggsIntmap = IntMap.fromList $ L.map (\(i, (_,catalog)) -> (i, catalog{columnId = i})
                                                ) ([0..] `zip` aggTups)
       let new_schema = Schema { schemaOwner = "" -- FIXME
                               , schemaColumns = grpsIntmap <:+:> aggsIntmap
@@ -168,7 +170,7 @@ instance Plan BoundSel where
                            }
              return (scalar,catalog')
            ) tups
-    let new_schema_cols = IntMap.fromList $ L.map (\(i, (_,catalog)) -> (i, catalog)
+    let new_schema_cols = IntMap.fromList $ L.map (\(i, (_,catalog)) -> (i, catalog{columnId = i})
                                                   ) ([0..] `zip` projTups)
     let new_schema = Schema { schemaOwner = "" -- FIXME
                             , schemaColumns = new_schema_cols
@@ -191,8 +193,32 @@ instance Plan BoundSelect where
 type instance PlannedType BoundSQL = RelationExpr
 instance Plan BoundSQL where
   plan (BoundQSelect select) = plan select
-  plan _                     = undefined
-
+  plan (BoundQPushSelect select) = plan select
+  plan (BoundQCreate create) = case create of
+    BoundCreateAs streamName select _opts -> do
+      relationExpr <- plan select
+      let schema = relationExprSchema relationExpr
+      let schema' = setSchemaStream streamName schema
+      return $ setRelationExprSchema schema' relationExpr
+    BoundCreateView viewName select -> do
+      relationExpr <- plan select
+      let schema = relationExprSchema relationExpr
+      let schema' = setSchemaStream viewName schema
+      return $ setRelationExprSchema schema' relationExpr
+    _ -> throwSQLException PlanException Nothing $ "unsupported create statement: " <> show create
+  plan (BoundQSelect select) = do
+    relationExpr <- plan select
+    let schema = relationExprSchema relationExpr
+    streamName <- liftIO $ stringRandomIO "[a-zA-Z]{20}"
+    let schema' = setSchemaStream streamName schema
+    return $ setRelationExprSchema schema' relationExpr
+  plan (BoundQPushSelect select) = do
+    relationExpr <- plan select
+    let schema = relationExprSchema relationExpr
+    streamName <- liftIO $ stringRandomIO "[a-zA-Z]{20}"
+    let schema' = setSchemaStream streamName schema
+    return $ setRelationExprSchema schema' relationExpr
+  plan sql                   = throwSQLException PlanException Nothing $ "unsupported sql statement: " <> show sql
 
 planIO :: (Plan a, PlannedType a ~ RelationExpr)
        => a -> (Text -> IO (Maybe Schema)) -> IO RelationExpr
