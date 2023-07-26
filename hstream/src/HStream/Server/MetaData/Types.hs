@@ -43,6 +43,7 @@ module HStream.Server.MetaData.Types
 
   , registerSchema
   , getSchema
+  , isSchemaRegistered
   , unregisterSchema
 #endif
   ) where
@@ -70,6 +71,7 @@ import           ZooKeeper.Types                   (ZHandle)
 
 import           Control.Monad                     (forM)
 import qualified Data.Aeson                        as Aeson
+import qualified HStream.Logger                    as Log
 import           HStream.MetaStore.Types           (FHandle, HasPath (..),
                                                     MetaHandle,
                                                     MetaMulti (metaMulti),
@@ -395,19 +397,27 @@ registerSchema :: ( MetaType SQL.Schema handle
                   )
                => handle -> SQL.Schema -> IO ()
 registerSchema h schema = do
-  insertMeta (SQL.schemaOwner schema) schema h
+  isSchemaRegistered h (SQL.schemaOwner schema) >>= \case
+    True  -> Log.warning $ "Schema " <> Log.build (SQL.schemaOwner schema) <> " already exists, skip."
+    False -> insertMeta (SQL.schemaOwner schema) schema h
 
 getSchema :: ( MetaType SQL.Schema handle
              , HasCallStack
              ) => handle -> Text -> IO (Maybe SQL.Schema)
 getSchema h schemaName = do
-  schemas <- listMeta @SQL.Schema h
-  return $ L.find (\schema -> SQL.schemaOwner schema == schemaName) schemas
+  getMeta schemaName h
+
+isSchemaRegistered :: ( MetaType SQL.Schema handle
+                      , HasCallStack
+                      ) => handle -> Text -> IO Bool
+isSchemaRegistered h schemaName = do
+  checkMetaExists @SQL.Schema schemaName h
 
 unregisterSchema :: ( MetaType SQL.Schema handle
                     , HasCallStack
                     ) => handle -> Text -> IO ()
 unregisterSchema h schemaName = do
-  deleteMeta @SQL.Schema schemaName Nothing h
-  `catch` (\(_ :: SomeException) -> return ()) -- FIXME
+  isSchemaRegistered h schemaName >>= \case
+    True  -> deleteMeta @SQL.Schema schemaName Nothing h
+    False -> Log.warning $ "Schema " <> Log.build schemaName <> " does not exist, skip."
 #endif

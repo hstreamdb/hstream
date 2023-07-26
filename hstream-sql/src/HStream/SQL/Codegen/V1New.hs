@@ -127,8 +127,8 @@ data HStreamPlan
   | ResumePlan          ResumeObject
   | SelectPlan          [StreamName] StreamName TaskBuilder Persist
   | PushSelectPlan      [StreamName] StreamName TaskBuilder Persist
-  | CreateBySelectPlan  [StreamName] StreamName TaskBuilder BoundStreamOptions Persist
-  | CreateViewPlan      [StreamName] StreamName ViewName TaskBuilder Persist
+  | CreateBySelectPlan  [StreamName] StreamName Schema TaskBuilder BoundStreamOptions Persist
+  | CreateViewPlan      [StreamName] StreamName ViewName Schema TaskBuilder Persist
   | InsertBySelectPlan  [StreamName] StreamName TaskBuilder Persist
 
 --------------------------------------------------------------------------------
@@ -138,17 +138,21 @@ streamCodegen input getSchema = parseAndBind input getSchema >>= (flip hstreamCo
 hstreamCodegen :: HasCallStack => BoundSQL -> (Text -> IO (Maybe Schema)) -> IO HStreamPlan
 hstreamCodegen bsql getSchema = case bsql of
   BoundQSelect select -> do
-    tName <- genTaskName
-    (builder, srcs, sink, persist) <- elabRSelect tName Nothing select getSchema
+    tName        <- genTaskName
+    relationExpr <- planIO bsql getSchema
+    (builder, srcs, sink, persist) <- elabRelationExpr tName relationExpr
     return $ SelectPlan srcs sink (HS.build builder) persist
   BoundQPushSelect select -> do
     tName <- genTaskName
-    (builder, srcs, sink, persist) <- elabRSelect tName Nothing select getSchema
+    relationExpr <- planIO bsql getSchema
+    (builder, srcs, sink, persist) <- elabRelationExpr tName relationExpr
     return $ PushSelectPlan srcs sink (HS.build builder) persist
   BoundQCreate (BoundCreateAs stream select rOptions) -> do
     tName <- genTaskName
-    (builder, srcs, sink, persist) <- elabRSelect tName (Just stream) select getSchema
-    return $ CreateBySelectPlan srcs sink (HS.build builder) rOptions persist
+    relationExpr <- planIO bsql getSchema
+    let schema = relationExprSchema relationExpr
+    (builder, srcs, sink, persist) <- elabRelationExpr tName relationExpr
+    return $ CreateBySelectPlan srcs sink schema (HS.build builder) rOptions persist
 {-
   BoundQInsert (BoundInsertSel stream select) -> do
     tName <- genTaskName
@@ -157,8 +161,10 @@ hstreamCodegen bsql getSchema = case bsql of
 -}
   BoundQCreate (BoundCreateView view select) -> do
     tName <- genTaskName
-    (builder, srcs, sink, persist) <- elabRSelect tName (Just view) select getSchema
-    return $ CreateViewPlan srcs sink view (HS.build builder) persist
+    relationExpr <- planIO bsql getSchema
+    let schema = relationExprSchema relationExpr
+    (builder, srcs, sink, persist) <- elabRelationExpr tName relationExpr
+    return $ CreateViewPlan srcs sink view schema (HS.build builder) persist
   BoundQCreate (BoundCreate stream schema rOptions) -> return $ CreatePlan stream schema rOptions
   BoundQCreate (BoundCreateConnector cType cName cTarget ifNotExist (BoundConnectorOptions cOptions)) ->
     return $ CreateConnectorPlan cType cName cTarget ifNotExist cOptions
@@ -312,9 +318,11 @@ relationExprToGraph relation builder = case relation of
                   ) HM.empty (IntMap.elems (schemaColumns schema) `zip` scalars)
     let aggComp@AggregateComponent{..} =
           composeAggs (L.map (\(cata,agg) ->
-                                 genAggregateComponent agg cata
-                             ) ((L.drop (L.length scalars) (IntMap.elems (schemaColumns schema)))
-                                 `zip` aggs)
+                                 genAggregateComponent agg
+                                                       cata
+                             ) ((L.drop (L.length scalars)
+                                        (IntMap.elems (schemaColumns schema))
+                                ) `zip` aggs)
                       )
     let aggregateR = \acc Record{..} ->
           case aggregateF acc recordValue of
@@ -390,9 +398,8 @@ relationExprToGraph relation builder = case relation of
 data SinkConfigType = SinkConfigType StreamName (HS.StreamSinkConfig K V Ser)
                     | SinkConfigTypeWithWindow StreamName (HS.StreamSinkConfig (TimeWindowKey K) V Ser)
 
-genStreamSinkConfig :: Maybe StreamName -> RelationExpr -> IO SinkConfigType
-genStreamSinkConfig sinkStream' relationExpr = do
-  stream <- maybe genRandomSinkStream return sinkStream'
+genStreamSinkConfig :: StreamName -> RelationExpr -> IO SinkConfigType
+genStreamSinkConfig stream relationExpr = do
   let (reduce_m,_) = scanRelationExpr (\expr -> case expr of
                                                   Reduce{} -> True
                                                   _        -> False
@@ -434,21 +441,12 @@ genTaskName :: IO Text
 genTaskName = pack . show <$> genUnique
 
 ----
-elabRSelect :: Text
-            -> Maybe StreamName
-            -> BoundSelect
-            -> (Text -> IO (Maybe Schema))
-            -> IO (StreamBuilder, [StreamName], StreamName, Persist)
-elabRSelect taskName sinkStream' select getSchema = do
-  relation <- evalStateT (runReaderT (plan select) getSchema) defaultPlanContext
-  elabRelationExpr taskName sinkStream' relation
-
 elabRelationExpr :: Text
-                 -> Maybe StreamName
                  -> RelationExpr
                  -> IO (StreamBuilder, [StreamName], StreamName, Persist)
-elabRelationExpr taskName sinkStream' relationExpr = do
-  sinkConfig <- genStreamSinkConfig sinkStream' relationExpr
+elabRelationExpr taskName relationExpr = do
+  let schema = relationExprSchema relationExpr
+  sinkConfig <- genStreamSinkConfig (schemaOwner schema) relationExpr
   builder    <- newRandomText 20 >>= HS.mkStreamBuilder
   (es,srcs,joins,mats) <- relationExprToGraph relationExpr builder
   case es of

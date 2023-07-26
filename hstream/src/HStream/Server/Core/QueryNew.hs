@@ -101,7 +101,7 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
       pure $ API.CommandQueryResponse (mkVectorStruct queryId "view_query_id")
 #else
     SelectPlan {} -> discard "ExecuteViewQuery"
-    CreateViewPlan sources sink view builder persist -> discard "CreateQuery"
+    CreateViewPlan sources sink view schema builder persist -> discard "CreateQuery"
 #endif
     ExplainPlan plan -> pure $ API.CommandQueryResponse (mkVectorStruct plan "explain")
     PausePlan (PauseObjectConnector name) -> do
@@ -178,7 +178,7 @@ createQueryWithNamespace'
           hstreamCodegen (BoundQCreate (BoundCreateAs (namespace <> stream)
                                                       (modifySelect namespace select)
                                                       rOptions)) (P.getSchema metaHandle) >>= \case
-            CreateBySelectPlan sources sink builder factor persist -> do
+            CreateBySelectPlan sources sink schema builder factor persist -> do
               -- validate names
               mapM_ (validateNameAndThrow ResStream) sources
               validateNameAndThrow ResStream sink
@@ -203,6 +203,7 @@ createQueryWithNamespace'
                   , streamBacklogDuration = 7 * 24 * 3600
                   , streamShardCount = 1
                   }
+                  P.registerSchema metaHandle schema
               -- update metadata
               let relatedStreams = (sources, sink)
               qInfo <- P.createInsertQueryInfo createQueryRequestQueryName createQueryRequestSql relatedStreams bSQL serverID metaHandle
@@ -267,9 +268,9 @@ createQueryWithNamespace'
           hstreamCodegen (BoundQCreate (BoundCreateView (namespace <> view)
                                                         (modifySelect namespace select)
                                    )) (P.getSchema metaHandle) >>= \case
-            CreateViewPlan sources sink view builder persist -> do
+            CreateViewPlan sources sink view schema builder persist -> do
               validateNameAndThrow ResView view
-              Core.createView' sc view sources sink builder persist createQueryRequestSql bSQL createQueryRequestQueryName
+              Core.createView' sc view sources sink schema builder persist createQueryRequestSql bSQL createQueryRequestQueryName
               >>= hstreamViewToQuery metaHandle
             _ -> throw $ HE.WrongExecutionPlan "Create query only support create stream/view <name> as select statements"
         _ -> throw $ HE.WrongExecutionPlan "Create query only support create stream/view <name> as select statements"
@@ -317,8 +318,8 @@ resumeQuery ctx@ServerContext{..} qRQueryName = do
   getMeta @P.QueryInfo qRQueryName metaHandle >>= \case
     Just P.QueryInfo{..} -> do
       (qRTaskBuilder, qRWhetherToHStore, qRQuerySources) <- hstreamCodegen queryRefinedAST (P.getSchema metaHandle) >>= \case
-        CreateBySelectPlan sources _sink builder _ _ -> checkSources sources >> return (builder, True, sources)
-        CreateViewPlan sources _sink view builder persist  -> do
+        CreateBySelectPlan sources _sink _schema builder _ _ -> checkSources sources >> return (builder, True, sources)
+        CreateViewPlan sources _sink view _schema builder persist  -> do
           checkSources sources
           let accumulation = L.head (snd persist)
           atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert view accumulation hm, ()))
