@@ -21,6 +21,7 @@ import qualified Data.Map.Strict                  as M
 import qualified Data.Set                         as Set
 import           Data.Text                        (Text)
 import qualified Data.Text                        as T
+import           Data.Vector                      (Vector)
 import           Data.Word                        (Word32, Word64)
 import qualified Database.RocksDB                 as RocksDB
 import           GHC.Generics                     (Generic)
@@ -50,7 +51,7 @@ import qualified HStream.Store                    as S
 import           HStream.Utils                    (ResourceType (ResConnector),
                                                    textToCBytes,
                                                    timestampToMsTimestamp)
-import Network.GRPC.HighLevel.Generated (GRPCIOError)
+import           Network.GRPC.HighLevel.Generated (GRPCIOError)
 
 protocolVersion :: Text
 protocolVersion = "0.1.0"
@@ -272,8 +273,8 @@ data StreamReader = StreamReader
 mkStreamReader :: S.LDReader ->  Maybe (IORef Word64) -> HashMap S.C_LogID (Maybe Int64, Maybe Int64) -> StreamReader
 mkStreamReader streamReader streamReaderTotalBatches streamReaderTsLimits = StreamReader {..}
 
-type BiStreamReaderSender = API.ReadStreamWithKeyResponse -> IO (Either GRPCIOError ())
-type BiStreamReaderReceiver = IO (Either GRPCIOError (Maybe API.ReadStreamWithKeyRequest))
+type BiStreamReaderSender = API.ReadStreamByKeyResponse -> IO (Either GRPCIOError ())
+type BiStreamReaderReceiver = IO (Either GRPCIOError (Maybe API.ReadStreamByKeyRequest))
 
 data BiStreamReader = BiStreamReader
   { biStreamReader             :: S.LDReader
@@ -283,9 +284,9 @@ data BiStreamReader = BiStreamReader
   , biStreamReaderTargetKey    :: T.Text
   , biStreamReaderStartTs      :: Maybe Int64
   , biStreamReaderEndTs        :: Maybe Int64
-  , fetchChan                  :: TBQueue (Maybe Word64)
   , biStreamReaderSender       :: BiStreamReaderSender
   , biStreamReaderReceiver     :: BiStreamReaderReceiver
+  , biStreamRecordBuffer       :: IORef (Vector (Vector (API.RecordId, API.HStreamRecord)))
   }
 
 data ServerInternalOffset = OffsetEarliest
