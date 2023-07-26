@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
 
 module HStream.Server.Core.ShardReader
   ( createShardReader
@@ -18,16 +19,18 @@ import           ZooKeeper.Exception        (ZNONODE (..), throwIO)
 import           Control.Concurrent         (modifyMVar_, newEmptyMVar, putMVar,
                                              readMVar, takeMVar, withMVar)
 import           Control.Exception          (bracket, catch)
-import           Control.Monad              (forM, forM_, unless, when)
+import           Control.Monad              (forM, forM_, unless, when, foldM)
 import           Data.ByteString            (ByteString)
 import           Data.Either                (isRight)
 import qualified Data.Foldable              as F
 import qualified Data.HashMap.Strict        as HM
+import Data.Set (Set)
+import qualified Data.Set as Set
 import           Data.Int                   (Int64)
 import           Data.IORef                 (IORef, newIORef, readIORef,
                                              writeIORef)
 import qualified Data.Map.Strict            as M
-import           Data.Maybe                 (isJust)
+import           Data.Maybe                 (isJust, fromJust, isNothing)
 import qualified Data.Text                  as T
 import           Data.Vector                (Vector)
 import qualified Data.Vector                as V
@@ -46,8 +49,12 @@ import           HStream.Server.Types       (ServerContext (..),
                                              ShardReader (..),
                                              StreamReader (..), ToOffset (..),
                                              getLogLSN, mkShardReader,
-                                             mkStreamReader, transToStreamName)
+                                             mkStreamReader, transToStreamName, BiStreamReaderSender, BiStreamReaderReceiver, BiStreamReader (..))
 import qualified HStream.Store              as S
+import Control.Concurrent.STM (atomically, TBQueue, isEmptyTBQueue, newTBQueueIO, writeTBQueue, readTBQueue)
+import HStream.Server.Shard (shardStartKey, cBytesToKey, hashShardKey)
+import HStream.Utils (getRecordKey, decompressBatchedRecord)
+import Control.Concurrent.Async (async, poll, cancel)
 
 createShardReader
   :: HasCallStack
@@ -243,6 +250,133 @@ readSingleShardStream sc@ServerContext{..}
     shards <- M.elems <$> S.listStreamPartitions scLDClient streamId
     when (length shards /= 1) $ throwIO $ HE.TooManyShardCount $ "Stream " <> show rStreamName <> " has more than one shard"
     readShardStream' sc rReaderId (head shards) rStart rEnd rMaxBatches streamWrite
+
+readStreamWithKey
+  :: HasCallStack
+  => ServerContext
+  -> BiStreamReaderSender
+  -> BiStreamReaderReceiver
+  -> IO ()
+readStreamWithKey ServerContext{..} streamWriter streamReader = 
+  bracket createReader deleteReader readRecords
+ where
+   ldReaderBufferSize = 10
+   maxReadBatch = 10
+
+   createReader = do
+     streamReader >>= \case
+       Right (Just API.ReadStreamWithKeyRequest{..}) -> do
+         let streamId = transToStreamName readStreamWithKeyRequestStreamName
+         streamExist <- S.doesStreamExist scLDClient streamId
+         unless streamExist $ throwIO $ HE.StreamNotFound $ "Stream " <> T.pack (show readStreamWithKeyRequestStreamName) <> " is not exist."
+
+         shardId <- getShardId scLDClient streamId readStreamWithKeyRequestKey
+         reader <- S.newLDReader scLDClient 1 (Just ldReaderBufferSize)
+         Log.info $ "Create shardReader " <> Log.build readStreamWithKeyRequestReaderId
+         -- Logdevice reader block at most 30s even when no more data to read
+         S.readerSetTimeout reader 30000
+         S.readerSetWaitOnlyWhenNoData reader
+         (sTimestamp, eTimestamp) <- startReadingShard scLDClient reader readStreamWithKeyRequestReaderId shardId (toOffset <$> readStreamWithKeyRequestFrom) (toOffset <$> readStreamWithKeyRequestUntil)
+
+         fetchChan <- newTBQueueIO 1
+         atomically $ writeTBQueue fetchChan $ Just readStreamWithKeyRequestReadRecordCount
+         return $ BiStreamReader { biStreamReader             = reader
+                                 , biStreamReaderId           = readStreamWithKeyRequestReaderId
+                                 , biStreamReaderTargetStream = readStreamWithKeyRequestStreamName
+                                 , bistreamReaderTargetShard  = shardId
+                                 , biStreamReaderTargetKey    = readStreamWithKeyRequestKey
+                                 , biStreamReaderStartTs      = sTimestamp
+                                 , biStreamReaderEndTs        = eTimestamp
+                                 , fetchChan                  = fetchChan
+                                 , biStreamReaderSender       = streamWriter
+                                 , biStreamReaderReceiver     = streamReader
+                                 }
+       Left _        -> throwIO $ HE.StreamReadError "Consumer recv error"
+       Right Nothing -> throwIO $ HE.StreamReadClose "Consumer is closed"
+
+   deleteReader BiStreamReader{..} = do
+     Log.info $ "shard reader " <> Log.build biStreamReaderId <> " stop reading"
+     isReading <- S.readerIsReadingAny biStreamReader
+     when isReading $ S.readerStopReading biStreamReader bistreamReaderTargetShard
+
+   readRecords :: BiStreamReader -> IO ()
+   readRecords s@BiStreamReader{..} = do
+     clientThread <- async $ handleClientRequest biStreamReaderReceiver fetchChan
+     whileM $ do
+       atomically (readTBQueue fetchChan) >>= \case
+         Nothing -> do Log.info $ "BiStreamReader " <> Log.build biStreamReaderId <> " stop read process"
+                       return False
+         Just cnt -> readLoop s cnt
+     clientThreadRunning <- isNothing <$> poll clientThread
+     when clientThreadRunning $ cancel clientThread
+
+   readLoop :: BiStreamReader -> Word64 -> IO Bool
+   readLoop s@BiStreamReader{..} cnt = do
+     records <- S.readerRead biStreamReader maxReadBatch
+     if null records 
+       then do
+         isReading <- S.readerIsReadingAny biStreamReader
+         if isReading then readLoop s cnt 
+                      else do Log.fatal $ "BiStreamReader " <> Log.build biStreamReaderId 
+                                       <> " stop reading stream " <> Log.build biStreamReaderTargetStream
+                                       <> ", shard " <> Log.build bistreamReaderTargetShard
+                                       <> " unexpectedly" 
+                              return False
+       else do 
+         successSends <- sendRecords s records cnt
+         if V.all id successSends
+           then readLoop s (cnt - (fromIntegral . V.length $ successSends))
+           else return False
+
+   sendRecords BiStreamReader{..} records cnt = do
+     res <- getResponseRecords biStreamReader bistreamReaderTargetShard records biStreamReaderId biStreamReaderStartTs biStreamReaderEndTs
+     let res' = V.take (fromIntegral cnt) $ V.map (filterReceivedRecordWithKey biStreamReaderTargetKey) res
+     V.forM res' $ \(readStreamWithKeyResponseRecordIds, readStreamWithKeyResponseReceivedRecords) -> do
+       biStreamReaderSender API.ReadStreamWithKeyResponse{..} >>= \case
+         Left err -> do
+           Log.fatal $ "BiStreamReader " <> Log.build biStreamReaderId <> " send records failed: \n\trecords="
+                    <> Log.build (show readStreamWithKeyResponseRecordIds)
+                    <> "\n\tnum of records=" <> Log.build (V.length readStreamWithKeyResponseRecordIds)
+                    <> "\n\terror: " <> Log.build (show err)
+           return False
+         Right _ -> do
+           Log.debug $ "BiStreamReader " <> Log.build biStreamReaderId <> " send " 
+                    <> Log.build (show . V.length $ readStreamWithKeyResponseRecordIds) <> " records."
+           return True
+
+   handleClientRequest :: BiStreamReaderReceiver -> TBQueue (Maybe Word64) -> IO ()
+   handleClientRequest streamRecv chan = whileM $ do
+     streamRecv >>= \case
+       Left (err :: grpcIOError) -> do
+         -- Log.fatal $ "Consumer " <> Log.build ccConsumerName <> " for sub " <> Log.build subSubscriptionId
+         --          <> " trigger a streamRecv error: " <> Log.build (show err)
+         -- Log.warning $ "Sub " <> Log.build subSubscriptionId <> " invalided consumer " <> Log.build ccConsumerName
+         atomically $ writeTBQueue chan Nothing
+         return False
+         -- throwIO $ HE.StreamReadError "Consumer recv error"
+       Right Nothing -> do
+         -- Log.info $ "Consumer " <> Log.build ccConsumerName <> " finished ack-sending stream to sub " <> Log.build subSubscriptionId
+         -- -- This means that the consumer finished sending acks actively.
+         -- Log.warning $ "Sub " <> Log.build subSubscriptionId <> " invalided consumer " <> Log.build ccConsumerName
+         atomically $ writeTBQueue chan Nothing
+         return False
+         -- throwIO $ HE.StreamReadClose "Consumer is closed"
+       Right (Just API.ReadStreamWithKeyRequest{..}) -> do
+         -- Log.debug $ "Sub " <> Log.build subSubscriptionId <> " receive " <> Log.build (V.length streamingFetchRequestAckIds)
+         --   <> " acks from consumer:" <> Log.build ccConsumerName
+         atomically $ do
+           isEmpty <- isEmptyTBQueue chan
+           when isEmpty $ writeTBQueue chan $ Just readStreamWithKeyRequestReadRecordCount
+         return True
+
+   filterReceivedRecordWithKey :: T.Text -> API.ReceivedRecord -> (V.Vector API.RecordId, V.Vector API.HStreamRecord)
+   filterReceivedRecordWithKey key API.ReceivedRecord{..} = 
+     let batchedRecord = fromJust receivedRecordRecord
+      in V.unzip . V.filter (\(_, record) -> filterHStreamRecords key record) $ V.zip receivedRecordRecordIds (decompressBatchedRecord batchedRecord)
+
+   filterHStreamRecords :: T.Text -> API.HStreamRecord -> Bool
+   filterHStreamRecords key record = getRecordKey record == key
+
 ----------------------------------------------------------------------------------------------------------------------------------
 -- helper
 
@@ -396,3 +530,26 @@ getResponseRecords reader shard records readerId startTs endTs = do
     S.readerStopReading reader shard
   return res
 
+getShardId :: S.LDClient -> S.StreamId -> T.Text -> IO S.C_LogID
+getShardId scLDClient streamId orderingKey = do
+  getShardDict <&> snd . fromJust . M.lookupLE shardKey
+ where
+   shardKey   = hashShardKey orderingKey
+
+   getShardDict = do
+     -- loading shard infomation for stream first.
+     shards <- M.elems <$> S.listStreamPartitions scLDClient streamId
+     shardDict <- foldM insertShardDict M.empty shards
+     Log.debug $ "build shardDict for stream " <> Log.build (show streamId) <> ": " <> Log.buildString' (show shardDict)
+     return shardDict
+
+   insertShardDict dict shardId = do
+     attrs <- S.getStreamPartitionExtraAttrs scLDClient shardId
+     Log.debug $ "attrs for shard " <> Log.build shardId <> ": " <> Log.buildString' (show attrs)
+     startKey <- case M.lookup shardStartKey attrs of
+        -- FIXME: Under the new shard model, each partition created should have an extrAttr attribute,
+        -- except for the default partition created by default for each stream. After the default
+        -- partition is subsequently removed, an error ShardKeyNotFound should be returned here.
+        Nothing  -> return $ cBytesToKey "0"
+        Just key -> return $ cBytesToKey key
+     return $ M.insert startKey shardId dict

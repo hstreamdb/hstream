@@ -50,6 +50,7 @@ import qualified HStream.Store                    as S
 import           HStream.Utils                    (ResourceType (ResConnector),
                                                    textToCBytes,
                                                    timestampToMsTimestamp)
+import Network.GRPC.HighLevel.Generated (GRPCIOError)
 
 protocolVersion :: Text
 protocolVersion = "0.1.0"
@@ -270,6 +271,22 @@ data StreamReader = StreamReader
 
 mkStreamReader :: S.LDReader ->  Maybe (IORef Word64) -> HashMap S.C_LogID (Maybe Int64, Maybe Int64) -> StreamReader
 mkStreamReader streamReader streamReaderTotalBatches streamReaderTsLimits = StreamReader {..}
+
+type BiStreamReaderSender = API.ReadStreamWithKeyResponse -> IO (Either GRPCIOError ())
+type BiStreamReaderReceiver = IO (Either GRPCIOError (Maybe API.ReadStreamWithKeyRequest))
+
+data BiStreamReader = BiStreamReader
+  { biStreamReader             :: S.LDReader
+  , biStreamReaderId           :: T.Text
+  , biStreamReaderTargetStream :: T.Text
+  , bistreamReaderTargetShard  :: S.C_LogID
+  , biStreamReaderTargetKey    :: T.Text
+  , biStreamReaderStartTs      :: Maybe Int64
+  , biStreamReaderEndTs        :: Maybe Int64
+  , fetchChan                  :: TBQueue (Maybe Word64)
+  , biStreamReaderSender       :: BiStreamReaderSender
+  , biStreamReaderReceiver     :: BiStreamReaderReceiver
+  }
 
 data ServerInternalOffset = OffsetEarliest
                           | OffsetLatest
