@@ -23,6 +23,8 @@ instance ExecutorCtx SQLiteExecutorCtx executor where
   setOpts = SQLiteExecutorCtx . setOpts
   getOpts = SQLiteExecutorCtx getOpts
   getExecutor = SQLiteExecutorCtx getExecutor
+  pushSql = SQLiteExecutorCtx . pushSql
+  getSql = SQLiteExecutorCtx getSql
 
 type SQLiteExecutorM = SQLiteExecutorCtx SQLiteExecutor
 
@@ -38,7 +40,7 @@ instance SltExecutor SQLiteExecutorCtx SQLiteExecutor where
 selectWithoutFrom' :: [T.Text] -> SQLiteExecutorM Kv
 selectWithoutFrom' cols = do
   conn <- getConn
-  xss <- liftIO $ S.query_ @[SqlDataValue] conn (buildselectWithoutFromStmt cols)
+  xss <- query_ @[SqlDataValue] conn (buildselectWithoutFromStmt cols)
   pure . sqlDataValuesToKv $ zip cols (head xss)
 
 buildselectWithoutFromStmt :: [T.Text] -> S.Query
@@ -52,9 +54,8 @@ insertValues' :: T.Text -> Kv -> SQLiteExecutorM ()
 insertValues' table kv = do
   conn <- getConn
   kv' <- buildValues kv
-  liftIO $
-    S.execute_ conn . S.Query $
-      "INSERT INTO " <> table <> kv'
+  execute_ conn . S.Query $
+    "INSERT INTO " <> table <> kv'
 
 ----------------------------------------
 
@@ -79,3 +80,13 @@ throwSQLiteUnsupported = error "SQLiteUnsupported"
 
 getConn :: SQLiteExecutorM S.Connection
 getConn = gets $ connection . fromJust . executorStateExecutor
+
+query_ :: forall r. S.FromRow r => S.Connection -> S.Query -> SQLiteExecutorM [r]
+query_ conn q@(S.Query xs) = do
+  pushSql xs
+  liftIO $ S.query_ conn q
+
+execute_ :: S.Connection -> S.Query -> SQLiteExecutorM ()
+execute_ conn q@(S.Query xs) = do
+  pushSql xs
+  liftIO $ S.execute_ conn q

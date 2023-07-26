@@ -16,6 +16,8 @@ instance ExecutorCtx HStreamExecutorCtx executor where
   setOpts = HStreamExecutorCtx . setOpts
   getOpts = HStreamExecutorCtx getOpts
   getExecutor = HStreamExecutorCtx getExecutor
+  pushSql = HStreamExecutorCtx . pushSql
+  getSql = HStreamExecutorCtx getSql
 
 instance SltExecutor HStreamExecutorCtx HStreamExecutor where
   open' = undefined

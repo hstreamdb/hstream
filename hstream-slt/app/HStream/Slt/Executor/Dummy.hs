@@ -20,6 +20,8 @@ instance ExecutorCtx DummyExecutorCtx executor where
   setExecutor = DummyExecutorCtx . setExecutor
   getExecutor = DummyExecutorCtx getExecutor
   isDebug = DummyExecutorCtx isDebug
+  pushSql = DummyExecutorCtx . pushSql
+  getSql = DummyExecutorCtx getSql
 
 ----------------------------------------
 

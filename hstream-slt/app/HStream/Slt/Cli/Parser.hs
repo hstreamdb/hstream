@@ -2,13 +2,6 @@ module Slt.Cli.Parser where
 
 import           Options.Applicative
 
-mainOptsParser :: IO Opts
-mainOptsParser = execParser $ info (helper <*> parseOpts) mempty
-
-----------------------------------------
--- Command Line Options Parser
-----------------------------------------
-
 data Opts = Opts
   { globalOpts :: GlobalOpts,
     globalCmd  :: Cmd
@@ -39,49 +32,6 @@ data ExecOpts = ExecOpts
 data CompleteOpts = CompleteOpts
   deriving (Show)
 
-parseOpts :: Parser Opts
-parseOpts = Opts <$> parseGlobalOpts <*> parseCmd
-
-parseGlobalOpts :: Parser GlobalOpts
-parseGlobalOpts = GlobalOpts <$> parseDebug <*> parseExecutorsAddr
-
-parseDebug :: Parser Bool
-parseDebug = switch (long "debug" <> help "Enable debug mode")
-
-parseExecutorsAddr :: Parser [(ExecutorKind, String)]
-parseExecutorsAddr = many parseExecutorAddr
-
-parseExecutorAddr :: Parser (ExecutorKind, String)
-parseExecutorAddr = (,) <$> parseExecutorKind <*> strOption (long "executor" <> metavar "ADDR" <> help "Executor address")
-
-parseCmd :: Parser Cmd
-parseCmd = parseCmdParse <|> parseCmdExec <|> parseCmdComplete
-
-parseCmdParse :: Parser Cmd
-parseCmdParse = CmdParse . ParseOpts <$> some (argument str (metavar "FILES..."))
-
-parseCmdExec :: Parser Cmd
-parseCmdExec = CmdExec <$> parseExecOpts
-
-parseCmdComplete :: Parser Cmd
-parseCmdComplete = pure $ CmdComplete CompleteOpts
-
-parseExecOpts :: Parser ExecOpts
-parseExecOpts =
-  ExecOpts
-    <$> some (argument str (metavar "FILES..."))
-    <*> many parseExecutorKind
-
-parseExecutorKind :: Parser ExecutorKind
-parseExecutorKind =
-  h ExecutorKindHStream <|> h ExecutorKindSQLite
-  where
-    h x = flag' x (long $ strExecutorKind x)
-
-----------------------------------------
--- Misc
-----------------------------------------
-
 data ExecutorKind
   = ExecutorKindHStream
   | ExecutorKindSQLite
@@ -91,3 +41,56 @@ strExecutorKind :: ExecutorKind -> String
 strExecutorKind = \case
   ExecutorKindHStream -> "hstream"
   ExecutorKindSQLite  -> "sqlite"
+
+executorKindOption :: ReadM ExecutorKind
+executorKindOption =
+  eitherReader $ \case
+    "hstream" -> Right ExecutorKindHStream
+    "sqlite"  -> Right ExecutorKindSQLite
+    _         -> Left "Invalid executor kind"
+
+executorKindOption' :: Parser ExecutorKind
+executorKindOption' = option executorKindOption (short 'e' <> metavar "EXECUTOR")
+
+pParseOpts :: Parser ParseOpts
+pParseOpts = ParseOpts <$> some (argument str (metavar "FILES..."))
+
+pExecOpts :: Parser ExecOpts
+pExecOpts =
+  ExecOpts
+    <$> some (argument str (metavar "FILES..."))
+    <*> many executorKindOption'
+
+pCompleteOpts :: Parser CompleteOpts
+pCompleteOpts = pure CompleteOpts
+
+pGlobalOpts :: Parser GlobalOpts
+pGlobalOpts =
+  GlobalOpts
+    <$> switch (short 'd' <> long "debug" <> help "Enable debug mode")
+    <*> many
+      ( (ExecutorKindHStream,) <$> strOption (long "addr-hstream" <> metavar "ADDRESS" <> help "Set the address for the HStream executor")
+          <|> (ExecutorKindSQLite,) <$> strOption (long "addr-sqlite" <> metavar "ADDRESS" <> help "Set the address for the SQLite executor")
+      )
+
+parseCmd :: Parser Cmd
+parseCmd = CmdParse <$> pParseOpts
+
+execCmd :: Parser Cmd
+execCmd = CmdExec <$> pExecOpts
+
+completeCmd :: Parser Cmd
+completeCmd = CmdComplete <$> pCompleteOpts
+
+pOpts :: Parser Opts
+pOpts =
+  Opts
+    <$> pGlobalOpts
+    <*> subparser
+      ( command "parse" (info parseCmd (progDesc "Parse command"))
+          <> command "exec" (info execCmd (progDesc "Exec command"))
+          <> command "complete" (info completeCmd (progDesc "Complete command"))
+      )
+
+mainOptsParser :: IO Opts
+mainOptsParser = execParser (info (pOpts <**> helper) idm)

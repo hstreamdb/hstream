@@ -76,5 +76,5 @@ pColInfo = ColInfo <$> pTypeInfo
 -- Misc
 ----------------------------------------
 
-parseTest :: String -> IO ()
+parseTest :: FilePath -> IO ()
 parseTest src = P.parseTest pSlt . T.pack =<< readFile src

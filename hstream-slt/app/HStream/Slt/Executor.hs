@@ -21,6 +21,8 @@ class MonadIO (m executor) => ExecutorCtx m executor where
   setExecutor :: executor -> m executor ()
   getExecutor :: m executor executor
   isDebug :: m executor Bool
+  pushSql :: T.Text -> m executor ()
+  getSql :: m executor [T.Text]
 
 ----------------------------------------
 
@@ -31,7 +33,8 @@ newtype ExecutorM executor a = ExecutorM
 
 data ExecutorState executor = ExecutorState
   { executorStateOpts     :: GlobalOpts,
-    executorStateExecutor :: Maybe executor
+    executorStateExecutor :: Maybe executor,
+    executorStateSqlSnoc  :: [T.Text]
   }
 
 defaultExecutorState :: ExecutorState executor
@@ -42,7 +45,8 @@ defaultExecutorState =
           { debug = False,
             executorsAddr = []
           },
-      executorStateExecutor = Nothing
+      executorStateExecutor = Nothing,
+      executorStateSqlSnoc = []
     }
 
 instance ExecutorCtx ExecutorM executor where
@@ -57,6 +61,10 @@ instance ExecutorCtx ExecutorM executor where
     put $ s {executorStateOpts = opts}
   getOpts = gets executorStateOpts
   getExecutor = gets $ fromJust . executorStateExecutor
+  pushSql x = do
+    s <- get
+    put $ s {executorStateSqlSnoc = x : executorStateSqlSnoc s}
+  getSql = gets $ reverse . executorStateSqlSnoc
 
 ----------------------------------------
 
@@ -65,6 +73,12 @@ debugPrint x = do
   debug <- isDebug
   when debug $ do
     liftIO $ print x
+
+debugPutStrLn :: ExecutorCtx m executor => String -> m executor ()
+debugPutStrLn x = do
+  debug <- isDebug
+  when debug $ do
+    liftIO $ putStrLn x
 
 ----------------------------------------
 -- SltExecutor
