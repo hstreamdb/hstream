@@ -102,6 +102,37 @@ instance HavePos DataType where
   getPos (TypeJson pos)      = pos
   getPos (TypeArray pos _)   = pos
 
+instance HavePos ValueExpr where
+  getPos expr = case expr of
+    ExprOr          a _  _ -> a
+    ExprAnd         a _  _ -> a
+    ExprNot         a _    -> a
+    ExprEQ          a _  _ -> a
+    ExprNEQ         a _  _ -> a
+    ExprLT          a _  _ -> a
+    ExprGT          a _  _ -> a
+    ExprLEQ         a _  _ -> a
+    ExprGEQ         a _  _ -> a
+    ExprBetween     a _    -> a
+    ExprScalarFunc  a _    -> a
+    ExprAdd         a _  _ -> a
+    ExprSub         a _  _ -> a
+    ExprMul         a _  _ -> a
+    ExprAccessArray a _  _ -> a
+    DExprCast       a _    -> a
+    ExprNull        a      -> a
+    ExprInt         a _    -> a
+    ExprNum         a _    -> a
+    ExprString      a _    -> a
+    ExprBool        a _    -> a
+    ExprDate        a _    -> a
+    ExprTime        a _    -> a
+    ExprTimestamp   a _    -> a
+    ExprInterval    a _    -> a
+    ExprArr         a _    -> a
+    ExprColName     a _    -> a
+    ExprSetFunc     a _    -> a
+
 instance HavePos ScalarFunc where
   getPos func = case func of
     (ScalarFuncFieldToJson pos _ _)   -> pos

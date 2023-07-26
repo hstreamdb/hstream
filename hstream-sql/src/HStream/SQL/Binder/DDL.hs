@@ -24,6 +24,7 @@ import           HStream.SQL.Abs
 import           HStream.SQL.Binder.Common
 import           HStream.SQL.Binder.Select
 import           HStream.SQL.Binder.ValueExpr
+import           HStream.SQL.Exception
 import           HStream.SQL.Extra
 
 -- Create
@@ -110,10 +111,10 @@ instance Bind [ConnectorOption] where
 
 type instance BoundType Create = BoundCreate
 instance Bind Create where
-  bind (DCreate  _ hIdent)                     =
-    error $ "CREATE STREAM should have a schema. If you want to create a stream without schema, disable flag `hstream_enable_schema`."
-  bind (CreateOp _ hIdent options)             = do
-    error $ "CREATE STREAM should have a schema. If you want to create a stream without schema, disable flag `hstream_enable_schema`."
+  bind (DCreate  pos hIdent)                     =
+    throwSQLException BindException pos $ "CREATE STREAM should have a schema. If you want to create a stream without schema, disable flag `hstream_enable_schema`."
+  bind (CreateOp pos hIdent options)             = do
+    throwSQLException BindException pos $ "CREATE STREAM should have a schema. If you want to create a stream without schema, disable flag `hstream_enable_schema`."
   bind (DCreateWithSchema _ hIdent schemaCols) = do
     ident  <- bind hIdent
     schema <- bind (hIdent, schemaCols)
