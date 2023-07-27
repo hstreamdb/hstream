@@ -117,17 +117,17 @@ instance Monoid PlanContext where
   mempty = PlanContext mempty
 
 -- | Lookup a certain column in the planning context with
---   stream name and column index. Return the index of
+--   stream name and column name. Return the index of
 --   matched stream, the real index of the column
 --   and the catalog of matched column.
-lookupColumn :: PlanContext -> Text -> Int -> Maybe (Int, Int, ColumnCatalog)
-lookupColumn (PlanContext m) streamName colIndex =
+lookupColumn :: PlanContext -> Text -> Text -> Maybe (Int, Int, ColumnCatalog)
+lookupColumn (PlanContext m) streamName colName =
   L.foldr (\(i,Schema{..}) acc -> case acc of
               Just _  -> acc
               Nothing ->
                 let catalogTup_m = L.find (\(n, ColumnCatalog{..}) ->
                                           columnStream == streamName &&
-                                          columnId     == colIndex
+                                          columnName   == colName
                                        ) (IntMap.toList schemaColumns)
                  in (fmap (\(n,catalog) -> (i,n,catalog)) catalogTup_m) <|> acc
           ) Nothing (IntMap.toList m)

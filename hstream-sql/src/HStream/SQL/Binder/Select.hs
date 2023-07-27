@@ -450,10 +450,10 @@ instance Bind Select where
 instance Bind Select where
   bind' (DSelect pos sel frm whr grp hav) = do
     (boundFrm, frm_n) <- bind' frm
-    boundSel <- bind sel
     boundWhr <- bind whr
     boundGrp <- bind grp -- FIXME: `GroupBy` should use the ctx after binding `Sel` (sure? standard?)
     boundHav <- bind hav
+    boundSel <- bind sel
     let (BoundFrom boundRef) = boundFrm
     -- FIXME: remove this dirty hack after the engine supports `win(s)`
     let groupbyWin_m = scanBoundTableRefWin boundRef
