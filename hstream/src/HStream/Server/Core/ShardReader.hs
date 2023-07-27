@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TupleSections     #-}
 
 module HStream.Server.Core.ShardReader
   ( createShardReader
@@ -277,7 +278,7 @@ readStreamByKey ServerContext{..} streamWriter streamReader =
          Log.info $ "Create shardReader " <> Log.build readStreamByKeyRequestReaderId
          -- Logdevice reader will blocked when no data returned by store
          S.readerSetWaitOnlyWhenNoData reader
-         (sTimestamp, eTimestamp) <- startReadingShard scLDClient reader readStreamByKeyRequestReaderId shardId (toOffset <$> readStreamByKeyRequestFrom) (toOffset <$> readStreamByKeyRequestUntil)
+         (sTimestamp, eTimestamp) <- startReading reader readStreamByKeyRequestReaderId shardId (toOffset <$> readStreamByKeyRequestFrom) (toOffset <$> readStreamByKeyRequestUntil)
 
          recordBuffer <- newIORef V.empty
          let biReader = BiStreamReader { biStreamReader             = reader
@@ -425,6 +426,27 @@ readStreamByKey ServerContext{..} streamWriter streamReader =
 
    filterHStreamRecords :: T.Text -> API.HStreamRecord -> Bool
    filterHStreamRecords key record = getRecordKey record == key
+
+   startReading
+     :: S.LDReader
+     -> T.Text                      -- readerId, use for logging
+     -> S.C_LogID
+     -> Maybe ServerInternalOffset  -- startOffset
+     -> Maybe ServerInternalOffset  -- endOffset
+     -> IO (Maybe Int64, Maybe Int64)
+   startReading reader readerId rShardId rStart rEnd = do
+     (startLSN, sTimestamp) <- maybe (return (S.LSN_MIN, Nothing)) (getLogLSN scLDClient rShardId False) rStart
+     -- set default until LSN to tailLSN
+     (endLSN,   eTimestamp) <- maybe ((, Nothing) <$> S.getTailLSN scLDClient rShardId) (getLogLSN scLDClient rShardId True) rEnd
+     when (endLSN < startLSN) $
+       throwIO . HE.ConflictShardReaderOffset $ "startLSN(" <> show startLSN <>") should less than and equal to endLSN(" <> show endLSN <> ")"
+     -- Since the LSN obtained by timestamp is not accurate, for scenarios where the endLSN is determined using a timestamp,
+     -- set the endLSN to LSN_MAX and do not rely on the underlying reader mechanism to determine the end of the read
+     let endLSN' = if isJust eTimestamp then S.LSN_MAX else endLSN
+     S.readerStartReading reader rShardId startLSN endLSN'
+     Log.info $ "ShardReader " <> Log.build readerId <> " start reading shard " <> Log.build rShardId
+             <> " from = " <> Log.build (show startLSN) <> ", to = " <> Log.build (show endLSN')
+     return (sTimestamp, eTimestamp)
 
 ----------------------------------------------------------------------------------------------------------------------------------
 -- helper
