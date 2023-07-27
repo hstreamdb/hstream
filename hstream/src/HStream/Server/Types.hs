@@ -21,6 +21,7 @@ import qualified Data.Map.Strict                  as M
 import qualified Data.Set                         as Set
 import           Data.Text                        (Text)
 import qualified Data.Text                        as T
+import           Data.Vector                      (Vector)
 import           Data.Word                        (Word32, Word64)
 import qualified Database.RocksDB                 as RocksDB
 import           GHC.Generics                     (Generic)
@@ -30,7 +31,8 @@ import qualified Proto3.Suite                     as PB
 #if __GLASGOW_HASKELL__ < 902
 import qualified HStream.Admin.Store.API          as AA
 #endif
-import           Control.Exception                (throw)
+import           Control.Exception                (throw, throwIO)
+import           Control.Monad                    (when)
 import           Data.IORef                       (IORef)
 import           Data.Maybe                       (fromJust)
 import           HStream.Base.Timer               (CompactedWorker)
@@ -50,6 +52,7 @@ import qualified HStream.Store                    as S
 import           HStream.Utils                    (ResourceType (ResConnector),
                                                    textToCBytes,
                                                    timestampToMsTimestamp)
+import           Network.GRPC.HighLevel.Generated (GRPCIOError)
 
 protocolVersion :: Text
 protocolVersion = "0.1.0"
@@ -271,6 +274,22 @@ data StreamReader = StreamReader
 mkStreamReader :: S.LDReader ->  Maybe (IORef Word64) -> HashMap S.C_LogID (Maybe Int64, Maybe Int64) -> StreamReader
 mkStreamReader streamReader streamReaderTotalBatches streamReaderTsLimits = StreamReader {..}
 
+type BiStreamReaderSender = API.ReadStreamByKeyResponse -> IO (Either GRPCIOError ())
+type BiStreamReaderReceiver = IO (Either GRPCIOError (Maybe API.ReadStreamByKeyRequest))
+
+data BiStreamReader = BiStreamReader
+  { biStreamReader             :: S.LDReader
+  , biStreamReaderId           :: T.Text
+  , biStreamReaderTargetStream :: T.Text
+  , bistreamReaderTargetShard  :: S.C_LogID
+  , biStreamReaderTargetKey    :: T.Text
+  , biStreamReaderStartTs      :: Maybe Int64
+  , biStreamReaderEndTs        :: Maybe Int64
+  , biStreamReaderSender       :: BiStreamReaderSender
+  , biStreamReaderReceiver     :: BiStreamReaderReceiver
+  , biStreamRecordBuffer       :: IORef (Vector (Vector (API.RecordId, API.HStreamRecord)))
+  }
+
 data ServerInternalOffset = OffsetEarliest
                           | OffsetLatest
                           | OffsetRecordId API.RecordId
@@ -305,7 +324,9 @@ getLogLSN scLDClient logId isEndOffset offset =
       startLSN <- S.getTailLSN scLDClient logId
       if isEndOffset then return (startLSN, Nothing)
                      else return (startLSN + 1, Nothing)
-    OffsetRecordId API.RecordId{..} ->
+    OffsetRecordId r@API.RecordId{..} -> do
+      when (recordIdShardId /= logId) $
+        throwIO $ HE.ConflictShardReaderOffset $ "shardId " <> show logId  <> " doesn't match with recordId " <> show r
       return (recordIdBatchId, Nothing)
     OffsetTimestamp API.TimestampOffset{..} -> do
       let accuracy = if timestampOffsetStrictAccuracy then S.FindKeyStrict else S.FindKeyApproximate

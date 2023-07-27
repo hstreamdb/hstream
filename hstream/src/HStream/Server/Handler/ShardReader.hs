@@ -15,6 +15,7 @@ module HStream.Server.Handler.ShardReader
   , readShardStreamHandler
   , readStreamHandler
   , readSingleShardStreamHandler
+  , readStreamByKeyHandler
     -- * For hs-grpc-server
   , handleListShardReaders
   , handleCreateShardReader
@@ -23,6 +24,7 @@ module HStream.Server.Handler.ShardReader
   , handleReadShardStream
   , handleReadStream
   , handleReadSingleShardStream
+  , handleReadStreamByKey
   )
 where
 
@@ -164,3 +166,20 @@ handleReadSingleShardStream
 handleReadSingleShardStream sc _ req stream = catchDefaultEx $ do
   Log.debug $ "Receive read single shard stream Request: " <> Log.build (show req)
   C.readSingleShardStream sc req (G.streamWrite stream . Just)
+
+readStreamByKeyHandler
+  :: ServerContext
+  -> ServerRequest 'BiDiStreaming ReadStreamByKeyRequest ReadStreamByKeyResponse
+  -> IO (ServerResponse 'BiDiStreaming ReadStreamByKeyResponse)
+readStreamByKeyHandler ctx (ServerBiDiRequest _meta streamRecv streamSend) =
+  defaultBiDiStreamExceptionHandle $ do
+    C.readStreamByKey ctx streamSend streamRecv
+    return $ ServerBiDiResponse mempty StatusOk ""
+
+handleReadStreamByKey
+  :: ServerContext
+  -> G.BidiStreamHandler ReadStreamByKeyRequest ReadStreamByKeyResponse ()
+handleReadStreamByKey sc _gCtx stream = do
+  let streamSend x = first (const GRPCIOShutdown) <$> G.streamWrite stream (Just x)
+      streamRecv = do Right <$> G.streamRead stream
+  catchDefaultEx $ C.readStreamByKey sc streamSend streamRecv

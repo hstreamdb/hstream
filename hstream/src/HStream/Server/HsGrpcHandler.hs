@@ -59,6 +59,7 @@ handlers sc =
   , serverStream (GRPC :: GRPC P.HStreamApi "readShardStream") (H.handleReadShardStream sc)
   , serverStream (GRPC :: GRPC P.HStreamApi "readStream") (H.handleReadStream sc)
   , serverStream (GRPC :: GRPC P.HStreamApi "readSingleShardStream") (H.handleReadSingleShardStream sc)
+  , bidiStream (GRPC :: GRPC P.HStreamApi "readStreamByKey") (H.handleReadStreamByKey sc)
     -- Subscribe
   , bidiStream (GRPC :: GRPC P.HStreamApi "streamingFetch") (H.handleStreamingFetch sc)
     -- Stats
