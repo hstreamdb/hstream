@@ -301,9 +301,9 @@ readStreamByKey ServerContext{..} streamWriter streamReader =
      Log.info $ "shard reader " <> Log.build biStreamReaderId <> " stop reading, destroy reader"
 
    readRecords :: (BiStreamReader, Maybe Word64) -> IO ()
+   {- First round read, read from hstore directly -}
    readRecords (reader@BiStreamReader{..}, Just cnt) = do
-     -- First round read, read from hstore directly
-     isSuccess <- readLoop reader (fromIntegral cnt)
+     isSuccess <- readLoopInternal reader (fromIntegral cnt)
      if isSuccess
        then do
          Log.info $ "BiStreamReader " <> Log.build biStreamReaderId
@@ -312,57 +312,73 @@ readStreamByKey ServerContext{..} streamWriter streamReader =
                  <> ", shard " <> Log.build bistreamReaderTargetShard
          readRecords (reader, Nothing)
        else Log.info $ "BiStreamReader " <> Log.build biStreamReaderId <> " exit read because send records to client failed."
-   readRecords (reader@BiStreamReader{..}, Nothing) =
-     {-
-         - Later read loop. Waiting for the client to send the total number of messages for the next round of reads,
-           then cyclically reading data from the store to deliver to the client.
-         - Records that exceeds the total number of client requests is cached and prioritized for delivery in the
-           next round of delivery.
-         - Any failure to send causes the read loop to exit, and the biStreamReader will be destroyed
-     -}
+   {-
+       - Later read loop. Waiting for the client to send the total number of messages for the next round of reads,
+         then cyclically reading data from the store to deliver to the client.
+       - Records that exceeds the total number of client requests is cached and prioritized for delivery in the
+         next round of delivery.
+       - Any failure to send causes the read loop to exit, and the biStreamReader will be destroyed
+   -}
+   readRecords (reader@BiStreamReader{..}, Nothing) = do
      whileM $ do
-       nextRoundReads <- handleClientRequest reader
-       case nextRoundReads of
-         Just cnt -> do
-           sends <- sendCachedRecords reader cnt
-           let cnt' = fromIntegral cnt - V.length sends
-           if V.all id sends
-             then do
-               isSuccess <- readLoop reader cnt'
-               when isSuccess $
-                 Log.info $ "BiStreamReader " <> Log.build biStreamReaderId
-                         <> " finish reading " <> Log.build (show cnt)
-                         <> " records from stream " <> Log.build biStreamReaderTargetStream
-                         <> ", shard " <> Log.build bistreamReaderTargetShard
-               return isSuccess
-             else do
-               Log.info $ "BiStreamReader " <> Log.build biStreamReaderId <> " exit read because send records to client failed."
-               return False
-         Nothing  -> do
-           Log.info $ "BiStreamReader " <> Log.build biStreamReaderId <> " exit read because no more data request by client."
-           return False
+       -- check if until offset is reached before holding on next client request
+       isReading <- S.readerIsReadingAny biStreamReader
+       if isReading
+         then readLoop reader
+         else do
+            Log.info $ "BiStreamReader " <> Log.build biStreamReaderId
+                    <> " reached until offset for stream " <> Log.build biStreamReaderTargetStream
+                    <> ", shard " <> Log.build bistreamReaderTargetShard
+            return False
+     Log.info $ "BiStreamReader " <> Log.build biStreamReaderId
+             <> " read stream " <> Log.build biStreamReaderTargetStream
+             <> ", shard " <> Log.build bistreamReaderTargetShard
+             <> " done."
 
-   readLoop :: BiStreamReader -> Int -> IO Bool
-   readLoop reader@BiStreamReader{..} cnt
+   readLoop :: BiStreamReader -> IO Bool
+   readLoop reader@BiStreamReader{..} = do
+     nextRoundReads <- handleClientRequest reader
+     case nextRoundReads of
+       Just cnt -> do
+         sends <- sendCachedRecords reader cnt
+         let cnt' = fromIntegral cnt - V.length sends
+         if V.all id sends
+           then do
+             isSuccess <- readLoopInternal reader cnt'
+             when isSuccess $
+               Log.info $ "BiStreamReader " <> Log.build biStreamReaderId
+                       <> " finish reading " <> Log.build (show cnt)
+                       <> " records from stream " <> Log.build biStreamReaderTargetStream
+                       <> ", shard " <> Log.build bistreamReaderTargetShard
+             return isSuccess
+           else do
+             Log.info $ "BiStreamReader " <> Log.build biStreamReaderId <> " exit read because send records to client failed."
+             return False
+       Nothing  -> do
+         Log.info $ "BiStreamReader " <> Log.build biStreamReaderId <> " exit read because no more data request by client."
+         return False
+
+   readLoopInternal :: BiStreamReader -> Int -> IO Bool
+   readLoopInternal reader@BiStreamReader{..} cnt
      | cnt == 0 = return True
      | otherwise = do
          records <- S.readerRead biStreamReader maxReadBatch
          if null records
            then do
+             -- check if until offset is reached.
              isReading <- S.readerIsReadingAny biStreamReader
-             if isReading then readLoop reader cnt
-                          else do Log.fatal $ "BiStreamReader " <> Log.build biStreamReaderId
-                                           <> " stop reading stream " <> Log.build biStreamReaderTargetStream
-                                           <> ", shard " <> Log.build bistreamReaderTargetShard
-                                           <> " unexpectedly."
-                                  throwIO $ HE.UnexpectedError $ "BiStreamReader " <> show biStreamReaderId <> " stop reading unexpected"
+             if isReading then readLoopInternal reader cnt
+                          else do Log.info $ "BiStreamReader " <> Log.build biStreamReaderId
+                                          <> " reached until offset for stream " <> Log.build biStreamReaderTargetStream
+                                          <> ", shard " <> Log.build bistreamReaderTargetShard
+                                  return False
            else do
              res <- getResponseRecords biStreamReader bistreamReaderTargetShard records biStreamReaderId biStreamReaderStartTs biStreamReaderEndTs
              let (res', remains) = V.splitAt cnt $ V.map (filterReceivedRecordByKey biStreamReaderTargetKey) res
              _ <- atomicModifyIORef' biStreamRecordBuffer $ \buffer -> (buffer <> remains, V.empty)
              successSends <- sendRecords reader (V.unzip <$> res')
              if V.all id successSends
-               then readLoop reader (cnt - V.length successSends)
+               then readLoopInternal reader (cnt - V.length successSends)
                else do
                  Log.info $ "BiStreamReader " <> Log.build biStreamReaderId <> " exit read because send records to client failed."
                  return False
