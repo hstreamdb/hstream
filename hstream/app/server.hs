@@ -9,9 +9,8 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
 
-import           Control.Concurrent               (MVar, forkIO, newEmptyMVar,
-                                                   newMVar, putMVar, readMVar,
-                                                   swapMVar)
+import           Control.Concurrent               (forkIO, newEmptyMVar,
+                                                   putMVar, readMVar)
 import qualified Control.Concurrent.Async         as Async
 import           Control.Concurrent.STM           (TVar, atomically, retry,
                                                    writeTVar)
@@ -24,21 +23,12 @@ import qualified Data.Text                        as T
 import           Data.Text.Encoding               (encodeUtf8)
 import           Data.Word                        (Word16)
 import qualified HsGrpc.Server                    as HsGrpc
-import qualified Network.GRPC.HighLevel           as GRPC
-import qualified Network.GRPC.HighLevel.Client    as GRPC
-import qualified Network.GRPC.HighLevel.Generated as GRPC
 import           Network.HTTP.Client              (defaultManagerSettings,
                                                    newManager)
-import           System.IO                        (BufferMode (NoBuffering),
-                                                   hPutStrLn, stderr)
+import           System.IO                        (hPutStrLn, stderr)
 import           Text.RawString.QQ                (r)
-import           Z.Data.CBytes                    (CBytes)
 import           ZooKeeper                        (withResource,
                                                    zookeeperResInit)
-import           ZooKeeper.Types                  (ZHandle, ZooEvent, ZooState,
-                                                   pattern ZooConnectedState,
-                                                   pattern ZooConnectingState,
-                                                   pattern ZooSessionEvent)
 
 import           HStream.Base                     (setupFatalSignalHandler)
 import           HStream.Common.ConsistentHashing (HashRing, constructServerMap)
@@ -48,34 +38,28 @@ import           HStream.Gossip                   (GossipContext (..),
                                                    defaultGossipOpts,
                                                    initGossipContext,
                                                    startGossip, waitGossipBoot)
-import           HStream.Gossip.Types             (Epoch, InitType (Gossip),
-                                                   ServerState (..))
+import           HStream.Gossip.Types             (Epoch, InitType (Gossip))
 import           HStream.Gossip.Utils             (getMemberListWithEpochSTM)
 import qualified HStream.Logger                   as Log
 import           HStream.MetaStore.Types          as M (MetaHandle (..),
                                                         MetaStore (..),
                                                         RHandle (..))
 import           HStream.Server.Config            (AdvertisedListeners,
-                                                   CliOptions (..),
                                                    ExperimentalFeature (..),
                                                    ListenersSecurityProtocolMap,
                                                    MetaStoreAddr (..),
                                                    SecurityProtocolMap,
-                                                   ServerOpts (..), TlsConfig,
+                                                   ServerCli (..),
+                                                   ServerOpts (..),
                                                    advertisedListenersToPB,
-                                                   cliOptionsParser, getConfig)
+                                                   getConfig, runServerCli)
 import qualified HStream.Server.Core.Cluster      as Cluster
 import qualified HStream.Server.Experimental      as Exp
-import           HStream.Server.Handler           (handlers)
 import qualified HStream.Server.HsGrpcHandler     as HsGrpcHandler
-import           HStream.Server.HStreamApi        (NodeState (..),
-                                                   ServerNode (ServerNode),
-                                                   hstreamApiServer)
 import qualified HStream.Server.HStreamApi        as API
 import qualified HStream.Server.HStreamInternal   as I
 import           HStream.Server.Initialization    (closeRocksDBHandle,
                                                    initializeServer,
-                                                   initializeTlsConfig,
                                                    openRocksDBHandle,
                                                    readTlsPemFile)
 import           HStream.Server.MetaData          (TaskAllocation (..),
@@ -83,67 +67,28 @@ import           HStream.Server.MetaData          (TaskAllocation (..),
                                                    initializeAncestors,
                                                    initializeFile,
                                                    initializeTables)
-import           HStream.Server.MetaData          as P
 import           HStream.Server.QueryWorker       (QueryWorker (QueryWorker))
-import           HStream.Server.Types             (ServerContext (..),
-                                                   TaskManager (recoverTask, resourceType),
-                                                   resourceType)
+import           HStream.Server.Types             (ServerContext (..))
 import qualified HStream.Store.Logger             as Log
 import qualified HStream.ThirdParty.Protobuf      as Proto
-import           HStream.Utils                    (ResourceType (..),
-                                                   getProtoTimestamp,
-                                                   pattern EnumPB)
-import           Options.Applicative              as O (CompletionResult (execCompletion),
-                                                        Parser,
-                                                        ParserResult (..),
-                                                        defaultPrefs,
-                                                        execParserPure,
-                                                        fullDesc, help, helper,
-                                                        info, long, progDesc,
-                                                        renderFailure, short,
-                                                        switch, (<**>))
-import           System.Environment               (getArgs, getProgName)
-import           System.Exit                      (exitSuccess)
+import           HStream.Utils                    (getProtoTimestamp)
+import           System.Environment               (getArgs)
 
--- TODO: Improvements
--- Rename HStream.Server.Config to HStream.Server.Cli and move these
--- "parsing code" to it. Keep main function simple and clear.
-parseStartArgs :: [String] -> ParserResult StartArgs
-parseStartArgs = execParserPure defaultPrefs $
-  info (startArgsParser <**> helper) (fullDesc <> progDesc "HStream-Server")
-
-data StartArgs = StartArgs
-  { cliOpts      :: CliOptions
-  , isGetVersion :: Bool
-  }
-
-startArgsParser :: O.Parser StartArgs
-startArgsParser = StartArgs
-  <$> cliOptionsParser
-  <*> O.switch ( O.long "version" <> O.short 'v' <> O.help "Show server version." )
+#ifdef HStreamUseGrpcHaskell
+import           HStream.Server.Handler           (handlers)
+import           HStream.Server.Initialization    (initializeTlsConfig)
+import qualified Network.GRPC.HighLevel           as GRPC
+import qualified Network.GRPC.HighLevel.Client    as GRPC
+import qualified Network.GRPC.HighLevel.Generated as GRPC
+#endif
 
 main :: IO ()
 main = do
   args <- getArgs
-  case parseStartArgs args of
-    Success StartArgs{..} -> do
-      if isGetVersion
-         then do
-           API.HStreamVersion{..} <- getHStreamVersion
-           putStrLn $ "version: " <> T.unpack hstreamVersionVersion <> " (" <> T.unpack hstreamVersionCommit <> ")"
-         else getConfig cliOpts >>= app
-    Failure failure -> do
-      progn <- getProgName
-      let (msg, _) = renderFailure failure progn
-      putStrLn msg
-      exitSuccess
-    CompletionInvoked compl -> handleCompletion compl
- where
-   handleCompletion compl = do
-     progn <- getProgName
-     msg <- execCompletion compl progn
-     putStr msg
-     exitSuccess
+  serverCli <- runServerCli args
+  case serverCli of
+    ShowVersion -> showVersion
+    Cli cliOpts -> getConfig cliOpts >>= app
 
 app :: ServerOpts -> IO ()
 app config@ServerOpts{..} = do
@@ -276,7 +221,7 @@ serve host port
                                  , GRPC.sslConfig = newSslOpts
                                  }
         api <- handlers sc'
-        hstreamApiServer api grpcOpts'
+        API.hstreamApiServer api grpcOpts'
 #else
         newSslOpts <- mapM readTlsPemFile $ join ((`Map.lookup` securityMap) =<< Map.lookup key listenerSecurityMap )
         let grpcOpts' = grpcOpts { HsGrpc.serverPort = fromIntegral listenerPort
@@ -293,7 +238,7 @@ serve host port
 #ifdef HStreamUseGrpcHaskell
   Log.info "Starting server with grpc-haskell..."
   api <- handlers sc
-  hstreamApiServer api grpcOpts
+  API.hstreamApiServer api grpcOpts
 #else
   Log.info "Starting server with hs-grpc-server..."
   if enableExpStreamV2
@@ -303,7 +248,13 @@ serve host port
      else HsGrpc.runServer grpcOpts (HsGrpcHandler.handlers sc)
 #endif
 
---------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+
+showVersion :: IO ()
+showVersion = do
+  API.HStreamVersion{..} <- getHStreamVersion
+  putStrLn $ "version: " <> T.unpack hstreamVersionVersion
+          <> " (" <> T.unpack hstreamVersionCommit <> ")"
 
 -- However, reconstruct hashRing every time can be expensive
 -- when we have a large number of nodes in the cluster.
