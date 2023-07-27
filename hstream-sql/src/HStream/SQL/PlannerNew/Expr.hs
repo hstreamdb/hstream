@@ -90,7 +90,7 @@ instance Plan BoundExpr where
       return (AccessArray e' rhs, catalog)
     BoundExprCol name stream col colId -> do
       ctx <- get
-      case lookupColumn ctx stream colId of
+      case lookupColumn ctx stream col of
         Nothing -> throwSQLException PlanException Nothing $ "column " <> T.unpack stream <> ".#" <> show colId <> " not found in ctx " <> show ctx
         Just (streamId,columnId,catalog) ->
           return (ColumnRef streamId columnId, catalog)
