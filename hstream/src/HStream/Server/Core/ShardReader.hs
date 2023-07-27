@@ -15,11 +15,11 @@ module HStream.Server.Core.ShardReader
 where
 
 import           Data.Functor               ((<&>))
-import           ZooKeeper.Exception        (ZNONODE (..), throwIO)
+import           ZooKeeper.Exception        (ZNONODE (..))
 
 import           Control.Concurrent         (modifyMVar_, newEmptyMVar, putMVar,
                                              readMVar, takeMVar, withMVar)
-import           Control.Exception          (bracket, catch)
+import           Control.Exception          (bracket, catch, throwIO)
 import           Control.Monad              (forM, forM_, unless, when)
 import           Data.ByteString            (ByteString)
 import           Data.Either                (isRight)

@@ -31,7 +31,8 @@ import qualified Proto3.Suite                     as PB
 #if __GLASGOW_HASKELL__ < 902
 import qualified HStream.Admin.Store.API          as AA
 #endif
-import           Control.Exception                (throw)
+import           Control.Exception                (throw, throwIO)
+import           Control.Monad                    (when)
 import           Data.IORef                       (IORef)
 import           Data.Maybe                       (fromJust)
 import           HStream.Base.Timer               (CompactedWorker)
@@ -323,7 +324,9 @@ getLogLSN scLDClient logId isEndOffset offset =
       startLSN <- S.getTailLSN scLDClient logId
       if isEndOffset then return (startLSN, Nothing)
                      else return (startLSN + 1, Nothing)
-    OffsetRecordId API.RecordId{..} ->
+    OffsetRecordId r@API.RecordId{..} -> do
+      when (recordIdShardId /= logId) $
+        throwIO $ HE.ConflictShardReaderOffset $ "shardId " <> show logId  <> " doesn't match with recordId " <> show r
       return (recordIdBatchId, Nothing)
     OffsetTimestamp API.TimestampOffset{..} -> do
       let accuracy = if timestampOffsetStrictAccuracy then S.FindKeyStrict else S.FindKeyApproximate
