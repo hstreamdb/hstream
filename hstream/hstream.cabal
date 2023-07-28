@@ -166,7 +166,7 @@ library
     , unix
     , unordered-containers
     , uuid
-    , vector
+    , vector                    ^>=0.13
     , vector-algorithms
     , yaml
     , Z-Data
