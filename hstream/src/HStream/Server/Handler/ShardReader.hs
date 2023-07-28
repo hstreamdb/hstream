@@ -173,6 +173,7 @@ readStreamByKeyHandler
   -> IO (ServerResponse 'BiDiStreaming ReadStreamByKeyResponse)
 readStreamByKeyHandler ctx (ServerBiDiRequest _meta streamRecv streamSend) =
   defaultBiDiStreamExceptionHandle $ do
+    Log.info "recv readStreamByKey request"
     C.readStreamByKey ctx streamSend streamRecv
     return $ ServerBiDiResponse mempty StatusOk ""
 
@@ -180,6 +181,7 @@ handleReadStreamByKey
   :: ServerContext
   -> G.BidiStreamHandler ReadStreamByKeyRequest ReadStreamByKeyResponse ()
 handleReadStreamByKey sc _gCtx stream = do
+  Log.info "recv readStreamByKey request"
   let streamSend x = first (const GRPCIOShutdown) <$> G.streamWrite stream (Just x)
       streamRecv = do Right <$> G.streamRead stream
   catchDefaultEx $ C.readStreamByKey sc streamSend streamRecv

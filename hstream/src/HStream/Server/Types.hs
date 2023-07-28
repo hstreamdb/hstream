@@ -287,7 +287,7 @@ data BiStreamReader = BiStreamReader
   , biStreamReaderEndTs        :: Maybe Int64
   , biStreamReaderSender       :: BiStreamReaderSender
   , biStreamReaderReceiver     :: BiStreamReaderReceiver
-  , biStreamRecordBuffer       :: IORef (Vector (Vector (API.RecordId, API.HStreamRecord)))
+  , biStreamRecordBuffer       :: IORef (Vector (API.RecordId, API.HStreamRecord))
   }
 
 data ServerInternalOffset = OffsetEarliest

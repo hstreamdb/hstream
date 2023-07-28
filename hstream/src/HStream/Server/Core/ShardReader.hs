@@ -21,7 +21,7 @@ import           ZooKeeper.Exception        (ZNONODE (..))
 import           Control.Concurrent         (modifyMVar_, newEmptyMVar, putMVar,
                                              readMVar, takeMVar, withMVar)
 import           Control.Exception          (bracket, catch, throwIO)
-import           Control.Monad              (forM, forM_, unless, when)
+import           Control.Monad              (forM, forM_, join, unless, when)
 import           Data.ByteString            (ByteString)
 import           Data.Either                (isRight)
 import qualified Data.Foldable              as F
@@ -268,17 +268,21 @@ readStreamByKey ServerContext{..} streamWriter streamReader =
 
    createReader = do
      streamReader >>= \case
-       Right (Just API.ReadStreamByKeyRequest{..}) -> do
+       Right (Just req@API.ReadStreamByKeyRequest{..}) -> do
+         Log.info $ "BiStreamReader receive first request from client " <> Log.build (show req)
          let streamId = transToStreamName readStreamByKeyRequestStreamName
          streamExist <- S.doesStreamExist scLDClient streamId
-         unless streamExist $ throwIO $ HE.StreamNotFound $ "Stream " <> T.pack (show readStreamByKeyRequestStreamName) <> " is not exist."
+         unless streamExist $ do
+           Log.info $ "Create biStreamReader error because stream " <> Log.build readStreamByKeyRequestStreamName <> "is not exist"
+           throwIO $ HE.StreamNotFound $ "Stream " <> T.pack (show readStreamByKeyRequestStreamName) <> " is not exist."
 
          shardId <- getShardId scLDClient streamId readStreamByKeyRequestKey
          reader <- S.newLDReader scLDClient 1 (Just ldReaderBufferSize)
          Log.info $ "Create shardReader " <> Log.build readStreamByKeyRequestReaderId
          -- Logdevice reader will blocked when no data returned by store
          S.readerSetWaitOnlyWhenNoData reader
-         (sTimestamp, eTimestamp) <- startReading reader readStreamByKeyRequestReaderId shardId (toOffset <$> readStreamByKeyRequestFrom) (toOffset <$> readStreamByKeyRequestUntil)
+         (sTimestamp, eTimestamp) <- startReading reader readStreamByKeyRequestReaderId shardId
+                                      (toOffset <$> readStreamByKeyRequestFrom) (toOffset <$> readStreamByKeyRequestUntil)
 
          recordBuffer <- newIORef V.empty
          let biReader = BiStreamReader { biStreamReader             = reader
@@ -299,20 +303,18 @@ readStreamByKey ServerContext{..} streamWriter streamReader =
    deleteReader (BiStreamReader{..}, _) = do
      isReading <- S.readerIsReadingAny biStreamReader
      when isReading $ S.readerStopReading biStreamReader bistreamReaderTargetShard
-     Log.info $ "shard reader " <> Log.build biStreamReaderId <> " stop reading, destroy reader"
+     Log.info $ "biStreamReader " <> Log.build biStreamReaderId <> " stop reading, destroy reader"
 
    readRecords :: (BiStreamReader, Maybe Word64) -> IO ()
    {- First round read, read from hstore directly -}
    readRecords (reader@BiStreamReader{..}, Just cnt) = do
      isSuccess <- readLoopInternal reader (fromIntegral cnt)
-     if isSuccess
-       then do
-         Log.info $ "BiStreamReader " <> Log.build biStreamReaderId
-                 <> " finish reading " <> Log.build (show cnt)
-                 <> " records from stream " <> Log.build biStreamReaderTargetStream
-                 <> ", shard " <> Log.build bistreamReaderTargetShard
-         readRecords (reader, Nothing)
-       else Log.info $ "BiStreamReader " <> Log.build biStreamReaderId <> " exit read because send records to client failed."
+     when isSuccess $ do
+       Log.info $ "BiStreamReader " <> Log.build biStreamReaderId
+               <> " finish reading " <> Log.build (show cnt)
+               <> " records from stream " <> Log.build biStreamReaderTargetStream
+               <> ", shard " <> Log.build bistreamReaderTargetShard
+       readRecords (reader, Nothing)
    {-
        - Later read loop. Waiting for the client to send the total number of messages for the next round of reads,
          then cyclically reading data from the store to deliver to the client.
@@ -324,7 +326,9 @@ readStreamByKey ServerContext{..} streamWriter streamReader =
      whileM $ do
        -- check if until offset is reached before holding on next client request
        isReading <- S.readerIsReadingAny biStreamReader
-       if isReading
+       -- Note that all buffered records need to be delivered to client
+       bufferNotEmpty <- not . V.null <$> readIORef biStreamRecordBuffer
+       if isReading || bufferNotEmpty
          then readLoop reader
          else do
             Log.info $ "BiStreamReader " <> Log.build biStreamReaderId
@@ -342,9 +346,9 @@ readStreamByKey ServerContext{..} streamWriter streamReader =
      case nextRoundReads of
        Just cnt -> do
          sends <- sendCachedRecords reader cnt
-         let cnt' = fromIntegral cnt - V.length sends
-         if V.all id sends
+         if V.all isJust sends
            then do
+             let cnt' = fromIntegral cnt - (V.sum . V.catMaybes $ sends)
              isSuccess <- readLoopInternal reader cnt'
              when isSuccess $
                Log.info $ "BiStreamReader " <> Log.build biStreamReaderId
@@ -375,11 +379,14 @@ readStreamByKey ServerContext{..} streamWriter streamReader =
                                   return False
            else do
              res <- getResponseRecords biStreamReader bistreamReaderTargetShard records biStreamReaderId biStreamReaderStartTs biStreamReaderEndTs
-             let (res', remains) = V.splitAt cnt $ V.map (filterReceivedRecordByKey biStreamReaderTargetKey) res
+             let (res', remains) = V.splitAt cnt . join $ V.map (filterReceivedRecordByKey biStreamReaderTargetKey) res
+             when (V.null res' && (not . V.null $ remains)) $ do
+               Log.fatal "when res' == null, remains should be null too"
+               throwIO $ HE.SomeServerInternal "Server internal error caused by biStreamReader"
              _ <- atomicModifyIORef' biStreamRecordBuffer $ \buffer -> (buffer <> remains, V.empty)
-             successSends <- sendRecords reader (V.unzip <$> res')
-             if V.all id successSends
-               then readLoopInternal reader (cnt - V.length successSends)
+             successSends <- sendRecords reader res'
+             if V.all isJust successSends
+               then readLoopInternal reader (cnt - (V.sum . V.catMaybes $ successSends))
                else do
                  Log.info $ "BiStreamReader " <> Log.build biStreamReaderId <> " exit read because send records to client failed."
                  return False
@@ -389,21 +396,26 @@ readStreamByKey ServerContext{..} streamWriter streamReader =
        let (sends, remains) = V.splitAt (fromIntegral cnt) buffer
         in (remains, sends)
      Log.debug $ "BiStreamReader " <> Log.build biStreamReaderId <> " will send " <> Log.build (show . V.length $ bufferedRecords) <> " records from cache."
-     sendRecords reader $ V.unzip <$> bufferedRecords
+     sendRecords reader bufferedRecords
 
-   sendRecords BiStreamReader{..} records = do
-     V.forM records $ \(readStreamByKeyResponseRecordIds, readStreamByKeyResponseReceivedRecords) -> do
-        biStreamReaderSender API.ReadStreamByKeyResponse{..} >>= \case
-          Left err -> do
-            Log.fatal $ "BiStreamReader " <> Log.build biStreamReaderId <> " send records failed: \n\trecords="
-                     <> Log.build (show readStreamByKeyResponseRecordIds)
-                     <> "\n\tnum of records=" <> Log.build (V.length readStreamByKeyResponseRecordIds)
-                     <> "\n\terror: " <> Log.build (show err)
-            return False
-          Right _ -> do
-            Log.debug $ "BiStreamReader " <> Log.build biStreamReaderId <> " send "
-                     <> Log.build (show . V.length $ readStreamByKeyResponseRecordIds) <> " records."
-            return True
+   sendRecords BiStreamReader{..} records
+     | V.null records = return $ V.singleton (Just 0)
+     | otherwise = do
+         -- gather all records with same shardId togather
+         let records' = V.unzip <$> V.groupBy (\(id1, _) (id2, _) -> API.recordIdShardId id1 == API.recordIdShardId id2) records
+         res <- forM records' $ \(readStreamByKeyResponseRecordIds, readStreamByKeyResponseReceivedRecords) -> do
+            biStreamReaderSender API.ReadStreamByKeyResponse{..} >>= \case
+              Left err -> do
+                Log.fatal $ "BiStreamReader " <> Log.build biStreamReaderId <> " send records failed: \n\trecords="
+                         <> Log.build (show readStreamByKeyResponseRecordIds)
+                         <> "\n\tnum of records=" <> Log.build (V.length readStreamByKeyResponseRecordIds)
+                         <> "\n\terror: " <> Log.build (show err)
+                return Nothing
+              Right _ -> do
+                Log.debug $ "BiStreamReader " <> Log.build biStreamReaderId <> " send "
+                         <> Log.build (show . V.length $ readStreamByKeyResponseRecordIds) <> " records."
+                return $ Just (V.length readStreamByKeyResponseRecordIds)
+         return $ V.fromList res
 
    handleClientRequest :: BiStreamReader -> IO (Maybe Word64)
    handleClientRequest BiStreamReader{..} =
