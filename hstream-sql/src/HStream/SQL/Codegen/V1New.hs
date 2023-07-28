@@ -266,6 +266,14 @@ projectMapR tups =
                   ) HM.empty tups
      in record{ recordValue = recordValue' }
 
+joinMapR :: Int -> Record k V -> Record k V
+joinMapR n =
+  \record@Record{..} ->
+    let recordValue' =
+          HM.fromList $ L.map (\(cata, scalar) -> (cata { columnStreamId = n }, scalar)
+                              ) (HM.toList recordValue)
+     in record{ recordValue = recordValue' }
+
 relationExprToGraph :: RelationExpr -> StreamBuilder -> IO (EStream, [StreamName], [StreamJoined K V K V Ser], [HS.Materialized K V V])
 relationExprToGraph relation builder = case relation of
   StreamScan schema -> do
@@ -278,9 +286,9 @@ relationExprToGraph relation builder = case relation of
     s' <- HS.stream sourceConfig builder
     return (EStream1 s', [schemaOwner schema], [], [])
   LoopJoinOn schema r1 r2 expr typ t -> do
-    let joiner = HM.union
+    let joiner = \o1 o2 -> o1 <++> o2
         joinCond = \record1 record2 ->
-          case scalarExprToFun expr (recordValue record1 <> recordValue record2) of
+          case scalarExprToFun expr (recordValue record1 `HM.union` recordValue record2) of
             Left e  -> False -- FIXME: log error message
             Right v -> v == FlowBoolean True
         newKeySelector = \_ _ -> HM.fromList [] -- Default key is empty. See HStream.Processing.Stream#joinStreamProcessor
@@ -291,11 +299,18 @@ relationExprToGraph relation builder = case relation of
                     }
     (es1,srcs1,joins1,mats1) <- relationExprToGraph r1 builder
     (es2,srcs2,joins2,mats2) <- relationExprToGraph r2 builder
+
+    -- modify columnStreamId
+    es1' <- withEStreamM es1 SK (HS.map $ joinMapR 0) (HS.map $ joinMapR 0)
+    es2' <- withEStreamM es2 SK (HS.map $ joinMapR 1) (HS.map $ joinMapR 1)
+
     -- FIXME: join timewindowed stream
-    case (es1, es2) of
+    case (es1', es2') of
       (EStream1 s1, EStream1 s2) -> do
         streamJoined <- genStreamJoinedConfig
         s' <- HS.joinStream s2 joiner joinCond newKeySelector joinWindows streamJoined s1
+        -- modify columnStreamId
+        s'' <- HS.map (joinMapR 0) s'
         return (EStream1 s', srcs1++srcs2, streamJoined:joins1++joins2, mats1++mats2)
       _ -> throwSQLException CodegenException Nothing "Joining time-windowed and non-time-windowed streams is not supported"
   Planner.Filter schema r scalar -> do
@@ -357,7 +372,11 @@ relationExprToGraph relation builder = case relation of
                                     aggregateR
                                     (\a k timeWindow ->
                                         let twFlowObject = runSer (serializer timeWindowFlowObjectSerde) timeWindow
-                                         in HM.union (HM.union a k) twFlowObject
+                                         in (k `HM.union` a) <++> twFlowObject
+                                         -- NOTE: `k` is group by key (column 0 ~ m)
+                                         --        `a` is agg acc (column m+1 ~ n)
+                                         --        `twFlowObject` is time window (column n+1, n+2, but its value is 0 and 1 so `<++>` is required!!)
+                                         -- FIXME: resolve this inconsistency
                                     )
                                     timeWindowFlowObjectSerde
                                     (timeWindowSerde $ calendarDiffTimeToMs i)
@@ -371,7 +390,11 @@ relationExprToGraph relation builder = case relation of
                                     aggregateR
                                     (\a k timeWindow ->
                                         let twFlowObject = runSer (serializer timeWindowFlowObjectSerde) timeWindow
-                                         in HM.union (HM.union a k) twFlowObject
+                                         in (k `HM.union` a) <++> twFlowObject
+                                         -- NOTE: `k` is group by key (column 0 ~ m)
+                                         --        `a` is agg acc (column m+1 ~ n)
+                                         --        `twFlowObject` is time window (column n+1, n+2, but its value is 0 and 1 so `<++>` is required!!)
+                                         -- FIXME: resolve this inconsistency
                                     )
                                     timeWindowFlowObjectSerde
                                     (timeWindowSerde $ calendarDiffTimeToMs i1)

@@ -47,10 +47,10 @@ instance Serialized BL.ByteString where
 instance Serialized Aeson.Object where
   compose (winObj, keyObj) = winObj `KeyMap.union` keyObj
   separate obj =
-    let startValue = fromJust $ (KeyMap.lookup) "winStart" obj
-        endValue   = fromJust $ (KeyMap.lookup) "winEnd"   obj
-        winObj     = KeyMap.fromList [ (Key.fromText "winStart", startValue)
-                                     , (Key.fromText "winEnd", endValue)
+    let startValue = fromJust $ (KeyMap.lookup) "window_start" obj
+        endValue   = fromJust $ (KeyMap.lookup) "window_end"   obj
+        winObj     = KeyMap.fromList [ (Key.fromText "window_start", startValue)
+                                     , (Key.fromText "window_end", endValue)
                                      ]
         keyObj = KeyMap.difference obj winObj
      in (winObj, keyObj)
@@ -58,9 +58,9 @@ instance Serialized Aeson.Object where
 instance Serialized Aeson.Object where
   compose (winObj, keyObj) = winObj `HM.union` keyObj
   separate obj =
-    let startValue = (HM.!) obj "winStart"
-        endValue   = (HM.!) obj "winEnd"
-        winObj = HM.fromList [("winStart", startValue), ("winEnd", endValue)]
+    let startValue = (HM.!) obj "window_start"
+        endValue   = (HM.!) obj "window_end"
+        winObj = HM.fromList [("window_start", startValue), ("window_end", endValue)]
         keyObj = HM.difference obj winObj
      in (winObj, keyObj)
 #endif

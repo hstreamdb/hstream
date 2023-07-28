@@ -14,6 +14,8 @@ module HStream.SQL.Rts.New where
 import qualified Data.Aeson                   as Aeson
 import qualified Data.Aeson.Types             as Aeson
 import qualified Data.ByteString              as BS
+import           Data.Default
+import           Data.Function                (on)
 import           Data.Hashable
 import qualified Data.HashMap.Strict          as HM
 import qualified Data.IntMap                  as IntMap
@@ -47,6 +49,9 @@ type FlowObject = HM.HashMap ColumnCatalog FlowValue
 deriving instance Typeable FlowObject
 deriving instance Aeson.FromJSONKey FlowObject
 deriving instance Aeson.ToJSONKey FlowObject
+
+instance Default FlowObject where
+  def = HM.empty
 
 data FlowValue
   = FlowNull
@@ -185,7 +190,7 @@ flowObjectToJsonObject hm =
 
 extractFlowObjectSchema :: FlowObject -> Schema
 extractFlowObjectSchema hm =
-  Schema { schemaOwner = "unknown"
+  Schema { schemaOwner = "" -- FIXME
          , schemaColumns = let tups = L.map (\cata -> (columnId cata, cata)) (HM.keys hm)
                             in IntMap.fromList tups
          }
@@ -225,3 +230,27 @@ jsonObjectToFlowObject schema object =
 
 jsonObjectToFlowObject' :: Aeson.Object -> FlowObject
 jsonObjectToFlowObject' json = jsonObjectToFlowObject (extractJsonObjectSchema json) json
+
+
+-- | Compose two 'FlowObject's. It assumes that the two 'FlowObject's
+-- have contiguous column ids starting from 0.
+-- The result 'FlowObject' will still have contiguous column ids
+-- starting from 0 and of course, end with sum of the two 'FlowObject's
+-- length.
+-- Example: o1 = {(0,c1)->v1, (1,c2)->v2}, o2 = {(0,c3) -> v3}
+--          o1 <::> o2 = {(0,c1)->v1, (1,c2)->v2, (2,c3)->v3}
+infixl 5 <++>
+(<++>) :: FlowObject -> FlowObject -> FlowObject
+(<++>) o1 o2 =
+  let tups1 = HM.toList o1
+      tups2 = HM.toList o2
+      maxId1 = if null tups1 then (-1) else (columnId . fst) (L.maximumBy (compare `on` (columnId . fst)) tups1)
+      tups2' = L.map (\(cata, v) -> (cata { columnId = columnId cata + maxId1 + 1 }, v)) tups2
+   in HM.fromList (tups1 <> tups2')
+
+--------------------------------------------------------------------------------
+winStartText :: Text
+winStartText = "window_start"
+
+winEndText :: Text
+winEndText = "window_end"
