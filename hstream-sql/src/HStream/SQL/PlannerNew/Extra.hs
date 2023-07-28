@@ -11,22 +11,6 @@ import qualified Data.Time                    as Time
 import           HStream.SQL.Binder
 import           HStream.SQL.PlannerNew.Types
 
--- Set the 'streamId' field in a 'Schema' to a given value.
--- This is useful during planning. For example, most of
--- nodes are 1-in and 1-out so we set the 'streamId' to 0.
--- And for 'Join' nodes, we set two input streams to 0 and 1.
-setSchemaStreamId :: Int -> Schema -> Schema
-setSchemaStreamId n Schema{..} =
-  Schema { schemaOwner = schemaOwner
-         , schemaColumns = IntMap.map (\catalog -> catalog{columnStreamId = n}) schemaColumns
-         }
-
-setSchemaStream :: Text -> Schema -> Schema
-setSchemaStream streamName Schema{..} =
-  Schema { schemaOwner = streamName
-         , schemaColumns = IntMap.map (\catalog -> catalog{columnStream = streamName}) schemaColumns
-         }
-
 -- | Scan a 'BoundExpr' and and look up all aggregate exprs in it. It assumes
 --   that aggregate can not nest.
 exprAggregates :: BoundExpr -> [BoundExpr]

@@ -16,6 +16,7 @@ import           Data.Binary.Get
 import qualified Data.ByteString.Builder               as BB
 import qualified Data.ByteString.Lazy                  as BL
 import qualified Data.HashMap.Strict                   as HM
+import qualified Data.IntMap                           as IntMap
 import           Data.Maybe                            (fromJust)
 import           Data.Scientific                       (Scientific (coefficient),
                                                         coefficient, scientific)
@@ -33,12 +34,6 @@ import           HStream.SQL.Exception
 import           HStream.SQL.Rts
 import qualified HStream.Utils.Aeson                   as HsAeson
 import           RIO                                   (Int64, Void)
-
-winStartText :: T.Text
-winStartText = "window_start"
-
-winEndText :: T.Text
-winEndText = "window_end"
 
 instance Serialized FlowObject where
   compose (fo1, fo2) =
@@ -165,14 +160,39 @@ timeWindowObjectSerde =
 timeWindowFlowObjectSerde :: Serde TimeWindow FlowObject
 timeWindowFlowObjectSerde =
   Serde
-  { serializer = Serializer $ \tw -> (jsonObjectToFlowObject undefined) $ (runSer . serializer $ timeWindowObjectSerde) tw
+  { serializer = Serializer $ \tw -> (jsonObjectToFlowObject timewindowSchema) $ (runSer . serializer $ timeWindowObjectSerde) tw
   , deserializer = Deserializer $ \fo -> (runDeser . deserializer $ timeWindowObjectSerde) (flowObjectToJsonObject fo)
   }
 
 sessionWindowFlowObjectSerde :: Serde TimeWindow FlowObject
 sessionWindowFlowObjectSerde =
   Serde
-  { serializer = Serializer $ \tw -> (jsonObjectToFlowObject undefined) $ (runSer . serializer $ timeWindowObjectSerde) tw
+  { serializer = Serializer $ \tw -> (jsonObjectToFlowObject timewindowSchema) $ (runSer . serializer $ timeWindowObjectSerde) tw
   , deserializer = Deserializer $ \fo -> (runDeser . deserializer $ timeWindowObjectSerde) (flowObjectToJsonObject fo)
+  }
+
+timewindowSchema :: Schema
+timewindowSchema = Schema
+  { schemaOwner   = ""
+  , schemaColumns =
+      IntMap.fromList [ (0, ColumnCatalog { columnId = 0
+                                          , columnName = "window_start"
+                                          , columnStreamId = 0
+                                          , columnStream = ""
+                                          , columnType = BTypeTimestamp
+                                          , columnIsNullable = True
+                                          , columnIsHidden = True
+                                          }
+                        )
+                      , (1, ColumnCatalog { columnId = 1
+                                          , columnName = "window_end"
+                                          , columnStreamId = 0
+                                          , columnStream = ""
+                                          , columnType = BTypeTimestamp
+                                          , columnIsNullable = True
+                                          , columnIsHidden = True
+                                          }
+                        )
+                      ]
   }
 #endif

@@ -44,6 +44,7 @@ import           HStream.SQL.PlannerNew.Expr
 import           HStream.SQL.PlannerNew.Extra
 import           HStream.SQL.PlannerNew.Pretty
 import           HStream.SQL.PlannerNew.Types
+import           HStream.SQL.Rts
 
 ----
 type instance PlannedType BoundTableRef = RelationExpr
@@ -69,7 +70,7 @@ instance Plan BoundTableRef where
   -- Note: As `HStream.SQL.Binder.Select` says, 'BoundTableRefWindowed' is
   -- only used when binding 'SELECT'. So we can ignore the window part here
   -- because it has been already absorbed into the 'BoundGroupBy' part.
-  plan (BoundTableRefWindowed name ref win) = plan ref
+  plan (BoundTableRefWindowed _name ref win) = plan ref
 
   plan (BoundTableRefJoin name ref1 typ ref2 expr interval) = do
     -- 2-in!
@@ -85,7 +86,10 @@ instance Plan BoundTableRef where
         relationExpr2' = setRelationExprSchema schema2' relationExpr2
     ctx2 <- get
 
-    let win = calendarDiffTimeToMs interval
+    put $ PlanContext
+      { planContextSchemas = planContextSchemas ctx1 <::> planContextSchemas ctx2
+      }
+    (scalarExpr,_) <- plan expr
 
     -- 1-out!
     let schema = setSchemaStream name $
@@ -96,10 +100,9 @@ instance Plan BoundTableRef where
                  }
     put $ PlanContext
       { planContextSchemas = IntMap.map (setSchemaStreamId 0)
-                               (planContextSchemas ctx1 <::> planContextSchemas ctx2)
+                               (IntMap.singleton 0 schema <::> planContextSchemas ctx1 <::> planContextSchemas ctx2)
       }
-    (scalarExpr,_) <- plan expr
-
+    let win = calendarDiffTimeToMs interval
     return $ LoopJoinOn schema relationExpr1' relationExpr2' scalarExpr typ win
 
 type instance PlannedType BoundFrom = RelationExpr
@@ -144,8 +147,30 @@ instance Plan BoundAgg where
                                                ) ([0..] `zip` grps)
           aggsIntmap = IntMap.fromList $ L.map (\(i, (_,catalog)) -> (i, catalog{columnId = i})
                                                ) ([0..] `zip` aggTups)
+
+      let dummyTimewindowCols = IntMap.fromList [ (0, ColumnCatalog
+                                                    { columnId = 0
+                                                    , columnName = winStartText
+                                                    , columnStreamId = 0
+                                                    , columnStream = "" -- FIXME
+                                                    , columnType = BTypeTimestamp
+                                                    , columnIsNullable = True
+                                                    , columnIsHidden = True
+                                                    }
+                                                  )
+                                                , (1, ColumnCatalog
+                                                    { columnId = 1
+                                                    , columnName = winEndText
+                                                    , columnStreamId = 0
+                                                    , columnStream = "" -- FIXME
+                                                    , columnType = BTypeTimestamp
+                                                    , columnIsNullable = True
+                                                    , columnIsHidden = True
+                                                    }
+                                                  )
+                                                ]
       let new_schema = Schema { schemaOwner = "" -- FIXME
-                              , schemaColumns = grpsIntmap <:+:> aggsIntmap
+                              , schemaColumns = grpsIntmap <:+:> aggsIntmap <:+:> dummyTimewindowCols
                               }
       let ctx_new = PlanContext (IntMap.singleton 0 new_schema)
       put ctx_new

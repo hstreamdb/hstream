@@ -166,13 +166,41 @@ instance Bind TableRef where
   bind' (TableRefTumbling _ ref interval) = do
     (boundRef, n) <- bind' ref
     boundInterval <- bind interval
-    return (BoundTableRefWindowed (T.pack $ getName boundRef) boundRef (Tumbling boundInterval), n)
+    -- window start & end
+    -- FIXME: This assumes the prev ref has only one context layer,
+    --        because we do not allow `WIN(JOIN)` now.
+    --        But this should be fixed in the future.
+    -- FIXME: Do not use a new context layer.
+    topLayer@(BindContextLayer topHM) <- popLayer
+    pushLayer topLayer
+    let layerMaxColIndex = L.maximum . L.concat $ map (fmap fst . HM.elems) (HM.elems topHM)
+    let windowLayer = BindContextLayer
+                    { layerColumnBindings = HM.fromList [ ("winStartText", HM.fromList [("", (layerMaxColIndex+1,BindUnitBase))])
+                                                        , ("winEndText"  , HM.fromList [("", (layerMaxColIndex+2,BindUnitBase))])
+                                                        ]
+                    }
+    pushLayer windowLayer
+    return (BoundTableRefWindowed (T.pack $ getName boundRef) boundRef (Tumbling boundInterval), n+1)
 
   bind' (TableRefHopping _ ref len hop) = do
     (boundRef, n) <- bind' ref
     boundLen <- bind len
     boundHop <- bind hop
-    return (BoundTableRefWindowed (T.pack $ getName boundRef) boundRef (Hopping boundLen boundHop), n)
+    -- window start & end
+    -- FIXME: This assumes the prev ref has only one context layer,
+    --        because we do not allow `WIN(JOIN)` now.
+    --        But this should be fixed in the future.
+    -- FIXME: Do not use a new context layer.
+    topLayer@(BindContextLayer topHM) <- popLayer
+    pushLayer topLayer
+    let layerMaxColIndex = L.maximum . L.concat $ map (fmap fst . HM.elems) (HM.elems topHM)
+    let windowLayer = BindContextLayer
+                    { layerColumnBindings = HM.fromList [ ("winStartText", HM.fromList [("", (layerMaxColIndex+1,BindUnitBase))])
+                                                        , ("winEndText"  , HM.fromList [("", (layerMaxColIndex+2,BindUnitBase))])
+                                                        ]
+                    }
+    pushLayer windowLayer
+    return (BoundTableRefWindowed (T.pack $ getName boundRef) boundRef (Hopping boundLen boundHop), n+1)
 
   bind' (TableRefSession _ ref interval) = do
     (boundRef, n) <- bind' ref

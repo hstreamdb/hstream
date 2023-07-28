@@ -100,7 +100,9 @@ defaultPlanContext = PlanContext mempty
 
 -- | Compose two 'IntMap's of stream schemas with their indexes. It assumes
 -- that the two 'IntMap's have contiguous indexes starting from 0 in their
--- keys. The result 'IntMap' will still have contiguous indexes starting from 0 and of course, end with the sum of the two 'IntMap's' sizes.
+-- keys. The result 'IntMap' will still have contiguous indexes starting from 0
+-- and of course, end with the sum of the two 'IntMap's' sizes. Also, the
+-- `columnStreamId` of the schemas will also be updated.
 -- Example: m1 = {0: sc1, 1: sc2}, m2 = {0: sc3}
 --          m1 <::> m2 = {0: sc1, 1: sc2, 2: sc3}
 (<::>) :: IntMap Schema -> IntMap Schema -> IntMap Schema
@@ -108,7 +110,7 @@ defaultPlanContext = PlanContext mempty
   let tups1 = IntMap.toList m1
       tups2 = IntMap.toList m2
       maxId1 = if null tups1 then (-1) else maximum (map fst tups1)
-      tups2' = map (\(i,s) -> (i+maxId1+1,s)) tups2
+      tups2' = map (\(i,s) -> (i+maxId1+1, setSchemaStreamId (i+maxId1+1) s)) tups2
    in IntMap.fromList (tups1 <> tups2')
 
 instance Semigroup PlanContext where
@@ -120,6 +122,9 @@ instance Monoid PlanContext where
 --   stream name and column name. Return the index of
 --   matched stream, the real index of the column
 --   and the catalog of matched column.
+--   WARNING: The returned stream index may not be the same
+--            as the `streamId` of the column! This should
+--            be fixed in the future.
 lookupColumn :: PlanContext -> Text -> Text -> Maybe (Int, Int, ColumnCatalog)
 lookupColumn (PlanContext m) streamName colName =
   L.foldr (\(i,Schema{..}) acc -> case acc of
@@ -135,6 +140,9 @@ lookupColumn (PlanContext m) streamName colName =
 -- | Lookup a certain column name in the planning context. Return the index of
 --   matched stream, the real index of the column
 --   and the catalog of matched column.
+--   WARNING: The returned stream index may not be the same
+--            as the `columnStreamId` of the column! This should
+--            be fixed in the future.
 lookupColumnName :: PlanContext -> Text -> Maybe (Int, Int, ColumnCatalog)
 lookupColumnName (PlanContext m) k =
   L.foldr (\(i,Schema{..}) acc -> case acc of
@@ -145,6 +153,25 @@ lookupColumnName (PlanContext m) k =
                                        ) (IntMap.toList schemaColumns)
                  in (fmap (\(n,catalog) -> (i,n,catalog)) catalogTup_m) <|> acc
           ) Nothing (IntMap.toList m)
+
+----------------------------------------
+--            Some helpers
+----------------------------------------
+-- Set the 'streamId' field in a 'Schema' to a given value.
+-- This is useful during planning. For example, most of
+-- nodes are 1-in and 1-out so we set the 'streamId' to 0.
+-- And for 'Join' nodes, we set two input streams to 0 and 1.
+setSchemaStreamId :: Int -> Schema -> Schema
+setSchemaStreamId n Schema{..} =
+  Schema { schemaOwner = schemaOwner
+         , schemaColumns = IntMap.map (\catalog -> catalog{columnStreamId = n}) schemaColumns
+         }
+
+setSchemaStream :: Text -> Schema -> Schema
+setSchemaStream streamName Schema{..} =
+  Schema { schemaOwner = streamName
+         , schemaColumns = IntMap.map (\catalog -> catalog{columnStream = streamName}) schemaColumns
+         }
 
 ----------------------------------------
 --            Plan class

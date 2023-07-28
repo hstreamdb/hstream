@@ -92,8 +92,8 @@ instance Plan BoundExpr where
       ctx <- get
       case lookupColumn ctx stream col of
         Nothing -> throwSQLException PlanException Nothing $ "column " <> T.unpack stream <> ".#" <> show colId <> " not found in ctx " <> show ctx
-        Just (streamId,columnId,catalog) ->
-          return (ColumnRef streamId columnId, catalog)
+        Just (_,columnId,catalog) ->
+          return (ColumnRef (columnStreamId catalog) columnId, catalog)
     BoundExprConst name constant -> do
       let catalog = ColumnCatalog { columnId = 0
                                   , columnName = T.pack name
@@ -108,8 +108,8 @@ instance Plan BoundExpr where
       ctx <- get
       case lookupColumnName ctx (T.pack name) of
         Nothing -> throwSQLException PlanException Nothing $ "column " <> name <> " not found in ctx " <> show ctx
-        Just (streamId,columnId,catalog) ->
-          return (ColumnRef streamId columnId, catalog)
+        Just (_,columnId,catalog) ->
+          return (ColumnRef (columnStreamId catalog) columnId, catalog)
     BoundExprAccessJson name op e1 e2 -> do
       (e1', c1') <- plan e1
       (e2', c2') <- plan e2
