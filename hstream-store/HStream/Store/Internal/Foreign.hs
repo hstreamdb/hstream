@@ -35,6 +35,7 @@ unsafeFreezeBA# mba# =
   case unsafeFreezeByteArray# mba# realWorld# of
     (# _, ba# #) -> ba#
 
+-- Actually, these unsafe functions can be used for both unsafe & safe ffi(?).
 withAsyncPrimUnsafe
   :: (Prim a)
   => a -> (StablePtr PrimMVar -> Int -> MBA# a -> IO b)
@@ -50,6 +51,8 @@ withAsyncPrimUnsafe'
 withAsyncPrimUnsafe' a f g = mask_ $ do
   mvar <- newEmptyMVar
   sp <- newStablePtrPrimMVar mvar
+  -- PinnedPrimArray is required, because even the f is an unsafe ffi, we asume
+  -- it'll return immediately. The callback is runned on other cpp thread.
   withPrimSafe' a $ \a' -> do
     (cap, _) <- threadCapability =<< myThreadId
     c <- g =<< f sp cap a'

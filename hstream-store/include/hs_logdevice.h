@@ -416,9 +416,6 @@ ld_client_make_directory(logdevice_client_t* client, const char* path,
 void free_logdevice_logdirectory(logdevice_logdirectory_t* dir);
 
 facebook::logdevice::Status
-ld_client_get_directory_sync(logdevice_client_t* client, const char* path,
-                             logdevice_logdirectory_t** logdir_result);
-facebook::logdevice::Status
 ld_client_get_directory(logdevice_client_t* client, const char* path,
                         HsStablePtr mvar, HsInt cap,
                         facebook::logdevice::Status* st_out,

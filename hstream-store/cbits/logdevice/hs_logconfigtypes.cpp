@@ -254,6 +254,23 @@ void ld_client_get_loggroup_by_id(logdevice_client_t* client, c_logid_t logid,
   client->rep->getLogGroupById(logid_t(logid), cb);
 }
 
+void ld_client_logid_has_group(logdevice_client_t* client, c_logid_t logid,
+                               HsStablePtr mvar, HsInt cap,
+                               facebook::logdevice::Status* st_out,
+                               bool* result) {
+  auto cb = [st_out, result, mvar, cap](facebook::logdevice::Status st,
+                                        std::unique_ptr<LogGroup> loggroup) {
+    *st_out = st;
+    if (loggroup) {
+      *result = true;
+    } else {
+      *result = false;
+    }
+    hs_try_putmvar(cap, mvar);
+  };
+  client->rep->getLogGroupById(logid_t(logid), cb);
+}
+
 facebook::logdevice::Status
 ld_client_remove_loggroup(logdevice_client_t* client, const char* path,
                           HsStablePtr mvar, HsInt cap,
@@ -670,28 +687,6 @@ ld_client_make_directory_sync(logdevice_client_t* client, const char* path,
     return facebook::logdevice::E::OK;
   }
   std::cerr << "-> ld_client_make_directory_sync error: " << reason << "\n";
-  return facebook::logdevice::err;
-}
-
-[[deprecated]] facebook::logdevice::Status
-ld_client_get_directory_sync(logdevice_client_t* client, const char* path,
-                             logdevice_logdirectory_t** logdir_result) {
-  std::unique_ptr<LogDirectory> logdir = client->rep->getDirectorySync(path);
-  if (logdir) {
-    logdevice_logdirectory_t* result = new logdevice_logdirectory_t;
-    result->rep = std::move(logdir);
-    *logdir_result = result;
-    return facebook::logdevice::E::OK;
-  }
-  return facebook::logdevice::err;
-}
-
-[[deprecated]] facebook::logdevice::Status
-ld_client_remove_directory_sync(logdevice_client_t* client, const char* path,
-                                bool recursive, uint64_t* version) {
-  bool ret = client->rep->removeDirectorySync(path, recursive, version);
-  if (ret)
-    return facebook::logdevice::E::OK;
   return facebook::logdevice::err;
 }
 
