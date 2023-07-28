@@ -12,6 +12,7 @@ module HStream.Processing.Stream.TimeWindowedStream
 where
 
 import qualified Data.Aeson                             as Aeson
+import           Data.Default
 import           Data.Maybe
 import           HStream.Processing.Encoding
 import           HStream.Processing.Processor
@@ -34,7 +35,7 @@ data TimeWindowedStream k v s = TimeWindowedStream
   }
 
 aggregate ::
-  (Typeable k, Typeable v, Ord k, Typeable a, Ord s1, Ord s2, Typeable s1, Serialized s1, Typeable s2, Serialized s2, Aeson.ToJSON s1) =>
+  (Default k, Typeable k, Typeable v, Ord k, Typeable a, Ord s1, Ord s2, Typeable s1, Serialized s1, Typeable s2, Serialized s2, Aeson.ToJSON s1) =>
   a ->
   (a -> Record k v -> a) ->
   (a -> k -> TimeWindow -> a) ->
@@ -62,7 +63,7 @@ aggregate initialValue aggF outputF twSerde1 twSerde2 aSerde2 Materialized {..} 
       }
 
 count ::
-  (Typeable k, Typeable v, Ord k, Ord s, Typeable s, Serialized s, Aeson.ToJSON s) =>
+  (Default k, Typeable k, Typeable v, Ord k, Ord s, Typeable s, Serialized s, Aeson.ToJSON s) =>
   Materialized k Int s ->
   Serde TimeWindow s ->
   Serde TimeWindow s ->
@@ -75,7 +76,7 @@ count mat twSerde1 twSerde2 intSerde = aggregate 0 aggF (\ v _ _ -> v) twSerde1 
     aggF acc _ = acc + 1
 
 aggregateProcessor ::
-  (Typeable k, Typeable v, Ord k, Typeable a, Ord s, Typeable s, Serialized s, Aeson.ToJSON s) =>
+  (Default k, Typeable k, Typeable v, Ord k, Typeable a, Ord s, Typeable s, Serialized s, Aeson.ToJSON s) =>
   T.Text ->
   a ->
   (a -> Record k v -> a) ->
@@ -106,7 +107,9 @@ aggregateProcessor storeName initialValue aggF outputF keySerde accSerde twSerde
             liftIO $ ksPut key sNewAcc store
             let changeLog = CLKSPut @_ @_ @BL.ByteString storeName key sNewAcc
             liftIO $ logChangelog tcChangeLogger (Aeson.encode changeLog)
-            forward r {recordKey = Just windowKey, recordValue = outputF newAcc (fromJust recordKey) tw}
+            -- Erase key info because we may meet further joins and
+            -- joining relies on'same key' to work.
+            forward r {recordKey = Just (def `asTypeOf` windowKey), recordValue = outputF newAcc (fromJust recordKey) tw}
           else logWarn "Skipping record for expired window."
     )
 

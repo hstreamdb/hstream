@@ -21,6 +21,7 @@ module HStream.Processing.Stream.TimeWindows
 where
 
 import           Data.Aeson
+import           Data.Default
 import           HStream.Processing.Encoding
 import           RIO
 
@@ -50,7 +51,7 @@ data TimeWindow = TimeWindow
   { tWindowStart :: Int64,
     tWindowEnd   :: Int64
   }
-  deriving (Eq, Ord, Generic, FromJSON, ToJSON)
+  deriving (Eq, Ord, Generic, FromJSON, ToJSON, Default)
 
 instance Show TimeWindow where
   show TimeWindow {..} = "[" ++ show tWindowStart ++ ", " ++ show tWindowEnd ++ "]"
@@ -66,7 +67,7 @@ data TimeWindowKey k = TimeWindowKey
   { twkKey    :: k,
     twkWindow :: TimeWindow
   }
-  deriving Generic
+  deriving (Generic, Default)
 
 instance (Show k) => Show (TimeWindowKey k) where
   show TimeWindowKey {..} = "key: " ++ show twkKey ++ ", window: " ++ show twkWindow

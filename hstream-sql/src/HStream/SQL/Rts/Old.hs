@@ -15,6 +15,7 @@ module HStream.SQL.Rts.Old where
 import qualified Data.Aeson               as Aeson
 import qualified Data.Aeson.Types         as Aeson
 import qualified Data.ByteString          as BS
+import           Data.Default
 import           Data.Hashable
 import qualified Data.HashMap.Strict      as HM
 import qualified Data.IntMap              as IntMap
@@ -44,6 +45,9 @@ type FlowObject = HM.HashMap ColumnCatalog FlowValue
 deriving instance Typeable FlowObject
 deriving instance Aeson.FromJSONKey FlowObject
 deriving instance Aeson.ToJSONKey FlowObject
+
+instance Default FlowObject where
+  def = HM.empty
 
 instance Eq Time.ZonedTime where
   z1 == z2 = Time.zonedTimeToUTC z1 == Time.zonedTimeToUTC z2
