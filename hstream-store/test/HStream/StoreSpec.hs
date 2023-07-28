@@ -49,6 +49,12 @@ base = describe "Base" $ do
       readPayload' ranlogid (Just sn0) `shouldReturn` []
       readPayload ranlogid (Just sn1) `shouldReturn` "world"
 
+  loggroupAround' $ do
+    it "logIdHasGroup" $ \(_lgname, randlogid) -> do
+      S.logIdHasGroup client randlogid `shouldReturn` True
+      123456 `shouldNotBe` randlogid
+      S.logIdHasGroup client 123456 `shouldReturn` False
+
   it "find time with a timestamp of 0" $ do
     headSn <- S.findTime client logid 0 S.FindKeyStrict
     S.trim client logid headSn

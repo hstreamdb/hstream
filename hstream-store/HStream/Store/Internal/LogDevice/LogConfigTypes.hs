@@ -356,20 +356,6 @@ foreign import ccall unsafe "hs_logdevice.h free_logdevice_logdirectory"
 foreign import ccall unsafe "hs_logdevice.h &free_logdevice_logdirectory"
   c_free_logdevice_logdirectory_fun :: FunPtr (Ptr LogDeviceLogDirectory -> IO ())
 
-foreign import ccall unsafe "hs_logdevice.h ld_client_get_directory_sync"
-  c_ld_client_get_directory_sync :: Ptr LogDeviceClient
-                                 -> BA# Word8
-                                 -> MBA# (Ptr LogDeviceLogDirectory)
-                                 -> IO ErrorCode
-
-foreign import ccall safe "hs_logdevice.h ld_client_remove_directory_sync"
-  c_ld_client_remove_directory_sync_safe
-    :: Ptr LogDeviceClient
-    -> Ptr Word8   -- ^ path
-    -> Bool
-    -> Ptr Word64
-    -> IO ErrorCode
-
 foreign import ccall unsafe "hs_logdevice.h ld_client_remove_directory"
   c_ld_client_remove_directory
     :: Ptr LogDeviceClient
@@ -456,14 +442,6 @@ makeLogGroup client path start end attrs mkParent = do
         when (group == nullPtr) $ E.throwStoreError "null loggroup" callStack
         newForeignPtr c_free_logdevice_loggroup_fun group
 
-getLogGroupSync :: HasCallStack => LDClient -> CBytes -> IO LDLogGroup
-getLogGroupSync client path =
-  withForeignPtr client $ \client' ->
-  CBytes.withCBytesUnsafe path $ \path' -> do
-    (group', _) <- Z.withPrimUnsafe nullPtr $ \group'' ->
-      void $ E.throwStreamErrorIfNotOK $ c_ld_client_get_loggroup_sync client' path' group''
-    newForeignPtr c_free_logdevice_loggroup_fun group'
-
 getLogGroup :: HasCallStack => LDClient -> CBytes -> IO LDLogGroup
 getLogGroup client path =
   withForeignPtr client $ \client' ->
@@ -481,9 +459,10 @@ getLogGroupByID client logid = withForeignPtr client $ \client' -> do
 
 logIdHasGroup :: HasCallStack => LDClient -> C_LogID -> IO Bool
 logIdHasGroup client logid = withForeignPtr client $ \client' -> do
-  (errno, _, _) <- withAsyncPrimUnsafe2 (0 :: ErrorCode) nullPtr (c_ld_client_get_loggroup_by_id client' logid)
+  (errno, cbool, _) <-
+    withAsyncPrimUnsafe2 (0 :: ErrorCode) 0 (ld_client_logid_has_group client' logid)
   case errno of
-    C_OK       -> return True
+    C_OK       -> return $ cbool2bool cbool
     C_NOTFOUND -> return False
     code       -> E.throwStreamError code callStack
 
@@ -681,7 +660,7 @@ foreign import ccall unsafe "hs_logdevice.h ld_client_get_loggroup"
     -> MBA# (Ptr LogDeviceLogGroup)
     -> IO ()
 
-foreign import ccall safe "hs_logdevice.h ld_client_get_loggroup_by_id"
+foreign import ccall unsafe "hs_logdevice.h ld_client_get_loggroup_by_id"
   c_ld_client_get_loggroup_by_id
     :: Ptr LogDeviceClient
     -> C_LogID
@@ -690,22 +669,14 @@ foreign import ccall safe "hs_logdevice.h ld_client_get_loggroup_by_id"
     -> MBA# (Ptr LogDeviceLogGroup)
     -> IO ()
 
-foreign import ccall unsafe "hs_logdevice.h ld_client_get_loggroup_sync"
-  c_ld_client_get_loggroup_sync :: Ptr LogDeviceClient
-                                -> BA# Word8
-                                -> MBA# (Ptr LogDeviceLogGroup)
-                                -> IO ErrorCode
-
-foreign import ccall unsafe "hs_logdevice.h ld_client_remove_loggroup_sync"
-  c_ld_client_remove_loggroup_sync :: Ptr LogDeviceClient
-                                    -> BA# Word8
-                                    -> Ptr Word64
-                                    -> IO ErrorCode
-foreign import ccall unsafe "hs_logdevice.h ld_client_remove_loggroup_sync"
-  c_ld_client_remove_loggroup_sync' :: Ptr LogDeviceClient
-                                    -> BA# Word8
-                                    -> MBA# Word64
-                                    -> IO ErrorCode
+foreign import ccall unsafe "hs_logdevice.h ld_client_logid_has_group"
+  ld_client_logid_has_group
+    :: Ptr LogDeviceClient
+    -> C_LogID
+    -> StablePtr PrimMVar -> Int
+    -> MBA# ErrorCode
+    -> MBA# CBool
+    -> IO ()
 
 foreign import ccall unsafe "hs_logdevice.h ld_client_remove_loggroup"
   c_ld_client_remove_loggroup :: Ptr LogDeviceClient
@@ -740,7 +711,7 @@ foreign import ccall unsafe "hs_logdevice.h ld_loggroup_update_extra_attrs"
     -> StablePtr PrimMVar -> Int -> Ptr LogsConfigStatusCbData
     -> IO ErrorCode
 
-foreign import ccall safe "hs_logdevice.h free_logdevice_loggroup"
+foreign import ccall unsafe "hs_logdevice.h free_logdevice_loggroup"
   c_free_logdevice_loggroup :: Ptr LogDeviceLogGroup -> IO ()
 
 foreign import ccall unsafe "hs_logdevice.h &free_logdevice_loggroup"
