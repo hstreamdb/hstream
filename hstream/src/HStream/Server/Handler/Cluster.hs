@@ -10,12 +10,14 @@ module HStream.Server.Handler.Cluster
   , lookupSubscriptionHandler
   , lookupShardReaderHandler
   , lookupResourceHandler
+  , lookupKeyHandler
     -- * For hs-grpc-server
   , handleDescribeCluster
   , handleLookupResource
   , handleLookupShard
   , handleLookupSubscription
   , handleLookupShardReader
+  , handleLookupKey
   ) where
 
 import qualified HsGrpc.Server                    as G
@@ -79,6 +81,13 @@ lookupShardReaderHandler
 lookupShardReaderHandler sc (ServerNormalRequest _meta req) =
   defaultExceptionHandle $ returnResp =<< C.lookupShardReader sc req
 
+lookupKeyHandler
+  :: ServerContext
+  -> ServerRequest 'Normal LookupKeyRequest ServerNode
+  -> IO (ServerResponse 'Normal ServerNode)
+lookupKeyHandler sc (ServerNormalRequest _meta req) =
+  defaultExceptionHandle $ returnResp =<< C.lookupKey sc req
+
 -------------------------------------------------------------------------------
 
 handleDescribeCluster :: ServerContext -> G.UnaryHandler Empty DescribeClusterResponse
@@ -108,3 +117,6 @@ handleLookupShardReader
   -> G.UnaryHandler LookupShardReaderRequest LookupShardReaderResponse
 handleLookupShardReader sc _ req = catchDefaultEx $
   C.lookupShardReader sc req
+
+handleLookupKey :: ServerContext -> G.UnaryHandler LookupKeyRequest ServerNode
+handleLookupKey sc _ req = catchDefaultEx $ C.lookupKey sc req
