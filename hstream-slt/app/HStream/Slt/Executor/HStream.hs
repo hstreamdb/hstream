@@ -18,6 +18,9 @@ instance ExecutorCtx HStreamExecutorCtx executor where
   getExecutor = HStreamExecutorCtx getExecutor
   pushSql = HStreamExecutorCtx . pushSql
   getSql = HStreamExecutorCtx getSql
+  recover = HStreamExecutorCtx . recover
+  reportError = HStreamExecutorCtx reportError
+  clearSql = HStreamExecutorCtx clearSql
 
 instance SltExecutor HStreamExecutorCtx HStreamExecutor where
   open' = undefined

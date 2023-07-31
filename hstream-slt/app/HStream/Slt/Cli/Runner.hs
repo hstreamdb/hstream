@@ -3,16 +3,16 @@ module Slt.Cli.Runner where
 import           Control.Exception
 import           Control.Monad
 import           Control.Monad.IO.Class
-import           Data.Either
 import           Data.Foldable
-import qualified Data.Text              as T
 import           Slt.Cli.Parser
 import           Slt.Executor
 import           Slt.Executor.Dummy
-import           Slt.Executor.HStream   (HStreamExecutorCtx (HStreamExecutorCtx))
+import           Slt.Executor.HStream       (HStreamExecutorCtx)
 import           Slt.Executor.SQLite
 import           Slt.Plan
+import           Slt.Plan.RandomNoTablePlan
 import           System.Directory
+import           System.Exit
 
 execMainOpts :: Opts -> IO ()
 execMainOpts opts@Opts {globalOpts, globalCmd} = evalExecutorCtx @DummyExecutorCtx $ do
@@ -22,7 +22,7 @@ execMainOpts opts@Opts {globalOpts, globalCmd} = evalExecutorCtx @DummyExecutorC
   debugPutStrLn $ "current directory = " <> currentDirectory
   case globalCmd of
     CmdParse cmd   -> execCmdParse cmd
-    CmdExec {}     -> undefined
+    CmdExec cmd    -> execCmdExec cmd
     CmdComplete {} -> undefined
 
 ----------------------------------------
@@ -38,43 +38,40 @@ execCmdParse
 
 execCmdExec :: ExecOpts -> DummyExecutorM ()
 execCmdExec ExecOpts {files, executors} = do
-  plans <-
-    traverse
-      ( \f -> liftIO $ do
-          x <- catchFile parsePlan f
-          pure (f, x)
-      )
-      files
-  xs <-
-    traverse
-      ( \(f, x) -> do
-          y <- execExecutors executors x
-          pure (f, y)
-      )
-      plans
-  forM_ xs $ \(f, errors) -> do
-    case lefts errors of
-      [] -> pure ()
-      ys -> forM_ ys $ \errs -> do
-        liftIO $ do
-          putStrLn $ "errors @ " <> f <> ":"
-          forM errs $ \err -> do
-            putStrLn $ "    " <> T.unpack err
+  plans <- traverse parse files
+  forM_ plans $ \(f, x) -> do
+    liftIO $ putStrLn $ "[INFO]: Executing " <> f <> " ..."
+    execExecutors executors x
+  printErrors
+  exit
+  where
+    parse f = liftIO $ do
+      x <- catchFile parsePlan f
+      pure (f, x)
+    exit = do
+      ret <- exitCode
+      liftIO $ do
+        case ret of
+          0 -> exitSuccess
+          _ -> exitFailure
 
-execExecutors :: [ExecutorKind] -> SltSuite -> DummyExecutorM [Either [T.Text] ()]
+execExecutors :: [ExecutorKind] -> SltSuite -> DummyExecutorM ()
 execExecutors executorKind sltSuite = do
-  forM executorKind (execSuite sltSuite)
+  forM_ executorKind (execSuite sltSuite)
 
-execSuite :: SltSuite -> ExecutorKind -> DummyExecutorM (Either [T.Text] ())
+execSuite :: SltSuite -> ExecutorKind -> DummyExecutorM ()
 execSuite sltSuite executorKind = do
-  debug <- isDebug
-  if debug
-    then pure $ pure ()
-    else case executorKind of
-      ExecutorKindSQLite -> evalNewExecutorCtx @SQLiteExecutorCtx $ do
-        pure undefined
-      ExecutorKindHStream -> evalNewExecutorCtx @HStreamExecutorCtx $ do
-        pure undefined
+  case executorKind of
+    ExecutorKindSQLite -> evalNewExecutorCtx @SQLiteExecutorCtx $ do
+      execSltSuite sltSuite
+    ExecutorKindHStream -> evalNewExecutorCtx @HStreamExecutorCtx $ do
+      execSltSuite sltSuite
+
+execSltSuite :: SltSuite -> SltExecutor m executor => m executor ()
+execSltSuite (SltSuite sltSuite) = forM_ sltSuite $ \plan -> do
+  case plan of
+    PlanRandomNoTable plan' -> evalRandomNoTablePlan plan'
+    _                       -> undefined
 
 ----------------------------------------
 

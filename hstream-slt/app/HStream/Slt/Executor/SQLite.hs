@@ -25,6 +25,9 @@ instance ExecutorCtx SQLiteExecutorCtx executor where
   getExecutor = SQLiteExecutorCtx getExecutor
   pushSql = SQLiteExecutorCtx . pushSql
   getSql = SQLiteExecutorCtx getSql
+  recover = SQLiteExecutorCtx . recover
+  reportError = SQLiteExecutorCtx reportError
+  clearSql = SQLiteExecutorCtx clearSql
 
 type SQLiteExecutorM = SQLiteExecutorCtx SQLiteExecutor
 
@@ -46,7 +49,7 @@ selectWithoutFrom' cols = do
 buildselectWithoutFromStmt :: [T.Text] -> S.Query
 buildselectWithoutFromStmt cols =
   S.Query $
-    "SELECT " <> T.intercalate ", " cols
+    "SELECT (" <> T.intercalate ", " cols <> ")"
 
 ----------------------------------------
 
@@ -84,9 +87,13 @@ getConn = gets $ connection . fromJust . executorStateExecutor
 query_ :: forall r. S.FromRow r => S.Connection -> S.Query -> SQLiteExecutorM [r]
 query_ conn q@(S.Query xs) = do
   pushSql xs
-  liftIO $ S.query_ conn q
+  isDebug >>= \case
+    True  -> pure []
+    False -> liftIO $ S.query_ conn q
 
 execute_ :: S.Connection -> S.Query -> SQLiteExecutorM ()
 execute_ conn q@(S.Query xs) = do
   pushSql xs
-  liftIO $ S.execute_ conn q
+  isDebug >>= \case
+    True  -> pure ()
+    False -> liftIO $ S.execute_ conn q

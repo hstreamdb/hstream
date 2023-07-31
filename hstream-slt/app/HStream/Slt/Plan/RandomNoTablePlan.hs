@@ -4,6 +4,7 @@ import           Control.Monad
 import           Control.Monad.IO.Class (MonadIO (liftIO))
 import           Data.Maybe             (fromJust, fromMaybe)
 import qualified Data.Text              as T
+import qualified Data.Text.IO           as T
 import           Slt.Executor
 import           Slt.Format.Sql
 import           Slt.Plan
@@ -15,9 +16,19 @@ defaultRowNum = 200
 
 evalRandomNoTablePlan :: SltExecutor m executor => RandomNoTablePlan -> m executor [Kv]
 evalRandomNoTablePlan RandomNoTablePlan {colInfo = ColInfo info, rowNum, sql} = do
-  forM [0 .. fromMaybe defaultRowNum rowNum] $ \_ -> do
+  xs <- forM [0 .. fromMaybe defaultRowNum rowNum] $ \_ -> do
     values <- randInstantiateSelectWithoutFromSql info sql
     selectWithoutFrom values
+  debug <- isDebug
+  when debug $ do
+    sqls <- getSql
+    liftIO $ do
+      putStrLn "[DEBUG]: begin show SQLs"
+      forM_ sqls $ \x -> do
+        T.putStrLn x
+      putStrLn "[DEBUG]: end show SQLs"
+  clearSql
+  pure xs
 
 randInstantiateSelectWithoutFromSql :: SltExecutor m executor => [(T.Text, SqlDataType)] -> T.Text -> m executor [T.Text]
 randInstantiateSelectWithoutFromSql info sql = do

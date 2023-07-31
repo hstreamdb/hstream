@@ -1,12 +1,13 @@
 module Slt.Executor where
 
-import           Control.Monad       (forM, when)
+import           Control.Monad
 import           Control.Monad.State
 import qualified Data.Aeson.Key      as A
 import qualified Data.Aeson.KeyMap   as A
 import           Data.Functor
 import           Data.Maybe
 import qualified Data.Text           as T
+import qualified Data.Text.IO        as T
 import           Slt.Cli.Parser
 import           Slt.Utils
 
@@ -22,13 +23,24 @@ class MonadIO (m executor) => ExecutorCtx m executor where
   getExecutor :: m executor executor
   isDebug :: m executor Bool
   pushSql :: T.Text -> m executor ()
+  clearSql :: m executor ()
   getSql :: m executor [T.Text]
+  recover :: Show a => a -> m executor ()
+  reportError :: m executor [T.Text]
 
-evalNewExecutorCtx :: forall m1 a m0 executor0 executor1. (ExecutorCtx m0 executor0, ExecutorCtx m1 executor1) => m1 executor1 a -> m0 executor0 a
+evalNewExecutorCtx ::
+  forall m1 a m0 executor0 executor1.
+  ( ExecutorCtx m0 executor0,
+    ExecutorCtx m1 executor1,
+    SltExecutor m1 executor1
+  ) =>
+  m1 executor1 a ->
+  m0 executor0 a
 evalNewExecutorCtx xs = do
   opts <- getOpts
   liftIO $ evalExecutorCtx @m1 $ do
     setOpts opts
+    open @m1 @executor1
     xs
 
 ----------------------------------------
@@ -41,7 +53,8 @@ newtype ExecutorM executor a = ExecutorM
 data ExecutorState executor = ExecutorState
   { executorStateOpts     :: GlobalOpts,
     executorStateExecutor :: Maybe executor,
-    executorStateSqlSnoc  :: [T.Text]
+    executorStateSqlSnoc  :: [T.Text],
+    executorStateErrors   :: [T.Text]
   }
 
 defaultExecutorState :: ExecutorState executor
@@ -53,7 +66,8 @@ defaultExecutorState =
             executorsAddr = []
           },
       executorStateExecutor = Nothing,
-      executorStateSqlSnoc = []
+      executorStateSqlSnoc = [],
+      executorStateErrors = []
     }
 
 instance ExecutorCtx ExecutorM executor where
@@ -72,20 +86,43 @@ instance ExecutorCtx ExecutorM executor where
     s <- get
     put $ s {executorStateSqlSnoc = x : executorStateSqlSnoc s}
   getSql = gets $ reverse . executorStateSqlSnoc
+  recover x = do
+    s <- get
+    put $ s {executorStateErrors = T.pack (show x) : executorStateErrors s}
+  reportError = gets $ reverse . executorStateErrors
+  clearSql = do
+    s <- get
+    put $ s {executorStateErrors = []}
 
 ----------------------------------------
+
+printErrors :: ExecutorCtx m executor => m executor ()
+printErrors = do
+  errors <- reportError
+  forM_ errors $ \err -> liftIO $ do
+    T.putStrLn $ "[ERROR]: " <> err
+
+exitCode :: ExecutorCtx m executor => m executor Int
+exitCode =
+  reportError <&> \case
+    [] -> 0
+    _  -> -1
 
 debugPrint :: (ExecutorCtx m executor, Show a) => a -> m executor ()
 debugPrint x = do
   debug <- isDebug
   when debug $ do
-    liftIO $ print x
+    liftIO $ do
+      putStr "[DEBUG]: "
+      print x
 
 debugPutStrLn :: ExecutorCtx m executor => String -> m executor ()
 debugPutStrLn x = do
   debug <- isDebug
   when debug $ do
-    liftIO $ putStrLn x
+    liftIO $ do
+      putStr "[DEBUG]: "
+      putStrLn x
 
 ----------------------------------------
 -- SltExecutor

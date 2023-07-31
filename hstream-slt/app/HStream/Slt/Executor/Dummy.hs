@@ -22,6 +22,9 @@ instance ExecutorCtx DummyExecutorCtx executor where
   isDebug = DummyExecutorCtx isDebug
   pushSql = DummyExecutorCtx . pushSql
   getSql = DummyExecutorCtx getSql
+  recover = DummyExecutorCtx . recover
+  reportError = DummyExecutorCtx reportError
+  clearSql = DummyExecutorCtx clearSql
 
 ----------------------------------------
 
