@@ -9,12 +9,11 @@ module HStream.SQL.Binder.Basic where
 
 import qualified Data.Aeson                as Aeson
 import           Data.Hashable
-import           Data.Int                  (Int64)
 import           Data.Maybe                (fromJust)
 import           Data.Text                 (Text)
 import qualified Data.Text                 as Text
 import qualified Data.Time                 as Time
-import           Data.Time.Format.ISO8601  (iso8601ParseM, iso8601Show)
+import           Data.Time.Format.ISO8601  (iso8601ParseM)
 import           GHC.Generics              (Generic)
 import           HStream.SQL.Binder.Common
 import           Z.Data.CBytes             (CBytes)

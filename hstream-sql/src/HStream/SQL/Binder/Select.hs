@@ -162,7 +162,6 @@ instance Bind TableRef where
                 ([0..] `L.zip` cols)
         }
 
-  -- FIXME: add window start/end to schema
   bind' (TableRefTumbling _ ref interval) = do
     (boundRef, n) <- bind' ref
     boundInterval <- bind interval

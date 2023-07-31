@@ -33,7 +33,7 @@ getField' (si,ci) o =
                                   , columnName = "NULL"
                                   , columnStreamId = si
                                   , columnStream = "" -- FIXME
-                                  , columnType = BTypeInteger -- FIXME
+                                  , columnType = BTypeInteger -- FIXME: type of NULL value
                                   , columnIsNullable = True
                                   , columnIsHidden = False
                                   }

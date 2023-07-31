@@ -68,6 +68,7 @@ library
     HStream.SQL.Binder.Common
     HStream.SQL.Binder.DDL
     HStream.SQL.Binder.DML
+    HStream.SQL.Binder.Operator
     HStream.SQL.Binder.Select
     HStream.SQL.Binder.SQL
     HStream.SQL.Binder.ValueExpr
