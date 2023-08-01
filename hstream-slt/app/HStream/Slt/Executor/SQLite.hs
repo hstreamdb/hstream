@@ -1,5 +1,6 @@
 module HStream.Slt.Executor.SQLite (SQLiteExecutorCtx, SQLiteExecutor (..)) where
 
+import           Control.Exception
 import           Control.Monad.IO.Class
 import           Control.Monad.State
 import           Data.Maybe
@@ -48,9 +49,9 @@ selectWithoutFrom' cols = do
 
 buildselectWithoutFromStmt :: [T.Text] -> S.Query
 buildselectWithoutFromStmt cols =
-  -- FIXME: empty
-  S.Query $
-    "SELECT " <> T.intercalate ", " cols
+  let cols' = assert (cols /= []) cols
+   in S.Query $
+        "SELECT " <> T.intercalate ", " cols'
 
 ----------------------------------------
 

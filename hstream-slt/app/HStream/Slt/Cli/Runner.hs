@@ -83,6 +83,6 @@ execCmdComplete = undefined
 catchFile :: (FilePath -> IO a) -> FilePath -> IO a
 catchFile xs f =
   xs f `catch` \(e :: SomeException) -> do
-    putStrLn $ "error @ " <> f <> ":"
+    putStrLn $ "[ERROR]: error at " <> f <> ":"
     putStrLn $ "    " <> show e
     error $ show e
