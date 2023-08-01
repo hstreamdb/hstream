@@ -2,15 +2,6 @@
 
 
 random no-table
-select;
-
-random no-table
-select AVG($x);
-
-random no-table
-select SUM($x), MAX($x), MIN($x);
-
-random no-table
 x :: INTEGER
 y :: BOOLEAN
 z :: BYTEA

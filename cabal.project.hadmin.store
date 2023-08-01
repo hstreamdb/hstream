@@ -38,7 +38,6 @@ constraints:
     Z-IO          == 1.0.2.0
   , Z-Data        == 1.3.0.1
   , zoovisitor    == 0.2.5.1
-  , blaze-textual == 0.2.1.0
   , entropy       == 0.4.1.7
   , criterion    ^>= 1.6
   , aeson         >=1.5   && <2.0

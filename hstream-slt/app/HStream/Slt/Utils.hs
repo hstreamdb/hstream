@@ -1,4 +1,4 @@
-module Slt.Utils where
+module HStream.Slt.Utils where
 
 import           Control.Exception                    (SomeException)
 import           Control.Monad

@@ -1,13 +1,13 @@
-module Slt.Format where
+module HStream.Slt.Format where
 
 import           Data.Char                  (isSpace)
 import           Data.Foldable
 import           Data.Functor
 import qualified Data.Text                  as T
 import           Data.Void                  (Void)
-import           Slt.Utils
-import           Text.Megaparsec            (many, some, (<|>))
+import           HStream.Slt.Utils
 import qualified Text.Megaparsec            as P
+import           Text.Megaparsec            (many, some, (<|>))
 import qualified Text.Megaparsec.Char       as C
 import qualified Text.Megaparsec.Char.Lexer as L
 

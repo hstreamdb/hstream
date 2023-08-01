@@ -1,4 +1,4 @@
-module Slt.Cli.Parser where
+module HStream.Slt.Cli.Parser where
 
 import           Options.Applicative
 

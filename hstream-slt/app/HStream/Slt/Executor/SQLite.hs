@@ -1,4 +1,4 @@
-module Slt.Executor.SQLite (SQLiteExecutorCtx, SQLiteExecutor (..)) where
+module HStream.Slt.Executor.SQLite (SQLiteExecutorCtx, SQLiteExecutor (..)) where
 
 import           Control.Monad.IO.Class
 import           Control.Monad.State
@@ -6,8 +6,8 @@ import           Data.Maybe
 import qualified Data.Text              as T
 import qualified Database.SQLite.Simple as S
 import           GHC.Stack
-import           Slt.Executor
-import           Slt.Utils
+import           HStream.Slt.Executor
+import           HStream.Slt.Utils
 
 newtype SQLiteExecutor = SQLiteExecutor
   { connection :: S.Connection
@@ -48,8 +48,9 @@ selectWithoutFrom' cols = do
 
 buildselectWithoutFromStmt :: [T.Text] -> S.Query
 buildselectWithoutFromStmt cols =
+  -- FIXME: empty
   S.Query $
-    "SELECT (" <> T.intercalate ", " cols <> ")"
+    "SELECT " <> T.intercalate ", " cols
 
 ----------------------------------------
 

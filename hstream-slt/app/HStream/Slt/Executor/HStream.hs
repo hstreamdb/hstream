@@ -1,8 +1,8 @@
-module Slt.Executor.HStream where
+module HStream.Slt.Executor.HStream where
 
 import           Control.Monad.IO.Class
 import           Control.Monad.State
-import           Slt.Executor
+import           HStream.Slt.Executor
 
 data HStreamExecutor
 

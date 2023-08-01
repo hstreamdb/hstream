@@ -1,8 +1,8 @@
-module Slt.Executor.Dummy where
+module HStream.Slt.Executor.Dummy where
 
 import           Control.Monad.State
-import           Slt.Cli.Parser      (GlobalOpts)
-import           Slt.Executor
+import           HStream.Slt.Cli.Parser (GlobalOpts)
+import           HStream.Slt.Executor
 
 type DummyExecutorM = DummyExecutorCtx DummyExecutor
 

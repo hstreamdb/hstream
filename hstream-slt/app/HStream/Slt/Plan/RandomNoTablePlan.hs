@@ -1,14 +1,14 @@
-module Slt.Plan.RandomNoTablePlan where
+module HStream.Slt.Plan.RandomNoTablePlan where
 
 import           Control.Monad
 import           Control.Monad.IO.Class (MonadIO (liftIO))
 import           Data.Maybe             (fromJust, fromMaybe)
 import qualified Data.Text              as T
 import qualified Data.Text.IO           as T
-import           Slt.Executor
-import           Slt.Format.Sql
-import           Slt.Plan
-import           Slt.Utils
+import           HStream.Slt.Executor
+import           HStream.Slt.Format.Sql
+import           HStream.Slt.Plan
+import           HStream.Slt.Utils
 import qualified Text.Megaparsec        as P
 
 defaultRowNum :: Int

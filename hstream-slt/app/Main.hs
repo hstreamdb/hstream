@@ -1,4 +1,10 @@
 module Main where
 
+import           HStream.Slt.Cli.Parser
+import           HStream.Slt.Cli.Runner
+
 main :: IO ()
-main = putStrLn "Hello, Haskell!"
+main = do
+  opts <- mainOptsParser
+  execMainOpts opts
+  pure ()

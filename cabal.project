@@ -57,8 +57,7 @@ package rocksdb-haskell-bindings
 
 constraints:
     Z-Data        == 2.0.0.1
-  , zoovisitor    == 0.2.6.1
-  , blaze-textual == 0.2.1.0
+  , zoovisitor    == 0.2.5.1
   , entropy       == 0.4.1.7
   , criterion    ^>= 1.6
   , aeson        ^>= 2.0

@@ -12,15 +12,20 @@ executable hstream-slt
   import:             warnings
   main-is:            Main.hs
   other-modules:
+    HStream.Slt.Cli.Parser
+    HStream.Slt.Cli.Runner
     HStream.Slt.Executor
+    HStream.Slt.Executor.Dummy
     HStream.Slt.Executor.HStream
     HStream.Slt.Executor.SQLite
     HStream.Slt.Format
+    HStream.Slt.Format.Sql
     HStream.Slt.Plan
     HStream.Slt.Plan.RandomNoTablePlan
     HStream.Slt.Utils
 
   default-extensions:
+    FunctionalDependencies
     LambdaCase
     OverloadedStrings
 
@@ -28,6 +33,8 @@ executable hstream-slt
     , aeson
     , base
     , bytestring
+    , directory
+    , hstream-sql
     , megaparsec
     , mtl
     , optparse-applicative

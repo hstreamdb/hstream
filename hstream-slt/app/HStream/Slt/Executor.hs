@@ -1,15 +1,15 @@
-module Slt.Executor where
+module HStream.Slt.Executor where
 
 import           Control.Monad
 import           Control.Monad.State
-import qualified Data.Aeson.Key      as A
-import qualified Data.Aeson.KeyMap   as A
+import qualified Data.Aeson.Key         as A
+import qualified Data.Aeson.KeyMap      as A
 import           Data.Functor
 import           Data.Maybe
-import qualified Data.Text           as T
-import qualified Data.Text.IO        as T
-import           Slt.Cli.Parser
-import           Slt.Utils
+import qualified Data.Text              as T
+import qualified Data.Text.IO           as T
+import           HStream.Slt.Cli.Parser
+import           HStream.Slt.Utils
 
 ----------------------------------------
 -- ExecutorCtx

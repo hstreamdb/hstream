@@ -1,16 +1,16 @@
-module Slt.Cli.Runner where
+module HStream.Slt.Cli.Runner where
 
 import           Control.Exception
 import           Control.Monad
 import           Control.Monad.IO.Class
 import           Data.Foldable
-import           Slt.Cli.Parser
-import           Slt.Executor
-import           Slt.Executor.Dummy
-import           Slt.Executor.HStream       (HStreamExecutorCtx)
-import           Slt.Executor.SQLite
-import           Slt.Plan
-import           Slt.Plan.RandomNoTablePlan
+import           HStream.Slt.Cli.Parser
+import           HStream.Slt.Executor
+import           HStream.Slt.Executor.Dummy
+import           HStream.Slt.Executor.HStream       (HStreamExecutorCtx)
+import           HStream.Slt.Executor.SQLite
+import           HStream.Slt.Plan
+import           HStream.Slt.Plan.RandomNoTablePlan
 import           System.Directory
 import           System.Exit
 

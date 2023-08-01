@@ -1,10 +1,10 @@
-module Slt.Plan where
+module HStream.Slt.Plan where
 
-import qualified Data.Text       as T
-import           Slt.Format
-import           Slt.Utils       (SqlDataType)
-import           Text.Megaparsec (many)
-import qualified Text.Megaparsec as P
+import qualified Data.Text          as T
+import           HStream.Slt.Format
+import           HStream.Slt.Utils  (SqlDataType)
+import qualified Text.Megaparsec    as P
+import           Text.Megaparsec    (many)
 
 ----------------------------------------
 -- Slt Suite & Plan
