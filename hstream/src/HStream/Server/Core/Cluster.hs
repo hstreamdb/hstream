@@ -7,6 +7,7 @@ module HStream.Server.Core.Cluster
   , lookupShard
   , lookupSubscription
   , lookupShardReader
+  , lookupKey
 
   , nodeChangeEventHandler
   , recoverLocalTasks
@@ -15,23 +16,18 @@ module HStream.Server.Core.Cluster
 import           Control.Concurrent             (MVar, tryReadMVar, withMVar)
 import           Control.Concurrent.STM         (readTVarIO)
 import           Control.Exception              (Handler (..),
-                                                 SomeException (..), catches,
-                                                 throwIO)
+                                                 SomeException (..), catches)
 import           Control.Monad                  (forM_, when)
 import qualified Data.List                      as L
 import qualified Data.Map.Strict                as Map
 import qualified Data.Text                      as T
 import qualified Data.Vector                    as V
-import           Proto3.Suite                   (Enumerated (..))
 
 import           HStream.Common.Types           (fromInternalServerNodeWithKey,
                                                  getHStreamVersion)
 import qualified HStream.Exception              as HE
 import           HStream.Gossip                 (GossipContext (..),
-                                                 getFailedNodes,
-                                                 getFailedNodesSTM,
-                                                 getMemberList)
-import           HStream.Gossip.Types           (ServerStatus (..))
+                                                 getFailedNodes, getMemberList)
 import qualified HStream.Gossip.Types           as Gossip
 import qualified HStream.Logger                 as Log
 import           HStream.MetaStore.Types        (MetaStore (..))
@@ -39,7 +35,6 @@ import qualified HStream.MetaStore.Types        as Meta
 import           HStream.Server.Core.Common     (getResNode, lookupResource,
                                                  parseAllocationKey)
 import           HStream.Server.HStreamApi
-import qualified HStream.Server.HStreamApi      as API
 import qualified HStream.Server.HStreamInternal as I
 import qualified HStream.Server.MetaData        as Meta
 import           HStream.Server.MetaData.Value  (clusterStartTimeId)
@@ -95,6 +90,13 @@ lookupShard ServerContext{..} req@LookupShardRequest {
     , lookupShardResponseServerNode = Just theNode
     }
 
+lookupKey :: ServerContext -> LookupKeyRequest -> IO ServerNode
+lookupKey ServerContext{..} req@LookupKeyRequest{..} = do
+  (_, hashRing) <- readTVarIO loadBalanceHashRing
+  theNode <- getResNode hashRing lookupKeyRequestPartitionKey scAdvertisedListenersKey
+  Log.info $ "receive lookupKey request: " <> Log.buildString' req <> ", should send to " <> Log.buildString' (show theNode)
+  return theNode
+
 {-# DEPRECATED lookupSubscription "Use lookupResource instead" #-}
 lookupSubscription
   :: ServerContext
@@ -148,7 +150,7 @@ recoverTasks ::  Types.TaskManager a => ServerContext -> a -> [T.Text] -> IO ()
 recoverTasks sc@ServerContext{..} tm tasks =
   forM_ tasks $ \task -> do
     taskNode <- lookupResource sc (Types.resourceType tm) task
-    when (serverID == API.serverNodeId taskNode) $
+    when (serverID == serverNodeId taskNode) $
       catches (Types.recoverTask tm task) [
           Handler (\(err :: HE.QueryAlreadyTerminated) -> return ())
         , Handler (\(err :: SomeException) ->

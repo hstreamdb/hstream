@@ -116,6 +116,7 @@ handlers serverContext@ServerContext{..} =
         hstreamApiLookupShard        = lookupShardHandler serverContext,
         hstreamApiLookupSubscription = lookupSubscriptionHandler serverContext,
         hstreamApiLookupShardReader  = lookupShardReaderHandler serverContext,
+        hstreamApiLookupKey          = lookupKeyHandler serverContext,
 
         -- Admin
         hstreamApiSendAdminCommand = adminCommandHandler serverContext,
