@@ -34,6 +34,7 @@ executable hstream-slt
     , base
     , bytestring
     , directory
+    , hstream
     , hstream-sql
     , megaparsec
     , mtl
