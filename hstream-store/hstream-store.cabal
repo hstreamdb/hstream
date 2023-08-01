@@ -38,6 +38,15 @@ flag ReleaseBuild
   description:
     Enables all optimisations, leads to slower build time and better performance
 
+flag hstream_store_enable_asan
+  default:     False
+  description:
+    Enable AddressSanitizer, see: https://github.com/google/sanitizers/wiki/AddressSanitizer.
+    Because of using shared ASan DSO, LD_PRELOAD'ing Asan runtime is required. For example,
+    1. Build with the flag: `cabal build --flags hstream_store_enable_asan hstream-store-test`.
+    2. Find the asan used: `ldd /path/to/hstream-store-test | grep asan`, e.g. /lib/x86_64-linux-gnu/libasan.so.6
+    3. Run: `LD_PRELOAD=/lib/x86_64-linux-gnu/libasan.so.6 /path/to/hstream-store-test`
+
 common shared-properties
   ghc-options:
     -Wall -Wcompat -Widentities -Wincomplete-record-updates
@@ -107,6 +116,10 @@ library
     thriftprotocol
     glog
     boost_context
+
+  if flag(hstream_store_enable_asan)
+    extra-libraries: asan
+    cxx-options:     -fsanitize=address -fno-omit-frame-pointer
 
   -- Add this -DHSTREAM_USE_SHARED_CHECKPOINT_STORE to cxx-options to enable
   -- shared CheckpointStore
