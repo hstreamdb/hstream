@@ -109,7 +109,7 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
       IO.stopIOTask scIOWorker name False False
       pure (CommandQueryResponse V.empty)
     ResumePlan (ResumeObjectConnector name) -> do
-      IO.startIOTask scIOWorker name
+      IO.recoverTask scIOWorker name
       pure (CommandQueryResponse V.empty)
     PushSelectPlan {} ->
       let x = "Inconsistent method called: select from streams SQL statements should be sent to rpc `ExecutePushQuery`"

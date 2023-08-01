@@ -31,8 +31,7 @@ import qualified HStream.Logger             as Log
 import qualified HStream.MetaStore.Types    as M
 import qualified HStream.Stats              as Stats
 import qualified HStream.Utils              as Utils
-import           System.Directory           (createDirectoryIfMissing,
-                                             removeDirectoryRecursive)
+import           System.Directory           (createDirectoryIfMissing)
 import qualified System.Process.Typed       as TP
 
 newIOTask :: T.Text -> M.MetaHandle -> Stats.StatsHolder -> TaskInfo -> T.Text -> IO IOTask
@@ -41,7 +40,7 @@ newIOTask taskId taskHandle taskStatsHolder taskInfo path = do
   statusM  <- C.newMVar NEW
   taskOffsetsM <- C.newMVar Vector.empty
   let taskPath = T.unpack path
-  logReader <- LR.newLineReader (taskPath <> "/stdout.log")
+  logReader <- LR.newLineReader (taskPath <> "/app.log")
   return IOTask {..}
 
 initIOTask :: IOTask -> Bool -> IO ()
@@ -98,10 +97,8 @@ getDockerStatus IOTask{..} = do
    stripSpaceAndQuotes = T.strip . T.filter (/= '\'')
 
 handleStdout :: IOTask -> IO.Handle -> IO.Handle -> IO ()
-handleStdout ioTask@IOTask{..} hStdout hStdin = forever $ do
+handleStdout ioTask hStdout hStdin = forever $ do
   line <- BS.hGetLine hStdout
-  let logPath = taskPath ++ "/stdout.log"
-  BS.appendFile logPath (line <> "\n")
   case J.eitherDecode (BSL.fromStrict line) of
     Left _ -> pure () -- Log.info $ "decode err:" <> Log.buildString err
     Right msg -> do
@@ -142,11 +139,9 @@ handleConnectorMessage IOTask{..} (MSG.Report MSG.ReportMessage{..}) = do
 
 startIOTask :: IOTask -> IO ()
 startIOTask task = do
-  updateStatus task $ \case
-    status | elem status [NEW, FAILED, STOPPED]  -> do
-      runIOTask task
-      return RUNNING
-    status -> throwIO $ HE.ConnectorInvalidStatus (ioTaskStatusToText status)
+  updateStatus task $ \_ -> do
+    runIOTask task
+    return RUNNING
 
 stopIOTask :: IOTask -> Bool -> Bool -> IO ()
 stopIOTask task@IOTask{..} ifIsRunning force = do
@@ -235,7 +230,7 @@ checkIOTask IOTask{..} = do
         " " , T.unpack tcImage,
         " check",
         " --config /data/config.json",
-        " >> ", checkLogPath, " 2>&1"
+        " > ", checkLogPath, " 2>&1"
       ]
     timeoutSec = 15
     delay = C.threadDelay $ timeoutSec * 1000000
@@ -268,6 +263,4 @@ getTaskLogs :: IOTask -> Int32 -> Int32 -> IO T.Text
 getTaskLogs IOTask{..} beg num = LR.readLines logReader (fromIntegral beg) (fromIntegral num)
 
 cleanLocalIOTask :: IOTask -> IO ()
-cleanLocalIOTask task@IOTask{..} = do
-  killIOTask task
-  removeDirectoryRecursive taskPath
+cleanLocalIOTask = killIOTask

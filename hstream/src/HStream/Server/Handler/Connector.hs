@@ -154,7 +154,7 @@ resumeConnectorHandler sc@ServerContext{..}
   ServerNode{..} <- lookupResource sc ResConnector resumeConnectorRequestName
   unless (serverNodeId == serverID) $
     throwIO $ HE.WrongServer "Connector is bound to a different node"
-  IO.startIOTask scIOWorker resumeConnectorRequestName
+  IO.recoverTask scIOWorker resumeConnectorRequestName
   returnResp Empty
 
 handleResumeConnector :: ServerContext -> G.UnaryHandler ResumeConnectorRequest Empty
@@ -162,7 +162,7 @@ handleResumeConnector sc@ServerContext{..} _ ResumeConnectorRequest{..} = catchD
   ServerNode{..} <- lookupResource sc ResConnector resumeConnectorRequestName
   unless (serverNodeId == serverID) $
     throwIO $ HE.WrongServer "Connector is bound to a different node"
-  IO.startIOTask scIOWorker resumeConnectorRequestName >> pure Empty
+  IO.recoverTask scIOWorker resumeConnectorRequestName >> pure Empty
 
 pauseConnectorHandler
   :: ServerContext
