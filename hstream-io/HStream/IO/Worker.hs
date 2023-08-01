@@ -15,6 +15,7 @@ import qualified Data.Text                 as T
 import qualified Data.Text.Lazy            as TL
 import           GHC.Stack                 (HasCallStack)
 
+import qualified Control.Exception         as E
 import qualified Data.Aeson                as J
 import qualified Data.Aeson.KeyMap         as J
 import qualified Data.Aeson.Text           as J
@@ -88,7 +89,10 @@ createIOTaskFromTaskInfo :: HasCallStack => Worker -> T.Text -> TaskInfo -> Bool
 createIOTaskFromTaskInfo worker@Worker{..} taskId taskInfo@TaskInfo {..} cleanIfExists createMetaData = do
   getIOTask worker taskName >>= \case
     Nothing -> pure ()
-    Just _  -> throwIO $ HE.ConnectorExists taskName
+    Just _  -> do
+      if cleanIfExists
+      then C.modifyMVar_ ioTasksM $ return . HM.delete taskName
+      else throwIO $ HE.ConnectorExists taskName
   let taskPath = optTasksPath options <> "/" <> taskId
   task <- IOTask.newIOTask taskId workerHandle statsHolder taskInfo taskPath
   IOTask.initIOTask task cleanIfExists
@@ -147,9 +151,9 @@ stopIOTask worker name ifIsRunning force = do
   ioTask <- getIOTask_ worker name
   IOTask.stopIOTask ioTask ifIsRunning force
 
-startIOTask :: Worker -> T.Text -> IO ()
-startIOTask worker name = do
-  getIOTask_ worker name >>= IOTask.startIOTask
+-- startIOTask :: Worker -> T.Text -> IO ()
+-- startIOTask worker name = do
+--   getIOTask_ worker name >>= IOTask.startIOTask
 
 listResources :: Worker -> IO [T.Text]
 listResources worker = fmap API.connectorName <$> listIOTasks worker
@@ -175,7 +179,9 @@ getIOTask_ Worker{..} name = do
 
 deleteIOTask :: Worker -> T.Text -> IO ()
 deleteIOTask worker@Worker{..} taskName = do
-  stopIOTask worker taskName True False
+  E.catch
+    (stopIOTask worker taskName True False)
+    (\(e :: E.SomeException) -> Log.info $ "try to stop io task:" <> Log.buildString (show e))
   M.deleteIOTaskMeta workerHandle taskName
   C.modifyMVar_ ioTasksM $ return . HM.delete taskName
 
