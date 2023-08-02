@@ -7,27 +7,15 @@
 
 module HStream.SQL.PlannerNew.Expr where
 
-import           Control.Applicative           ((<|>))
 import           Control.Monad.State
-import           Data.Function                 (on)
-import           Data.Functor                  ((<&>))
-import           Data.Int                      (Int64)
-import           Data.IntMap                   (IntMap)
-import qualified Data.IntMap                   as IntMap
-import           Data.Kind                     (Type)
-import qualified Data.List                     as L
-import qualified Data.Map                      as Map
-import           Data.Maybe                    (fromJust, fromMaybe)
-import           Data.Text                     (Text)
-import qualified Data.Text                     as T
-import           GHC.Stack
+import qualified Data.List                    as L
+import           Data.List.Extra              (allSame)
+import qualified Data.Set                     as Set
+import qualified Data.Text                    as T
 
-import           HStream.SQL.Binder            hiding (lookupColumn)
+import           HStream.SQL.Binder           hiding (lookupColumn)
 import           HStream.SQL.Exception
-import           HStream.SQL.PlannerNew.Extra
 import           HStream.SQL.PlannerNew.Types
-
-import           HStream.SQL.PlannerNew.Pretty
 
 type instance PlannedType (Aggregate BoundExpr) = (Aggregate ScalarExpr, ColumnCatalog)
 instance Plan (Aggregate BoundExpr) where
@@ -37,7 +25,9 @@ instance Plan (Aggregate BoundExpr) where
                                   , columnName = T.pack $ show agg
                                   , columnStreamId = 0
                                   , columnStream = ""
-                                  , columnType = BTypeInteger -- FIXME!!!
+                                  , columnType = BTypeInteger
+                                  -- FIXME: if we have more nullary aggs other than `count(*)`,
+                                  --        it may not be `integer`.
                                   , columnIsNullable = True
                                   , columnIsHidden = False
                                   }
@@ -68,22 +58,32 @@ instance Plan BoundExpr where
       return (CallCast e' typ, catalog)
     BoundExprArray name es -> do
       tups <- mapM plan es
+      let types = map (columnType . snd) tups
+      let elemType = case allSame types of
+            False -> throwSQLException PlanException Nothing $
+              "Array elements should have the same type: " <> show es
+            True  -> if L.null types then BTypeInteger -- FIXME: type for empty array?
+                                          else L.head types
       let catalog = ColumnCatalog { columnId = 0
                                   , columnName = T.pack name
                                   , columnStreamId = 0
                                   , columnStream = ""
-                                  , columnType = BTypeInteger -- FIXME!!!
+                                  , columnType = BTypeArray elemType
                                   , columnIsNullable = True
                                   , columnIsHidden = False
                                   }
       return (ValueArray (map fst tups), catalog)
     BoundExprAccessArray name e rhs -> do
       (e', c') <- plan e
+      let elemType = case columnType c' of
+            BTypeArray typ -> typ
+            _              -> throwSQLException PlanException Nothing $
+              "Accessing array element from non-array type: " <> show c'
       let catalog = ColumnCatalog { columnId = 0
                                   , columnName = T.pack name
                                   , columnStreamId = 0
                                   , columnStream = ""
-                                  , columnType = BTypeInteger -- FIXME!!!
+                                  , columnType = elemType
                                   , columnIsNullable = True
                                   , columnIsHidden = False
                                   }
@@ -95,11 +95,12 @@ instance Plan BoundExpr where
         Just (_,columnId,catalog) ->
           return (ColumnRef (columnStreamId catalog) columnId, catalog)
     BoundExprConst name constant -> do
+      let elemType = nResType constant
       let catalog = ColumnCatalog { columnId = 0
                                   , columnName = T.pack name
                                   , columnStreamId = 0
                                   , columnStream = ""
-                                  , columnType = BTypeInteger -- FIXME!!!
+                                  , columnType = elemType
                                   , columnIsNullable = True
                                   , columnIsHidden = False
                                   }
@@ -113,11 +114,16 @@ instance Plan BoundExpr where
     BoundExprAccessJson name op e1 e2 -> do
       (e1', c1') <- plan e1
       (e2', c2') <- plan e2
+      let elemType = if columnType c1' `Set.member` bOp1Type op &&
+                        columnType c2' `Set.member` bOp2Type op
+                        then bResType op (columnType c1') (columnType c2') else
+                        throwSQLException PlanException Nothing $
+                        "Using JSON operator on incorrect type: " <> show e1 <> show op <> show e2
       let catalog = ColumnCatalog { columnId = 0
                                   , columnName = T.pack name
                                   , columnStreamId = 0
                                   , columnStream = ""
-                                  , columnType = BTypeInteger -- FIXME!!!
+                                  , columnType = elemType
                                   , columnIsNullable = True
                                   , columnIsHidden = False
                                   }
@@ -125,22 +131,31 @@ instance Plan BoundExpr where
     BoundExprBinOp name op e1 e2      -> do
       (e1', c1') <- plan e1
       (e2', c2') <- plan e2
+      let elemType = if columnType c1' `Set.member` bOp1Type op &&
+                        columnType c2' `Set.member` bOp2Type op
+                        then bResType op (columnType c1') (columnType c2') else
+                        throwSQLException PlanException Nothing $
+                        "Using binary operator on incorrect type: " <> show e1 <> show op <> show e2
       let catalog = ColumnCatalog { columnId = 0
                                   , columnName = T.pack name
                                   , columnStreamId = 0
                                   , columnStream = ""
-                                  , columnType = BTypeInteger -- FIXME!!!
+                                  , columnType = elemType
                                   , columnIsNullable = True
                                   , columnIsHidden = False
                                   }
       return (CallBinary op e1' e2', catalog)
     BoundExprUnaryOp name op e        -> do
       (e', c') <- plan e
+      let elemType = if columnType c' `Set.member` uOpType op
+                        then uResType op (columnType c') else
+                        throwSQLException PlanException Nothing $
+                        "Using unary operator on incorrect type: " <> show op <> show e
       let catalog = ColumnCatalog { columnId = 0
                                   , columnName = T.pack name
                                   , columnStreamId = 0
                                   , columnStream = ""
-                                  , columnType = BTypeInteger -- FIXME!!!
+                                  , columnType = elemType
                                   , columnIsNullable = True
                                   , columnIsHidden = False
                                   }
@@ -149,11 +164,17 @@ instance Plan BoundExpr where
       (e1', c1') <- plan e1
       (e2', c2') <- plan e2
       (e3', c3') <- plan e3
+      let elemType = if columnType c1' `Set.member` tOp1Type op &&
+                        columnType c2' `Set.member` tOp2Type op &&
+                        columnType c3' `Set.member` tOp3Type op
+                        then tResType op (columnType c1') (columnType c2') (columnType c3') else
+                        throwSQLException PlanException Nothing $
+                        "Using ternary operator on incorrect type: " <> show e1 <> show op <> show e2 <> show e3
       let catalog = ColumnCatalog { columnId = 0
                                   , columnName = T.pack name
                                   , columnStreamId = 0
                                   , columnStream = ""
-                                  , columnType = BTypeInteger -- FIXME!!!
+                                  , columnType = elemType
                                   , columnIsNullable = True
                                   , columnIsHidden = False
                                   }

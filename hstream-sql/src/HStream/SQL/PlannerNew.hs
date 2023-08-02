@@ -1,10 +1,10 @@
-{-# LANGUAGE CPP                  #-}
-{-# LANGUAGE FlexibleInstances    #-}
-{-# LANGUAGE OverloadedStrings    #-}
-{-# LANGUAGE RecordWildCards      #-}
-{-# LANGUAGE ScopedTypeVariables  #-}
-{-# LANGUAGE TypeFamilies         #-}
-{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE CPP                 #-}
+{-# LANGUAGE FlexibleInstances   #-}
+{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies        #-}
 
 module HStream.SQL.PlannerNew (
 #ifdef HStreamEnableSchema
@@ -18,21 +18,14 @@ module HStream.SQL.PlannerNew (
   ) where
 
 #ifdef HStreamEnableSchema
-import           Control.Applicative           ((<|>))
 import           Control.Monad.Reader
 import           Control.Monad.State
-import           Data.Function                 (on)
 import           Data.Functor                  ((<&>))
-import           Data.Int                      (Int64)
-import           Data.IntMap                   (IntMap)
 import qualified Data.IntMap                   as IntMap
-import           Data.Kind                     (Type)
 import qualified Data.List                     as L
-import qualified Data.Map                      as Map
-import           Data.Maybe                    (fromJust, fromMaybe)
+import           Data.Maybe                    (fromMaybe)
 import           Data.Text                     (Text)
 import qualified Data.Text                     as T
-import           GHC.Stack
 import           Text.StringRandom             (stringRandomIO)
 
 import           HStream.SQL.Binder            hiding (lookupColumn)
@@ -51,12 +44,15 @@ type instance PlannedType BoundTableRef = RelationExpr
 instance Plan BoundTableRef where
   plan (BoundTableRefSimple name) = do
     getSchema <- ask
-    schema <- liftIO $ getSchema name <&> fromJust -- FIXME: fromJust
-    -- 1-in/1-out
-    let schema' = setSchemaStreamId 0 schema
-    let ctx = PlanContext (IntMap.singleton 0 schema')
-    put ctx
-    return $ StreamScan schema'
+    liftIO (getSchema name) >>= \case
+      Nothing -> throwSQLException PlanException Nothing $
+        "Schema of stream not found: " <> T.unpack name
+      Just schema -> do
+        -- 1-in/1-out
+        let schema' = setSchemaStreamId 0 schema
+        let ctx = PlanContext (IntMap.singleton 0 schema')
+        put ctx
+        return $ StreamScan schema'
 
   plan (BoundTableRefSubquery name sel) = do
     relationExpr <- plan sel

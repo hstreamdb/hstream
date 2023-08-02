@@ -119,13 +119,11 @@ instance Bind Create where
     ident  <- bind hIdent
     schema <- bind (hIdent, schemaCols)
     return $ BoundCreate ident schema def
-  -- FIXME: add schema
   bind (CreateAs   _ hIdent select)            = do
     ident <- bind hIdent
     sel   <- bind select
     opt   <- bind ([] :: [StreamOption])
     return $ BoundCreateAs ident sel opt
-  -- FIXME: add schema
   bind (CreateAsOp _ hIdent select options)    = do
     ident <- bind hIdent
     sel   <- bind select
