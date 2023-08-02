@@ -1,42 +1,51 @@
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module HStream.IO.Messages where
 
 import qualified Data.Aeson          as J
-import qualified Data.Aeson.TH       as JT
 import           Data.Char           (toLower)
 import qualified Data.Text           as T
+import           GHC.Generics        (Generic)
 
 import qualified Data.Vector         as Vector
 import qualified HStream.Utils.Aeson as A
 
+-- Custom Aeson instances options
+customOptions :: Int -> J.Options
+customOptions n = J.defaultOptions{J.fieldLabelModifier = map toLower . drop n}
 
 -- ============ Connector -> Server
 newtype KvGetMessage
   = KvGetMessage
     { kgKey    :: T.Text
-    } deriving (Show)
-$(JT.deriveJSON
-    JT.defaultOptions
-      { JT.fieldLabelModifier = map toLower . drop 2 }
-    ''KvGetMessage)
+    } deriving (Show, Generic)
+
+instance J.FromJSON KvGetMessage where
+  parseJSON = J.genericParseJSON (customOptions 2)
+
+instance J.ToJSON KvGetMessage where
+  toEncoding = J.genericToEncoding (customOptions 2)
 
 data KvSetMessage
   = KvSetMessage
     { ksKey   :: T.Text
     , ksValue :: T.Text
-    } deriving (Show)
-$(JT.deriveJSON
-    JT.defaultOptions
-      { JT.fieldLabelModifier = map toLower . drop 2 }
-    ''KvSetMessage)
+    } deriving (Show, Generic)
+
+instance J.FromJSON KvSetMessage where
+  parseJSON = J.genericParseJSON (customOptions 2)
+
+instance J.ToJSON KvSetMessage where
+  toEncoding = J.genericToEncoding (customOptions 2)
 
 data ReportMessage = ReportMessage
   { deliveredRecords :: Int
   , deliveredBytes   :: Int
   , offsets          :: Vector.Vector J.Object
-  } deriving (Show)
-$(JT.deriveJSON JT.defaultOptions ''ReportMessage)
+  } deriving (Show, Generic)
+
+instance J.FromJSON ReportMessage
+instance J.ToJSON ReportMessage
 
 data ConnectorMessage
   = KvGet KvGetMessage
@@ -88,8 +97,10 @@ data CheckResult
     , crtType    :: Maybe T.Text
     , crtMessage :: Maybe T.Text
     , crtDetail  :: Maybe J.Value
-    }
-$(JT.deriveJSON
-    JT.defaultOptions
-      { JT.fieldLabelModifier = map toLower . drop 3 }
-    ''CheckResult)
+    } deriving (Show, Generic)
+
+instance J.FromJSON CheckResult where
+  parseJSON = J.genericParseJSON (customOptions 3)
+
+instance J.ToJSON CheckResult where
+  toEncoding = J.genericToEncoding (customOptions 3)

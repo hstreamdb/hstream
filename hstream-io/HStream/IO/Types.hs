@@ -1,28 +1,28 @@
 {-# LANGUAGE DeriveAnyClass        #-}
+{-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE TemplateHaskell       #-}
 
 module HStream.IO.Types where
 
 import qualified Control.Concurrent          as C
 import           Control.Exception           (Exception)
+import qualified Control.Exception           as E
 import qualified Data.Aeson                  as J
-import qualified Data.Aeson.TH               as JT
+import qualified Data.Aeson.KeyMap           as J
+import qualified Data.Aeson.Text             as J
 import qualified Data.ByteString.Lazy        as BSL
 import qualified Data.ByteString.Lazy.Char8  as BSLC
 import qualified Data.HashMap.Strict         as HM
 import           Data.IORef                  (IORef)
 import qualified Data.Text                   as T
+import qualified Data.Text.Lazy              as TL
+import qualified Data.Vector                 as Vector
+import           GHC.Generics                (Generic)
 import qualified GHC.IO.Handle               as IO
 import qualified System.Process.Typed        as TP
 import           ZooKeeper.Types             (ZHandle)
 
-import qualified Control.Exception           as E
-import qualified Data.Aeson.KeyMap           as J
-import qualified Data.Aeson.Text             as J
-import qualified Data.Text.Lazy              as TL
-import qualified Data.Vector                 as Vector
 import qualified HStream.Exception           as E
 import qualified HStream.IO.LineReader       as LR
 import           HStream.MetaStore.Types     (FHandle, HasPath (..), MetaHandle,
@@ -34,15 +34,12 @@ import qualified HStream.ThirdParty.Protobuf as PB
 import           Proto3.Suite                (def)
 
 data IOTaskType = SOURCE | SINK
-  deriving (Show, Eq)
-$(JT.deriveJSON JT.defaultOptions ''IOTaskType)
+  deriving (Show, Eq, Generic, J.FromJSON, J.ToJSON)
 
 data TaskConfig = TaskConfig
   { tcImage   :: T.Text
   , tcNetwork :: T.Text
-  }
-  deriving (Show)
-$(JT.deriveJSON JT.defaultOptions ''TaskConfig)
+  } deriving (Show, Eq, Generic, J.FromJSON, J.ToJSON)
 
 data TaskInfo = TaskInfo
   { taskName        :: T.Text
@@ -51,9 +48,7 @@ data TaskInfo = TaskInfo
   , taskCreatedTime :: Grpc.Timestamp
   , taskConfig      :: TaskConfig
   , connectorConfig :: J.Object
-  }
-  deriving (Show)
-$(JT.deriveJSON JT.defaultOptions ''TaskInfo)
+  } deriving (Show, Eq, Generic, J.FromJSON, J.ToJSON)
 
 data IOTaskStatus
   = NEW
@@ -62,8 +57,7 @@ data IOTaskStatus
   | FAILED
   | COMPLETED
   | DELETED
-  deriving (Show, Eq)
-$(JT.deriveJSON JT.defaultOptions ''IOTaskStatus)
+  deriving (Show, Eq, Generic, J.FromJSON, J.ToJSON)
 
 data IOOptions = IOOptions
   { optTasksNetwork :: T.Text
@@ -95,8 +89,8 @@ data ConnectorMetaConfig
 
 newtype HStreamConfig = HStreamConfig
   { serviceUrl :: T.Text
-  } deriving (Show)
-$(JT.deriveJSON JT.defaultOptions ''HStreamConfig)
+  } deriving (Show, Eq, Generic)
+    deriving anyclass (J.FromJSON, J.ToJSON)
 
 data Worker = Worker
   { hsConfig     :: HStreamConfig
@@ -110,17 +104,17 @@ data Worker = Worker
 data TaskMeta = TaskMeta {
     taskInfoMeta  :: TaskInfo
   , taskStateMeta :: IOTaskStatus
-  } deriving (Show)
-$(JT.deriveJSON JT.defaultOptions ''TaskMeta)
+  } deriving (Show, Eq, Generic)
+    deriving anyclass (J.FromJSON, J.ToJSON)
 
 newtype TaskIdMeta = TaskIdMeta {taskIdMeta :: T.Text}
-  deriving (Show)
-$(JT.deriveJSON JT.defaultOptions ''TaskIdMeta)
+  deriving (Show, Eq, Generic)
+  deriving anyclass (J.FromJSON, J.ToJSON)
 
 newtype TaskKvMeta = TaskKvMeta
   { value :: T.Text
-  } deriving (Show)
-$(JT.deriveJSON JT.defaultOptions ''TaskKvMeta)
+  } deriving (Show, Eq, Generic)
+    deriving anyclass (J.FromJSON, J.ToJSON)
 
 ioRootPath :: T.Text
 ioRootPath = "/hstream/io"

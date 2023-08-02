@@ -56,13 +56,10 @@ library
     , bytestring
     , containers
     , directory
-    , grpc-haskell
-    , grpc-haskell-core
     , hstream-api-hs
     , hstream-common
     , hstream-common-base
     , hstream-common-stats
-    , hstream-sql
     , proto3-suite
     , scientific
     , stm
