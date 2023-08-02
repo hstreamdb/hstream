@@ -174,8 +174,8 @@ instance Bind TableRef where
     pushLayer topLayer
     let layerMaxColIndex = L.maximum . L.concat $ map (fmap fst . HM.elems) (HM.elems topHM)
     let windowLayer = BindContextLayer
-                    { layerColumnBindings = HM.fromList [ ("winStartText", HM.fromList [("", (layerMaxColIndex+1,BindUnitBase))])
-                                                        , ("winEndText"  , HM.fromList [("", (layerMaxColIndex+2,BindUnitBase))])
+                    { layerColumnBindings = HM.fromList [ (winStartText, HM.fromList [("", (layerMaxColIndex+1,BindUnitBase))])
+                                                        , (winEndText  , HM.fromList [("", (layerMaxColIndex+2,BindUnitBase))])
                                                         ]
                     }
     pushLayer windowLayer
@@ -194,8 +194,8 @@ instance Bind TableRef where
     pushLayer topLayer
     let layerMaxColIndex = L.maximum . L.concat $ map (fmap fst . HM.elems) (HM.elems topHM)
     let windowLayer = BindContextLayer
-                    { layerColumnBindings = HM.fromList [ ("winStartText", HM.fromList [("", (layerMaxColIndex+1,BindUnitBase))])
-                                                        , ("winEndText"  , HM.fromList [("", (layerMaxColIndex+2,BindUnitBase))])
+                    { layerColumnBindings = HM.fromList [ (winStartText, HM.fromList [("", (layerMaxColIndex+1,BindUnitBase))])
+                                                        , (winEndText  , HM.fromList [("", (layerMaxColIndex+2,BindUnitBase))])
                                                         ]
                     }
     pushLayer windowLayer
