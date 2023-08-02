@@ -2,14 +2,20 @@ module HStream.Slt.Executor.HStream where
 
 import           Control.Monad.IO.Class
 import           Control.Monad.State
+import qualified Data.Text              as T
 import           HStream.Client.Execute (initCliContext)
 import           HStream.Slt.Executor
+import           HStream.Utils.RPC
 
 newtype HStreamExecutor = HStreamExecutor
   { conn :: HStreamCliContext
   }
 
-newtype HStreamExecutorCtx executor a = HStreamExecutorCtx {unHStreamExecutorCtx :: ExecutorM executor a}
+data HStreamExecutorCtx executor a = HStreamExecutorCtx
+  { unHStreamExecutorCtx :: ExecutorM executor a,
+    mainStreamName       :: T.Text,
+    groupByIndex         :: Int
+  }
   deriving (Functor, Applicative, Monad, MonadIO, MonadState (ExecutorState executor))
 
 instance ExecutorCtx HStreamExecutorCtx executor where
@@ -42,4 +48,12 @@ open'' = do
   pure $ HStreamExecutor conn
   where
     refineOpts :: GlobalOpts -> RefinedCliConnOpts
-    refineOpts = undefined
+    refineOpts GlobalOpts {debug, executorsAddr} =
+      RefinedCliConnOpts
+        { addr = undefined,
+          clientConfig = undefined,
+          retryTimeout = undefined
+        }
+    getExecutorsAddr [] = SocketAddr "127.0.0.1" 6570
+    getExecutorsAddr ((ExecutorKindHStream, addr) : xs) = undefined
+    getExecutorsAddr (_ : xs) = getExecutor xs
