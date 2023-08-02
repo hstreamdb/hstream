@@ -1,4 +1,4 @@
-cabal-version: 2.2
+cabal-version: 3.6
 name:          hstream
 version:       0.1.0.0
 synopsis:
@@ -41,6 +41,11 @@ flag hstream_enable_schema
   description:
     Save schema with streams and enable schema-related pipelines
 
+flag hstream_enable_asan
+  default:     False
+  description:
+    Enable AddressSanitizer. NOTE: This do not support build with template-haskell.
+
 common shared-properties
   ghc-options:
     -Wall -Wcompat -Widentities -Wincomplete-record-updates
@@ -57,6 +62,17 @@ common shared-properties
 
   if flag(hstream_enable_schema)
     cpp-options: -DHStreamEnableSchema
+
+-- XXX: Tricky options to link static archive, see: https://github.com/haskell/cabal/issues/4677
+common link-asan
+  if os(osx)
+    ghc-options: "-optl-Wl,-lasan"
+
+  if !os(osx)
+    ghc-options:
+      -pgml g++ "-optl-Wl,--allow-multiple-definition"
+      "-optl-Wl,--whole-archive" "-optl-Wl,-Bstatic" "-optl-Wl,-lasan"
+      "-optl-Wl,-Bdynamic" "-optl-Wl,--no-whole-archive"
 
 library
   import:             shared-properties
@@ -176,6 +192,9 @@ library
   if impl(ghc <9.2.0)
     build-depends: hstream-admin-store
 
+  if flag(hstream_enable_asan)
+    cpp-options: -DHSTREAM_ENABLE_ASAN
+
   default-language:   Haskell2010
   default-extensions:
     DeriveGeneric
@@ -191,7 +210,12 @@ library
     UnliftedFFITypes
 
 executable hstream-server
-  import:           shared-properties
+  if flag(hstream_enable_asan)
+    import: shared-properties, link-asan
+
+  if !flag(hstream_enable_asan)
+    import: shared-properties
+
   main-is:          app/server.hs
   build-depends:
     , async
@@ -227,6 +251,9 @@ executable hstream-server
 
   if flag(hstream_use_grpc_haskell)
     cpp-options: -DHStreamUseGrpcHaskell
+
+  if flag(hstream_enable_asan)
+    cpp-options: -DHSTREAM_ENABLE_ASAN
 
   default-language: Haskell2010
   ghc-options:

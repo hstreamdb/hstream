@@ -61,9 +61,9 @@ data BoundTableRef = BoundTableRefSimple   Text
 
 instance HasName BoundTableRef where
   getName = \case
-    BoundTableRefSimple   name -> T.unpack name
-    BoundTableRefSubquery name _ -> T.unpack name
-    BoundTableRefWindowed name _ _ -> T.unpack name
+    BoundTableRefSimple   name           -> T.unpack name
+    BoundTableRefSubquery name _         -> T.unpack name
+    BoundTableRefWindowed name _ _       -> T.unpack name
     BoundTableRefJoin     name _ _ _ _ _ -> T.unpack name
 
 -- | Scan for the first time window in a tableref. It is then

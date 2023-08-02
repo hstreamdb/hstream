@@ -39,7 +39,7 @@ package table-layout
   tests: false
 
 package hs-grpc-server
-  flags: +UseProtoSuite
+  flags: +hsgrpc_use_protosuite
   tests: false
 
 package grpc-haskell
