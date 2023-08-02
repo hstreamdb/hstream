@@ -26,7 +26,6 @@ import qualified HsGrpc.Server                    as HsGrpc
 import           Network.HTTP.Client              (defaultManagerSettings,
                                                    newManager)
 import           System.IO                        (hPutStrLn, stderr)
-import           Text.RawString.QQ                (r)
 import           ZooKeeper                        (withResource,
                                                    zookeeperResInit)
 
@@ -81,6 +80,12 @@ import qualified Network.GRPC.HighLevel           as GRPC
 import qualified Network.GRPC.HighLevel.Client    as GRPC
 import qualified Network.GRPC.HighLevel.Generated as GRPC
 #endif
+
+#ifndef HSTREAM_ENABLE_ASAN
+import           Text.RawString.QQ                (r)
+#endif
+
+-------------------------------------------------------------------------------
 
 main :: IO ()
 main = do
@@ -155,6 +160,7 @@ serve host port
       securityMap listeners listenerSecurityMap
       enableExpStreamV2 = do
   Log.i "************************"
+#ifndef HSTREAM_ENABLE_ASAN
   hPutStrLn stderr $ [r|
    _  _   __ _____ ___ ___  __  __ __
   | || |/' _/_   _| _ \ __|/  \|  V  |
@@ -162,6 +168,9 @@ serve host port
   |_||_||___/ |_| |_|_\___|_||_|_| |_|
 
   |]
+#else
+  hPutStrLn stderr "ONLY FOR DEBUG: Enable ASAN"
+#endif
   Log.i "************************"
 
   let serverOnStarted = do
