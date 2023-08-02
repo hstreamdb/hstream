@@ -28,6 +28,7 @@ executable hstream-slt
     FunctionalDependencies
     LambdaCase
     OverloadedStrings
+    RecordWildCards
 
   build-depends:
     , aeson
@@ -35,6 +36,8 @@ executable hstream-slt
     , bytestring
     , directory
     , hstream
+    , hstream-api-hs
+    , hstream-common
     , hstream-sql
     , megaparsec
     , mtl

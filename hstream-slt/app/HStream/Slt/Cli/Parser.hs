@@ -1,5 +1,6 @@
 module HStream.Slt.Cli.Parser where
 
+import qualified Data.Text           as T
 import           Options.Applicative
 
 data Opts = Opts
@@ -10,7 +11,7 @@ data Opts = Opts
 
 data GlobalOpts = GlobalOpts
   { debug         :: Bool,
-    executorsAddr :: [(ExecutorKind, String)]
+    executorsAddr :: [(ExecutorKind, T.Text)]
   }
   deriving (Show)
 
@@ -69,8 +70,8 @@ pGlobalOpts =
   GlobalOpts
     <$> switch (short 'd' <> long "debug" <> help "Enable debug mode")
     <*> many
-      ( (ExecutorKindHStream,) <$> strOption (long "addr-hstream" <> metavar "ADDRESS" <> help "Set the address for the HStream executor")
-          <|> (ExecutorKindSQLite,) <$> strOption (long "addr-sqlite" <> metavar "ADDRESS" <> help "Set the address for the SQLite executor")
+      ( (\x -> (ExecutorKindHStream, T.pack x)) <$> strOption (long "addr-hstream" <> metavar "ADDRESS" <> help "Set the address for the HStream executor")
+          <|> (\x -> (ExecutorKindSQLite, T.pack x)) <$> strOption (long "addr-sqlite" <> metavar "ADDRESS" <> help "Set the address for the SQLite executor")
       )
 
 parseCmd :: Parser Cmd
