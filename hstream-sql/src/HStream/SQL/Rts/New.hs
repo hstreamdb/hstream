@@ -152,21 +152,21 @@ jsonValueToFlowValue (columnType, v) = case v of
   Aeson.String t   -> case columnType of
     BTypeDate -> case iso8601ParseM (Text.unpack t) of
       Just d  -> FlowDate d
-      Nothing -> throwRuntimeException $ "Invalid date value" <> Text.unpack t
+      Nothing -> throwRuntimeException $ "Invalid date value " <> Text.unpack t
     BTypeTime -> case iso8601ParseM (Text.unpack t) of
       Just d  -> FlowTime d
-      Nothing -> throwRuntimeException $ "Invalid time value" <> Text.unpack t
+      Nothing -> throwRuntimeException $ "Invalid time value " <> Text.unpack t
     BTypeTimestamp -> case iso8601ParseM (Text.unpack t) of
       Just d  -> FlowTimestamp d
-      Nothing -> throwRuntimeException $ "Invalid timestamp value" <> Text.unpack t
+      Nothing -> throwRuntimeException $ "Invalid timestamp value " <> Text.unpack t
     BTypeInterval -> case iso8601ParseM (Text.unpack t) of
       Just d  -> FlowInterval d
-      Nothing -> throwRuntimeException $ "Invalid interval value" <> Text.unpack t
+      Nothing -> throwRuntimeException $ "Invalid interval value " <> Text.unpack t
     _ -> FlowText t -- FIXME
   Aeson.Number n   -> case columnType of
     BTypeFloat   -> FlowFloat (Scientific.toRealFloat n)
     BTypeInteger -> FlowInt (floor n)
-    _            -> throwRuntimeException $ "Invalid number value" <> show n
+    _            -> throwRuntimeException $ "Invalid number value " <> show n
   Aeson.Array arr  ->
     let (BTypeArray elemType) = columnType
      in FlowArray (V.toList $
@@ -176,7 +176,7 @@ jsonValueToFlowValue (columnType, v) = case v of
     [("$binary", Aeson.Object obj')] -> case do
       Aeson.String t <- HsAeson.lookup "base64" obj'
       Base64.base64Decode (CB.toBytes $ textToCBytes t) of
-        Nothing -> throwRuntimeException $ "Invalid $binary value" <> show obj'
+        Nothing -> throwRuntimeException $ "Invalid $binary value " <> show obj'
         Just bs -> FlowByte (CB.fromBytes bs)
     _ -> FlowSubObject (jsonObjectToFlowObject' obj)
   _ -> throwRuntimeException $ "Invalid json value: " <> show v
@@ -223,9 +223,15 @@ extractJsonObjectSchema json =
 jsonObjectToFlowObject :: Schema -> Aeson.Object -> FlowObject
 jsonObjectToFlowObject schema object =
   let list = HsAeson.toList object
-      list' = L.map (\(catalog,(k,v)) ->
-                        (catalog, jsonValueToFlowValue (columnType catalog, v))
-                    ) ((IntMap.elems (schemaColumns schema)) `zip` list)
+      list' = L.map (\(k,v) ->
+                       let catalog = case L.find (\col -> columnName col == HsAeson.toText k)
+                                                 (IntMap.elems $ schemaColumns schema) of
+                                       Just cata -> cata
+                                       Nothing   -> throwRuntimeException $ -- FIXME: Just omit it instead of throwing exception?
+                                         "Invalid key encountered: " <> show k <>
+                                         ". Schema=" <> show schema
+                        in (catalog, jsonValueToFlowValue (columnType catalog, v))
+                    ) list
    in HM.fromList list'
 
 jsonObjectToFlowObject' :: Aeson.Object -> FlowObject
@@ -248,9 +254,8 @@ infixl 5 <++>
       tups2' = L.map (\(cata, v) -> (cata { columnId = columnId cata + maxId1 + 1 }, v)) tups2
    in HM.fromList (tups1 <> tups2')
 
---------------------------------------------------------------------------------
-winStartText :: Text
-winStartText = "window_start"
-
-winEndText :: Text
-winEndText = "window_end"
+setFlowObjectStreamId :: Int -> FlowObject -> FlowObject
+setFlowObjectStreamId streamId hm =
+  let tups = HM.toList hm
+      tups' = L.map (\(cata, v) -> (cata { columnStreamId = streamId }, v)) tups
+   in HM.fromList tups'

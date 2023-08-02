@@ -286,7 +286,7 @@ relationExprToGraph relation builder = case relation of
     s' <- HS.stream sourceConfig builder
     return (EStream1 s', [schemaOwner schema], [], [])
   LoopJoinOn schema r1 r2 expr typ t -> do
-    let joiner = \o1 o2 -> o1 <++> o2
+    let joiner = \o1 o2 -> setFlowObjectStreamId 0 (o1 <++> o2)
         joinCond = \record1 record2 ->
           case scalarExprToFun expr (recordValue record1 `HM.union` recordValue record2) of
             Left e  -> False -- FIXME: log error message
@@ -342,7 +342,7 @@ relationExprToGraph relation builder = case relation of
     let aggregateR = \acc Record{..} ->
           case aggregateF acc recordValue of
             Left (e,v) -> v -- FIXME: log error message
-            Right v    -> v
+            Right v    -> setFlowObjectStreamId 0 v
         aggregateMerge' = \k o1 o2 ->
           case aggregateMergeF k o1 o2 of
             Left (e,v) -> v

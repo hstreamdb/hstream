@@ -45,7 +45,7 @@ scalarExprToFun :: ScalarExpr -> FlowObject -> Either ERROR_TYPE FlowValue
 scalarExprToFun scalar o = case scalar of
   ColumnRef si ci ->
     case getField (si,ci) o of
-      Nothing    -> Left . ERR $ "Can not get column: " <> T.pack (show si) <> "." <> T.pack (show ci)
+      Nothing    -> Left . ERR $ "Can not get column: " <> T.pack (show si) <> "." <> T.pack (show ci) <> "in object: " <> T.pack (show o)
       Just (_,v) -> Right v
   Literal constant -> Right $ constantToFlowValue constant
   CallUnary op scalar -> do
