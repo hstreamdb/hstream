@@ -4,7 +4,7 @@
 {-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module HStream.RunSQLSpec (spec) where
+module HStream.RunSQLNewSpec (spec) where
 
 import           Control.Concurrent
 import qualified Data.Aeson           as Aeson
@@ -18,12 +18,12 @@ import           HStream.Store.Logger (pattern C_DBG_ERROR,
                                        setLogDeviceDbgLevel)
 import           HStream.Utils        hiding (newRandomText)
 
-#ifdef HStreamEnableSchema
+#ifndef HStreamEnableSchema
 spec :: Spec
 spec = return ()
 #else
 spec :: Spec
-spec = describe "HStream.RunSQLSpec" $ do
+spec = describe "HStream.RunSQLNewSpec" $ do
   runIO setupFatalSignalHandler
   runIO $ setLogDeviceDbgLevel C_DBG_ERROR
 
@@ -38,7 +38,7 @@ baseSpecAround = provideRunTest setup clean
   where
     setup api = do
       source <- newRandomText 20
-      runCreateStreamSql api $ "CREATE STREAM " <> source <> " WITH (REPLICATE = 3);"
+      runCreateStreamSql api $ "CREATE STREAM " <> source <> "(a INTEGER, b INTEGER);"
       return source
     clean api source =
       runDropSql api $ "DROP STREAM " <> source <> " IF EXISTS;"
@@ -53,14 +53,14 @@ baseSpec = aroundAll provideHstreamApi $ aroundWith baseSpecAround $
       -- starts successfully before inserting data
       threadDelay 10000000
       putStrLn $ "Insert into " <> show source <> " ..."
-      runInsertSql api ("INSERT INTO " <> source <> " (temperature, humidity) VALUES (22, 80);")
+      runInsertSql api ("INSERT INTO " <> source <> " (a, b) VALUES (22, 80);")
       threadDelay 1000000
-      runInsertSql api ("INSERT INTO " <> source <> " (temperature, humidity) VALUES (15, 10);")
+      runInsertSql api ("INSERT INTO " <> source <> " (a, b) VALUES (15, 10);")
 
     -- TODO
     runFetchSql ("SELECT * FROM " <> source <> " EMIT CHANGES;")
-      `shouldReturn` [ mkStruct [("temperature", mkIntNumber 22), ("humidity", mkIntNumber 80)]
-                     , mkStruct [("temperature", mkIntNumber 15), ("humidity", mkIntNumber 10)]
+      `shouldReturn` [ mkStruct [("a", mkIntNumber 22), ("b", mkIntNumber 80)]
+                     , mkStruct [("a", mkIntNumber 15), ("b", mkIntNumber 10)]
                      ]
 
   it "GROUP BY without timewindow" $ \(api, source) -> do
@@ -101,7 +101,7 @@ viewSpecAround = provideRunTest setup clean
       source1  <- ("runsql_view_source1_" <>) <$> newRandomText 20
       source2  <- ("runsql_view_source2_" <>) <$> newRandomText 20
       viewName <- ("runsql_view_view_"   <>)  <$> newRandomText 20
-      runCreateStreamSql     api $ "CREATE STREAM " <> source1 <> ";"
+      runCreateStreamSql     api $ "CREATE STREAM " <> source1 <> "(a INTEGER);"
       threadDelay 1000000
       qName1 <- runCreateWithSelectSql' api $ "CREATE STREAM " <> source2
                                 <> " AS SELECT a, 1 AS b FROM " <> source1

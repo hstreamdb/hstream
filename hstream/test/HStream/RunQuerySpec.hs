@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                 #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE PatternSynonyms     #-}
@@ -87,7 +88,12 @@ spec = aroundAll provideHstreamApi $
     runDropSql api $ "DROP STREAM " <> source1 <> " IF EXISTS;"
 
   it "create streams" $ \api ->
-    runCreateStreamSql api $ "CREATE STREAM " <> source1 <> " WITH (REPLICATE = 3);"
+    runCreateStreamSql api $
+#ifdef HStreamEnableSchema
+      "CREATE STREAM " <> source1 <> "(a INTEGER, b INTEGER);"
+#else
+      "CREATE STREAM " <> source1 <> " WITH (REPLICATE = 3);"
+#endif
 
   it "run a query" $ \api ->
     runCreateWithSelectSql api sql
