@@ -147,12 +147,12 @@ data ReadStreamArgs = ReadStreamArgs
 readStreamRequestParser :: O.Parser ReadStreamArgs
 readStreamRequestParser = ReadStreamArgs
   <$> O.strArgument ( O.metavar "STREAM_NAME" <> O.help "The stream you want to read" )
-  <*> O.optional (shardOffsetToPbStreamOffset <$> O.option offsetParser ( O.metavar "[EARLIEST|LATEST|TIMESTAMP]"
+  <*> O.optional (shardOffsetToPbStreamOffset <$> O.option offsetReader ( O.metavar "[EARLIEST|LATEST|TIMESTAMP]"
                                                                        <> O.long "from"
                                                                        <> O.help ( "Read from offset, e.g. earliest, latest, "
                                                                                 <> "1684486287810")
                                                                         ))
-  <*> O.optional (shardOffsetToPbStreamOffset <$> O.option offsetParser ( O.metavar "[EARLIEST|LATEST|TIMESTAMP]"
+  <*> O.optional (shardOffsetToPbStreamOffset <$> O.option offsetReader ( O.metavar "[EARLIEST|LATEST|TIMESTAMP]"
                                                                        <> O.long "until"
                                                                        <> O.help ( "Read until offset, e.g. earliest, latest, "
                                                                                 <> "1684486287810")
@@ -173,13 +173,13 @@ data ReadShardArgs = ReadShardArgs
 readShardRequestParser :: O.Parser ReadShardArgs
 readShardRequestParser = ReadShardArgs
   <$> O.argument O.auto ( O.metavar "SHARD_ID" <> O.help "The shard you want to read" )
-  <*> O.optional (shardOffsetToPb <$> O.option offsetParser ( O.metavar "[EARLIEST|LATEST|RECORDID|TIMESTAMP]"
+  <*> O.optional (shardOffsetToPb <$> O.option offsetReader ( O.metavar "[EARLIEST|LATEST|RECORDID|TIMESTAMP]"
                                                            <> O.long "from"
                                                            <> O.help ( "Read from offset, e.g. earliest, latest, "
                                                                     <> "1789764666323849-4294967385-0, "
                                                                     <> "1684486287810")
                                                             ))
-  <*> O.optional (shardOffsetToPb <$> O.option offsetParser ( O.metavar "[EARLIEST|LATEST|RECORDID|TIMESTAMP]"
+  <*> O.optional (shardOffsetToPb <$> O.option offsetReader ( O.metavar "[EARLIEST|LATEST|RECORDID|TIMESTAMP]"
                                                            <> O.long "until"
                                                            <> O.help ( "Read until offset, e.g. earliest, latest, "
                                                                     <> "1789764666323849-4294967385-0, "
@@ -197,8 +197,8 @@ data ShardOffset = EARLIEST
                  | Timestamp Int64
   deriving (Show)
 
-offsetParser :: ReadM ShardOffset
-offsetParser = eitherReader (parseShardOffset . T.pack)
+offsetReader :: ReadM ShardOffset
+offsetReader = eitherReader (parseShardOffset . T.pack)
 
 parseShardOffset :: Text -> Either String ShardOffset
 parseShardOffset t = case AP.parseOnly parseOffset t of
