@@ -15,11 +15,13 @@ import qualified Control.Concurrent.Async         as Async
 import           Control.Concurrent.STM           (TVar, atomically, retry,
                                                    writeTVar)
 import           Control.Exception                (bracket, handle)
-import           Control.Monad                    (forM_, join, void, when)
+import           Control.Monad                    (forM, forM_, join, void,
+                                                   when)
 import           Data.ByteString                  (ByteString)
 import qualified Data.ByteString.Short            as BS
 import qualified Data.Map                         as Map
 import           Data.Maybe                       (isJust)
+import qualified Data.Set                         as Set
 import qualified Data.Text                        as T
 import           Data.Text.Encoding               (encodeUtf8)
 import           Data.Word                        (Word16)
@@ -118,13 +120,13 @@ app config@ServerOpts{..} = do
   where
     action h db_m = do
       let serverNode =
-            I.ServerNode { serverNodeId = _serverID
-                         , serverNodePort = fromIntegral _serverPort
-                         , serverNodeAdvertisedAddress = encodeUtf8 . T.pack $ _serverAddress
-                         , serverNodeGossipPort = fromIntegral _serverInternalPort
-                         , serverNodeGossipAddress = encodeUtf8 . T.pack $ _serverGossipAddress
-                         , serverNodeAdvertisedListeners = advertisedListenersToPB _serverAdvertisedListeners
-                         }
+            I.ServerNode{ serverNodeId = _serverID
+                        , serverNodePort = fromIntegral _serverPort
+                        , serverNodeAdvertisedAddress = encodeUtf8 . T.pack $ _serverAddress
+                        , serverNodeGossipPort = fromIntegral _serverInternalPort
+                        , serverNodeGossipAddress = encodeUtf8 . T.pack $ _serverGossipAddress
+                        , serverNodeAdvertisedListeners = advertisedListenersToPB _serverAdvertisedListeners
+                        }
 
       scMVar <- newEmptyMVar
       gossipContext <- initGossipContext defaultGossipOpts mempty (Just $ Cluster.nodeChangeEventHandler scMVar) serverNode _seedNodes
@@ -134,35 +136,35 @@ app config@ServerOpts{..} = do
 
       void . forkIO $ updateHashRing gossipContext (loadBalanceHashRing serverContext)
 
-      Async.withAsync
-        (serve _serverHost _serverPort
-               serverContext
-               _tlsConfig
-               _securityProtocolMap
-               _serverAdvertisedListeners
-               _listenersSecurityProtocolMap
-               (ExperimentalStreamV2 `elem` experimentalFeatures)
-        ) $ \a -> do
-          a1 <- startGossip _serverHost gossipContext
-          Async.link2Only (const True) a a1
-          waitGossipBoot gossipContext
-          Async.wait a
+      grpcOpts <- defGrpcOpts _serverHost _serverPort _tlsConfig
+      let enableStreamV2 = ExperimentalStreamV2 `elem` experimentalFeatures
+      Async.withAsync (serve serverContext grpcOpts enableStreamV2) $ \a -> do
+        -- start gossip
+        a1 <- startGossip _serverHost gossipContext
+        Async.link2Only (const True) a a1
+        -- start extra listeners
+        as <- serveListeners serverContext
+                             grpcOpts
+                             _securityProtocolMap
+                             _serverAdvertisedListeners
+                             _listenersSecurityProtocolMap
+                             enableStreamV2
+        forM_ as (Async.link2Only (const True) a)
+        -- wati the default server
+        waitGossipBoot gossipContext
+        Async.wait a
 
-serve :: ByteString
-      -> Word16
-      -> ServerContext
-      -> Maybe TlsConfig
-      -- ^ tls config for default port
-      -> SecurityProtocolMap
-      -> AdvertisedListeners
-      -> ListenersSecurityProtocolMap
-      -> Bool
-      -- ^ Experimental features
-      -> IO ()
-serve host port
-      sc@ServerContext{..} tlsConfig
-      securityMap listeners listenerSecurityMap
-      enableExpStreamV2 = do
+serve
+  :: ServerContext
+#ifdef HStreamUseGrpcHaskell
+  -> GRPC.ServiceOptions
+#else
+  -> HsGrpc.ServerOptions
+#endif
+  -> Bool
+  -- ^ Experimental features
+  -> IO ()
+serve sc@ServerContext{..} rpcOpts enableExpStreamV2 = do
   Log.i "************************"
 #ifndef HSTREAM_ENABLE_ASAN
   hPutStrLn stderr $ [r|
@@ -178,7 +180,13 @@ serve host port
   Log.i "************************"
 
   let serverOnStarted = do
-        Log.info $ "Server is started on port " <> Log.build port <> ", waiting for cluster to get ready"
+        Log.info $ "Server is started on port "
+#ifdef HStreamUseGrpcHaskell
+                <> Log.build (GRPC.serverPort rpcOpts)
+#else
+                <> Log.build (HsGrpc.serverPort rpcOpts)
+#endif
+                <> ", waiting for cluster to get ready"
         void $ forkIO $ do
           void (readMVar (clusterReady gossipContext)) >> Log.info "Cluster is ready!"
           readMVar (clusterInited gossipContext) >>= \case
@@ -194,86 +202,110 @@ serve host port
           Log.info "recovered tasks"
 
 #ifdef HStreamUseGrpcHaskell
-  let sslOpts = initializeTlsConfig <$> tlsConfig
-#else
-  sslOpts <- mapM readTlsPemFile $ tlsConfig
-#endif
-
-  let grpcOpts =
-#ifdef HStreamUseGrpcHaskell
-        GRPC.defaultServiceOptions
-        { GRPC.serverHost = GRPC.Host host
-        , GRPC.serverPort = GRPC.Port $ fromIntegral port
-        , GRPC.serverOnStarted = Just serverOnStarted
-        , GRPC.sslConfig = sslOpts
-        }
-#else
-        HsGrpc.defaultServerOpts
-          { HsGrpc.serverHost = BS.toShort host
-          , HsGrpc.serverPort = fromIntegral port
-          , HsGrpc.serverParallelism = 0
-          , HsGrpc.serverSslOptions = sslOpts
-          , HsGrpc.serverOnStarted = Just serverOnStarted
-          , HsGrpc.serverInternalChannelSize = 64
-          }
-#endif
-  forM_ (Map.toList listeners) $ \(key, vs) ->
-    forM_ vs $ \I.Listener{..} -> do
-      forkIO $ do
-        let listenerOnStarted = Log.info $ "Extra listener is started on port "
-                                        <> Log.build listenerPort
-        let sc' = sc{scAdvertisedListenersKey = Just key}
-#ifdef HStreamUseGrpcHaskell
-        let newSslOpts = initializeTlsConfig <$> join ((`Map.lookup` securityMap) =<< Map.lookup key listenerSecurityMap )
-        let grpcOpts' = grpcOpts { GRPC.serverPort = GRPC.Port $ fromIntegral listenerPort
-                                 , GRPC.serverOnStarted = Just listenerOnStarted
-                                 , GRPC.sslConfig = newSslOpts
-                                 }
-        api <- handlers sc'
-        Log.info $ "Starting"
-                <> (if isJust (GRPC.sslConfig grpcOpts') then " secure " else " ")
-                <> "advertised listener: "
-                <> Log.build key <> ":"
-                <> Log.build listenerAddress <> ":"
-                <> Log.build listenerPort
-        API.hstreamApiServer api grpcOpts'
-#else
-        newSslOpts <- mapM readTlsPemFile $ join ((`Map.lookup` securityMap) =<< Map.lookup key listenerSecurityMap )
-        let grpcOpts' = grpcOpts { HsGrpc.serverPort = fromIntegral listenerPort
-                                 , HsGrpc.serverOnStarted = Just listenerOnStarted
-                                 , HsGrpc.serverSslOptions = newSslOpts
-                                 }
-        Log.info $ "Starting"
-                <> (if isJust (HsGrpc.serverSslOptions grpcOpts') then " secure " else " ")
-                <> "advertised listener: "
-                <> Log.build key <> ":"
-                <> Log.build listenerAddress <> ":"
-                <> Log.build listenerPort
-        if enableExpStreamV2
-           then do Log.info "Enable experimental feature: stream-v2"
-                   slotConfig <- Exp.doStreamV2Init sc'
-                   HsGrpc.runServer grpcOpts' (Exp.streamV2Handlers sc' slotConfig)
-           else HsGrpc.runServer grpcOpts' (HsGrpcHandler.handlers sc')
-#endif
-
-#ifdef HStreamUseGrpcHaskell
+  let rpcOpts' = rpcOpts{ GRPC.serverOnStarted = Just serverOnStarted }
   Log.info $ "Starting"
-          <> if isJust (GRPC.sslConfig grpcOpts) then " secure " else " "
+          <> if isJust (GRPC.sslConfig rpcOpts') then " secure " else " insecure "
           <> "server with grpc-haskell..."
   api <- handlers sc
-  API.hstreamApiServer api grpcOpts
+  API.hstreamApiServer api rpcOpts'
 #else
+  let rpcOpts' = rpcOpts{ HsGrpc.serverOnStarted = Just serverOnStarted}
   Log.info $ "Starting"
-        <> if isJust (HsGrpc.serverSslOptions grpcOpts) then " secure " else " "
+        <> if isJust (HsGrpc.serverSslOptions rpcOpts') then " secure " else " insecure "
         <> "server with hs-grpc-server..."
   if enableExpStreamV2
      then do Log.info "Enable experimental feature: stream-v2"
              slotConfig <- Exp.doStreamV2Init sc
-             HsGrpc.runServer grpcOpts (Exp.streamV2Handlers sc slotConfig)
-     else HsGrpc.runServer grpcOpts (HsGrpcHandler.handlers sc)
+             HsGrpc.runServer rpcOpts' (Exp.streamV2Handlers sc slotConfig)
+     else HsGrpc.runServer rpcOpts' (HsGrpcHandler.handlers sc)
+#endif
+
+serveListeners
+  :: ServerContext
+#ifdef HStreamUseGrpcHaskell
+  -> GRPC.ServiceOptions
+#else
+  -> HsGrpc.ServerOptions
+#endif
+  -> SecurityProtocolMap
+  -> AdvertisedListeners
+  -> ListenersSecurityProtocolMap
+  -> Bool
+  -- ^ Experimental features
+  -> IO ([Async.Async ()])
+serveListeners sc grpcOpts
+               securityMap listeners listenerSecurityMap
+               enableExpStreamV2 = do
+  let listeners' = [(k, v) | (k, vs) <- Map.toList listeners, v <- Set.toList vs]
+  forM listeners' $ \(key, I.Listener{..}) -> Async.async $ do
+    let listenerOnStarted = Log.info $ "Extra listener is started on port "
+                                    <> Log.build listenerPort
+    let sc' = sc{scAdvertisedListenersKey = Just key}
+#ifdef HStreamUseGrpcHaskell
+    let newSslOpts = initializeTlsConfig <$> join ((`Map.lookup` securityMap) =<< Map.lookup key listenerSecurityMap )
+    let grpcOpts' = grpcOpts{ GRPC.serverPort = GRPC.Port $ fromIntegral listenerPort
+                            , GRPC.serverOnStarted = Just listenerOnStarted
+                            , GRPC.sslConfig = newSslOpts
+                            }
+    api <- handlers sc'
+    Log.info $ "Starting"
+            <> (if isJust (GRPC.sslConfig grpcOpts') then " secure " else " insecure ")
+            <> "advertised listener: "
+            <> Log.build key <> ":"
+            <> Log.build listenerAddress <> ":"
+            <> Log.build listenerPort
+    API.hstreamApiServer api grpcOpts'
+#else
+    newSslOpts <- mapM readTlsPemFile $ join ((`Map.lookup` securityMap) =<< Map.lookup key listenerSecurityMap )
+    let grpcOpts' = grpcOpts{ HsGrpc.serverPort = fromIntegral listenerPort
+                            , HsGrpc.serverOnStarted = Just listenerOnStarted
+                            , HsGrpc.serverSslOptions = newSslOpts
+                            }
+    Log.info $ "Starting"
+            <> (if isJust (HsGrpc.serverSslOptions grpcOpts') then " secure " else " insecure ")
+            <> "advertised listener: "
+            <> Log.build key <> ":"
+            <> Log.build listenerAddress <> ":"
+            <> Log.build listenerPort
+    if enableExpStreamV2
+       then do Log.info "Enable experimental feature: stream-v2"
+               slotConfig <- Exp.doStreamV2Init sc'
+               HsGrpc.runServer grpcOpts' (Exp.streamV2Handlers sc' slotConfig)
+       else HsGrpc.runServer grpcOpts' (HsGrpcHandler.handlers sc')
 #endif
 
 -------------------------------------------------------------------------------
+
+-- default grpc options
+defGrpcOpts
+  :: ByteString
+  -> Word16
+  -> Maybe TlsConfig
+#ifdef HStreamUseGrpcHaskell
+  -> IO GRPC.ServiceOptions
+#else
+  -> IO HsGrpc.ServerOptions
+#endif
+defGrpcOpts host port tlsConfig = do
+#ifdef HStreamUseGrpcHaskell
+  let sslOpts = initializeTlsConfig <$> tlsConfig
+  pure $
+    GRPC.defaultServiceOptions
+      { GRPC.serverHost = GRPC.Host host
+      , GRPC.serverPort = GRPC.Port $ fromIntegral port
+      , GRPC.sslConfig = sslOpts
+      }
+#else
+  sslOpts <- mapM readTlsPemFile $ tlsConfig
+  pure $
+    HsGrpc.defaultServerOpts
+      { HsGrpc.serverHost = BS.toShort host
+      , HsGrpc.serverPort = fromIntegral port
+      , HsGrpc.serverParallelism = 0
+      , HsGrpc.serverSslOptions = sslOpts
+      , HsGrpc.serverInternalChannelSize = 64
+      }
+#endif
 
 showVersion :: IO ()
 showVersion = do
