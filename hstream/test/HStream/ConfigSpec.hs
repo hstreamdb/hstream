@@ -432,17 +432,21 @@ updateServerOptsWithCliOpts CliOptions{..} x@ServerOpts{..} = x {
   , _ldLogLevel = fromMaybe _ldLogLevel cliLdLogLevel
   , _ckpRepFactor = fromMaybe _ckpRepFactor cliCkpRepFactor
   , _ioOptions = cliIoOptions
-  , _securityProtocolMap = Map.insert "tls" tlsConfig _securityProtocolMap}
+  , _securityProtocolMap = Map.insert "tls" tlsConfig' _securityProtocolMap}
   where
     port = fromMaybe _serverPort cliServerPort
     updateSeedsPort = second $ fromMaybe (fromIntegral port)
     parseCliSeeds = either (const Nothing) (Just . (updateSeedsPort <$>)) . parseHostPorts
 
-    tlsConfig  = case (cliEnableTls || isJust _tlsConfig, cliTlsKeyPath <|> keyPath <$> _tlsConfig,  cliTlsCertPath <|> certPath <$> _tlsConfig ) of
+    tlsConfig' = do key <- cliTlsKeyPath  <|> (keyPath <$> _tlsConfig)
+                    cert <- cliTlsCertPath <|> (certPath <$> _tlsConfig)
+                    pure $ TlsConfig key cert (cliTlsCaPath <|> (caPath =<< _tlsConfig))
+    tlsConfig =
+      case (cliEnableTls || isJust _tlsConfig, cliTlsKeyPath <|> keyPath <$> _tlsConfig,  cliTlsCertPath <|> certPath <$> _tlsConfig ) of
         (False, _, _) -> Nothing
-        (_, Nothing, _) -> errorWithoutStackTrace "enable-tls=true, but tls-key-path is empty"
-        (_, _, Nothing) -> errorWithoutStackTrace "enable-tls=true, but tls-cert-path is empty"
-        (_, Just kp, Just cp) -> Just $ TlsConfig kp cp (cliTlsCaPath <|> (caPath =<< _tlsConfig) )
+        (True, Nothing, _) -> errorWithoutStackTrace "enable-tls=true, but tls-key-path is empty"
+        (True, _, Nothing) -> errorWithoutStackTrace "enable-tls=true, but tls-cert-path is empty"
+        (True, Just kp, Just cp) -> Just $ TlsConfig kp cp (cliTlsCaPath <|> (caPath =<< _tlsConfig) )
 
     (ssi,ski) = foldr
         (\img (ss, sk) -> do

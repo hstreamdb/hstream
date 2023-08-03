@@ -19,6 +19,7 @@ import           Control.Monad                    (forM_, join, void, when)
 import           Data.ByteString                  (ByteString)
 import qualified Data.ByteString.Short            as BS
 import qualified Data.Map                         as Map
+import           Data.Maybe                       (isJust)
 import qualified Data.Text                        as T
 import           Data.Text.Encoding               (encodeUtf8)
 import           Data.Word                        (Word16)
@@ -49,7 +50,7 @@ import           HStream.Server.Config            (AdvertisedListeners,
                                                    MetaStoreAddr (..),
                                                    SecurityProtocolMap,
                                                    ServerCli (..),
-                                                   ServerOpts (..),
+                                                   ServerOpts (..), TlsConfig,
                                                    advertisedListenersToPB,
                                                    getConfig, runServerCli)
 import qualified HStream.Server.Core.Cluster      as Cluster
@@ -136,6 +137,7 @@ app config@ServerOpts{..} = do
       Async.withAsync
         (serve _serverHost _serverPort
                serverContext
+               _tlsConfig
                _securityProtocolMap
                _serverAdvertisedListeners
                _listenersSecurityProtocolMap
@@ -149,6 +151,8 @@ app config@ServerOpts{..} = do
 serve :: ByteString
       -> Word16
       -> ServerContext
+      -> Maybe TlsConfig
+      -- ^ tls config for default port
       -> SecurityProtocolMap
       -> AdvertisedListeners
       -> ListenersSecurityProtocolMap
@@ -156,7 +160,7 @@ serve :: ByteString
       -- ^ Experimental features
       -> IO ()
 serve host port
-      sc@ServerContext{..}
+      sc@ServerContext{..} tlsConfig
       securityMap listeners listenerSecurityMap
       enableExpStreamV2 = do
   Log.i "************************"
@@ -190,9 +194,9 @@ serve host port
           Log.info "recovered tasks"
 
 #ifdef HStreamUseGrpcHaskell
-  let sslOpts = initializeTlsConfig <$> join (Map.lookup "tls" securityMap)
+  let sslOpts = initializeTlsConfig <$> tlsConfig
 #else
-  sslOpts <- mapM readTlsPemFile $ join (Map.lookup "tls" securityMap)
+  sslOpts <- mapM readTlsPemFile $ tlsConfig
 #endif
 
   let grpcOpts =
@@ -215,10 +219,6 @@ serve host port
 #endif
   forM_ (Map.toList listeners) $ \(key, vs) ->
     forM_ vs $ \I.Listener{..} -> do
-      Log.debug $ "Starting advertised listener, "
-               <> "key: " <> Log.build key <> ", "
-               <> "address: " <> Log.build listenerAddress <> ", "
-               <> "port: " <> Log.build listenerPort
       forkIO $ do
         let listenerOnStarted = Log.info $ "Extra listener is started on port "
                                         <> Log.build listenerPort
@@ -230,6 +230,12 @@ serve host port
                                  , GRPC.sslConfig = newSslOpts
                                  }
         api <- handlers sc'
+        Log.info $ "Starting"
+                <> (if isJust (GRPC.sslConfig grpcOpts') then " secure " else " ")
+                <> "advertised listener: "
+                <> Log.build key <> ":"
+                <> Log.build listenerAddress <> ":"
+                <> Log.build listenerPort
         API.hstreamApiServer api grpcOpts'
 #else
         newSslOpts <- mapM readTlsPemFile $ join ((`Map.lookup` securityMap) =<< Map.lookup key listenerSecurityMap )
@@ -237,6 +243,12 @@ serve host port
                                  , HsGrpc.serverOnStarted = Just listenerOnStarted
                                  , HsGrpc.serverSslOptions = newSslOpts
                                  }
+        Log.info $ "Starting"
+                <> (if isJust (HsGrpc.serverSslOptions grpcOpts') then " secure " else " ")
+                <> "advertised listener: "
+                <> Log.build key <> ":"
+                <> Log.build listenerAddress <> ":"
+                <> Log.build listenerPort
         if enableExpStreamV2
            then do Log.info "Enable experimental feature: stream-v2"
                    slotConfig <- Exp.doStreamV2Init sc'
@@ -245,11 +257,15 @@ serve host port
 #endif
 
 #ifdef HStreamUseGrpcHaskell
-  Log.info "Starting server with grpc-haskell..."
+  Log.info $ "Starting"
+          <> if isJust (GRPC.sslConfig grpcOpts) then " secure " else " "
+          <> "server with grpc-haskell..."
   api <- handlers sc
   API.hstreamApiServer api grpcOpts
 #else
-  Log.info "Starting server with hs-grpc-server..."
+  Log.info $ "Starting"
+        <> if isJust (HsGrpc.serverSslOptions grpcOpts) then " secure " else " "
+        <> "server with hs-grpc-server..."
   if enableExpStreamV2
      then do Log.info "Enable experimental feature: stream-v2"
              slotConfig <- Exp.doStreamV2Init sc
