@@ -15,6 +15,8 @@ module Main where
 import           Control.Concurrent               (threadDelay)
 import           Control.Monad                    (when)
 import           Data.Aeson                       as Aeson
+import qualified Data.ByteString                  as BS
+import qualified Data.ByteString.Lazy             as BSL
 import qualified Data.Char                        as Char
 import qualified Data.List                        as L
 import           Data.Maybe                       (mapMaybe, maybeToList)
@@ -26,6 +28,7 @@ import           Network.GRPC.HighLevel.Generated (ClientError (..),
                                                    withGRPCClient)
 import qualified Options.Applicative              as O
 import           Proto3.Suite                     (def)
+import qualified Proto3.Suite                     as PB
 import           System.Exit                      (exitFailure)
 import           System.Timeout                   (timeout)
 import           Text.RawString.QQ                (r)
@@ -78,6 +81,7 @@ import           HStream.Utils                    (ResourceType (..),
                                                    fillWithJsonString',
                                                    formatResult, getServerResp,
                                                    handleGRPCIOError,
+                                                   jsonObjectToStruct,
                                                    newRandomText,
                                                    pattern EnumPB)
 import qualified HStream.Utils.Aeson              as AesonComp
@@ -204,14 +208,20 @@ hstreamStream connOpts@RefinedCliConnOpts{..} cmd = do
       ctx <- initCliContext connOpts
       executeWithLookupResource_ ctx (Resource ResShardReader (API.readStreamRequestReaderId req)) (readStream req)
     StreamCmdAppend AppendArgs{..} -> do
-          ctx <- initCliContext connOpts
-          shards <- fmap API.listShardsResponseShards . getServerResp =<< simpleExecute clientConfig (listShards appendStream)
-          case calculateShardId appendRecordKey (V.toList shards) of
-            Just sid -> do
-              executeWithLookupResource_ ctx (Resource ResShard (T.pack $ show sid))
-                (insertIntoStream' appendStream sid isHRecord (V.fromList appendRecord) appendCompressionType appendRecordKey)
-            Nothing  -> errorWithoutStackTrace $ "Failed to calculate shardId with stream: "
-                                               <> show appendStream <> ", parition key: " <> show appendRecordKey
+      ctx <- initCliContext connOpts
+      shards <- fmap API.listShardsResponseShards . getServerResp =<< simpleExecute clientConfig (listShards appendStream)
+      case calculateShardId appendRecordKey (V.toList shards) of
+        Just sid -> do
+          let payload = if isHRecord then map toHRecord appendRecord else appendRecord
+          executeWithLookupResource_ ctx (Resource ResShard (T.pack $ show sid))
+            (insertIntoStream' appendStream sid isHRecord (V.fromList payload) appendCompressionType appendRecordKey)
+        Nothing  -> errorWithoutStackTrace $ "Failed to calculate shardId with stream: "
+                                           <> show appendStream <> ", parition key: " <> show appendRecordKey
+ where
+   toHRecord payload = case Aeson.eitherDecode . BS.fromStrict $ payload of
+     Left e  -> errorWithoutStackTrace $ "invalied HRecord: " <> show e
+     Right p -> BSL.toStrict . PB.toLazyByteString . jsonObjectToStruct $ p
+
 
 hstreamSubscription :: RefinedCliConnOpts -> SubscriptionCommand -> IO ()
 hstreamSubscription connOpts@RefinedCliConnOpts{..} = \case
