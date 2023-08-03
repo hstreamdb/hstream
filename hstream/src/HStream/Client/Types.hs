@@ -2,22 +2,18 @@
 
 module HStream.Client.Types where
 
+import           Control.Applicative           ((<|>))
 import           Control.Concurrent            (MVar)
+import qualified Data.Attoparsec.Text          as AP
 import           Data.ByteString               (ByteString)
 import qualified Data.ByteString               as BS
+import           Data.Functor                  (($>))
+import           Data.Int                      (Int64)
 import           Data.Maybe                    (isNothing)
 import           Data.Text                     (Text)
 import qualified Data.Text                     as T
 import qualified Data.Text.Encoding            as T
 import           Data.Word                     (Word32, Word64)
-import           Network.GRPC.HighLevel.Client (ClientConfig (..),
-                                                ClientSSLConfig (..),
-                                                ClientSSLKeyCertPair (..))
-import           Network.URI
-import qualified Options.Applicative           as O
-import qualified Text.Read                     as Read
-
-import           Data.Int                      (Int64)
 import           HStream.Common.CliParsers     (streamParser,
                                                 subscriptionParser)
 import qualified HStream.Server.HStreamApi     as API
@@ -25,8 +21,15 @@ import           HStream.Server.Types          (ServerID)
 import           HStream.Utils                 (ResourceType, SocketAddr (..),
                                                 clientDefaultKey,
                                                 mkGRPCClientConfWithSSL)
+import           Network.GRPC.HighLevel.Client (ClientConfig (..),
+                                                ClientSSLConfig (..),
+                                                ClientSSLKeyCertPair (..))
+import           Network.URI
+import           Options.Applicative           (eitherReader)
+import qualified Options.Applicative           as O
 import           Options.Applicative.Types
 import           Proto3.Suite                  (Enumerated (Enumerated))
+import qualified Text.Read                     as Read
 
 data CliCmd = CliCmd HStreamCommand | GetVersionCmd
 
@@ -144,16 +147,16 @@ data ReadStreamArgs = ReadStreamArgs
 readStreamRequestParser :: O.Parser ReadStreamArgs
 readStreamRequestParser = ReadStreamArgs
   <$> O.strArgument ( O.metavar "STREAM_NAME" <> O.help "The stream you want to read" )
-  <*> O.optional (shardOffsetToPbStreamOffset <$> O.option O.auto ( O.metavar "FROM_OFFSET"
-                                                                 <> O.long "from"
-                                                                 <> O.help ( "Read from offset, e.g. earliest, latest, "
-                                                                          <> "timestamp:1684486287810")
-                                                                  ))
-  <*> O.optional (shardOffsetToPbStreamOffset <$> O.option O.auto ( O.metavar "UNTIL_OFFSET"
-                                                                 <> O.long "until"
-                                                                 <> O.help ( "Read until offset, e.g. earliest, latest, "
-                                                                          <> "timestamp:1684486287810")
-                                                                  ))
+  <*> O.optional (shardOffsetToPbStreamOffset <$> O.option offsetReader ( O.metavar "[EARLIEST|LATEST|TIMESTAMP]"
+                                                                       <> O.long "from"
+                                                                       <> O.help ( "Read from offset, e.g. earliest, latest, "
+                                                                                <> "1684486287810")
+                                                                        ))
+  <*> O.optional (shardOffsetToPbStreamOffset <$> O.option offsetReader ( O.metavar "[EARLIEST|LATEST|TIMESTAMP]"
+                                                                       <> O.long "until"
+                                                                       <> O.help ( "Read until offset, e.g. earliest, latest, "
+                                                                                <> "1684486287810")
+                                                                        ))
   <*> (fromIntegral <$> O.option positiveNumParser ( O.long "total"
                                                   <> O.metavar "INT"
                                                   <> O.value 0
@@ -170,18 +173,18 @@ data ReadShardArgs = ReadShardArgs
 readShardRequestParser :: O.Parser ReadShardArgs
 readShardRequestParser = ReadShardArgs
   <$> O.argument O.auto ( O.metavar "SHARD_ID" <> O.help "The shard you want to read" )
-  <*> O.optional (shardOffsetToPb <$> O.option O.auto ( O.metavar "FROM_OFFSET"
-                                                     <> O.long "from"
-                                                     <> O.help ( "Read from offset, e.g. earliest, latest, "
-                                                              <> "recordId:1789764666323849-4294967385-0, "
-                                                              <> "timestamp:1684486287810")
-                                                      ))
-  <*> O.optional (shardOffsetToPb <$> O.option O.auto ( O.metavar "UNTIL_OFFSET"
-                                                     <> O.long "until"
-                                                     <> O.help ( "Read until offset, e.g. earliest, latest, "
-                                                              <> "recordId:1789764666323849-4294967385-0, "
-                                                              <> "timestamp:1684486287810")
-                                                      ))
+  <*> O.optional (shardOffsetToPb <$> O.option offsetReader ( O.metavar "[EARLIEST|LATEST|RECORDID|TIMESTAMP]"
+                                                           <> O.long "from"
+                                                           <> O.help ( "Read from offset, e.g. earliest, latest, "
+                                                                    <> "1789764666323849-4294967385-0, "
+                                                                    <> "1684486287810")
+                                                            ))
+  <*> O.optional (shardOffsetToPb <$> O.option offsetReader ( O.metavar "[EARLIEST|LATEST|RECORDID|TIMESTAMP]"
+                                                           <> O.long "until"
+                                                           <> O.help ( "Read until offset, e.g. earliest, latest, "
+                                                                    <> "1789764666323849-4294967385-0, "
+                                                                    <> "1684486287810")
+                                                            ))
   <*> (fromIntegral <$> O.option positiveNumParser ( O.long "total"
                                                   <> O.metavar "INT"
                                                   <> O.value 0
@@ -194,23 +197,25 @@ data ShardOffset = EARLIEST
                  | Timestamp Int64
   deriving (Show)
 
-instance Read ShardOffset where
-  readPrec = do
-    l <- Read.lexP
-    case l of
-      Read.Ident "earliest" -> return EARLIEST
-      Read.Ident "latest" -> return LATEST
-      Read.Ident "timestamp" -> do Read.Symbol ":" <- Read.lexP
-                                   t :: Int64 <- Read.readPrec
-                                   return $ Timestamp t
-      Read.Ident "recordId" -> do Read.Symbol ":" <- Read.lexP
-                                  sId :: Word64 <- Read.readPrec
-                                  Read.Symbol "-" <- Read.lexP
-                                  bId :: Word64 <- Read.readPrec
-                                  Read.Symbol "-" <- Read.lexP
-                                  idx :: Word32 <- Read.readPrec
-                                  return $ RecordId sId bId idx
-      x -> errorWithoutStackTrace $ "cannot parse StatsCategory: " <> show x
+offsetReader :: ReadM ShardOffset
+offsetReader = eitherReader (parseShardOffset . T.pack)
+
+parseShardOffset :: Text -> Either String ShardOffset
+parseShardOffset t = case AP.parseOnly parseOffset t of
+  Right res -> Right res
+  Left e    -> Left $ "invalid offset, error: " <> show e
+  where
+   parseEarliest = AP.string "earliest" $> EARLIEST
+   parseLatest = AP.string "latest" $> LATEST
+   parseTimestamp = Timestamp <$> AP.decimal <* AP.endOfInput
+   parseRecordId = do shardId <- AP.decimal
+                      _ <- AP.char '-'
+                      batchId <- AP.decimal
+                      _ <- AP.char '-'
+                      batchIndex <- AP.decimal
+                      AP.endOfInput
+                      return $ RecordId shardId batchId batchIndex
+   parseOffset = parseEarliest <|> parseLatest <|> parseTimestamp <|> parseRecordId
 
 shardOffsetToPb :: ShardOffset -> API.ShardOffset
 shardOffsetToPb EARLIEST = API.ShardOffset . Just . API.ShardOffsetOffsetSpecialOffset . Enumerated . Right $ API.SpecialOffsetEARLIEST
@@ -220,6 +225,13 @@ shardOffsetToPb (RecordId recordIdShardId recordIdBatchId recordIdBatchIndex) =
 shardOffsetToPb (Timestamp t) = API.ShardOffset . Just . API.ShardOffsetOffsetTimestampOffset $
   API.TimestampOffset {timestampOffsetTimestampInMs = t, timestampOffsetStrictAccuracy = True}
 
+shardOffsetToPbStreamOffset :: ShardOffset -> API.StreamOffset
+shardOffsetToPbStreamOffset EARLIEST = API.StreamOffset . Just . API.StreamOffsetOffsetSpecialOffset . Enumerated . Right $ API.SpecialOffsetEARLIEST
+shardOffsetToPbStreamOffset LATEST   = API.StreamOffset . Just . API.StreamOffsetOffsetSpecialOffset . Enumerated . Right $ API.SpecialOffsetLATEST
+shardOffsetToPbStreamOffset RecordId {} = errorWithoutStackTrace "invalid offset"
+shardOffsetToPbStreamOffset (Timestamp t) = API.StreamOffset . Just . API.StreamOffsetOffsetTimestampOffset $
+  API.TimestampOffset {timestampOffsetTimestampInMs = t, timestampOffsetStrictAccuracy = True}
+
 positiveNumParser :: ReadM Int
 positiveNumParser = do
   s <- readerAsk
@@ -227,12 +239,6 @@ positiveNumParser = do
     Just n | n >= 0 -> return n
     _               -> readerError $ "Expected positive integer but get: " ++ s
 
-shardOffsetToPbStreamOffset :: ShardOffset -> API.StreamOffset
-shardOffsetToPbStreamOffset EARLIEST = API.StreamOffset . Just . API.StreamOffsetOffsetSpecialOffset . Enumerated . Right $ API.SpecialOffsetEARLIEST
-shardOffsetToPbStreamOffset LATEST   = API.StreamOffset . Just . API.StreamOffsetOffsetSpecialOffset . Enumerated . Right $ API.SpecialOffsetLATEST
-shardOffsetToPbStreamOffset RecordId {} = errorWithoutStackTrace "invalid offset"
-shardOffsetToPbStreamOffset (Timestamp t) = API.StreamOffset . Just . API.StreamOffsetOffsetTimestampOffset $
-  API.TimestampOffset {timestampOffsetTimestampInMs = t, timestampOffsetStrictAccuracy = True}
 
 data SubscriptionCommand
   = SubscriptionCmdList
