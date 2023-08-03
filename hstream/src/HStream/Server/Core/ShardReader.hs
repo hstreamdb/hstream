@@ -170,7 +170,7 @@ readStream ServerContext{..}
 
    createReader = do
      shards <- M.elems <$> S.listStreamPartitions scLDClient streamId
-     reader <- S.newLDReader scLDClient 1 (Just ldReaderBufferSize)
+     reader <- S.newLDReader scLDClient (fromIntegral . length $ shards) (Just ldReaderBufferSize)
      totalBatches <- if rMaxBatches == 0 then return Nothing else Just <$> newIORef rMaxBatches
      S.readerSetTimeout reader 60000
      S.readerSetWaitOnlyWhenNoData reader
