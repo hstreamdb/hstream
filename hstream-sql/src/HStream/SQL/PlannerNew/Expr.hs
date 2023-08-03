@@ -23,6 +23,7 @@ instance Plan (Aggregate BoundExpr) where
     Nullary nullary -> do
       let catalog = ColumnCatalog { columnId = 0
                                   , columnName = T.pack $ show agg
+                                  -- FIXME: only a placeholder. It will be replaced by the aggregate expression name, see `PlannerNew#BoundAgg`.
                                   , columnStreamId = 0
                                   , columnStream = ""
                                   , columnType = BTypeInteger
@@ -34,12 +35,14 @@ instance Plan (Aggregate BoundExpr) where
       return (Nullary nullary, catalog)
     Unary op e      -> do
       (e',c') <- plan e
-      let catalog = c' { columnName = T.pack $ show agg } -- FIXME
+      let catalog = c' { columnName = T.pack $ show agg }
+      -- FIXME: only a placeholder. It will be replaced by the aggregate expression name, see `PlannerNew#BoundAgg`.
       return (Unary op e', catalog)
     Binary op e1 e2 -> do
       (e1',c1') <- plan e1
       (e2',_) <- plan e2
-      let catalog = c1' { columnName = T.pack $ show agg } -- FIXME
+      let catalog = c1' { columnName = T.pack $ show agg }
+      -- FIXME: only a placeholder. It will be replaced by the aggregate expression name, see `PlannerNew#BoundAgg`.
       return (Binary op e1' e2', catalog)
 
 type instance PlannedType BoundExpr = (ScalarExpr, ColumnCatalog)
@@ -90,7 +93,7 @@ instance Plan BoundExpr where
       return (AccessArray e' rhs, catalog)
     BoundExprCol name stream col colId -> do
       ctx <- get
-      case lookupColumn ctx stream col of
+      case lookupColumn ctx stream colId of
         Nothing -> throwSQLException PlanException Nothing $ "column " <> T.unpack stream <> ".#" <> show colId <> " not found in ctx " <> show ctx
         Just (_,columnId,catalog) ->
           return (ColumnRef (columnStreamId catalog) columnId, catalog)

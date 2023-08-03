@@ -303,8 +303,10 @@ test-suite hstream-test
     HStream.AdminCommandSpec
     HStream.ConfigSpec
     HStream.HandlerSpec
+    HStream.RegressionNewSpec
     HStream.RegressionSpec
     HStream.RunQuerySpec
+    HStream.RunSQLNewSpec
     HStream.RunSQLSpec
     HStream.ShardSpec
     HStream.SpecUtils

@@ -21,6 +21,7 @@ module HStream.SQL.PlannerNew (
 import           Control.Monad.Reader
 import           Control.Monad.State
 import           Data.Functor                  ((<&>))
+import qualified Data.HashMap.Strict           as HM
 import qualified Data.IntMap                   as IntMap
 import qualified Data.List                     as L
 import           Data.Maybe                    (fromMaybe)
@@ -50,7 +51,7 @@ instance Plan BoundTableRef where
       Just schema -> do
         -- 1-in/1-out
         let schema' = setSchemaStreamId 0 schema
-        let ctx = PlanContext (IntMap.singleton 0 schema')
+        let ctx = PlanContext (IntMap.singleton 0 schema') mempty
         put ctx
         return $ StreamScan schema'
 
@@ -59,7 +60,7 @@ instance Plan BoundTableRef where
     -- 1-in/1-out
     let schema = setSchemaStream name $
           setSchemaStreamId 0 (relationExprSchema relationExpr)
-    let ctx = PlanContext (IntMap.singleton 0 schema)
+    let ctx = PlanContext (IntMap.singleton 0 schema) mempty
     put ctx
     return relationExpr
 
@@ -83,20 +84,31 @@ instance Plan BoundTableRef where
     ctx2 <- get
 
     put $ PlanContext
-      { planContextSchemas = planContextSchemas ctx1 <::> planContextSchemas ctx2
+      { planContextSchemas   = planContextSchemas ctx1 <::>
+                               planContextSchemas ctx2
+      , planContextBasicRefs = mempty
       }
     (scalarExpr,_) <- plan expr
 
     -- 1-out!
     let schema = setSchemaStream name $
-          setSchemaStreamId 0 $ Schema
+                 setSchemaStreamId 0 $ Schema
                  { schemaOwner = name
-                 , schemaColumns = schemaColumns schema1
-                             <:+:> schemaColumns schema2
+                 , schemaColumns = schemaColumns schema1 <:+:>
+                                   schemaColumns schema2
                  }
     put $ PlanContext
-      { planContextSchemas = IntMap.map (setSchemaStreamId 0)
-                               (IntMap.singleton 0 schema <::> planContextSchemas ctx1 <::> planContextSchemas ctx2)
+      { planContextSchemas = IntMap.map (setSchemaStreamId 0) (IntMap.singleton 0 schema)
+      , planContextBasicRefs = HM.fromList
+          (L.map (\(colAbs, colRel) ->
+                    ( (columnStream colAbs, columnId colAbs)
+                    , (columnStream colRel, columnId colRel)
+                    )
+                ) ((IntMap.elems (schemaColumns schema1) ++
+                    IntMap.elems (schemaColumns schema2))
+                    `zip` (IntMap.elems (schemaColumns schema)))
+          ) `HM.union` (planContextBasicRefs ctx1 `HM.union` planContextBasicRefs ctx2)
+      -- FIXME: clean up!!
       }
     let win = calendarDiffTimeToMs interval
     return $ LoopJoinOn schema relationExpr1' relationExpr2' scalarExpr typ win
@@ -129,17 +141,16 @@ instance Plan BoundAgg where
       (aggTups :: [(AggregateExpr, ColumnCatalog)])
         <- (mapM (\(boundExpr,alias_m) -> do
                      -- Note: a expr can have multiple aggs: `SUM(a) + MAX(b)`
-                     let boundAggExprs = exprAggregates boundExpr
-                     mapM (\boundAggExpr -> do
-                              let (BoundExprAggregate name boundAgg) = boundAggExpr
-                              (agg,catalog) <- plan boundAgg
-                              let catalog' = catalog { columnName = T.pack name } -- FIXME
+                     mapM (\aggBoundExpr -> do
+                              let (BoundExprAggregate name aggBound) = aggBoundExpr
+                              (agg,catalog) <- plan aggBound
+                              let catalog' = catalog { columnName = T.pack name } -- WARNING: do not use alias here
                               return (agg,catalog')
-                          ) boundAggExprs
+                          ) (exprAggregates boundExpr)
                  ) selTups
            ) <&> L.concat
 
-      let grpsIntmap = IntMap.fromList $ L.map (\(i, (_,catalog)) -> (i, catalog{columnId = i})
+      let grpsIntmap = IntMap.fromList $ L.map (\(i, (_,catalog)) -> (i, catalog{columnId = i, columnStream = ""}) -- FIXME: stream name & clean up
                                                ) ([0..] `zip` grps)
           aggsIntmap = IntMap.fromList $ L.map (\(i, (_,catalog)) -> (i, catalog{columnId = i})
                                                ) ([0..] `zip` aggTups)
@@ -168,7 +179,18 @@ instance Plan BoundAgg where
       let new_schema = Schema { schemaOwner = "" -- FIXME
                               , schemaColumns = grpsIntmap <:+:> aggsIntmap <:+:> dummyTimewindowCols
                               }
-      let ctx_new = PlanContext (IntMap.singleton 0 new_schema)
+      let ctx_new = PlanContext
+                  { planContextSchemas   = IntMap.singleton 0 new_schema
+                  , planContextBasicRefs = HM.fromList
+                      (L.map (\(colAbs, colRel) ->
+                               ( (columnStream colAbs, columnId colAbs)
+                               , (columnStream colRel, columnId colRel)
+                               )
+                            ) (((snd <$> grps)
+                               `zip` (IntMap.elems grpsIntmap)))
+                      ) `HM.union` planContextBasicRefs ctx_old -- WARNING: order matters!
+                  }
+      -- FIXME: clean up!!
       put ctx_new
       return $ \upstream -> Reduce new_schema upstream (fst <$> grps) (fst <$> aggTups) win_m
 
@@ -196,7 +218,10 @@ instance Plan BoundSel where
     let new_schema = Schema { schemaOwner = "" -- FIXME
                             , schemaColumns = new_schema_cols
                             }
-    let ctx_new = PlanContext (IntMap.singleton 0 new_schema)
+    let ctx_new = PlanContext
+                { planContextSchemas   = IntMap.singleton 0 new_schema
+                , planContextBasicRefs = planContextBasicRefs ctx_old
+                }
     put ctx_new
     return $ \upstream -> Project new_schema upstream (fst <$> projTups)
 

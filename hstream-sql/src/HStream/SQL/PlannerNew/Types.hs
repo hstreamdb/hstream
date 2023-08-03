@@ -13,7 +13,6 @@ import           Control.Applicative  ((<|>))
 import           Control.Monad.Reader
 import           Control.Monad.State
 import qualified Data.Aeson           as Aeson
-import qualified Data.Bimap           as Bimap
 import           Data.Function        (on)
 import           Data.Hashable
 import qualified Data.HashMap.Strict  as HM
@@ -92,11 +91,15 @@ instance Show ScalarExpr where
 --         planner context
 ----------------------------------------
 data PlanContext = PlanContext
-  { planContextSchemas :: IntMap Schema
+  { planContextSchemas   :: IntMap Schema
+  , planContextBasicRefs :: HM.HashMap (Text,Int) (Text,Int)
+  -- absolute -> relative e.g. s1.0 -> _join#0.1
+  -- this is only used in `lookupColumn`.
+  -- FIXME: design a better structure to handle relative schemas
   } deriving (Show)
 
 defaultPlanContext :: PlanContext
-defaultPlanContext = PlanContext mempty
+defaultPlanContext = PlanContext mempty mempty
 
 -- | Compose two 'IntMap's of stream schemas with their indexes. It assumes
 -- that the two 'IntMap's have contiguous indexes starting from 0 in their
@@ -114,28 +117,32 @@ defaultPlanContext = PlanContext mempty
    in IntMap.fromList (tups1 <> tups2')
 
 instance Semigroup PlanContext where
-  (PlanContext s1) <> (PlanContext s2) = PlanContext (s1 <::> s2)
+  (PlanContext s1 hm1) <> (PlanContext s2 hm2) = PlanContext (s1 <::> s2) (hm1 `HM.union` hm2)
 instance Monoid PlanContext where
-  mempty = PlanContext mempty
+  mempty = PlanContext mempty mempty
 
 -- | Lookup a certain column in the planning context with
---   stream name and column name. Return the index of
+--   stream name and column index. Return the index of
 --   matched stream, the real index of the column
 --   and the catalog of matched column.
 --   WARNING: The returned stream index may not be the same
 --            as the `streamId` of the column! This should
 --            be fixed in the future.
-lookupColumn :: PlanContext -> Text -> Text -> Maybe (Int, Int, ColumnCatalog)
-lookupColumn (PlanContext m) streamName colName =
-  L.foldr (\(i,Schema{..}) acc -> case acc of
-              Just _  -> acc
-              Nothing ->
-                let catalogTup_m = L.find (\(n, ColumnCatalog{..}) ->
-                                          columnStream == streamName &&
-                                          columnName   == colName
-                                       ) (IntMap.toList schemaColumns)
-                 in (fmap (\(n,catalog) -> (i,n,catalog)) catalogTup_m) <|> acc
-          ) Nothing (IntMap.toList m)
+lookupColumn :: PlanContext -> Text -> Int -> Maybe (Int, Int, ColumnCatalog)
+lookupColumn (PlanContext m baseRefs) streamName colId =
+  let (streamName', colId') = go (streamName, colId)
+   in L.foldr (\(i,Schema{..}) acc -> case acc of
+                  Just _  -> acc
+                  Nothing ->
+                    let catalogTup_m = L.find (\(n, ColumnCatalog{..}) ->
+                                                 columnStream == streamName' &&
+                                                 columnId     == colId'
+                                              ) (IntMap.toList schemaColumns)
+                     in (fmap (\(n,catalog) -> (i,n,catalog)) catalogTup_m) <|> acc
+              ) Nothing (IntMap.toList m)
+  where go (s,i) = case HM.lookup (s,i) baseRefs of
+                     Just (s',i') -> go (s',i')
+                     Nothing      -> (s,i)
 
 -- | Lookup a certain column name in the planning context. Return the index of
 --   matched stream, the real index of the column
@@ -144,7 +151,7 @@ lookupColumn (PlanContext m) streamName colName =
 --            as the `columnStreamId` of the column! This should
 --            be fixed in the future.
 lookupColumnName :: PlanContext -> Text -> Maybe (Int, Int, ColumnCatalog)
-lookupColumnName (PlanContext m) k =
+lookupColumnName (PlanContext m _) k =
   L.foldr (\(i,Schema{..}) acc -> case acc of
               Just _  -> acc
               Nothing ->

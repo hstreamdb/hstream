@@ -278,6 +278,15 @@ instance Bind DataType where
   bind (TypeArray _ t) = bind t >>= return . BTypeArray
 
 ----------------------------------------
+--          hard-coded values
+----------------------------------------
+winStartText :: Text
+winStartText = "window_start"
+
+winEndText :: Text
+winEndText = "window_end"
+
+----------------------------------------
 --          exceptions
 ----------------------------------------
 throwImpossible :: a

@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                 #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE OverloadedStrings   #-}
@@ -40,13 +41,34 @@ import           HStream.Client.Internal
 import qualified HStream.Client.Types             as CT
 import           HStream.Client.Utils
 import           HStream.Server.HStreamApi
-import           HStream.SQL
+import qualified HStream.Server.MetaData          as P
+import           HStream.SQL                      hiding (streamCodegen)
+#ifdef HStreamEnableSchema
+import qualified HStream.SQL.Codegen.V1New        as SQL
+#else
+import qualified HStream.SQL.Codegen.V1           as SQL
+#endif
 import           HStream.ThirdParty.Protobuf      (Empty (Empty), Struct (..),
                                                    Value (Value),
                                                    ValueKind (ValueKindStructValue))
 import qualified HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils                    hiding (newRandomText)
 import qualified HStream.Utils.Aeson              as AesonComp
+
+-------------------------------------
+-- utils that vary between flags
+-------------------------------------
+streamCodegen :: HStreamClientApi -> Text -> IO HStreamPlan
+#ifdef HStreamEnableSchema
+streamCodegen api sql = SQL.streamCodegen sql thisGetSchema
+  where thisGetSchema owner = do
+          res <- getSchema owner api
+          schema <- getServerResp res
+          return $ Just $ P.schemaToHStreamSchema schema
+#else
+streamCodegen _ sql = SQL.streamCodegen sql
+#endif
+
 
 clientConfig :: ClientConfig
 clientConfig = unsafePerformIO $ do
@@ -199,7 +221,11 @@ mkStruct = jsonObjectToStruct . AesonComp.fromList . (map $ first AesonComp.from
 
 -- labelled json
 mkIntNumber :: Int -> Aeson.Value
+#ifdef HStreamEnableSchema
+mkIntNumber n = Aeson.Number (fromIntegral n)
+#else
 mkIntNumber n = Aeson.Object $ AesonComp.fromList [("$numberLong", Aeson.String (T.pack $ show n))]
+#endif
 
 mkViewResponse :: Struct -> ExecuteViewQueryResponse
 mkViewResponse = ExecuteViewQueryResponse . V.singleton
@@ -233,7 +259,19 @@ runFetchSql sql = withGRPCClient clientConfig $ \client -> do
 
 runCreateStreamSql :: HStreamClientApi -> T.Text -> Expectation
 runCreateStreamSql api sql = do
-  CreatePlan sName rOptions <- streamCodegen sql
+#ifdef HStreamEnableSchema
+  CreatePlan sName schema bOptions <- streamCodegen api sql
+  _ <- registerSchema schema api
+  res <- getServerResp =<< createStream sName (bRepFactor bOptions) (bBacklogDuration bOptions) api
+  res `shouldSatisfy` isJust . streamCreationTime
+  res{streamCreationTime = Nothing} `shouldBe`
+    def { streamStreamName        = sName
+        , streamReplicationFactor = fromIntegral (bRepFactor bOptions)
+        , streamBacklogDuration   = bBacklogDuration bOptions
+        , streamShardCount        = 1
+        }
+#else
+  CreatePlan sName rOptions <- streamCodegen api sql
   res <- getServerResp =<< createStream sName (rRepFactor rOptions) (rBacklogDuration rOptions) api
   res `shouldSatisfy` isJust . streamCreationTime
   res{streamCreationTime = Nothing} `shouldBe`
@@ -242,10 +280,11 @@ runCreateStreamSql api sql = do
         , streamBacklogDuration   = rBacklogDuration rOptions
         , streamShardCount        = 1
         }
+#endif
 
 runInsertSql :: HStreamClientApi -> T.Text -> Expectation
 runInsertSql api sql = do
-  InsertPlan sName insertType payload <- streamCodegen sql
+  InsertPlan sName insertType payload <- streamCodegen api sql
   ListShardsResponse shards <- getServerResp =<<listShards sName api
   let Shard{..}:_ = V.toList shards
   resp <- getServerResp =<< insertIntoStream sName shardShardId (insertType == JsonFormat) payload api
@@ -264,22 +303,22 @@ runCreateWithSelectSql' api sql = do
 
 runShowStreamsSql :: HStreamClientApi -> T.Text -> IO String
 runShowStreamsSql api sql = do
-  ShowPlan SStreams <- streamCodegen sql
+  ShowPlan SStreams <- streamCodegen api sql
   formatResult <$> listStreams api
 
 runShowViewsSql :: HStreamClientApi -> T.Text -> IO String
 runShowViewsSql api sql = do
-  ShowPlan SViews <- streamCodegen sql
+  ShowPlan SViews <- streamCodegen api sql
   formatResult <$> listViews api
 
 runDropSql :: HStreamClientApi -> T.Text -> Expectation
 runDropSql api sql = do
-  DropPlan checkIfExists dropObj <- streamCodegen sql
+  DropPlan checkIfExists dropObj <- streamCodegen api sql
   dropAction checkIfExists dropObj api `grpcShouldReturn` Empty
 
 runTerminateSql :: HStreamClientApi -> T.Text -> Expectation
 runTerminateSql api sql = do
-  TerminatePlan (TQuery qName) <- streamCodegen sql
+  TerminatePlan (TQuery qName) <- streamCodegen api sql
   terminateQuery qName api `grpcShouldReturn` Empty
 
 runViewQuerySql ::  HStreamClientApi -> T.Text -> IO ExecuteViewQueryResponse
