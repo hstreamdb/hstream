@@ -38,7 +38,7 @@ import           Data.Foldable                    (foldrM)
 import qualified Data.HashMap.Strict              as HM
 import           Data.Map.Strict                  (Map)
 import qualified Data.Map.Strict                  as Map
-import           Data.Maybe                       (fromMaybe)
+import           Data.Maybe                       (fromMaybe, isNothing)
 import           Data.String                      (IsString (..))
 import           Data.Text                        (Text)
 import qualified Data.Text                        as T
@@ -200,15 +200,17 @@ parseJSONToOptions CliOptions{..} obj = do
   nodeTlsKeyPath  <- nodeCfgObj .:? "tls-key-path"
   nodeTlsCertPath <- nodeCfgObj .:? "tls-cert-path"
   nodeTlsCaPath   <- nodeCfgObj .:? "tls-ca-path"
-  let !_enableTls   = cliEnableTls || nodeEnableTls
-      !_tlsKeyPath  = cliTlsKeyPath  <|> nodeTlsKeyPath
-      !_tlsCertPath = cliTlsCertPath <|> nodeTlsCertPath
-      !_tlsCaPath   = cliTlsCaPath   <|> nodeTlsCaPath
-      !_tlsConfig  = case (_enableTls, _tlsKeyPath, _tlsCertPath) of
-        (False, _, _) -> Nothing
-        (_, Nothing, _) -> errorWithoutStackTrace "enable-tls=true, but tls-key-path is empty"
-        (_, _, Nothing) -> errorWithoutStackTrace "enable-tls=true, but tls-cert-path is empty"
-        (_, Just kp, Just cp) -> Just $ TlsConfig kp cp _tlsCaPath
+  let !enableTls = cliEnableTls || nodeEnableTls
+      !tlsConfig = do key <- cliTlsKeyPath  <|> nodeTlsKeyPath
+                      cert <- cliTlsCertPath <|> nodeTlsCertPath
+                      pure $ TlsConfig key cert (cliTlsCaPath <|> nodeTlsCaPath)
+  when (enableTls && isNothing tlsConfig) $
+    errorWithoutStackTrace "enable-tls=true, but tls-config is empty"
+
+  let !_tlsConfig = if enableTls then tlsConfig else Nothing
+  -- FIXME: This should be more flexible
+  let !_securityProtocolMap = defaultProtocolMap tlsConfig
+  let !_listenersSecurityProtocolMap = Map.union cliListenersSecurityProtocolMap nodeListenersSecurityProtocolMap
 
   -- hstream io config
   nodeIOCfg <- nodeCfgObj .:? "hstream-io" .!= mempty
@@ -232,9 +234,6 @@ parseJSONToOptions CliOptions{..} obj = do
   let optTasksPath = fromMaybe nodeIOTasksPath cliIoTasksPath
       optTasksNetwork = fromMaybe nodeIOTasksNetwork cliIoTasksNetwork
       !_ioOptions = IO.IOOptions {..}
-  -- FIXME: This should be more flexible
-  let !_listenersSecurityProtocolMap = Map.union cliListenersSecurityProtocolMap nodeListenersSecurityProtocolMap
-  let !_securityProtocolMap = defaultProtocolMap _tlsConfig
 
   -- processing config
   processingCfg <- nodeCfgObj .:? "hstream-processing" .!= mempty
