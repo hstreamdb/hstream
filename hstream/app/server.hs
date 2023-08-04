@@ -182,7 +182,7 @@ serve sc@ServerContext{..} rpcOpts enableExpStreamV2 = do
   let serverOnStarted = do
         Log.info $ "Server is started on port "
 #ifdef HStreamUseGrpcHaskell
-                <> Log.build (GRPC.serverPort rpcOpts)
+                <> Log.build (GRPC.unPort . GRPC.serverPort $ rpcOpts)
 #else
                 <> Log.build (HsGrpc.serverPort rpcOpts)
 #endif
