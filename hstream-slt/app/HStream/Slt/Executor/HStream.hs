@@ -76,4 +76,11 @@ open'' = do
     createByName debug streamName conn = do
       when debug $ do
         putStrLn $ "[DEBUG]: ExecutorHStream create stream " <> T.unpack streamName
-      execute_ conn $ createStream streamName 1 (30 * 60)
+      S.execute_ conn $ createStream streamName 1 (30 * 60)
+
+----------------------------------------
+
+getConn :: HStreamExecutorM HStreamCliContext
+getConn = do
+  x <- getExecutor
+  _
