@@ -234,7 +234,19 @@ executeViewQueryWithNamespace sc@ServerContext{..} sql namespace = parseAndBind 
             Just mat  -> return mat
         sinkRecords_m <- newIORef []
         let sinkConnector = SH.memorySinkConnector sinkRecords_m
-        HP.runImmTask (sources `zip` mats) sinkConnector builder () () Just Just
+        -- FIXME: triky! The view pipeline does not fit the normal one.
+        --        The `Project` step is omitted because the sink is not
+        --        a normal stream but a memory store, using methods
+        --        such as `ksPut`. So here we normalize the flow object
+        --        to fit the actual schema after `Project`...
+        let transKSrc = \s bl -> case Aeson.decode bl of
+                          Nothing -> Nothing
+                          Just o  -> Just . Aeson.encode $
+                                     flowObjectNormBySchema s o
+            transVSrc = transKSrc
+            transKSnk = Just
+            transVSnk = Just
+        HP.runImmTask (sources `zip` mats) sinkConnector builder () () (P.getSchema metaHandle) transKSrc transVSrc transKSnk transVSnk
         sinkRecords <- readIORef sinkRecords_m
         let flowObjects = L.map (fromJust . Aeson.decode . snkValue) sinkRecords :: [FlowObject]
         forM_ sources $ \viewName -> Stats.view_stat_add_total_execute_queries scStatsHolder (textToCBytes viewName) 1

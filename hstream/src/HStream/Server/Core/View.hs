@@ -241,7 +241,11 @@ executeViewQueryWithNamespace sc@ServerContext{..} sql namespace = parseAndRefin
             Just mat  -> return mat
         sinkRecords_m <- newIORef []
         let sinkConnector = SH.memorySinkConnector sinkRecords_m
-        HP.runImmTask (sources `zip` mats) sinkConnector builder () () Just Just
+        let transKSrc = \_ bl -> Just bl
+            transVSrc = transKSrc
+            transKSnk = Just
+            transVSnk = Just
+        HP.runImmTask (sources `zip` mats) sinkConnector builder () () transKSrc transVSrc transKSnk transVSnk
         sinkRecords <- readIORef sinkRecords_m
         let flowObjects = L.map (fromJust . Aeson.decode . snkValue) sinkRecords :: [FlowObject]
         forM_ sources $ \viewName -> Stats.view_stat_add_total_execute_queries scStatsHolder (textToCBytes viewName) 1

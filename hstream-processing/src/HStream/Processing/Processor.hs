@@ -293,16 +293,39 @@ runTask statsHolder
           liftIO $ RIO.putMVar mvar ()
 
 runImmTask ::
-  (Ord t, Semigroup t, Aeson.FromJSON t, Aeson.ToJSON t, Typeable t, ChangeLogger h1, Snapshotter h2) =>
+  (Ord t, Monoid t, Aeson.FromJSON t, Aeson.ToJSON t, Typeable t, ChangeLogger h1, Snapshotter h2
+#ifdef HStreamEnableSchema
+  , Show schema
+#endif
+  ) =>
   [(T.Text, Materialized t t t)] ->
   SinkConnector ->
   TaskBuilder ->
   h1 ->
   h2 ->
+#ifdef HStreamEnableSchema
+  (T.Text -> IO (Maybe schema)) ->
+  (schema -> BL.ByteString -> Maybe BL.ByteString) -> -- FIXME: schema actually only belongs to value
+  (schema -> BL.ByteString -> Maybe BL.ByteString) ->
+#else
+  (T.Text -> BL.ByteString -> Maybe BL.ByteString) ->
+  (T.Text -> BL.ByteString -> Maybe BL.ByteString) ->
+#endif
   (BL.ByteString -> Maybe BL.ByteString) ->
   (BL.ByteString -> Maybe BL.ByteString) ->
   IO ()
-runImmTask srcTups sinkConnector taskBuilder@TaskTopologyConfig {..} changeLogger snapshotter transKSnk transVSnk = do
+runImmTask srcTups
+           sinkConnector
+           taskBuilder@TaskTopologyConfig {..}
+           changeLogger
+           snapshotter
+#ifdef HStreamEnableSchema
+           getSchema
+#endif
+           transKSrc
+           transVSrc
+           transKSnk
+           transVSnk = do
   -- build and add internalSinkProcessor
   let sinkProcessors =
         HM.map
@@ -338,7 +361,7 @@ runImmTask srcTups sinkConnector taskBuilder@TaskTopologyConfig {..} changeLogge
         case e' of
           Left (e :: SomeException) -> liftIO $ Log.warning $ Log.buildString (Prelude.show e)
           Right _ -> return ()
-    loop :: (Ord t, Semigroup t, Aeson.FromJSON t, Aeson.ToJSON t, Typeable t)
+    loop :: (Ord t, Monoid t, Aeson.FromJSON t, Aeson.ToJSON t, Typeable t)
          => Task
          -> TaskContext
          -> [(T.Text, Materialized t t t)]
@@ -346,34 +369,44 @@ runImmTask srcTups sinkConnector taskBuilder@TaskTopologyConfig {..} changeLogge
          -> IO ()
     loop task ctx [] asyncs = return ()
     loop task ctx [(sourceStreamName, mat)] asyncs = do
+#ifdef HStreamEnableSchema
+      schema <- getSchema sourceStreamName <&> fromJust
+      let transKSrc' = transKSrc schema
+          transVSrc' = transVSrc schema
+#else
+      let transKSrc' = transKSrc sourceStreamName
+          transVSrc' = transVSrc sourceStreamName
+#endif
       case mStateStore mat of
         KVStateStore ekvStore      -> do
           kvMap <- ksDump ekvStore
-          sourceRecords <- forM (Map.toList kvMap) $ \(k,v) -> do
-            let v' = k <> v
-            ts <- getCurrentTimestamp
-            return $ SourceRecord
-                   { srcStream = sourceStreamName
-                   , srcOffset = 0
-                   , srcTimestamp = ts
-                   , srcKey = Nothing
-                   , srcValue = Aeson.encode v'
-                   }
+          ts <- getCurrentTimestamp -- FIXME: is this precise enough?
+          sourceRecords <- RIO.forMaybeM (Map.toList kvMap) $ \(k,v) -> do
+            case transVSrc' (Aeson.encode $ k <> v) of
+              Nothing -> return Nothing
+              Just v' -> return . Just $ SourceRecord
+                         { srcStream = sourceStreamName
+                         , srcOffset = 0
+                         , srcTimestamp = ts
+                         , srcKey = Just (Aeson.encode $ mempty `asTypeOf` k)
+                         , srcValue = v'
+                         }
           runOnePath task ctx (sourceStreamName, sourceRecords)
             `onException` forM_ asyncs cancel
         SessionStateStore essStore -> do
           tmMap <- ssDump essStore
           sourceRecords <- (L.concat . L.concat) <$> (forM (Map.elems tmMap) $ \kmap -> do
             forM (Map.toList kmap) $ \(k,m) -> do
-              forM (Map.toList m) $ \(ts,v) -> do
-                let v' = k <> v
-                return $ SourceRecord
-                       { srcStream = sourceStreamName
-                       , srcOffset = 0
-                       , srcTimestamp = ts
-                       , srcKey = Nothing
-                       , srcValue = Aeson.encode v'
-                       })
+              RIO.forMaybeM (Map.toList m) $ \(ts,v) ->
+                case transVSrc' (Aeson.encode $ k <> v) of
+                  Nothing -> return Nothing
+                  Just v' -> return . Just $ SourceRecord
+                             { srcStream = sourceStreamName
+                             , srcOffset = 0
+                             , srcTimestamp = ts
+                             , srcKey = Just (Aeson.encode $ mempty `asTypeOf` k)
+                             , srcValue = v'
+                             })
           runOnePath task ctx (sourceStreamName, sourceRecords)
             `onException` forM_ asyncs cancel
         TimestampedKVStateStore etskvStore -> error "impossible"
