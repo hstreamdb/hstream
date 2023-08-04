@@ -237,6 +237,22 @@ jsonObjectToFlowObject schema object =
 jsonObjectToFlowObject' :: Aeson.Object -> FlowObject
 jsonObjectToFlowObject' json = jsonObjectToFlowObject (extractJsonObjectSchema json) json
 
+-- | Normalize a 'FlowObject' by a 'Schema'.
+-- It is tricy! See `transKSrc` and `transVSrc`
+-- in 'ViewNew.hs'...
+flowObjectNormBySchema :: Schema -> FlowObject -> FlowObject
+flowObjectNormBySchema schema hm =
+  let tups = L.map (\(vCata, v) ->
+                      let cata = case L.find (\schemaCata -> columnName vCata == columnName schemaCata)
+                                             (IntMap.elems $ schemaColumns schema) of
+                                   Just cata -> cata
+                                   Nothing   -> throwRuntimeException $ -- FIXME: Just omit it instead of throwing exception?
+                                     "Invalid column encountered: " <> show (columnName vCata) <>
+                                     " while normalizing flow object." <>
+                                     " Schema=" <> show schema
+                       in (cata, v)
+                   ) (HM.toList hm)
+   in HM.fromList tups
 
 -- | Compose two 'FlowObject's. It assumes that the two 'FlowObject's
 -- have contiguous column ids starting from 0.
