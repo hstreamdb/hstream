@@ -90,6 +90,7 @@ data CliOptions = CliOptions
   , cliServerPort                   :: !(Maybe Word16)
   , cliServerBindAddress            :: !(Maybe ByteString)
   , cliServerGossipAddress          :: !(Maybe String)
+  , cliServerConnectorAddress       :: !(Maybe String)
   , cliServerInternalPort           :: !(Maybe Word16)
 
   , cliServerAdvertisedAddress      :: !(Maybe String)
@@ -131,10 +132,11 @@ cliOptionsParser :: O.Parser CliOptions
 cliOptionsParser = do
   cliConfigPath <- configPathParser
 
-  cliServerBindAddress   <- optional bindAddressParser
-  cliServerPort          <- optional serverPortParser
-  cliServerGossipAddress <- optional serverGossipAddressParser
-  cliServerInternalPort  <- optional serverInternalPortParser
+  cliServerBindAddress      <- optional bindAddressParser
+  cliServerPort             <- optional serverPortParser
+  cliServerGossipAddress    <- optional serverGossipAddressParser
+  cliServerConnectorAddress <- optional serverConnectorAddressParser
+  cliServerInternalPort     <- optional serverInternalPortParser
 
   cliServerAdvertisedAddress      <- optional advertisedAddressParser
   cliServerAdvertisedListeners    <- advertisedListenersParser
@@ -313,6 +315,12 @@ serverGossipAddressParser = strOption
   $  long "gossip-address"
   <> metavar "ADDRESS"
   <> help "server gossip address, if not given will use advertised-address"
+
+serverConnectorAddressParser :: O.Parser String
+serverConnectorAddressParser = strOption
+  $  long "connector-address"
+  <> metavar "ADDRESS"
+  <> help "server connector address, if not given will use advertised-address"
 
 advertisedAddressParser :: O.Parser String
 advertisedAddressParser = strOption

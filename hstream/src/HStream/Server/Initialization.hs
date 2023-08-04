@@ -82,7 +82,7 @@ initializeServer opts@ServerOpts{..} gossipContext hh db_m = do
     IO.newWorker
       hh
       statsHolder
-      (IO.HStreamConfig (cBytesToText ("hstream://" <> CB.pack _serverAddress <> ":" <> CB.pack (show _serverPort))))
+      (IO.HStreamConfig (cBytesToText ("hstream://" <> CB.pack _serverConnectorAddress <> ":" <> CB.pack (show _serverPort))))
       _ioOptions
 
   shardReaderMap <- newMVar HM.empty

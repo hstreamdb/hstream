@@ -83,8 +83,9 @@ data ServerOpts = ServerOpts
   { _serverHost                   :: !ByteString
   , _serverPort                   :: !Word16
   , _serverInternalPort           :: !Word16
-  , _serverGossipAddress          :: !String
   , _serverAddress                :: !String
+  , _serverGossipAddress          :: !String
+  , _serverConnectorAddress       :: !String
   , _serverAdvertisedListeners    :: !AdvertisedListeners
   , _serverID                     :: !Word32
   , _listenersSecurityProtocolMap :: !ListenersSecurityProtocolMap
@@ -132,8 +133,9 @@ parseJSONToOptions CliOptions{..} obj = do
   nodeId              <- nodeCfgObj .:  "id"
   nodeHost            <- fromString <$> nodeCfgObj .:? "bind-address" .!= "0.0.0.0"
   nodePort            <- nodeCfgObj .:? "port" .!= 6570
-  nodeGossipAddress   <- nodeCfgObj .:?  "gossip-address"
-  nodeInternalPort    <- nodeCfgObj .:? "internal-port" .!= 6571
+  nodeGossipAddress   <- nodeCfgObj .:? "gossip-address"
+  nodeConnectorAddress <- nodeCfgObj .:? "connector-address"
+  nodeInternalPort <- nodeCfgObj .:? "internal-port" .!= 6571
   nodeAdvertisedListeners <- nodeCfgObj .:? "advertised-listeners" .!= mempty
   nodeAddress         <- nodeCfgObj .:  "advertised-address"
   nodeListenersSecurityProtocolMap <- nodeCfgObj .:? "listeners-security-protocol-map" .!= mempty
@@ -153,6 +155,7 @@ parseJSONToOptions CliOptions{..} obj = do
   let !_serverAddress      = fromMaybe nodeAddress cliServerAdvertisedAddress
   let !_serverAdvertisedListeners = Map.union cliServerAdvertisedListeners nodeAdvertisedListeners
   let !_serverGossipAddress = fromMaybe _serverAddress (cliServerGossipAddress <|> nodeGossipAddress)
+  let !_serverConnectorAddress = fromMaybe _serverAddress (cliServerConnectorAddress <|> nodeConnectorAddress)
 
   let !_metaStore          = fromMaybe nodeMetaStore cliMetaStore
   let !_serverLogLevel     = fromMaybe (readWithErrLog "log-level" nodeLogLevel) cliServerLogLevel
