@@ -11,8 +11,8 @@ module HStream.Gossip.Start where
 
 import           Control.Concurrent               (MVar, forkIO, modifyMVar,
                                                    newEmptyMVar, newMVar,
-                                                   putMVar, readMVar,
-                                                   threadDelay)
+                                                   putMVar, readMVar, swapMVar,
+                                                   threadDelay, tryPutMVar)
 import           Control.Concurrent.Async         (Async, async, link2Only,
                                                    mapConcurrently)
 import           Control.Concurrent.STM           (TVar, atomically,
@@ -22,7 +22,7 @@ import           Control.Concurrent.STM           (TVar, atomically,
                                                    stateTVar)
 import           Control.Exception                (Handler (..), SomeException,
                                                    catches, handle, throwIO)
-import           Control.Monad                    (void, when)
+import           Control.Monad                    (unless, void, when)
 import           Data.ByteString                  (ByteString)
 import qualified Data.ByteString.Lazy             as BL
 import qualified Data.ByteString.Short            as BSS
@@ -145,7 +145,9 @@ waitGossipBoot gc@GossipContext{..} = do
 bootstrap :: [(ByteString, Int)] -> GossipContext -> IO ()
 bootstrap [] GossipContext{..} = do
   Log.info "Only one node in the cluster, no bootstrapping needed"
-  putMVar clusterInited Self
+  suc <- tryPutMVar clusterInited Self
+  unless suc $ do
+    void $ swapMVar clusterInited Self
   putMVar clusterReady ()
   Log.info "All servers have been initialized"
 bootstrap initialServers gc@GossipContext{..} = handle

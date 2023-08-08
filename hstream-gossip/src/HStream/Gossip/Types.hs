@@ -54,7 +54,7 @@ data ServerState = ServerAlive | ServerSuspicious | ServerDead | ServerLeft
 --   | ServerFailed
 --   deriving (Show, Eq)
 
-data InitType = User | Gossip | Self
+data InitType = User | Gossip | Self deriving(Show)
 type Workers       = Map ServerId ThreadId
 type BroadcastPool = [(G.Message, Word32)]
 

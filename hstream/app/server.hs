@@ -232,7 +232,7 @@ serveListeners
   -> ListenersSecurityProtocolMap
   -> Bool
   -- ^ Experimental features
-  -> IO ([Async.Async ()])
+  -> IO [Async.Async ()]
 serveListeners sc grpcOpts
                securityMap listeners listenerSecurityMap
                enableExpStreamV2 = do
