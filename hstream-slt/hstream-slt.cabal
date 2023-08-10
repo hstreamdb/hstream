@@ -47,6 +47,7 @@ executable hstream-slt
     , sqlite-simple
     , text
     , time
+    , vector
 
   hs-source-dirs:     app
   default-language:   GHC2021
