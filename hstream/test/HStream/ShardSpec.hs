@@ -10,11 +10,12 @@ import           Data.Foldable         (foldl')
 import qualified Data.Map.Strict       as M
 import           Data.Maybe            (fromJust)
 import           Data.Word             (Word64)
+import           HStream.Common.Types
 import qualified HStream.Logger        as Log
-import           HStream.Server.Shard  (Shard (..), ShardKey (ShardKey),
-                                        ShardMap, deleteShard, getShard,
-                                        getShardMapIdx, insertShard, mergeShard,
-                                        mkShard, mkShardMap, splitShardByKey)
+import           HStream.Server.Shard  (Shard (..), ShardMap, deleteShard,
+                                        getShard, getShardMapIdx, insertShard,
+                                        mergeShard, mkShard, mkShardMap,
+                                        splitShardByKey)
 import qualified HStream.Store         as S
 import           Test.Hspec
 import           Test.Hspec.QuickCheck
