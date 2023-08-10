@@ -18,7 +18,7 @@ evalRandomNoTablePlan :: SltExecutor m executor => RandomNoTablePlan -> m execut
 evalRandomNoTablePlan RandomNoTablePlan {colInfo = ColInfo info, rowNum, sql} = do
   xs <- forM [0 .. fromMaybe defaultRowNum rowNum] $ \_ -> do
     values <- randInstantiateSelectWithoutFromSql info sql
-    selectWithoutFrom values
+    selectWithoutFrom (ColInfo info) values
   debug <- isDebug
   when debug $ do
     sqls <- getSql

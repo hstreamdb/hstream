@@ -8,6 +8,7 @@ import qualified Data.Text              as T
 import qualified Database.SQLite.Simple as S
 import           GHC.Stack
 import           HStream.Slt.Executor
+import           HStream.Slt.Plan
 import           HStream.Slt.Utils
 
 newtype SQLiteExecutor = SQLiteExecutor
@@ -41,8 +42,8 @@ instance SltExecutor SQLiteExecutorCtx SQLiteExecutor where
 
 ----------------------------------------
 
-selectWithoutFrom' :: [T.Text] -> SQLiteExecutorM Kv
-selectWithoutFrom' cols = do
+selectWithoutFrom' :: ColInfo -> [T.Text] -> SQLiteExecutorM Kv
+selectWithoutFrom' _ cols = do
   conn <- getConn
   xss <- query_ @[SqlDataValue] conn (buildselectWithoutFromStmt cols)
   pure . sqlDataValuesToKv $ zip cols (head xss)

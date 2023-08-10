@@ -9,6 +9,7 @@ import           Data.Maybe
 import qualified Data.Text              as T
 import qualified Data.Text.IO           as T
 import           HStream.Slt.Cli.Parser
+import           HStream.Slt.Plan
 import           HStream.Slt.Utils
 
 ----------------------------------------
@@ -133,7 +134,7 @@ class ExecutorCtx m executor => SltExecutor m executor | m -> executor where
   open :: m executor ()
   open = setExecutor =<< open'
   insertValues :: T.Text -> Kv -> m executor ()
-  selectWithoutFrom :: [T.Text] -> m executor Kv
+  selectWithoutFrom :: ColInfo -> [T.Text] -> m executor Kv
   sqlDataTypeToLiteral' :: SqlDataType -> m executor T.Text
   sqlDataValueToLiteral :: SqlDataValue -> m executor T.Text
 

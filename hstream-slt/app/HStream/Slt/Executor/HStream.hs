@@ -2,6 +2,9 @@ module HStream.Slt.Executor.HStream where
 
 import           Control.Monad.IO.Class
 import           Control.Monad.State
+import qualified Data.Aeson                as A
+import           Data.Functor
+import           Data.Maybe
 import qualified Data.Text                 as T
 import qualified Data.Text.Encoding        as T
 import qualified Data.Text.IO              as T
@@ -12,10 +15,12 @@ import           HStream.Client.Types
 import qualified HStream.Server.HStreamApi as API
 import           HStream.Slt.Cli.Parser
 import           HStream.Slt.Executor
+import           HStream.Slt.Plan
+import           HStream.Slt.Utils
 import           HStream.Utils
 
 newtype HStreamExecutor = HStreamExecutor
-  { conn :: HStreamCliContext
+  { conn :: Maybe HStreamCliContext
   }
 
 newtype HStreamExecutorCtx executor a = HStreamExecutorCtx
@@ -40,18 +45,22 @@ instance ExecutorCtx HStreamExecutorCtx executor where
 
 instance SltExecutor HStreamExecutorCtx HStreamExecutor where
   open' = open''
-  selectWithoutFrom = undefined
+  selectWithoutFrom = selectWithoutFrom'
   insertValues = undefined
   sqlDataTypeToLiteral' = undefined
-  sqlDataValueToLiteral = undefined
+  sqlDataValueToLiteral = pure . T.pack . show
 
 ----------------------------------------
 
 open'' :: HStreamExecutorM HStreamExecutor
 open'' = do
   opts <- getOpts
-  conn <- liftIO $ S.initCliContext $ refineOpts opts
-  pure $ HStreamExecutor conn
+  debug <- isDebug
+  if debug
+    then pure $ HStreamExecutor Nothing
+    else do
+      conn <- liftIO $ S.initCliContext $ refineOpts opts
+      pure $ HStreamExecutor $ Just conn
   where
     refineOpts :: GlobalOpts -> RefinedCliConnOpts
     refineOpts GlobalOpts {executorsAddr} =
@@ -70,10 +79,20 @@ open'' = do
       [host]       -> SocketAddr (T.encodeUtf8 host) 6570
       _            -> error "invalid server url for ExecutorKindHStream"
 
+selectWithoutFrom' :: ColInfo -> [T.Text] -> HStreamExecutorM Kv
+selectWithoutFrom' colInfo cols = do
+  streamName <- newRandText
+  createStream streamName
+  viewName <- newRandText
+  createView $ buildCreateViewStmt streamName viewName $ buildSelItemsStmt colInfo
+  -- undefined
+  -- pure $ undefined
+  pure mempty
+
 ----------------------------------------
 
 getConn :: HStreamExecutorM HStreamCliContext
-getConn = conn <$> getExecutor
+getConn = fromJust . conn <$> getExecutor
 
 execute_ ::
   Format a =>
@@ -101,16 +120,19 @@ executeViewQuery ::
   T.Text ->
   T.Text ->
   T.Text ->
-  HStreamExecutorM API.ExecuteViewQueryResponse
+  HStreamExecutorM (V.Vector A.Object)
 executeViewQuery msg res sql = do
   debug <- isDebug
   if debug
     then do
       liftIO $ T.putStrLn $ "[DEBUG]: " <> msg
-      pure $ API.ExecuteViewQueryResponse V.empty
+      pure V.empty
     else do
       x <- executeWithLookupResource (Resource ResView res) $ S.executeViewQuery $ T.unpack sql
-      liftIO $ getServerResp x
+      API.ExecuteViewQueryResponse resp <- liftIO $ getServerResp x
+      let ret = V.map structToJsonObject resp
+      liftIO $ putStrLn $ "[DEBUG]: executeViewQuery " <> show ret
+      pure ret
 
 createStream :: T.Text -> HStreamExecutorM ()
 createStream streamName = do
@@ -120,5 +142,35 @@ createStream streamName = do
 
 createView :: T.Text -> HStreamExecutorM ()
 createView sql = do
-  qName <- ("slt_generated_" <>) <$> newRandomText 10
-  S.executeWithLookupResource_ conn (Resource ResQuery qName) (createStreamBySelectWithCustomQueryName sql qName)
+  qName <- newRandText
+  debug <- isDebug
+  if debug
+    then liftIO $ putStrLn $ "[DEBUG]: createView " <> T.unpack sql <> " " <> T.unpack qName
+    else do
+      conn <- getConn
+      liftIO $ S.executeWithLookupResource_ conn (Resource ResQuery qName) (S.createStreamBySelectWithCustomQueryName (T.unpack sql) qName)
+
+buildSelItemsStmt :: ColInfo -> T.Text
+buildSelItemsStmt (ColInfo colInfo) =
+  let names = colInfo <&> fst
+   in T.intercalate ", " names
+
+buildCreateViewStmt :: T.Text -> T.Text -> T.Text -> T.Text
+buildCreateViewStmt streamName viewName selItems =
+  "CREATE VIEW "
+    <> viewName
+    <> " AS SELECT "
+    <> selItems
+    <> " FROM "
+    <> streamName
+    <> " GROUP BY "
+    <> internalIndex
+    <> " ;"
+
+----------------------------------------
+
+internalIndex :: T.Text
+internalIndex = "iiiiiiiiiiiiii"
+
+newRandText :: HStreamExecutorM T.Text
+newRandText = fmap ("slt_generated_" <>) <$> liftIO $ newRandomText 10
