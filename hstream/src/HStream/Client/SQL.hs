@@ -19,7 +19,6 @@ import           Control.Concurrent               (forkFinally, myThreadId,
 import           Control.Exception                (SomeException, handle, try)
 import           Control.Monad                    (forM_, forever, void, (>=>))
 import           Control.Monad.IO.Class           (liftIO)
-import qualified Data.ByteString.Lazy             as BL
 import           Data.Char                        (toUpper)
 import qualified Data.Map                         as M
 import qualified Data.Text                        as T
@@ -27,7 +26,6 @@ import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Client    (ClientRequest (..),
                                                    ClientResult (..))
 import           Network.GRPC.HighLevel.Generated (withGRPCClient)
-import qualified Proto3.Suite                     as PB
 import qualified System.Console.Haskeline         as RL
 import qualified System.Console.Haskeline.History as RL
 import           Text.RawString.QQ                (r)
@@ -36,17 +34,13 @@ import qualified Data.Aeson.Text                  as J
 import qualified Data.Text.Lazy                   as TL
 import           HStream.Client.Action            (createConnector,
                                                    createStream,
-                                                   createStreamBySelect,
                                                    createStreamBySelectWithCustomQueryName,
                                                    dropAction, executeViewQuery,
-                                                   insertIntoStream,
-                                                   insertIntoStream',
-                                                   listShards, pauseConnector,
-                                                   pauseQuery, resumeConnector,
-                                                   resumeQuery, retry,
-                                                   terminateQuery)
+                                                   insertIntoStream, listShards,
+                                                   pauseConnector, pauseQuery,
+                                                   resumeConnector, resumeQuery,
+                                                   retry, terminateQuery)
 import           HStream.Client.Execute           (execute, executeShowPlan,
-                                                   executeWithLookupResource,
                                                    executeWithLookupResource_,
                                                    execute_, updateClusterInfo)
 import           HStream.Client.Internal          (cliFetch)
@@ -55,6 +49,7 @@ import           HStream.Client.Types             (HStreamCliContext (..),
                                                    Resource (..))
 import           HStream.Client.Utils             (calculateShardId,
                                                    dropPlanToResType)
+import           HStream.Common.Types             (hashShardKey)
 import           HStream.Server.HStreamApi        (CommandQuery (..),
                                                    CommandQueryResponse (..),
                                                    HStreamApi (..),
@@ -76,7 +71,7 @@ import           HStream.SQL.Exception            (SomeSQLException,
 import           HStream.Utils                    (HStreamClientApi,
                                                    ResourceType (..),
                                                    formatCommandQueryResponse,
-                                                   formatResult, getServerResp,
+                                                   formatResult,
                                                    mkGRPCClientConfWithSSL,
                                                    newRandomText)
 
@@ -149,7 +144,8 @@ commandExec HStreamSqlContext{hstreamCliContext = cliCtx@HStreamCliContext{..},.
             result <- execute cliCtx $ listShards sName
             case result of
               Just (API.ListShardsResponse shards) -> do
-                case calculateShardId "" (V.toList shards) of
+                let shardKey = hashShardKey ""
+                case calculateShardId shardKey (V.toList shards) of
                   Nothing  -> putStrLn "Failed to calculate shard id"
                   Just sid -> executeWithLookupResource_ cliCtx (Resource ResShard (T.pack $ show sid)) (retry retryLimit retryInterval $ insertIntoStream sName sid (insertType == JsonFormat) payload)
               Nothing -> putStrLn "No shards found"
