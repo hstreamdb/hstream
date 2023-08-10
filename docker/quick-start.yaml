@@ -116,6 +116,74 @@ services:
       - data_zk_data:/data
       - data_zk_datalog:/datalog
 
+  hstream-exporter:
+    depends_on:
+      hserver-init:
+        condition: service_completed_successfully
+    image: hstreamdb/hstream-exporter
+    networks:
+      - hstream-quickstart
+    command:
+      - bash
+      - "-c"
+      - |
+        set -ex
+        hstream-exporter --addr hstream://hserver0:6570
+
+  gen_prometheus_config:
+    image: prom/prometheus
+    entrypoint:
+      - sh
+      - "-c"
+      - |
+        echo '
+        global:
+          scrape_interval: 15s
+          evaluation_interval: 15s
+        
+          external_labels:
+            monitor: "hstream-monitor"
+        
+        scrape_configs:
+          - job_name: "hstream_metrics"
+            scrape_interval: 5s
+            static_configs:
+              - targets:
+                  - hstream-exporter:9200
+        ' > /prometheus/prometheus.yml
+    volumes:
+      - data_prom_config:/prometheus
+
+  prometheus:
+    image: prom/prometheus
+    depends_on:
+      gen_prometheus_config:
+        condition: service_completed_successfully
+    expose:
+      - 9097
+    networks:
+      - hstream-quickstart
+    ports:
+      - "9097:9090"
+    volumes:
+      - data_prom_config:/etc/prometheus
+
+  console:
+    image: hstreamdb/hstream-console
+    depends_on:
+      - hserver-init
+    expose:
+      - 127.0.0.1:5177:5177
+    networks:
+      - hstream-quickstart
+    environment:
+      - SERVER_PORT=5177
+      - PROMETHEUS_URL=http://prometheus:9090
+      - HSTREAM_PUBLIC_ADDRESS=hstream.example.com
+      - HSTREAM_PRIVATE_ADDRESS=hserver0:6570
+    ports:
+      - "5177:5177"
+
 networks:
   hstream-quickstart:
     name: hstream-quickstart
@@ -127,3 +195,5 @@ volumes:
     name: quickstart_data_zk_data
   data_zk_datalog:
     name: quickstart_data_zk_datalog
+  data_prom_config:
+    name: quickstart_data_prom_config
