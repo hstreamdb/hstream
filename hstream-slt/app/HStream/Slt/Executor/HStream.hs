@@ -1,3 +1,5 @@
+{-# LANGUAGE CPP #-}
+
 module HStream.Slt.Executor.HStream where
 
 import           Control.Monad.IO.Class
@@ -18,6 +20,22 @@ import           HStream.Slt.Executor
 import           HStream.Slt.Plan
 import           HStream.Slt.Utils
 import           HStream.Utils
+
+#ifndef HStreamEnableSchema
+#ifndef HStreamUseV2Engine
+import           HStream.SQL.Codegen.V1
+#endif
+#endif
+
+#ifdef HStreamEnableSchema
+#ifndef HStreamUseV2Engine
+import           HStream.SQL.Codegen.V1New
+#endif
+#endif
+
+#ifdef HStreamUseV2Engine
+import           HStream.SQL.Codegen.V2
+#endif
 
 newtype HStreamExecutor = HStreamExecutor
   { conn :: Maybe HStreamCliContext
@@ -87,6 +105,7 @@ selectWithoutFrom' colInfo cols = do
   createView $ buildCreateViewStmt streamName viewName $ buildSelItemsStmt colInfo
   -- undefined
   -- pure $ undefined
+  deleteStream streamName
   pure mempty
 
 ----------------------------------------
@@ -148,7 +167,7 @@ createView sql = do
     then liftIO $ putStrLn $ "[DEBUG]: createView " <> T.unpack sql <> " " <> T.unpack qName
     else do
       conn <- getConn
-      liftIO $ S.executeWithLookupResource_ conn (Resource ResQuery qName) (S.createStreamBySelectWithCustomQueryName (T.unpack sql) qName)
+      liftIO $ S.executeWithLookupResource_ conn (Resource ResQuery qName) $ S.createStreamBySelectWithCustomQueryName (T.unpack sql) qName
 
 buildSelItemsStmt :: ColInfo -> T.Text
 buildSelItemsStmt (ColInfo colInfo) =
@@ -166,6 +185,24 @@ buildCreateViewStmt streamName viewName selItems =
     <> " GROUP BY "
     <> internalIndex
     <> " ;"
+
+deleteStream :: T.Text -> HStreamExecutorM ()
+deleteStream streamName = do
+  debug <- isDebug
+  if debug
+    then liftIO . putStrLn $ "[DEBUG]: deleteStream " <> T.unpack streamName
+    else do
+      conn <- getConn
+      liftIO $ S.executeWithLookupResource_ conn (Resource ResStream streamName) $ S.deleteStream streamName True
+
+deleteView :: T.Text -> HStreamExecutorM ()
+deleteView viewName = do
+  debug <- isDebug
+  if debug
+    then liftIO . putStrLn $ "[DEBUG]: deleteView " <> T.unpack viewName
+    else do
+      conn <- getConn
+      liftIO $ S.executeWithLookupResource_ conn (Resource ResView viewName) $ S.dropAction True $ DView viewName
 
 ----------------------------------------
 
