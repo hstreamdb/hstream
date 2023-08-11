@@ -3,8 +3,12 @@ module HStream.Common.GrpcHaskell
   , deleteGrpcClient
     -- * Re-exports
   , GRPC.Client
+  , GRPC.ClientConfig(..)
+  , GRPC.Port(..)
+  , GRPC.Host(..)
   ) where
 
+import qualified Network.GRPC.LowLevel.Call   as GRPC
 import qualified Network.GRPC.LowLevel.Client as GRPC
 import qualified Network.GRPC.LowLevel.GRPC   as GRPC
 import qualified Network.GRPC.Unsafe          as GRPC

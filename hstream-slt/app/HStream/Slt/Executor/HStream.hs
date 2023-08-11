@@ -14,12 +14,15 @@ import qualified Data.Vector                        as V
 import qualified HStream.Client.Action              as S
 import qualified HStream.Client.Execute             as S
 import           HStream.Client.Types
+import           HStream.Common.GrpcHaskell         (ClientConfig (..),
+                                                     Host (..), Port (..))
 import qualified HStream.Server.HStreamApi          as API
 import           HStream.Slt.Cli.Parser
 import           HStream.Slt.Executor
 import           HStream.Slt.Plan
 import           HStream.Slt.Plan.RandomNoTablePlan
 import           HStream.Slt.Utils
+import           HStream.SQL                        (parseAndRefine)
 import           HStream.Utils
 
 #ifndef HStreamEnableSchema
@@ -66,7 +69,7 @@ instance SltExecutor HStreamExecutorCtx HStreamExecutor where
   open' = open''
   selectWithoutFrom = selectWithoutFrom'
   insertValues = undefined
-  sqlDataTypeToLiteral' = undefined
+  sqlDataTypeToLiteral' = pure . T.pack . show
   sqlDataValueToLiteral = pure . sqlDataTypeToAnsiLiteral
 
 ----------------------------------------
@@ -83,11 +86,19 @@ open'' = do
   where
     refineOpts :: GlobalOpts -> RefinedCliConnOpts
     refineOpts GlobalOpts {executorsAddr} =
-      RefinedCliConnOpts
-        { addr = getExecutorsAddr executorsAddr,
-          clientConfig = undefined,
-          retryTimeout = undefined
-        }
+      let socketAddr@(SocketAddr host port) = getExecutorsAddr executorsAddr
+       in RefinedCliConnOpts
+            { addr = socketAddr,
+              clientConfig =
+                ClientConfig
+                  { clientServerHost = Host host,
+                    clientServerPort = Port port,
+                    clientArgs = [],
+                    clientSSLConfig = Nothing,
+                    clientAuthority = Nothing
+                  },
+              retryTimeout = 15 * 1000000
+            }
     getExecutorsAddr :: [(ExecutorKind, T.Text)] -> SocketAddr
     getExecutorsAddr [] = SocketAddr "127.0.0.1" 6570
     getExecutorsAddr ((ExecutorKindHStream, addr) : _) = toSocketAddr addr
@@ -105,9 +116,10 @@ selectWithoutFrom' colInfo sql = do
   viewName <- newRandText
   createView $ buildCreateViewStmt streamName viewName $ buildSelItemsStmt colInfo
   runInsert streamName
-  runSelect viewName
+  resp <- runSelect viewName
   deleteStream streamName
-  pure mempty
+  liftIO . putStrLn $ "[DEBUG]: " <> show resp
+  pure mempty -- FIXME
   where
     runInsert :: T.Text -> HStreamExecutorM ()
     runInsert streamName = do
@@ -115,14 +127,16 @@ selectWithoutFrom' colInfo sql = do
       outSql <- randInstantiateInsertIntoValuesSql colInfo streamName 0
       if debug
         then liftIO $ putStrLn . T.unpack $ "[DEBUG]: HStreamExecutorM randInstantiateInsertIntoValuesSql = " <> outSql
-        else undefined
-    runSelect :: T.Text -> HStreamExecutorM ()
+        else insertIntoStream outSql
+    runSelect :: T.Text -> HStreamExecutorM (V.Vector A.Object)
     runSelect viewName = do
       debug <- isDebug
       outSql <- randInstantiateSelectFromSql sql viewName 0
       if debug
-        then liftIO $ putStrLn . T.unpack $ "[DEBUG]: HStreamExecutorM randInstantiateSelectFromSql = " <> outSql
-        else undefined
+        then do
+          liftIO $ putStrLn . T.unpack $ "[DEBUG]: HStreamExecutorM randInstantiateSelectFromSql = " <> outSql
+          pure mempty
+        else executeViewQuery ("executeViewQuery " <> outSql) viewName outSql
 
 ----------------------------------------
 
@@ -219,6 +233,20 @@ deleteView viewName = do
     else do
       conn <- getConn
       liftIO $ S.executeWithLookupResource_ conn (Resource ResView viewName) $ S.dropAction True $ DView viewName
+
+insertIntoStream :: T.Text -> HStreamExecutorM ()
+insertIntoStream sql = do
+  debug <- isDebug
+  if debug
+    then liftIO . putStrLn $ "[DEBUG]: insertIntoStream " <> show sql
+    else do
+      conn <- getConn
+      liftIO $ do
+        rSql <- parseAndRefine sql
+        -- FIXME: shard?
+        InsertPlan streamName JsonFormat payload <- hstreamCodegen rSql
+        S.executeWithLookupResource_ conn (Resource ResStream streamName) $
+          S.insertIntoStream streamName 0 True payload
 
 ----------------------------------------
 
