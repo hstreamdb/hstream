@@ -4,20 +4,21 @@ module HStream.Slt.Executor.HStream where
 
 import           Control.Monad.IO.Class
 import           Control.Monad.State
-import qualified Data.Aeson                as A
+import qualified Data.Aeson                         as A
 import           Data.Functor
 import           Data.Maybe
-import qualified Data.Text                 as T
-import qualified Data.Text.Encoding        as T
-import qualified Data.Text.IO              as T
-import qualified Data.Vector               as V
-import qualified HStream.Client.Action     as S
-import qualified HStream.Client.Execute    as S
+import qualified Data.Text                          as T
+import qualified Data.Text.Encoding                 as T
+import qualified Data.Text.IO                       as T
+import qualified Data.Vector                        as V
+import qualified HStream.Client.Action              as S
+import qualified HStream.Client.Execute             as S
 import           HStream.Client.Types
-import qualified HStream.Server.HStreamApi as API
+import qualified HStream.Server.HStreamApi          as API
 import           HStream.Slt.Cli.Parser
 import           HStream.Slt.Executor
 import           HStream.Slt.Plan
+import           HStream.Slt.Plan.RandomNoTablePlan
 import           HStream.Slt.Utils
 import           HStream.Utils
 
@@ -66,7 +67,7 @@ instance SltExecutor HStreamExecutorCtx HStreamExecutor where
   selectWithoutFrom = selectWithoutFrom'
   insertValues = undefined
   sqlDataTypeToLiteral' = undefined
-  sqlDataValueToLiteral = pure . T.pack . show
+  sqlDataValueToLiteral = pure . sqlDataTypeToAnsiLiteral
 
 ----------------------------------------
 
@@ -97,16 +98,31 @@ open'' = do
       [host]       -> SocketAddr (T.encodeUtf8 host) 6570
       _            -> error "invalid server url for ExecutorKindHStream"
 
-selectWithoutFrom' :: ColInfo -> [T.Text] -> HStreamExecutorM Kv
-selectWithoutFrom' colInfo cols = do
+selectWithoutFrom' :: ColInfo -> T.Text -> HStreamExecutorM Kv
+selectWithoutFrom' colInfo sql = do
   streamName <- newRandText
   createStream streamName
   viewName <- newRandText
   createView $ buildCreateViewStmt streamName viewName $ buildSelItemsStmt colInfo
-  -- undefined
-  -- pure $ undefined
+  runInsert streamName
+  runSelect viewName
   deleteStream streamName
   pure mempty
+  where
+    runInsert :: T.Text -> HStreamExecutorM ()
+    runInsert streamName = do
+      debug <- isDebug
+      outSql <- randInstantiateInsertIntoValuesSql colInfo streamName 0
+      if debug
+        then liftIO $ putStrLn . T.unpack $ "[DEBUG]: HStreamExecutorM randInstantiateInsertIntoValuesSql = " <> outSql
+        else undefined
+    runSelect :: T.Text -> HStreamExecutorM ()
+    runSelect viewName = do
+      debug <- isDebug
+      outSql <- randInstantiateSelectFromSql sql viewName 0
+      if debug
+        then liftIO $ putStrLn . T.unpack $ "[DEBUG]: HStreamExecutorM randInstantiateSelectFromSql = " <> outSql
+        else undefined
 
 ----------------------------------------
 
@@ -205,9 +221,6 @@ deleteView viewName = do
       liftIO $ S.executeWithLookupResource_ conn (Resource ResView viewName) $ S.dropAction True $ DView viewName
 
 ----------------------------------------
-
-internalIndex :: T.Text
-internalIndex = "iiiiiiiiiiiiii"
 
 newRandText :: HStreamExecutorM T.Text
 newRandText = fmap ("slt_generated_" <>) <$> liftIO $ newRandomText 10

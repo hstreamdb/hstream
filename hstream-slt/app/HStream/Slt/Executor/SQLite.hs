@@ -4,11 +4,12 @@ import           Control.Exception
 import           Control.Monad.IO.Class
 import           Control.Monad.State
 import           Data.Maybe
-import qualified Data.Text              as T
-import qualified Database.SQLite.Simple as S
+import qualified Data.Text                          as T
+import qualified Database.SQLite.Simple             as S
 import           GHC.Stack
 import           HStream.Slt.Executor
 import           HStream.Slt.Plan
+import           HStream.Slt.Plan.RandomNoTablePlan
 import           HStream.Slt.Utils
 
 newtype SQLiteExecutor = SQLiteExecutor
@@ -42,8 +43,9 @@ instance SltExecutor SQLiteExecutorCtx SQLiteExecutor where
 
 ----------------------------------------
 
-selectWithoutFrom' :: ColInfo -> [T.Text] -> SQLiteExecutorM Kv
-selectWithoutFrom' _ cols = do
+selectWithoutFrom' :: ColInfo -> T.Text -> SQLiteExecutorM Kv
+selectWithoutFrom' info sql = do
+  cols <- randInstantiateSelectWithoutFromSql info sql
   conn <- getConn
   xss <- query_ @[SqlDataValue] conn (buildselectWithoutFromStmt cols)
   pure . sqlDataValuesToKv $ zip cols (head xss)
