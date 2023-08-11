@@ -34,8 +34,8 @@ import qualified HStream.Utils              as Utils
 import           System.Directory           (createDirectoryIfMissing)
 import qualified System.Process.Typed       as TP
 
-newIOTask :: T.Text -> M.MetaHandle -> Stats.StatsHolder -> TaskInfo -> T.Text -> IO IOTask
-newIOTask taskId taskHandle taskStatsHolder taskInfo path = do
+newIOTask :: T.Text -> M.MetaHandle -> Stats.StatsHolder -> TaskInfo -> T.Text -> IOOptions -> IO IOTask
+newIOTask taskId taskHandle taskStatsHolder taskInfo path ioOptions = do
   process' <- newIORef Nothing
   statusM  <- C.newMVar NEW
   taskOffsetsM <- C.newMVar Vector.empty
@@ -73,6 +73,7 @@ runIOTask ioTask@IOTask{..} = do
         " --network=", T.unpack tcNetwork,
         " --name ", T.unpack (getDockerName taskId),
         " -v " , taskPath, ":/data",
+        " " , T.unpack . optExtraDockerArgs $ ioOptions,
         " " , T.unpack tcImage,
         " run",
         " --config /data/config.json 2>&1"

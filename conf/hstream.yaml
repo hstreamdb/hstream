@@ -114,6 +114,7 @@ hserver:
     # io tasks run as docker containers,
     # so the tasks-network should be the network that can connect to HStreamDB and external systems.
     tasks-network: host
+    extra-docker-args: "-m 4g"
     # source images
     source-images:
       mysql: hstreamdb/source-mysql:latest
