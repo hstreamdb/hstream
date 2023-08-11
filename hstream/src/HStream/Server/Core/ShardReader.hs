@@ -37,6 +37,7 @@ import qualified Data.Vector                as V
 import           Data.Word                  (Word64)
 import           GHC.Stack                  (HasCallStack)
 import           HsGrpc.Server              (whileM)
+import           HStream.Common.Types
 import qualified HStream.Exception          as HE
 import qualified HStream.Logger             as Log
 import qualified HStream.MetaStore.Types    as M
@@ -44,8 +45,7 @@ import           HStream.Server.Core.Common (decodeRecordBatch)
 import           HStream.Server.HStreamApi  (CreateShardReaderRequest (..))
 import qualified HStream.Server.HStreamApi  as API
 import qualified HStream.Server.MetaData    as P
-import           HStream.Server.Shard       (cBytesToKey, hashShardKey,
-                                             shardEndKey, shardStartKey)
+import           HStream.Server.Shard       (shardEndKey, shardStartKey)
 import           HStream.Server.Types       (BiStreamReader (..),
                                              BiStreamReaderReceiver,
                                              BiStreamReaderSender,

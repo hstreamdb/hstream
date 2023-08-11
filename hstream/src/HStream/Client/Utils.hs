@@ -21,14 +21,11 @@ module HStream.Client.Utils
 
 import           Control.Concurrent               (threadDelay)
 import           Control.Exception                (finally)
-import           Crypto.Hash.MD5                  (hash)
-import qualified Data.ByteString                  as BS
 import           Data.Char                        (toUpper)
 import           Data.Functor                     ((<&>))
 import           Data.Int                         (Int32)
 import           Data.String                      (IsString)
 import qualified Data.Text                        as T
-import qualified Data.Text.Encoding               as BS
 import           Data.Word                        (Word64)
 import           Network.GRPC.HighLevel.Client
 import           Network.GRPC.HighLevel.Generated (withGRPCClient)
@@ -41,13 +38,15 @@ import           System.Posix                     (Handler (Catch),
 
 import           HStream.Base                     (genUnique)
 import           HStream.Client.Types             (Resource (..))
+import           HStream.Common.Types             (ShardKey, cBytesToKey)
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.SQL                      (DropObject (..))
 import           HStream.Utils                    (Format (formatResult),
                                                    ResourceType (..),
                                                    SocketAddr (..),
                                                    mkClientNormalRequest,
-                                                   mkGRPCClientConfWithSSL)
+                                                   mkGRPCClientConfWithSSL,
+                                                   textToCBytes)
 
 terminateMsg :: IsString a => a
 terminateMsg = "\x1b[32mTerminated\x1b[0m"
@@ -99,20 +98,13 @@ waitForServerToStart t addr clientSSLConfig = withGRPCClient (mkGRPCClientConfWi
          if newTimeout <= 0 then return Nothing
            else loop newTimeout api
 
-calculateShardId :: T.Text -> [API.Shard] -> Maybe Word64
+calculateShardId :: ShardKey -> [API.Shard] -> Maybe Word64
 calculateShardId key (API.Shard{..}:ss) =
-  case (compareHash result start, compareHash result end) of
-    (GT, LT) -> Just shardShardId
-    (EQ, _)  -> Just shardShardId
-    (_, EQ)  -> Just shardShardId
-    _        -> calculateShardId key ss
-  where
-    compareHash x y = if BS.length x == BS.length y
-      then x `compare` y
-      else BS.length x `compare` BS.length y
-    start = BS.encodeUtf8 shardStartHashRangeKey
-    end = BS.encodeUtf8 shardEndHashRangeKey
-    result = hash (BS.encodeUtf8 key)
+  let startKey = cBytesToKey . textToCBytes $ shardStartHashRangeKey
+      endKey   = cBytesToKey . textToCBytes $ shardEndHashRangeKey
+   in if key >= startKey && key <= endKey
+        then Just shardShardId
+        else calculateShardId key ss
 calculateShardId _ _ = Nothing
 
 dropPlanToResType :: DropObject -> Resource

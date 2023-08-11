@@ -37,6 +37,7 @@ import           Data.IORef                       (IORef)
 import           Data.Maybe                       (fromJust)
 import           HStream.Base.Timer               (CompactedWorker)
 import           HStream.Common.ConsistentHashing (HashRing)
+import           HStream.Common.Types             (ShardKey)
 import qualified HStream.Exception                as HE
 import           HStream.Gossip.Types             (Epoch, GossipContext)
 import qualified HStream.IO.Types                 as IO
@@ -45,7 +46,6 @@ import           HStream.MetaStore.Types          (MetaHandle)
 import           HStream.Server.Config
 import qualified HStream.Server.ConnectorTypes    as HCT
 import qualified HStream.Server.HStreamApi        as API
-import           HStream.Server.Shard             (ShardKey, SharedShardMap)
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as HS
 import qualified HStream.Store                    as S

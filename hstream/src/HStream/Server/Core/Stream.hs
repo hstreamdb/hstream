@@ -42,16 +42,14 @@ import qualified Z.Data.CBytes                     as CB
 import qualified ZooKeeper.Exception               as ZK
 
 import           HStream.Base.Time                 (getSystemNsTimestamp)
+import           HStream.Common.Types
 import qualified HStream.Common.ZookeeperSlotAlloc as Slot
 import qualified HStream.Exception                 as HE
 import qualified HStream.Logger                    as Log
 import qualified HStream.Server.HStreamApi         as API
 import qualified HStream.Server.MetaData           as P
-import           HStream.Server.Shard              (Shard (..), createShard,
-                                                    devideKeySpace,
-                                                    mkShardAttrs,
-                                                    mkShardWithDefaultId,
-                                                    mkSharedShardMapWithShards)
+import           HStream.Server.Shard              (createShard, mkShardAttrs,
+                                                    mkShardWithDefaultId)
 import           HStream.Server.Types              (ServerContext (..),
                                                     ServerInternalOffset (..),
                                                     ToOffset (..),

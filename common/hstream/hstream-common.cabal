@@ -101,6 +101,7 @@ library
     , bytestring
     , casing                >=0.1.4
     , containers
+    , cryptonite
     , data-default
     , deepseq
     , digest
@@ -115,6 +116,7 @@ library
     , hstream-common-base
     , http-client
     , http-types
+    , memory
     , optparse-applicative
     , primitive             ^>=0.7
     , proto3-suite
