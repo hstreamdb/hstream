@@ -54,6 +54,7 @@ import           HStream.Client.Types             (HStreamCliContext (..),
                                                    Resource (..))
 import           HStream.Client.Utils             (calculateShardId,
                                                    dropPlanToResType)
+import           HStream.Common.Types             (hashShardKey)
 import           HStream.Server.HStreamApi        (CommandQuery (..),
                                                    CommandQueryResponse (..),
                                                    HStreamApi (..),
@@ -152,7 +153,8 @@ commandExec HStreamSqlContext{hstreamCliContext = cliCtx@HStreamCliContext{..},.
             result <- execute cliCtx $ listShards sName
             case result of
               Just (API.ListShardsResponse shards) -> do
-                case calculateShardId "" (V.toList shards) of
+                let shardKey = hashShardKey ""
+                case calculateShardId shardKey (V.toList shards) of
                   Nothing  -> putStrLn "Failed to calculate shard id"
                   Just sid -> executeWithLookupResource_ cliCtx (Resource ResShard (T.pack $ show sid)) (retry retryLimit retryInterval $ insertIntoStream sName sid (insertType == JsonFormat) payload)
               Nothing -> putStrLn "No shards found"

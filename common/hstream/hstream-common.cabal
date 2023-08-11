@@ -101,6 +101,7 @@ library
     , bytestring
     , casing                >=0.1.4
     , containers
+    , cryptonite
     , data-default
     , deepseq
     , digest
@@ -115,6 +116,7 @@ library
     , hstream-common-base
     , http-client
     , http-types
+    , memory
     , optparse-applicative
     , primitive             ^>=0.7
     , proto3-suite
@@ -132,8 +134,6 @@ library
     , zlib
     , zoovisitor
     , zstd
-    , memory
-    , cryptonite
 
   cxx-options:        -std=c++17
   cpp-options:        -std=c++17

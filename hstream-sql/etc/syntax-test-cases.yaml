@@ -4,8 +4,14 @@
 testSuiteCases:
 - testCaseFail: null
   testCaseLabel: ok example
-  testCaseResult: RQSelect (RSelect (RSel [RSelectProjectAll]) (RFrom (RTableRefSimple
-    "s" Nothing)) RWhereEmpty RGroupByEmpty RHavingEmpty)
+  testCaseResult: |-
+    BoundQSelect BoundSelect [["a","x","b"]]
+    { boundSel = BoundExprCol "a" "s" "a" 1, BoundExprCol "x" "s" "x" 0, BoundExprCol "b" "s" "b" 2
+    , boundFrom = [SIMPLE] "s"
+    , boundWhere = BoundWhereEmpty
+    , boundGroupBy = BoundGroupByEmpty
+    , boundHaving = BoundHavingEmpty
+    }
   testCaseStmts:
   - select * from s;
   - select*from s;
@@ -26,31 +32,44 @@ testSuiteCases:
   - not SQL
 - testCaseFail: null
   testCaseLabel: deny unquoted dash in ident (1410)
-  testCaseResult: RQPushSelect (RSelect (RSel [RSelectItemProject (RExprAccessJson
-    "c->>\"season_id\"" JOpLongArrow (RExprCol "c" Nothing "c") (RExprCol "\"season_id\""
-    Nothing "season_id")) Nothing]) (RFrom (RTableRefSimple "production_changes" Nothing))
-    RWhereEmpty RGroupByEmpty RHavingEmpty)
+  testCaseResult: |-
+    BoundQPushSelect BoundSelect [["c->>'season_id'"]]
+    { boundSel = BoundExprAccessJson "c->>'season_id'" JOpLongArrow (BoundExprCol "c" "s" "c" 0) (BoundExprConst "'season_id'" "season_id")
+    , boundFrom = [SIMPLE] "production_changes"
+    , boundWhere = BoundWhereEmpty
+    , boundGroupBy = BoundGroupByEmpty
+    , boundHaving = BoundHavingEmpty
+    }
   testCaseStmts:
-  - select c->>"season_id" from production_changes EMIT CHANGES;
-  - select c ->> "season_id" from production_changes EMIT CHANGES;
-  - select c->> "season_id" from production_changes EMIT CHANGES;
-  - select c ->>"season_id" from production_changes EMIT CHANGES;
+  - select c->>'season_id' from production_changes EMIT CHANGES;
+  - select c ->> 'season_id' from production_changes EMIT CHANGES;
+  - select c->> 'season_id' from production_changes EMIT CHANGES;
+  - select c ->>'season_id' from production_changes EMIT CHANGES;
 - testCaseFail: null
   testCaseLabel: deny unquoted dash in ident (1410)
-  testCaseResult: RQPushSelect (RSelect (RSel [RSelectItemProject (RExprAccessJson
-    "c->\"season_id\"" JOpArrow (RExprCol "c" Nothing "c") (RExprCol "\"season_id\""
-    Nothing "season_id")) Nothing]) (RFrom (RTableRefSimple "production_changes" Nothing))
-    RWhereEmpty RGroupByEmpty RHavingEmpty)
+  testCaseResult: |-
+    BoundQPushSelect BoundSelect [["c->'season_id'"]]
+    { boundSel = BoundExprAccessJson "c->'season_id'" JOpArrow (BoundExprCol "c" "s" "c" 0) (BoundExprConst "'season_id'" "season_id")
+    , boundFrom = [SIMPLE] "production_changes"
+    , boundWhere = BoundWhereEmpty
+    , boundGroupBy = BoundGroupByEmpty
+    , boundHaving = BoundHavingEmpty
+    }
   testCaseStmts:
-  - select c ->"season_id" from production_changes EMIT CHANGES;
-  - select c -> "season_id" from production_changes EMIT CHANGES;
-  - select c->"season_id" from production_changes EMIT CHANGES;
-  - select c-> "season_id" from production_changes EMIT CHANGES;
+  - select c ->'season_id' from production_changes EMIT CHANGES;
+  - select c -> 'season_id' from production_changes EMIT CHANGES;
+  - select c->'season_id' from production_changes EMIT CHANGES;
+  - select c-> 'season_id' from production_changes EMIT CHANGES;
 - testCaseFail: null
   testCaseLabel: deny unquoted dash in ident (1410)
-  testCaseResult: RQPushSelect (RSelect (RSel [RSelectItemProject (RExprBinOp "a-b"
-    OpSub (RExprCol "a" Nothing "a") (RExprCol "b" Nothing "b")) Nothing]) (RFrom
-    (RTableRefSimple "s" Nothing)) RWhereEmpty RGroupByEmpty RHavingEmpty)
+  testCaseResult: |-
+    BoundQPushSelect BoundSelect [["a-b"]]
+    { boundSel = BoundExprBinOp "a-b" OpSub (BoundExprCol "a" "s" "a" 1) (BoundExprCol "b" "s" "b" 2)
+    , boundFrom = [SIMPLE] "s"
+    , boundWhere = BoundWhereEmpty
+    , boundGroupBy = BoundGroupByEmpty
+    , boundHaving = BoundHavingEmpty
+    }
   testCaseStmts:
   - select a-b from s emit changes;
   - select a -b from s emit changes;
@@ -58,24 +77,32 @@ testSuiteCases:
   - select a - b from s emit changes;
 - testCaseFail: null
   testCaseLabel: JSON operator should unquote string literal
-  testCaseResult: RQPushSelect (RSelect (RSel [RSelectItemProject (RExprAccessJson
-    "c->'season_id'" JOpArrow (RExprCol "c" Nothing "c") (RExprConst "'season_id'"
-    (ConstantText "season_id"))) Nothing]) (RFrom (RTableRefSimple "production_changes"
-    Nothing)) RWhereEmpty RGroupByEmpty RHavingEmpty)
+  testCaseResult: |-
+    BoundQPushSelect BoundSelect [["c->'season_id'"]]
+    { boundSel = BoundExprAccessJson "c->'season_id'" JOpArrow (BoundExprCol "c" "s" "c" 0) (BoundExprConst "'season_id'" "season_id")
+    , boundFrom = [SIMPLE] "production_changes"
+    , boundWhere = BoundWhereEmpty
+    , boundGroupBy = BoundGroupByEmpty
+    , boundHaving = BoundHavingEmpty
+    }
   testCaseStmts:
   - select c -> 'season_id' from production_changes EMIT CHANGES;
 - testCaseFail: null
   testCaseLabel: JSON operator should unquote string literal
-  testCaseResult: RQPushSelect (RSelect (RSel [RSelectItemProject (RExprAccessJson
-    "c->>'season_id'" JOpLongArrow (RExprCol "c" Nothing "c") (RExprConst "'season_id'"
-    (ConstantText "season_id"))) Nothing]) (RFrom (RTableRefSimple "production_changes"
-    Nothing)) RWhereEmpty RGroupByEmpty RHavingEmpty)
+  testCaseResult: |-
+    BoundQPushSelect BoundSelect [["c->>'season_id'"]]
+    { boundSel = BoundExprAccessJson "c->>'season_id'" JOpLongArrow (BoundExprCol "c" "s" "c" 0) (BoundExprConst "'season_id'" "season_id")
+    , boundFrom = [SIMPLE] "production_changes"
+    , boundWhere = BoundWhereEmpty
+    , boundGroupBy = BoundGroupByEmpty
+    , boundHaving = BoundHavingEmpty
+    }
   testCaseStmts:
   - select c ->> 'season_id' from production_changes EMIT CHANGES;
 - testCaseFail: null
   testCaseLabel: insert JSON
-  testCaseResult: 'RQInsert (RInsertRawOrJson "s" "{\"x\": {\"a\": 42, \"b\": null,
-    \"c\": \"str\", \"d\": true}}" RInsertRawOrJsonPayloadTypeJson)'
+  testCaseResult: 'BoundQInsert (BoundInsertRawOrJson "s" "{\"x\": {\"a\": 42, \"b\":
+    null, \"c\": \"str\", \"d\": true}}" BoundInsertPayloadTypeJson)'
   testCaseStmts:
   - 'insert into s values cast (''{"x": {"a": 42, "b": null, "c": "str", "d": true}}''
     as jsonb);'
@@ -83,169 +110,250 @@ testSuiteCases:
     jsonb;'
 - testCaseFail: null
   testCaseLabel: insert BYTEA
-  testCaseResult: RQInsert (RInsertRawOrJson "s" "binary_value" RInsertRawOrJsonPayloadTypeRaw)
+  testCaseResult: BoundQInsert (BoundInsertRawOrJson "s" "binary_value" BoundInsertPayloadTypeRaw)
   testCaseStmts:
   - insert into s values cast ('binary_value' as bytea);
   - 'insert into s values ''binary_value'' :: bytea;'
 - testCaseFail: null
   testCaseLabel: string function
-  testCaseResult: RQPushSelect (RSelect (RSel [RSelectItemProject (RExprBinOp "SPLIT('a.b.c',x)"
-    OpSplit (RExprConst "'a.b.c'" (ConstantText "a.b.c")) (RExprCol "x" Nothing "x"))
-    Nothing]) (RFrom (RTableRefSimple "s" Nothing)) RWhereEmpty RGroupByEmpty RHavingEmpty)
+  testCaseResult: |-
+    BoundQPushSelect BoundSelect [["SPLIT('a.b.c',x)"]]
+    { boundSel = BoundExprBinOp "SPLIT('a.b.c',x)" OpSplit (BoundExprConst "'a.b.c'" "a.b.c") (BoundExprCol "x" "s" "x" 0)
+    , boundFrom = [SIMPLE] "s"
+    , boundWhere = BoundWhereEmpty
+    , boundGroupBy = BoundGroupByEmpty
+    , boundHaving = BoundHavingEmpty
+    }
   testCaseStmts:
   - select SPLIT('a.b.c', x) from s emit changes;
 - testCaseFail: null
   testCaseLabel: BETWEEN
-  testCaseResult: RQPushSelect (RSelect (RSel [RSelectItemProject (RExprTerOp "xBETWEEN0AND42"
-    OpBetweenAnd (RExprCol "x" Nothing "x") (RExprConst "0" (ConstantInt 0)) (RExprConst
-    "42" (ConstantInt 42))) Nothing]) (RFrom (RTableRefSimple "s" Nothing)) RWhereEmpty
-    RGroupByEmpty RHavingEmpty)
+  testCaseResult: |-
+    BoundQPushSelect BoundSelect [["xBETWEEN0AND42"]]
+    { boundSel = BoundExprTerOp "xBETWEEN0AND42" OpBetweenAnd (BoundExprCol "x" "s" "x" 0) (BoundExprConst "0" 0) (BoundExprConst "42" 42)
+    , boundFrom = [SIMPLE] "s"
+    , boundWhere = BoundWhereEmpty
+    , boundGroupBy = BoundGroupByEmpty
+    , boundHaving = BoundHavingEmpty
+    }
   testCaseStmts:
   - select x between 0 and 42 from s emit changes;
 - testCaseFail: null
   testCaseLabel: BETWEEN
-  testCaseResult: RQPushSelect (RSelect (RSel [RSelectItemProject (RExprTerOp "xNOTBETWEEN0AND42"
-    OpNotBetweenAnd (RExprCol "x" Nothing "x") (RExprConst "0" (ConstantInt 0)) (RExprConst
-    "42" (ConstantInt 42))) Nothing]) (RFrom (RTableRefSimple "s" Nothing)) RWhereEmpty
-    RGroupByEmpty RHavingEmpty)
+  testCaseResult: |-
+    BoundQPushSelect BoundSelect [["xNOTBETWEEN0AND42"]]
+    { boundSel = BoundExprTerOp "xNOTBETWEEN0AND42" OpNotBetweenAnd (BoundExprCol "x" "s" "x" 0) (BoundExprConst "0" 0) (BoundExprConst "42" 42)
+    , boundFrom = [SIMPLE] "s"
+    , boundWhere = BoundWhereEmpty
+    , boundGroupBy = BoundGroupByEmpty
+    , boundHaving = BoundHavingEmpty
+    }
   testCaseStmts:
   - select x not between 0 and 42 from s emit changes;
 - testCaseFail: null
   testCaseLabel: BETWEEN
-  testCaseResult: RQPushSelect (RSelect (RSel [RSelectItemProject (RExprTerOp "xBETWEENSYMMETRIC0AND42"
-    OpBetweenSymAnd (RExprCol "x" Nothing "x") (RExprConst "0" (ConstantInt 0)) (RExprConst
-    "42" (ConstantInt 42))) Nothing]) (RFrom (RTableRefSimple "s" Nothing)) RWhereEmpty
-    RGroupByEmpty RHavingEmpty)
+  testCaseResult: |-
+    BoundQPushSelect BoundSelect [["xBETWEENSYMMETRIC0AND42"]]
+    { boundSel = BoundExprTerOp "xBETWEENSYMMETRIC0AND42" OpBetweenSymAnd (BoundExprCol "x" "s" "x" 0) (BoundExprConst "0" 0) (BoundExprConst "42" 42)
+    , boundFrom = [SIMPLE] "s"
+    , boundWhere = BoundWhereEmpty
+    , boundGroupBy = BoundGroupByEmpty
+    , boundHaving = BoundHavingEmpty
+    }
   testCaseStmts:
   - select x between symmetric 0 and 42 from s emit changes;
 - testCaseFail: null
   testCaseLabel: BETWEEN
-  testCaseResult: RQPushSelect (RSelect (RSel [RSelectItemProject (RExprTerOp "xNOTBETWEENSYMMETRIC0AND42"
-    OpNotBetweenSymAnd (RExprCol "x" Nothing "x") (RExprConst "0" (ConstantInt 0))
-    (RExprConst "42" (ConstantInt 42))) Nothing]) (RFrom (RTableRefSimple "s" Nothing))
-    RWhereEmpty RGroupByEmpty RHavingEmpty)
+  testCaseResult: |-
+    BoundQPushSelect BoundSelect [["xNOTBETWEENSYMMETRIC0AND42"]]
+    { boundSel = BoundExprTerOp "xNOTBETWEENSYMMETRIC0AND42" OpNotBetweenSymAnd (BoundExprCol "x" "s" "x" 0) (BoundExprConst "0" 0) (BoundExprConst "42" 42)
+    , boundFrom = [SIMPLE] "s"
+    , boundWhere = BoundWhereEmpty
+    , boundGroupBy = BoundGroupByEmpty
+    , boundHaving = BoundHavingEmpty
+    }
   testCaseStmts:
   - select x not between symmetric 0 and 42 from s emit changes;
 - testCaseFail: null
   testCaseLabel: not(BETWEEN)
-  testCaseResult: RQPushSelect (RSelect (RSel [RSelectItemProject (RExprUnaryOp "NOTxBETWEEN0AND42"
-    OpNot (RExprTerOp "xBETWEEN0AND42" OpBetweenAnd (RExprCol "x" Nothing "x") (RExprConst
-    "0" (ConstantInt 0)) (RExprConst "42" (ConstantInt 42)))) Nothing]) (RFrom (RTableRefSimple
-    "s" Nothing)) RWhereEmpty RGroupByEmpty RHavingEmpty)
+  testCaseResult: |-
+    BoundQPushSelect BoundSelect [["NOTxBETWEEN0AND42"]]
+    { boundSel = BoundExprUnaryOp "NOTxBETWEEN0AND42" OpNot (BoundExprTerOp "xBETWEEN0AND42" OpBetweenAnd (BoundExprCol "x" "s" "x" 0) (BoundExprConst "0" 0) (BoundExprConst "42" 42))
+    , boundFrom = [SIMPLE] "s"
+    , boundWhere = BoundWhereEmpty
+    , boundGroupBy = BoundGroupByEmpty
+    , boundHaving = BoundHavingEmpty
+    }
   testCaseStmts:
   - select not x between 0 and 42 from s emit changes;
 - testCaseFail: null
   testCaseLabel: not(BETWEEN)
-  testCaseResult: RQPushSelect (RSelect (RSel [RSelectItemProject (RExprTerOp "xNOTBETWEEN0AND42"
-    OpNotBetweenAnd (RExprCol "x" Nothing "x") (RExprConst "0" (ConstantInt 0)) (RExprConst
-    "42" (ConstantInt 42))) Nothing]) (RFrom (RTableRefSimple "s" Nothing)) RWhereEmpty
-    RGroupByEmpty RHavingEmpty)
+  testCaseResult: |-
+    BoundQPushSelect BoundSelect [["xNOTBETWEEN0AND42"]]
+    { boundSel = BoundExprTerOp "xNOTBETWEEN0AND42" OpNotBetweenAnd (BoundExprCol "x" "s" "x" 0) (BoundExprConst "0" 0) (BoundExprConst "42" 42)
+    , boundFrom = [SIMPLE] "s"
+    , boundWhere = BoundWhereEmpty
+    , boundGroupBy = BoundGroupByEmpty
+    , boundHaving = BoundHavingEmpty
+    }
   testCaseStmts:
   - select x not between 0 and 42 from s emit changes;
 - testCaseFail: null
   testCaseLabel: not(BETWEEN)
-  testCaseResult: RQPushSelect (RSelect (RSel [RSelectItemProject (RExprTerOp "xBETWEENSYMMETRIC0AND42"
-    OpBetweenSymAnd (RExprCol "x" Nothing "x") (RExprConst "0" (ConstantInt 0)) (RExprConst
-    "42" (ConstantInt 42))) Nothing]) (RFrom (RTableRefSimple "s" Nothing)) RWhereEmpty
-    RGroupByEmpty RHavingEmpty)
+  testCaseResult: |-
+    BoundQPushSelect BoundSelect [["xBETWEENSYMMETRIC0AND42"]]
+    { boundSel = BoundExprTerOp "xBETWEENSYMMETRIC0AND42" OpBetweenSymAnd (BoundExprCol "x" "s" "x" 0) (BoundExprConst "0" 0) (BoundExprConst "42" 42)
+    , boundFrom = [SIMPLE] "s"
+    , boundWhere = BoundWhereEmpty
+    , boundGroupBy = BoundGroupByEmpty
+    , boundHaving = BoundHavingEmpty
+    }
   testCaseStmts:
   - select x between symmetric 0 and 42 from s emit changes;
 - testCaseFail: null
   testCaseLabel: not(BETWEEN)
-  testCaseResult: RQPushSelect (RSelect (RSel [RSelectItemProject (RExprTerOp "xNOTBETWEENSYMMETRIC0AND42"
-    OpNotBetweenSymAnd (RExprCol "x" Nothing "x") (RExprConst "0" (ConstantInt 0))
-    (RExprConst "42" (ConstantInt 42))) Nothing]) (RFrom (RTableRefSimple "s" Nothing))
-    RWhereEmpty RGroupByEmpty RHavingEmpty)
+  testCaseResult: |-
+    BoundQPushSelect BoundSelect [["xNOTBETWEENSYMMETRIC0AND42"]]
+    { boundSel = BoundExprTerOp "xNOTBETWEENSYMMETRIC0AND42" OpNotBetweenSymAnd (BoundExprCol "x" "s" "x" 0) (BoundExprConst "0" 0) (BoundExprConst "42" 42)
+    , boundFrom = [SIMPLE] "s"
+    , boundWhere = BoundWhereEmpty
+    , boundGroupBy = BoundGroupByEmpty
+    , boundHaving = BoundHavingEmpty
+    }
   testCaseStmts:
   - select x not between symmetric 0 and 42 from s emit changes;
 - testCaseFail: null
   testCaseLabel: DATE syntax
-  testCaseResult: RQSelect (RSelect (RSel [RSelectItemProject (RExprConst "DATE'2021-08-07'"
-    (ConstantDate 2021-08-07)) Nothing]) (RFrom (RTableRefSimple "s" Nothing)) RWhereEmpty
-    RGroupByEmpty RHavingEmpty)
+  testCaseResult: |-
+    BoundQSelect BoundSelect [["DATE'2021-08-07'"]]
+    { boundSel = BoundExprConst "DATE'2021-08-07'" 2021-08-07
+    , boundFrom = [SIMPLE] "s"
+    , boundWhere = BoundWhereEmpty
+    , boundGroupBy = BoundGroupByEmpty
+    , boundHaving = BoundHavingEmpty
+    }
   testCaseStmts:
   - select DATE '2021-08-07' from s;
 - testCaseFail: null
   testCaseLabel: TIME syntax
-  testCaseResult: RQSelect (RSelect (RSel [RSelectItemProject (RExprConst "TIME'10:41:03'"
-    (ConstantTime 10:41:03)) Nothing]) (RFrom (RTableRefSimple "s" Nothing)) RWhereEmpty
-    RGroupByEmpty RHavingEmpty)
+  testCaseResult: |-
+    BoundQSelect BoundSelect [["TIME'10:41:03'"]]
+    { boundSel = BoundExprConst "TIME'10:41:03'" 10:41:03
+    , boundFrom = [SIMPLE] "s"
+    , boundWhere = BoundWhereEmpty
+    , boundGroupBy = BoundGroupByEmpty
+    , boundHaving = BoundHavingEmpty
+    }
   testCaseStmts:
   - select TIME '10:41:03' from s;
 - testCaseFail: null
   testCaseLabel: TIME syntax
-  testCaseResult: RQSelect (RSelect (RSel [RSelectItemProject (RExprConst "TIME'01:02:03.456'"
-    (ConstantTime 01:02:03.456)) Nothing]) (RFrom (RTableRefSimple "s" Nothing)) RWhereEmpty
-    RGroupByEmpty RHavingEmpty)
+  testCaseResult: |-
+    BoundQSelect BoundSelect [["TIME'01:02:03.456'"]]
+    { boundSel = BoundExprConst "TIME'01:02:03.456'" 01:02:03.456
+    , boundFrom = [SIMPLE] "s"
+    , boundWhere = BoundWhereEmpty
+    , boundGroupBy = BoundGroupByEmpty
+    , boundHaving = BoundHavingEmpty
+    }
   testCaseStmts:
   - select TIME '01:02:03.456' from s;
 - testCaseFail: null
   testCaseLabel: TIMESTAMP syntax
-  testCaseResult: RQSelect (RSelect (RSel [RSelectItemProject (RExprConst "TIMESTAMP'2023-06-30T12:30:45+02:00'"
-    (ConstantTimestamp 2023-06-30 12:30:45 +0200)) Nothing]) (RFrom (RTableRefSimple
-    "s" Nothing)) RWhereEmpty RGroupByEmpty RHavingEmpty)
+  testCaseResult: |-
+    BoundQSelect BoundSelect [["TIMESTAMP'2023-06-30T12:30:45+02:00'"]]
+    { boundSel = BoundExprConst "TIMESTAMP'2023-06-30T12:30:45+02:00'" 2023-06-30 12:30:45 +0200
+    , boundFrom = [SIMPLE] "s"
+    , boundWhere = BoundWhereEmpty
+    , boundGroupBy = BoundGroupByEmpty
+    , boundHaving = BoundHavingEmpty
+    }
   testCaseStmts:
   - select TIMESTAMP '2023-06-30T12:30:45+02:00' from s;
 - testCaseFail: null
   testCaseLabel: INTERVAL syntax
-  testCaseResult: RQSelect (RSelect (RSel [RSelectItemProject (RExprConst "INTERVAL5SECOND"
-    (ConstantInterval P0MT5S)) Nothing]) (RFrom (RTableRefSimple "s" Nothing)) RWhereEmpty
-    RGroupByEmpty RHavingEmpty)
+  testCaseResult: |-
+    BoundQSelect BoundSelect [["INTERVAL5SECOND"]]
+    { boundSel = BoundExprConst "INTERVAL5SECOND" P0MT5S
+    , boundFrom = [SIMPLE] "s"
+    , boundWhere = BoundWhereEmpty
+    , boundGroupBy = BoundGroupByEmpty
+    , boundHaving = BoundHavingEmpty
+    }
   testCaseStmts:
   - select INTERVAL 5 SECOND from s;
 - testCaseFail: null
   testCaseLabel: ARRAY syntax
-  testCaseResult: RQSelect (RSelect (RSel [RSelectItemProject (RExprArray "{'aa','bb','cc'}"
-    [RExprConst "'aa'" (ConstantText "aa"),RExprConst "'bb'" (ConstantText "bb"),RExprConst
-    "'cc'" (ConstantText "cc")]) Nothing]) (RFrom (RTableRefSimple "s" Nothing)) RWhereEmpty
-    RGroupByEmpty RHavingEmpty)
+  testCaseResult: |-
+    BoundQSelect BoundSelect [["{'aa','bb','cc'}"]]
+    { boundSel = BoundExprArray "{'aa','bb','cc'}" [BoundExprConst "'aa'" "aa",BoundExprConst "'bb'" "bb",BoundExprConst "'cc'" "cc"]
+    , boundFrom = [SIMPLE] "s"
+    , boundWhere = BoundWhereEmpty
+    , boundGroupBy = BoundGroupByEmpty
+    , boundHaving = BoundHavingEmpty
+    }
   testCaseStmts:
   - select {'aa', 'bb', 'cc'} from s;
 - testCaseFail: null
   testCaseLabel: ARRAY syntax
-  testCaseResult: RQSelect (RSelect (RSel [RSelectItemProject (RExprArray "{}" [])
-    Nothing]) (RFrom (RTableRefSimple "s" Nothing)) RWhereEmpty RGroupByEmpty RHavingEmpty)
+  testCaseResult: |-
+    BoundQSelect BoundSelect [["{}"]]
+    { boundSel = BoundExprArray "{}" []
+    , boundFrom = [SIMPLE] "s"
+    , boundWhere = BoundWhereEmpty
+    , boundGroupBy = BoundGroupByEmpty
+    , boundHaving = BoundHavingEmpty
+    }
   testCaseStmts:
   - select {} from s;
   - select { } from s;
 - testCaseFail: null
   testCaseLabel: ARRAY syntax
-  testCaseResult: RQSelect (RSelect (RSel [RSelectItemProject (RExprArray "{{'aa','bb','cc'},{'aa','bb'},{'aa','bb','cc'}}"
-    [RExprArray "{'aa','bb','cc'}" [RExprConst "'aa'" (ConstantText "aa"),RExprConst
-    "'bb'" (ConstantText "bb"),RExprConst "'cc'" (ConstantText "cc")],RExprArray "{'aa','bb'}"
-    [RExprConst "'aa'" (ConstantText "aa"),RExprConst "'bb'" (ConstantText "bb")],RExprArray
-    "{'aa','bb','cc'}" [RExprConst "'aa'" (ConstantText "aa"),RExprConst "'bb'" (ConstantText
-    "bb"),RExprConst "'cc'" (ConstantText "cc")]]) Nothing]) (RFrom (RTableRefSimple
-    "s" Nothing)) RWhereEmpty RGroupByEmpty RHavingEmpty)
+  testCaseResult: |-
+    BoundQSelect BoundSelect [["{{'aa','bb','cc'},{'aa','bb'},{'aa','bb','cc'}}"]]
+    { boundSel = BoundExprArray "{{'aa','bb','cc'},{'aa','bb'},{'aa','bb','cc'}}" [BoundExprArray "{'aa','bb','cc'}" [BoundExprConst "'aa'" "aa",BoundExprConst "'bb'" "bb",BoundExprConst "'cc'" "cc"],BoundExprArray "{'aa','bb'}" [BoundExprConst "'aa'" "aa",BoundExprConst "'bb'" "bb"],BoundExprArray "{'aa','bb','cc'}" [BoundExprConst "'aa'" "aa",BoundExprConst "'bb'" "bb",BoundExprConst "'cc'" "cc"]]
+    , boundFrom = [SIMPLE] "s"
+    , boundWhere = BoundWhereEmpty
+    , boundGroupBy = BoundGroupByEmpty
+    , boundHaving = BoundHavingEmpty
+    }
   testCaseStmts:
   - select {{'aa', 'bb', 'cc'}, {'aa', 'bb'}, {'aa', 'bb', 'cc'}} from s;
 - testCaseFail: null
   testCaseLabel: ARRAY syntax
-  testCaseResult: RQSelect (RSelect (RSel [RSelectItemProject (RExprAccessArray "({'aa','bb','cc'})[0]"
-    (RExprArray "{'aa','bb','cc'}" [RExprConst "'aa'" (ConstantText "aa"),RExprConst
-    "'bb'" (ConstantText "bb"),RExprConst "'cc'" (ConstantText "cc")]) [0]) Nothing])
-    (RFrom (RTableRefSimple "s" Nothing)) RWhereEmpty RGroupByEmpty RHavingEmpty)
+  testCaseResult: |-
+    BoundQSelect BoundSelect [["({'aa','bb','cc'})[0]"]]
+    { boundSel = BoundExprAccessArray "({'aa','bb','cc'})[0]" (BoundExprArray "{'aa','bb','cc'}" [BoundExprConst "'aa'" "aa",BoundExprConst "'bb'" "bb",BoundExprConst "'cc'" "cc"]) [0]
+    , boundFrom = [SIMPLE] "s"
+    , boundWhere = BoundWhereEmpty
+    , boundGroupBy = BoundGroupByEmpty
+    , boundHaving = BoundHavingEmpty
+    }
   testCaseStmts:
   - select ({'aa', 'bb', 'cc'})[0] from s;
 - testCaseFail: null
   testCaseLabel: ARRAY syntax
-  testCaseResult: RQSelect (RSelect (RSel [RSelectItemProject (RExprAccessArray "({'aa','bb','cc'})[0:2]"
-    (RExprArray "{'aa','bb','cc'}" [RExprConst "'aa'" (ConstantText "aa"),RExprConst
-    "'bb'" (ConstantText "bb"),RExprConst "'cc'" (ConstantText "cc")]) [0:2]) Nothing])
-    (RFrom (RTableRefSimple "s" Nothing)) RWhereEmpty RGroupByEmpty RHavingEmpty)
+  testCaseResult: |-
+    BoundQSelect BoundSelect [["({'aa','bb','cc'})[0:2]"]]
+    { boundSel = BoundExprAccessArray "({'aa','bb','cc'})[0:2]" (BoundExprArray "{'aa','bb','cc'}" [BoundExprConst "'aa'" "aa",BoundExprConst "'bb'" "bb",BoundExprConst "'cc'" "cc"]) [0:2]
+    , boundFrom = [SIMPLE] "s"
+    , boundWhere = BoundWhereEmpty
+    , boundGroupBy = BoundGroupByEmpty
+    , boundHaving = BoundHavingEmpty
+    }
   testCaseStmts:
   - 'select ({''aa'', ''bb'', ''cc''})[0 : 2] from s;'
 - testCaseFail: null
   testCaseLabel: Create Connectors
-  testCaseResult: RQCreate (RCreateConnector "SOURCE" "source01" "mysql" False (RConnectorOptions
-    (fromList [("port",Object (fromList [("contents",Number 3306.0),("tag",String
-    "ConstantInt")])),("host",Object (fromList [("contents",String "mysql-s1"),("tag",String
-    "ConstantText")])),("password",Object (fromList [("contents",String "password"),("tag",String
-    "ConstantText")])),("user",Object (fromList [("contents",String "root"),("tag",String
-    "ConstantText")])),("database",Object (fromList [("contents",String "d1"),("tag",String
-    "ConstantText")])),("table",Object (fromList [("contents",String "person"),("tag",String
-    "ConstantText")])),("stream",Object (fromList [("contents",String "stream01"),("tag",String
-    "ConstantText")]))])))
+  testCaseResult: BoundQCreate (BoundCreateConnector "SOURCE" "source01" "mysql" False
+    (BoundConnectorOptions (fromList [("port",Object (fromList [("contents",Number
+    3306.0),("tag",String "ConstantInt")])),("host",Object (fromList [("contents",String
+    "mysql-s1"),("tag",String "ConstantText")])),("password",Object (fromList [("contents",String
+    "password"),("tag",String "ConstantText")])),("user",Object (fromList [("contents",String
+    "root"),("tag",String "ConstantText")])),("database",Object (fromList [("contents",String
+    "d1"),("tag",String "ConstantText")])),("table",Object (fromList [("contents",String
+    "person"),("tag",String "ConstantText")])),("stream",Object (fromList [("contents",String
+    "stream01"),("tag",String "ConstantText")]))])))
   testCaseStmts:
   - create source connector source01 from mysql with (host = 'mysql-s1', port = 3306,
     user = 'root', password = 'password', database = 'd1', table = 'person', "stream"
