@@ -132,6 +132,8 @@ library
     , zlib
     , zoovisitor
     , zstd
+    , memory
+    , cryptonite
 
   cxx-options:        -std=c++17
   cpp-options:        -std=c++17

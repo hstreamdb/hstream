@@ -4,13 +4,11 @@
 
 module HStream.Server.Shard
   ( Shard (..)
-  , ShardKey (..)
   , mkShard
   , mkShardWithDefaultId
   , splitShardByKey
   , halfSplit
   , mergeShard
-  , devideKeySpace
   , createShard
   , mkShardAttrs
 
@@ -32,9 +30,6 @@ module HStream.Server.Shard
   , splitHalf
   , mergeTwoShard
 
-  , hashShardKey
-  , keyToCBytes
-  , cBytesToKey
   , shardStartKey
   , shardEndKey
   , shardEpoch
@@ -43,53 +38,23 @@ module HStream.Server.Shard
 import           Control.Concurrent.STM (STM, TMVar, atomically, newTMVarIO,
                                          putTMVar, readTMVar, swapTMVar,
                                          takeTMVar)
-import           Control.Exception      (Exception (fromException, toException),
-                                         SomeException, bracket, throwIO)
-import qualified Crypto.Hash            as CH
+import           Control.Exception      (bracket, throwIO)
 import           Data.Bits              (shiftL, shiftR, (.|.))
-import qualified Data.ByteArray         as BA
 import           Data.Foldable          (foldl', forM_)
 import           Data.Hashable          (Hashable (hash))
-import           Data.List              (iterate')
 import           Data.Map.Strict        (Map)
 import qualified Data.Map.Strict        as M
 import           Data.Text              (Text)
 import qualified Data.Text              as T
-import           Data.Text.Encoding     (encodeUtf8)
-import           Data.Typeable          (cast)
 import           Data.Vector            (Vector)
 import qualified Data.Vector            as V
 import           Data.Word              (Word32, Word64)
 import qualified Z.Data.CBytes          as CB
 
+import           HStream.Common.Types
 import qualified HStream.Exception      as HE
 import qualified HStream.Logger         as Log
 import qualified HStream.Store          as S
-
-newtype ShardKey = ShardKey Integer
-  deriving (Show, Eq, Ord, Integral, Real, Enum, Num, Hashable)
-
-instance Bounded ShardKey where
-  minBound = ShardKey 0
-  maxBound = ShardKey ((1 `shiftL` 128) - 1)
-
-hashShardKey :: T.Text -> ShardKey
-hashShardKey key =
-  let w8KeyList = BA.unpack (CH.hash . encodeUtf8 $ key :: CH.Digest CH.MD5)
-   in ShardKey $ foldl' (\acc c -> (.|.) (acc `shiftL` 8) (fromIntegral c)) (0 :: Integer) w8KeyList
-
-keyToCBytes :: ShardKey -> CB.CBytes
-keyToCBytes (ShardKey key) = CB.pack . show $ key
-
-cBytesToKey :: CB.CBytes -> ShardKey
-cBytesToKey = ShardKey . read . CB.unpack
-
--- Devide the key space into N parts, return [(startKey, endKey)]
-devideKeySpace :: Int -> [(ShardKey, ShardKey)]
-devideKeySpace num =
-  let startKeys = take num $ iterate' (+cnt) minBound
-      cnt = maxBound @ShardKey `div` fromIntegral num
-   in zipWith (\idx s -> if idx == num then (s, maxBound) else (s, s + cnt - 1)) [1..] startKeys
 
 ---------------------------------------------------------------------------------------------------------------
 ---- Shard

@@ -70,7 +70,8 @@ import           HStream.Client.Types             (AppendArgs (..), CliCmd (..),
 import           HStream.Client.Utils             (calculateShardId,
                                                    mkClientNormalRequest',
                                                    printResult)
-import           HStream.Common.Types             (getHStreamVersion)
+import           HStream.Common.Types             (getHStreamVersion,
+                                                   hashShardKey)
 import           HStream.Server.HStreamApi        (DescribeClusterResponse (..),
                                                    HStreamApi (..),
                                                    ServerNode (..),
@@ -210,7 +211,8 @@ hstreamStream connOpts@RefinedCliConnOpts{..} cmd = do
     StreamCmdAppend AppendArgs{..} -> do
       ctx <- initCliContext connOpts
       shards <- fmap API.listShardsResponseShards . getServerResp =<< simpleExecute clientConfig (listShards appendStream)
-      case calculateShardId appendRecordKey (V.toList shards) of
+      let shardKey = hashShardKey appendRecordKey
+      case calculateShardId shardKey (V.toList shards) of
         Just sid -> do
           let payload = if isHRecord then map toHRecord appendRecord else appendRecord
           executeWithLookupResource_ ctx (Resource ResShard (T.pack $ show sid))

@@ -138,7 +138,6 @@ library
     , bytestring
     , containers
     , cryptohash-md5
-    , cryptonite
     , data-default
     , deepseq
     , diff-flow
