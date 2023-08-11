@@ -8,9 +8,11 @@ import qualified Data.Aeson.KeyMap                    as A
 import           Data.Bifunctor
 import qualified Data.ByteString                      as BS
 import qualified Data.Text                            as T
+import qualified Data.Text.Encoding                   as T
 import qualified Data.Time                            as Time
 import qualified Database.SQLite.Simple.FromField     as S
 import qualified Database.SQLite.Simple.Ok            as S
+import           GHC.Stack
 import           Test.QuickCheck
 import           Test.QuickCheck.Instances.ByteString ()
 import           Test.QuickCheck.Instances.Text       ()
@@ -128,29 +130,31 @@ randKvByColInfo info =
 
 randSqlDataValue :: SqlDataType -> IO SqlDataValue
 randSqlDataValue = \case
-  INTEGER   -> h VINTEGER
-  FLOAT     -> h VFLOAT
-  BOOLEAN   -> h VBOOLEAN
-  BYTEA     -> h VBYTEA
-  STRING    -> h VSTRING
-  DATE      -> h VDATE
-  TIME      -> h VTIME
+  INTEGER -> h VINTEGER
+  FLOAT -> h VFLOAT
+  BOOLEAN -> h VBOOLEAN
+  BYTEA -> do
+    x :: T.Text <- generate arbitrary
+    pure $ VBYTEA $ T.encodeUtf8 x
+  STRING -> h VSTRING
+  DATE -> h VDATE
+  TIME -> h VTIME
   TIMESTAMP -> h VTIMESTAMP
-  INTERVAL  -> h VINTERVAL
-  JSONB     -> error "currently unsupported"
-  NULL      -> pure VNULL
+  INTERVAL -> h VINTERVAL
+  JSONB -> error "currently unsupported"
+  NULL -> pure VNULL
   where
     h :: Arbitrary a => (a -> SqlDataValue) -> IO SqlDataValue
     h = (<$> generate arbitrary)
 
 ----------------------------------------
 
-sqlDataTypeToAnsiLiteral :: SqlDataValue -> T.Text
+sqlDataTypeToAnsiLiteral :: HasCallStack => SqlDataValue -> T.Text
 sqlDataTypeToAnsiLiteral = \case
   VINTEGER x   -> h x
   VFLOAT x     -> h x
   VBOOLEAN x   -> h x
-  VBYTEA x     -> esc $ T.pack $ show x -- FIXME
+  VBYTEA x     -> esc $ T.decodeUtf8 x -- FIXME
   VSTRING x    -> esc x
   VDATE x      -> h x
   VTIME x      -> h x
@@ -161,7 +165,8 @@ sqlDataTypeToAnsiLiteral = \case
   where
     h :: Show a => a -> T.Text
     h = T.pack . show
-    esc x = "'" <> T.tail (T.init x) <> "'"
+    esc :: HasCallStack => T.Text -> T.Text
+    esc x = "'" <> x <> "'" -- FIXME
 
 ----------------------------------------
 
