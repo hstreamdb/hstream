@@ -427,10 +427,12 @@ handle_time_series_getall (StatsHolder holder) name intervals =
 data ServerHistogramLabel
   = SHL_AppendRequestLatency
   | SHL_AppendLatency
+  | SHL_ReadLatency
 
 packServerHistogramLabel :: ServerHistogramLabel -> CBytes
 packServerHistogramLabel SHL_AppendRequestLatency = "append_request_latency"
 packServerHistogramLabel SHL_AppendLatency        = "append_latency"
+packServerHistogramLabel SHL_ReadLatency          = "read_latency"
 
 instance Read ServerHistogramLabel where
   readPrec = do
@@ -438,7 +440,8 @@ instance Read ServerHistogramLabel where
     return $
       case l of
         Read.Ident "append_request_latency" -> SHL_AppendRequestLatency
-        Read.Ident "append_latency" -> SHL_AppendLatency
+        Read.Ident "append_latency"         -> SHL_AppendLatency
+        Read.Ident "read_latency"           -> SHL_ReadLatency
         x -> errorWithoutStackTrace $ "cannot parse ServerHistogramLabel: " <> show x
 
 serverHistogramAdd :: StatsHolder -> ServerHistogramLabel -> Int64 -> IO ()
