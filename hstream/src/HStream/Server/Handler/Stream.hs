@@ -276,6 +276,8 @@ appendStreamExceptionHandle f = HE.mkExceptionHandle' whileEx mkHandlers
           return (StatusUnavailable, HE.mkStatusDetails err))
       , Handler (\(err :: Store.TIMEDOUT) -> do
           return (StatusUnavailable, HE.mkStatusDetails err))
+      , Handler (\(err :: Store.PEER_UNAVAILABLE) -> do
+          return (StatusUnavailable, HE.mkStatusDetails err))
       ] ++ defaultHandlers
     mkHandlers = HE.setRespType mkServerErrResp handlers
 
@@ -292,6 +294,7 @@ appendExHandle f = HE.mkExceptionHandle' (const f) handlers
       , MkUnavailable(Store.NOTINSERVERCONFIG)
       , MkUnavailable(Store.NOSEQUENCER)
       , MkUnavailable(Store.TIMEDOUT)
+      , MkUnavailable(Store.PEER_UNAVAILABLE)
       ] ++ defaultExHandlers
 
 listShardsExceptionHandle :: HE.ExceptionHandle (ServerResponse 'Normal a)
