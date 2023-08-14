@@ -30,6 +30,8 @@ module HStream.Stats
   , CounterExports(stream, append_failed)
   , CounterExports(stream, append_in_bytes)
   , CounterExports(stream, append_in_records)
+  , CounterExports(stream, read_in_bytes)
+  , CounterExports(stream, read_in_batches)
     -- ** Time series
   , stream_time_series_add_append_in_bytes
   , stream_time_series_add_append_in_records

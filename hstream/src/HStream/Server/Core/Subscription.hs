@@ -560,6 +560,11 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
             addRead subLdCkpReader subAssignment subStartOffsets
             atomically checkUnackedRecords
             recordBatches <- readRecordBatches
+
+            let cStreamName = textToCBytes subStreamName
+            Stats.stream_stat_add_read_in_bytes scStatsHolder cStreamName (fromIntegral . sum $ map (BS.length . S.recordPayload) recordBatches)
+            Stats.stream_stat_add_read_in_batches scStatsHolder cStreamName (fromIntegral $ length recordBatches)
+
             receivedRecordsVecs <- forM recordBatches decodeRecordBatch
             isFirstSend <- readIORef isFirstSendRef
             if isFirstSend
@@ -811,6 +816,9 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
         dataRecord <- withMVar subLdReader $ \reader -> do
           S.readerStartReading reader logId batchId batchId
           S.readerRead reader 1
+        let cStreamName = textToCBytes subStreamName
+        Stats.stream_stat_add_read_in_bytes scStatsHolder cStreamName (fromIntegral . sum $ map (BS.length . S.recordPayload) dataRecord)
+        Stats.stream_stat_add_read_in_batches scStatsHolder cStreamName (fromIntegral $ length dataRecord)
         if null dataRecord
         then do
           Log.info $ "Sub " <> Log.build subSubscriptionId <> " resend reader read empty records from log "

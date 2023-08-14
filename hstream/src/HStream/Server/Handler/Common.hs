@@ -55,11 +55,13 @@ import           HStream.Server.ConnectorTypes         (SinkConnector (..),
 import qualified HStream.Server.ConnectorTypes         as HCT
 import           HStream.SQL.Codegen.V2
 #else
+import qualified Data.ByteString                       as BS
 import           HStream.Processing.Connector
 import           HStream.Processing.Processor
 import           HStream.Processing.Processor.Snapshot
 import           HStream.Processing.Store
 import           HStream.SQL
+import qualified HStream.Stats                         as Stats
 #endif
 
 --------------------------------------------------------------------------------
@@ -463,7 +465,10 @@ restoreState ServerContext{..} QueryRunner{..} = do
   return (newBuilder, logId)
   where
     reconstruct reader oldBuilder = S.readerReadAllowGap reader 10 >>= \case
-      Right dataRecords ->
+      Right dataRecords -> do
+        let cStreamName = textToCBytes qRQueryName
+        Stats.stream_stat_add_read_in_bytes scStatsHolder cStreamName (fromIntegral . sum $ map (BS.length . S.recordPayload) dataRecords)
+        Stats.stream_stat_add_read_in_batches scStatsHolder cStreamName (fromIntegral $ length dataRecords)
         foldlM (\(acc_builder, _acc_lsn) dr@S.DataRecord{..} -> do
                  let (cl :: StateStoreChangelog K V Ser) = fromJust (Aeson.decode $ BL.fromStrict recordPayload)
                  builder' <- applyStateStoreChangelog acc_builder cl
