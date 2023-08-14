@@ -42,6 +42,7 @@ common shared-properties
 
 library
   import:             shared-properties
+  exposed-modules:    Kafka.Protocol.Message.Struct
   hs-source-dirs:     src
   build-depends:
     , base          >=4.11   && <5
@@ -51,6 +52,7 @@ library
     , ghc-prim      >=0.5    && <1.0
     , primitive     ^>=0.7.2
     , text
+    , vector
 
   default-language:   GHC2021
   default-extensions:
