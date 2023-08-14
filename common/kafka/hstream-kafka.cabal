@@ -1,0 +1,85 @@
+cabal-version: 3.6
+name:          hstream-kafka
+version:       0.1.0.0
+synopsis:
+  High performance stream processing platform for IoT data written in Haskell.
+
+description:
+  Please see the README on GitHub at
+  <https://github.com/hstreamdb/hstream#readme>
+
+license:       BSD-3-Clause
+license-file:  LICENSE
+copyright:     Copyright (c) 2020-present EMQ Technologies Co., Ltd.
+author:        Mu <lambda@emqx.io>
+maintainer:    lambda@emqx.io
+tested-with:   GHC ==9.2.8
+category:      Database
+homepage:      https://github.com/hstreamdb/hstream
+bug-reports:   https://github.com/hstreamdb/hstream/issues
+build-type:    Simple
+
+source-repository head
+  type:     git
+  location: https://github.com/hstreamdb/hstream
+
+flag ReleaseBuild
+  default:     False
+  description:
+    Enables all optimisations, leads to slower build time and better performance
+
+common shared-properties
+  ghc-options:
+    -Wall -Wcompat -Widentities -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+    -Wunused-packages
+
+  if flag(releasebuild)
+    ghc-options:
+      -feager-blackholing -flate-dmd-anal -flate-specialise
+      -fspec-constr-keen -fstatic-argument-transformation
+      -funbox-strict-fields -O2
+
+library
+  import:             shared-properties
+  exposed-modules:    Kafka.Protocol.Message.Struct
+  hs-source-dirs:     src
+  build-depends:
+    , base          >=4.11   && <5
+    , bytestring
+    , containers
+    , data-default
+    , ghc-prim      >=0.5    && <1.0
+    , primitive     ^>=0.7.2
+    , text
+    , vector
+
+  default-language:   GHC2021
+  default-extensions:
+    DerivingStrategies
+    LambdaCase
+    OverloadedStrings
+    RecordWildCards
+
+test-suite hstream-kafka-test
+  import:             shared-properties
+  type:               exitcode-stdio-1.0
+  main-is:            Spec.hs
+  hs-source-dirs:     test
+  build-depends:
+    , base                  >=4.11 && <5
+    , bytestring
+    , containers            ^>=0.6
+    , hspec
+    , hstream-kafka
+    , QuickCheck
+    , quickcheck-instances
+
+  default-extensions:
+    LambdaCase
+    OverloadedStrings
+    RecordWildCards
+
+  default-language:   GHC2021
+  build-tool-depends: hspec-discover:hspec-discover >=2 && <3
+  ghc-options:        -threaded -rtsopts -with-rtsopts=-N
