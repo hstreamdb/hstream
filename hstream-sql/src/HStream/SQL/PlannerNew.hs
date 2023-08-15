@@ -62,7 +62,7 @@ instance Plan BoundTableRef where
           setSchemaStreamId 0 (relationExprSchema relationExpr)
     let ctx = PlanContext (IntMap.singleton 0 schema) mempty
     put ctx
-    return relationExpr
+    return $ setRelationExprSchema schema relationExpr
 
   -- Note: As `HStream.SQL.Binder.Select` says, 'BoundTableRefWindowed' is
   -- only used when binding 'SELECT'. So we can ignore the window part here
@@ -91,8 +91,7 @@ instance Plan BoundTableRef where
     (scalarExpr,_) <- plan expr
 
     -- 1-out!
-    let schema = setSchemaStream name $
-                 setSchemaStreamId 0 $ Schema
+    let schema = setSchemaStreamId 0 $ Schema
                  { schemaOwner = name
                  , schemaColumns = schemaColumns schema1 <:+:>
                                    schemaColumns schema2

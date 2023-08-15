@@ -15,7 +15,7 @@ HSTREAM_VERSION ?= $(or $(shell git describe --tag --abbrev=0 2>/dev/null), unkn
 HSTREAM_VERSION_COMMIT ?= $(or $(shell git rev-parse HEAD 2>/dev/null), unknown)
 
 ENGINE_VERSION ?= v1
-SQL_ENABLE_SCHEMA ?= false
+SQL_ENABLE_SCHEMA ?= true
 
 ifeq ($(strip $(SQL_ENABLE_SCHEMA)), true)
 CABAL_BUILD_FLAGS += +hstream_enable_schema

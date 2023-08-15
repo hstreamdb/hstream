@@ -141,7 +141,9 @@ lookupColumn (PlanContext m baseRefs) streamName colId =
                      in (fmap (\(n,catalog) -> (i,n,catalog)) catalogTup_m) <|> acc
               ) Nothing (IntMap.toList m)
   where go (s,i) = case HM.lookup (s,i) baseRefs of
-                     Just (s',i') -> go (s',i')
+                     Just (s',i') -> if (s,i) == (s',i')
+                                       then (s,i)
+                                       else go (s',i')
                      Nothing      -> (s,i)
 
 -- | Lookup a certain column name in the planning context. Return the index of
