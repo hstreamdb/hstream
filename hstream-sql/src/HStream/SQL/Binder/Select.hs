@@ -135,7 +135,7 @@ instance Bind TableRef where
     streamName <- bind hIdent
     getSchema <- ask
     liftIO (getSchema streamName) >>= \case
-      Nothing     -> throwSQLException BindException pos $ "stream " <> T.unpack streamName <> " not exist"
+      Nothing     -> throwSQLException BindException pos $ "schema for stream " <> T.unpack streamName <> " not exist"
       Just schema -> do
         -- add alias to context (same as the original name)
         modify' (\ctx@BindContext{..} -> ctx { bindContextAliases = Bimap.insert streamName streamName bindContextAliases })
