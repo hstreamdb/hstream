@@ -1,4 +1,5 @@
-{-# LANGUAGE CPP #-}
+{-# LANGUAGE CPP               #-}
+{-# LANGUAGE DefaultSignatures #-}
 -- As of GHC 8.8.1, GHC started complaining about -optP--cpp when profling
 -- is enabled. See https://gitlab.haskell.org/ghc/ghc/issues/17185.
 {-# OPTIONS_GHC -pgmP "hpp --cpp -P" #-}
@@ -38,6 +39,7 @@ import           Data.Text                      (Text)
 import           Data.Vector                    (Vector)
 import qualified Data.Vector                    as V
 import           Data.Word
+import           GHC.Generics
 
 import           Kafka.Protocol.Encoding.Encode
 import           Kafka.Protocol.Encoding.Parser
@@ -46,7 +48,42 @@ import           Kafka.Protocol.Encoding.Parser
 
 class Serializable a where
   get :: Parser a
+
+  default get :: (Generic a, GSerializable (Rep a)) => Parser a
+  get = to <$> gget
+
   put :: a -> Builder
+
+  default put :: (Generic a, GSerializable (Rep a)) => a -> Builder
+  put a = gput (from a)
+
+class GSerializable f where
+  gget :: Parser (f a)
+  gput :: f a -> Builder
+
+-- | Unit: used for constructors without arguments
+instance GSerializable U1 where
+  gget = pure U1
+  gput U1 = mempty
+
+-- | Products: encode multiple arguments to constructors
+instance (GSerializable a, GSerializable b) => GSerializable (a :*: b) where
+  gget = do
+    !a <- gget
+    !b <- gget
+    pure $ a :*: b
+  gput (a :*: b) = gput a <> gput b
+
+-- | Meta-information
+instance (GSerializable a) => GSerializable (M1 i c a) where
+  gget = M1 <$> gget
+  gput (M1 x) = gput x
+
+instance (Serializable a) => GSerializable (K1 i a) where
+  gget = K1 <$> get
+  gput (K1 x) = put x
+
+-------------------------------------------------------------------------------
 
 newtype DecodeError = DecodeError String
   deriving (Show)
@@ -89,7 +126,7 @@ newtype CompactNullableString = CompactNullableString
 type NullableBytes = Maybe ByteString
 
 newtype CompactBytes = CompactBytes { unCompactBytes :: ByteString }
-  deriving newtype (Show, Eq, Ord)
+  deriving newtype (Show, Eq, Ord, IsString, Monoid, Semigroup)
 
 newtype CompactNullableBytes = CompactNullableBytes
   { unCompactNullableBytes :: Maybe ByteString }
@@ -148,6 +185,7 @@ instance Serializable a => Serializable (CompactKaArray a) where
   {-# INLINE put #-}
 
 -------------------------------------------------------------------------------
+-- Internal: Array
 
 -- | Represents a sequence of objects of a given type T.
 --

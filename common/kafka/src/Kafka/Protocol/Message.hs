@@ -1,14 +1,14 @@
 module Kafka.Protocol.Message
   ( RequestHeader
-  , getRequestHeader
 
   , module Kafka.Protocol.Message.Struct
   ) where
 
 import           Data.Int
-import           Data.Text                      (Text)
+import           Data.Text                     (Text)
+import           GHC.Generics
 
-import           Kafka.Protocol.Encoding.Parser
+import           Kafka.Protocol.Encoding
 import           Kafka.Protocol.Message.Struct
 
 -- TODO: Support Optional Tagged Fields
@@ -17,12 +17,6 @@ data RequestHeader = RequestHeader
   , requestApiVersion    :: !Int16
   , requestCorrelationId :: !Int32
   , requestClientId      :: !(Maybe Text)
-  } deriving (Show)
+  } deriving (Show, Eq, Generic)
 
-getRequestHeader :: Parser RequestHeader
-getRequestHeader =
-      RequestHeader
-  <$> getInt16
-  <*> getInt16
-  <*> getInt32
-  <*> getNullableString
+instance Serializable RequestHeader
