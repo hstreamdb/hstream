@@ -116,6 +116,7 @@ defaultIOOptions = IOOptions {
   , optTasksPath    = "/tmp/io/tasks"
   , optSourceImages = mempty
   , optSinkImages   = mempty
+  , optExtraDockerArgs = ""
   }
 
 instance ToJSON ServerOpts where
@@ -313,6 +314,7 @@ instance Arbitrary IOOptions where
     optTasksPath    <- T.pack <$> pathGen
     optSourceImages <- HM.fromList <$> listOf5 ((,) <$> (T.pack <$> nameGen) <*> (T.pack <$> pathGen))
     optSinkImages   <- HM.fromList <$> listOf5 ((,) <$> (T.pack <$> nameGen) <*> (T.pack <$> pathGen))
+    let optExtraDockerArgs = ""
     pure IOOptions{..}
 
 instance Arbitrary GossipOpts where
@@ -465,4 +467,5 @@ updateServerOptsWithCliOpts CliOptions{..} x@ServerOpts{..} = x {
           , optTasksPath = fromMaybe (optTasksPath _ioOptions) cliIoTasksPath
           , optSourceImages = ssi
           , optSinkImages = ski
+          , optExtraDockerArgs = ""
           }
