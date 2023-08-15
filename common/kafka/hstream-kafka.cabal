@@ -42,15 +42,22 @@ common shared-properties
 
 library
   import:             shared-properties
-  exposed-modules:    Kafka.Protocol.Message.Struct
+  exposed-modules:
+    Kafka.Protocol
+    Kafka.Protocol.Encoding
+    Kafka.Protocol.Message
+
+  other-modules:
+    Kafka.Protocol.Encoding.Encode
+    Kafka.Protocol.Encoding.Internal
+    Kafka.Protocol.Encoding.Parser
+    Kafka.Protocol.Message.Struct
+
   hs-source-dirs:     src
+  build-tool-depends: hpp:hpp >=0.6 && <0.7
   build-depends:
-    , base          >=4.11   && <5
+    , base        >=4.11 && <5
     , bytestring
-    , containers
-    , data-default
-    , ghc-prim      >=0.5    && <1.0
-    , primitive     ^>=0.7.2
     , text
     , vector
 
@@ -65,15 +72,20 @@ test-suite hstream-kafka-test
   import:             shared-properties
   type:               exitcode-stdio-1.0
   main-is:            Spec.hs
+  other-modules:
+    Kafka.Protocol.EncodingSpec
+    Kafka.QuickCheck.Instances
+
   hs-source-dirs:     test
   build-depends:
     , base                  >=4.11 && <5
     , bytestring
-    , containers            ^>=0.6
     , hspec
     , hstream-kafka
     , QuickCheck
     , quickcheck-instances
+    , quickcheck-special    ^>=0.1
+    , text
 
   default-extensions:
     LambdaCase
