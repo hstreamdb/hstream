@@ -60,10 +60,11 @@ data IOTaskStatus
   deriving (Show, Eq, Generic, J.FromJSON, J.ToJSON)
 
 data IOOptions = IOOptions
-  { optTasksNetwork :: T.Text
-  , optTasksPath    :: T.Text
-  , optSourceImages :: HM.HashMap T.Text T.Text
-  , optSinkImages   :: HM.HashMap T.Text T.Text
+  { optTasksNetwork    :: T.Text
+  , optTasksPath       :: T.Text
+  , optSourceImages    :: HM.HashMap T.Text T.Text
+  , optSinkImages      :: HM.HashMap T.Text T.Text
+  , optExtraDockerArgs :: T.Text
   } deriving (Show, Eq)
 
 type TaskProcess = TP.Process IO.Handle IO.Handle ()
@@ -78,6 +79,7 @@ data IOTask = IOTask
   , taskStatsHolder :: Stats.StatsHolder
   , taskOffsetsM    :: C.MVar (Vector.Vector PB.Struct)
   , logReader       :: LR.LineReader
+  , ioOptions       :: IOOptions
   }
 
 type ZkUrl = T.Text

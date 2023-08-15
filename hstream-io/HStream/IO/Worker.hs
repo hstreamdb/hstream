@@ -82,11 +82,11 @@ createIOTask worker@Worker{..} name typ target cfg = do
         , taskConfig = TaskConfig image optTasksNetwork
         , connectorConfig = connectorConfig
         }
-  createIOTaskFromTaskInfo worker taskId taskInfo False True
+  createIOTaskFromTaskInfo worker taskId taskInfo options False True
   showIOTask_ worker name
 
-createIOTaskFromTaskInfo :: HasCallStack => Worker -> T.Text -> TaskInfo -> Bool -> Bool -> IO ()
-createIOTaskFromTaskInfo worker@Worker{..} taskId taskInfo@TaskInfo {..} cleanIfExists createMetaData = do
+createIOTaskFromTaskInfo :: HasCallStack => Worker -> T.Text -> TaskInfo -> IOOptions -> Bool -> Bool -> IO ()
+createIOTaskFromTaskInfo worker@Worker{..} taskId taskInfo@TaskInfo {..} ioOptions cleanIfExists createMetaData = do
   getIOTask worker taskName >>= \case
     Nothing -> pure ()
     Just _  -> do
@@ -94,7 +94,7 @@ createIOTaskFromTaskInfo worker@Worker{..} taskId taskInfo@TaskInfo {..} cleanIf
       then C.modifyMVar_ ioTasksM $ return . HM.delete taskName
       else throwIO $ HE.ConnectorExists taskName
   let taskPath = optTasksPath options <> "/" <> taskId
-  task <- IOTask.newIOTask taskId workerHandle statsHolder taskInfo taskPath
+  task <- IOTask.newIOTask taskId workerHandle statsHolder taskInfo taskPath ioOptions
   IOTask.initIOTask task cleanIfExists
   IOTask.checkIOTask task
   when createMetaData $ M.createIOTaskMeta workerHandle taskName taskId taskInfo
@@ -165,7 +165,7 @@ recoverTask worker@Worker{..} name = do
     Nothing -> throwIO $ HE.ConnectorNotFound name
     Just (taskId, TaskMeta{taskInfoMeta=taskInfo@TaskInfo{..}}) -> do
       let newConnCfg = J.insert "hstream" (J.toJSON hsConfig) connectorConfig
-      createIOTaskFromTaskInfo worker taskId taskInfo{connectorConfig=newConnCfg} True False
+      createIOTaskFromTaskInfo worker taskId taskInfo{connectorConfig=newConnCfg} options True False
 
 getIOTask :: Worker -> T.Text -> IO (Maybe IOTask)
 getIOTask Worker{..} name = HM.lookup name <$> C.readMVar ioTasksM

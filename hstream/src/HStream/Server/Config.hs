@@ -218,6 +218,7 @@ parseJSONToOptions CliOptions{..} obj = do
   nodeIOTasksNetwork <- nodeIOCfg .:? "tasks-network" .!= "host"
   nodeSourceImages <- nodeIOCfg .:? "source-images" .!= HM.empty
   nodeSinkImages <- nodeIOCfg .:? "sink-images" .!= HM.empty
+  optExtraDockerArgs <- nodeIOCfg .:? "extra-docker-args" .!= ""
   (optSourceImages, optSinkImages) <- foldrM
         (\img (ss, sk) -> do
           -- "source mysql IMAGE" -> ("source" "mysq" "IMAGE")
