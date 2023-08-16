@@ -86,7 +86,7 @@ putVarWord32 = go mempty
     go !ret !value =
       if value .&. 0xffffff80 /= 0
          then
-           let ret' = ret <> (putWord8 $ (fromIntegral value .&. 0x7f) .|. 0x80)
+           let ret' = ret <> putWord8 ((fromIntegral value .&. 0x7f) .|. 0x80)
                value' = value `shiftR` 7
             in go ret' value'
          else ret <> putWord8 (fromIntegral value)
@@ -98,7 +98,7 @@ putVarWord64 = go mempty
     go !ret !value =
       if value .&. 0xffffffffffffff80 /= 0
          then
-           let ret' = ret <> (putWord8 $ (fromIntegral value .&. 0x7f) .|. 0x80)
+           let ret' = ret <> putWord8 ((fromIntegral value .&. 0x7f) .|. 0x80)
                value' = value `shiftR` 7
             in go ret' value'
          else ret <> putWord8 (fromIntegral value)

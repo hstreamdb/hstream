@@ -62,7 +62,7 @@ getInt8 = fromIntegral <$!> anyWord8
 getInt16 :: Parser Int16
 getInt16 = do
   BSI.BS fp _ <- takeBytes 2
-  fromIO $! fromIntegral <$!> (BSI.unsafeWithForeignPtr fp peek16BE)
+  fromIO $! fromIntegral <$!> BSI.unsafeWithForeignPtr fp peek16BE
 
 -- | Represents an integer between -2^31 and 2^31-1 inclusive.
 --
@@ -73,7 +73,7 @@ getInt16 = do
 getInt32 :: Parser Int32
 getInt32 = do
   BSI.BS fp _ <- takeBytes 4
-  fromIO $! fromIntegral <$!> (BSI.unsafeWithForeignPtr fp peek32BE)
+  fromIO $! fromIntegral <$!> BSI.unsafeWithForeignPtr fp peek32BE
 
 -- | Represents an integer between -2^63 and 2^63-1 inclusive.
 --
@@ -81,7 +81,7 @@ getInt32 = do
 getInt64 :: Parser Int64
 getInt64 = do
   BSI.BS fp _ <- takeBytes 8
-  fromIO $! fromIntegral <$!> (BSI.unsafeWithForeignPtr fp peek64BE)
+  fromIO $! fromIntegral <$!> BSI.unsafeWithForeignPtr fp peek64BE
 
 -- | Represents an integer between 0 and 2^32-1 inclusive.
 --
@@ -89,7 +89,7 @@ getInt64 = do
 getWord32 :: Parser Word32
 getWord32 = do
   BSI.BS fp _ <- takeBytes 4
-  fromIO $! (BSI.unsafeWithForeignPtr fp peek32BE)
+  fromIO $! BSI.unsafeWithForeignPtr fp peek32BE
 
 -- | Represents an integer between -2^31 and 2^31-1 inclusive.
 --
@@ -157,7 +157,7 @@ getVarWord64 = loop 0 0
 getDouble :: Parser Double
 getDouble = do
   BSI.BS fp _ <- takeBytes 8
-  fromIO $! castWord64ToDouble <$!> (BSI.unsafeWithForeignPtr fp peek64BE)
+  fromIO $! castWord64ToDouble <$!> BSI.unsafeWithForeignPtr fp peek64BE
 
 -- | Represents a sequence of characters.
 --
@@ -383,7 +383,7 @@ decodeUtf8Just p = do
   !bs <- p
   case Text.decodeUtf8' bs of
     Left e  -> fail $ "Decode utf8 error: " <> show e
-    Right r -> pure $! Just r
+    Right r -> pure $ Just r
 {-# INLINE decodeUtf8Just #-}
 
 testMsb :: Word8 -> Bool
