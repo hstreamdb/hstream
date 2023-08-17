@@ -36,6 +36,11 @@ base = describe "Base" $ do
     -- trim lsn beyond tailLSN should fail
     S.trim client logid (sn1 + 1) `shouldThrow` anyException
 
+  it "trim un-existed record" $ do
+    sn0 <- S.appendCompLSN <$> S.append client logid "hello" Nothing
+    S.trim client logid (sn0 - 1) `shouldReturn` ()
+    readPayload logid (Just sn0) `shouldReturn` "hello"
+
   loggroupAround' $ do
     it "trim last" $ \(_lgname, ranlogid) -> do
       -- trim an empty log
