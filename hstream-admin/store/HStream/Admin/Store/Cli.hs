@@ -25,6 +25,7 @@ runStoreCli' s (Store.LogsCmd cmd) = printTime $ Store.runLogsCmd s cmd
 runStoreCli' s (Store.CheckImpactCmd checkImpactOpts) = printTime $ Store.checkImpact s checkImpactOpts
 runStoreCli' s (Store.MaintenanceCmd opts) = printTime $ Store.runMaintenanceCmd s opts
 runStoreCli' s (Store.StartSQLReplCmd opts) = Store.startSQLRepl s opts
+runStoreCli' s (Store.AdminCommand opts) = TIO.putStrLn =<< Store.runAdminCommand s opts
 
 printTime :: IO a -> IO a
 printTime f = do
