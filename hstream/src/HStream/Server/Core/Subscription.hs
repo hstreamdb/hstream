@@ -9,10 +9,10 @@
 module HStream.Server.Core.Subscription where
 
 import           Control.Concurrent
-import           Control.Concurrent.Async      (async, link, wait, withAsync)
+import           Control.Concurrent.Async      (async, link, wait)
 import           Control.Concurrent.STM
 import           Control.Exception             (Exception, catch, fromException,
-                                                handle, onException, throwIO)
+                                                handle, throwIO)
 import           Control.Monad
 import qualified Data.ByteString               as BS
 import           Data.Foldable                 (foldl')
@@ -55,8 +55,9 @@ import qualified HStream.Stats                 as Stats
 import qualified HStream.Store                 as S
 import           HStream.Utils                 (ResourceType (..),
                                                 decompressBatchedRecord,
-                                                getProtoTimestamp,
-                                                mkBatchedRecord, textToCBytes)
+                                                getPOSIXTime, getProtoTimestamp,
+                                                mkBatchedRecord, msecSince,
+                                                textToCBytes)
 
 -------------------------------------------------------------------------------
 
@@ -664,7 +665,8 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
 
     readRecordBatches :: IO [S.DataRecord BS.ByteString]
     readRecordBatches = do
-      S.ckpReaderReadAllowGap subLdCkpReader 100 >>= \case
+      !read_start <- getPOSIXTime
+      res <- S.ckpReaderReadAllowGap subLdCkpReader 100 >>= \case
         Left gap@S.GapRecord{..} -> do
           Log.debug $ "reader meet gap: " <> Log.buildString (show gap)
           atomically $ do
@@ -684,6 +686,11 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
             writeTVar awBatchNumMap newBatchNumMap
           return []
         Right dataRecords -> return dataRecords
+      Stats.serverHistogramAdd scStatsHolder Stats.SHL_ReadLatency =<< msecSince read_start
+      let cStreamName = textToCBytes subStreamName
+      Stats.stream_stat_add_read_in_bytes scStatsHolder cStreamName (fromIntegral . sum $ map (BS.length . S.recordPayload) res)
+      Stats.stream_stat_add_read_in_batches scStatsHolder cStreamName (fromIntegral $ length res)
+      return res
 
     sendReceivedRecordsVecs :: [(S.C_LogID, Word64, V.Vector ShardRecordId, ReceivedRecord)] -> IO Int
     sendReceivedRecordsVecs vecs = do
@@ -808,9 +815,14 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
         return res
 
       unless (V.null resendRecordIds) $ do
+        !read_start <- getPOSIXTime
         dataRecord <- withMVar subLdReader $ \reader -> do
           S.readerStartReading reader logId batchId batchId
           S.readerRead reader 1
+        Stats.serverHistogramAdd scStatsHolder Stats.SHL_ReadLatency =<< msecSince read_start
+        let cStreamName = textToCBytes subStreamName
+        Stats.stream_stat_add_read_in_bytes scStatsHolder cStreamName (fromIntegral . sum $ map (BS.length . S.recordPayload) dataRecord)
+        Stats.stream_stat_add_read_in_batches scStatsHolder cStreamName (fromIntegral $ length dataRecord)
         if null dataRecord
         then do
           Log.info $ "Sub " <> Log.build subSubscriptionId <> " resend reader read empty records from log "

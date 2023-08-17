@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns        #-}
 {-# LANGUAGE CPP                 #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE FlexibleInstances   #-}
@@ -40,8 +41,9 @@ import           HStream.SQL.AST
 import           HStream.SQL.Rts
 import qualified HStream.Store                         as S
 import           HStream.Utils                         (cBytesToText,
+                                                        getPOSIXTime,
                                                         lazyByteStringToBytes,
-                                                        textToCBytes)
+                                                        msecSince, textToCBytes)
 
 #ifdef HStreamUseV2Engine
 import qualified DiffFlow.Graph                        as DiffFlow
@@ -55,11 +57,13 @@ import           HStream.Server.ConnectorTypes         (SinkConnector (..),
 import qualified HStream.Server.ConnectorTypes         as HCT
 import           HStream.SQL.Codegen.V2
 #else
+import qualified Data.ByteString                       as BS
 import           HStream.Processing.Connector
 import           HStream.Processing.Processor
 import           HStream.Processing.Processor.Snapshot
 import           HStream.Processing.Store
 import           HStream.SQL
+import qualified HStream.Stats                         as Stats
 #endif
 
 --------------------------------------------------------------------------------
@@ -462,14 +466,21 @@ restoreState ServerContext{..} QueryRunner{..} = do
   Log.info $ "Computation restored for query with name" <> Log.build qRQueryName
   return (newBuilder, logId)
   where
-    reconstruct reader oldBuilder = S.readerReadAllowGap reader 10 >>= \case
-      Right dataRecords ->
-        foldlM (\(acc_builder, _acc_lsn) dr@S.DataRecord{..} -> do
-                 let (cl :: StateStoreChangelog K V Ser) = fromJust (Aeson.decode $ BL.fromStrict recordPayload)
-                 builder' <- applyStateStoreChangelog acc_builder cl
-                 return (builder', S.recordLSN dr)
-           ) (oldBuilder, S.LSN_MIN) dataRecords
-      Left S.GapRecord{..} -> return (oldBuilder, gapHiLSN)
+    reconstruct reader oldBuilder = do
+      !read_start <- getPOSIXTime
+      res <- S.readerReadAllowGap reader 10 >>= \case
+        Right dataRecords -> do
+          let cStreamName = textToCBytes qRQueryName
+          Stats.stream_stat_add_read_in_bytes scStatsHolder cStreamName (fromIntegral . sum $ map (BS.length . S.recordPayload) dataRecords)
+          Stats.stream_stat_add_read_in_batches scStatsHolder cStreamName (fromIntegral $ length dataRecords)
+          foldlM (\(acc_builder, _acc_lsn) dr@S.DataRecord{..} -> do
+                   let (cl :: StateStoreChangelog K V Ser) = fromJust (Aeson.decode $ BL.fromStrict recordPayload)
+                   builder' <- applyStateStoreChangelog acc_builder cl
+                   return (builder', S.recordLSN dr)
+             ) (oldBuilder, S.LSN_MIN) dataRecords
+        Left S.GapRecord{..} -> return (oldBuilder, gapHiLSN)
+      Stats.serverHistogramAdd scStatsHolder Stats.SHL_ReadLatency =<< msecSince read_start
+      return res
 
 runQuery :: HasCallStack => ServerContext -> QueryRunner -> S.C_LogID -> IO ()
 runQuery ctx@ServerContext{..} QueryRunner{..} logId = do

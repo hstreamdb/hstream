@@ -152,6 +152,10 @@ getStreamStatsInternal statsHolder (PS.Enumerated stats) = do
       Stats.stream_stat_getall_append_total s <&> Right
     Right API.StreamStatsAppendFailed ->
       Stats.stream_stat_getall_append_failed s <&> Right
+    Right API.StreamStatsReadInBytes ->
+      Stats.stream_stat_getall_read_in_bytes s <&> Right
+    Right API.StreamStatsReadInBatches ->
+      Stats.stream_stat_getall_read_in_batches s <&> Right
     Left _ -> return . Left . T.pack $ "invalid stat type " <> show stats
 
 getSubscriptionStatsInternal
@@ -178,9 +182,9 @@ getSubscriptionStatsInternal statsHolder (PS.Enumerated stats) = do
       Stats.subscription_stat_getall_request_messages s <&> Right
     Right API.SubscriptionStatsResponseMessages ->
       Stats.subscription_stat_getall_response_messages s <&> Right
-    Left _ -> return . Left . T.pack $ "invalid stat type " <> show stats
     Right API.SubscriptionStatsChecklistSize ->
       Stats.subscription_stat_getall_checklist_size s <&> Right
+    Left _ -> return . Left . T.pack $ "invalid stat type " <> show stats
 
 getConnectorStatsInternal
   :: Stats.StatsHolder

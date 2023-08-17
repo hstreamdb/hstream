@@ -259,20 +259,22 @@ data ShardReader = ShardReader
   , shardReaderStartTs      :: Maybe Int64
   , shardReaderEndTs        :: Maybe Int64
   , targetShard             :: S.C_LogID
+  , targetStream            :: Text
   }
 
-mkShardReader :: S.LDReader -> S.C_LogID -> Maybe (IORef Word64) -> Maybe Int64 -> Maybe Int64 -> ShardReader
-mkShardReader shardReader targetShard shardReaderTotalBatches shardReaderStartTs shardReaderEndTs = ShardReader {..}
+mkShardReader :: S.LDReader -> Text -> S.C_LogID -> Maybe (IORef Word64) -> Maybe Int64 -> Maybe Int64 -> ShardReader
+mkShardReader shardReader targetStream targetShard shardReaderTotalBatches shardReaderStartTs shardReaderEndTs = ShardReader {..}
 
 data StreamReader = StreamReader
-  { streamReader             :: S.LDReader
+  { streamReaderTargetStream :: Text
+  , streamReader             :: S.LDReader
   , streamReaderTotalBatches :: Maybe (IORef Word64)
   , streamReaderTsLimits     :: HashMap S.C_LogID (Maybe Int64, Maybe Int64)
     -- ^ shardId -> (startTs, endTs)
   }
 
-mkStreamReader :: S.LDReader ->  Maybe (IORef Word64) -> HashMap S.C_LogID (Maybe Int64, Maybe Int64) -> StreamReader
-mkStreamReader streamReader streamReaderTotalBatches streamReaderTsLimits = StreamReader {..}
+mkStreamReader :: S.LDReader -> Text -> Maybe (IORef Word64) -> HashMap S.C_LogID (Maybe Int64, Maybe Int64) -> StreamReader
+mkStreamReader streamReader streamReaderTargetStream streamReaderTotalBatches streamReaderTsLimits = StreamReader {..}
 
 type BiStreamReaderSender = API.ReadStreamByKeyResponse -> IO (Either GRPCIOError ())
 type BiStreamReaderReceiver = IO (Either GRPCIOError (Maybe API.ReadStreamByKeyRequest))

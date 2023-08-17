@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns      #-}
 {-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -23,6 +24,7 @@ import           Control.Concurrent         (modifyMVar_, newEmptyMVar, putMVar,
 import           Control.Exception          (bracket, catch, throwIO)
 import           Control.Monad              (forM, forM_, join, unless, when)
 import           Data.ByteString            (ByteString)
+import qualified Data.ByteString            as BS
 import           Data.Either                (isRight)
 import qualified Data.Foldable              as F
 import qualified Data.HashMap.Strict        as HM
@@ -55,9 +57,11 @@ import           HStream.Server.Types       (BiStreamReader (..),
                                              StreamReader (..), ToOffset (..),
                                              getLogLSN, mkShardReader,
                                              mkStreamReader, transToStreamName)
+import qualified HStream.Stats              as Stats
 import qualified HStream.Store              as S
 import           HStream.Utils              (decompressBatchedRecord,
-                                             getRecordKey)
+                                             getPOSIXTime, getRecordKey,
+                                             msecSince, textToCBytes)
 
 createShardReader
   :: HasCallStack
@@ -127,7 +131,7 @@ readShard ServerContext{..} API.ReadShardRequest{..} = do
          S.readerSetTimeout reader (fromIntegral readerReadTimeout)
          readerMvar <- newEmptyMVar
          modifyMVar_ shardReaderMap $ return . HM.insert readShardRequestReaderId readerMvar
-         return $ mkShardReader reader readerShardId Nothing startTimestamp Nothing
+         return $ mkShardReader reader readerStreamName readerShardId Nothing startTimestamp Nothing
 
    putReader reader = do
     withMVar shardReaderMap $ \mp -> do
@@ -136,7 +140,12 @@ readShard ServerContext{..} API.ReadShardRequest{..} = do
         Just readerMvar -> putMVar readerMvar reader
 
    readRecords ShardReader{..} = do
+     let cStreamName = textToCBytes targetStream
+     !read_start <- getPOSIXTime
      records <- S.readerRead shardReader (fromIntegral readShardRequestMaxRecords)
+     Stats.serverHistogramAdd scStatsHolder Stats.SHL_ReadLatency =<< msecSince read_start
+     Stats.stream_stat_add_read_in_bytes scStatsHolder cStreamName (fromIntegral . sum $ map (BS.length . S.recordPayload) records)
+     Stats.stream_stat_add_read_in_batches scStatsHolder cStreamName (fromIntegral $ length records)
      let (records', _) = filterRecords shardReaderStartTs shardReaderEndTs records
      receivedRecordsVecs <- forM records' decodeRecordBatch
      let res = V.fromList $ map (\(_, _, _, record) -> record) receivedRecordsVecs
@@ -178,7 +187,7 @@ readStream ServerContext{..}
        (sTimestamp, eTimestamp) <- startReadingShard scLDClient reader rReaderId shard (toOffset <$> rStart) (toOffset <$> rEnd)
        return (shard, (sTimestamp, eTimestamp))
      let mp = HM.fromList tsMapList
-     return $ mkStreamReader reader totalBatches mp
+     return $ mkStreamReader reader rStreamName totalBatches mp
 
    deleteReader StreamReader{..} = do
      let shards = HM.keys streamReaderTsLimits
@@ -188,8 +197,13 @@ readStream ServerContext{..}
      Log.info $ "shard reader " <> Log.build rReaderId <> " stop reading"
 
    readRecords s@StreamReader{..} = do
+     let cStreamName = textToCBytes streamReaderTargetStream
      whileM $ do
+       !read_start <- getPOSIXTime
        records <- S.readerRead streamReader (fromIntegral maxReadBatch)
+       Stats.serverHistogramAdd scStatsHolder Stats.SHL_ReadLatency =<< msecSince read_start
+       Stats.stream_stat_add_read_in_bytes scStatsHolder cStreamName (fromIntegral . sum $ map (BS.length . S.recordPayload) records)
+       Stats.stream_stat_add_read_in_batches scStatsHolder cStreamName (fromIntegral $ length records)
        if null records then S.readerIsReadingAny streamReader
                        else sendRecords s records
      Log.info $ "shard reader " <> Log.build rReaderId <> " read stream done."
@@ -226,13 +240,14 @@ readShardStream
   -> IO ()
 readShardStream sc
                 API.ReadShardStreamRequest{ readShardStreamRequestReaderId       = rReaderId
+                                          , readShardStreamRequestStreamName     = rStreamName
                                           , readShardStreamRequestShardId        = rShardId
                                           , readShardStreamRequestFrom           = rStart
                                           , readShardStreamRequestMaxReadBatches = rMaxBatches
                                           , readShardStreamRequestUntil          = rEnd
                                           }
                 streamWrite = do
-    readShardStream' sc rReaderId rShardId rStart rEnd rMaxBatches streamWrite
+    readShardStream' sc rReaderId rStreamName rShardId rStart rEnd rMaxBatches streamWrite
 
 readSingleShardStream
   :: HasCallStack
@@ -252,7 +267,7 @@ readSingleShardStream sc@ServerContext{..}
     let streamId = transToStreamName rStreamName
     shards <- M.elems <$> S.listStreamPartitions scLDClient streamId
     when (length shards /= 1) $ throwIO $ HE.TooManyShardCount $ "Stream " <> show rStreamName <> " has more than one shard"
-    readShardStream' sc rReaderId (head shards) rStart rEnd rMaxBatches streamWrite
+    readShardStream' sc rReaderId rStreamName (head shards) rStart rEnd rMaxBatches streamWrite
 
 readStreamByKey
   :: HasCallStack
@@ -367,7 +382,12 @@ readStreamByKey ServerContext{..} streamWriter streamReader =
    readLoopInternal reader@BiStreamReader{..} cnt
      | cnt == 0 = return True
      | otherwise = do
+         !read_start <- getPOSIXTime
          records <- S.readerRead biStreamReader maxReadBatch
+         Stats.serverHistogramAdd scStatsHolder Stats.SHL_ReadLatency =<< msecSince read_start
+         let cStreamName = textToCBytes biStreamReaderTargetStream
+         Stats.stream_stat_add_read_in_bytes scStatsHolder cStreamName (fromIntegral . sum $ map (BS.length . S.recordPayload) records)
+         Stats.stream_stat_add_read_in_batches scStatsHolder cStreamName (fromIntegral $ length records)
          if null records
            then do
              -- check if until offset is reached.
@@ -467,6 +487,7 @@ readShardStream'
   :: (HasCallStack, StreamSend s)
   => ServerContext
   -> T.Text
+  -> T.Text
   -> S.C_LogID
   -> Maybe API.ShardOffset
   -> Maybe API.ShardOffset
@@ -474,7 +495,7 @@ readShardStream'
   -> (s -> IO (Either String ()))
   -- ^ Stream write function
   -> IO ()
-readShardStream' ServerContext{..} rReaderId rShardId rStart rEnd rMaxBatches streamWrite = do
+readShardStream' ServerContext{..} rStreamName rReaderId rShardId rStart rEnd rMaxBatches streamWrite = do
   bracket createReader deleteReader readRecords
  where
    ldReaderBufferSize = 10
@@ -493,7 +514,7 @@ readShardStream' ServerContext{..} rReaderId rShardId rStart rEnd rMaxBatches st
      S.readerSetWaitOnlyWhenNoData reader
      (sTimestamp, eTimestamp) <- startReadingShard scLDClient reader rReaderId rShardId (toOffset <$> rStart) (toOffset <$> rEnd)
      totalBatches <- if rMaxBatches == 0 then return Nothing else Just <$> newIORef rMaxBatches
-     return $ mkShardReader reader rShardId totalBatches sTimestamp eTimestamp
+     return $ mkShardReader reader rStreamName rShardId totalBatches sTimestamp eTimestamp
 
    deleteReader ShardReader{..} = do
      Log.info $ "shard reader " <> Log.build rReaderId <> " stop reading"
@@ -501,8 +522,13 @@ readShardStream' ServerContext{..} rReaderId rShardId rStart rEnd rMaxBatches st
      when isReading $ S.readerStopReading shardReader rShardId
 
    readRecords s@ShardReader{..} = do
+     let cStreamName = textToCBytes targetStream
      whileM $ do
+       !read_start <- getPOSIXTime
        records <- S.readerRead shardReader (fromIntegral maxReadBatch)
+       Stats.serverHistogramAdd scStatsHolder Stats.SHL_ReadLatency =<< msecSince read_start
+       Stats.stream_stat_add_read_in_bytes scStatsHolder cStreamName (fromIntegral . sum $ map (BS.length . S.recordPayload) records)
+       Stats.stream_stat_add_read_in_batches scStatsHolder cStreamName (fromIntegral $ length records)
        if null records then S.readerIsReadingAny shardReader
                        else sendRecords s records
      Log.info $ "shard reader " <> Log.build rReaderId <> " read stream done."

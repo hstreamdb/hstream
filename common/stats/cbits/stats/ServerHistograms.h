@@ -13,6 +13,7 @@ struct ServerHistograms : public HistogramBundle {
     return {
         {"append_request_latency", &append_request_latency},
         {"append_latency", &append_latency},
+        {"read_latency", &read_latency},
     };
   }
 
@@ -20,6 +21,8 @@ struct ServerHistograms : public HistogramBundle {
   LatencyHistogram append_request_latency;
   // Latency of the real writes
   LatencyHistogram append_latency;
+  // Latency of logdevice read
+  LatencyHistogram read_latency;
 };
 
 }} // namespace hstream::common

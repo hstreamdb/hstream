@@ -13,4 +13,10 @@ STAT_DEFINE(append_in_bytes, SUM)
 // Total payload records successfully written to the stream
 STAT_DEFINE(append_in_records, SUM)
 
+// ============== read stats =========================
+// Total payload bytes successfully read from the stream
+STAT_DEFINE(read_in_bytes, SUM)
+// Total payload batches successfully read from the stream
+STAT_DEFINE(read_in_batches, SUM)
+
 #undef STAT_DEFINE
