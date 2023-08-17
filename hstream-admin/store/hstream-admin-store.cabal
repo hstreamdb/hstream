@@ -66,6 +66,7 @@ library
     Fb303.FacebookService.Client
     Fb303.FacebookService.Service
     Fb303.Types
+    HStream.Admin.Store.Command.AdminCommand
     HStream.Admin.Store.Command.CheckImpact
     HStream.Admin.Store.Command.Config
     HStream.Admin.Store.Command.Connect
