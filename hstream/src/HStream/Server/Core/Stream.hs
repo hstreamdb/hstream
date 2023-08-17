@@ -20,27 +20,29 @@ module HStream.Server.Core.Stream
   , deleteStreamV2
   , listShardsV2
   , getTailRecordIdV2
+  , trimBeforeRecordIds
   ) where
 
-import           Control.Concurrent                (modifyMVar_)
 import           Control.Exception                 (catch, throwIO)
 import           Control.Monad                     (forM, forM_, unless, when)
+import qualified Data.Attoparsec.Text              as AP
 import qualified Data.ByteString                   as BS
 import qualified Data.ByteString.Lazy              as BSL
-import           Data.Foldable                     (foldl')
 import           Data.Functor                      ((<&>))
-import qualified Data.HashMap.Strict               as HM
+import qualified Data.List                         as L
 import qualified Data.Map.Strict                   as M
 import           Data.Maybe                        (fromMaybe)
 import qualified Data.Text                         as T
+import           Data.Vector                       (Vector)
 import qualified Data.Vector                       as V
-import           Data.Word                         (Word64)
+import           Data.Word                         (Word32, Word64)
 import           GHC.Stack                         (HasCallStack)
 import           Google.Protobuf.Timestamp         (Timestamp)
 import qualified Proto3.Suite                      as PT
 import qualified Z.Data.CBytes                     as CB
 import qualified ZooKeeper.Exception               as ZK
 
+import           Data.Either                       (partitionEithers)
 import           HStream.Base.Time                 (getSystemNsTimestamp)
 import           HStream.Common.Types
 import qualified HStream.Common.ZookeeperSlotAlloc as Slot
@@ -215,6 +217,66 @@ trimStream ServerContext{..} streamName trimPoint = do
     getTrimLSN scLDClient shardId trimPoint >>= S.trim scLDClient shardId
  where
    streamId = transToStreamName streamName
+
+data Rid = Rid
+  { rShardId  :: Word64
+  , rBatchId  :: Word64
+  , rBatchIdx :: Word32
+  } deriving (Show, Eq)
+
+instance Ord Rid where
+  Rid{rShardId=rs1, rBatchIdx=rb1} <= Rid{rShardId=rs2, rBatchIdx=rb2}
+    | rs1 /= rs2 = rs1 <= rs2
+    | otherwise = rb1 <= rb2
+
+mkRid :: T.Text -> Either String Rid
+mkRid r = case AP.parseOnly parseRid r of
+  Right res -> Right res
+  Left e    -> Left $ show r <> " is a invalid recordId: " <> show e
+ where
+   parseRid = do shardId <- AP.decimal
+                 _ <- AP.char '-'
+                 batchId <- AP.decimal
+                 _ <- AP.char '-'
+                 batchIndex <- AP.decimal
+                 AP.endOfInput
+                 return $ Rid shardId batchId batchIndex
+
+ridToText :: Rid -> T.Text
+ridToText Rid{..} =
+  let tmp = map T.pack [show rShardId, show rBatchId, show rBatchIdx]
+   in T.intercalate "-" tmp
+
+trimBeforeRecordIds
+  :: HasCallStack
+  => ServerContext
+  -> T.Text
+  -> Vector T.Text
+  -> IO (M.Map Word64 T.Text)
+trimBeforeRecordIds ServerContext{..} streamName recordIds = do
+  let rids = V.toList $ V.map mkRid recordIds
+      (emsgs, rids') = partitionEithers rids
+  unless (null emsgs) $ do
+    Log.fatal $ "parse recordId error: " <> Log.build (show emsgs)
+    throwIO . HE.InvalidRecordId $ show emsgs
+
+  -- Group rids by shardId.
+  -- Since we call sort first, after groupBy, elements in each group are sorted,
+  -- which means the head of elements in each group is the min RecordId of the shard
+  let points = map head $ L.groupBy (\Rid{rShardId=rs1} Rid{rShardId=rs2} -> rs1 == rs2) $ L.sort rids'
+  Log.info $ "min recordIds for stream " <> Log.build streamName <> ": " <> Log.build (show points)
+
+  let streamId = transToStreamName streamName
+  shards <- M.elems <$> S.listStreamPartitions scLDClient streamId
+  res <- forM points $ \r@Rid{..} -> do
+    unless (rShardId `elem` shards) $
+      throwIO . HE.ShardNotExists $ "shard " <> show rShardId <> " doesn't belong to stream " <> show streamName
+    S.trim scLDClient rShardId (rBatchId - 1)
+    Log.info $ "trim to " <> Log.build (show $ rBatchId - 1)
+            <> " for shard " <> Log.build (show rShardId)
+            <> ", stream " <> Log.build streamName
+    return (rShardId, ridToText r)
+  return $ M.fromList res
 
 getStreamInfo :: ServerContext -> S.StreamId -> IO API.Stream
 getStreamInfo ServerContext{..} stream = do
