@@ -20,7 +20,7 @@ module HStream.Server.Core.Stream
   , deleteStreamV2
   , listShardsV2
   , getTailRecordIdV2
-  , trimBeforeRecordIds
+  , trimShards
   ) where
 
 import           Control.Exception                 (catch, throwIO)
@@ -247,13 +247,13 @@ ridToText Rid{..} =
   let tmp = map T.pack [show rShardId, show rBatchId, show rBatchIdx]
    in T.intercalate "-" tmp
 
-trimBeforeRecordIds
+trimShards
   :: HasCallStack
   => ServerContext
   -> T.Text
   -> Vector T.Text
   -> IO (M.Map Word64 T.Text)
-trimBeforeRecordIds ServerContext{..} streamName recordIds = do
+trimShards ServerContext{..} streamName recordIds = do
   let rids = V.toList $ V.map mkRid recordIds
       (emsgs, rids') = partitionEithers rids
   unless (null emsgs) $ do

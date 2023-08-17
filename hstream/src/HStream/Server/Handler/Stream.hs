@@ -18,7 +18,7 @@ module HStream.Server.Handler.Stream
   , trimShardHandler
   , appendHandler
   , getTailRecordIdHandler
-  , trimBeforeRecordIdsHandler
+  , trimShardsHandler
     -- * For hs-grpc-server
   , handleCreateStream
   , handleDeleteStream
@@ -30,7 +30,7 @@ module HStream.Server.Handler.Stream
   , handleListShard
   , handleTrimShard
   , handleGetTailRecordId
-  , handleTrimBeforeRecordIds
+  , handleTrimShards
     -- ** Experimental feature
   , handleCreateStreamV2
   , handleDeleteStreamV2
@@ -176,25 +176,25 @@ handleTrimStream sc _ request@TrimStreamRequest{..} = catchDefaultEx $ do
     throwIO . HE.InvalidTrimPoint $ "invalid trim point: " <> show trimStreamRequestTrimPoint
   C.trimStream sc trimStreamRequestStreamName (fromJust trimStreamRequestTrimPoint) >> pure Empty
 
-trimBeforeRecordIdsHandler
+trimShardsHandler
   :: ServerContext
-  -> ServerRequest 'Normal TrimBeforeRecordIdsRequest TrimBeforeRecordIdsResponse
-  -> IO (ServerResponse 'Normal TrimBeforeRecordIdsResponse)
-trimBeforeRecordIdsHandler sc (ServerNormalRequest _metadata request@TrimBeforeRecordIdsRequest{..}) = defaultExceptionHandle $ do
-  Log.info $ "Receive trim BeforeRecordIds Request: " <> Log.buildString' request
-  validateNameAndThrow ResStream trimBeforeRecordIdsRequestStreamName
-  when (V.null trimBeforeRecordIdsRequestRecordIds) $
+  -> ServerRequest 'Normal TrimShardsRequest TrimShardsResponse
+  -> IO (ServerResponse 'Normal TrimShardsResponse)
+trimShardsHandler sc (ServerNormalRequest _metadata request@TrimShardsRequest{..}) = defaultExceptionHandle $ do
+  Log.info $ "Receive trim Shards Request: " <> Log.buildString' request
+  validateNameAndThrow ResStream trimShardsRequestStreamName
+  when (V.null trimShardsRequestRecordIds) $
     throwIO . HE.InvalidRecordId $ "recordIds shouldn't be empty"
-  C.trimBeforeRecordIds sc trimBeforeRecordIdsRequestStreamName trimBeforeRecordIdsRequestRecordIds
-    >>= returnResp . TrimBeforeRecordIdsResponse
+  C.trimShards sc trimShardsRequestStreamName trimShardsRequestRecordIds
+    >>= returnResp . TrimShardsResponse
 
-handleTrimBeforeRecordIds :: ServerContext -> G.UnaryHandler TrimBeforeRecordIdsRequest TrimBeforeRecordIdsResponse
-handleTrimBeforeRecordIds sc _ request@TrimBeforeRecordIdsRequest{..} = catchDefaultEx $ do
-  Log.info $ "Receive trim BeforeRecordIds Request: " <> Log.buildString' request
-  validateNameAndThrow ResStream trimBeforeRecordIdsRequestStreamName
-  when (V.null trimBeforeRecordIdsRequestRecordIds) $
+handleTrimShards :: ServerContext -> G.UnaryHandler TrimShardsRequest TrimShardsResponse
+handleTrimShards sc _ request@TrimShardsRequest{..} = catchDefaultEx $ do
+  Log.info $ "Receive trim Shards Request: " <> Log.buildString' request
+  validateNameAndThrow ResStream trimShardsRequestStreamName
+  when (V.null trimShardsRequestRecordIds) $
     throwIO . HE.InvalidRecordId $ "recordIds shouldn't be empty"
-  TrimBeforeRecordIdsResponse <$> C.trimBeforeRecordIds sc trimBeforeRecordIdsRequestStreamName trimBeforeRecordIdsRequestRecordIds
+  TrimShardsResponse <$> C.trimShards sc trimShardsRequestStreamName trimShardsRequestRecordIds
 
 handleGetTailRecordId :: ServerContext -> G.UnaryHandler GetTailRecordIdRequest GetTailRecordIdResponse
 handleGetTailRecordId sc _ req = catchDefaultEx $ do
