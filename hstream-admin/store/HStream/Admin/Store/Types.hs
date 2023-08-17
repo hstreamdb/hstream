@@ -53,6 +53,7 @@ data Command
   | CheckImpactCmd CheckImpactOpts
   | MaintenanceCmd MaintenanceOpts
   | StartSQLReplCmd StartSQLReplOpts
+  | AdminCommand AdminCommandOpts
   deriving (Show)
 
 commandParser :: O.Parser Command
@@ -69,6 +70,9 @@ commandParser = O.hsubparser
                             (O.progDesc "Allows to manipulate maintenances in Maintenance Manager"))
  <> O.command "sql" (O.info (StartSQLReplCmd <$> startSQLReplOptsParser)
                       (O.progDesc "Start an interactive SQL shell"))
+ <> O.command "admin-command"
+              (O.info (AdminCommand <$> adminCommandOptsParser)
+                      (O.progDesc "Internal admin commands, use with caution!"))
   )
 
 -------------------------------------------------------------------------------
@@ -919,6 +923,27 @@ startSQLReplOptsParser = StartSQLReplOpts
                          <> short 'e'
                          <> help "Run sql expression non-interactively."
                           ))
+
+-------------------------------------------------------------------------------
+
+data AdminCommandOpts
+  = AdminCommandRaw Text
+  | AdminCommandCompactAll
+  deriving (Show)
+
+adminCommandOptsParser :: Parser AdminCommandOpts
+adminCommandOptsParser = adminCommandOptsRawParser <|> adminCommandOptsQuickCmdParser
+
+adminCommandOptsRawParser :: Parser AdminCommandOpts
+adminCommandOptsRawParser = AdminCommandRaw
+  <$> (strOption (long "command" <> short 'c'
+               <> metavar "STRING" <> help "The command"))
+
+adminCommandOptsQuickCmdParser :: Parser AdminCommandOpts
+adminCommandOptsQuickCmdParser = hsubparser $
+  O.command "compact-all"
+            (O.info (pure AdminCommandCompactAll)
+                    (O.progDesc "TODO: Quick to compact all"))
 
 -------------------------------------------------------------------------------
 
