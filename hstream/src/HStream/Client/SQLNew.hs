@@ -200,6 +200,8 @@ sqlAction HStreamApi{..} sql = do
       putStr $ HStream.Utils.formatCommandQueryResponse x
     ClientErrorResponse _ -> putStr $ HStream.Utils.formatResult resp
 
+-- XXX: Can't build template-haskell with asan
+#ifndef HSTREAM_ENABLE_ASAN
 helpInfo :: String
 helpInfo =
   [r|
@@ -251,6 +253,13 @@ helpInfos = M.fromList [
   DROP <STREAM <stream_name>|VIEW <view_name>|QUERY <query_id>> [IF EXISTS];
   |])
   ]
+#else
+helpInfo :: String
+helpInfo = ""
+
+helpInfos :: M.Map String String
+helpInfos = M.fromList []
+#endif
 
 groupedHelpInfo :: String
 groupedHelpInfo = ("SQL Statements\n" <> ) . unlines . map (\(x, y) -> x <> "  " <> y) . M.toList $ helpInfos
