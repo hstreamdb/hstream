@@ -65,7 +65,7 @@ instance Plan BoundExpr where
       let elemType = case allSame types of
             False -> throwSQLException PlanException Nothing $
               "Array elements should have the same type: " <> show es
-            True  -> if L.null types then BTypeInteger -- FIXME: type for empty array?
+            True  -> if L.null types then BTypeUnknown
                                           else L.head types
       let catalog = ColumnCatalog { columnId = 0
                                   , columnName = T.pack name

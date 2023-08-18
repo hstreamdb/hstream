@@ -12,7 +12,7 @@ import           HStream.SQL.Binder.Common
 -- | All bound data types except 'BTypeArray's whose depth is greater than 5.
 allBoundDataTypes :: Set.Set BoundDataType
 allBoundDataTypes = go basic 5
-  where basic = Set.fromList [ BTypeInteger, BTypeFloat, BTypeText, BTypeBoolean, BTypeJsonb, BTypeBytea, BTypeTimestamp, BTypeDate, BTypeTime, BTypeInterval ]
+  where basic = Set.fromList [ BTypeInteger, BTypeFloat, BTypeText, BTypeBoolean, BTypeJsonb, BTypeBytea, BTypeTimestamp, BTypeDate, BTypeTime, BTypeInterval, BTypeUnknown ]
         go acc n = if n <= 0 then acc else
                      Set.map BTypeArray acc `Set.union` basic
 
@@ -24,7 +24,7 @@ class NullaryOperator a where
   {-# MINIMAL nResType #-}
 instance NullaryOperator Constant where
   nResType v = case v of
-    ConstantNull           -> BTypeInteger -- FIXME: type for null?
+    ConstantNull           -> BTypeUnknown
     ConstantInt _          -> BTypeInteger
     ConstantFloat _        -> BTypeFloat
     ConstantText _         -> BTypeText
@@ -36,7 +36,7 @@ instance NullaryOperator Constant where
     ConstantBytea _        -> BTypeBytea
     ConstantJsonb _        -> BTypeJsonb
     ConstantArray vs
-      | L.null vs -> BTypeArray BTypeInteger -- FIXME: type for empty array?
+      | L.null vs -> BTypeArray BTypeUnknown
       | otherwise -> BTypeArray (nResType (L.head vs))
 
 ----------------------------------------
@@ -49,28 +49,28 @@ class UnaryOperator a where
 
 instance UnaryOperator UnaryOp where
   uOpType op = case op of
-    OpSin      -> Set.fromList [BTypeInteger, BTypeFloat]
-    OpSinh     -> Set.fromList [BTypeInteger, BTypeFloat]
-    OpAsin     -> Set.fromList [BTypeInteger, BTypeFloat]
-    OpAsinh    -> Set.fromList [BTypeInteger, BTypeFloat]
-    OpCos      -> Set.fromList [BTypeInteger, BTypeFloat]
-    OpCosh     -> Set.fromList [BTypeInteger, BTypeFloat]
-    OpAcos     -> Set.fromList [BTypeInteger, BTypeFloat]
-    OpAcosh    -> Set.fromList [BTypeInteger, BTypeFloat]
-    OpTan      -> Set.fromList [BTypeInteger, BTypeFloat]
-    OpTanh     -> Set.fromList [BTypeInteger, BTypeFloat]
-    OpAtan     -> Set.fromList [BTypeInteger, BTypeFloat]
-    OpAtanh    -> Set.fromList [BTypeInteger, BTypeFloat]
-    OpAbs      -> Set.fromList [BTypeInteger, BTypeFloat]
-    OpCeil     -> Set.fromList [BTypeInteger, BTypeFloat]
-    OpFloor    -> Set.fromList [BTypeInteger, BTypeFloat]
-    OpRound    -> Set.fromList [BTypeInteger, BTypeFloat]
-    OpSign     -> Set.fromList [BTypeInteger, BTypeFloat]
-    OpSqrt     -> Set.fromList [BTypeInteger, BTypeFloat]
-    OpLog      -> Set.fromList [BTypeInteger, BTypeFloat]
-    OpLog2     -> Set.fromList [BTypeInteger, BTypeFloat]
-    OpLog10    -> Set.fromList [BTypeInteger, BTypeFloat]
-    OpExp      -> Set.fromList [BTypeInteger, BTypeFloat]
+    OpSin      -> Set.fromList [BTypeInteger, BTypeFloat, BTypeUnknown]
+    OpSinh     -> Set.fromList [BTypeInteger, BTypeFloat, BTypeUnknown]
+    OpAsin     -> Set.fromList [BTypeInteger, BTypeFloat, BTypeUnknown]
+    OpAsinh    -> Set.fromList [BTypeInteger, BTypeFloat, BTypeUnknown]
+    OpCos      -> Set.fromList [BTypeInteger, BTypeFloat, BTypeUnknown]
+    OpCosh     -> Set.fromList [BTypeInteger, BTypeFloat, BTypeUnknown]
+    OpAcos     -> Set.fromList [BTypeInteger, BTypeFloat, BTypeUnknown]
+    OpAcosh    -> Set.fromList [BTypeInteger, BTypeFloat, BTypeUnknown]
+    OpTan      -> Set.fromList [BTypeInteger, BTypeFloat, BTypeUnknown]
+    OpTanh     -> Set.fromList [BTypeInteger, BTypeFloat, BTypeUnknown]
+    OpAtan     -> Set.fromList [BTypeInteger, BTypeFloat, BTypeUnknown]
+    OpAtanh    -> Set.fromList [BTypeInteger, BTypeFloat, BTypeUnknown]
+    OpAbs      -> Set.fromList [BTypeInteger, BTypeFloat, BTypeUnknown]
+    OpCeil     -> Set.fromList [BTypeInteger, BTypeFloat, BTypeUnknown]
+    OpFloor    -> Set.fromList [BTypeInteger, BTypeFloat, BTypeUnknown]
+    OpRound    -> Set.fromList [BTypeInteger, BTypeFloat, BTypeUnknown]
+    OpSign     -> Set.fromList [BTypeInteger, BTypeFloat, BTypeUnknown]
+    OpSqrt     -> Set.fromList [BTypeInteger, BTypeFloat, BTypeUnknown]
+    OpLog      -> Set.fromList [BTypeInteger, BTypeFloat, BTypeUnknown]
+    OpLog2     -> Set.fromList [BTypeInteger, BTypeFloat, BTypeUnknown]
+    OpLog10    -> Set.fromList [BTypeInteger, BTypeFloat, BTypeUnknown]
+    OpExp      -> Set.fromList [BTypeInteger, BTypeFloat, BTypeUnknown]
     OpIsInt    -> allBoundDataTypes
     OpIsFloat  -> allBoundDataTypes
     OpIsBool   -> allBoundDataTypes
@@ -80,20 +80,20 @@ instance UnaryOperator UnaryOp where
     OpIsTime   -> allBoundDataTypes
     OpIsNum    -> allBoundDataTypes
     OpToStr    -> allBoundDataTypes
-    OpToLower  -> Set.singleton BTypeText
-    OpToUpper  -> Set.singleton BTypeText
-    OpTrim     -> Set.singleton BTypeText
-    OpLTrim    -> Set.singleton BTypeText
-    OpRTrim    -> Set.singleton BTypeText
-    OpReverse  -> Set.singleton BTypeText
-    OpStrLen   -> Set.singleton BTypeText
-    OpDistinct -> Set.map BTypeArray allBoundDataTypes
-    OpArrJoin  -> Set.map BTypeArray allBoundDataTypes
-    OpLength   -> Set.map BTypeArray allBoundDataTypes
-    OpArrMax   -> Set.map BTypeArray allBoundDataTypes
-    OpArrMin   -> Set.map BTypeArray allBoundDataTypes
-    OpSort     -> Set.map BTypeArray allBoundDataTypes
-    OpNot      -> Set.singleton BTypeBoolean
+    OpToLower  -> Set.fromList [BTypeText, BTypeUnknown]
+    OpToUpper  -> Set.fromList [BTypeText, BTypeUnknown]
+    OpTrim     -> Set.fromList [BTypeText, BTypeUnknown]
+    OpLTrim    -> Set.fromList [BTypeText, BTypeUnknown]
+    OpRTrim    -> Set.fromList [BTypeText, BTypeUnknown]
+    OpReverse  -> Set.fromList [BTypeText, BTypeUnknown]
+    OpStrLen   -> Set.fromList [BTypeText, BTypeUnknown]
+    OpDistinct -> Set.singleton BTypeUnknown `Set.union` Set.map BTypeArray allBoundDataTypes
+    OpArrJoin  -> Set.singleton BTypeUnknown `Set.union` Set.map BTypeArray allBoundDataTypes
+    OpLength   -> Set.singleton BTypeUnknown `Set.union` Set.map BTypeArray allBoundDataTypes
+    OpArrMax   -> Set.singleton BTypeUnknown `Set.union` Set.map BTypeArray allBoundDataTypes
+    OpArrMin   -> Set.singleton BTypeUnknown `Set.union` Set.map BTypeArray allBoundDataTypes
+    OpSort     -> Set.singleton BTypeUnknown `Set.union` Set.map BTypeArray allBoundDataTypes
+    OpNot      -> Set.fromList [BTypeText, BTypeUnknown]
   uResType op t = case op of
     OpSin      -> BTypeFloat
     OpSinh     -> BTypeFloat
@@ -151,77 +151,81 @@ class BinaryOperator a where
   {-# MINIMAL bOp1Type, bOp2Type, bResType #-}
 
 instance BinaryOperator JsonOp where
-  bOp1Type _ = Set.singleton BTypeJsonb
+  bOp1Type _ = Set.fromList [BTypeJsonb, BTypeUnknown]
   bOp2Type op = case op of
-    JOpArrow         -> Set.singleton BTypeText
-    JOpLongArrow     -> Set.singleton BTypeText
+    JOpArrow         -> Set.fromList [ BTypeText, BTypeUnknown ]
+    JOpLongArrow     -> Set.fromList [ BTypeText, BTypeUnknown ]
     JOpHashArrow     -> Set.fromList [ BTypeArray BTypeText
-                                     , BTypeArray BTypeInteger]
+                                     , BTypeArray BTypeInteger
+                                     , BTypeArray BTypeUnknown
+                                     , BTypeUnknown ]
     JOpHashLongArrow -> Set.fromList [ BTypeArray BTypeText
-                                     , BTypeArray BTypeInteger]
+                                     , BTypeArray BTypeInteger
+                                     , BTypeArray BTypeUnknown
+                                     , BTypeUnknown ]
   bResType op _ _ = case op of
-    JOpArrow         -> BTypeInteger -- FIXME: can not determine at compile time!
+    JOpArrow         -> BTypeUnknown
     JOpLongArrow     -> BTypeText
-    JOpHashArrow     -> BTypeInteger -- FIXME: can not determine at compile time!
+    JOpHashArrow     -> BTypeUnknown
     JOpHashLongArrow -> BTypeText
 
 instance BinaryOperator BinaryOp where
   bOp1Type op = case op of
-    OpAnd       -> Set.singleton BTypeBoolean
-    OpOr        -> Set.singleton BTypeBoolean
+    OpAnd       -> Set.fromList [BTypeBoolean, BTypeUnknown]
+    OpOr        -> Set.fromList [BTypeBoolean, BTypeUnknown]
     OpEQ        -> allBoundDataTypes
     OpNEQ       -> allBoundDataTypes
     OpLT        -> allBoundDataTypes
     OpGT        -> allBoundDataTypes
     OpLEQ       -> allBoundDataTypes
     OpGEQ       -> allBoundDataTypes
-    OpAdd       -> Set.fromList [BTypeInteger, BTypeFloat]
-    OpSub       -> Set.fromList [BTypeInteger, BTypeFloat]
-    OpMul       -> Set.fromList [BTypeInteger, BTypeFloat]
-    OpContain   -> Set.map BTypeArray allBoundDataTypes
-    OpExcept    -> Set.map BTypeArray allBoundDataTypes
-    OpIntersect -> Set.map BTypeArray allBoundDataTypes
-    OpRemove    -> Set.map BTypeArray allBoundDataTypes
-    OpUnion     -> Set.map BTypeArray allBoundDataTypes
-    OpArrJoin'  -> Set.map BTypeArray allBoundDataTypes
+    OpAdd       -> Set.fromList [BTypeInteger, BTypeFloat, BTypeUnknown]
+    OpSub       -> Set.fromList [BTypeInteger, BTypeFloat, BTypeUnknown]
+    OpMul       -> Set.fromList [BTypeInteger, BTypeFloat, BTypeUnknown]
+    OpContain   -> Set.singleton BTypeUnknown `Set.union` Set.map BTypeArray allBoundDataTypes
+    OpExcept    -> Set.singleton BTypeUnknown `Set.union` Set.map BTypeArray allBoundDataTypes
+    OpIntersect -> Set.singleton BTypeUnknown `Set.union` Set.map BTypeArray allBoundDataTypes
+    OpRemove    -> Set.singleton BTypeUnknown `Set.union` Set.map BTypeArray allBoundDataTypes
+    OpUnion     -> Set.singleton BTypeUnknown `Set.union` Set.map BTypeArray allBoundDataTypes
+    OpArrJoin'  -> Set.singleton BTypeUnknown `Set.union` Set.map BTypeArray allBoundDataTypes
     OpIfNull    -> allBoundDataTypes
     OpNullIf    -> allBoundDataTypes
-    OpDateStr   -> Set.singleton BTypeInteger
-    OpStrDate   -> Set.singleton BTypeText
-    OpSplit     -> Set.singleton BTypeText
-    OpChunksOf  -> Set.singleton BTypeInteger
-    OpTake      -> Set.singleton BTypeInteger
-    OpTakeEnd   -> Set.singleton BTypeInteger
-    OpDrop      -> Set.singleton BTypeInteger
-    OpDropEnd   -> Set.singleton BTypeInteger
+    OpDateStr   -> Set.fromList [BTypeInteger, BTypeUnknown]
+    OpStrDate   -> Set.fromList [BTypeText   , BTypeUnknown]
+    OpSplit     -> Set.fromList [BTypeText   , BTypeUnknown]
+    OpChunksOf  -> Set.fromList [BTypeInteger, BTypeUnknown]
+    OpTake      -> Set.fromList [BTypeInteger, BTypeUnknown]
+    OpTakeEnd   -> Set.fromList [BTypeInteger, BTypeUnknown]
+    OpDrop      -> Set.fromList [BTypeInteger, BTypeUnknown]
+    OpDropEnd   -> Set.fromList [BTypeInteger, BTypeUnknown]
   bOp2Type op = case op of
-    OpAnd       -> Set.singleton BTypeBoolean
-    OpOr        -> Set.singleton BTypeBoolean
+    OpAnd       -> Set.fromList [BTypeBoolean, BTypeUnknown]
+    OpOr        -> Set.fromList [BTypeBoolean, BTypeUnknown]
     OpEQ        -> allBoundDataTypes
     OpNEQ       -> allBoundDataTypes
     OpLT        -> allBoundDataTypes
     OpGT        -> allBoundDataTypes
     OpLEQ       -> allBoundDataTypes
     OpGEQ       -> allBoundDataTypes
-    OpAdd       -> Set.fromList [BTypeInteger, BTypeFloat]
-    OpSub       -> Set.fromList [BTypeInteger, BTypeFloat]
-    OpMul       -> Set.fromList [BTypeInteger, BTypeFloat]
+    OpAdd       -> Set.fromList [BTypeInteger, BTypeFloat, BTypeUnknown]
+    OpSub       -> Set.fromList [BTypeInteger, BTypeFloat, BTypeUnknown]
+    OpMul       -> Set.fromList [BTypeInteger, BTypeFloat, BTypeUnknown]
     OpContain   -> allBoundDataTypes
-    OpExcept    -> Set.map BTypeArray allBoundDataTypes
-    OpIntersect -> Set.map BTypeArray allBoundDataTypes
+    OpExcept    -> Set.singleton BTypeUnknown `Set.union` Set.map BTypeArray allBoundDataTypes
+    OpIntersect -> Set.singleton BTypeUnknown `Set.union` Set.map BTypeArray allBoundDataTypes
     OpRemove    -> allBoundDataTypes
-    OpUnion     -> Set.map BTypeArray allBoundDataTypes
-    OpArrJoin'  -> Set.singleton BTypeText
+    OpUnion     -> Set.singleton BTypeUnknown `Set.union` Set.map BTypeArray allBoundDataTypes
+    OpArrJoin'  -> Set.fromList [BTypeText, BTypeUnknown]
     OpIfNull    -> allBoundDataTypes
     OpNullIf    -> allBoundDataTypes
-    OpDateStr   -> Set.singleton BTypeText
-    OpStrDate   -> Set.singleton BTypeText
-    OpSplit     -> Set.singleton BTypeText
-    OpChunksOf  -> Set.singleton BTypeText
-    OpTake      -> Set.singleton BTypeText
-    OpTakeEnd   -> Set.singleton BTypeText
-    OpDrop      -> Set.singleton BTypeText
-    OpDropEnd   -> Set.singleton BTypeText
+    OpDateStr   -> Set.fromList [BTypeText, BTypeUnknown]
+    OpStrDate   -> Set.fromList [BTypeText, BTypeUnknown]
+    OpSplit     -> Set.fromList [BTypeText, BTypeUnknown]
+    OpChunksOf  -> Set.fromList [BTypeText, BTypeUnknown]
+    OpTake      -> Set.fromList [BTypeText, BTypeUnknown]
+    OpTakeEnd   -> Set.fromList [BTypeText, BTypeUnknown]
+    OpDrop      -> Set.fromList [BTypeText, BTypeUnknown]
+    OpDropEnd   -> Set.fromList [BTypeText, BTypeUnknown]
   bResType op t1 t2 = case op of
     OpAnd        -> BTypeBoolean
     OpOr         -> BTypeBoolean

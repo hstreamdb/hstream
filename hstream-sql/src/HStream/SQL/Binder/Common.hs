@@ -259,6 +259,7 @@ data BoundDataType
   | BTypeDate     | BTypeTime | BTypeTimestamp
   | BTypeInterval | BTypeJsonb
   | BTypeArray BoundDataType
+  | BTypeUnknown -- can not be determined at compile time
   deriving ( Eq, Ord, Generic, Aeson.ToJSON, Aeson.FromJSON
            , Aeson.ToJSONKey, Aeson.FromJSONKey, Hashable
            , Show, Read)
