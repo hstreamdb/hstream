@@ -45,6 +45,7 @@ library
   exposed-modules:
     Kafka.Protocol
     Kafka.Protocol.Encoding
+    Kafka.Protocol.Error
     Kafka.Protocol.Message
 
   other-modules:
