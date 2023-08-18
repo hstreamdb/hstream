@@ -46,6 +46,7 @@ handlers serverContext@ServerContext{..} =
         hstreamApiAppend = appendHandler serverContext,
         hstreamApiGetTailRecordId = getTailRecordIdHandler serverContext,
         hstreamApiTrimStream  = trimStreamHandler serverContext,
+        hstreamApiTrimShards  = trimShardsHandler serverContext,
 
         -- Subscribe
         hstreamApiCreateSubscription = createSubscriptionHandler serverContext,

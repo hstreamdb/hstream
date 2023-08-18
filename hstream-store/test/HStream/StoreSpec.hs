@@ -2,9 +2,11 @@ module HStream.StoreSpec where
 
 import           Test.Hspec
 
-import qualified HStream.Store           as S
+import           Data.Time.Clock.POSIX            (getPOSIXTime)
+import qualified HStream.Store                    as S
+import qualified HStream.Store.Internal.LogDevice as S
 import           HStream.Store.SpecUtils
-import           Z.Data.CBytes           (CBytes)
+import           Z.Data.CBytes                    (CBytes)
 
 spec :: Spec
 spec = describe "StoreSpec" $ do
@@ -35,6 +37,13 @@ base = describe "Base" $ do
     readPayload logid (Just sn1) `shouldReturn` "world"
     -- trim lsn beyond tailLSN should fail
     S.trim client logid (sn1 + 1) `shouldThrow` anyException
+
+  time <- runIO getPOSIXTime
+  loggroupAround (round time) "testTrim" S.def{S.logReplicationFactor = S.defAttr1 1} $ do
+    it "trim un-existed record" $ \(_lgname, ranlogid) -> do
+      S.isLogEmpty client ranlogid `shouldReturn` True
+      sn0 <- S.appendCompLSN <$> S.append client ranlogid "hello" Nothing
+      S.trim client ranlogid (sn0 - 10) `shouldReturn` ()
 
   loggroupAround' $ do
     it "trim last" $ \(_lgname, ranlogid) -> do

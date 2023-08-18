@@ -171,6 +171,7 @@ test-suite hstream-store-test
     , random                ^>=1.2
     , vector                >=0.12    && <0.14
     , Z-Data
+    , time
 
   default-language:   Haskell2010
   default-extensions:
