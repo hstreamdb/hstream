@@ -45,6 +45,7 @@ import qualified Proto3.Suite                      as PT
 import qualified Z.Data.CBytes                     as CB
 import qualified ZooKeeper.Exception               as ZK
 
+import           Control.Monad                     (void)
 import           Data.Either                       (partitionEithers)
 import           HStream.Base.Time                 (getSystemNsTimestamp)
 import           HStream.Common.Types
@@ -216,8 +217,7 @@ trimStream ServerContext{..} streamName trimPoint = do
     Log.info $ "trimStream failed because stream " <> Log.build streamName <> " is not found."
     throwIO $ HE.StreamNotFound $ "stream " <> T.pack (show streamName) <> " is not found."
   shards <- M.elems <$> S.listStreamPartitions scLDClient streamId
-  forM_ shards $ \shardId -> do
-    getTrimLSN scLDClient shardId trimPoint >>= S.trim scLDClient shardId
+  void $ limitedMapConcuurently 8 (\shardId -> getTrimLSN scLDClient shardId trimPoint >>= S.trim scLDClient shardId) shards
  where
    streamId = transToStreamName streamName
 
