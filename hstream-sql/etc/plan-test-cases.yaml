@@ -4,29 +4,29 @@
 testSuiteCases:
 - testCaseFail: null
   testCaseLabel: not(BETWEEN)
-  testCaseResult: |-
-    Project (OpNotBetweenSymAnd(0.#0,0,42)) | (#0_xNOTBETWEENSYMMETRIC0AND42:bool)
-      Scan s | (#0_x:int)
+  testCaseResult: "Project (name=xNOTBETWEENSYMMETRIC0AND42, alias=xNOTBETWEENSYMMETRIC0AND42)
+    []\n  Affiliate (name=xNOTBETWEENSYMMETRIC0AND42, expr=OpNotBetweenSymAnd(#(x),
+    ConstantInt 0, ConstantInt 42)) \n    StreamScan s"
   testCaseStmts:
   - select x not between symmetric 0 and 42 from s;
 - testCaseFail: null
   testCaseLabel: not(BETWEEN)
-  testCaseResult: |-
-    Project (OpNotBetweenSymAnd(0.#0,0,42)) | (#0_xNOTBETWEENSYMMETRIC0AND42:bool)
-      Scan s | (#0_x:int)
+  testCaseResult: "Project (name=xNOTBETWEENSYMMETRIC0AND42, alias=xNOTBETWEENSYMMETRIC0AND42)
+    []\n  Affiliate (name=xNOTBETWEENSYMMETRIC0AND42, expr=OpNotBetweenSymAnd(#(x),
+    ConstantInt 0, ConstantInt 42)) \n    StreamScan s"
   testCaseStmts:
   - select x not between symmetric 0 and 42 from s;
 - testCaseFail: null
   testCaseLabel: not(BETWEEN)
-  testCaseResult: |-
-    Project (OpNotBetweenSymAnd(0.#0,0,42)) | (#0_xNOTBETWEENSYMMETRIC0AND42:bool)
-      Scan s | (#0_x:int)
+  testCaseResult: "Project (name=xNOTBETWEENSYMMETRIC0AND42, alias=xNOTBETWEENSYMMETRIC0AND42)
+    []\n  Affiliate (name=xNOTBETWEENSYMMETRIC0AND42, expr=OpNotBetweenSymAnd(#(x),
+    ConstantInt 0, ConstantInt 42)) \n    StreamScan s"
   testCaseStmts:
   - select x not between symmetric 0 and 42 from s;
 - testCaseFail: null
   testCaseLabel: not(BETWEEN)
-  testCaseResult: |-
-    Project (OpNotBetweenSymAnd(0.#0,0,42)) | (#0_xNOTBETWEENSYMMETRIC0AND42:bool)
-      Scan s | (#0_x:int)
+  testCaseResult: "Project (name=xNOTBETWEENSYMMETRIC0AND42, alias=xNOTBETWEENSYMMETRIC0AND42)
+    []\n  Affiliate (name=xNOTBETWEENSYMMETRIC0AND42, expr=OpNotBetweenSymAnd(#(x),
+    ConstantInt 0, ConstantInt 42)) \n    StreamScan s"
   testCaseStmts:
   - select x not between symmetric 0 and 42 from s;

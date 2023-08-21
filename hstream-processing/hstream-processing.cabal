@@ -29,7 +29,7 @@ flag ReleaseBuild
     Enables all optimisations, leads to slower build time and better performance
 
 flag hstream_enable_schema
-  default:     True
+  default:     False
   description:
     Save schema with streams and enable schema-related pipelines
 
