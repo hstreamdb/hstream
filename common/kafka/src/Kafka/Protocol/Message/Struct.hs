@@ -440,3 +440,25 @@ data SyncGroupResponse = SyncGroupResponse
   , assignment :: !ByteString
   } deriving (Show, Generic)
 instance Serializable SyncGroupResponse
+
+-------------------------------------------------------------------------------
+
+supportedApiVersions :: [ApiVersion]
+supportedApiVersions =
+  [ ApiVersion 0 0 0
+  , ApiVersion 1 0 0
+  , ApiVersion 2 0 0
+  , ApiVersion 3 0 0
+  , ApiVersion 8 0 0
+  , ApiVersion 9 0 0
+  , ApiVersion 10 0 0
+  , ApiVersion 11 0 0
+  , ApiVersion 12 0 0
+  , ApiVersion 13 0 0
+  , ApiVersion 14 0 0
+  , ApiVersion 15 0 0
+  , ApiVersion 16 0 0
+  , ApiVersion 18 0 0
+  , ApiVersion 19 0 0
+  , ApiVersion 20 0 0
+  ]
