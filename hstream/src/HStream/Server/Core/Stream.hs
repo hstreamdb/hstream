@@ -222,12 +222,15 @@ data Rid = Rid
   { rShardId  :: Word64
   , rBatchId  :: Word64
   , rBatchIdx :: Word32
-  } deriving (Show, Eq)
+  } deriving (Eq)
 
 instance Ord Rid where
-  Rid{rShardId=rs1, rBatchIdx=rb1} <= Rid{rShardId=rs2, rBatchIdx=rb2}
+  Rid{rShardId=rs1, rBatchId=rb1} <= Rid{rShardId=rs2, rBatchId=rb2}
     | rs1 /= rs2 = rs1 <= rs2
     | otherwise = rb1 <= rb2
+
+instance Show Rid where
+  show Rid{..} = show rShardId <> "-" <> show rBatchId <> "-" <> show rBatchIdx
 
 mkRid :: T.Text -> Either String Rid
 mkRid r = case AP.parseOnly parseRid r of
