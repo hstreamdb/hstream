@@ -23,7 +23,10 @@ module HStream.Server.Core.Stream
   , trimShards
   ) where
 
-import           Control.Exception                 (catch, throwIO)
+import           Control.Concurrent.Async          (mapConcurrently)
+import           Control.Concurrent.QSem           (QSem, newQSem, signalQSem,
+                                                    waitQSem)
+import           Control.Exception                 (bracket_, catch, throwIO)
 import           Control.Monad                     (forM, forM_, unless, when)
 import qualified Data.Attoparsec.Text              as AP
 import qualified Data.ByteString                   as BS
@@ -267,15 +270,17 @@ trimShards ServerContext{..} streamName recordIds = do
 
   let streamId = transToStreamName streamName
   shards <- M.elems <$> S.listStreamPartitions scLDClient streamId
-  res <- forM points $ \r@Rid{..} -> do
-    unless (rShardId `elem` shards) $
-      throwIO . HE.ShardNotExists $ "shard " <> show rShardId <> " doesn't belong to stream " <> show streamName
-    S.trim scLDClient rShardId (rBatchId - 1)
-    Log.info $ "trim to " <> Log.build (show $ rBatchId - 1)
-            <> " for shard " <> Log.build (show rShardId)
-            <> ", stream " <> Log.build streamName
-    return (rShardId, T.pack . show $ r)
+  res <- limitedMapConcuurently 8 (trim shards) points
   return $ M.fromList res
+ where
+   trim shards r@Rid{..} = do
+     unless (rShardId `elem` shards) $
+       throwIO . HE.ShardNotExists $ "shard " <> show rShardId <> " doesn't belong to stream " <> show streamName
+     S.trim scLDClient rShardId (rBatchId - 1)
+     Log.info $ "trim to " <> Log.build (show $ rBatchId - 1)
+             <> " for shard " <> Log.build (show rShardId)
+             <> ", stream " <> Log.build streamName
+     return (rShardId, T.pack . show $ r)
 
 getStreamInfo :: ServerContext -> S.StreamId -> IO API.Stream
 getStreamInfo ServerContext{..} stream = do
@@ -479,3 +484,11 @@ getTrimLSN client shardId trimPoint = do
       OffsetTimestamp API.TimestampOffset{..} -> do
         let accuracy = if timestampOffsetStrictAccuracy then S.FindKeyStrict else S.FindKeyApproximate
         S.findTime scLDClient logId timestampOffsetTimestampInMs accuracy
+
+limitedMapConcuurently :: Int -> (a -> IO b) -> [a] -> IO [b]
+limitedMapConcuurently maxConcurrency f inputs = do
+  sem <- newQSem maxConcurrency
+  mapConcurrently (limited sem . f) inputs
+ where
+   limited :: QSem -> IO c -> IO c
+   limited sem = bracket_ (waitQSem sem) (signalQSem sem)
