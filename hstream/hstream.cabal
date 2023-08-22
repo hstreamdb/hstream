@@ -37,7 +37,7 @@ flag hstream_use_v2_engine
   description: Use v2 processing engine
 
 flag hstream_enable_schema
-  default:     True
+  default:     False
   description:
     Save schema with streams and enable schema-related pipelines
 
