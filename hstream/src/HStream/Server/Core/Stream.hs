@@ -225,9 +225,10 @@ data Rid = Rid
   } deriving (Eq)
 
 instance Ord Rid where
-  Rid{rShardId=rs1, rBatchId=rb1} <= Rid{rShardId=rs2, rBatchId=rb2}
+  Rid{rShardId=rs1, rBatchId=rb1, rBatchIdx=rbx1} <= Rid{rShardId=rs2, rBatchId=rb2, rBatchIdx=rbx2}
     | rs1 /= rs2 = rs1 <= rs2
-    | otherwise = rb1 <= rb2
+    | rb1 /= rb2 = rb1 <= rb2
+    | otherwise = rbx1 <= rbx2
 
 instance Show Rid where
   show Rid{..} = show rShardId <> "-" <> show rBatchId <> "-" <> show rBatchIdx
@@ -244,11 +245,6 @@ mkRid r = case AP.parseOnly parseRid r of
                  batchIndex <- AP.decimal
                  AP.endOfInput
                  return $ Rid shardId batchId batchIndex
-
-ridToText :: Rid -> T.Text
-ridToText Rid{..} =
-  let tmp = map T.pack [show rShardId, show rBatchId, show rBatchIdx]
-   in T.intercalate "-" tmp
 
 trimShards
   :: HasCallStack
@@ -278,7 +274,7 @@ trimShards ServerContext{..} streamName recordIds = do
     Log.info $ "trim to " <> Log.build (show $ rBatchId - 1)
             <> " for shard " <> Log.build (show rShardId)
             <> ", stream " <> Log.build streamName
-    return (rShardId, ridToText r)
+    return (rShardId, T.pack . show $ r)
   return $ M.fromList res
 
 getStreamInfo :: ServerContext -> S.StreamId -> IO API.Stream
