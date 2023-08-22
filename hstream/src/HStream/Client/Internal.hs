@@ -7,31 +7,43 @@ module HStream.Client.Internal
   ( streamingFetch
   , cliFetch
   , cliFetch'
+  , interactiveAppend
   ) where
 
 import           Control.Concurrent               (threadDelay)
 import           Control.Monad                    (void, when)
+import           Control.Monad.IO.Class
+import           Data.Aeson                       as Aeson
+import qualified Data.ByteString                  as BS
+import qualified Data.ByteString.Char8            as BC
+import qualified Data.ByteString.Lazy             as BSL
 import           Data.IORef                       (IORef, newIORef, readIORef,
                                                    writeIORef)
 import qualified Data.Text                        as T
+import qualified Data.Text.Encoding               as TE
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated (ClientRequest (..))
 import qualified Proto3.Suite                     as PB
+import qualified System.Console.Haskeline         as RL
 import           Text.StringRandom                (stringRandomIO)
 
 import           HStream.Client.Action
 import           HStream.Client.Execute
-import           HStream.Client.Types             (HStreamCliContext,
-                                                   Resource (..))
+import           HStream.Client.Types             (AppendContext (..),
+                                                   HStreamCliContext (..),
+                                                   Resource (..),
+                                                   getShardIdByKey)
 import           HStream.Client.Utils
+import           HStream.Common.Types             (hashShardKey)
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.SQL                      (DropObject (..))
 import qualified HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils                    (ResourceType (..),
+                                                   clientDefaultKey,
                                                    decompressBatchedRecord,
                                                    formatResult, getServerResp,
+                                                   jsonObjectToStruct,
                                                    newRandomText)
-
 
 streamingFetch :: HStreamCliContext -> T.Text -> API.HStreamApi ClientRequest response -> IO ()
 streamingFetch = streamingFetch' (putStr . formatResult @PB.Struct) False
@@ -102,3 +114,41 @@ genRandomSinkStreamSQL sql = do
   randomName <- stringRandomIO "[a-zA-Z]{20}"
   let streamName = "cli_generated_stream_" <> randomName
   return (streamName, "CREATE STREAM " <> streamName <> " AS " <> sql)
+
+interactiveAppend :: AppendContext -> IO ()
+interactiveAppend AppendContext{..} = do
+  RL.runInputT settings loop
+ where
+  settings = RL.Settings RL.noCompletion Nothing False
+
+  loop = RL.withInterrupt . RL.handleInterrupt loop $ do
+    RL.getInputLine "> " >>= \case
+      Nothing -> pure ()
+      Just str -> do
+        let items = splitOn appKeySeparator (BC.pack str)
+        when (null items || length items > 2) $
+          errorWithoutStackTrace "invalid input: specific multiple keys"
+
+        let partitionKey = if length items == 1 then clientDefaultKey else TE.decodeUtf8 . head $ items
+        let record = if length items == 1 then head items else last items
+        let shardKey = hashShardKey partitionKey
+        case getShardIdByKey shardKey appShardMap of
+          Just sid -> do
+            let (isHRecord, payload) = toHRecord record
+            liftIO $ executeWithLookupResource_ cliCtx (Resource ResShard (T.pack $ show sid))
+              (retry appRetryLimit appRetryInterval $ insertIntoStream' appStream sid isHRecord (V.fromList [payload]) API.CompressionTypeNone partitionKey)
+            loop
+          Nothing  -> errorWithoutStackTrace $ "Failed to calculate shardId with stream: "
+                                             <> show appStream <> ", parition key: " <> show (head items)
+
+  toHRecord payload = case Aeson.eitherDecode . BS.fromStrict $ payload of
+    Left _  -> (False, payload)
+    Right p -> (True, BSL.toStrict . PB.toLazyByteString . jsonObjectToStruct $ p)
+
+  -- Break a ByteString into pieces separated by the first ByteString argument, consuming the delimiter
+  splitOn :: BS.ByteString -> BS.ByteString -> [BS.ByteString]
+  splitOn ""        = error "delimiter shouldn't be empty."
+  splitOn delimiter = go
+    where
+      go s = let (pre, post) = BS.breakSubstring delimiter s
+              in pre : if BS.null post then [] else go (BS.drop (BS.length delimiter) post)
