@@ -47,12 +47,12 @@ library
     Kafka.Protocol.Encoding
     Kafka.Protocol.Error
     Kafka.Protocol.Message
+    Kafka.Protocol.Message.StructV0
 
   other-modules:
     Kafka.Protocol.Encoding.Encode
     Kafka.Protocol.Encoding.Internal
     Kafka.Protocol.Encoding.Parser
-    Kafka.Protocol.Message.Struct
 
   hs-source-dirs:     src
   build-tool-depends: hpp:hpp >=0.6 && <0.7
