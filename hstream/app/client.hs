@@ -9,14 +9,13 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
 {-# OPTIONS_GHC -Werror=incomplete-patterns #-}
+{-# LANGUAGE NamedFieldPuns      #-}
 
 module Main where
 
 import           Control.Concurrent               (threadDelay)
 import           Control.Monad                    (when)
 import           Data.Aeson                       as Aeson
-import qualified Data.ByteString                  as BS
-import qualified Data.ByteString.Lazy             as BSL
 import qualified Data.Char                        as Char
 import qualified Data.List                        as L
 import           Data.Maybe                       (mapMaybe, maybeToList)
@@ -28,7 +27,6 @@ import           Network.GRPC.HighLevel.Generated (ClientError (..),
                                                    withGRPCClient)
 import qualified Options.Applicative              as O
 import           Proto3.Suite                     (def)
-import qualified Proto3.Suite                     as PB
 import           System.Exit                      (exitFailure)
 import           System.Timeout                   (timeout)
 import           Text.RawString.QQ                (r)
@@ -38,13 +36,13 @@ import           HStream.Client.Action            (createSubscription',
                                                    deleteStream,
                                                    deleteSubscription,
                                                    getStream, getSubscription,
-                                                   insertIntoStream',
                                                    listShards, listStreams,
                                                    listSubscriptions, readShard,
                                                    readStream)
 import           HStream.Client.Execute           (executeWithLookupResource_,
                                                    initCliContext,
                                                    simpleExecute)
+import           HStream.Client.Internal          (interactiveAppend)
 #ifdef HStreamEnableSchema
 import           HStream.Client.SQLNew            (commandExec,
                                                    interactiveSQLApp)
@@ -52,7 +50,8 @@ import           HStream.Client.SQLNew            (commandExec,
 import           HStream.Client.SQL               (commandExec,
                                                    interactiveSQLApp)
 #endif
-import           HStream.Client.Types             (AppendArgs (..), CliCmd (..),
+import           HStream.Client.Types             (AppendContext (..),
+                                                   AppendOpts (..), CliCmd (..),
                                                    Command (..),
                                                    HStreamCommand (..),
                                                    HStreamInitOpts (..),
@@ -65,13 +64,11 @@ import           HStream.Client.Types             (AppendArgs (..), CliCmd (..),
                                                    Resource (..),
                                                    StreamCommand (..),
                                                    SubscriptionCommand (..),
-                                                   cliCmdParser,
+                                                   cliCmdParser, mkShardMap,
                                                    refineCliConnOpts)
-import           HStream.Client.Utils             (calculateShardId,
-                                                   mkClientNormalRequest',
+import           HStream.Client.Utils             (mkClientNormalRequest',
                                                    printResult)
-import           HStream.Common.Types             (getHStreamVersion,
-                                                   hashShardKey)
+import           HStream.Common.Types             (getHStreamVersion)
 import           HStream.Server.HStreamApi        (DescribeClusterResponse (..),
                                                    HStreamApi (..),
                                                    ServerNode (..),
@@ -82,7 +79,6 @@ import           HStream.Utils                    (ResourceType (..),
                                                    fillWithJsonString',
                                                    formatResult, getServerResp,
                                                    handleGRPCIOError,
-                                                   jsonObjectToStruct,
                                                    newRandomText,
                                                    pattern EnumPB)
 import qualified HStream.Utils.Aeson              as AesonComp
@@ -208,22 +204,19 @@ hstreamStream connOpts@RefinedCliConnOpts{..} cmd = do
                     }
       ctx <- initCliContext connOpts
       executeWithLookupResource_ ctx (Resource ResShardReader (API.readStreamRequestReaderId req)) (readStream req)
-    StreamCmdAppend AppendArgs{..} -> do
+    StreamCmdAppend AppendOpts{..} -> do
       ctx <- initCliContext connOpts
-      shards <- fmap API.listShardsResponseShards . getServerResp =<< simpleExecute clientConfig (listShards appendStream)
-      let shardKey = hashShardKey appendRecordKey
-      case calculateShardId shardKey (V.toList shards) of
-        Just sid -> do
-          let payload = if isHRecord then map toHRecord appendRecord else appendRecord
-          executeWithLookupResource_ ctx (Resource ResShard (T.pack $ show sid))
-            (insertIntoStream' appendStream sid isHRecord (V.fromList payload) appendCompressionType appendRecordKey)
-        Nothing  -> errorWithoutStackTrace $ "Failed to calculate shardId with stream: "
-                                           <> show appendStream <> ", parition key: " <> show appendRecordKey
- where
-   toHRecord payload = case Aeson.eitherDecode . BS.fromStrict $ payload of
-     Left e  -> errorWithoutStackTrace $ "invalied HRecord: " <> show e
-     Right p -> BSL.toStrict . PB.toLazyByteString . jsonObjectToStruct $ p
-
+      shards <- fmap API.listShardsResponseShards . getServerResp =<< simpleExecute clientConfig (listShards _appStream)
+      let shardMap = mkShardMap shards
+      let appendCtx = AppendContext
+           { cliCtx = ctx
+           , appStream = _appStream
+           , appKeySeparator = _appKeySeparator
+           , appRetryLimit = _appRetryLimit
+           , appRetryInterval = _appRetryInterval
+           , appShardMap = shardMap
+           }
+      interactiveAppend appendCtx
 
 hstreamSubscription :: RefinedCliConnOpts -> SubscriptionCommand -> IO ()
 hstreamSubscription connOpts@RefinedCliConnOpts{..} = \case

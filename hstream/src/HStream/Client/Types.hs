@@ -7,20 +7,25 @@ import           Control.Concurrent            (MVar)
 import qualified Data.Attoparsec.Text          as AP
 import           Data.ByteString               (ByteString)
 import qualified Data.ByteString               as BS
+import           Data.Foldable                 (foldl')
 import           Data.Functor                  (($>))
 import           Data.Int                      (Int64)
+import qualified Data.Map                      as M
 import           Data.Maybe                    (isNothing)
 import           Data.Text                     (Text)
 import qualified Data.Text                     as T
 import qualified Data.Text.Encoding            as T
+import           Data.Vector                   (Vector)
 import           Data.Word                     (Word32, Word64)
 import           HStream.Common.CliParsers     (streamParser,
                                                 subscriptionParser)
+import           HStream.Common.Types
 import qualified HStream.Server.HStreamApi     as API
 import           HStream.Server.Types          (ServerID)
+import qualified HStream.Store                 as S
 import           HStream.Utils                 (ResourceType, SocketAddr (..),
-                                                clientDefaultKey,
-                                                mkGRPCClientConfWithSSL)
+                                                mkGRPCClientConfWithSSL,
+                                                textToCBytes)
 import           Network.GRPC.HighLevel.Client (ClientConfig (..),
                                                 ClientSSLConfig (..),
                                                 ClientSSLKeyCertPair (..))
@@ -72,7 +77,7 @@ data StreamCommand
   | StreamCmdListShard Text
   | StreamCmdReadShard ReadShardArgs
   | StreamCmdReadStream ReadStreamArgs
-  | StreamCmdAppend AppendArgs
+  | StreamCmdAppend AppendOpts
   deriving (Show)
 
 streamCmdParser :: O.Parser StreamCommand
@@ -88,7 +93,7 @@ streamCmdParser = O.hsubparser
                                                             <> O.short 'f'
                                                             <> O.help "Whether to enable force deletion" ))
                                (O.progDesc "Delete a stream"))
- <> O.command "append" (O.info (StreamCmdAppend <$> appendArgsParser)
+ <> O.command "append" (O.info (StreamCmdAppend <$> appendOptsParser)
                                (O.progDesc "Append record into stream"))
  <> O.command "list-shard" (O.info (StreamCmdListShard <$> O.strArgument
                                                                ( O.metavar "STREAM_NAME"
@@ -100,13 +105,41 @@ streamCmdParser = O.hsubparser
                                     (O.progDesc "Read records from specific stream"))
   )
 
-data AppendArgs = AppendArgs
-  { appendStream          :: T.Text
-  , appendRecordKey       :: T.Text
-  , appendRecord          :: [ByteString]
-  , appendCompressionType :: API.CompressionType
-  , isHRecord             :: Bool
+data AppendOpts = AppendOpts
+  { _appStream        :: T.Text
+  , _appKeySeparator  :: BS.ByteString
+  , _appRetryInterval :: Word32
+  , _appRetryLimit    :: Word32
   } deriving (Show)
+
+appendOptsParser :: O.Parser AppendOpts
+appendOptsParser = AppendOpts
+  <$> O.strArgument ( O.metavar "STREAM_NAME" <> O.help "The stream you want to write to")
+  <*> O.option O.str (O.long "separator" <> O.metavar "String" <> O.showDefault <> O.value "@" <> O.help "Separator of key. e.g. key1@value")
+  <*> O.option O.auto (O.long "retry-interval" <> O.metavar "INT" <> O.showDefault <> O.value 5 <> O.help "Interval to retry request to server")
+  <*> O.option O.auto (O.long "retry-limit" <> O.metavar "INT" <> O.showDefault <> O.value 3 <> O.help "Maximum number of retries allowed")
+
+type ShardMap = M.Map ShardKey S.C_LogID
+
+mkShardMap :: Vector API.Shard -> ShardMap
+mkShardMap =
+  foldl'
+    (
+       \acc API.Shard{shardShardId=sId, shardStartHashRangeKey=startKey} ->
+          M.insert (cBytesToKey . textToCBytes $ startKey) sId acc
+    ) M.empty
+
+getShardIdByKey :: ShardKey -> ShardMap ->Maybe S.C_LogID
+getShardIdByKey key mp = snd <$> M.lookupLE key mp
+
+data AppendContext = AppendContext
+  { cliCtx           :: HStreamCliContext
+  , appStream        :: T.Text
+  , appKeySeparator  :: BS.ByteString
+  , appRetryInterval :: Word32
+  , appRetryLimit    :: Word32
+  , appShardMap      :: M.Map ShardKey S.C_LogID
+  }
 
 instance Read API.CompressionType where
   readPrec = do
@@ -116,26 +149,6 @@ instance Read API.CompressionType where
       Read.Ident "gzip" -> return API.CompressionTypeGzip
       Read.Ident "zstd" -> return API.CompressionTypeZstd
       x -> errorWithoutStackTrace $ "cannot parse compression type: " <> show x
-
-appendArgsParser :: O.Parser AppendArgs
-appendArgsParser = AppendArgs
-  <$> O.strArgument ( O.metavar "STREAM_NAME" <> O.help "The stream you want to write to")
-  <*> O.strOption ( O.long "partition-key"
-                 <> O.short 'k'
-                 <> O.metavar "TEXT"
-                 <> O.value clientDefaultKey
-                 <> O.showDefault
-                 <> O.help "Partition key of append record"
-                 )
-  <*> O.many (O.strOption ( O.long "payload" <> O.short 'p' <> O.help "Records you want to append"))
-  <*> O.option O.auto ( O.long "compression"
-                     <> O.short 'o'
-                     <> O.metavar "[none|gzip|zstd]"
-                     <> O.value API.CompressionTypeNone
-                     <> O.showDefault
-                     <> O.help "Compresstion type"
-                     )
-  <*> O.switch ( O.long "json" <> O.short 'j' <> O.help "Is json record")
 
 data ReadStreamArgs = ReadStreamArgs
   { readStreamStreamNameArgs :: T.Text
