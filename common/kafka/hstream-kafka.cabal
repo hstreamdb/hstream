@@ -53,6 +53,7 @@ library
     Kafka.Protocol.Encoding.Encode
     Kafka.Protocol.Encoding.Internal
     Kafka.Protocol.Encoding.Parser
+    Kafka.Protocol.Message.Common
 
   hs-source-dirs:     src
   build-tool-depends: hpp:hpp >=0.6 && <0.7
