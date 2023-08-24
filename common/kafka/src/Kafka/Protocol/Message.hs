@@ -1,15 +1,12 @@
 module Kafka.Protocol.Message
   ( RequestHeader
-
-  , module Kafka.Protocol.Message.Struct
   ) where
 
 import           Data.Int
-import           Data.Text                     (Text)
+import           Data.Text               (Text)
 import           GHC.Generics
 
 import           Kafka.Protocol.Encoding
-import           Kafka.Protocol.Message.Struct
 
 -- TODO: Support Optional Tagged Fields
 data RequestHeader = RequestHeader

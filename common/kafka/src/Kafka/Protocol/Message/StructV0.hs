@@ -3,7 +3,7 @@
 -------------------------------------------------------------------------------
 -- TODO: Generate by kafka message json schema
 
-module Kafka.Protocol.Message.Struct where
+module Kafka.Protocol.Message.StructV0 where
 
 import           Data.ByteString         (ByteString)
 import           Data.Int
