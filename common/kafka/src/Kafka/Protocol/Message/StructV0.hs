@@ -5,18 +5,19 @@
 
 module Kafka.Protocol.Message.StructV0 where
 
-import           Data.ByteString         (ByteString)
+import           Data.ByteString               (ByteString)
 import           Data.Int
-import           Data.Text               (Text)
+import           Data.Text                     (Text)
 import           GHC.Generics
 
 import           Kafka.Protocol.Encoding
 import           Kafka.Protocol.Error
+import           Kafka.Protocol.Message.Common
 
 -------------------------------------------------------------------------------
 
 data ApiVersion = ApiVersion
-  { apiKey     :: {-# UNPACK #-} !Int16
+  { apiKey     :: {-# UNPACK #-} !ApiKey
   , minVersion :: {-# UNPACK #-} !Int16
   , maxVersion :: {-# UNPACK #-} !Int16
   } deriving (Show, Generic)
@@ -445,20 +446,20 @@ instance Serializable SyncGroupResponse
 
 supportedApiVersions :: [ApiVersion]
 supportedApiVersions =
-  [ ApiVersion 0 0 0
-  , ApiVersion 1 0 0
-  , ApiVersion 2 0 0
-  , ApiVersion 3 0 0
-  , ApiVersion 8 0 0
-  , ApiVersion 9 0 0
-  , ApiVersion 10 0 0
-  , ApiVersion 11 0 0
-  , ApiVersion 12 0 0
-  , ApiVersion 13 0 0
-  , ApiVersion 14 0 0
-  , ApiVersion 15 0 0
-  , ApiVersion 16 0 0
-  , ApiVersion 18 0 0
-  , ApiVersion 19 0 0
-  , ApiVersion 20 0 0
+  [ ApiVersion (ApiKey 0) 0 0
+  , ApiVersion (ApiKey 1) 0 0
+  , ApiVersion (ApiKey 2) 0 0
+  , ApiVersion (ApiKey 3) 0 0
+  , ApiVersion (ApiKey 8) 0 0
+  , ApiVersion (ApiKey 9) 0 0
+  , ApiVersion (ApiKey 10) 0 0
+  , ApiVersion (ApiKey 11) 0 0
+  , ApiVersion (ApiKey 12) 0 0
+  , ApiVersion (ApiKey 13) 0 0
+  , ApiVersion (ApiKey 14) 0 0
+  , ApiVersion (ApiKey 15) 0 0
+  , ApiVersion (ApiKey 16) 0 0
+  , ApiVersion (ApiKey 18) 0 0
+  , ApiVersion (ApiKey 19) 0 0
+  , ApiVersion (ApiKey 20) 0 0
   ]
