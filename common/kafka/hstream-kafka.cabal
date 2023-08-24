@@ -48,6 +48,7 @@ library
     Kafka.Protocol.Error
     Kafka.Protocol.Message
     Kafka.Protocol.Message.StructV0
+    Kafka.Protocol.Service
 
   other-modules:
     Kafka.Protocol.Encoding.Encode
