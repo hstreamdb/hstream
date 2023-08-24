@@ -294,7 +294,8 @@ readStreamByKey ServerContext{..} streamWriter streamReader =
          shardId <- getShardId scLDClient streamId readStreamByKeyRequestKey
          reader <- S.newLDReader scLDClient 1 (Just ldReaderBufferSize)
          Log.info $ "Create shardReader " <> Log.build readStreamByKeyRequestReaderId
-         -- Logdevice reader will blocked when no data returned by store
+         -- Logdevice reader will blocked 2s when no data returned by store
+         S.readerSetTimeout reader 2000
          S.readerSetWaitOnlyWhenNoData reader
          (sTimestamp, eTimestamp) <- startReading reader readStreamByKeyRequestReaderId shardId
                                       (toOffset <$> readStreamByKeyRequestFrom) (toOffset <$> readStreamByKeyRequestUntil)

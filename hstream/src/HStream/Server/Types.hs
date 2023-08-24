@@ -323,9 +323,9 @@ getLogLSN scLDClient logId isEndOffset offset =
   case offset of
     OffsetEarliest -> return (S.LSN_MIN, Nothing)
     OffsetLatest -> do
-      startLSN <- S.getTailLSN scLDClient logId
-      if isEndOffset then return (startLSN, Nothing)
-                     else return (startLSN + 1, Nothing)
+      lsn <- S.getTailLSN scLDClient logId
+      if isEndOffset then return (lsn, Nothing)
+                     else return (lsn + 1, Nothing)
     OffsetRecordId r@API.RecordId{..} -> do
       when (recordIdShardId /= logId) $
         throwIO $ HE.ConflictShardReaderOffset $ "shardId " <> show logId  <> " doesn't match with recordId " <> show r
