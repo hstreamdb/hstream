@@ -1,4 +1,6 @@
+{-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE TypeFamilies          #-}
 
 -------------------------------------------------------------------------------
 -- TODO: Generate by kafka message json schema
@@ -13,6 +15,7 @@ import           GHC.Generics
 import           Kafka.Protocol.Encoding
 import           Kafka.Protocol.Error
 import           Kafka.Protocol.Message.Common
+import           Kafka.Protocol.Service
 
 -------------------------------------------------------------------------------
 
@@ -463,3 +466,140 @@ supportedApiVersions =
   , ApiVersion (ApiKey 19) 0 0
   , ApiVersion (ApiKey 20) 0 0
   ]
+
+-------------------------------------------------------------------------------
+
+data HStreamKafkaV0
+
+instance Service HStreamKafkaV0 where
+  type ServiceName HStreamKafkaV0 = "HStreamKafkaV0"
+  type ServiceMethods HStreamKafkaV0 =
+    '[ "produce"
+     , "fetch"
+     , "listOffsets"
+     , "metadata"
+     , "offsetCommit"
+     , "offsetFetch"
+     , "findCoordinator"
+     , "joinGroup"
+     , "heartbeat"
+     , "leaveGroup"
+     , "syncGroup"
+     , "describeGroups"
+     , "listGroups"
+     , "apiVersions"
+     , "createTopics"
+     , "deleteTopics"
+     ]
+
+instance HasMethodImpl HStreamKafkaV0 "produce" where
+  type MethodName HStreamKafkaV0 "produce" = "produce"
+  type MethodKey HStreamKafkaV0 "produce" = 0
+  type MethodVersion HStreamKafkaV0 "produce" = 0
+  type MethodInput HStreamKafkaV0 "produce" = ProduceRequest
+  type MethodOutput HStreamKafkaV0 "produce" = ProduceResponse
+
+instance HasMethodImpl HStreamKafkaV0 "fetch" where
+  type MethodName HStreamKafkaV0 "fetch" = "fetch"
+  type MethodKey HStreamKafkaV0 "fetch" = 1
+  type MethodVersion HStreamKafkaV0 "fetch" = 0
+  type MethodInput HStreamKafkaV0 "fetch" = FetchRequest
+  type MethodOutput HStreamKafkaV0 "fetch" = FetchResponse
+
+instance HasMethodImpl HStreamKafkaV0 "listOffsets" where
+  type MethodName HStreamKafkaV0 "listOffsets" = "listOffsets"
+  type MethodKey HStreamKafkaV0 "listOffsets" = 2
+  type MethodVersion HStreamKafkaV0 "listOffsets" = 0
+  type MethodInput HStreamKafkaV0 "listOffsets" = ListOffsetsRequest
+  type MethodOutput HStreamKafkaV0 "listOffsets" = ListOffsetsResponse
+
+instance HasMethodImpl HStreamKafkaV0 "metadata" where
+  type MethodName HStreamKafkaV0 "metadata" = "metadata"
+  type MethodKey HStreamKafkaV0 "metadata" = 3
+  type MethodVersion HStreamKafkaV0 "metadata" = 0
+  type MethodInput HStreamKafkaV0 "metadata" = MetadataRequest
+  type MethodOutput HStreamKafkaV0 "metadata" = MetadataResponse
+
+instance HasMethodImpl HStreamKafkaV0 "offsetCommit" where
+  type MethodName HStreamKafkaV0 "offsetCommit" = "offsetCommit"
+  type MethodKey HStreamKafkaV0 "offsetCommit" = 8
+  type MethodVersion HStreamKafkaV0 "offsetCommit" = 0
+  type MethodInput HStreamKafkaV0 "offsetCommit" = OffsetCommitRequest
+  type MethodOutput HStreamKafkaV0 "offsetCommit" = OffsetCommitResponse
+
+instance HasMethodImpl HStreamKafkaV0 "offsetFetch" where
+  type MethodName HStreamKafkaV0 "offsetFetch" = "offsetFetch"
+  type MethodKey HStreamKafkaV0 "offsetFetch" = 9
+  type MethodVersion HStreamKafkaV0 "offsetFetch" = 0
+  type MethodInput HStreamKafkaV0 "offsetFetch" = OffsetFetchRequest
+  type MethodOutput HStreamKafkaV0 "offsetFetch" = OffsetFetchResponse
+
+instance HasMethodImpl HStreamKafkaV0 "findCoordinator" where
+  type MethodName HStreamKafkaV0 "findCoordinator" = "findCoordinator"
+  type MethodKey HStreamKafkaV0 "findCoordinator" = 10
+  type MethodVersion HStreamKafkaV0 "findCoordinator" = 0
+  type MethodInput HStreamKafkaV0 "findCoordinator" = FindCoordinatorRequest
+  type MethodOutput HStreamKafkaV0 "findCoordinator" = FindCoordinatorResponse
+
+instance HasMethodImpl HStreamKafkaV0 "joinGroup" where
+  type MethodName HStreamKafkaV0 "joinGroup" = "joinGroup"
+  type MethodKey HStreamKafkaV0 "joinGroup" = 11
+  type MethodVersion HStreamKafkaV0 "joinGroup" = 0
+  type MethodInput HStreamKafkaV0 "joinGroup" = JoinGroupRequest
+  type MethodOutput HStreamKafkaV0 "joinGroup" = JoinGroupResponse
+
+instance HasMethodImpl HStreamKafkaV0 "heartbeat" where
+  type MethodName HStreamKafkaV0 "heartbeat" = "heartbeat"
+  type MethodKey HStreamKafkaV0 "heartbeat" = 12
+  type MethodVersion HStreamKafkaV0 "heartbeat" = 0
+  type MethodInput HStreamKafkaV0 "heartbeat" = HeartbeatRequest
+  type MethodOutput HStreamKafkaV0 "heartbeat" = HeartbeatResponse
+
+instance HasMethodImpl HStreamKafkaV0 "leaveGroup" where
+  type MethodName HStreamKafkaV0 "leaveGroup" = "leaveGroup"
+  type MethodKey HStreamKafkaV0 "leaveGroup" = 13
+  type MethodVersion HStreamKafkaV0 "leaveGroup" = 0
+  type MethodInput HStreamKafkaV0 "leaveGroup" = LeaveGroupRequest
+  type MethodOutput HStreamKafkaV0 "leaveGroup" = LeaveGroupResponse
+
+instance HasMethodImpl HStreamKafkaV0 "syncGroup" where
+  type MethodName HStreamKafkaV0 "syncGroup" = "syncGroup"
+  type MethodKey HStreamKafkaV0 "syncGroup" = 14
+  type MethodVersion HStreamKafkaV0 "syncGroup" = 0
+  type MethodInput HStreamKafkaV0 "syncGroup" = SyncGroupRequest
+  type MethodOutput HStreamKafkaV0 "syncGroup" = SyncGroupResponse
+
+instance HasMethodImpl HStreamKafkaV0 "describeGroups" where
+  type MethodName HStreamKafkaV0 "describeGroups" = "describeGroups"
+  type MethodKey HStreamKafkaV0 "describeGroups" = 15
+  type MethodVersion HStreamKafkaV0 "describeGroups" = 0
+  type MethodInput HStreamKafkaV0 "describeGroups" = DescribeGroupsRequest
+  type MethodOutput HStreamKafkaV0 "describeGroups" = DescribeGroupsResponse
+
+instance HasMethodImpl HStreamKafkaV0 "listGroups" where
+  type MethodName HStreamKafkaV0 "listGroups" = "listGroups"
+  type MethodKey HStreamKafkaV0 "listGroups" = 16
+  type MethodVersion HStreamKafkaV0 "listGroups" = 0
+  type MethodInput HStreamKafkaV0 "listGroups" = ListGroupsRequest
+  type MethodOutput HStreamKafkaV0 "listGroups" = ListGroupsResponse
+
+instance HasMethodImpl HStreamKafkaV0 "apiVersions" where
+  type MethodName HStreamKafkaV0 "apiVersions" = "apiVersions"
+  type MethodKey HStreamKafkaV0 "apiVersions" = 18
+  type MethodVersion HStreamKafkaV0 "apiVersions" = 0
+  type MethodInput HStreamKafkaV0 "apiVersions" = ApiVersionsRequest
+  type MethodOutput HStreamKafkaV0 "apiVersions" = ApiVersionsResponse
+
+instance HasMethodImpl HStreamKafkaV0 "createTopics" where
+  type MethodName HStreamKafkaV0 "createTopics" = "createTopics"
+  type MethodKey HStreamKafkaV0 "createTopics" = 19
+  type MethodVersion HStreamKafkaV0 "createTopics" = 0
+  type MethodInput HStreamKafkaV0 "createTopics" = CreateTopicsRequest
+  type MethodOutput HStreamKafkaV0 "createTopics" = CreateTopicsResponse
+
+instance HasMethodImpl HStreamKafkaV0 "deleteTopics" where
+  type MethodName HStreamKafkaV0 "deleteTopics" = "deleteTopics"
+  type MethodKey HStreamKafkaV0 "deleteTopics" = 20
+  type MethodVersion HStreamKafkaV0 "deleteTopics" = 0
+  type MethodInput HStreamKafkaV0 "deleteTopics" = DeleteTopicsRequest
+  type MethodOutput HStreamKafkaV0 "deleteTopics" = DeleteTopicsResponse
