@@ -1,5 +1,6 @@
 module Kafka.Protocol.Message
   ( RequestHeader (..)
+  , ResponseHeader (..)
   , ApiKey (..)
   ) where
 
@@ -19,3 +20,9 @@ data RequestHeader = RequestHeader
   } deriving (Show, Eq, Generic)
 
 instance Serializable RequestHeader
+
+newtype ResponseHeader = ResponseHeader
+  { responseCorrelationId :: Int32
+  } deriving (Show, Eq, Generic)
+
+instance Serializable ResponseHeader
