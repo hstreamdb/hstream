@@ -263,10 +263,12 @@ trimShards ServerContext{..} streamName recordIds = do
     Log.fatal $ "parse recordId error: " <> Log.build (show emsgs)
     throwIO . HE.InvalidRecordId $ show emsgs
 
+  -- remove Rids with batchId == 0, which refer to the Earliest Position of a shard
+  let ridWithoutEarliest = filter (\Rid{..} -> rBatchId /= 0) $ rids'
   -- Group rids by shardId.
   -- Since we call sort first, after groupBy, elements in each group are sorted,
   -- which means the head of elements in each group is the min RecordId of the shard
-  let points = map head $ L.groupBy (\Rid{rShardId=rs1} Rid{rShardId=rs2} -> rs1 == rs2) $ L.sort rids'
+  let points = map head $ L.groupBy (\Rid{rShardId=rs1} Rid{rShardId=rs2} -> rs1 == rs2) $ L.sort ridWithoutEarliest
   Log.info $ "min recordIds for stream " <> Log.build streamName <> ": " <> Log.build (show points)
 
   let streamId = transToStreamName streamName
