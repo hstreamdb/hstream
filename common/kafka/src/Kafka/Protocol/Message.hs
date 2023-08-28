@@ -1,7 +1,6 @@
 module Kafka.Protocol.Message
   ( RequestHeader (..)
   , ResponseHeader (..)
-  , ApiKey (..)
   ) where
 
 import           Data.Int
@@ -9,7 +8,7 @@ import           Data.Text                     (Text)
 import           GHC.Generics
 
 import           Kafka.Protocol.Encoding
-import           Kafka.Protocol.Message.Common
+import           Kafka.Protocol.Message.Struct
 
 -- TODO: Support Optional Tagged Fields
 data RequestHeader = RequestHeader
