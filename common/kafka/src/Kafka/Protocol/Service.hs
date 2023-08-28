@@ -99,7 +99,7 @@ type HasMethod s m =
   , HasMethodImpl s m
   )
 
--- TODO: assert there is no method not provided
+-- TODO: warning if there is method not provided
 type family RequireHasMethod s (m :: Symbol) (h :: Bool) :: Constraint where
   RequireHasMethod s m 'False = TypeError
        ( 'Text "No method "
