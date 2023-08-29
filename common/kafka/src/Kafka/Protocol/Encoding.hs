@@ -1,5 +1,6 @@
-{-# LANGUAGE CPP               #-}
-{-# LANGUAGE DefaultSignatures #-}
+{-# LANGUAGE CPP                   #-}
+{-# LANGUAGE DefaultSignatures     #-}
+{-# LANGUAGE DuplicateRecordFields #-}
 -- As of GHC 8.8.1, GHC started complaining about -optP--cpp when profling
 -- is enabled. See https://gitlab.haskell.org/ghc/ghc/issues/17185.
 {-# OPTIONS_GHC -pgmP "hpp --cpp -P" #-}
@@ -7,10 +8,11 @@
 module Kafka.Protocol.Encoding
   ( Serializable (..)
   , runGet
+  , runGet'
   , runPut
   , runPutLazy
   , DecodeError (..)
-    -- * User defined types
+    -- * Defined types
   , VarInt32 (..)
   , VarInt64 (..)
   , NullableString
@@ -21,6 +23,14 @@ module Kafka.Protocol.Encoding
   , CompactNullableBytes (..)
   , KaArray
   , CompactKaArray (..)
+    -- ** Records
+  , LegacyRecordV0 (..)
+  , LegacyRecordV1 (..)
+  , decodeLegacyRecordBatch
+  , RecordKey (..)
+  , RecordValue (..)
+  , RecordBatch (..)
+  , RecordArray (..)
     -- * Internals
   , Parser
   , runParser
@@ -41,6 +51,7 @@ import qualified Data.Vector                    as V
 import           Data.Word
 import           GHC.Generics
 
+import qualified HStream.Base.Growing           as Growing
 import           Kafka.Protocol.Encoding.Encode
 import           Kafka.Protocol.Encoding.Parser
 
@@ -100,6 +111,15 @@ runGet bs = do
     More _     -> throwIO $ DecodeError "Need more"
 {-# INLINE runGet #-}
 
+runGet' :: Serializable a => ByteString -> IO (a, ByteString)
+runGet' bs = do
+  result <- runParser get bs
+  case result of
+    Done l r   -> pure (r, l)
+    Fail _ err -> throwIO $ DecodeError $ "Fail, " <> err
+    More _     -> throwIO $ DecodeError "Need more"
+{-# INLINE runGet' #-}
+
 runPutLazy :: Serializable a => a -> BL.ByteString
 runPutLazy = toLazyByteString . put
 {-# INLINE runPutLazy #-}
@@ -107,6 +127,9 @@ runPutLazy = toLazyByteString . put
 runPut :: Serializable a => a -> ByteString
 runPut = BL.toStrict . toLazyByteString . put
 {-# INLINE runPut #-}
+
+-------------------------------------------------------------------------------
+-- Primitive Types
 
 newtype VarInt32 = VarInt32 { unVarInt32 :: Int32 }
   deriving newtype (Show, Num, Integral, Real, Enum, Ord, Eq, Bounded)
@@ -136,6 +159,22 @@ type KaArray a = Maybe (Vector a)
 
 newtype CompactKaArray a = CompactKaArray
   { unCompactKaArray :: Maybe (Vector a) }
+  deriving newtype (Show, Eq, Ord)
+
+newtype RecordKey = RecordKey { unRecordKey :: Maybe ByteString }
+  deriving newtype (Show, Eq, Ord)
+
+newtype RecordValue = RecordValue { unRecordValue :: Maybe ByteString }
+  deriving newtype (Show, Eq, Ord)
+
+newtype RecordArray a = RecordArray { unRecordArray :: Vector a }
+  deriving newtype (Show, Eq, Ord)
+
+newtype RecordHeaderKey = RecordHeaderKey { unRecordHeaderKey :: Text }
+  deriving newtype (Show, Eq, Ord, IsString, Monoid, Semigroup)
+
+newtype RecordHeaderValue = RecordHeaderValue
+  { unRecordHeaderValue :: Maybe ByteString }
   deriving newtype (Show, Eq, Ord)
 
 -------------------------------------------------------------------------------
@@ -172,6 +211,11 @@ INSTANCE_NEWTYPE(CompactNullableString)
 INSTANCE_NEWTYPE(CompactBytes)
 INSTANCE_NEWTYPE(CompactNullableBytes)
 
+INSTANCE_NEWTYPE_1(RecordKey, RecordNullableBytes)
+INSTANCE_NEWTYPE_1(RecordValue, RecordNullableBytes)
+INSTANCE_NEWTYPE_1(RecordHeaderKey, RecordString)
+INSTANCE_NEWTYPE_1(RecordHeaderValue, RecordNullableBytes)
+
 instance Serializable a => Serializable (KaArray a) where
   get = getArray
   {-# INLINE get #-}
@@ -184,8 +228,102 @@ instance Serializable a => Serializable (CompactKaArray a) where
   put (CompactKaArray xs) = putCompactArray xs
   {-# INLINE put #-}
 
+instance Serializable a => Serializable (RecordArray a) where
+  get = RecordArray <$> getRecordArray
+  {-# INLINE get #-}
+  put (RecordArray xs) = putRecordArray xs
+  {-# INLINE put #-}
+
 -------------------------------------------------------------------------------
--- Internal: Array
+-- LegacyRecordBatch
+--
+-- https://kafka.apache.org/documentation/#messageset
+
+data LegacyRecordV0 = LegacyRecordV0
+  { baseOffset  :: {-# UNPACK #-} !Int64
+  , messageSize :: {-# UNPACK #-} !Int32
+  , crc         :: {-# UNPACK #-} !Int32
+  , magic       :: {-# UNPACK #-} !Int8
+  , attributes  :: {-# UNPACK #-} !Int8
+  , key         :: !NullableBytes
+  , value       :: !NullableBytes
+  } deriving (Generic, Show)
+
+instance Serializable LegacyRecordV0
+
+data LegacyRecordV1 = LegacyRecordV1
+  { baseOffset  :: {-# UNPACK #-} !Int64
+  , messageSize :: {-# UNPACK #-} !Int32
+  , crc         :: {-# UNPACK #-} !Int32
+  , magic       :: {-# UNPACK #-} !Int8
+  , attributes  :: {-# UNPACK #-} !Int8
+  , timestamp   :: {-# UNPACK #-} !Int64
+  , key         :: !NullableBytes
+  , value       :: !NullableBytes
+  } deriving (Generic, Show)
+
+instance Serializable LegacyRecordV1
+
+class Serializable a => LegacyRecord a where
+
+instance LegacyRecord LegacyRecordV0
+instance LegacyRecord LegacyRecordV1
+
+-- Note that although message sets are represented as an array, they are not
+-- preceded by an int32 array size like other array elements in the protocol.
+decodeLegacyRecordBatch :: (LegacyRecord a) => ByteString -> IO (Vector a)
+decodeLegacyRecordBatch batchBs = Growing.new >>= decode batchBs
+  where
+    decode "" !v = Growing.unsafeFreeze v
+    decode !bs !v = do
+      (r, l) <- runGet' bs
+      !v' <- Growing.append v r
+      decode l v'
+
+encodeLegacyRecordBatch :: (LegacyRecord a) => Vector a -> ByteString
+encodeLegacyRecordBatch = undefined
+
+-------------------------------------------------------------------------------
+-- RecordBatch
+--
+-- Ref: https://kafka.apache.org/documentation/#recordbatch
+
+type RecordHeader = (RecordHeaderKey, RecordHeaderValue)
+
+instance Serializable RecordHeader
+
+data Record = Record
+  { length         :: {-# UNPACK #-} !VarInt32
+  , attributes     :: {-# UNPACK #-} !Int8
+  , timestampDelta :: {-# UNPACK #-} !VarInt64
+  , offsetDelta    :: {-# UNPACK #-} !VarInt32
+  , key            :: !RecordKey
+  , value          :: !RecordValue
+  , headers        :: !(RecordArray RecordHeader)
+  } deriving (Generic, Show)
+
+instance Serializable Record
+
+data RecordBatch = RecordBatch
+  { baseOffset           :: {-# UNPACK #-} !Int64
+  , batchLength          :: {-# UNPACK #-} !Int32
+  , partitionLeaderEpoch :: {-# UNPACK #-} !Int32
+  , magic                :: {-# UNPACK #-} !Int8
+  , crc                  :: {-# UNPACK #-} !Int32
+  , attributes           :: {-# UNPACK #-} !Int16
+  , lastOffsetDelta      :: {-# UNPACK #-} !Int32
+  , baseTimestamp        :: {-# UNPACK #-} !Int64
+  , maxTimestamp         :: {-# UNPACK #-} !Int64
+  , producerId           :: {-# UNPACK #-} !Int64
+  , producerEpoch        :: {-# UNPACK #-} !Int16
+  , baseSequence         :: {-# UNPACK #-} !Int32
+  , records              :: !(KaArray Record)
+  } deriving (Generic, Show)
+
+instance Serializable RecordBatch
+
+-------------------------------------------------------------------------------
+-- Internals
 
 -- | Represents a sequence of objects of a given type T.
 --
@@ -233,3 +371,16 @@ putCompactArray (Just xs) =
       put_len = putVarWord32 (fromIntegral len + 1)
    in put_len <> V.foldl' (\s x -> s <> put x) mempty xs
 putCompactArray Nothing = putVarWord32 0
+
+getRecordArray :: Serializable a => Parser (Vector a)
+getRecordArray = do
+  !n <- fromIntegral <$> getVarInt32
+  if n >= 0
+     then V.replicateM n get
+     else fail $! "Length of RecordArray must not be negative " <> show n
+
+putRecordArray :: Serializable a => Vector a -> Builder
+putRecordArray xs =
+  let !len = V.length xs
+      put_len = putVarInt32 (fromIntegral len)
+   in put_len <> V.foldl' (\s x -> s <> put x) mempty xs
