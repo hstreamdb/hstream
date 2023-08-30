@@ -49,6 +49,7 @@ library
     Kafka.Protocol.Message
     Kafka.Protocol.Message.Struct
     Kafka.Protocol.Service
+    Kafka.Server
 
   other-modules:
     Kafka.Protocol.Encoding.Encode
@@ -61,6 +62,7 @@ library
     , base                 >=4.11 && <5
     , bytestring
     , hstream-common-base
+    , network
     , text
     , vector
 

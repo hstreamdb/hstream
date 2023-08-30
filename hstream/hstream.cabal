@@ -236,6 +236,7 @@ executable hstream-server
     , hstream-common-base
     , hstream-common-stats
     , hstream-gossip
+    , hstream-kafka
     , hstream-store
     , http-client
     , memory
