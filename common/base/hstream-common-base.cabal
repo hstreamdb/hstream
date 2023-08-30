@@ -51,6 +51,7 @@ library
     HStream.Base.Ansi
     HStream.Base.Bytes
     HStream.Base.Concurrent
+    HStream.Base.Growing
     HStream.Base.Table
     HStream.Base.Time
     HStream.Base.Timer
@@ -91,6 +92,7 @@ library
     , time
     , unix
     , unix-time
+    , vector
     , Z-Data
 
   if flag(build_old_log)

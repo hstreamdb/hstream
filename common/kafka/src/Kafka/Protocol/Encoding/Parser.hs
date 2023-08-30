@@ -28,6 +28,10 @@ module Kafka.Protocol.Encoding.Parser
   , getCompactBytes
   , getNullableBytes
   , getCompactNullableBytes
+  , getRecordNullableBytes
+  , getRecordString
+    -- * Internals
+  , takeBytes
   ) where
 
 import           Control.Monad
@@ -263,6 +267,26 @@ getCompactNullableBytes = do
        if n == (-1)
           then pure Nothing
           else fail $! "Length of empty nullable compact bytes must be -1 " <> show n
+
+-- | Record key or value
+--
+-- ref: https://kafka.apache.org/documentation/#record
+getRecordNullableBytes :: Parser (Maybe ByteString)
+getRecordNullableBytes = do
+  n <- fromIntegral <$> getVarInt32
+  if n >= 0
+     then Just <$> takeBytes n
+     else pure Nothing
+
+-- | Record header key
+--
+-- ref: https://kafka.apache.org/documentation/#record
+getRecordString :: Parser Text
+getRecordString = do
+  n <- fromIntegral <$> getVarInt32
+  if n >= 0
+     then decodeUtf8 $! takeBytes n
+     else fail $! "Length of RecordString must be -1 " <> show n
 
 -------------------------------------------------------------------------------
 

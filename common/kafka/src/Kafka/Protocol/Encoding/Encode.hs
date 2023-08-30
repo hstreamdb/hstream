@@ -24,6 +24,8 @@ module Kafka.Protocol.Encoding.Encode
   , putCompactBytes
   , putNullableBytes
   , putCompactNullableBytes
+  , putRecordNullableBytes
+  , putRecordString
   ) where
 
 import           Data.Bits
@@ -160,6 +162,26 @@ putNullableBytes (Just x) = putBytes x
 putCompactNullableBytes :: Maybe ByteString -> Builder
 putCompactNullableBytes Nothing  = putVarWord32 0
 putCompactNullableBytes (Just x) = putCompactBytes x
+
+-- Record key or value
+--
+-- ref: https://kafka.apache.org/documentation/#record
+putRecordNullableBytes :: Maybe ByteString -> Builder
+putRecordNullableBytes Nothing = putVarInt32 (-1)
+putRecordNullableBytes (Just bs) =
+  let !l = BS.length bs
+      b = Builder (Sum (fromIntegral l)) (BB.byteStringCopy bs)
+   in putVarInt32 (fromIntegral l) <> b
+
+-- | Record header key
+--
+-- ref: https://kafka.apache.org/documentation/#record
+putRecordString :: Text -> Builder
+putRecordString x =
+  let !bs = Text.encodeUtf8 x
+      !l = BS.length bs
+      b = Builder (Sum (fromIntegral l)) (BB.byteStringCopy bs)
+   in putVarInt32 (fromIntegral l) <> b
 
 -------------------------------------------------------------------------------
 
