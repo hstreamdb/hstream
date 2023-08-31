@@ -188,6 +188,22 @@ data Constant = ConstantNull
               | ConstantArray     [Constant]
               deriving (Show, Eq, Ord, Generic, Aeson.ToJSON, Aeson.FromJSON)
 
+-- FIXME: `CREATE CONNECTOR` requires plain json value instead of bson value.
+constantToPlainJsonValue :: Constant -> Aeson.Value
+constantToPlainJsonValue c = case c of
+  ConstantNull         -> Aeson.Null
+  ConstantInt n        -> Aeson.Number (fromIntegral n)
+  ConstantFloat n      -> Aeson.Number (realToFrac n)
+  ConstantText t       -> Aeson.String t
+  ConstantBoolean b    -> Aeson.Bool b
+  ConstantDate d       -> Aeson.String (Text.pack $ iso8601Show d)
+  ConstantTime t       -> Aeson.String (Text.pack $ iso8601Show t)
+  ConstantTimestamp ts -> Aeson.String (Text.pack $ iso8601Show ts)
+  ConstantInterval i   -> Aeson.String (Text.pack $ show i)
+  ConstantBytea bs     -> Aeson.String (Text.pack $ CB.unpack bs)
+  ConstantJsonb o      -> Aeson.Object o
+  ConstantArray arr    -> Aeson.Array (V.fromList (constantToPlainJsonValue <$> arr))
+
 constantToFlowValue :: Constant -> FlowValue
 constantToFlowValue constant = case constant of
   ConstantNull         -> FlowNull
@@ -202,6 +218,21 @@ constantToFlowValue constant = case constant of
   ConstantBytea bs     -> FlowByte bs
   ConstantJsonb o      -> FlowSubObject (jsonObjectToFlowObject' o)
   ConstantArray arr    -> FlowArray (constantToFlowValue <$> arr)
+
+flowValueToConstant :: FlowValue -> Constant
+flowValueToConstant flowValue = case flowValue of
+  FlowNull         -> ConstantNull
+  FlowInt n        -> ConstantInt n
+  FlowFloat n      -> ConstantFloat n
+  FlowText t       -> ConstantText t
+  FlowBoolean b    -> ConstantBoolean b
+  FlowDate d       -> ConstantDate d
+  FlowTime t       -> ConstantTime t
+  FlowTimestamp ts -> ConstantTimestamp ts
+  FlowInterval i   -> ConstantInterval i
+  FlowByte bs      -> ConstantBytea bs
+  FlowSubObject o  -> ConstantJsonb (flowObjectToJsonObject o)
+  FlowArray arr    -> ConstantArray (flowValueToConstant <$> arr)
 
 data BinaryOp = OpAnd | OpOr
               | OpEQ | OpNEQ | OpLT | OpGT | OpLEQ | OpGEQ
@@ -724,7 +755,7 @@ instance Refine [ConnectorOption] where
     where insert (k, v) = HM.insert k v
           toPair :: ConnectorOption -> (Text, Aeson.Value)
           toPair (ConnectorProperty _ key expr) = (extractHIdent key, toValue (refine expr))
-          toValue (RExprConst _ c) = Aeson.toJSON c
+          toValue (RExprConst _ c) = constantToPlainJsonValue c
           toValue _                = throwSQLException RefineException Nothing "Connector Property should be const literal expression"
 
 type instance RefinedType Create = RCreate
