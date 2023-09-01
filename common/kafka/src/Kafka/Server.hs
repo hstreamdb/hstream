@@ -29,7 +29,7 @@ data ServerOptions = ServerOptions
 
 defaultServerOpts :: ServerOptions
 defaultServerOpts = ServerOptions
-  { serverHost           = "127.0.0.1"
+  { serverHost           = "0.0.0.0"
   , serverPort           = 9092
   , serverOnStarted      = Nothing
   , serverBufferChanSize = 64
@@ -37,10 +37,13 @@ defaultServerOpts = ServerOptions
 
 -- TODO: This server primarily serves as a demonstration, and there is
 -- certainly room for enhancements and refinements.
-runServer :: ServerOptions -> [ServiceHandler] -> IO a
+runServer :: ServerOptions -> [ServiceHandler] -> IO ()
 runServer ServerOptions{..} handlers =
-  startTCPServer (Just serverHost) (show serverPort) (talk "" Nothing)
+  startTCPServer (Just serverHost) (show serverPort) $ \s -> do
+    i <- N.recv s 1024
+    talk i Nothing s
   where
+    talk "" _ _ = pure ()  -- client exit
     talk i m_more s = do
       reqBsResult <- case m_more of
                        Nothing -> runParser @ByteString get i
