@@ -1,6 +1,16 @@
-{-# LANGUAGE CPP           #-}
-{-# LANGUAGE MagicHash     #-}
-{-# LANGUAGE UnboxedTuples #-}
+{-# LANGUAGE CPP       #-}
+{-# LANGUAGE MagicHash #-}
+-- Notes for ghc-9.2.8:
+--
+-- We need this ghc option to force ghci use -fobject-code. Or ghci will
+-- complain "panic".
+--
+-- Also, using @{-# LANGUAGE UnboxedTuples #-}@ may possible work for ghc-8.10.
+--
+-- Relatead ghc issues:
+-- * https://gitlab.haskell.org/ghc/ghc/-/issues/19733
+-- * https://gitlab.haskell.org/ghc/ghc/-/issues/15454
+{-# OPTIONS_GHC -fobject-code #-}
 
 module HStream.Store.Internal.LogDevice.Writer where
 
