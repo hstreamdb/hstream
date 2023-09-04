@@ -64,7 +64,7 @@ GLOBAL_API_VERSION_PATCH = (0, 0)
 API_VERSION_PATCHES = {
     "ApiVersions": (0, 2),
     "Metadata": (0, 1),
-    "Produce": (0, 0),
+    "Produce": (0, 2),
 }
 
 # Variables
