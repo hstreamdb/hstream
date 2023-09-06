@@ -68,7 +68,7 @@ handlers sc =
     -- Stats
   , unary (GRPC :: GRPC P.HStreamApi "perStreamTimeSeriesStats") (H.handlePerStreamTimeSeriesStats $ scStatsHolder sc)
   , unary (GRPC :: GRPC P.HStreamApi "perStreamTimeSeriesStatsAll") (H.handlePerStreamTimeSeriesStatsAll $ scStatsHolder sc)
-  , unary (GRPC :: GRPC P.HStreamApi "getStats") (H.handleGetStats $ scStatsHolder sc)
+  , unary (GRPC :: GRPC P.HStreamApi "getStats") (H.handleGetStats $ sc)
     -- Admin
   , unary (GRPC :: GRPC P.HStreamApi "sendAdminCommand") (H.handleAdminCommand sc)
     -- Connector
