@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns    #-}
 {-# LANGUAGE CPP             #-}
 {-# LANGUAGE MagicHash       #-}
 {-# LANGUAGE MultiWayIf      #-}
@@ -30,6 +31,7 @@ module HStream.Store.Stream
   , findStreams
   , doesStreamExist
   , listStreamPartitions
+  , listStreamPartitionsOrdered
   , doesStreamPartitionExist
   , doesStreamPartitionValExist
   , getStreamExtraAttrs
@@ -153,6 +155,9 @@ import           Data.IORef                       (IORef, atomicModifyIORef',
                                                    newIORef, readIORef)
 import           Data.Map.Strict                  (Map)
 import qualified Data.Map.Strict                  as Map
+import           Data.Vector                      (Vector)
+import qualified Data.Vector                      as V
+import qualified Data.Vector.Algorithms.Intro     as V
 import           Foreign.C                        (CSize)
 import           Foreign.ForeignPtr               (withForeignPtr)
 import           GHC.Generics                     (Generic)
@@ -477,6 +482,22 @@ listStreamPartitions client streamid = do
     insertMap key keyMap = do
       logId <- getUnderlyingLogId client streamid (Just key)
       return $ Map.insert key logId keyMap
+
+-- Sorted by logid
+listStreamPartitionsOrdered
+  :: HasCallStack
+  => FFI.LDClient
+  -> StreamId
+  -> IO (Vector (CBytes, FFI.C_LogID))
+listStreamPartitionsOrdered client streamid = do
+  dir_path <- getStreamDirPath streamid
+  keys <- LD.logDirLogsNames =<< LD.getLogDirectory client dir_path
+  ps <- forM (V.fromList keys) $ \key -> do
+    logId <- getUnderlyingLogId client streamid (Just key)
+    pure (key, logId)
+  !mvec <- V.unsafeThaw ps
+  V.sortBy (\e1 e2 -> compare (snd e1) (snd e2)) mvec
+  V.unsafeFreeze mvec
 
 doesStreamPartitionExist
   :: HasCallStack

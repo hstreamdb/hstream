@@ -1,21 +1,20 @@
-{-# OPTIONS_GHC -pgmPcpphs -optP--cpp #-}
 {-# LANGUAGE BangPatterns   #-}
 {-# LANGUAGE CPP            #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE MagicHash      #-}
 {-# LANGUAGE MultiWayIf     #-}
-{-
-Note that we need this UnboxedTuples to force ghci use -fobject-code for all
-related modules. Or ghci will complain "panic".
-
-Also, manual add @{-# OPTIONS_GHC -fobject-code #-}@ is possible, but need
-to add all imported local modules. :(
-
-Relatead ghc issues:
-* https://gitlab.haskell.org/ghc/ghc/-/issues/19733
-* https://gitlab.haskell.org/ghc/ghc/-/issues/15454
--}
-{-# LANGUAGE UnboxedTuples  #-}
+{-# OPTIONS_GHC -pgmPcpphs -optP--cpp #-}
+-- Notes for ghc-9.2.8:
+--
+-- We need this ghc option to force ghci use -fobject-code. Or ghci will
+-- complain "panic".
+--
+-- Also, using @{-# LANGUAGE UnboxedTuples #-}@ may possible work for ghc-8.10.
+--
+-- Relatead ghc issues:
+-- * https://gitlab.haskell.org/ghc/ghc/-/issues/19733
+-- * https://gitlab.haskell.org/ghc/ghc/-/issues/15454
+{-# OPTIONS_GHC -fobject-code #-}
 
 module HStream.Store.Internal.LogDevice.LogAttributes where
 
