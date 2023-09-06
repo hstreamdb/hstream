@@ -68,8 +68,8 @@ module HStream.Store.Stream
   , LD.appendBatchBS
   , LD.AppendCompletion (..)
   , FFI.KeyType
-  , FFI.keyTypeFindKey
-  , FFI.keyTypeFilterable
+  , pattern FFI.KeyTypeFindKey
+  , pattern FFI.KeyTypeFilterable
   , pattern FFI.KeyTypeUndefined
   , FFI.Compression (..)
 
@@ -138,6 +138,7 @@ module HStream.Store.Stream
     -- * Internal helpers
   , getStreamDirPath
   , getStreamLogPath
+  , createRandomLogGroup
 
     -- * Re-export
   , def

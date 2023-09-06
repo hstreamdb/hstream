@@ -10,7 +10,6 @@ import           Control.Concurrent           (newEmptyMVar, takeMVar)
 import           Control.Exception            (mask_, onException)
 import           Control.Monad.Primitive
 import           Data.Primitive
-import           Data.Word
 import           Foreign.C
 import           Foreign.ForeignPtr
 import           Foreign.StablePtr
@@ -62,14 +61,14 @@ withAsyncPrimUnsafe' a f g = mask_ $ do
 
 withAsyncPrimUnsafe2
   :: (Prim a, Prim b)
-  => a -> b -> (StablePtr PrimMVar -> Int -> MBA# Word8 -> MBA# Word8 -> IO c)
+  => a -> b -> (StablePtr PrimMVar -> Int -> MBA# a -> MBA# b -> IO c)
   -> IO (a, b, c)
 withAsyncPrimUnsafe2 a b f = withAsyncPrimUnsafe2' a b f pure
 {-# INLINE withAsyncPrimUnsafe2 #-}
 
 withAsyncPrimUnsafe2'
   :: (Prim a, Prim b)
-  => a -> b -> (StablePtr PrimMVar -> Int -> MBA# Word8 -> MBA# Word8 -> IO c)
+  => a -> b -> (StablePtr PrimMVar -> Int -> MBA# a -> MBA# b -> IO c)
   -> (c -> IO d)
   -> IO (a, b, d)
 withAsyncPrimUnsafe2' a b f g = mask_ $ do
@@ -83,6 +82,28 @@ withAsyncPrimUnsafe2' a b f g = mask_ $ do
       return d
   return (a_, b_, d_)
 {-# INLINE withAsyncPrimUnsafe2' #-}
+
+withAsyncPrimUnsafe3'
+  :: (Prim a, Prim b, Prim c)
+  => a -> b -> c
+  -> (StablePtr PrimMVar -> Int -> MBA# a -> MBA# b -> MBA# c -> IO d)
+  -> (d -> IO e)
+  -> IO (a, b, c, e)
+withAsyncPrimUnsafe3' a b c f g = mask_ $ do
+  mvar <- newEmptyMVar
+  sp <- newStablePtrPrimMVar mvar
+  (a_, (b_, (c_ , e_))) <-
+    withPrimSafe' a $ \a' ->
+    withPrimSafe' b $ \b' ->
+    withPrimSafe' c $ \c' -> do
+      (cap, _) <- threadCapability =<< myThreadId
+      e <- g =<< f sp cap a' b' c'
+      takeMVar mvar `onException` forkIO (do takeMVar mvar
+                                             primitive_ (touch# a')
+                                             primitive_ (touch# b')
+                                             primitive_ (touch# c'))
+      return e
+  return (a_, b_, c_, e_)
 
 withAsync :: HasCallStack
           => Int -> (Ptr a -> IO a)

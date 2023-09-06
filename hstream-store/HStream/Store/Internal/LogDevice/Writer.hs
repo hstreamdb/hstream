@@ -76,7 +76,7 @@ appendCompressedBS
   -> C_LogID
   -> BS.ByteString
   -> Compression
-  -> Maybe (KeyType, CBytes)
+  -> Maybe [(KeyType, CBytes)]
   -> IO AppendCompletion
 appendCompressedBS client logid payload = appendBatchBS client logid [payload]
 {-# INLINABLE appendCompressedBS #-}
@@ -104,18 +104,27 @@ appendBatch
   -> C_LogID
   -> [Bytes]
   -> Compression
-  -> Maybe (KeyType, CBytes)
+  -> Maybe [(KeyType, CBytes)]
   -> IO AppendCompletion
 appendBatch client logid payloads compression m_key_attr = withForeignPtr client $ \client' -> do
   let pa = Z.primArrayFromList $ map V.length payloads
   Z.withPrimArrayListUnsafe (map V.arrVec payloads) $ \payloads' totalLen -> do
     let (comp, lvl) = fromCompression compression
-    let (keyType, keyVal) = fromMaybe (KeyTypeUndefined, "") m_key_attr
-    AppendCallBackData{..} <- CBytes.withCBytes keyVal $ \keyVal' ->
+    let appendAttrKeys = fromMaybe [] m_key_attr
+        keys = primArrayFromList $ map (unKeyType. fst) appendAttrKeys
+        vals = map snd appendAttrKeys
+    AppendCallBackData{..} <-
       case pa of
         Z.PrimArray ba# ->
-          withAsync appendCallBackDataSize peekAppendCallBackData
-                    (logdevice_append_batch_rts client' logid payloads' ba# totalLen comp lvl keyType keyVal')
+          Z.withPrimArrayUnsafe keys $ \keyType' la -> do
+            CBytes.withCBytesListUnsafe vals $ \keyVal' _lb -> do
+              withAsync
+                appendCallBackDataSize
+                peekAppendCallBackData
+                (logdevice_append_batch_rts client'
+                                            logid payloads' ba# totalLen
+                                            comp lvl
+                                            la keyType' keyVal')
     void $ E.throwStreamErrorIfNotOK' appendCbRetCode
     return $ AppendCompletion appendCbLogID appendCbLSN appendCbTimestamp
 {-# INLINABLE appendBatch #-}
@@ -127,7 +136,7 @@ appendBatchBS
   -> C_LogID
   -> [BS.ByteString]
   -> Compression
-  -> Maybe (KeyType, CBytes)
+  -> Maybe [(KeyType, CBytes)]
   -> IO AppendCompletion
 appendBatchBS client logid payloads compression m_key_attr =
   let exbs (BS.PS payload off len) = (payload, fromIntegral off, fromIntegral len)
@@ -138,10 +147,20 @@ appendBatchBS client logid payloads compression m_key_attr =
       withForeignPtrList ps $ \ps' _num_ps -> do
         unless (num == _num_offs && num == _num_ps) $ throw $ AssertionFailed "This should never happen..."
         let (comp, lvl) = fromCompression compression
-        let (keyType, keyVal) = fromMaybe (KeyTypeUndefined, "") m_key_attr
-        AppendCallBackData{..} <- CBytes.withCBytes keyVal $ \keyVal' -> do
-          withAsync appendCallBackDataSize peekAppendCallBackData
-            (logdevice_append_batch client' logid ps' offs' lens' num comp lvl keyType keyVal')
+        let appendAttrKeys = fromMaybe [] m_key_attr
+            keys = primArrayFromList $ map (unKeyType. fst) appendAttrKeys
+            vals = map snd appendAttrKeys
+        AppendCallBackData{..} <-
+          -- Unsafe is OK because we copy before the cpp async function returned.
+          Z.withPrimArrayUnsafe keys $ \keyType' la -> do
+            CBytes.withCBytesListUnsafe vals $ \keyVal' _lb -> do
+              withAsync
+                appendCallBackDataSize
+                peekAppendCallBackData
+                (logdevice_append_batch client'
+                                        logid ps' offs' lens' num
+                                        comp lvl
+                                        la keyType' keyVal')
         void $ E.throwStreamErrorIfNotOK' appendCbRetCode
         return $ AppendCompletion appendCbLogID appendCbLSN appendCbTimestamp
 
@@ -210,7 +229,8 @@ foreign import ccall unsafe "hs_logdevice.h logdevice_append_batch_rts"
     -> C_LogID
     -> Z.BAArray# Word8 -> Z.BA# Int -> Int
     -> Int -> Int
-    -> KeyType -> Ptr Word8       -- ^ attrs: optional_key
+    -> Int -> Z.BA# KeyType -> Z.BAArray# Word8
+    -- ^ AppendAttributes.optional_keys
     -> StablePtr PrimMVar -> Int -> Ptr AppendCallBackData
     -> IO ErrorCode
 
@@ -220,7 +240,8 @@ foreign import ccall unsafe "hs_logdevice.h logdevice_append_batch"
     -> C_LogID
     -> Ptr (Ptr Word8) -> Ptr CInt -> Ptr CInt -> Int
     -> Int -> Int
-    -> KeyType -> Ptr Word8       -- ^ attrs: optional_key
+    -> Int -> Z.BA# KeyType -> Z.BAArray# Word8
+    -- ^ AppendAttributes.optional_keys
     -> StablePtr PrimMVar -> Int -> Ptr AppendCallBackData
     -> IO ErrorCode
 

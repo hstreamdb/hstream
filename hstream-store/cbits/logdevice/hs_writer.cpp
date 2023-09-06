@@ -151,8 +151,12 @@ facebook::logdevice::Status logdevice_append_with_attrs_async(
     };                                                                         \
                                                                                \
     AppendAttributes attrs;                                                    \
-    if (keytype != KeyType::UNDEFINED) {                                       \
-      attrs.optional_keys[keytype] = keyval;                                   \
+    for (int i = 0; i < attrs_len; ++i) {                                      \
+      auto keytype = attrs_keytypes[i];                                        \
+      if (keytype != KeyType::UNDEFINED) {                                     \
+        attrs.optional_keys[keytype] =                                         \
+            std::string((char*)attrs_keyvals[i]->payload);                     \
+      }                                                                        \
     }                                                                          \
                                                                                \
     ClientImpl* client_impl = dynamic_cast<ClientImpl*>(client->rep.get());    \
@@ -170,8 +174,8 @@ facebook::logdevice::Status logdevice_append_batch_rts(
     StgArrBytes** payloads, HsInt* payload_lens, HsInt total_len,
     // compression
     c_compression_t compression, HsInt zstd_level,
-    // attr
-    KeyType keytype, const char* keyval,
+    // AppendAttributes.optional_keys
+    HsInt attrs_len, KeyType* attrs_keytypes, StgArrBytes** attrs_keyvals,
     // callback
     HsStablePtr mvar, HsInt cap, logdevice_append_cb_data_t* cb_data) {
 
@@ -185,8 +189,8 @@ facebook::logdevice::Status logdevice_append_batch(
     char** payloads, int* payload_offsets, int* payload_lens, HsInt total_len,
     // compression
     c_compression_t compression, HsInt zstd_level,
-    // attr
-    KeyType keytype, const char* keyval,
+    // AppendAttributes.optional_keys
+    HsInt attrs_len, KeyType* attrs_keytypes, StgArrBytes** attrs_keyvals,
     // callback
     HsStablePtr mvar, HsInt cap, logdevice_append_cb_data_t* cb_data) {
   APPEND_BATCH(payloads[i], payload_offsets[i], payload_lens[i], total_len);

@@ -135,5 +135,25 @@ HsInt ld_client_find_time(logdevice_client_t* client, c_logid_t logid,
                                facebook::logdevice::FindKeyAccuracy(accuracy));
 }
 
+HsInt ld_client_find_key(logdevice_client_t* client, c_logid_t logid,
+                         const char* key, HsInt accuracy, HsStablePtr mvar,
+                         HsInt cap, c_error_code_t* st_out, c_lsn_t* lo_lsn_out,
+                         c_lsn_t* hi_lsn_out) {
+  auto cb = [&](facebook::logdevice::FindKeyResult result) {
+    if (st_out) {
+      *st_out = static_cast<c_error_code_t>(result.status);
+    }
+    if (lo_lsn_out) {
+      *lo_lsn_out = result.lo;
+    }
+    if (hi_lsn_out) {
+      *hi_lsn_out = result.hi;
+    }
+    hs_try_putmvar(cap, mvar);
+  };
+  return client->rep->findKey(logid_t(logid), std::string(key), std::move(cb),
+                              facebook::logdevice::FindKeyAccuracy(accuracy));
+}
+
 // ----------------------------------------------------------------------------
 } // end extern "C"
