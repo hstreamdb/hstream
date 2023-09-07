@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE GADTs             #-}
+{-# LANGUAGE NamedFieldPuns    #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
@@ -31,10 +32,13 @@ import           Data.Either                      (partitionEithers)
 import           Data.Maybe                       (mapMaybe)
 import qualified Data.Text                        as T
 import qualified HStream.Exception                as HE
+import qualified HStream.IO.Types                 as IO
+import qualified HStream.IO.Worker                as IO
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
 import qualified HStream.Server.HStreamApi        as API
+import           HStream.Server.Types             (ServerContext (..))
 import           HStream.Stats                    (StatsHolder)
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Utils                    as U
@@ -72,18 +76,18 @@ handlePerStreamTimeSeriesStats holder _ req = catchDefaultEx $ do
   pure $ PerStreamTimeSeriesStatsResponse r
 
 getStatsHandler
-  :: StatsHolder
+  :: ServerContext
   -> ServerRequest 'Normal API.GetStatsRequest API.GetStatsResponse
   -> IO (ServerResponse 'Normal API.GetStatsResponse)
-getStatsHandler holder (ServerNormalRequest _ (API.GetStatsRequest mstats)) = defaultExceptionHandle $ do
-  (failed, suc) <- getStats mstats holder
+getStatsHandler sc (ServerNormalRequest _ (API.GetStatsRequest mstats)) = defaultExceptionHandle $ do
+  (failed, suc) <- getStats mstats sc
   U.returnResp $ API.GetStatsResponse {getStatsResponseStatsValues = V.fromList suc, getStatsResponseErrors = V.fromList failed}
 
 handleGetStats
-  :: StatsHolder
+  :: ServerContext
   -> G.UnaryHandler API.GetStatsRequest API.GetStatsResponse
-handleGetStats holder _ (API.GetStatsRequest mstats) = do
-  (failed, suc) <- getStats mstats holder
+handleGetStats sc _ (API.GetStatsRequest mstats) = do
+  (failed, suc) <- getStats mstats sc
   pure $ API.GetStatsResponse {getStatsResponseStatsValues = V.fromList suc, getStatsResponseErrors = V.fromList failed}
 
 -------------------------------------------------------------------------------
@@ -118,22 +122,22 @@ getPerStreamTimeSeriesStatsAll holder req = do
         Left errmsg -> throwIO $ HE.InvalidStatsInterval errmsg
         Right m' -> pure $ Map.map (Just . StatsDoubleVals . V.fromList) . Map.mapKeys U.cBytesToText $ m'
 
-getStats :: V.Vector StatType -> StatsHolder -> IO ([StatError], [StatValue])
-getStats mstats holder = do
+getStats :: V.Vector StatType -> ServerContext -> IO ([StatError], [StatValue])
+getStats mstats sc = do
   let stats = mapMaybe statTypeStat . V.toList $ V.nub mstats
   when (null stats) $ throwIO . HE.InvalidStatsType $ show mstats
-  partitionEithers <$> forM stats (getStatsInternal holder)
+  partitionEithers <$> forM stats (getStatsInternal sc)
 
-getStatsInternal :: StatsHolder -> StatTypeStat -> IO (Either StatError StatValue)
-getStatsInternal holder s@(StatTypeStatStreamStat stats) = do
+getStatsInternal :: ServerContext -> StatTypeStat -> IO (Either StatError StatValue)
+getStatsInternal ServerContext{scStatsHolder = holder} s@(StatTypeStatStreamStat stats) = do
   getStreamStatsInternal holder stats <&> convert s
-getStatsInternal holder s@(StatTypeStatSubStat stats) = do
+getStatsInternal ServerContext{scStatsHolder = holder} s@(StatTypeStatSubStat stats) = do
   getSubscriptionStatsInternal holder stats <&> convert s
-getStatsInternal holder s@(StatTypeStatConnStat stats) = do
-  getConnectorStatsInternal holder stats <&> convert s
-getStatsInternal holder s@(StatTypeStatQueryStat stats) = do
+getStatsInternal ServerContext{scStatsHolder, scIOWorker} s@(StatTypeStatConnStat stats) = do
+  getConnectorStatsInternal scStatsHolder scIOWorker stats <&> convert s
+getStatsInternal ServerContext{scStatsHolder = holder} s@(StatTypeStatQueryStat stats) = do
   getQueryStatsInternal holder stats <&> convert s
-getStatsInternal holder s@(StatTypeStatViewStat stats) = do
+getStatsInternal ServerContext{scStatsHolder = holder} s@(StatTypeStatViewStat stats) = do
   getViewStatsInternal holder stats <&> convert s
 
 getStreamStatsInternal
@@ -188,9 +192,10 @@ getSubscriptionStatsInternal statsHolder (PS.Enumerated stats) = do
 
 getConnectorStatsInternal
   :: Stats.StatsHolder
+  -> IO.Worker
   -> PS.Enumerated API.ConnectorStats
   -> IO (Either T.Text (Map CBytes Int64))
-getConnectorStatsInternal statsHolder (PS.Enumerated stats) = do
+getConnectorStatsInternal statsHolder ioWorker (PS.Enumerated stats) = do
   Log.debug $ "request stream stats: " <> Log.buildString' stats
   s <- Stats.newAggregateStats statsHolder
   case stats of
@@ -198,6 +203,10 @@ getConnectorStatsInternal statsHolder (PS.Enumerated stats) = do
       Stats.connector_stat_getall_delivered_in_records s <&> Right
     Right API.ConnectorStatsDeliveredInBytes ->
       Stats.connector_stat_getall_delivered_in_bytes s <&> Right
+    Right API.ConnectorStatsIsAlive -> do
+      cs <- IO.listIOTasks ioWorker
+      return . Right . Map.fromList $
+        map (\API.Connector{..} -> if connectorStatus == "RUNNING" then (U.textToCBytes connectorName, 1) else (U.textToCBytes connectorName, 0)) cs
     Left _ -> return . Left . T.pack $ "invalid stat type " <> show stats
 
 getQueryStatsInternal
