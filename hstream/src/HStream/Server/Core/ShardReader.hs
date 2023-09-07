@@ -184,9 +184,9 @@ readStream ServerContext{..}
      S.readerSetTimeout reader 60000
      S.readerSetWaitOnlyWhenNoData reader
      tsMapList <- forM shards $ \shard -> do
-       try @HE.ConflictShardReaderOffset (startReadingShard scLDClient reader rReaderId shard (toOffset <$> rStart) (toOffset <$> rEnd)) >>= \case
+       try (startReadingShard scLDClient reader rReaderId shard (toOffset <$> rStart) (toOffset <$> rEnd)) >>= \case
          Right (sTimestamp, eTimestamp) -> return $ Just (shard, (sTimestamp, eTimestamp))
-         Left e -> do
+         Left (e :: HE.ConflictShardReaderOffset) -> do
            -- In the readStream scenario, for the same offset, some shards may not meet the requirement(startLSN <= endLSN).
            -- Therefore, when encountering the ConflictShardReaderOffset exception, skip this shard.
            Log.warning $ "skip read shard " <> Log.build (show shard) <> " for stream " <> Log.build (show rStreamName)
