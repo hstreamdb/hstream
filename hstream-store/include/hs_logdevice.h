@@ -260,16 +260,6 @@ uint64_t ld_client_get_tail_attributes_bytes_offset(
     logdevice_log_tail_attributes_t* tail_attr);
 void free_logdevice_tail_attributes(logdevice_log_tail_attributes_t* tail_attr);
 
-// ----------------------------------------------------------------------------
-// KeyType
-const c_keytype_t C_KeyType_FINDKEY =
-    static_cast<c_keytype_t>(KeyType::FINDKEY);
-const c_keytype_t C_KeyType_FILTERABLE =
-    static_cast<c_keytype_t>(KeyType::FILTERABLE);
-const c_keytype_t C_KeyType_MAX = static_cast<c_keytype_t>(KeyType::MAX);
-const c_keytype_t C_KeyType_UNDEFINED =
-    static_cast<c_keytype_t>(KeyType::UNDEFINED);
-
 // Used by VersionedConfigStore
 typedef uint64_t c_vcs_config_version_t;
 

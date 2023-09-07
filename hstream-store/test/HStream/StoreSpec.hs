@@ -2,11 +2,14 @@ module HStream.StoreSpec where
 
 import           Test.Hspec
 
+import           Control.Monad                    (void)
 import           Data.Time.Clock.POSIX            (getPOSIXTime)
+import           Z.Data.CBytes                    (CBytes)
+
+import           HStream.Base                     (genUnique)
 import qualified HStream.Store                    as S
 import qualified HStream.Store.Internal.LogDevice as S
 import           HStream.Store.SpecUtils
-import           Z.Data.CBytes                    (CBytes)
 
 spec :: Spec
 spec = describe "StoreSpec" $ do
@@ -63,6 +66,35 @@ base = describe "Base" $ do
       S.logIdHasGroup client randlogid `shouldReturn` True
       123456 `shouldNotBe` randlogid
       S.logIdHasGroup client 123456 `shouldReturn` False
+
+  -- Here we use a unique logid
+  findKeyLogid <- runIO genUnique
+  let findKeyLogname = "test_findkey"
+      findKeyAttrs = S.def{S.logReplicationFactor = S.defAttr1 1}
+  loggroupAround findKeyLogid findKeyLogname findKeyAttrs $ do
+    it "findKey" $ \(_lgname, randlogid) -> do
+      void $ S.appendCompressedBS client randlogid "p" S.CompressionNone Nothing
+      void $ S.appendCompressedBS client randlogid "p" S.CompressionNone (Just [])
+      sn0 <- S.appendCompLSN <$>
+        S.appendCompressedBS client randlogid "p0" S.CompressionNone
+                             (Just [(S.KeyTypeFindKey, "0")])
+      sn1 <- S.appendCompLSN <$>
+        S.appendCompressedBS client randlogid "p1" S.CompressionNone
+                             (Just [(S.KeyTypeFindKey, "1")])
+      sn2 <- S.appendCompLSN <$>
+        S.appendCompressedBS client randlogid "p2" S.CompressionNone
+                             (Just [(S.KeyTypeFindKey, "2")])
+      void $ S.appendCompressedBS client randlogid "p" S.CompressionNone Nothing
+
+      (lo0, hi0) <- S.findKey client randlogid "0" S.FindKeyStrict
+      lo0 `shouldBe` S.LSN_INVALID
+      hi0 `shouldBe` sn0
+      (lo1, hi1) <- S.findKey client randlogid "1" S.FindKeyStrict
+      lo1 `shouldBe` sn0
+      hi1 `shouldBe` sn1
+      (lo2, hi2) <- S.findKey client randlogid "2" S.FindKeyStrict
+      lo2 `shouldBe` sn1
+      hi2 `shouldBe` sn2
 
   it "find time with a timestamp of 0" $ do
     headSn <- S.findTime client logid 0 S.FindKeyStrict

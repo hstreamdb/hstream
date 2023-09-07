@@ -10,6 +10,7 @@ module HStream.Store.Internal.LogDevice
   , getClientSetting
   , trim
   , findTime
+  , findKey
   , isLogEmpty
 
   , module HStream.Store.Internal.LogDevice.Checkpoint
@@ -35,7 +36,8 @@ import qualified Z.Data.CBytes                                         as CBytes
 import           Z.Data.CBytes                                         (CBytes)
 import           Z.Data.Vector                                         (Bytes)
 import qualified Z.Foreign                                             as Z
-import           Z.Foreign                                             (MBA#)
+import           Z.Foreign                                             (BA#,
+                                                                        MBA#)
 
 import qualified HStream.Store.Exception                               as E
 import           HStream.Store.Internal.Types
@@ -218,6 +220,50 @@ findTime client logid ts accuracy =
     void $ E.throwStreamErrorIfNotOK' errno
     return lsn
 
+-- | Looks for the sequence number corresponding to the record with the given
+-- key for the log.
+--
+-- FIXME: it seems that the AppendAttributes is not deleted event if the logid
+-- is deleted. For example:
+--
+-- 1. create a loggroup A with logid 1
+-- 2. append a record with AppendAttributes(FindKey, "0") to logid 1
+-- 3. append a record with AppendAttributes(FindKey, "1") to logid 1
+-- 4. call findKey "1", you will get the right result
+-- 5. remove the loggroup A
+-- 6. repeat step 1-4, you will get a wrong result
+--
+-- The result provides two LSNs: the first one, lo, is the highest LSN with
+-- key smaller than the given key, the second one, hi, is the lowest LSN with
+-- key equal or greater than the given key. With accuracy parameter set to
+-- APPROXIMATE, the first LSN can be underestimated and the second LSN can be
+-- overestimated by a few minutes, in terms of record timestamps.
+--
+-- It is assumed that keys within the same log are monotonically
+-- non-decreasing (when compared lexicographically). If this is not true, the
+-- accuracy of this API may be affected.
+--
+-- The delivery of a signal does not interrupt the wait.
+findKey
+  :: HasCallStack
+  => LDClient
+  -> C_LogID
+  -- ^ ID of log to query
+  -> CBytes
+  -- ^ select the oldest record in this log whose
+  -- key is greater or equal to _key_, for upper bound of
+  -- result; select the newest record in this log whose key
+  -- is smaller than _key_, for lower bound.
+  -> FindKeyAccuracy
+  -> IO (LSN, LSN)
+findKey client logid key accuracy =
+  withForeignPtr client $ \client' ->
+  CBytes.withCBytesUnsafe key $ \key' -> do
+    (errno, lo_lsn, hi_lsn, _) <- withAsyncPrimUnsafe3' (0 :: ErrorCode) LSN_INVALID LSN_INVALID
+      (ld_client_find_key client' logid key' $ unFindKeyAccuracy accuracy) E.throwSubmitIfNotOK
+    void $ E.throwStreamErrorIfNotOK' errno
+    return (lo_lsn, hi_lsn)
+
 -- | Checks wether a particular log is empty. This method is blocking until the
 --   state can be determined or an error occurred.
 isLogEmpty
@@ -289,3 +335,11 @@ foreign import ccall unsafe "hs_logdevice.h ld_client_find_time"
                         -> MBA# ErrorCode
                         -> MBA# LSN
                         -> IO Int
+
+foreign import ccall unsafe "hs_logdevice.h ld_client_find_key"
+  ld_client_find_key
+    :: Ptr LogDeviceClient
+    -> C_LogID -> BA# Word8 -> Int
+    -> StablePtr PrimMVar -> Int
+    -> MBA# ErrorCode -> MBA# LSN -> MBA# LSN
+    -> IO Int

@@ -475,29 +475,27 @@ type C_Timestamp = Int64
 pattern C_MAX_MILLISECONDS :: C_Timestamp
 pattern C_MAX_MILLISECONDS = (#const MAX_MILLISECONDS)
 
-newtype KeyType = KeyType Word8
+newtype KeyType = KeyType { unKeyType :: Word8 }
   deriving (Eq, Ord)
 
 instance Show KeyType where
-  show t
-    | t == keyTypeFindKey = "FINDKEY"
-    | t == keyTypeFilterable = "FILTERABLE"
-    | otherwise = "UNDEFINED"
+  show KeyTypeFindKey    = "FINDKEY"
+  show KeyTypeFilterable = "FILTERABLE"
+  show KeyTypeUndefined  = "UNDEFINED"
+  show KeyTypeMax        = "MAX"
+  show _                 = "Unknown"
 
-keyTypeFindKey :: KeyType
-keyTypeFindKey = KeyType c_keytype_findkey
+pattern KeyTypeFindKey :: KeyType
+pattern KeyTypeFindKey = KeyType (#const static_cast<HsWord8>(KeyType::FINDKEY))
 
-keyTypeFilterable :: KeyType
-keyTypeFilterable = KeyType c_keytype_filterable
+pattern KeyTypeFilterable :: KeyType
+pattern KeyTypeFilterable = KeyType (#const static_cast<HsWord8>(KeyType::FILTERABLE))
 
-c_keytype_findkey :: Word8
-c_keytype_findkey = (#const C_KeyType_FINDKEY)
-
-c_keytype_filterable :: Word8
-c_keytype_filterable = (#const C_KeyType_FILTERABLE)
+pattern KeyTypeMax :: KeyType
+pattern KeyTypeMax = KeyType (#const static_cast<HsWord8>(KeyType::MAX))
 
 pattern KeyTypeUndefined :: KeyType
-pattern KeyTypeUndefined = KeyType (#const static_cast<HsInt>(KeyType::UNDEFINED))
+pattern KeyTypeUndefined = KeyType (#const static_cast<HsWord8>(KeyType::UNDEFINED))
 
 -- (compression_enum, zstd_level)
 type C_Compression = (Int, Int)
