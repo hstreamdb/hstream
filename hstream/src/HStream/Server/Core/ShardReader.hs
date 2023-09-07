@@ -21,7 +21,7 @@ import           ZooKeeper.Exception        (ZNONODE (..))
 
 import           Control.Concurrent         (modifyMVar_, newEmptyMVar, putMVar,
                                              readMVar, takeMVar, withMVar)
-import           Control.Exception          (bracket, catch, throwIO)
+import           Control.Exception          (bracket, catch, throwIO, try)
 import           Control.Monad              (forM, forM_, join, unless, when)
 import           Data.ByteString            (ByteString)
 import qualified Data.ByteString            as BS
@@ -32,7 +32,7 @@ import           Data.Int                   (Int64)
 import           Data.IORef                 (IORef, atomicModifyIORef',
                                              newIORef, readIORef, writeIORef)
 import qualified Data.Map.Strict            as M
-import           Data.Maybe                 (fromJust, isJust)
+import           Data.Maybe                 (catMaybes, fromJust, isJust)
 import qualified Data.Text                  as T
 import           Data.Vector                (Vector)
 import qualified Data.Vector                as V
@@ -184,9 +184,15 @@ readStream ServerContext{..}
      S.readerSetTimeout reader 60000
      S.readerSetWaitOnlyWhenNoData reader
      tsMapList <- forM shards $ \shard -> do
-       (sTimestamp, eTimestamp) <- startReadingShard scLDClient reader rReaderId shard (toOffset <$> rStart) (toOffset <$> rEnd)
-       return (shard, (sTimestamp, eTimestamp))
-     let mp = HM.fromList tsMapList
+       try (startReadingShard scLDClient reader rReaderId shard (toOffset <$> rStart) (toOffset <$> rEnd)) >>= \case
+         Right (sTimestamp, eTimestamp) -> return $ Just (shard, (sTimestamp, eTimestamp))
+         Left (e :: HE.ConflictShardReaderOffset) -> do
+           -- In the readStream scenario, for the same offset, some shards may not meet the requirement(startLSN <= endLSN).
+           -- Therefore, when encountering the ConflictShardReaderOffset exception, skip this shard.
+           Log.warning $ "skip read shard " <> Log.build (show shard) <> " for stream " <> Log.build (show rStreamName)
+                      <> " because: "  <> Log.build (show e)
+           return Nothing
+     let mp = HM.fromList $ catMaybes tsMapList
      return $ mkStreamReader reader rStreamName totalBatches mp
 
    deleteReader StreamReader{..} = do
