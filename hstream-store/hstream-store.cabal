@@ -166,6 +166,7 @@ test-suite hstream-store-test
     , containers            ^>=0.6
     , data-default          ^>=0.7
     , hspec
+    , hstream-common-base
     , hstream-store
     , QuickCheck
     , quickcheck-instances  ^>=0.3.20

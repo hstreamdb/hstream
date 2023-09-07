@@ -18,6 +18,7 @@ module HStream.Store
   , trimLast
   , trimLastBefore
   , findTime
+  , findKey
   , logIdHasGroup
 
     -- * Stream
