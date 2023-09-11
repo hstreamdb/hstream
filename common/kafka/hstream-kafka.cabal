@@ -61,6 +61,7 @@ library
   build-depends:
     , base                 >=4.11 && <5
     , bytestring
+    , digest
     , hstream-common-base
     , network
     , text
