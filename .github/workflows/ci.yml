@@ -272,6 +272,18 @@ jobs:
         ghc: ${{ fromJson(needs.pre-build.outputs.ghc) }}
 
     steps:
+      - name: Free disk space
+        run: |
+          echo "Before..."
+          df -h
+          sudo rm -rf \
+            /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /usr/local/share/powershell /usr/share/swift /usr/local/.ghcup \
+            "/usr/local/share/boost" \
+            /usr/lib/jvm || true
+          echo "After..."
+          df -h
+
       - name: retrieve saved docker image
         uses: actions/download-artifact@v3
         with:
@@ -329,6 +341,18 @@ jobs:
         ghc: ${{ fromJson(needs.pre-build.outputs.ghc) }}
 
     steps:
+      - name: Free disk space
+        run: |
+          echo "Before..."
+          df -h
+          sudo rm -rf \
+            /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /usr/local/share/powershell /usr/share/swift /usr/local/.ghcup \
+            "/usr/local/share/boost" \
+            /usr/lib/jvm || true
+          echo "After..."
+          df -h
+
       - name: retrieve saved docker image
         uses: actions/download-artifact@v3
         with:
