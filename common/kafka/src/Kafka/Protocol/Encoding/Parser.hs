@@ -322,6 +322,7 @@ instance MonadFail Parser where
 -- | Run parser with the input
 runParser :: Parser r -> ByteString -> IO (Result r)
 runParser s bs = run s bs (\b r -> pure $! Done b r)
+{-# INLINE runParser #-}
 
 -- | Parser continuation
 type Next a r = ByteString -> a -> IO (Result r)
