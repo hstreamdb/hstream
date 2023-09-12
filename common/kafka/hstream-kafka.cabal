@@ -43,6 +43,8 @@ common shared-properties
 library
   import:             shared-properties
   exposed-modules:
+    Kafka.Common.OffsetManager
+    Kafka.Common.RecordFormat
     Kafka.Protocol
     Kafka.Protocol.Encoding
     Kafka.Protocol.Error
@@ -61,11 +63,15 @@ library
   build-depends:
     , base                 >=4.11 && <5
     , bytestring
+    , containers
     , digest
+    , hashtables
     , hstream-common-base
+    , hstream-store
     , network
     , text
     , vector
+    , Z-Data
 
   default-language:   GHC2021
   default-extensions:
