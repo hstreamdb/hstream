@@ -238,9 +238,9 @@ testSuiteCases:
 - testCaseFail: null
   testCaseLabel: Create Connectors
   testCaseResult: RQCreate (RCreateConnector "SOURCE" "source01" "mysql" False (RConnectorOptions
-    (fromList [("port",Number 3306.0),("host",String "mysql-s1"),("password",String
-    "password"),("user",String "root"),("database",String "d1"),("table",String "person"),("stream",String
-    "stream01")])))
+    (fromList [("password",String "password"),("table",String "person"),("database",String
+    "d1"),("port",Number 3306.0),("stream",String "stream01"),("host",String "mysql-s1"),("user",String
+    "root")])))
   testCaseStmts:
   - create source connector source01 from mysql with ("host" = 'mysql-s1', "port"
     = 3306, "user" = 'root', "password" = 'password', "database" = 'd1', "table" =
