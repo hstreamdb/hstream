@@ -63,24 +63,29 @@ runServer ServerOptions{..} handlers =
     runHandler reqBs = do
       headerResult <- runParser @RequestHeader get reqBs
       case headerResult of
-        Done l requestHeader -> do
-          let ServiceHandler{..} = findHandler requestHeader
+        Done l RequestHeader{..} -> do
+          let ServiceHandler{..} = findHandler requestApiKey requestApiVersion
           case rpcHandler of
             UnaryHandler rpcHandler' -> do
               req <- runGet l
               resp <- rpcHandler' RequestContext req
               let respBs = runPutLazy resp
-                  respHeaderBs = runPutLazy $ ResponseHeader (requestCorrelationId requestHeader)
+                  (_, respHeaderVer) = getHeaderVersion requestApiKey requestApiVersion
+                  respHeaderBs =
+                    case respHeaderVer of
+                      0 -> runPutResponseHeaderLazy $ ResponseHeader requestCorrelationId (Left Unsupported)
+                      1 -> runPutResponseHeaderLazy $ ResponseHeader requestCorrelationId (Right EmptyTaggedFields)
+                      _ -> error $ "Unknown response header version" <> show respHeaderVer
               let len = BSL.length (respHeaderBs <> respBs)
                   lenBs = runPutLazy @Int32 (fromIntegral len)
               pure $ lenBs <> respHeaderBs <> respBs
         Fail _ err -> E.throwIO $ DecodeError $ "Fail, " <> err
         More _ -> E.throwIO $ DecodeError $ "More"
 
-    findHandler RequestHeader{..} = do
+    findHandler (ApiKey key) version = do
       let m_handler = find (\ServiceHandler{..} ->
-            rpcMethod == (fromIntegral requestApiKey, requestApiVersion)) handlers
-          errmsg = "NotImplemented: " <> show requestApiKey <> ":v" <> show requestApiVersion
+            rpcMethod == (key, version)) handlers
+          errmsg = "NotImplemented: " <> show key <> ":v" <> show version
       fromMaybe (error errmsg) m_handler
 
 -- from the "network-run" package.

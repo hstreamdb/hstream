@@ -7,6 +7,8 @@
 
 module Kafka.Protocol.Encoding
   ( Serializable (..)
+  , putEither
+  , getEither
   , runGet
   , runGet'
   , runPut
@@ -107,6 +109,25 @@ instance (GSerializable a) => GSerializable (M1 i c a) where
 instance (Serializable a) => GSerializable (K1 i a) where
   gget = K1 <$> get
   gput (K1 x) = put x
+
+-- There is no easy way to support Sum types for Generic instance.
+--
+-- So here we give a special case for Either
+putEither :: (Serializable a, Serializable b) => Either a b -> Builder
+putEither (Left x)  = put x
+putEither (Right x) = put x
+{-# INLINE putEither #-}
+
+-- There is no way to support Sum types for Generic instance.
+--
+-- So here we give a special case for Either
+getEither
+  :: (Serializable a, Serializable b)
+  => Bool  -- ^ True for Right, False for Left
+  -> Parser (Either a b)
+getEither True  = Right <$> get
+getEither False = Left <$> get
+{-# INLINE getEither #-}
 
 -------------------------------------------------------------------------------
 

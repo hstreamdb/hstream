@@ -951,3 +951,28 @@ supportedApiVersions =
   , ApiVersionV0 (ApiKey 19) 0 0
   , ApiVersionV0 (ApiKey 20) 0 0
   ]
+
+getHeaderVersion :: ApiKey -> Int16 -> (Int16, Int16)
+getHeaderVersion (ApiKey 0) 0  = (1, 0)
+getHeaderVersion (ApiKey 0) 1  = (1, 0)
+getHeaderVersion (ApiKey 0) 2  = (1, 0)
+getHeaderVersion (ApiKey 1) 0  = (1, 0)
+getHeaderVersion (ApiKey 2) 0  = (1, 0)
+getHeaderVersion (ApiKey 3) 0  = (1, 0)
+getHeaderVersion (ApiKey 3) 1  = (1, 0)
+getHeaderVersion (ApiKey 8) 0  = (1, 0)
+getHeaderVersion (ApiKey 9) 0  = (1, 0)
+getHeaderVersion (ApiKey 10) 0 = (1, 0)
+getHeaderVersion (ApiKey 11) 0 = (1, 0)
+getHeaderVersion (ApiKey 12) 0 = (1, 0)
+getHeaderVersion (ApiKey 13) 0 = (1, 0)
+getHeaderVersion (ApiKey 14) 0 = (1, 0)
+getHeaderVersion (ApiKey 15) 0 = (1, 0)
+getHeaderVersion (ApiKey 16) 0 = (1, 0)
+getHeaderVersion (ApiKey 18) 0 = (1, 0)
+getHeaderVersion (ApiKey 18) 1 = (1, 0)
+getHeaderVersion (ApiKey 18) 2 = (1, 0)
+getHeaderVersion (ApiKey 19) 0 = (1, 0)
+getHeaderVersion (ApiKey 20) 0 = (1, 0)
+getHeaderVersion k v           = error $ "Unknown " <> show k <> " v" <> show v
+{-# INLINE getHeaderVersion #-}
