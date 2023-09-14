@@ -83,6 +83,10 @@ module HStream.Store.Stream
   , LD.ckpStoreRemoveCheckpoints
   , LD.ckpStoreRemoveAllCheckpoints
     --
+  , initOffsetCheckpointDir
+  , allocOffsetCheckpointId
+  , freeOffsetCheckpointId
+    --
   , initSubscrCheckpointDir
   , allocSubscrCheckpointId
   , getSubscrCheckpointId
@@ -224,6 +228,9 @@ updateGloStreamSettings f = atomicModifyIORef' gloStreamSettings $ \s -> (f s, (
 
 subscriptionCheckpointDir :: CBytes
 subscriptionCheckpointDir = "/hstream/subscription/checkpoint"
+
+offsetCheckpointDir :: CBytes
+offsetCheckpointDir = "/hstream/offset/checkpoint"
 
 -------------------------------------------------------------------------------
 
@@ -665,36 +672,61 @@ checkpointStoreLogID :: FFI.C_LogID
 checkpointStoreLogID = bit 56
 
 initSubscrCheckpointDir :: FFI.LDClient -> LD.LogAttributes -> IO ()
-initSubscrCheckpointDir client attrs = catch f (\(_ :: E.EXISTS) -> return ())
-  where
-    f = do
-      dir <- LD.makeLogDirectory client subscriptionCheckpointDir attrs True
-      LD.syncLogsConfigVersion client =<< LD.logDirectoryGetVersion dir
+initSubscrCheckpointDir client =
+  initCheckpointDir client subscriptionCheckpointDir
 
 allocSubscrCheckpointId :: FFI.LDClient -> CBytes -> IO FFI.C_LogID
-allocSubscrCheckpointId client key = do
-  r <- try $ getSubscrCheckpointId client key
-  case r of
-    Left (_ :: E.NOTFOUND) ->
-      createRandomLogGroup client (subscriptionCheckpointDir <> "/" <> key) def
-    Right logid -> return logid
+allocSubscrCheckpointId client =
+  allocCheckpointId client subscriptionCheckpointDir
 
 freeSubscrCheckpointId :: FFI.LDClient -> CBytes -> IO ()
-freeSubscrCheckpointId client key = do
-  catch (deleteSubscrCheckpointId client key) $ \(_ :: E.NOTFOUND) -> do
-    Log.warning $ "freeSubscrCheckpointId NotFound: " <> Log.buildString' key
-    return ()
-
-deleteSubscrCheckpointId :: FFI.LDClient -> CBytes -> IO ()
-deleteSubscrCheckpointId client key = do
-  let logpath = subscriptionCheckpointDir <> "/" <> key
-  LD.syncLogsConfigVersion client =<< LD.removeLogGroup client logpath
+freeSubscrCheckpointId client =
+  freeCheckpointId client subscriptionCheckpointDir
 
 -- Prefer to using 'allocSubscrCheckpointId' instead
 getSubscrCheckpointId :: HasCallStack => FFI.LDClient -> CBytes -> IO FFI.C_LogID
-getSubscrCheckpointId client key = do
-  let logpath = subscriptionCheckpointDir <> "/" <> key
+getSubscrCheckpointId client = getCheckpointId client subscriptionCheckpointDir
+
+initOffsetCheckpointDir :: FFI.LDClient -> LD.LogAttributes -> IO ()
+initOffsetCheckpointDir client = initCheckpointDir client offsetCheckpointDir
+
+allocOffsetCheckpointId :: FFI.LDClient -> CBytes -> IO FFI.C_LogID
+allocOffsetCheckpointId client = allocCheckpointId client offsetCheckpointDir
+
+freeOffsetCheckpointId :: FFI.LDClient -> CBytes -> IO ()
+freeOffsetCheckpointId client = freeCheckpointId client offsetCheckpointDir
+
+initCheckpointDir :: FFI.LDClient -> CBytes -> LD.LogAttributes -> IO ()
+initCheckpointDir client dir attrs = catch f (\(_ :: E.EXISTS) -> return ())
+  where
+    f = do
+      logdir <- LD.makeLogDirectory client dir attrs True
+      LD.syncLogsConfigVersion client =<< LD.logDirectoryGetVersion logdir
+
+allocCheckpointId :: FFI.LDClient -> CBytes -> CBytes -> IO FFI.C_LogID
+allocCheckpointId client dir key = do
+  r <- try $ getCheckpointId client dir key
+  case r of
+    Left (_ :: E.NOTFOUND) ->
+      createRandomLogGroup client (dir <> "/" <> key) def
+    Right logid -> return logid
+
+-- Prefer to using 'allocSubscrCheckpointId' instead
+getCheckpointId :: HasCallStack => FFI.LDClient -> CBytes-> CBytes -> IO FFI.C_LogID
+getCheckpointId client dir key = do
+  let logpath = dir <> "/" <> key
   fst <$> (LD.logGroupGetRange =<< LD.getLogGroup client logpath)
+
+deleteCheckpointId :: FFI.LDClient -> CBytes -> CBytes -> IO ()
+deleteCheckpointId client dir key = do
+  let logpath = dir <> "/" <> key
+  LD.syncLogsConfigVersion client =<< LD.removeLogGroup client logpath
+
+freeCheckpointId :: FFI.LDClient -> CBytes -> CBytes -> IO ()
+freeCheckpointId client dir key = do
+  catch (deleteCheckpointId client dir key) $ \(_ :: E.NOTFOUND) -> do
+    Log.warning $ "freeCheckpointId NotFound: " <> Log.buildString' key
+    return ()
 
 -------------------------------------------------------------------------------
 -- Reader
