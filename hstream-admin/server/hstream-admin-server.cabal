@@ -82,7 +82,7 @@ library
     , deepseq
     , grpc-haskell
     , grpc-haskell-core
-    , hashable              >=1.2.7.0  && <1.4
+    , hashable              >=1.2.7.0  && <1.5
     , haskeline             ^>=0.8.1
     , hstream-api-hs
     , hstream-common

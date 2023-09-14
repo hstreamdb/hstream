@@ -75,8 +75,6 @@ module HStream.Store.Stream
 
     -- * Logdevice Checkpoint Store
   , FFI.LDCheckpointStore
-  , initCheckpointStoreLogID
-  , checkpointStoreLogID
   , LD.newFileBasedCheckpointStore
   , LD.newRSMBasedCheckpointStore
   , LD.newZookeeperBasedCheckpointStore
@@ -134,6 +132,10 @@ module HStream.Store.Stream
   , LD.writeLastCheckpoints
   , LD.removeCheckpoints
   , LD.removeAllCheckpoints
+
+    -- * Internal logs
+  , checkpointStoreLogID
+  , initCheckpointStoreLogID
 
     -- * Internal helpers
   , getStreamDirPath
@@ -649,15 +651,16 @@ getStreamIdFromLogId client logid = do
 -- bit: 00...1...00
 initCheckpointStoreLogID :: FFI.LDClient -> LD.LogAttributes -> IO FFI.C_LogID
 initCheckpointStoreLogID client attrs = do
-  -- FIXME: First get and then create is NOT suitable for multiple concurrent
-  -- server. This may throw EXISTS exception.
-  r <- try $ LD.getLogGroupByID client checkpointStoreLogID
+  -- NOTE: first get and then create is NOT suitable for multiple concurrent
+  -- server. So here we use makeLogGroup directly and handle EXISTS exception.
+  r <- try $ LD.makeLogGroup client "/hstream/internal/checkpoint"
+                             checkpointStoreLogID checkpointStoreLogID
+                             attrs True
   case r of
-    Left (_ :: E.NOTFOUND) -> do
-      _ <- LD.makeLogGroup client "/hstream/internal/checkpoint" checkpointStoreLogID checkpointStoreLogID attrs True
-      return checkpointStoreLogID
-    Right _ -> return checkpointStoreLogID
+    Left (_ :: E.EXISTS) -> return checkpointStoreLogID
+    Right _              -> return checkpointStoreLogID
 
+-- logid greater or equal than (bit 56) is reserved for internal use.
 checkpointStoreLogID :: FFI.C_LogID
 checkpointStoreLogID = bit 56
 
