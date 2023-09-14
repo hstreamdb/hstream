@@ -18,7 +18,6 @@ packages:
   common/api/hstream-api-hs.cabal
   common/hstream/hstream-common.cabal
   common/stats/hstream-common-stats.cabal
-  common/kafka/hstream-kafka.cabal
 
   hstream-store
   hstream-diffflow
@@ -27,6 +26,7 @@ packages:
   hstream-io
   hstream-gossip
   hstream-admin/server/hstream-admin-server.cabal
+  hstream-kafka
   hstream
   hstream-admin/hstream-admin.cabal
 

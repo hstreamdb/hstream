@@ -1,16 +1,40 @@
 cradle:
   cabal:
-    - path: "common/hstream/."
-      component: "lib:hstream-common"
+    - path: "clients/cpp/."
+      component: "lib:hstream-client-cpp"
 
-    - path: "common/base/."
-      component: "lib:hstream-common-base"
+    - path: "common/api/cpp/."
+      component: "lib:hstream-api-cpp"
 
     - path: "common/api/."
       component: "lib:hstream-api-hs"
 
-    - path: "common/hstream/test/."
+    - path: "common/api/gen-hs"
+      component: "lib:hstream-api-hs"
+
+    - path: "common/base/."
+      component: "lib:hstream-common-base"
+
+    - path: "common/base/test"
+      component: "hstream-common-base:test:hstream-common-base-test"
+
+    - path: "common/hstream/."
+      component: "lib:hstream-common"
+
+    - path: "common/hstream/test"
       component: "hstream-common:test:hstream-common-test"
+
+    - path: "common/hstream/bench/Bench.hs"
+      component: "hstream-common:bench:codec-bench"
+
+    - path: "common/hstream/bench/CodecBench.hs"
+      component: "hstream-common:bench:codec-bench"
+
+    - path: "common/hstream/bench/CompresstionBench.hs"
+      component: "hstream-common:bench:codec-bench"
+
+    - path: "common/hstream/bench/Util.hs"
+      component: "hstream-common:bench:codec-bench"
 
     - path: "common/stats/."
       component: "lib:hstream-common-stats"
@@ -20,9 +44,6 @@ cradle:
 
     - path: "common/stats/bench/stats.hs"
       component: "hstream-common-stats:bench:common-bench-stats"
-
-    - path: "common/hstream/bench"
-      component: "hstream-common:bench:codec-bench"
 
     - path: "external/gRPC-haskell/core/src"
       component: "lib:grpc-haskell-core"
@@ -69,152 +90,17 @@ cradle:
     - path: "external/gRPC-haskell/bench/Bench.hs"
       component: "grpc-haskell:bench:bench"
 
-    - path: "external/hsthrift/common/github/./"
-      component: "lib:fb-stubs"
+    - path: "external/haskell-rocksdb-bindings/src"
+      component: "lib:rocksdb-haskell-bindings"
 
-    - path: "external/hsthrift/common/mangle/./"
-      component: "lib:mangle"
+    - path: "external/haskell-rocksdb-bindings/test"
+      component: "rocksdb-haskell-bindings:test:rocksdb-haskell-bindings-test"
 
-    - path: "external/hsthrift/common/mangle/./Main.hs"
-      component: "mangle:exe:mangle"
+    - path: "external/hs-grpc/hs-grpc-server/."
+      component: "lib:hs-grpc-server"
 
-    - path: "external/hsthrift/common/mangle/./Mangle.hs"
-      component: "mangle:exe:mangle"
-
-    - path: "external/hsthrift/common/mangle/tests"
-      component: "mangle:test:mangle-test"
-
-    - path: "external/hsthrift/common/mangle/tests/github"
-      component: "mangle:test:mangle-test"
-
-    - path: "external/hsthrift/common/util/."
-      component: "lib:fb-util"
-
-    - path: "external/hsthrift/common/util/./"
-      component: "fb-util:test:stream"
-
-    - path: "external/hsthrift/common/util/./"
-      component: "fb-util:test:movavgrl"
-
-    - path: "external/hsthrift/common/util/./"
-      component: "fb-util:test:rlmap"
-
-    - path: "external/hsthrift/common/util/./"
-      component: "fb-util:test:iobuf"
-
-    - path: "external/hsthrift/common/util/./"
-      component: "fb-util:test:alloc-limit"
-
-    - path: "external/hsthrift/common/util/./"
-      component: "fb-util:test:unit-tests"
-
-    - path: "external/hsthrift/common/util/./"
-      component: "fb-util:test:rwvar"
-
-    - path: "external/hsthrift/common/util/./"
-      component: "fb-util:test:th"
-
-    - path: "external/hsthrift/common/util/./"
-      component: "fb-util:test:filepath"
-
-    - path: "external/hsthrift/common/util/./"
-      component: "fb-util:test:optparse"
-
-    - path: "external/hsthrift/common/util/./"
-      component: "fb-util:test:lens"
-
-    - path: "external/hsthrift/common/util/./"
-      component: "fb-util:test:toexp"
-
-    - path: "external/hsthrift/common/util/./"
-      component: "fb-util:test:aeson"
-
-    - path: "external/hsthrift/common/util/./"
-      component: "fb-util:test:buffer"
-
-    - path: "external/hsthrift/common/util/./"
-      component: "fb-util:test:exception"
-
-    - path: "external/hsthrift/common/util/./"
-      component: "fb-util:test:control-exception"
-
-    - path: "external/hsthrift/common/util/./"
-      component: "fb-util:test:json-pretty"
-
-    - path: "external/hsthrift/common/util/./"
-      component: "fb-util:test:io"
-
-    - path: "external/hsthrift/common/util/./"
-      component: "fb-util:test:time-sec"
-
-    - path: "external/hsthrift/common/util/./"
-      component: "fb-util:test:list"
-
-    - path: "external/hsthrift/common/util/./"
-      component: "fb-util:test:graph"
-
-    - path: "external/hsthrift/common/util/./"
-      component: "fb-util:test:concurrent"
-
-    - path: "external/hsthrift/common/util/./"
-      component: "fb-util:test:md5"
-
-    - path: "external/hsthrift/common/util/./"
-      component: "fb-util:test:control-monad"
-
-    - path: "external/hsthrift/common/util/./"
-      component: "fb-util:test:string-quasi"
-
-    - path: "external/hsthrift/common/util/./"
-      component: "fb-util:test:dynamic"
-
-    - path: "external/hsthrift/common/util/./"
-      component: "fb-util:test:hs-struct"
-
-    - path: "external/hsthrift/cpp-channel/."
-      component: "lib:thrift-cpp-channel"
-
-    - path: "external/hsthrift/cpp-channel/test"
-      component: "thrift-cpp-channel:test:header-channel"
-
-    - path: "external/hsthrift/cpp-channel/test/if/gen-hs2"
-      component: "thrift-cpp-channel:test:header-channel"
-
-    - path: "external/hsthrift/lib/."
-      component: "lib:thrift-lib"
-
-    - path: "external/hsthrift/lib/gen-hs2"
-      component: "lib:thrift-lib"
-
-    - path: "external/hsthrift/lib/test/helpers"
-      component: "thrift-lib:lib:test-helpers"
-
-    - path: "external/hsthrift/lib/test/lib"
-      component: "thrift-lib:lib:test-lib"
-
-    - path: "external/hsthrift/lib/test/gen-hs2"
-      component: "thrift-lib:lib:test-lib"
-
-    - path: "external/hsthrift/lib/./"
-      component: "thrift-lib:test:channel"
-
-    - path: "external/hsthrift/lib/./"
-      component: "thrift-lib:test:socket-channel"
-
-    - path: "external/hsthrift/lib/./"
-      component: "thrift-lib:test:client"
-
-    - path: "external/hsthrift/lib/./"
-      component: "thrift-lib:test:binary-parser"
-
-    - path: "external/hsthrift/lib/./"
-      component: "thrift-lib:test:json-parsing"
-
-    - path: "external/hsthrift/lib/./"
-      component: "thrift-lib:test:json-num"
-
-    - path: "external/hsthrift/lib/./"
-      component: "thrift-lib:test:json-null"
+    - path: "external/hs-grpc/hs-grpc-server/test"
+      component: "hs-grpc-server:test:hs-grpc-server-test"
 
     - path: "external/proto3-suite/src/swagger-wrapper-format"
       component: "lib:proto3-suite"
@@ -243,6 +129,96 @@ cradle:
     - path: "external/proto3-wire/test"
       component: "proto3-wire:test:tests"
 
+    - path: "external/proto3-wire/bench/Main.hs"
+      component: "proto3-wire:bench:bench"
+
+    - path: "external/table-layout/src"
+      component: "lib:table-layout"
+
+    - path: "external/table-layout/src/Test.hs"
+      component: "table-layout:exe:table-layout-test-styles"
+
+    - path: "external/table-layout/src/Text/Layout/Table.hs"
+      component: "table-layout:exe:table-layout-test-styles"
+
+    - path: "external/table-layout/src/Text/Layout/Table/Cell.hs"
+      component: "table-layout:exe:table-layout-test-styles"
+
+    - path: "external/table-layout/src/Text/Layout/Table/Cell/Formatted.hs"
+      component: "table-layout:exe:table-layout-test-styles"
+
+    - path: "external/table-layout/src/Text/Layout/Table/Cell/WideString.hs"
+      component: "table-layout:exe:table-layout-test-styles"
+
+    - path: "external/table-layout/src/Text/Layout/Table/Justify.hs"
+      component: "table-layout:exe:table-layout-test-styles"
+
+    - path: "external/table-layout/src/Text/Layout/Table/LineStyle.hs"
+      component: "table-layout:exe:table-layout-test-styles"
+
+    - path: "external/table-layout/src/Text/Layout/Table/Style.hs"
+      component: "table-layout:exe:table-layout-test-styles"
+
+    - path: "external/table-layout/src/Text/Layout/Table/Vertical.hs"
+      component: "table-layout:exe:table-layout-test-styles"
+
+    - path: "external/table-layout/src/Text/Layout/Table/Primitives/AlignInfo.hs"
+      component: "table-layout:exe:table-layout-test-styles"
+
+    - path: "external/table-layout/src/Text/Layout/Table/Primitives/Basic.hs"
+      component: "table-layout:exe:table-layout-test-styles"
+
+    - path: "external/table-layout/src/Text/Layout/Table/Primitives/ColumnModifier.hs"
+      component: "table-layout:exe:table-layout-test-styles"
+
+    - path: "external/table-layout/src/Text/Layout/Table/Primitives/Header.hs"
+      component: "table-layout:exe:table-layout-test-styles"
+
+    - path: "external/table-layout/src/Text/Layout/Table/Primitives/Table.hs"
+      component: "table-layout:exe:table-layout-test-styles"
+
+    - path: "external/table-layout/src/Text/Layout/Table/StringBuilder.hs"
+      component: "table-layout:exe:table-layout-test-styles"
+
+    - path: "external/table-layout/src/Text/Layout/Table/Spec/AlignSpec.hs"
+      component: "table-layout:exe:table-layout-test-styles"
+
+    - path: "external/table-layout/src/Text/Layout/Table/Spec/ColSpec.hs"
+      component: "table-layout:exe:table-layout-test-styles"
+
+    - path: "external/table-layout/src/Text/Layout/Table/Spec/CutMark.hs"
+      component: "table-layout:exe:table-layout-test-styles"
+
+    - path: "external/table-layout/src/Text/Layout/Table/Spec/HeaderColSpec.hs"
+      component: "table-layout:exe:table-layout-test-styles"
+
+    - path: "external/table-layout/src/Text/Layout/Table/Spec/HeaderSpec.hs"
+      component: "table-layout:exe:table-layout-test-styles"
+
+    - path: "external/table-layout/src/Text/Layout/Table/Spec/LenSpec.hs"
+      component: "table-layout:exe:table-layout-test-styles"
+
+    - path: "external/table-layout/src/Text/Layout/Table/Spec/OccSpec.hs"
+      component: "table-layout:exe:table-layout-test-styles"
+
+    - path: "external/table-layout/src/Text/Layout/Table/Spec/Position.hs"
+      component: "table-layout:exe:table-layout-test-styles"
+
+    - path: "external/table-layout/src/Text/Layout/Table/Spec/RowGroup.hs"
+      component: "table-layout:exe:table-layout-test-styles"
+
+    - path: "external/table-layout/src/Text/Layout/Table/Spec/TableSpec.hs"
+      component: "table-layout:exe:table-layout-test-styles"
+
+    - path: "external/table-layout/src/Text/Layout/Table/Spec/Util.hs"
+      component: "table-layout:exe:table-layout-test-styles"
+
+    - path: "external/table-layout/test-suite"
+      component: "table-layout:test:table-layout-tests"
+
+    - path: "external/table-layout/src"
+      component: "table-layout:test:table-layout-tests"
+
     - path: "hstream/src"
       component: "lib:hstream"
 
@@ -258,14 +234,8 @@ cradle:
     - path: "hstream-admin/app/admin.hs"
       component: "hstream-admin:exe:hadmin"
 
-    - path: "hstream-admin/server"
+    - path: "hstream-admin/server/."
       component: "lib:hstream-admin-server"
-
-    - path: "hstream-admin/store"
-      component: "lib:hstream-admin-store"
-
-    - path: "hstream-io/./"
-      component: "lib:hstream-io"
 
     - path: "hstream-diffflow/src"
       component: "lib:diff-flow"
@@ -288,8 +258,29 @@ cradle:
     - path: "hstream-diffflow/./bench/benchmark.hs"
       component: "diff-flow:bench:lib-bench"
 
-    - path: "hstream-diffflow/./bench/throughout.hs"
-      component: "diff-flow:exe:throughout-bench"
+    - path: "hstream-diffflow/./bench/throughout-reduce.hs"
+      component: "diff-flow:exe:throughout-bench-reduce"
+
+    - path: "hstream-diffflow/./bench/throughout-join.hs"
+      component: "diff-flow:exe:throughout-bench-join"
+
+    - path: "hstream-diffflow/./bench/throughout-map.hs"
+      component: "diff-flow:exe:throughout-bench-map"
+
+    - path: "hstream-gossip/src"
+      component: "lib:hstream-gossip"
+
+    - path: "hstream-io/./"
+      component: "lib:hstream-io"
+
+    - path: "hstream-kafka/src"
+      component: "lib:hstream-kafka"
+
+    - path: "hstream-kafka/test"
+      component: "hstream-kafka:test:hstream-kafka-test"
+
+    - path: "hstream-processing/src"
+      component: "lib:hstream-processing"
 
     - path: "hstream-sql/src"
       component: "lib:hstream-sql"
@@ -297,10 +288,22 @@ cradle:
     - path: "hstream-sql/gen-sql"
       component: "lib:hstream-sql"
 
-    - path: "hstream-sql/test"
-      component: "hstream-sql:test:hstream-sql-test"
+    - path: "hstream-sql/app"
+      component: "lib:hstream-sql"
 
-    - path: "hstream-store/."
+    - path: "hstream-sql/app/SyntaxTestRunner.hs"
+      component: "hstream-sql:exe:syntax-test-runner"
+
+    - path: "hstream-sql/app/Lib.hs"
+      component: "hstream-sql:exe:syntax-test-runner"
+
+    - path: "hstream-sql/app/PlanTestRunner.hs"
+      component: "hstream-sql:exe:plan-test-runner"
+
+    - path: "hstream-sql/app/Lib.hs"
+      component: "hstream-sql:exe:plan-test-runner"
+
+    - path: "hstream-store/./"
       component: "lib:hstream-store"
 
     - path: "hstream-store/test"
@@ -312,11 +315,11 @@ cradle:
     - path: "hstream-store/bench/AppendBatchBench.hs"
       component: "hstream-store:bench:hstore-bench-append-batch"
 
+    - path: "hstream-store/bench/StreamBench.hs"
+      component: "hstream-store:bench:hstore-bench-stream"
+
+    - path: "hstream-store/bench/LogExtraAttrs.hs"
+      component: "hstream-store:bench:hstore-bench-log-extra-attrs"
+
     - path: "hstream-store/app/writeBench.hs"
       component: "hstream-store:exe:hstore-bench-writter"
-
-    - path: "hstream-gossip/src"
-      component: "lib:hstream-gossip"
-
-    - path: "hstream-processing/src"
-      component: "lib:hstream-processing"

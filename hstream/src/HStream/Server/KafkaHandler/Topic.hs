@@ -11,24 +11,24 @@ module HStream.Server.KafkaHandler.Topic
 
 import           Control.Exception
 import           Control.Monad
-import qualified Data.Map.Strict               as M
+import qualified Data.Map.Strict         as M
 import           Data.Maybe
-import qualified Data.Text                     as T
-import qualified Data.Vector                   as V
+import qualified Data.Text               as T
+import qualified Data.Vector             as V
 
-import qualified HStream.Base.Time             as BaseTime
-import qualified HStream.Common.Types          as CommonTypes
-import qualified HStream.Logger                as Log
-import qualified HStream.Server.MetaData       as P
-import qualified HStream.Server.Shard          as Shard
-import qualified HStream.Server.Types          as HsTypes
-import qualified HStream.Stats                 as Stats
-import qualified HStream.Store                 as S
-import qualified HStream.Utils                 as Utils
+import qualified HStream.Base.Time       as BaseTime
+import qualified HStream.Common.Types    as CommonTypes
+import qualified HStream.Logger          as Log
+import qualified HStream.Server.MetaData as P
+import qualified HStream.Server.Shard    as Shard
+import qualified HStream.Server.Types    as HsTypes
+import qualified HStream.Stats           as Stats
+import qualified HStream.Store           as S
+import qualified HStream.Utils           as Utils
 
-import qualified Kafka.Protocol.Error          as K
-import qualified Kafka.Protocol.Message.Struct as K
-import qualified Kafka.Protocol.Service        as K
+import qualified Kafka.Protocol.Error    as K
+import qualified Kafka.Protocol.Message  as K
+import qualified Kafka.Protocol.Service  as K
 
 --------------------
 -- 19: CreateTopics
