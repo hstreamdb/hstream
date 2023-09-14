@@ -541,7 +541,7 @@ if __name__ == "__main__":
             "Path can be both directory and file, a directory mean parse all "
             "*.json files under it. (Default: %(default)s)"
         ),
-        default="./common/kafka/message",
+        default="./hstream-kafka/message",
         dest="files",
     )
     # TODO: since python3.9 there is BooleanOptionalAction available in argparse
