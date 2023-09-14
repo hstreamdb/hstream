@@ -8,26 +8,26 @@ module HStream.Server.KafkaHandler.Basic
   , handleMetadataV1
   ) where
 
-import           Control.Concurrent.STM        (readTVarIO)
+import           Control.Concurrent.STM      (readTVarIO)
 import           Control.Exception
 import           Control.Monad
-import           Data.Functor                  ((<&>))
-import           Data.Int                      (Int32)
-import           Data.Text                     (Text)
-import qualified Data.Text                     as Text
-import qualified Data.Vector                   as V
+import           Data.Functor                ((<&>))
+import           Data.Int                    (Int32)
+import           Data.Text                   (Text)
+import qualified Data.Text                   as Text
+import qualified Data.Vector                 as V
 
-import qualified HStream.Logger                as Log
-import qualified HStream.Server.Core.Cluster   as Core
-import qualified HStream.Server.Core.Common    as Core
-import qualified HStream.Server.HStreamApi     as GRPC
-import           HStream.Server.Types          (ServerContext (..),
-                                                transToStreamName)
-import qualified HStream.Store                 as S
-import qualified HStream.Utils                 as Utils
-import qualified Kafka.Protocol.Error          as K
-import qualified Kafka.Protocol.Message.Struct as K
-import qualified Kafka.Protocol.Service        as K
+import qualified HStream.Logger              as Log
+import qualified HStream.Server.Core.Cluster as Core
+import qualified HStream.Server.Core.Common  as Core
+import qualified HStream.Server.HStreamApi   as GRPC
+import           HStream.Server.Types        (ServerContext (..),
+                                              transToStreamName)
+import qualified HStream.Store               as S
+import qualified HStream.Utils               as Utils
+import qualified Kafka.Protocol.Error        as K
+import qualified Kafka.Protocol.Message      as K
+import qualified Kafka.Protocol.Service      as K
 
 --------------------
 -- 18: ApiVersions

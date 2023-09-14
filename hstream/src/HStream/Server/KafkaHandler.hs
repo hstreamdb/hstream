@@ -6,7 +6,7 @@ module HStream.Server.KafkaHandler (handlers) where
 import           HStream.Server.KafkaHandler.Basic
 import           HStream.Server.KafkaHandler.Topic
 import           HStream.Server.Types              (ServerContext (..))
-import qualified Kafka.Protocol.Message.Struct     as K
+import qualified Kafka.Protocol.Message            as K
 import qualified Kafka.Protocol.Service            as K
 
 handlers :: ServerContext -> [K.ServiceHandler]

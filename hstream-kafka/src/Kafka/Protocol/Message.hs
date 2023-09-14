@@ -1,6 +1,8 @@
 module Kafka.Protocol.Message
   ( RequestHeader (..)
   , ResponseHeader (..)
+
+  , module Kafka.Protocol.Message.Struct
   ) where
 
 import           Data.Int
