@@ -72,7 +72,7 @@ COMPACT_NULLABLE_TYPE_MAPS = {
 
 GLOBAL_API_VERSION_PATCH = (0, 0)
 API_VERSION_PATCHES = {
-    "ApiVersions": (0, 2),
+    "ApiVersions": (0, 3),
     "Metadata": (0, 1),
     "Produce": (0, 2),
 }

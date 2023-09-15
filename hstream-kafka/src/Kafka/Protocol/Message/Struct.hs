@@ -32,6 +32,39 @@ type ApiVersionV1 = ApiVersionV0
 
 type ApiVersionV2 = ApiVersionV0
 
+data ApiVersionV3 = ApiVersionV3
+  { apiKey       :: {-# UNPACK #-} !ApiKey
+    -- ^ The API index.
+  , minVersion   :: {-# UNPACK #-} !Int16
+    -- ^ The minimum supported version, inclusive.
+  , maxVersion   :: {-# UNPACK #-} !Int16
+    -- ^ The maximum supported version, inclusive.
+  , taggedFields :: !TaggedFields
+  } deriving (Show, Generic)
+instance Serializable ApiVersionV3
+
+data SupportedFeatureKeyV3 = SupportedFeatureKeyV3
+  { name         :: !CompactString
+    -- ^ The name of the feature.
+  , minVersion   :: {-# UNPACK #-} !Int16
+    -- ^ The minimum supported version for the feature.
+  , maxVersion   :: {-# UNPACK #-} !Int16
+    -- ^ The maximum supported version for the feature.
+  , taggedFields :: !TaggedFields
+  } deriving (Show, Generic)
+instance Serializable SupportedFeatureKeyV3
+
+data FinalizedFeatureKeyV3 = FinalizedFeatureKeyV3
+  { name            :: !CompactString
+    -- ^ The name of the feature.
+  , maxVersionLevel :: {-# UNPACK #-} !Int16
+    -- ^ The cluster-wide finalized max version level for the feature.
+  , minVersionLevel :: {-# UNPACK #-} !Int16
+    -- ^ The cluster-wide finalized min version level for the feature.
+  , taggedFields    :: !TaggedFields
+  } deriving (Show, Generic)
+instance Serializable FinalizedFeatureKeyV3
+
 data CreatableReplicaAssignmentV0 = CreatableReplicaAssignmentV0
   { partitionIndex :: {-# UNPACK #-} !Int32
     -- ^ The partition index.
@@ -428,6 +461,15 @@ type ApiVersionsRequestV1 = ApiVersionsRequestV0
 
 type ApiVersionsRequestV2 = ApiVersionsRequestV0
 
+data ApiVersionsRequestV3 = ApiVersionsRequestV3
+  { clientSoftwareName    :: !CompactString
+    -- ^ The name of the client.
+  , clientSoftwareVersion :: !CompactString
+    -- ^ The version of the client.
+  , taggedFields          :: !TaggedFields
+  } deriving (Show, Generic)
+instance Serializable ApiVersionsRequestV3
+
 data ApiVersionsResponseV0 = ApiVersionsResponseV0
   { errorCode :: {-# UNPACK #-} !ErrorCode
     -- ^ The top-level error code.
@@ -448,6 +490,18 @@ data ApiVersionsResponseV1 = ApiVersionsResponseV1
 instance Serializable ApiVersionsResponseV1
 
 type ApiVersionsResponseV2 = ApiVersionsResponseV1
+
+data ApiVersionsResponseV3 = ApiVersionsResponseV3
+  { errorCode      :: {-# UNPACK #-} !ErrorCode
+    -- ^ The top-level error code.
+  , apiKeys        :: !(CompactKaArray ApiVersionV3)
+    -- ^ The APIs supported by the broker.
+  , throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
+  , taggedFields   :: !TaggedFields
+  } deriving (Show, Generic)
+instance Serializable ApiVersionsResponseV3
 
 data CreateTopicsRequestV0 = CreateTopicsRequestV0
   { topics    :: !(KaArray CreatableTopicV0)
@@ -908,6 +962,21 @@ instance HasMethodImpl HStreamKafkaV2 "apiVersions" where
   type MethodInput HStreamKafkaV2 "apiVersions" = ApiVersionsRequestV2
   type MethodOutput HStreamKafkaV2 "apiVersions" = ApiVersionsResponseV2
 
+data HStreamKafkaV3
+
+instance Service HStreamKafkaV3 where
+  type ServiceName HStreamKafkaV3 = "HStreamKafkaV3"
+  type ServiceMethods HStreamKafkaV3 =
+    '[ "apiVersions"
+     ]
+
+instance HasMethodImpl HStreamKafkaV3 "apiVersions" where
+  type MethodName HStreamKafkaV3 "apiVersions" = "apiVersions"
+  type MethodKey HStreamKafkaV3 "apiVersions" = 18
+  type MethodVersion HStreamKafkaV3 "apiVersions" = 3
+  type MethodInput HStreamKafkaV3 "apiVersions" = ApiVersionsRequestV3
+  type MethodOutput HStreamKafkaV3 "apiVersions" = ApiVersionsResponseV3
+
 -------------------------------------------------------------------------------
 
 newtype ApiKey = ApiKey Int16
@@ -947,7 +1016,7 @@ supportedApiVersions =
   , ApiVersionV0 (ApiKey 14) 0 0
   , ApiVersionV0 (ApiKey 15) 0 0
   , ApiVersionV0 (ApiKey 16) 0 0
-  , ApiVersionV0 (ApiKey 18) 0 2
+  , ApiVersionV0 (ApiKey 18) 0 3
   , ApiVersionV0 (ApiKey 19) 0 0
   , ApiVersionV0 (ApiKey 20) 0 0
   ]
@@ -972,6 +1041,7 @@ getHeaderVersion (ApiKey 16) 0 = (1, 0)
 getHeaderVersion (ApiKey 18) 0 = (1, 0)
 getHeaderVersion (ApiKey 18) 1 = (1, 0)
 getHeaderVersion (ApiKey 18) 2 = (1, 0)
+getHeaderVersion (ApiKey 18) 3 = (2, 0)
 getHeaderVersion (ApiKey 19) 0 = (1, 0)
 getHeaderVersion (ApiKey 20) 0 = (1, 0)
 getHeaderVersion k v           = error $ "Unknown " <> show k <> " v" <> show v

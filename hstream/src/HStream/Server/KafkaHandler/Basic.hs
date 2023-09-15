@@ -3,6 +3,7 @@ module HStream.Server.KafkaHandler.Basic
     handleApiversionsV0
   , handleApiversionsV1
   , handleApiversionsV2
+  , handleApiversionsV3
     -- 3: Metadata
   , handleMetadataV0
   , handleMetadataV1
@@ -25,6 +26,7 @@ import           HStream.Server.Types        (ServerContext (..),
                                               transToStreamName)
 import qualified HStream.Store               as S
 import qualified HStream.Utils               as Utils
+import qualified Kafka.Protocol.Encoding     as K
 import qualified Kafka.Protocol.Error        as K
 import qualified Kafka.Protocol.Message      as K
 import qualified Kafka.Protocol.Service      as K
@@ -47,6 +49,17 @@ handleApiversionsV1 _ _ = do
 handleApiversionsV2
   :: K.RequestContext -> K.ApiVersionsRequestV2 -> IO K.ApiVersionsResponseV2
 handleApiversionsV2 = handleApiversionsV1
+
+handleApiversionsV3
+  :: K.RequestContext -> K.ApiVersionsRequestV3 -> IO K.ApiVersionsResponseV3
+handleApiversionsV3 _ req = do
+  let apiKeys = K.CompactKaArray
+              . Just
+              . (V.map apiVersionV0ToV3)
+              . V.fromList
+              $ K.supportedApiVersions
+  pure $ K.ApiVersionsResponseV3 K.NONE apiKeys 0{- throttle_time_ms -}
+                                 K.EmptyTaggedFields
 
 --------------------
 --  3: Metadata
@@ -143,3 +156,9 @@ handleMetadataV1 ctx@ServerContext{..} _ req = do
                            }
               return $
                 K.MetadataResponseTopicV1 K.NONE topicName False (Just respPartitions)
+
+-------------------------------------------------------------------------------
+
+apiVersionV0ToV3 :: K.ApiVersionV0 -> K.ApiVersionV3
+apiVersionV0ToV3 K.ApiVersionV0{..} =
+  let taggedFields = K.EmptyTaggedFields in K.ApiVersionV3{..}
