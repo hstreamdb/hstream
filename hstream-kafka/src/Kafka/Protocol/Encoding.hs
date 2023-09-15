@@ -287,6 +287,29 @@ instance Serializable a => Serializable (RecordArray a) where
   put (RecordArray xs) = putRecordArray xs
   {-# INLINE put #-}
 
+instance
+  ( Serializable a
+  , Serializable b
+  ) => Serializable (a, b)
+instance
+  ( Serializable a
+  , Serializable b
+  , Serializable c
+  ) => Serializable (a, b, c)
+instance
+  ( Serializable a
+  , Serializable b
+  , Serializable c
+  , Serializable d
+  ) => Serializable (a, b, c, d)
+instance
+  ( Serializable a
+  , Serializable b
+  , Serializable c
+  , Serializable d
+  , Serializable e
+  ) => Serializable (a, b, c, d, e)
+
 -------------------------------------------------------------------------------
 -- Records
 
@@ -482,8 +505,6 @@ decodeLegacyRecordBatch batchBs = Growing.new >>= decode batchBs
 -- Introduced in Kafka 0.11.0
 
 type RecordHeader = (RecordHeaderKey, RecordHeaderValue)
-
-instance Serializable RecordHeader
 
 data RecordV2 = RecordV2
   { length         :: {-# UNPACK #-} !VarInt32

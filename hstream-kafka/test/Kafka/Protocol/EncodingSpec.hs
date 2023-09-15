@@ -5,6 +5,7 @@ module Kafka.Protocol.EncodingSpec (spec) where
 
 import           Control.Exception
 import           Data.ByteString            (ByteString)
+import qualified Data.ByteString            as BS
 import qualified Data.ByteString.Lazy       as BL
 import           Data.Int
 import           Data.Text                  (Text)
@@ -17,12 +18,14 @@ import           Test.QuickCheck.Instances  ()
 import           Test.QuickCheck.Special
 
 import           Kafka.Protocol.Encoding
+import           Kafka.Protocol.Message
 import           Kafka.QuickCheck.Instances ()
 
 spec :: Spec
 spec = do
   baseSpec
   genericSpec
+  realSpec
 
 encodingProp :: (Eq a, Show a, Serializable a) => a -> Property
 encodingProp x = ioProperty $ (x ===) <$> runGet (runPut x)
@@ -97,3 +100,42 @@ genericSpec = describe "Kafka.Protocol.Encoding" $ do
            runPut someMsg `shouldBe` putSomeMsg someMsg
            getSomeMsg (runPut someMsg) `shouldReturn` someMsg
            runGet (putSomeMsg someMsg) `shouldReturn` someMsg
+
+-------------------------------------------------------------------------------
+
+-- Real world tests
+realSpec :: Spec
+realSpec = describe "Kafka.Protocol.Encoding" $ do
+  it "From real world kafka-python: request header v1" $ do
+    let clientReqBs = "\NUL\NUL\NUL \NUL\DC2\NUL\NUL\NUL\NUL\NUL\SOH\NUL\SYN"
+                   <> "kafka-python-2.0.3-dev"
+    let reqHeader = RequestHeader (ApiKey 18) 0 1
+                                  (Right $ Just "kafka-python-2.0.3-dev")
+                                  (Left Unsupported)
+        reqBody = ApiVersionsRequestV0
+        reqHeaderBs = runPut reqHeader
+        reqBodyBs = runPut reqBody
+        reqBs = reqHeaderBs <> reqBodyBs
+        reqLen = fromIntegral (BS.length reqBs) :: Int32
+    (runPut reqLen <> reqBs) `shouldBe` clientReqBs
+    runGet clientReqBs `shouldReturn` (reqLen, reqHeader, reqBody)
+
+  it "From real world confluent-kafka-python: request header v2" $ do
+    let clientReqBs = "\NUL\NUL\NULM\NUL\DC2\NUL\ETX\NUL\NUL\NUL\SOH\NUL\SYN"
+                   <> "confluent_kafka_client\NUL\ETBconfluent-kafka-python\DC4"
+                   <> "2.2.0-rdkafka-2.2.0\NUL"
+    let reqHeader = RequestHeader
+                      (ApiKey 18) 3 1
+                      (Right $ Just "confluent_kafka_client")
+                      (Right EmptyTaggedFields)
+        reqBody = ApiVersionsRequestV3
+                    (CompactString "confluent-kafka-python")
+                    (CompactString "2.2.0-rdkafka-2.2.0")
+                    EmptyTaggedFields
+        reqHeaderBs = runPut reqHeader
+        reqBodyBs = runPut reqBody
+        reqBs = reqHeaderBs <> reqBodyBs
+        reqLen = fromIntegral (BS.length reqBs) :: Int32
+
+    (runPut reqLen <> reqBs) `shouldBe` clientReqBs
+    runGet clientReqBs `shouldReturn` (reqLen, reqHeader, reqBody)
