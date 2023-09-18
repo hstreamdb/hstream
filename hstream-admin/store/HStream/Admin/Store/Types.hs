@@ -393,6 +393,7 @@ data UpdateLogsOpts = UpdateLogsOpts
   , updateReplicationFactor :: Maybe Int
   , updateSyncedCopies      :: Maybe Int
   , updateBacklogDuration   :: Maybe Int
+  , updateReplicateAcross   :: [(S.NodeLocationScope, Int)]
   , updateExtras            :: Map.Map CBytes CBytes
   } deriving (Show)
 
@@ -424,6 +425,11 @@ updateLogsOptsParser = UpdateLogsOpts
      <> help ( "Duration that a record can exist in the log before it expires and"
             <> "gets deleted (in senconds). Valid value must be at least 1 second.")
       ))
+  <*> (many (option parseLogReplicateAcross
+             ( long "replicate-across"
+             <> metavar "SCOPE:REPLICATE"
+             <> help "Cross-domain replication. Valid scopes: [node|rack|row|cluster|region|root]"
+             )))
   <*> (Map.fromList <$> many (option parseLogExtraAttr
                               ( long "extra-attributes"
                               <> metavar "KEY:VALUE"
@@ -479,6 +485,34 @@ logIDParser = option auto ( long "id"
                           <> metavar "LOGID"
                           <> help "the log ID to query"
                           )
+
+parseLogReplicateAcross :: ReadM (S.NodeLocationScope, Int)
+parseLogReplicateAcross = eitherReader $ parse . V.packASCII
+  where
+    parse :: Bytes -> Either String (S.NodeLocationScope, Int)
+    parse bs =
+      case P.parse' parser bs of
+        Left er -> Left $ "cannot parse value: " <> show er
+        Right i -> Right i
+    parser = do
+      P.skipSpaces
+      n <- P.takeTill (== c2w ':')
+      P.char8 ':'
+      s <- P.int
+      P.skipSpaces
+      return (bytesToNodeLocationScope n, s)
+
+    bytesToNodeLocationScope :: Bytes -> S.NodeLocationScope
+    bytesToNodeLocationScope bs =
+      case fromBytes bs of
+        "node"        -> S.NodeLocationScope_NODE
+        "rack"        -> S.NodeLocationScope_RACK
+        "row"         -> S.NodeLocationScope_ROW
+        "cluster"     ->  S.NodeLocationScope_CLUSTER
+        "data-center" -> S.NodeLocationScope_DATA_CENTER
+        "region"      -> S.NodeLocationScope_REGION
+        "root"        -> S.NodeLocationScope_ROOT
+        _             -> S.NodeLocationScope_INVALID
 
 parseLogExtraAttr :: ReadM (CBytes, CBytes)
 parseLogExtraAttr = eitherReader $ parse . V.packASCII
