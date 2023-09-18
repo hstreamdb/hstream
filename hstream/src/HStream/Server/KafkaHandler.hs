@@ -4,10 +4,11 @@
 module HStream.Server.KafkaHandler (handlers) where
 
 import           HStream.Server.KafkaHandler.Basic
+import           HStream.Server.KafkaHandler.Produce
 import           HStream.Server.KafkaHandler.Topic
-import           HStream.Server.Types              (ServerContext (..))
-import qualified Kafka.Protocol.Message            as K
-import qualified Kafka.Protocol.Service            as K
+import           HStream.Server.Types                (ServerContext (..))
+import qualified Kafka.Protocol.Message              as K
+import qualified Kafka.Protocol.Service              as K
 
 handlers :: ServerContext -> [K.ServiceHandler]
 handlers sc =
@@ -22,4 +23,6 @@ handlers sc =
   , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "createTopics") (handleCreateTopicsV0 sc)
 
   , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "deleteTopics") (handleDeleteTopicsV0 sc)
+
+  , K.hd (K.RPC :: K.RPC K.HStreamKafkaV2 "produce") (handleProduceV2 sc)
   ]

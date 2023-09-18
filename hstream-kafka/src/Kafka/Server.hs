@@ -82,10 +82,10 @@ runServer ServerOptions{..} handlers =
         Fail _ err -> E.throwIO $ DecodeError $ "Fail, " <> err
         More _ -> E.throwIO $ DecodeError $ "More"
 
-    findHandler (ApiKey key) version = do
+    findHandler apikey@(ApiKey key) version = do
       let m_handler = find (\ServiceHandler{..} ->
             rpcMethod == (key, version)) handlers
-          errmsg = "NotImplemented: " <> show key <> ":v" <> show version
+          errmsg = "NotImplemented: " <> show apikey <> ":v" <> show version
       fromMaybe (error errmsg) m_handler
 
 -- from the "network-run" package.
