@@ -13,6 +13,8 @@ deriving instance Arbitrary CompactString
 deriving instance Arbitrary CompactNullableString
 deriving instance Arbitrary CompactBytes
 deriving instance Arbitrary CompactNullableBytes
+deriving instance Arbitrary a => Arbitrary (KaArray a)
+deriving instance Arbitrary a => Arbitrary (CompactKaArray a)
 
 deriving instance SpecialValues VarInt32
 deriving instance SpecialValues VarInt64
