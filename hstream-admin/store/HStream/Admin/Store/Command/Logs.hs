@@ -11,6 +11,7 @@ import           Control.Monad                    (forM_, guard, unless, when,
                                                    (>=>))
 import           Data.Bits                        (shiftR, (.&.))
 import           Data.Char                        (toUpper)
+import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (fromJust, isJust, isNothing)
 import           Foreign.ForeignPtr               (withForeignPtr)
@@ -53,12 +54,15 @@ runLogsUpdate conf UpdateLogsOpts{..} = do
         case res of
           Right loggroup         -> S.logGroupGetAttrs loggroup
           Left (_ :: S.NOTFOUND) -> S.logDirectoryGetAttrs =<< S.getLogDirectory client updatePath
+      putStrLn $ "updateReplicateAcross: " <> show updateReplicateAcross
       let attrs' =
             attrs { logReplicationFactor = maybe logReplicationFactor S.defAttr1 updateReplicationFactor
                   , logSyncedCopies = maybe logSyncedCopies S.defAttr1 updateSyncedCopies
                   , logBacklogDuration = maybe logBacklogDuration (S.defAttr1 . Just) updateBacklogDuration
+                  , logReplicateAcross = updateRepAcross updateReplicateAcross logReplicateAcross
                   , logAttrsExtras = updateExtras `Map.union` logAttrsExtras
                   }
+      putStrLn $ "new attrs: " <> show attrs'
       attrsPtr <- S.pokeLogAttributes attrs'
       withForeignPtr attrsPtr $ S.ldWriteAttributes client updatePath
     case res of
@@ -68,6 +72,12 @@ runLogsUpdate conf UpdateLogsOpts{..} = do
       Left (e :: S.SomeHStoreException) ->
         putStrLn . formatWith [red] $ "Cannot update attributes for "
         <> show updatePath <> " for reason: " <> show e
+ where
+   updateRepAcross :: S.ScopeReplicationFactors -> S.Attribute S.ScopeReplicationFactors -> S.Attribute S.ScopeReplicationFactors
+   updateRepAcross r1 originAttr =
+     case S.attrValue originAttr of
+       Just r2 -> S.defAttr1 $ L.unionBy (\(k1,_) (k2,_) -> k1 == k2) r1 r2
+       Nothing -> S.defAttr1 r1
 
 runLogsInfo :: HeaderConfig AdminAPI -> S.C_LogID -> IO ()
 runLogsInfo conf logid = do
@@ -245,6 +255,7 @@ printLogAttributes level LogAttributes{..} = do
   emit $ _SHOW_ATTR(logReplicationFactor)
   emit $ _SHOW_ATTR(logSyncedCopies)
   emit $ _SHOW_ATTR(logBacklogDuration)
+  emit $ _SHOW_ATTR(logReplicateAcross)
   forM_ (Map.toList logAttrsExtras) $ \(k, v) ->
     emit $ unpack k <> ": " <> unpack v
 #undef _SHOW_ATTR
