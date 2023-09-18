@@ -54,7 +54,6 @@ runLogsUpdate conf UpdateLogsOpts{..} = do
         case res of
           Right loggroup         -> S.logGroupGetAttrs loggroup
           Left (_ :: S.NOTFOUND) -> S.logDirectoryGetAttrs =<< S.getLogDirectory client updatePath
-      putStrLn $ "updateReplicateAcross: " <> show updateReplicateAcross
       let attrs' =
             attrs { logReplicationFactor = maybe logReplicationFactor S.defAttr1 updateReplicationFactor
                   , logSyncedCopies = maybe logSyncedCopies S.defAttr1 updateSyncedCopies
@@ -62,7 +61,6 @@ runLogsUpdate conf UpdateLogsOpts{..} = do
                   , logReplicateAcross = updateRepAcross updateReplicateAcross logReplicateAcross
                   , logAttrsExtras = updateExtras `Map.union` logAttrsExtras
                   }
-      putStrLn $ "new attrs: " <> show attrs'
       attrsPtr <- S.pokeLogAttributes attrs'
       withForeignPtr attrsPtr $ S.ldWriteAttributes client updatePath
     case res of
