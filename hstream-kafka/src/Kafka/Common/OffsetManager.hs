@@ -68,7 +68,7 @@ withOffsetN m@OffsetManager{..} logid n f = do
       f o'
 
 cleanOffsetCache :: OffsetManager -> Word64 -> IO ()
-cleanOffsetCache OffsetManager{..} logid = H.delete offsets logid
+cleanOffsetCache OffsetManager{..} = H.delete offsets
 
 getOldestOffset :: HasCallStack => OffsetManager -> Word64 -> IO (Maybe Int64)
 getOldestOffset OffsetManager{..} logid = do

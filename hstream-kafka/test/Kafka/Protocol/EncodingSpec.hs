@@ -56,7 +56,7 @@ baseSpec = describe "Kafka.Protocol.Encoding" $ do
   prop "CompactNullableString" $ \(Special @CompactNullableString x) -> encodingProp x
   prop "CompactBytes" $ \(Special @CompactBytes x) -> encodingProp x
   prop "CompactNullableBytes" $ \(Special @CompactNullableBytes x) -> encodingProp x
-
+  -- KaArray
   prop "KaArray Bool" $ \(x :: KaArray Bool) -> encodingProp x
   prop "KaArray Int8" $ \(x :: KaArray Int8) -> encodingProp x
   prop "KaArray NullableBytes" $ \(x :: KaArray NullableBytes) -> encodingProp x
@@ -64,6 +64,14 @@ baseSpec = describe "Kafka.Protocol.Encoding" $ do
   prop "KaArray VarInt32" $ \(x :: KaArray VarInt32) -> encodingProp x
   prop "KaArray CompactBytes" $ \(x :: KaArray CompactBytes) -> encodingProp x
   prop "KaArray KaArray CompactBytes" $ \(x :: KaArray (KaArray CompactBytes)) -> encodingProp x
+  -- CompactKaArray
+  prop "CompactKaArray Bool" $ \(x :: CompactKaArray Bool) -> encodingProp x
+  prop "CompactKaArray Int8" $ \(x :: CompactKaArray Int8) -> encodingProp x
+  prop "CompactKaArray NullableBytes" $ \(x :: CompactKaArray NullableBytes) -> encodingProp x
+  prop "CompactKaArray NullableString" $ \(x :: CompactKaArray NullableString) -> encodingProp x
+  prop "CompactKaArray VarInt32" $ \(x :: CompactKaArray VarInt32) -> encodingProp x
+  prop "CompactKaArray CompactBytes" $ \(x :: CompactKaArray CompactBytes) -> encodingProp x
+  prop "CompactKaArray KaArray CompactBytes" $ \(x :: CompactKaArray (KaArray CompactBytes)) -> encodingProp x
 
 -------------------------------------------------------------------------------
 
@@ -95,7 +103,9 @@ getSomeMsg bs =
 genericSpec :: Spec
 genericSpec = describe "Kafka.Protocol.Encoding" $ do
   it "Generic instance" $
-    let someMsg = SomeMsg 10 (Just "x") 10 (Just [1, 1]) (Just [Just ["x"]])
+    let someMsg = SomeMsg 10 (Just "x") 10
+                          (KaArray $ Just [1, 1])
+                          (KaArray $ Just [KaArray $ Just ["x"]])
      in do runGet (runPut someMsg) `shouldReturn` someMsg
            runPut someMsg `shouldBe` putSomeMsg someMsg
            getSomeMsg (runPut someMsg) `shouldReturn` someMsg

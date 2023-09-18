@@ -26,6 +26,7 @@ import qualified HStream.Stats           as Stats
 import qualified HStream.Store           as S
 import qualified HStream.Utils           as Utils
 
+import qualified Kafka.Protocol.Encoding as K
 import qualified Kafka.Protocol.Error    as K
 import qualified Kafka.Protocol.Message  as K
 import qualified Kafka.Protocol.Service  as K
@@ -38,15 +39,15 @@ handleCreateTopicsV0
   :: HsTypes.ServerContext -> K.RequestContext -> K.CreateTopicsRequestV0 -> IO K.CreateTopicsResponseV0
 handleCreateTopicsV0 ctx _ K.CreateTopicsRequestV0{..} =
   case topics of
-    Nothing     ->
+    K.KaArray Nothing ->
       -- FIXME: We return `[]` when topics is `Nothing`.
       --        Is this proper?
-      return $ K.CreateTopicsResponseV0 (Just V.empty)
-    Just topics_
-      | V.null topics_ -> return $ K.CreateTopicsResponseV0 (Just V.empty)
+      return $ K.CreateTopicsResponseV0 (K.KaArray $ Just V.empty)
+    K.KaArray (Just topics_)
+      | V.null topics_ -> return $ K.CreateTopicsResponseV0 (K.KaArray $ Just V.empty)
       | otherwise     -> do
           respTopics <- forM topics_ createTopic
-          return $ K.CreateTopicsResponseV0 (Just respTopics)
+          return $ K.CreateTopicsResponseV0 (K.KaArray $ Just respTopics)
   where
     createTopic :: K.CreatableTopicV0 -> IO K.CreatableTopicResultV0
     createTopic K.CreatableTopicV0{..}
@@ -95,12 +96,12 @@ handleDeleteTopicsV0
   :: HsTypes.ServerContext -> K.RequestContext -> K.DeleteTopicsRequestV0 -> IO K.DeleteTopicsResponseV0
 handleDeleteTopicsV0 ctx _ K.DeleteTopicsRequestV0{..} =
   case topicNames of
-    Nothing     ->
+    K.KaArray Nothing ->
       -- FIXME: We return `[]` when topics is `Nothing`.
       --        Is this proper?
-      return $ K.DeleteTopicsResponseV0 (Just V.empty)
-    Just topicNames_
-      | V.null topicNames_ -> return $ K.DeleteTopicsResponseV0 (Just V.empty)
+      return $ K.DeleteTopicsResponseV0 (K.KaArray $ Just V.empty)
+    K.KaArray (Just topicNames_)
+      | V.null topicNames_ -> return $ K.DeleteTopicsResponseV0 (K.KaArray $ Just V.empty)
       | otherwise     -> do
           respTopics <- forM topicNames_ $ \topicName -> do
             try (deleteTopic topicName) >>= \case
@@ -108,7 +109,7 @@ handleDeleteTopicsV0 ctx _ K.DeleteTopicsRequestV0{..} =
                 Log.warning $ "Exception occurs when deleting topic " <> Log.build topicName <> ": " <> Log.build (show e)
                 return $ K.DeletableTopicResultV0 topicName K.UNKNOWN_SERVER_ERROR
               Right res -> return res
-          return $ K.DeleteTopicsResponseV0 (Just respTopics)
+          return $ K.DeleteTopicsResponseV0 (K.KaArray $ Just respTopics)
   where
     -- FIXME: There can be some potential exceptions which are difficult to
     --        classify using Kafka's error code. So this function may throw
