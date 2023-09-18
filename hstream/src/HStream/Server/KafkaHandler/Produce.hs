@@ -41,8 +41,6 @@ handleProduceV2
   -> K.ProduceRequestV2
   -> IO K.ProduceResponseV2
 handleProduceV2 ServerContext{..} _ req@K.ProduceRequestV0{..} = do
-  Log.debug $ Log.buildString $ "received request " <> show req
-
   -- TODO: handle request args: acks, timeoutMs
 
   let topicData' = fromMaybe V.empty (K.unKaArray topicData)

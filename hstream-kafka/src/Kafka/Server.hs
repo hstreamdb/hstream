@@ -16,6 +16,7 @@ import qualified Network.Socket                 as N
 import qualified Network.Socket.ByteString      as N
 import qualified Network.Socket.ByteString.Lazy as NL
 
+import qualified HStream.Logger                 as Log
 import           Kafka.Protocol.Encoding
 import           Kafka.Protocol.Message
 import           Kafka.Protocol.Service
@@ -68,7 +69,9 @@ runServer ServerOptions{..} handlers =
           case rpcHandler of
             UnaryHandler rpcHandler' -> do
               req <- runGet l
+              Log.debug $ "Received request: " <> Log.buildString' req
               resp <- rpcHandler' RequestContext req
+              Log.debug $ "Server response: " <> Log.buildString' resp
               let respBs = runPutLazy resp
                   (_, respHeaderVer) = getHeaderVersion requestApiKey requestApiVersion
                   respHeaderBs =
