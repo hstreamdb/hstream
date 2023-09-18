@@ -32,7 +32,9 @@ type UnaryHandler i o = RequestContext -> i -> IO o
 
 data RpcHandler where
   UnaryHandler
-    :: (Serializable i, Serializable o) => UnaryHandler i o -> RpcHandler
+    :: ( Serializable i, Serializable o
+       , Show i, Show o
+       ) => UnaryHandler i o -> RpcHandler
 
 instance Show RpcHandler where
   show (UnaryHandler _) = "<UnaryHandler>"
@@ -54,8 +56,8 @@ data ServiceHandler = ServiceHandler
   } deriving (Show)
 
 hd :: ( HasMethod s m
-      , Serializable i
-      , Serializable o
+      , Serializable i, Serializable o
+      , Show i, Show o
       , MethodInput s m ~ i
       , MethodOutput s m ~ o
       )

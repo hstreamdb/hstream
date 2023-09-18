@@ -203,6 +203,8 @@ newtype CompactKaArray a = CompactKaArray
   { unCompactKaArray :: Maybe (Vector a) }
   deriving newtype (Show, Eq, Ord)
 
+newtype RecordBytes = RecordBytes (Maybe ByteString)
+
 newtype RecordKey = RecordKey { unRecordKey :: Maybe ByteString }
   deriving newtype (Show, Eq, Ord)
 
