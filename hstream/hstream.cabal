@@ -124,6 +124,8 @@ library
     HStream.Server.Handler.Subscription
     HStream.Server.Handler.View
     HStream.Server.KafkaHandler.Basic
+    HStream.Server.KafkaHandler.Consume
+    HStream.Server.KafkaHandler.Produce
     HStream.Server.KafkaHandler.Topic
     HStream.Server.MetaData.Exception
     HStream.Server.MetaData.Types

@@ -24,7 +24,7 @@ module Kafka.Protocol.Encoding
   , CompactBytes (..)
   , CompactNullableBytes (..)
   , TaggedFields (EmptyTaggedFields)  -- TODO
-  , KaArray
+  , KaArray (..)
   , CompactKaArray (..)
     -- * Records
   , BatchRecord (..)
@@ -195,11 +195,15 @@ newtype CompactNullableBytes = CompactNullableBytes
 data TaggedFields = EmptyTaggedFields
   deriving (Show, Eq)
 
-type KaArray a = Maybe (Vector a)
+newtype KaArray a = KaArray
+  { unKaArray :: Maybe (Vector a) }
+  deriving newtype (Show, Eq, Ord)
 
 newtype CompactKaArray a = CompactKaArray
   { unCompactKaArray :: Maybe (Vector a) }
   deriving newtype (Show, Eq, Ord)
+
+newtype RecordBytes = RecordBytes (Maybe ByteString)
 
 newtype RecordKey = RecordKey { unRecordKey :: Maybe ByteString }
   deriving newtype (Show, Eq, Ord)
@@ -286,6 +290,29 @@ instance Serializable a => Serializable (RecordArray a) where
   {-# INLINE get #-}
   put (RecordArray xs) = putRecordArray xs
   {-# INLINE put #-}
+
+instance
+  ( Serializable a
+  , Serializable b
+  ) => Serializable (a, b)
+instance
+  ( Serializable a
+  , Serializable b
+  , Serializable c
+  ) => Serializable (a, b, c)
+instance
+  ( Serializable a
+  , Serializable b
+  , Serializable c
+  , Serializable d
+  ) => Serializable (a, b, c, d)
+instance
+  ( Serializable a
+  , Serializable b
+  , Serializable c
+  , Serializable d
+  , Serializable e
+  ) => Serializable (a, b, c, d, e)
 
 -------------------------------------------------------------------------------
 -- Records
@@ -483,8 +510,6 @@ decodeLegacyRecordBatch batchBs = Growing.new >>= decode batchBs
 
 type RecordHeader = (RecordHeaderKey, RecordHeaderValue)
 
-instance Serializable RecordHeader
-
 data RecordV2 = RecordV2
   { length         :: {-# UNPACK #-} !VarInt32
   , attributes     :: {-# UNPACK #-} !Int8
@@ -524,14 +549,14 @@ instance Serializable RecordBatch
 -- First, the length N is given as an INT32. Then N instances of type T follow.
 -- A null array is represented with a length of -1. In protocol documentation
 -- an array of T instances is referred to as [T].
-getArray :: Serializable a => Parser (Maybe (Vector a))
+getArray :: Serializable a => Parser (KaArray a)
 getArray = do
   !n <- getInt32
   if n >= 0
-     then Just <$!> V.replicateM (fromIntegral n) get
+     then KaArray . Just <$!> V.replicateM (fromIntegral n) get
      else do
        if n == (-1)
-          then pure Nothing
+          then pure $ KaArray Nothing
           else fail $! "Length of null array must be -1 " <> show n
 
 -- | Represents a sequence of objects of a given type T.
@@ -551,12 +576,12 @@ getCompactArray = do
           then pure Nothing
           else fail $! "Length of null compact array must be -1 " <> show n
 
-putArray :: Serializable a => Maybe (Vector a) -> Builder
-putArray (Just xs) =
+putArray :: Serializable a => KaArray a -> Builder
+putArray (KaArray (Just xs)) =
   let !len = V.length xs
       put_len = putInt32 (fromIntegral len)
    in put_len <> V.foldl' (\s x -> s <> put x) mempty xs
-putArray Nothing = putInt32 (-1)
+putArray (KaArray Nothing) = putInt32 (-1)
 
 putCompactArray :: Serializable a => Maybe (Vector a) -> Builder
 putCompactArray (Just xs) =

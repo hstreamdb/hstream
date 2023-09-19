@@ -37,13 +37,13 @@ import qualified Kafka.Protocol.Service      as K
 handleApiversionsV0
   :: K.RequestContext -> K.ApiVersionsRequestV0 -> IO K.ApiVersionsResponseV0
 handleApiversionsV0 _ _ = do
-  let apiKeys = Just $ V.fromList K.supportedApiVersions
+  let apiKeys = K.KaArray $ Just $ V.fromList K.supportedApiVersions
   pure $ K.ApiVersionsResponseV0 K.NONE apiKeys
 
 handleApiversionsV1
   :: K.RequestContext -> K.ApiVersionsRequestV1 -> IO K.ApiVersionsResponseV1
 handleApiversionsV1 _ _ = do
-  let apiKeys = Just $ V.fromList K.supportedApiVersions
+  let apiKeys = K.KaArray $ Just $ V.fromList K.supportedApiVersions
   pure $ K.ApiVersionsResponseV1 K.NONE apiKeys 0{- throttle_time_ms -}
 
 handleApiversionsV2
@@ -67,9 +67,9 @@ handleApiversionsV3 _ req = do
 handleMetadataV0
   :: ServerContext -> K.RequestContext -> K.MetadataRequestV0 -> IO K.MetadataResponseV0
 handleMetadataV0 ctx reqCtx req = do
-  (K.MetadataResponseV1 brokers _ topics) <- handleMetadataV1 ctx reqCtx req
-  return $ K.MetadataResponseV0 (V.map respBrokerV1toV0 <$> brokers)
-                                (V.map respTopicV1toV0  <$> topics)
+  (K.MetadataResponseV1 (K.KaArray brokers) _ (K.KaArray topics)) <- handleMetadataV1 ctx reqCtx req
+  return $ K.MetadataResponseV0 (K.KaArray $ V.map respBrokerV1toV0 <$> brokers)
+                                (K.KaArray $ V.map respTopicV1toV0  <$> topics)
 
   where
     respBrokerV1toV0 :: K.MetadataResponseBrokerV1 -> K.MetadataResponseBrokerV0
@@ -89,13 +89,13 @@ handleMetadataV1 ctx@ServerContext{..} _ req = do
   let ctlId = fromIntegral serverID
   let (K.MetadataRequestV0 reqTopics) = req
   case reqTopics of
-    Nothing -> returnAllTopics respBrokers ctlId
-    Just v
+    K.KaArray Nothing -> returnAllTopics respBrokers ctlId
+    K.KaArray (Just v)
       | V.null v  -> returnAllTopics respBrokers ctlId
       | otherwise -> do
           let topicNames = V.map (\K.MetadataRequestTopicV0{..} -> name) v
           respTopics <- forM topicNames getRespTopic
-          return $ K.MetadataResponseV1 (Just respBrokers) ctlId (Just respTopics)
+          return $ K.MetadataResponseV1 (K.KaArray $ Just respBrokers) ctlId (K.KaArray $ Just respTopics)
   where
     returnAllTopics :: V.Vector K.MetadataResponseBrokerV1
                     -> Int32
@@ -105,7 +105,7 @@ handleMetadataV1 ctx@ServerContext{..} _ req = do
       -- causing a potential overflow.
       allStreamNames <- S.findStreams scLDClient S.StreamTypeStream <&> (fmap (Utils.cBytesToText . S.streamName))
       respTopics <- forM allStreamNames getRespTopic <&> V.fromList
-      return $ K.MetadataResponseV1 (Just respBrokers_) ctlId_ (Just respTopics)
+      return $ K.MetadataResponseV1 (K.KaArray $ Just respBrokers_) ctlId_ (K.KaArray $ Just respTopics)
 
     getBrokers :: IO (V.Vector K.MetadataResponseBrokerV1)
     getBrokers = do
@@ -129,12 +129,12 @@ handleMetadataV1 ctx@ServerContext{..} _ req = do
         -- FIXME: Are the following error codes proper?
         -- FIXME: We passed `Nothing` as partitions when an error occurs. Is this proper?
         Left (_ :: SomeException) ->
-          return $ K.MetadataResponseTopicV1 K.UNKNOWN_TOPIC_OR_PARTITION topicName False Nothing
+          return $ K.MetadataResponseTopicV1 K.UNKNOWN_TOPIC_OR_PARTITION topicName False (K.KaArray Nothing)
         Right shards
           | V.null shards ->
-              return $ K.MetadataResponseTopicV1 K.INVALID_TOPIC_EXCEPTION topicName False Nothing
+              return $ K.MetadataResponseTopicV1 K.INVALID_TOPIC_EXCEPTION topicName False (K.KaArray Nothing)
           | V.length shards > fromIntegral (maxBound :: Int32) ->
-              return $ K.MetadataResponseTopicV1 K.INVALID_PARTITIONS topicName False Nothing
+              return $ K.MetadataResponseTopicV1 K.INVALID_PARTITIONS topicName False (K.KaArray Nothing)
           | otherwise -> do
               respPartitions <-
                 V.iforM shards $ \idx shardId -> do
@@ -151,11 +151,11 @@ handleMetadataV1 ctx@ServerContext{..} _ req = do
                            { errorCode      = K.NONE
                            , partitionIndex = (fromIntegral idx)
                            , leaderId       = theNodeId
-                           , replicaNodes   = Just (V.singleton theNodeId) -- FIXME: what should it be?
-                           , isrNodes       = Just (V.singleton theNodeId) -- FIXME: what should it be?
+                           , replicaNodes   = K.KaArray $ Just (V.singleton theNodeId) -- FIXME: what should it be?
+                           , isrNodes       = K.KaArray $ Just (V.singleton theNodeId) -- FIXME: what should it be?
                            }
               return $
-                K.MetadataResponseTopicV1 K.NONE topicName False (Just respPartitions)
+                K.MetadataResponseTopicV1 K.NONE topicName False (K.KaArray $ Just respPartitions)
 
 -------------------------------------------------------------------------------
 

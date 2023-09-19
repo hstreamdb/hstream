@@ -16,6 +16,7 @@ import qualified Network.Socket                 as N
 import qualified Network.Socket.ByteString      as N
 import qualified Network.Socket.ByteString.Lazy as NL
 
+import qualified HStream.Logger                 as Log
 import           Kafka.Protocol.Encoding
 import           Kafka.Protocol.Message
 import           Kafka.Protocol.Service
@@ -68,7 +69,9 @@ runServer ServerOptions{..} handlers =
           case rpcHandler of
             UnaryHandler rpcHandler' -> do
               req <- runGet l
+              Log.debug $ "Received request: " <> Log.buildString' req
               resp <- rpcHandler' RequestContext req
+              Log.debug $ "Server response: " <> Log.buildString' resp
               let respBs = runPutLazy resp
                   (_, respHeaderVer) = getHeaderVersion requestApiKey requestApiVersion
                   respHeaderBs =
@@ -82,10 +85,10 @@ runServer ServerOptions{..} handlers =
         Fail _ err -> E.throwIO $ DecodeError $ "Fail, " <> err
         More _ -> E.throwIO $ DecodeError $ "More"
 
-    findHandler (ApiKey key) version = do
+    findHandler apikey@(ApiKey key) version = do
       let m_handler = find (\ServiceHandler{..} ->
             rpcMethod == (key, version)) handlers
-          errmsg = "NotImplemented: " <> show key <> ":v" <> show version
+          errmsg = "NotImplemented: " <> show apikey <> ":v" <> show version
       fromMaybe (error errmsg) m_handler
 
 -- from the "network-run" package.

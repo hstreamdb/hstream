@@ -209,7 +209,7 @@ class HsData:
                 for f in self.fields
             )
             data_fields = "  { " + data_fields + "\n  }"
-        derivings = " deriving (Show, Generic)"
+        derivings = " deriving (Show, Eq, Generic)"
         derivings += f"\ninstance Serializable {self._name}"
 
         data_doc = format_doc(self.doc)

@@ -13,6 +13,7 @@ module HStream.Utils.Converter
     --
   , bs2str
   , lbs2text
+  , int2cbytes
   , cBytesToText
   , cbytes2bs
   , cBytesToLazyText
@@ -139,6 +140,10 @@ valueToZJsonValue (PB.Value Nothing) = error "Nothing encountered"
 -- The following line of code is not used but to fix a warning
 valueToZJsonValue (PB.Value (Just _)) = error "impossible happened"
 
+int2cbytes :: (Integral a, Bounded a) => a -> ZCB.CBytes
+int2cbytes = ZCB.buildCBytes . Build.int
+{-# INLINE int2cbytes #-}
+
 cBytesToText :: ZCB.CBytes -> Text
 cBytesToText = Text.pack . ZCB.unpack
 
@@ -165,6 +170,7 @@ textToMaybeValue = Just . PB.Value . Just . PB.ValueKindStringValue
 
 textToCBytes :: Text -> ZCB.CBytes
 textToCBytes = ZCB.pack . Text.unpack
+{-# INLINE textToCBytes #-}
 
 lazyTextToCBytes :: TL.Text -> ZCB.CBytes
 lazyTextToCBytes = textToCBytes . TL.toStrict
