@@ -45,12 +45,12 @@ library
   exposed-modules:
     Kafka.Common.OffsetManager
     Kafka.Common.RecordFormat
+    Kafka.Network
     Kafka.Protocol
     Kafka.Protocol.Encoding
     Kafka.Protocol.Error
     Kafka.Protocol.Message
     Kafka.Protocol.Service
-    Kafka.Server
 
   other-modules:
     Kafka.Protocol.Encoding.Encode
