@@ -1,4 +1,4 @@
-module Kafka.Server
+module Kafka.Network
   ( ServerOptions
   , defaultServerOpts
   , runServer
