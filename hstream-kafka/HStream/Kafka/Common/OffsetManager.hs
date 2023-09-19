@@ -1,6 +1,6 @@
 {-# LANGUAGE BangPatterns #-}
 
-module Kafka.Common.OffsetManager
+module HStream.Kafka.Common.OffsetManager
   ( OffsetManager
   , newOffsetManager
   , withOffset
@@ -13,16 +13,16 @@ module Kafka.Common.OffsetManager
 import           Control.Concurrent
 import           Control.Exception
 import           Control.Monad
-import           Data.ByteString                  (ByteString)
-import qualified Data.HashTable.IO                as H
+import           Data.ByteString                   (ByteString)
+import qualified Data.HashTable.IO                 as H
 import           Data.Int
 import           Data.Word
-import           GHC.Stack                        (HasCallStack)
+import           GHC.Stack                         (HasCallStack)
 
-import qualified HStream.Store                    as S
-import qualified HStream.Store.Internal.LogDevice as S
-import           Kafka.Common.RecordFormat
-import qualified Kafka.Protocol.Encoding          as K
+import           HStream.Kafka.Common.RecordFormat
+import qualified HStream.Store                     as S
+import qualified HStream.Store.Internal.LogDevice  as S
+import qualified Kafka.Protocol.Encoding           as K
 
 -------------------------------------------------------------------------------
 
