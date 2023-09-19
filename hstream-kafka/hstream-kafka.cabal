@@ -40,11 +40,9 @@ common shared-properties
       -fspec-constr-keen -fstatic-argument-transformation
       -funbox-strict-fields -O2
 
-library
+library kafka-protocol
   import:             shared-properties
   exposed-modules:
-    Kafka.Common.OffsetManager
-    Kafka.Common.RecordFormat
     Kafka.Network
     Kafka.Protocol
     Kafka.Protocol.Encoding
@@ -58,15 +56,67 @@ library
     Kafka.Protocol.Encoding.Parser
     Kafka.Protocol.Message.Struct
 
-  hs-source-dirs:     src
+  hs-source-dirs:     protocol
   build-tool-depends: hpp:hpp >=0.6 && <0.7
   build-depends:
     , base                 >=4.11 && <5
+    , bytestring
+    , digest
+    , hstream-common-base
+    , network
+    , text
+    , vector
+
+  default-language:   GHC2021
+  default-extensions:
+    DerivingStrategies
+    LambdaCase
+    OverloadedStrings
+    RecordWildCards
+
+test-suite kafka-protocol-test
+  import:             shared-properties
+  type:               exitcode-stdio-1.0
+  main-is:            Spec.hs
+  other-modules:
+    Kafka.Protocol.EncodingSpec
+    Kafka.QuickCheck.Instances
+
+  hs-source-dirs:     protocol/test
+  build-depends:
+    , base                          >=4.11 && <5
+    , bytestring
+    , hspec
+    , hstream-kafka:kafka-protocol
+    , QuickCheck
+    , quickcheck-instances
+    , quickcheck-special            ^>=0.1
+    , text
+
+  default-extensions:
+    LambdaCase
+    OverloadedStrings
+    RecordWildCards
+
+  default-language:   GHC2021
+  build-tool-depends: hspec-discover:hspec-discover >=2 && <3
+  ghc-options:        -threaded -rtsopts -with-rtsopts=-N
+
+library
+  import:             shared-properties
+  exposed-modules:
+    HStream.Kafka.Common.OffsetManager
+    HStream.Kafka.Common.RecordFormat
+
+  hs-source-dirs:     .
+  build-depends:
+    , base                          >=4.11 && <5
     , bytestring
     , containers
     , digest
     , hashtables
     , hstream-common-base
+    , hstream-kafka:kafka-protocol
     , hstream-store
     , network
     , text
@@ -79,31 +129,3 @@ library
     LambdaCase
     OverloadedStrings
     RecordWildCards
-
-test-suite hstream-kafka-test
-  import:             shared-properties
-  type:               exitcode-stdio-1.0
-  main-is:            Spec.hs
-  other-modules:
-    Kafka.Protocol.EncodingSpec
-    Kafka.QuickCheck.Instances
-
-  hs-source-dirs:     test
-  build-depends:
-    , base                  >=4.11 && <5
-    , bytestring
-    , hspec
-    , hstream-kafka
-    , QuickCheck
-    , quickcheck-instances
-    , quickcheck-special    ^>=0.1
-    , text
-
-  default-extensions:
-    LambdaCase
-    OverloadedStrings
-    RecordWildCards
-
-  default-language:   GHC2021
-  build-tool-depends: hspec-discover:hspec-discover >=2 && <3
-  ghc-options:        -threaded -rtsopts -with-rtsopts=-N
