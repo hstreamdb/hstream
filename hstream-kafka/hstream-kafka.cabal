@@ -45,6 +45,7 @@ library
   exposed-modules:
     Kafka.Common.OffsetManager
     Kafka.Common.RecordFormat
+    Kafka.Group.GroupMetadataManager
     Kafka.Protocol
     Kafka.Protocol.Encoding
     Kafka.Protocol.Error
@@ -66,12 +67,15 @@ library
     , containers
     , digest
     , hashtables
+    , hashable
     , hstream-common-base
+    , hstream-common
     , hstream-store
     , network
     , text
     , vector
     , Z-Data
+    , unordered-containers
 
   default-language:   GHC2021
   default-extensions:
