@@ -2,14 +2,16 @@ module Kafka.Group.GroupMetadataManager
   ( GroupMetadataManager
   , mkGroupMetadataManager
   , storeOffsets
+  , fetchOffsets
   ) where
 
-import           Control.Concurrent            (MVar, modifyMVar_, newMVar)
+import           Control.Concurrent            (MVar, modifyMVar_, newMVar,
+                                                withMVar)
 import           Control.Concurrent.MVar       (readMVar)
 import           Control.Monad                 (unless)
 import           Data.Hashable
 import qualified Data.HashMap.Strict           as HM
-import           Data.Int                      (Int32)
+import           Data.Int                      (Int32, Int64)
 import qualified Data.Map.Strict               as Map
 import           Data.Maybe                    (fromMaybe)
 import qualified Data.Text                     as T
@@ -21,13 +23,14 @@ import           Kafka.Group.OffsetsStore      (OffsetStorage (..), OffsetStore)
 import           Kafka.Protocol.Encoding       (KaArray (KaArray, unKaArray))
 import qualified Kafka.Protocol.Error          as K
 import           Kafka.Protocol.Message.Struct (OffsetCommitRequestPartitionV0 (..),
-                                                OffsetCommitResponsePartitionV0 (..))
+                                                OffsetCommitResponsePartitionV0 (..),
+                                                OffsetFetchResponsePartitionV0 (..))
 
 data GroupMetadataManager = GroupMetadataManager
   { serverId      :: Int
   , groupName     :: T.Text
   , offsetsStore  :: OffsetStore
-  , offsetsCache  :: MVar (Map.Map TopicPartition Int)
+  , offsetsCache  :: MVar (Map.Map TopicPartition Int64)
   , partitionsMap :: MVar (HM.HashMap TopicPartition Word64)
     -- ^ partitionsMap maps TopicPartition to the underlying logID
   }
@@ -80,6 +83,36 @@ storeOffsets GroupMetadataManager{..} topicName arrayOffsets = do
   let suc = V.map (\(TopicPartition{topicPartitionIdx}, _, _) -> (topicPartitionIdx, K.NONE)) offsets'
       res = V.map (\(partitionIndex, errorCode) -> OffsetCommitResponsePartitionV0{..}) (suc <> notFoundErrs)
   return KaArray {unKaArray = Just res}
+
+fetchOffsets
+  :: GroupMetadataManager
+  -> T.Text
+  -> KaArray Int32
+  -> IO (KaArray OffsetFetchResponsePartitionV0)
+fetchOffsets GroupMetadataManager{..} topicName partitions = do
+  let partitions' = fromMaybe V.empty (unKaArray partitions)
+  res <- withMVar offsetsCache $ \cache -> do
+    traverse
+      (
+       \ partitionIdx -> do
+           let key = mkTopicPartition topicName partitionIdx
+            in case Map.lookup key cache of
+                 Just offset -> return $ OffsetFetchResponsePartitionV0
+                   { committedOffset = offset
+                   , metadata = Nothing
+                   , partitionIndex= partitionIdx
+                   , errorCode = K.NONE
+                   }
+                 Nothing -> return $ OffsetFetchResponsePartitionV0
+                   { committedOffset = -1
+                   , metadata = Nothing
+                   , partitionIndex= partitionIdx
+                   -- TODO: check the error code here
+                   , errorCode = K.NONE
+                   }
+      ) partitions'
+
+  return $ KaArray {unKaArray = Just res}
 
 -------------------------------------------------------------------------------------------------
 -- helper
