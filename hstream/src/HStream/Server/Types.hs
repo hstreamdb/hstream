@@ -53,6 +53,7 @@ import           HStream.Utils                    (ResourceType (ResConnector),
                                                    textToCBytes,
                                                    timestampToMsTimestamp)
 import           Kafka.Common.OffsetManager       (OffsetManager)
+import           Kafka.Group.GroupMetadataManager (GroupMetadataManager)
 import           Network.GRPC.HighLevel.Generated (GRPCIOError)
 
 protocolVersion :: Text
@@ -111,6 +112,8 @@ data ServerContext = ServerContext
   , querySnapshotter         :: Maybe RocksDB.DB
     -- TODO: Kafka server context
   , scOffsetManager          :: OffsetManager
+  , scGroupMetadataManagers  :: MVar (HashMap T.Text GroupMetadataManager)
+    -- ^ {groupID: GroupMetadataManager}
 }
 
 data SubscribeContextNewWrapper = SubscribeContextNewWrapper

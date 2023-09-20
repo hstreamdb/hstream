@@ -127,6 +127,7 @@ library
     HStream.Server.KafkaHandler.Consume
     HStream.Server.KafkaHandler.Produce
     HStream.Server.KafkaHandler.Topic
+    HStream.Server.KafkaHandler.Offset
     HStream.Server.MetaData.Exception
     HStream.Server.MetaData.Types
     HStream.Server.MetaData.Utils
