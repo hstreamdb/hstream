@@ -46,6 +46,7 @@ library
     Kafka.Common.OffsetManager
     Kafka.Common.RecordFormat
     Kafka.Group.GroupMetadataManager
+    Kafka.Group.OffsetsStore
     Kafka.Protocol
     Kafka.Protocol.Encoding
     Kafka.Protocol.Error

@@ -1,87 +1,85 @@
-module Kafka.Group.GroupMetadataManager 
-  ( mkGroupMetadataManager
+module Kafka.Group.GroupMetadataManager
+  ( GroupMetadataManager
+  , mkGroupMetadataManager
   , storeOffsets
   ) where
 
-import qualified Data.Text as T
-import qualified Data.HashMap.Strict as HM
-import qualified Data.Map.Strict                as Map
-import Kafka.Protocol.Encoding (KaArray (unKaArray))
-import Kafka.Protocol.Message.Struct (OffsetCommitRequestPartitionV0 (..))
-import qualified Data.Vector as V
-import Data.Hashable 
-import Data.Maybe (fromMaybe)
-import Kafka.Protocol.Error (ErrorCode)
-import qualified Kafka.Protocol.Error as K
-import Data.Int (Int32)
-import Data.Word (Word64)
-import qualified HStream.Store as S
-import HStream.Utils (textToCBytes)
+import           Control.Concurrent            (MVar, modifyMVar_, newMVar)
+import           Control.Concurrent.MVar       (readMVar)
+import           Control.Monad                 (unless)
+import           Data.Hashable
+import qualified Data.HashMap.Strict           as HM
+import           Data.Int                      (Int32)
+import qualified Data.Map.Strict               as Map
+import           Data.Maybe                    (fromMaybe)
+import qualified Data.Text                     as T
+import qualified Data.Vector                   as V
+import           Data.Word                     (Word64)
+import           GHC.Generics                  (Generic)
 import qualified HStream.Logger                as Log
-import Control.Concurrent (MVar, modifyMVar_, newMVar)
-import Control.Concurrent.MVar (readMVar)
-import GHC.Generics (Generic)
+import           Kafka.Group.OffsetsStore      (OffsetStorage (..), OffsetStore)
+import           Kafka.Protocol.Encoding       (KaArray (KaArray, unKaArray))
+import qualified Kafka.Protocol.Error          as K
+import           Kafka.Protocol.Message.Struct (OffsetCommitRequestPartitionV0 (..),
+                                                OffsetCommitResponsePartitionV0 (..))
 
 data GroupMetadataManager = GroupMetadataManager
-  { serverId          :: Int
-  , groupName         :: T.Text
-  , offsetsCache      :: MVar (Map.Map TopicPartition Int)
-  , offsetTopicId     :: Word64
-    -- ^ __consumer_offsets logID
-  , offsetCkpStore    :: S.LDCheckpointStore
-  , partitionsMap     :: MVar (HM.HashMap TopicPartition S.C_LogID)
+  { serverId      :: Int
+  , groupName     :: T.Text
+  , offsetsStore  :: OffsetStore
+  , offsetsCache  :: MVar (Map.Map TopicPartition Int)
+  , partitionsMap :: MVar (HM.HashMap TopicPartition Word64)
     -- ^ partitionsMap maps TopicPartition to the underlying logID
   }
 
-mkGroupMetadataManager :: S.LDClient -> Int -> T.Text -> IO GroupMetadataManager
-mkGroupMetadataManager ldClient serverId groupName = do
+mkGroupMetadataManager :: OffsetStore -> Int -> T.Text -> IO GroupMetadataManager
+mkGroupMetadataManager offsetsStore serverId groupName = do
   offsetsCache  <- newMVar Map.empty
   partitionsMap <- newMVar HM.empty
-
-  let cbGroupName = textToCBytes groupName
-  -- FIXME: need to get log attributes from somewhere
-  S.initOffsetCheckpointDir ldClient S.def
-  offsetTopicId <- S.allocOffsetCheckpointId ldClient cbGroupName
-  Log.info $ "allocate offset checkpoint store id " <> Log.build offsetTopicId <> " for group " <> Log.build groupName
-  offsetCkpStore <- S.newRSMBasedCheckpointStore ldClient offsetTopicId 5000
 
   return GroupMetadataManager{..}
  where
    rebuildCache = do
      undefined
 
-storeOffsets 
-  :: GroupMetadataManager 
+storeOffsets
+  :: GroupMetadataManager
   -> T.Text
   -> KaArray OffsetCommitRequestPartitionV0
-  -> IO (HM.HashMap Int32 ErrorCode)
+  -> IO (KaArray OffsetCommitResponsePartitionV0)
 storeOffsets GroupMetadataManager{..} topicName arrayOffsets = do
   let offsets = fromMaybe V.empty (unKaArray arrayOffsets)
 
-  -- TODO: 检查 offsetsCache 中是否包含待提交 offset 的 TopicPartition
-  -- 在 kafka 中，分区加入 consumer group 需要执行额外的操作，因此如果某个 TopicPartition
-  -- 没有包含在当前的缓存中，则需要返回 UNKNOWN_TOPIC_OR_PARTITION
-
+  -- check if a TopicPartition that has an offset to be committed is contained in current
+  -- consumer group's partitionsMap. If not, server will return a UNKNOWN_TOPIC_OR_PARTITION
+  -- error, and that error will be convert to COORDINATOR_NOT_AVAILABLE error finally
   partitionsInfo <- readMVar partitionsMap
   let (notFoundErrs, offsets') = V.partitionWith
-       ( \OffsetCommitRequestPartitionV0{..} -> 
-            let key = mkTopicPartition topicName partitionIndex 
+       ( \OffsetCommitRequestPartitionV0{..} ->
+            let key = mkTopicPartition topicName partitionIndex
              in case HM.lookup key partitionsInfo of
                   Just logId -> Right $ (key, logId, fromIntegral committedOffset)
                   Nothing    -> Left $ (partitionIndex, K.COORDINATOR_NOT_AVAILABLE)
        ) offsets
+  unless (V.null notFoundErrs) $ do
+    Log.info $ "consumer group " <> Log.build groupName <> " receive OffsetCommitRequestPartition with unknown topic or partion"
+            <> ", topic name: " <> Log.build topicName
+            <> ", partitions: " <> Log.build (show $ V.map fst notFoundErrs)
 
   -- write checkpoints
   let checkPoints = V.foldl' (\acc (_, logId, offset) -> Map.insert logId offset acc) Map.empty offsets'
-  S.ckpStoreUpdateMultiLSNSync offsetCkpStore (textToCBytes groupName) checkPoints
+  commitOffsets offsetsStore topicName checkPoints
+  Log.debug $ "consumer group " <> Log.build groupName <> " commit offsets {" <> Log.build (show checkPoints)
+           <> "} to topic " <> Log.build topicName
 
   -- update cache
   modifyMVar_ offsetsCache $ \cache -> do
     let updates = V.foldl' (\acc (key, _, offset) -> Map.insert key (fromIntegral offset) acc) Map.empty offsets'
     return $ Map.union updates cache
 
-  let res = V.foldl' (\acc (TopicPartition{topicPartitionIdx}, _, _) -> HM.insert topicPartitionIdx K.NONE acc) HM.empty offsets'
-  return $ HM.union res (HM.fromList . V.toList $ notFoundErrs) 
+  let suc = V.map (\(TopicPartition{topicPartitionIdx}, _, _) -> (topicPartitionIdx, K.NONE)) offsets'
+      res = V.map (\(partitionIndex, errorCode) -> OffsetCommitResponsePartitionV0{..}) (suc <> notFoundErrs)
+  return KaArray {unKaArray = Just res}
 
 -------------------------------------------------------------------------------------------------
 -- helper
