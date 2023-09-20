@@ -126,18 +126,19 @@ nodeChangeEventHandler scMVar Gossip.ServerDead I.ServerNode {..} = do
   Log.info $ "handle Server Dead event: " <> Log.buildString' serverNodeId
   withMVar scMVar $ \sc@ServerContext{..} -> do
     recoverDeadNodeTasks sc scIOWorker serverNodeId
-    recoverDeadNodeTasks sc (QueryWorker sc) serverNodeId
+    -- FIXME: DISABLED QUERY RECOVER
+    -- recoverDeadNodeTasks sc (QueryWorker sc) serverNodeId
 nodeChangeEventHandler _ _ _ = return ()
 
-getNodeResources :: Meta.MetaHandle -> ResourceType -> Types.ServerID -> IO [T.Text]
-getNodeResources h rt nodeId = do
-  allocations <- Meta.getAllMeta @Meta.TaskAllocation h
-  let taskIds = map parseAllocationKey . Map.keys . Map.filter ((== nodeId) . Meta.taskAllocationServerId) $ allocations
-  return [tid | Right (rt', tid) <- taskIds, rt == rt']
+-- getNodeResources :: Meta.MetaHandle -> ResourceType -> Types.ServerID -> IO [T.Text]
+-- getNodeResources h rt nodeId = do
+--   allocations <- Meta.getAllMeta @Meta.TaskAllocation h
+--   let taskIds = map parseAllocationKey . Map.keys . Map.filter ((== nodeId) . Meta.taskAllocationServerId) $ allocations
+--   return [tid | Right (rt', tid) <- taskIds, rt == rt']
 
 recoverDeadNodeTasks :: Types.TaskManager a => ServerContext -> a -> Types.ServerID -> IO ()
 recoverDeadNodeTasks sc tm deadNodeId = do
-  tasks <- getNodeResources (metaHandle sc) (Types.resourceType tm) deadNodeId
+  tasks <- Types.listRecoverableResources tm
   recoverTasks sc tm tasks
 
 -- only for restarting

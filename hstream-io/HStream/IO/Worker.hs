@@ -158,6 +158,13 @@ stopIOTask worker name ifIsRunning force = do
 listResources :: Worker -> IO [T.Text]
 listResources worker = fmap API.connectorName <$> listIOTasks worker
 
+-- Only for Dead Event
+listRecoverableResources :: Worker -> IO [T.Text]
+listRecoverableResources worker@Worker{..} = do
+  tasksInWorker <- C.readMVar ioTasksM
+  tasksInMeta <- listIOTasks worker
+  return $ filter (not . (`HM.member` tasksInWorker)) (fmap API.connectorName tasksInMeta)
+
 recoverTask :: Worker -> T.Text -> IO ()
 recoverTask worker@Worker{..} name = do
   Log.info $ "recovering task:" <> Log.buildString' name
