@@ -43,7 +43,9 @@ import qualified HStream.Store                         as S
 import           HStream.Utils                         (cBytesToText,
                                                         getPOSIXTime,
                                                         lazyByteStringToBytes,
-                                                        msecSince, textToCBytes)
+                                                        msecSince, textToCBytes,
+                                                        transToStreamName,
+                                                        transToTempStreamName)
 
 #ifdef HStreamUseV2Engine
 import qualified DiffFlow.Graph                        as DiffFlow

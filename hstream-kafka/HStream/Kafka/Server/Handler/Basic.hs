@@ -22,8 +22,7 @@ import           HStream.Common.ConsistentHashing (getResNode)
 import           HStream.Common.Server.Lookup     (KafkaResource (..),
                                                    lookupKafkaPersist)
 import qualified HStream.Gossip                   as Gossip
-import           HStream.Kafka.Server.Types       (ServerContext (..),
-                                                   transToStreamName)
+import           HStream.Kafka.Server.Types       (ServerContext (..))
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.HStreamApi        as A
 import qualified HStream.Store                    as S
@@ -124,7 +123,7 @@ handleMetadataV1 ctx@ServerContext{..} _ req = do
 
     getRespTopic :: Text -> IO K.MetadataResponseTopicV1
     getRespTopic topicName = do
-      let streamId = transToStreamName topicName
+      let streamId = Utils.transToStreamName topicName
       shards_e <- try ((V.map snd) <$> S.listStreamPartitionsOrdered scLDClient streamId)
       case shards_e of
         -- FIXME: We catch all exceptions here. Is this proper?

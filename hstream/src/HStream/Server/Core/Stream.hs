@@ -55,8 +55,7 @@ import qualified HStream.Server.HStreamApi         as API
 import qualified HStream.Server.MetaData           as P
 import           HStream.Server.Types              (ServerContext (..),
                                                     ServerInternalOffset (..),
-                                                    ToOffset (..),
-                                                    transToStreamName)
+                                                    ToOffset (..))
 import qualified HStream.Stats                     as Stats
 import qualified HStream.Store                     as S
 import           HStream.Utils

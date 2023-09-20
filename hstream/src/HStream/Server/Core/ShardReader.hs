@@ -57,12 +57,12 @@ import           HStream.Server.Types        (BiStreamReader (..),
                                               ShardReader (..),
                                               StreamReader (..), ToOffset (..),
                                               getLogLSN, mkShardReader,
-                                              mkStreamReader, transToStreamName)
+                                              mkStreamReader)
 import qualified HStream.Stats               as Stats
 import qualified HStream.Store               as S
 import           HStream.Utils               (decompressBatchedRecord,
                                               getPOSIXTime, getRecordKey,
-                                              msecSince, textToCBytes)
+                                              msecSince, textToCBytes, transToStreamName)
 
 createShardReader
   :: HasCallStack

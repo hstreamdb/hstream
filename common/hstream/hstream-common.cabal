@@ -114,6 +114,7 @@ library
     , hstream-api-hs
     , hstream-client-cpp
     , hstream-common-base
+    , hstream-store
     , http-client
     , http-types
     , memory

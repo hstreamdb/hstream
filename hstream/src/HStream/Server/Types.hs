@@ -44,7 +44,6 @@ import qualified HStream.IO.Types                 as IO
 import qualified HStream.IO.Worker                as IO
 import           HStream.MetaStore.Types          (MetaHandle)
 import           HStream.Server.Config
-import qualified HStream.Server.ConnectorTypes    as HCT
 import qualified HStream.Server.HStreamApi        as API
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as HS
@@ -336,14 +335,3 @@ getLogLSN scLDClient logId isEndOffset offset =
       let accuracy = if timestampOffsetStrictAccuracy then S.FindKeyStrict else S.FindKeyApproximate
       startLSN <- S.findTime scLDClient logId timestampOffsetTimestampInMs accuracy
       return (startLSN, Just timestampOffsetTimestampInMs)
-
---------------------------------------------------------------------------------
-
-transToStreamName :: HCT.StreamName -> S.StreamId
-transToStreamName = S.mkStreamId S.StreamTypeStream . textToCBytes
-
-transToTempStreamName :: HCT.StreamName -> S.StreamId
-transToTempStreamName = S.mkStreamId S.StreamTypeTemp . textToCBytes
-
-transToViewStreamName :: HCT.StreamName -> S.StreamId
-transToViewStreamName = S.mkStreamId S.StreamTypeView . textToCBytes

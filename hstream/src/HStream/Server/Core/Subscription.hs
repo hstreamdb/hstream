@@ -57,7 +57,7 @@ import           HStream.Utils                 (ResourceType (..),
                                                 decompressBatchedRecord,
                                                 getPOSIXTime, getProtoTimestamp,
                                                 mkBatchedRecord, msecSince,
-                                                textToCBytes)
+                                                textToCBytes, transToStreamName)
 
 -------------------------------------------------------------------------------
 
