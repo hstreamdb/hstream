@@ -2,17 +2,18 @@
 
 module HStream.Server.QueryWorker where
 
+#ifdef HStreamEnableSchema
+import           HStream.Server.Core.QueryNew (listQueries, resumeQuery)
+#else
+import           HStream.Server.Core.Query    (listQueries, resumeQuery)
+#endif
 
-
-
-import           HStream.Server.Core.Query (listQueries, resumeQuery)
-
-import qualified Control.Concurrent        as M
-import qualified Data.HashMap.Strict       as HM
-import qualified HStream.Server.HStreamApi as API
-import           HStream.Server.Types      (ServerContext (runningQueries),
-                                            TaskManager (..))
-import           HStream.Utils             (ResourceType (ResQuery))
+import qualified Control.Concurrent           as M
+import qualified Data.HashMap.Strict          as HM
+import qualified HStream.Server.HStreamApi    as API
+import           HStream.Server.Types         (ServerContext (runningQueries),
+                                               TaskManager (..))
+import           HStream.Utils                (ResourceType (ResQuery))
 
 -- TODO: modularize query worker(e.g. replace runningQueries with QueryWorker)
 newtype QueryWorker = QueryWorker
