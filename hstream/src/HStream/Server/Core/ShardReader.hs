@@ -16,52 +16,53 @@ module HStream.Server.Core.ShardReader
   )
 where
 
-import           Data.Functor               ((<&>))
-import           ZooKeeper.Exception        (ZNONODE (..))
+import           Data.Functor                ((<&>))
+import           ZooKeeper.Exception         (ZNONODE (..))
 
-import           Control.Concurrent         (modifyMVar_, newEmptyMVar, putMVar,
-                                             readMVar, takeMVar, withMVar)
-import           Control.Exception          (bracket, catch, throwIO, try)
-import           Control.Monad              (forM, forM_, join, unless, when)
-import           Data.ByteString            (ByteString)
-import qualified Data.ByteString            as BS
-import           Data.Either                (isRight)
-import qualified Data.Foldable              as F
-import qualified Data.HashMap.Strict        as HM
-import           Data.Int                   (Int64)
-import           Data.IORef                 (IORef, atomicModifyIORef',
-                                             newIORef, readIORef, writeIORef)
-import qualified Data.Map.Strict            as M
-import           Data.Maybe                 (catMaybes, fromJust, isJust)
-import qualified Data.Text                  as T
-import           Data.Vector                (Vector)
-import qualified Data.Vector                as V
-import           Data.Word                  (Word64)
-import           GHC.Stack                  (HasCallStack)
-import           HsGrpc.Server              (whileM)
+import           Control.Concurrent          (modifyMVar_, newEmptyMVar,
+                                              putMVar, readMVar, takeMVar,
+                                              withMVar)
+import           Control.Exception           (bracket, catch, throwIO, try)
+import           Control.Monad               (forM, forM_, join, unless, when)
+import           Data.ByteString             (ByteString)
+import qualified Data.ByteString             as BS
+import           Data.Either                 (isRight)
+import qualified Data.Foldable               as F
+import qualified Data.HashMap.Strict         as HM
+import           Data.Int                    (Int64)
+import           Data.IORef                  (IORef, atomicModifyIORef',
+                                              newIORef, readIORef, writeIORef)
+import qualified Data.Map.Strict             as M
+import           Data.Maybe                  (catMaybes, fromJust, isJust)
+import qualified Data.Text                   as T
+import           Data.Vector                 (Vector)
+import qualified Data.Vector                 as V
+import           Data.Word                   (Word64)
+import           GHC.Stack                   (HasCallStack)
+import           HsGrpc.Server               (whileM)
+import           HStream.Common.Server.Shard (shardEndKey, shardStartKey)
 import           HStream.Common.Types
-import qualified HStream.Exception          as HE
-import qualified HStream.Logger             as Log
-import qualified HStream.MetaStore.Types    as M
-import           HStream.Server.Core.Common (decodeRecordBatch)
-import           HStream.Server.HStreamApi  (CreateShardReaderRequest (..))
-import qualified HStream.Server.HStreamApi  as API
-import qualified HStream.Server.MetaData    as P
-import           HStream.Server.Shard       (shardEndKey, shardStartKey)
-import           HStream.Server.Types       (BiStreamReader (..),
-                                             BiStreamReaderReceiver,
-                                             BiStreamReaderSender,
-                                             ServerContext (..),
-                                             ServerInternalOffset,
-                                             ShardReader (..),
-                                             StreamReader (..), ToOffset (..),
-                                             getLogLSN, mkShardReader,
-                                             mkStreamReader, transToStreamName)
-import qualified HStream.Stats              as Stats
-import qualified HStream.Store              as S
-import           HStream.Utils              (decompressBatchedRecord,
-                                             getPOSIXTime, getRecordKey,
-                                             msecSince, textToCBytes)
+import qualified HStream.Exception           as HE
+import qualified HStream.Logger              as Log
+import qualified HStream.MetaStore.Types     as M
+import           HStream.Server.Core.Common  (decodeRecordBatch)
+import           HStream.Server.HStreamApi   (CreateShardReaderRequest (..))
+import qualified HStream.Server.HStreamApi   as API
+import qualified HStream.Server.MetaData     as P
+import           HStream.Server.Types        (BiStreamReader (..),
+                                              BiStreamReaderReceiver,
+                                              BiStreamReaderSender,
+                                              ServerContext (..),
+                                              ServerInternalOffset,
+                                              ShardReader (..),
+                                              StreamReader (..), ToOffset (..),
+                                              getLogLSN, mkShardReader,
+                                              mkStreamReader, transToStreamName)
+import qualified HStream.Stats               as Stats
+import qualified HStream.Store               as S
+import           HStream.Utils               (decompressBatchedRecord,
+                                              getPOSIXTime, getRecordKey,
+                                              msecSince, textToCBytes)
 
 createShardReader
   :: HasCallStack

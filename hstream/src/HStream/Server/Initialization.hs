@@ -42,6 +42,7 @@ import qualified HStream.Admin.Store.API          as AA
 #endif
 import           HStream.Common.ConsistentHashing (HashRing, constructServerMap,
                                                    getAllocatedNodeId)
+import           HStream.Common.Server.HashRing   (initializeHashRing)
 import           HStream.Gossip                   (GossipContext,
                                                    getMemberListWithEpochSTM)
 import qualified HStream.IO.Types                 as IO
@@ -129,11 +130,6 @@ openRocksDBHandle dbPath = do
 closeRocksDBHandle :: Maybe RocksDB.DB -> IO ()
 closeRocksDBHandle Nothing   = return ()
 closeRocksDBHandle (Just db) = RocksDB.close db
-
-initializeHashRing :: GossipContext -> IO (TVar (Word32, HashRing))
-initializeHashRing gc = atomically $ do
-  (epoch, serverNodes) <- getMemberListWithEpochSTM gc
-  newTVar (epoch, constructServerMap . sort $ serverNodes)
 
 initializeTlsConfig :: TlsConfig -> ServerSSLConfig
 initializeTlsConfig TlsConfig {..} = ServerSSLConfig caPath keyPath certPath authType authHandler

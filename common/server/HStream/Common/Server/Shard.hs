@@ -2,7 +2,7 @@
 {-# LANGUAGE NamedFieldPuns            #-}
 {-# LANGUAGE OverloadedStrings         #-}
 
-module HStream.Server.Shard
+module HStream.Common.Server.Shard
   ( Shard (..)
   , mkShard
   , mkShardWithDefaultId

@@ -35,6 +35,7 @@ import           Proto3.Suite                     (Enumerated (..))
 import qualified Proto3.Suite                     as PB
 import           Z.Data.Vector                    (Bytes)
 
+import           HStream.Common.Server.Shard      (shardStartKey)
 import           HStream.Common.Types
 import           HStream.Exception                (StreamNotFound (..),
                                                    WrongOffset (..))
@@ -42,7 +43,6 @@ import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Stream       as Core
 import qualified HStream.Server.Core.Subscription as Core
 import qualified HStream.Server.HStreamApi        as API
-import           HStream.Server.Shard             (shardStartKey)
 import           HStream.Server.Types
 import qualified HStream.Store                    as S
 import           HStream.Utils
