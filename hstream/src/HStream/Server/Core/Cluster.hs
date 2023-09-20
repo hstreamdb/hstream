@@ -126,8 +126,7 @@ nodeChangeEventHandler scMVar Gossip.ServerDead I.ServerNode {..} = do
   Log.info $ "handle Server Dead event: " <> Log.buildString' serverNodeId
   withMVar scMVar $ \sc@ServerContext{..} -> do
     recoverDeadNodeTasks sc scIOWorker serverNodeId
-    -- FIXME: DISABLED QUERY RECOVER
-    -- recoverDeadNodeTasks sc (QueryWorker sc) serverNodeId
+    recoverDeadNodeTasks sc (QueryWorker sc) serverNodeId
 nodeChangeEventHandler _ _ _ = return ()
 
 -- getNodeResources :: Meta.MetaHandle -> ResourceType -> Types.ServerID -> IO [T.Text]
