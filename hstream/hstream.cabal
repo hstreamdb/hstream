@@ -97,7 +97,6 @@ library
     HStream.Server.Initialization
     HStream.Server.MetaData
     HStream.Server.QueryWorker
-    HStream.Server.Shard
     HStream.Server.Types
     HStream.Server.Validation
 
@@ -153,6 +152,7 @@ library
     , hstream-api-hs
     , hstream-common
     , hstream-common-base
+    , hstream-common-server
     , hstream-common-stats
     , hstream-gossip
     , hstream-io
@@ -231,6 +231,7 @@ executable hstream-server
     , hstream-api-hs
     , hstream-common
     , hstream-common-base
+    , hstream-common-server
     , hstream-common-stats
     , hstream-gossip
     , hstream-store
@@ -307,7 +308,6 @@ test-suite hstream-test
     HStream.RunQuerySpec
     HStream.RunSQLNewSpec
     HStream.RunSQLSpec
-    HStream.ShardSpec
     HStream.SpecUtils
     HStream.StatsIntegrationSpec
 

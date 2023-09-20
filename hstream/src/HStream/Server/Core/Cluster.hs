@@ -24,6 +24,7 @@ import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 
 import           HStream.Common.ConsistentHashing (getResNode)
+import           HStream.Common.Server.Lookup     (lookupNode)
 import           HStream.Common.Types             (fromInternalServerNodeWithKey,
                                                    getHStreamVersion)
 import qualified HStream.Exception                as HE
@@ -66,8 +67,7 @@ describeCluster ServerContext{gossipContext = gc@GossipContext{..}, ..} = do
 lookupShard :: ServerContext -> LookupShardRequest -> IO LookupShardResponse
 lookupShard ServerContext{..} req@LookupShardRequest {
   lookupShardRequestShardId = shardId} = do
-  (_, hashRing) <- readTVarIO loadBalanceHashRing
-  theNode <- getResNode hashRing (T.pack $ show shardId) scAdvertisedListenersKey
+  theNode <- lookupNode loadBalanceHashRing (T.pack $ show shardId) scAdvertisedListenersKey
   Log.info $ "receive lookupShard request: " <> Log.buildString' req <> ", should send to " <> Log.buildString' (show theNode)
   return $ LookupShardResponse
     { lookupShardResponseShardId    = shardId
@@ -76,8 +76,7 @@ lookupShard ServerContext{..} req@LookupShardRequest {
 
 lookupKey :: ServerContext -> LookupKeyRequest -> IO ServerNode
 lookupKey ServerContext{..} req@LookupKeyRequest{..} = do
-  (_, hashRing) <- readTVarIO loadBalanceHashRing
-  theNode <- getResNode hashRing lookupKeyRequestPartitionKey scAdvertisedListenersKey
+  theNode <- lookupNode loadBalanceHashRing lookupKeyRequestPartitionKey scAdvertisedListenersKey
   Log.info $ "receive lookupKey request: " <> Log.buildString' req <> ", should send to " <> Log.buildString' (show theNode)
   return theNode
 

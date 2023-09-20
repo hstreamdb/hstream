@@ -1,0 +1,108 @@
+cabal-version: 3.6
+name:          hstream-common-server
+version:       0.1.0.0
+synopsis:
+  High performance stream processing platform for IoT data written in Haskell.
+
+description:
+  Please see the README on GitHub at
+  <https://github.com/hstreamdb/hstream#readme>
+
+license:       BSD-3-Clause
+license-file:  LICENSE
+copyright:     Copyright (c) 2020-present EMQ Technologies Co., Ltd.
+author:        Mu <lambda@emqx.io>
+maintainer:    lambda@emqx.io
+tested-with:   GHC ==9.2.8
+category:      Database
+homepage:      https://github.com/hstreamdb/hstream
+bug-reports:   https://github.com/hstreamdb/hstream/issues
+build-type:    Simple
+
+source-repository head
+  type:     git
+  location: https://github.com/hstreamdb/hstream
+
+flag ReleaseBuild
+  default:     False
+  description:
+    Enables all optimisations, leads to slower build time and better performance
+
+common shared-properties
+  ghc-options:
+    -Wall -Wcompat -Widentities -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+    -Wunused-packages
+
+  if flag(releasebuild)
+    ghc-options:
+      -feager-blackholing -flate-dmd-anal -flate-specialise
+      -fspec-constr-keen -fstatic-argument-transformation
+      -funbox-strict-fields -O2
+
+library
+  import:             shared-properties
+  exposed-modules:
+    HStream.Common.Server.HashRing
+    HStream.Common.Server.Lookup
+    HStream.Common.Server.Shard
+
+  hs-source-dirs:     .
+  build-depends:
+    , aeson
+    , base                  >=4.11 && <5
+    , bytestring
+    , containers
+    , digest
+    , directory
+    , hashable
+    , hashtables
+    , hstream-api-hs
+    , hstream-common
+    , hstream-common-base
+    , hstream-common-stats
+    , hstream-gossip
+    , hstream-store
+    , stm
+    , text
+    , time
+    , vector
+    , yaml
+    , Z-Data
+
+  default-language:   GHC2021
+  default-extensions:
+    DerivingStrategies
+    LambdaCase
+    OverloadedStrings
+    RecordWildCards
+
+test-suite hstream-common-server-test
+  import:             shared-properties
+  type:               exitcode-stdio-1.0
+  main-is:            Spec.hs
+  other-modules:      HStream.ShardSpec
+  hs-source-dirs:     test
+  build-depends:
+    , base                   >=4.11 && <5
+    , bytestring
+    , containers
+    , hspec
+    , hstream-common
+    , hstream-common-base
+    , hstream-common-server
+    , hstream-store
+    , QuickCheck
+    , quickcheck-instances
+    , quickcheck-special     ^>=0.1
+    , text
+    , Z-Data
+
+  default-extensions:
+    LambdaCase
+    OverloadedStrings
+    RecordWildCards
+
+  default-language:   GHC2021
+  build-tool-depends: hspec-discover:hspec-discover >=2 && <3
+  ghc-options:        -threaded -rtsopts -with-rtsopts=-N
