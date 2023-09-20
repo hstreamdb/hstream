@@ -95,7 +95,6 @@ library
     HStream.Server.HsGrpcHandler
     HStream.Server.HStore
     HStream.Server.Initialization
-    HStream.Server.KafkaHandler
     HStream.Server.MetaData
     HStream.Server.QueryWorker
     HStream.Server.Shard
@@ -123,10 +122,6 @@ library
     HStream.Server.Handler.Stream
     HStream.Server.Handler.Subscription
     HStream.Server.Handler.View
-    HStream.Server.KafkaHandler.Basic
-    HStream.Server.KafkaHandler.Consume
-    HStream.Server.KafkaHandler.Produce
-    HStream.Server.KafkaHandler.Topic
     HStream.Server.MetaData.Exception
     HStream.Server.MetaData.Types
     HStream.Server.MetaData.Utils
@@ -161,7 +156,6 @@ library
     , hstream-common-stats
     , hstream-gossip
     , hstream-io
-    , hstream-kafka
     , hstream-processing
     , hstream-sql
     , hstream-store
@@ -239,7 +233,6 @@ executable hstream-server
     , hstream-common-base
     , hstream-common-stats
     , hstream-gossip
-    , hstream-kafka
     , hstream-store
     , http-client
     , memory

@@ -54,7 +54,6 @@ import           HStream.Server.Types
 import           HStream.Stats                    (newServerStatsHolder)
 import qualified HStream.Store                    as S
 import           HStream.Utils
-import           Kafka.Common.OffsetManager       (newOffsetManager)
 
 initializeServer
   :: ServerOpts
@@ -78,8 +77,6 @@ initializeServer opts@ServerOpts{..} gossipContext hh db_m = do
   subCtxs <- newTVarIO HM.empty
 
   epochHashRing <- initializeHashRing gossipContext
-
-  offsetManager <- newOffsetManager ldclient 1000{- TODO: maxLogs -}
 
   ioWorker <-
     IO.newWorker
@@ -114,7 +111,6 @@ initializeServer opts@ServerOpts{..} gossipContext hh db_m = do
       , shardReaderMap           = shardReaderMap
       , querySnapshotPath        = _querySnapshotPath
       , querySnapshotter         = db_m
-      , scOffsetManager          = offsetManager
       }
 
 --------------------------------------------------------------------------------
