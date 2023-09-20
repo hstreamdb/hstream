@@ -28,6 +28,7 @@ import           HStream.Common.Types           (fromInternalServerNodeWithKey,
 import qualified HStream.Exception              as HE
 import           HStream.Gossip                 (GossipContext (..),
                                                  getFailedNodes, getMemberList)
+import qualified HStream.Gossip                 as Gossip
 import qualified HStream.Gossip.Types           as Gossip
 import qualified HStream.Logger                 as Log
 import           HStream.MetaStore.Types        (MetaStore (..))
@@ -49,34 +50,15 @@ import           HStream.Utils                  (ResourceType (..),
 describeCluster :: ServerContext -> IO DescribeClusterResponse
 describeCluster ServerContext{gossipContext = gc@GossipContext{..}, ..} = do
   let protocolVer = Types.protocolVersion
-  serverVersion <- getHStreamVersion
-  isReady <- tryReadMVar clusterReady
-  self    <- getListeners serverSelf >>= (pure <$> updateServerVersionVector serverVersion)
-  alives  <- getMemberList gc >>= fmap  V.concat . mapM  (fmap (updateServerVersionVector serverVersion) . getListeners) . L.delete serverSelf
-  deads   <- getFailedNodes gc >>= fmap V.concat . mapM (fmap (updateServerVersionVector serverVersion) . getListeners)
-  let self'   = helper (case isReady of Just _  -> NodeStateRunning; Nothing -> NodeStateStarting) <$> self
-  let alives' = helper NodeStateRunning <$> alives
-  let deads'  = helper NodeStateDead    <$> deads
+  (serverNodes, serverNodesStatus) <- Gossip.describeCluster gc scAdvertisedListenersKey
   _currentTime@(Proto.Timestamp cSec _) <- getProtoTimestamp
   startTime <- getMeta @Proto.Timestamp clusterStartTimeId metaHandle
   return $ DescribeClusterResponse
     { describeClusterResponseProtocolVersion   = protocolVer
-      -- TODO : If Cluster is not ready this should return empty
-    , describeClusterResponseServerNodes       = self <> alives
-    , describeClusterResponseServerNodesStatus = self' <> alives' <> deads'
+    , describeClusterResponseServerNodes       = serverNodes
+    , describeClusterResponseServerNodesStatus = serverNodesStatus
     , describeClusterResponseClusterUpTime     = fromIntegral $ cSec - maybe cSec Proto.timestampSeconds startTime
     }
-  where
-    getListeners = fromInternalServerNodeWithKey scAdvertisedListenersKey
-
-    helper state node = ServerNodeStatus
-      { serverNodeStatusNode  = Just node
-      , serverNodeStatusState = EnumPB state}
-
-    updateServerVersionVector :: HStreamVersion -> V.Vector ServerNode -> V.Vector ServerNode
-    updateServerVersionVector version = V.map (updateServerVersion version)
-
-    updateServerVersion version node = node { serverNodeVersion = Just version }
 
 -- TODO: Currently we use the old version of lookup for minimal impact on performance
 lookupShard :: ServerContext -> LookupShardRequest -> IO LookupShardResponse
