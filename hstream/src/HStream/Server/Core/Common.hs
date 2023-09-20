@@ -245,13 +245,6 @@ lookupResource sc@ServerContext{..} rtype rid = do
               Log.warning "LookupResource: the server has not yet synced with the latest member list "
               throwIO $ HE.ResourceAllocationException "the server has not yet synced with the latest member list"
 
-getResNode :: HashRing -> Text -> Maybe Text -> IO ServerNode
-getResNode hashRing hashKey listenerKey = do
-  let serverNode = getAllocatedNode hashRing hashKey
-  theNodes <- fromInternalServerNodeWithKey listenerKey serverNode
-  if V.null theNodes then throwIO $ HE.NodesNotFound "Got empty nodes"
-                     else pure $ V.head theNodes
-
 --------------------------------------------------------------------------------
 
 listSubscriptions :: ServerContext ->  Maybe T.Text -> IO (V.Vector Subscription)

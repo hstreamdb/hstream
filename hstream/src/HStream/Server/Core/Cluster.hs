@@ -13,39 +13,41 @@ module HStream.Server.Core.Cluster
   , recoverLocalTasks
   ) where
 
-import           Control.Concurrent             (MVar, tryReadMVar, withMVar)
-import           Control.Concurrent.STM         (readTVarIO)
-import           Control.Exception              (Handler (..),
-                                                 SomeException (..), catches)
-import           Control.Monad                  (forM_, when)
-import qualified Data.List                      as L
-import qualified Data.Map.Strict                as Map
-import qualified Data.Text                      as T
-import qualified Data.Vector                    as V
+import           Control.Concurrent               (MVar, tryReadMVar, withMVar)
+import           Control.Concurrent.STM           (readTVarIO)
+import           Control.Exception                (Handler (..),
+                                                   SomeException (..), catches)
+import           Control.Monad                    (forM_, when)
+import qualified Data.List                        as L
+import qualified Data.Map.Strict                  as Map
+import qualified Data.Text                        as T
+import qualified Data.Vector                      as V
 
-import           HStream.Common.Types           (fromInternalServerNodeWithKey,
-                                                 getHStreamVersion)
-import qualified HStream.Exception              as HE
-import           HStream.Gossip                 (GossipContext (..),
-                                                 getFailedNodes, getMemberList)
-import qualified HStream.Gossip                 as Gossip
-import qualified HStream.Gossip.Types           as Gossip
-import qualified HStream.Logger                 as Log
-import           HStream.MetaStore.Types        (MetaStore (..))
-import qualified HStream.MetaStore.Types        as Meta
-import           HStream.Server.Core.Common     (getResNode, lookupResource,
-                                                 parseAllocationKey)
+import           HStream.Common.ConsistentHashing (getResNode)
+import           HStream.Common.Types             (fromInternalServerNodeWithKey,
+                                                   getHStreamVersion)
+import qualified HStream.Exception                as HE
+import           HStream.Gossip                   (GossipContext (..),
+                                                   getFailedNodes,
+                                                   getMemberList)
+import qualified HStream.Gossip                   as Gossip
+import qualified HStream.Gossip.Types             as Gossip
+import qualified HStream.Logger                   as Log
+import           HStream.MetaStore.Types          (MetaStore (..))
+import qualified HStream.MetaStore.Types          as Meta
+import           HStream.Server.Core.Common       (lookupResource,
+                                                   parseAllocationKey)
 import           HStream.Server.HStreamApi
-import qualified HStream.Server.HStreamInternal as I
-import qualified HStream.Server.MetaData        as Meta
-import           HStream.Server.MetaData.Value  (clusterStartTimeId)
-import           HStream.Server.QueryWorker     (QueryWorker (QueryWorker))
-import           HStream.Server.Types           (ServerContext (..))
-import qualified HStream.Server.Types           as Types
-import qualified HStream.ThirdParty.Protobuf    as Proto
-import           HStream.Utils                  (ResourceType (..),
-                                                 getProtoTimestamp,
-                                                 pattern EnumPB)
+import qualified HStream.Server.HStreamInternal   as I
+import qualified HStream.Server.MetaData          as Meta
+import           HStream.Server.MetaData.Value    (clusterStartTimeId)
+import           HStream.Server.QueryWorker       (QueryWorker (QueryWorker))
+import           HStream.Server.Types             (ServerContext (..))
+import qualified HStream.Server.Types             as Types
+import qualified HStream.ThirdParty.Protobuf      as Proto
+import           HStream.Utils                    (ResourceType (..),
+                                                   getProtoTimestamp,
+                                                   pattern EnumPB)
 
 describeCluster :: ServerContext -> IO DescribeClusterResponse
 describeCluster ServerContext{gossipContext = gc@GossipContext{..}, ..} = do
