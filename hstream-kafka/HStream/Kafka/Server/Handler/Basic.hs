@@ -1,4 +1,4 @@
-module HStream.Server.KafkaHandler.Basic
+module HStream.Kafka.Server.Handler.Basic
   ( -- 18: ApiVersions
     handleApiversionsV0
   , handleApiversionsV1
@@ -9,27 +9,28 @@ module HStream.Server.KafkaHandler.Basic
   , handleMetadataV1
   ) where
 
-import           Control.Concurrent.STM      (readTVarIO)
+import           Control.Concurrent.STM           (readTVarIO)
 import           Control.Exception
 import           Control.Monad
-import           Data.Functor                ((<&>))
-import           Data.Int                    (Int32)
-import           Data.Text                   (Text)
-import qualified Data.Text                   as Text
-import qualified Data.Vector                 as V
+import           Data.Functor                     ((<&>))
+import           Data.Int                         (Int32)
+import           Data.Text                        (Text)
+import qualified Data.Text                        as Text
+import qualified Data.Vector                      as V
 
-import qualified HStream.Logger              as Log
-import qualified HStream.Server.Core.Cluster as Core
-import qualified HStream.Server.Core.Common  as Core
-import qualified HStream.Server.HStreamApi   as GRPC
-import           HStream.Server.Types        (ServerContext (..),
-                                              transToStreamName)
-import qualified HStream.Store               as S
-import qualified HStream.Utils               as Utils
-import qualified Kafka.Protocol.Encoding     as K
-import qualified Kafka.Protocol.Error        as K
-import qualified Kafka.Protocol.Message      as K
-import qualified Kafka.Protocol.Service      as K
+import           HStream.Common.ConsistentHashing (getResNode)
+import           HStream.Common.Server.Lookup     (lookupNode)
+import qualified HStream.Gossip                   as Gossip
+import           HStream.Kafka.Server.Types       (ServerContext (..),
+                                                   transToStreamName)
+import qualified HStream.Logger                   as Log
+import qualified HStream.Server.HStreamApi        as A
+import qualified HStream.Store                    as S
+import qualified HStream.Utils                    as Utils
+import qualified Kafka.Protocol.Encoding          as K
+import qualified Kafka.Protocol.Error             as K
+import qualified Kafka.Protocol.Message           as K
+import qualified Kafka.Protocol.Service           as K
 
 --------------------
 -- 18: ApiVersions
@@ -109,15 +110,15 @@ handleMetadataV1 ctx@ServerContext{..} _ req = do
 
     getBrokers :: IO (V.Vector K.MetadataResponseBrokerV1)
     getBrokers = do
-      GRPC.DescribeClusterResponse{..} <- Core.describeCluster ctx
-      let brokers = V.map (\GRPC.ServerNode{..} ->
+      (nodes, nodesStatus) <- Gossip.describeCluster gossipContext scAdvertisedListenersKey
+      let brokers = V.map (\A.ServerNode{..} ->
                               K.MetadataResponseBrokerV1
                               { nodeId   = fromIntegral serverNodeId
                               , host     = serverNodeHost
                               , port     = 9092 -- FIXME: hardcoded port
                               , rack     = Nothing
                               }
-                          ) describeClusterResponseServerNodes
+                          ) nodes
       return brokers
 
     getRespTopic :: Text -> IO K.MetadataResponseTopicV1
@@ -138,15 +139,13 @@ handleMetadataV1 ctx@ServerContext{..} _ req = do
           | otherwise -> do
               respPartitions <-
                 V.iforM shards $ \idx shardId -> do
-                  -- Note: we choose the leader using the same method as `lookupShard` of the old GRPC server.
-                  (_, hashRing) <- readTVarIO loadBalanceHashRing
-                  theNode <- Core.getResNode hashRing (Text.pack $ show shardId) scAdvertisedListenersKey
+                  theNode <- lookupNode loadBalanceHashRing (Text.pack $ show shardId) scAdvertisedListenersKey
                   -- FIXME: Convert from `Word32` to `Int32`, possible overflow!
-                  when ((GRPC.serverNodeId theNode) > fromIntegral (maxBound :: Int32)) $
-                    Log.warning $ "ServerID " <> Log.build (GRPC.serverNodeId theNode)
+                  when ((A.serverNodeId theNode) > fromIntegral (maxBound :: Int32)) $
+                    Log.warning $ "ServerID " <> Log.build (A.serverNodeId theNode)
                                <> " is too large, it should be less than "
                                <> Log.build (maxBound :: Int32)
-                  let (theNodeId :: Int32) = fromIntegral (GRPC.serverNodeId theNode)
+                  let (theNodeId :: Int32) = fromIntegral (A.serverNodeId theNode)
                   pure $ K.MetadataResponsePartitionV0
                            { errorCode      = K.NONE
                            , partitionIndex = (fromIntegral idx)

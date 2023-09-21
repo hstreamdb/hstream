@@ -1,7 +1,7 @@
 {-# LANGUAGE CPP               #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module HStream.Server.KafkaHandler.Topic
+module HStream.Kafka.Server.Handler.Topic
   ( -- 19: CreateTopics
     handleCreateTopicsV0
 
@@ -11,32 +11,31 @@ module HStream.Server.KafkaHandler.Topic
 
 import           Control.Exception
 import           Control.Monad
-import qualified Data.Map.Strict         as M
+import qualified Data.Map.Strict             as M
 import           Data.Maybe
-import qualified Data.Text               as T
-import qualified Data.Vector             as V
+import qualified Data.Text                   as T
+import qualified Data.Vector                 as V
 
-import qualified HStream.Base.Time       as BaseTime
-import qualified HStream.Common.Types    as CommonTypes
-import qualified HStream.Logger          as Log
-import qualified HStream.Server.MetaData as P
-import qualified HStream.Server.Shard    as Shard
-import qualified HStream.Server.Types    as HsTypes
-import qualified HStream.Stats           as Stats
-import qualified HStream.Store           as S
-import qualified HStream.Utils           as Utils
-
-import qualified Kafka.Protocol.Encoding as K
-import qualified Kafka.Protocol.Error    as K
-import qualified Kafka.Protocol.Message  as K
-import qualified Kafka.Protocol.Service  as K
+import qualified HStream.Base.Time           as BaseTime
+import qualified HStream.Common.Server.Shard as Shard
+import qualified HStream.Common.Types        as CommonTypes
+import           HStream.Kafka.Server.Types  (ServerContext (..),
+                                              transToStreamName)
+import qualified HStream.Logger              as Log
+import qualified HStream.Stats               as Stats
+import qualified HStream.Store               as S
+import qualified HStream.Utils               as Utils
+import qualified Kafka.Protocol.Encoding     as K
+import qualified Kafka.Protocol.Error        as K
+import qualified Kafka.Protocol.Message      as K
+import qualified Kafka.Protocol.Service      as K
 
 --------------------
 -- 19: CreateTopics
 --------------------
 -- FIXME: The `timeoutMs` field of request is omitted.
 handleCreateTopicsV0
-  :: HsTypes.ServerContext -> K.RequestContext -> K.CreateTopicsRequestV0 -> IO K.CreateTopicsResponseV0
+  :: ServerContext -> K.RequestContext -> K.CreateTopicsRequestV0 -> IO K.CreateTopicsResponseV0
 handleCreateTopicsV0 ctx _ K.CreateTopicsRequestV0{..} =
   case topics of
     K.KaArray Nothing ->
@@ -58,7 +57,7 @@ handleCreateTopicsV0 ctx _ K.CreateTopicsRequestV0{..} =
           Log.warning $ "Expect a positive numPartitions but got " <> Log.build numPartitions
           return $ K.CreatableTopicResultV0 name K.INVALID_PARTITIONS
       | otherwise = do
-          let streamId = HsTypes.transToStreamName name
+          let streamId = transToStreamName name
           timeStamp <- BaseTime.getSystemNsTimestamp
           -- FIXME: Is there any other attrs to store?
           -- FIXME: Should we parse any other attr from `confs` of `CreateableTopicV0`?
@@ -66,7 +65,7 @@ handleCreateTopicsV0 ctx _ K.CreateTopicsRequestV0{..} =
               attrs = S.def { S.logReplicationFactor = S.defAttr1 (fromIntegral replicationFactor)
                             , S.logAttrsExtras       = extraAttr
                             }
-          try (S.createStream (HsTypes.scLDClient ctx) streamId attrs) >>= \case
+          try (S.createStream (scLDClient ctx) streamId attrs) >>= \case
             Left (e :: SomeException)
               | isJust (fromException @S.EXISTS e) -> do
                 Log.warning $ "Stream already exists: " <> Log.build (show streamId)
@@ -79,7 +78,7 @@ handleCreateTopicsV0 ctx _ K.CreateTopicsRequestV0{..} =
               shards_e <-
                 try $ forM (keyTups `zip` [0..]) $ \((startKey, endKey), i) -> do
                   let shard = Shard.mkShard i streamId startKey endKey (fromIntegral numPartitions)
-                  Shard.createShard (HsTypes.scLDClient ctx) shard
+                  Shard.createShard (scLDClient ctx) shard
               case shards_e of
                 Left (e :: SomeException) -> do
                   Log.warning $ "Exception occurs when creating shards of stream " <> Log.build (show streamId) <> ": " <> Log.build (show e)
@@ -93,7 +92,7 @@ handleCreateTopicsV0 ctx _ K.CreateTopicsRequestV0{..} =
 --------------------
 -- FIXME: The `timeoutMs` field of request is omitted.
 handleDeleteTopicsV0
-  :: HsTypes.ServerContext -> K.RequestContext -> K.DeleteTopicsRequestV0 -> IO K.DeleteTopicsResponseV0
+  :: ServerContext -> K.RequestContext -> K.DeleteTopicsRequestV0 -> IO K.DeleteTopicsResponseV0
 handleDeleteTopicsV0 ctx _ K.DeleteTopicsRequestV0{..} =
   case topicNames of
     K.KaArray Nothing ->
@@ -114,34 +113,17 @@ handleDeleteTopicsV0 ctx _ K.DeleteTopicsRequestV0{..} =
     -- FIXME: There can be some potential exceptions which are difficult to
     --        classify using Kafka's error code. So this function may throw
     --        exceptions.
-    -- FIXME: We take the 'force delete' semantics here, which means this
-    --        handler is influenced by works from the old GRPC server.
-    --        Is this proper?
     -- WARNING: This function may throw exceptions!
+    --
+    -- TODO: Handle topic that has subscription (i.e. cannot be deleted)
     deleteTopic :: T.Text -> IO K.DeletableTopicResultV0
     deleteTopic topicName = do
-      let streamId = HsTypes.transToStreamName topicName
-      S.doesStreamExist (HsTypes.scLDClient ctx) streamId >>= \case
+      let streamId = transToStreamName topicName
+      S.doesStreamExist (scLDClient ctx) streamId >>= \case
         True  -> do
-          subs <- P.getSubscriptionWithStream (HsTypes.metaHandle ctx) topicName
-          if null subs
-            then do
-              S.removeStream (HsTypes.scLDClient ctx) streamId
-              Stats.stream_stat_erase (HsTypes.scStatsHolder ctx) (Utils.textToCBytes topicName)
-#ifdef HStreamEnableSchema
-              P.unregisterSchema (HsTypes.metaHandle ctx) topicName
-#endif
-              return $ K.DeletableTopicResultV0 topicName K.NONE
-            else do
-              -- TODO:
-              -- 1. delete the archived stream when the stream is no longer needed
-              -- 2. erase stats for archived stream
-              _archivedStream <- S.archiveStream (HsTypes.scLDClient ctx) streamId
-              P.updateSubscription (HsTypes.metaHandle ctx) topicName (Utils.cBytesToText $ S.getArchivedStreamName _archivedStream)
-#ifdef HStreamEnableSchema
-              P.unregisterSchema (HsTypes.metaHandle ctx) topicName
-#endif
-              return $ K.DeletableTopicResultV0 topicName K.NONE
+          S.removeStream (scLDClient ctx) streamId
+          Stats.stream_stat_erase (scStatsHolder ctx) (Utils.textToCBytes topicName)
+          return $ K.DeletableTopicResultV0 topicName K.NONE
         False -> do
           Log.warning $ "Stream " <> Log.build (show streamId) <> " does not exist"
           return $ K.DeletableTopicResultV0 topicName K.UNKNOWN_TOPIC_OR_PARTITION

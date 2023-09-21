@@ -35,6 +35,7 @@ import           ZooKeeper                        (withResource,
 
 import           HStream.Base                     (setupFatalSignalHandler)
 import           HStream.Common.ConsistentHashing (HashRing, constructServerMap)
+import           HStream.Common.Server.HashRing   (updateHashRing)
 import           HStream.Common.Types             (getHStreamVersion)
 import           HStream.Exception
 import           HStream.Gossip                   (GossipContext (..),
@@ -65,7 +66,6 @@ import           HStream.Server.Initialization    (closeRocksDBHandle,
                                                    initializeServer,
                                                    openRocksDBHandle,
                                                    readTlsPemFile)
-import qualified HStream.Server.KafkaHandler      as K
 import           HStream.Server.MetaData          (TaskAllocation (..),
                                                    clusterStartTimeId,
                                                    initializeAncestors,
@@ -76,7 +76,6 @@ import           HStream.Server.Types             (ServerContext (..))
 import qualified HStream.Store.Logger             as Log
 import qualified HStream.ThirdParty.Protobuf      as Proto
 import           HStream.Utils                    (getProtoTimestamp)
-import qualified Kafka.Server                     as K
 
 #ifdef HStreamUseGrpcHaskell
 import           HStream.Server.Handler           (handlers)
@@ -141,17 +140,10 @@ app config@ServerOpts{..} = do
       grpcOpts <- defGrpcOpts _serverHost _serverPort _tlsConfig
       -- Experimental features
       let enableStreamV2 = ExperimentalStreamV2 `elem` experimentalFeatures
-          enableKafka = ExperimentalKafka `elem` experimentalFeatures
       Async.withAsync (serve serverContext grpcOpts enableStreamV2) $ \a -> do
         -- start gossip
         a1 <- startGossip _serverHost gossipContext
         Async.link2Only (const True) a a1
-        -- start kafka api server
-        when enableKafka $ do
-          -- TODO: This server primarily serves as a demonstration, and there
-          -- is certainly room for enhancements and refinements.
-          a2 <- Async.async $ serveKafka serverContext K.defaultServerOpts
-          Async.link2Only (const True) a a2
         -- start extra listeners
         as <- serveListeners serverContext
                              grpcOpts
@@ -284,14 +276,6 @@ serveListeners sc grpcOpts
        else HsGrpc.runServer grpcOpts' (HsGrpcHandler.handlers sc')
 #endif
 
-serveKafka
-  :: ServerContext
-  -> K.ServerOptions
-  -> IO ()
-serveKafka sc rpcOpts = do
-  Log.info "Starting kafka api server..."
-  K.runServer rpcOpts (K.handlers sc)
-
 -------------------------------------------------------------------------------
 
 -- default grpc options
@@ -330,16 +314,3 @@ showVersion = do
   API.HStreamVersion{..} <- getHStreamVersion
   putStrLn $ "version: " <> T.unpack hstreamVersionVersion
           <> " (" <> T.unpack hstreamVersionCommit <> ")"
-
--- However, reconstruct hashRing every time can be expensive
--- when we have a large number of nodes in the cluster.
-updateHashRing :: GossipContext -> TVar (Epoch, HashRing) -> IO ()
-updateHashRing gc hashRing = loop (0,[])
-  where
-    loop (epoch, list)=
-      loop =<< atomically
-        ( do (epoch', list') <- getMemberListWithEpochSTM gc
-             when (epoch == epoch' && list == list') retry
-             writeTVar hashRing (epoch', constructServerMap list')
-             return (epoch', list')
-        )
