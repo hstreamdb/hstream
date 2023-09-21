@@ -62,7 +62,8 @@ import qualified HStream.Stats               as Stats
 import qualified HStream.Store               as S
 import           HStream.Utils               (decompressBatchedRecord,
                                               getPOSIXTime, getRecordKey,
-                                              msecSince, textToCBytes, transToStreamName)
+                                              msecSince, textToCBytes,
+                                              transToStreamName)
 
 createShardReader
   :: HasCallStack
