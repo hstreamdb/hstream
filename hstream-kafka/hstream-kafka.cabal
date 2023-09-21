@@ -107,20 +107,45 @@ library
   exposed-modules:
     HStream.Kafka.Common.OffsetManager
     HStream.Kafka.Common.RecordFormat
+    HStream.Kafka.Network
+    HStream.Kafka.Server.Config
+    HStream.Kafka.Server.Handler
+    HStream.Kafka.Server.Types
+
+  other-modules:
+    HStream.Kafka.Server.Config.FromCli
+    HStream.Kafka.Server.Config.FromJson
+    HStream.Kafka.Server.Config.Types
+    HStream.Kafka.Server.Handler.Basic
+    HStream.Kafka.Server.Handler.Consume
+    HStream.Kafka.Server.Handler.Produce
+    HStream.Kafka.Server.Handler.Topic
 
   hs-source-dirs:     .
   build-depends:
+    , aeson
+    , attoparsec
     , base                          >=4.11 && <5
     , bytestring
     , containers
     , digest
+    , directory
     , hashtables
+    , hstream-api-hs
+    , hstream-common
     , hstream-common-base
+    , hstream-common-server
+    , hstream-common-stats
+    , hstream-gossip
     , hstream-kafka:kafka-protocol
     , hstream-store
     , network
+    , optparse-applicative
+    , stm
     , text
+    , time
     , vector
+    , yaml
     , Z-Data
 
   default-language:   GHC2021
