@@ -225,6 +225,9 @@ cradle:
     - path: "hstream/./app/server.hs"
       component: "hstream:exe:hstream-server"
 
+    - path: "hstream/./app/kafka-server.hs"
+      component: "hstream:exe:hstream-kafka-server"
+
     - path: "hstream/./app/client.hs"
       component: "hstream:exe:hstream"
 
@@ -273,11 +276,14 @@ cradle:
     - path: "hstream-io/./"
       component: "lib:hstream-io"
 
-    - path: "hstream-kafka/src"
+    - path: "hstream-kafka/."
       component: "lib:hstream-kafka"
 
-    - path: "hstream-kafka/test"
-      component: "hstream-kafka:test:hstream-kafka-test"
+    - path: "hstream-kafka/protocol"
+      component: "lib:kafka-protocol"
+
+    - path: "hstream-kafka/protocol/test"
+      component: "hstream-kafka:test:kafka-protocol-test"
 
     - path: "hstream-processing/src"
       component: "lib:hstream-processing"

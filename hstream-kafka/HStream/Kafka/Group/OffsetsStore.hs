@@ -1,4 +1,4 @@
-module Kafka.Group.OffsetsStore
+module HStream.Kafka.Group.OffsetsStore
   ( OffsetStorage(..)
   , OffsetStore(..)
   , mkCkpOffsetStorage

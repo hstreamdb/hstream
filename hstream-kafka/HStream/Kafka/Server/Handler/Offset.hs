@@ -1,16 +1,17 @@
-module HStream.Server.KafkaHandler.Offset
+module HStream.Kafka.Server.Handler.Offset
  ( handleOffsetCommitV0
  , handleOffsetFetchV0
  )
 where
 
-import           Control.Concurrent               (withMVar)
-import qualified Data.HashMap.Strict              as HM
-import qualified Data.Vector                      as V
-import           HStream.Server.Types             (ServerContext (..))
-import           Kafka.Group.GroupMetadataManager (fetchOffsets, storeOffsets)
-import qualified Kafka.Protocol                   as K
-import qualified Kafka.Protocol.Service           as K
+import           Control.Concurrent                       (withMVar)
+import qualified Data.HashMap.Strict                      as HM
+import qualified Data.Vector                              as V
+import           HStream.Kafka.Group.GroupMetadataManager (fetchOffsets,
+                                                           storeOffsets)
+import           HStream.Kafka.Server.Types               (ServerContext (..))
+import qualified Kafka.Protocol                           as K
+import qualified Kafka.Protocol.Service                   as K
 
 --------------------
 -- 8: OffsetCommit

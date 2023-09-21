@@ -5,9 +5,9 @@ module HStream.Kafka.Server.Handler (handlers) where
 
 import           HStream.Kafka.Server.Handler.Basic
 import           HStream.Kafka.Server.Handler.Consume
+import           HStream.Kafka.Server.Handler.Offset
 import           HStream.Kafka.Server.Handler.Produce
 import           HStream.Kafka.Server.Handler.Topic
-import           HStream.Kafka.Server.Handler.Offset
 import           HStream.Kafka.Server.Types           (ServerContext (..))
 import qualified Kafka.Protocol.Message               as K
 import qualified Kafka.Protocol.Service               as K

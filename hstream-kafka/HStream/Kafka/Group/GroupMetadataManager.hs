@@ -1,30 +1,31 @@
-module Kafka.Group.GroupMetadataManager
+module HStream.Kafka.Group.GroupMetadataManager
   ( GroupMetadataManager
   , mkGroupMetadataManager
   , storeOffsets
   , fetchOffsets
   ) where
 
-import           Control.Concurrent            (MVar, modifyMVar_, newMVar,
-                                                withMVar)
-import           Control.Concurrent.MVar       (readMVar)
-import           Control.Monad                 (unless)
+import           Control.Concurrent               (MVar, modifyMVar_, newMVar,
+                                                   withMVar)
+import           Control.Concurrent.MVar          (readMVar)
+import           Control.Monad                    (unless)
 import           Data.Hashable
-import qualified Data.HashMap.Strict           as HM
-import           Data.Int                      (Int32, Int64)
-import qualified Data.Map.Strict               as Map
-import           Data.Maybe                    (fromMaybe)
-import qualified Data.Text                     as T
-import qualified Data.Vector                   as V
-import           Data.Word                     (Word64)
-import           GHC.Generics                  (Generic)
-import qualified HStream.Logger                as Log
-import           Kafka.Group.OffsetsStore      (OffsetStorage (..), OffsetStore)
-import           Kafka.Protocol.Encoding       (KaArray (KaArray, unKaArray))
-import qualified Kafka.Protocol.Error          as K
-import           Kafka.Protocol.Message.Struct (OffsetCommitRequestPartitionV0 (..),
-                                                OffsetCommitResponsePartitionV0 (..),
-                                                OffsetFetchResponsePartitionV0 (..))
+import qualified Data.HashMap.Strict              as HM
+import           Data.Int                         (Int32, Int64)
+import qualified Data.Map.Strict                  as Map
+import           Data.Maybe                       (fromMaybe)
+import qualified Data.Text                        as T
+import qualified Data.Vector                      as V
+import           Data.Word                        (Word64)
+import           GHC.Generics                     (Generic)
+import           HStream.Kafka.Group.OffsetsStore (OffsetStorage (..),
+                                                   OffsetStore)
+import qualified HStream.Logger                   as Log
+import           Kafka.Protocol.Encoding          (KaArray (KaArray, unKaArray))
+import qualified Kafka.Protocol.Error             as K
+import           Kafka.Protocol.Message           (OffsetCommitRequestPartitionV0 (..),
+                                                   OffsetCommitResponsePartitionV0 (..),
+                                                   OffsetFetchResponsePartitionV0 (..))
 
 data GroupMetadataManager = GroupMetadataManager
   { serverId      :: Int

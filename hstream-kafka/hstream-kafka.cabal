@@ -122,6 +122,7 @@ library
     HStream.Kafka.Server.Handler.Consume
     HStream.Kafka.Server.Handler.Produce
     HStream.Kafka.Server.Handler.Topic
+    HStream.Kafka.Server.Handler.Offset
 
   hs-source-dirs:     .
   build-depends:
