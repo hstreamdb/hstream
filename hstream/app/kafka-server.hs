@@ -28,6 +28,7 @@ import           ZooKeeper                      (withResource, zookeeperResInit)
 
 import           HStream.Base                   (setupFatalSignalHandler)
 import           HStream.Common.Server.HashRing (updateHashRing)
+import qualified HStream.Common.Server.MetaData as M
 import qualified HStream.Exception              as HE
 import           HStream.Gossip                 (GossipContext (..),
                                                  defaultGossipOpts,
@@ -46,15 +47,9 @@ import qualified HStream.Kafka.Server.Handler   as K
 import           HStream.Kafka.Server.Types     (ServerContext (..),
                                                  initServerContext)
 import qualified HStream.Logger                 as Log
-import           HStream.MetaStore.Types        as M (MetaHandle (..),
-                                                      MetaStore (..),
-                                                      RHandle (..))
+import           HStream.MetaStore.Types        (MetaHandle (..),
+                                                 MetaStore (..), RHandle (..))
 import qualified HStream.Server.HStreamInternal as I
-import           HStream.Server.MetaData        (TaskAllocation (..),
-                                                 clusterStartTimeId,
-                                                 initializeAncestors,
-                                                 initializeFile,
-                                                 initializeTables)
 import qualified HStream.Store.Logger           as S
 import qualified HStream.ThirdParty.Protobuf    as Proto
 import           HStream.Utils                  (getProtoTimestamp)
@@ -78,14 +73,14 @@ app config@ServerOpts{..} = do
   case _metaStore of
     ZkAddr addr -> do
       let zkRes = zookeeperResInit addr Nothing 5000 Nothing 0
-      withResource zkRes $ \zk -> initializeAncestors zk >> action (ZkHandle zk)
+      withResource zkRes $ \zk -> M.initKafkaZkPaths zk >> action (ZkHandle zk)
     RqAddr addr -> do
       m <- newManager defaultManagerSettings
       let rq = RHandle m addr
-      initializeTables rq
+      M.initKafkaRqTables rq
       action (RLHandle rq)
     FileAddr addr -> do
-      initializeFile addr
+      M.initKafkaFileTables addr
       action (FileHandle addr)
 
   where
@@ -152,8 +147,8 @@ serve sc@ServerContext{..} netOpts = do
           readMVar (clusterInited gossipContext) >>= \case
             Gossip.Gossip -> return ()
             _ -> do
-              getProtoTimestamp >>= \x -> upsertMeta @Proto.Timestamp clusterStartTimeId x metaHandle
-              handle (\(_ :: HE.RQLiteRowNotFound) -> return ()) $ deleteAllMeta @TaskAllocation metaHandle
+              getProtoTimestamp >>= \x -> upsertMeta @Proto.Timestamp M.clusterStartTimeId x metaHandle
+              handle (\(_ :: HE.RQLiteRowNotFound) -> return ()) $ deleteAllMeta @M.TaskAllocation metaHandle
 
   let netOpts' = netOpts{ K.serverOnStarted = Just serverOnStarted}
   Log.info $ "Starting"

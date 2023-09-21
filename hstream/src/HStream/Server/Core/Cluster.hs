@@ -25,6 +25,7 @@ import qualified Data.Vector                      as V
 
 import           HStream.Common.ConsistentHashing (getResNode)
 import           HStream.Common.Server.Lookup     (lookupNode)
+import           HStream.Common.Server.MetaData   (clusterStartTimeId)
 import           HStream.Common.Types             (fromInternalServerNodeWithKey,
                                                    getHStreamVersion)
 import qualified HStream.Exception                as HE
@@ -41,7 +42,6 @@ import           HStream.Server.Core.Common       (lookupResource,
 import           HStream.Server.HStreamApi
 import qualified HStream.Server.HStreamInternal   as I
 import qualified HStream.Server.MetaData          as Meta
-import           HStream.Server.MetaData.Value    (clusterStartTimeId)
 import           HStream.Server.QueryWorker       (QueryWorker (QueryWorker))
 import           HStream.Server.Types             (ServerContext (..))
 import qualified HStream.Server.Types             as Types
