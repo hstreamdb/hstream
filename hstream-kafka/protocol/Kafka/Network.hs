@@ -1,5 +1,5 @@
 module Kafka.Network
-  ( ServerOptions
+  ( ServerOptions (..)
   , defaultServerOpts
   , runServer
   ) where
@@ -21,9 +21,13 @@ import           Kafka.Protocol.Encoding
 import           Kafka.Protocol.Message
 import           Kafka.Protocol.Service
 
+-- TODO
+data SslOptions
+
 data ServerOptions = ServerOptions
   { serverHost           :: !String
   , serverPort           :: !Int
+  , serverSslOptions     :: !(Maybe SslOptions)
   , serverOnStarted      :: !(Maybe (IO ()))
   , serverBufferChanSize :: !Word
   }
@@ -32,6 +36,7 @@ defaultServerOpts :: ServerOptions
 defaultServerOpts = ServerOptions
   { serverHost           = "0.0.0.0"
   , serverPort           = 9092
+  , serverSslOptions     = Nothing
   , serverOnStarted      = Nothing
   , serverBufferChanSize = 64
   }
@@ -39,8 +44,8 @@ defaultServerOpts = ServerOptions
 -- TODO: This server primarily serves as a demonstration, and there is
 -- certainly room for enhancements and refinements.
 runServer :: ServerOptions -> [ServiceHandler] -> IO ()
-runServer ServerOptions{..} handlers =
-  startTCPServer (Just serverHost) (show serverPort) $ \s -> do
+runServer opts handlers =
+  startTCPServer opts $ \s -> do
     i <- N.recv s 1024
     talk i Nothing s
   where
@@ -91,9 +96,8 @@ runServer ServerOptions{..} handlers =
           errmsg = "NotImplemented: " <> show apikey <> ":v" <> show version
       fromMaybe (error errmsg) m_handler
 
--- from the "network-run" package.
-startTCPServer :: Maybe N.HostName -> N.ServiceName -> (N.Socket -> IO a) -> IO a
-startTCPServer mhost port server = do
+startTCPServer :: ServerOptions -> (N.Socket -> IO a) -> IO a
+startTCPServer ServerOptions{..} server = do
   addr <- resolve
   E.bracket (open addr) N.close loop
   where
@@ -102,13 +106,15 @@ startTCPServer mhost port server = do
             { N.addrFlags = [N.AI_PASSIVE]
             , N.addrSocketType = N.Stream
             }
-      head <$> N.getAddrInfo (Just hints) mhost (Just port)
+      head <$> N.getAddrInfo (Just hints) (Just serverHost) (Just $ show serverPort)
     open addr = E.bracketOnError (N.openSocket addr) N.close $ \sock -> do
       N.setSocketOption sock N.ReuseAddr 1
       N.withFdSocket sock N.setCloseOnExecIfNeeded
       N.bind sock $ N.addrAddress addr
       N.listen sock 1024
-      return sock
+      case serverOnStarted of
+        Just onStarted -> onStarted >> pure sock
+        Nothing        -> pure sock
     loop sock = forever $ E.bracketOnError (N.accept sock) (N.close . fst)
       $ \(conn, _peer) -> void $
         -- 'forkFinally' alone is unlikely to fail thus leaking @conn@,
