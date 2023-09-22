@@ -86,6 +86,25 @@ void checkpoint_store_update_lsn(logdevice_checkpoint_store_t* store,
   store->rep->updateLSN(customer_id_, logid_t(logid), lsn, cb);
 }
 
+void checkpoint_store_update_multi_lsn(logdevice_checkpoint_store_t* store,
+                                       const char* customer_id,
+                                       c_logid_t* logids, c_lsn_t* lsns,
+                                       size_t len, HsStablePtr mvar, HsInt cap,
+                                       facebook::logdevice::Status* st_out) {
+  std::string customer_id_ = std::string(customer_id);
+  std::map<logid_t, lsn_t> checkpoints;
+  for (int i = 0; i < len; ++i)
+    checkpoints[logid_t(logids[i])] = lsns[i];
+  auto cb = [st_out, cap, mvar](facebook::logdevice::Status st) {
+    if (st_out) {
+      *st_out = st;
+    }
+    hs_try_putmvar(cap, mvar);
+  };
+
+  return store->rep->updateLSN(customer_id_, checkpoints, cb);
+}
+
 void checkpoint_store_remove_checkpoints(logdevice_checkpoint_store_t* store,
                                          const char* customer_id,
                                          c_logid_t* logids, HsInt logid_offset,

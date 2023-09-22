@@ -1,6 +1,5 @@
 {-# LANGUAGE BangPatterns    #-}
 {-# LANGUAGE CPP             #-}
-{-# LANGUAGE MagicHash       #-}
 {-# LANGUAGE MultiWayIf      #-}
 {-# LANGUAGE PatternSynonyms #-}
 
@@ -80,6 +79,7 @@ module HStream.Store.Stream
   , LD.newZookeeperBasedCheckpointStore
   , LD.ckpStoreGetLSN
   , LD.ckpStoreUpdateLSN
+  , LD.ckpStoreUpdateMultiLSN
   , LD.ckpStoreRemoveCheckpoints
   , LD.ckpStoreRemoveAllCheckpoints
     --
