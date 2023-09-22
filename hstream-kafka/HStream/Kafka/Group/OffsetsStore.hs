@@ -44,4 +44,4 @@ mkCkpOffsetStorage client ckpStoreName = do
 instance OffsetStorage CkpOffsetStorage where
   commitOffsets CkpOffsetStorage{..} offsetsKey offsets = do
     unless (Map.null offsets) $ do
-      S.ckpStoreUpdateMultiLSNSync ckpStore (textToCBytes offsetsKey) offsets
+      S.ckpStoreUpdateMultiLSN ckpStore (textToCBytes offsetsKey) offsets
