@@ -28,6 +28,15 @@ flag ReleaseBuild
   description:
     Enables all optimisations, leads to slower build time and better performance
 
+flag hstream_use_v2_engine
+  default:     False
+  description: Use v2 processing engine
+
+flag hstream_enable_schema
+  default:     False
+  description:
+    Save schema with streams and enable schema-related pipelines
+
 common shared-properties
   ghc-options:
     -Wall -Wcompat -Widentities -Wincomplete-record-updates
@@ -40,13 +49,22 @@ common shared-properties
       -fspec-constr-keen -fstatic-argument-transformation
       -funbox-strict-fields -O2
 
+  if flag(hstream_use_v2_engine)
+    cpp-options: -DHStreamUseV2Engine
+
+  if flag(hstream_enable_schema)
+    cpp-options: -DHStreamEnableSchema
+
 library
   import:             shared-properties
   exposed-modules:
     HStream.Common.Server.HashRing
     HStream.Common.Server.Lookup
+    HStream.Common.Server.MetaData
     HStream.Common.Server.Shard
+    HStream.Common.Server.Types
 
+  other-modules:      HStream.Common.Server.MetaData.Values
   hs-source-dirs:     .
   build-depends:
     , aeson
@@ -55,6 +73,7 @@ library
     , containers
     , digest
     , directory
+    , filelock
     , hashable
     , hashtables
     , hstream-api-hs
@@ -63,12 +82,15 @@ library
     , hstream-common-stats
     , hstream-gossip
     , hstream-store
+    , proto3-suite
     , stm
     , text
     , time
+    , unordered-containers
     , vector
     , yaml
     , Z-Data
+    , zoovisitor
 
   default-language:   GHC2021
   default-extensions:

@@ -66,14 +66,6 @@ ckpStoreGetLSN store customid logid =
     _ <- E.throwStreamErrorIfNotOK' errno
     return lsn
 
-ckpStoreGetLSNSync :: LDCheckpointStore -> CBytes -> C_LogID -> IO LSN
-ckpStoreGetLSNSync store customid logid =
-  ZC.withCBytes customid $ \customid' ->
-  withForeignPtr store $ \store' -> do
-    (ret_lsn, _) <- Z.withPrimSafe LSN_INVALID $ \sn' ->
-      E.throwStreamErrorIfNotOK $ c_checkpoint_store_get_lsn_sync_safe store' customid' logid sn'
-    return ret_lsn
-
 ckpStoreUpdateLSN :: LDCheckpointStore -> CBytes -> C_LogID -> LSN -> IO ()
 ckpStoreUpdateLSN = ckpStoreUpdateLSN' (-1)
 
@@ -82,6 +74,25 @@ ckpStoreUpdateLSN' retries store customid logid sn =
   ZC.withCBytesUnsafe customid $ \customid' ->
   withForeignPtr store $ \store' -> do
     let f = FFI.withAsyncPrimUnsafe (0 :: ErrorCode) $ c_checkpoint_store_update_lsn store' customid' logid sn
+    void $ FFI.retryWhileAgain f retries
+
+ckpStoreUpdateMultiLSN
+  :: LDCheckpointStore -> CBytes -> Map C_LogID LSN -> IO ()
+ckpStoreUpdateMultiLSN = ckpStoreUpdateMultiLSN' (-1)
+
+ckpStoreUpdateMultiLSN'
+  :: Int -> LDCheckpointStore -> CBytes -> Map C_LogID LSN -> IO ()
+ckpStoreUpdateMultiLSN' retries store customid sns =
+  ZC.withCBytesUnsafe customid $ \customid' ->
+  withForeignPtr store $ \store' -> do
+    let xs = Map.toList sns
+        ka = Z.primArrayFromList $ map fst xs
+        va = Z.primArrayFromList $ map snd xs
+    let f =
+          Z.withPrimArrayUnsafe ka $ \ks' len ->
+          Z.withPrimArrayUnsafe va $ \vs' _len ->
+            FFI.withAsyncPrimUnsafe (0 :: ErrorCode) $
+              checkpoint_store_update_multi_lsn store' customid' ks' vs' (fromIntegral len)
     void $ FFI.retryWhileAgain f retries
 
 ckpStoreRemoveCheckpoints
@@ -101,27 +112,6 @@ ckpStoreRemoveAllCheckpoints store customid =
     (errno, _) <- FFI.withAsyncPrimUnsafe (0 :: ErrorCode) $
       checkpoint_store_remove_all_checkpoints store' customid'
     void $ E.throwStreamErrorIfNotOK' errno
-
-ckpStoreUpdateLSNSync :: LDCheckpointStore -> CBytes -> C_LogID -> LSN -> IO ()
-ckpStoreUpdateLSNSync store customid logid sn =
-  ZC.withCBytes customid $ \customid' ->
-  withForeignPtr store $ \store' -> do
-    void $ E.throwStreamErrorIfNotOK $ c_checkpoint_store_update_lsn_sync_safe store' customid' logid sn
-
-ckpStoreUpdateMultiLSNSync
-  :: LDCheckpointStore
-  -> CBytes
-  -> Map C_LogID LSN
-  -> IO ()
-ckpStoreUpdateMultiLSNSync store customid sns =
-  ZC.withCBytes customid $ \customid' ->
-  withForeignPtr store $ \store' -> do
-    let xs = Map.toList sns
-    let ka = Z.primArrayFromList $ map fst xs
-        va = Z.primArrayFromList $ map snd xs
-    Z.withPrimArraySafe ka $ \ks' len ->
-      Z.withPrimArraySafe va $ \vs' _len -> void $ E.throwStreamErrorIfNotOK $
-        c_checkpoint_store_update_multi_lsn_sync_safe store' customid' ks' vs' (fromIntegral len)
 
 foreign import ccall unsafe "hs_logdevice.h new_file_based_checkpoint_store"
   c_new_file_based_checkpoint_store :: BA# Word8 -> IO (Ptr LogDeviceCheckpointStore)
@@ -145,31 +135,15 @@ foreign import ccall safe "hs_logdevice.h free_checkpoint_store"
 foreign import ccall safe "hs_logdevice.h &free_checkpoint_store"
   c_free_checkpoint_store_fun :: FunPtr (Ptr LogDeviceCheckpointStore -> IO ())
 
-foreign import ccall safe "hs_logdevice.h checkpoint_store_get_lsn_sync"
-  c_checkpoint_store_get_lsn_sync_safe
-    :: Ptr LogDeviceCheckpointStore
-    -> Ptr Word8    -- ^ customer_id
-    -> C_LogID
-    -> Ptr LSN    -- ^ value out
-    -> IO ErrorCode
-
 foreign import ccall unsafe "hs_logdevice.h checkpoint_store_get_lsn"
   c_checkpoint_store_get_lsn
     :: Ptr LogDeviceCheckpointStore
     -> BA# Word8     -- ^ customer_id
     -> C_LogID
     -> StablePtr PrimMVar -> Int
-    -> MBA# Word8     -- ^ ErrorCode
-    -> MBA# Word8     -- ^ value out
+    -> MBA# ErrorCode  -- ^ value out: error code
+    -> MBA# LSN        -- ^ value out: lsn
     -> IO ()
-
-foreign import ccall safe "hs_logdevice.h checkpoint_store_update_lsn_sync"
-  c_checkpoint_store_update_lsn_sync_safe
-    :: Ptr LogDeviceCheckpointStore
-    -> Ptr Word8    -- ^ customer_id
-    -> C_LogID
-    -> LSN
-    -> IO ErrorCode
 
 foreign import ccall unsafe "hs_logdevice.h checkpoint_store_update_lsn"
   c_checkpoint_store_update_lsn
@@ -178,7 +152,16 @@ foreign import ccall unsafe "hs_logdevice.h checkpoint_store_update_lsn"
     -> C_LogID
     -> LSN
     -> StablePtr PrimMVar -> Int
-    -> MBA# Word8
+    -> MBA# ErrorCode
+    -> IO ()
+
+foreign import ccall unsafe "hs_logdevice.h checkpoint_store_update_multi_lsn"
+  checkpoint_store_update_multi_lsn
+    :: Ptr LogDeviceCheckpointStore
+    -> BA# Word8    -- ^ customer_id
+    -> BA# C_LogID -> BA# LSN -> Word  -- ^ map of (logid, lsn)
+    -> StablePtr PrimMVar -> Int
+    -> MBA# ErrorCode
     -> IO ()
 
 foreign import ccall unsafe "hs_logdevice.h checkpoint_store_remove_checkpoints"
@@ -197,6 +180,57 @@ foreign import ccall unsafe "hs_logdevice.h checkpoint_store_remove_all_checkpoi
     -> StablePtr PrimMVar -> Int
     -> MBA# ErrorCode
     -> IO ()
+
+-------------------------------------------------------------------------------
+-- DEPRECATED
+
+{-# DEPRECATED ckpStoreGetLSNSync "Use ckpStoreGetLSN instead" #-}
+ckpStoreGetLSNSync :: LDCheckpointStore -> CBytes -> C_LogID -> IO LSN
+ckpStoreGetLSNSync store customid logid =
+  ZC.withCBytes customid $ \customid' ->
+  withForeignPtr store $ \store' -> do
+    (ret_lsn, _) <- Z.withPrimSafe LSN_INVALID $ \sn' ->
+      E.throwStreamErrorIfNotOK $ c_checkpoint_store_get_lsn_sync_safe store' customid' logid sn'
+    return ret_lsn
+
+{-# DEPRECATED ckpStoreUpdateLSNSync "Use ckpStoreUpdateLSN instead" #-}
+ckpStoreUpdateLSNSync :: LDCheckpointStore -> CBytes -> C_LogID -> LSN -> IO ()
+ckpStoreUpdateLSNSync store customid logid sn =
+  ZC.withCBytes customid $ \customid' ->
+  withForeignPtr store $ \store' -> do
+    void $ E.throwStreamErrorIfNotOK $ c_checkpoint_store_update_lsn_sync_safe store' customid' logid sn
+
+{-# DEPRECATED updateMultiSequenceNumSync "Use ckpStoreUpdateMultiLSN instead" #-}
+updateMultiSequenceNumSync
+  :: LDCheckpointStore
+  -> CBytes
+  -> Map C_LogID LSN
+  -> IO ()
+updateMultiSequenceNumSync store customid sns =
+  ZC.withCBytes customid $ \customid' ->
+  withForeignPtr store $ \store' -> do
+    let xs = Map.toList sns
+    let ka = Z.primArrayFromList $ map fst xs
+        va = Z.primArrayFromList $ map snd xs
+    Z.withPrimArraySafe ka $ \ks' len ->
+      Z.withPrimArraySafe va $ \vs' _len -> void $ E.throwStreamErrorIfNotOK $
+        c_checkpoint_store_update_multi_lsn_sync_safe store' customid' ks' vs' (fromIntegral len)
+
+foreign import ccall safe "hs_logdevice.h checkpoint_store_get_lsn_sync"
+  c_checkpoint_store_get_lsn_sync_safe
+    :: Ptr LogDeviceCheckpointStore
+    -> Ptr Word8    -- ^ customer_id
+    -> C_LogID
+    -> Ptr LSN    -- ^ value out
+    -> IO ErrorCode
+
+foreign import ccall safe "hs_logdevice.h checkpoint_store_update_lsn_sync"
+  c_checkpoint_store_update_lsn_sync_safe
+    :: Ptr LogDeviceCheckpointStore
+    -> Ptr Word8    -- ^ customer_id
+    -> C_LogID
+    -> LSN
+    -> IO ErrorCode
 
 foreign import ccall safe "hs_logdevice.h checkpoint_store_update_multi_lsn_sync"
   c_checkpoint_store_update_multi_lsn_sync_safe

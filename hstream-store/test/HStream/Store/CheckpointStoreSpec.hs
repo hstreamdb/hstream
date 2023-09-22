@@ -3,6 +3,7 @@
 module HStream.Store.CheckpointStoreSpec (spec) where
 
 import           Control.Monad           (void)
+import qualified Data.Map.Strict         as Map
 import qualified Data.Vector.Primitive   as VP
 import           Test.Hspec
 
@@ -33,6 +34,15 @@ storeSpec new_ckp_store = do
   it "write & read should be same" $ do
     S.ckpStoreUpdateLSN checkpointStore "customer1" logid 2
     S.ckpStoreGetLSN checkpointStore "customer1" logid `shouldReturn` 2
+
+  it "update multi lsn" $ do
+    S.ckpStoreUpdateLSN checkpointStore "customer1" 1 1
+    S.ckpStoreGetLSN checkpointStore "customer1" 1 `shouldReturn` 1
+    S.ckpStoreUpdateMultiLSN checkpointStore "customer1" $
+      Map.fromList [(1, 2), (2, 3), (3, 5)]
+    S.ckpStoreGetLSN checkpointStore "customer1" 1 `shouldReturn` 2
+    S.ckpStoreGetLSN checkpointStore "customer1" 2 `shouldReturn` 3
+    S.ckpStoreGetLSN checkpointStore "customer1" 3 `shouldReturn` 5
 
   it "remove checkpoints" $ do
     S.ckpStoreGetLSN checkpointStore "customer2" logid `shouldThrow` S.isNOTFOUND

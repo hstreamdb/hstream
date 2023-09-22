@@ -22,6 +22,8 @@ import           Data.Word                        (Word32, Word64)
 import           HStream.ThirdParty.Protobuf
 
 import           HStream.Common.ConsistentHashing
+import           HStream.Common.Server.Lookup     (lookupNodePersist)
+import qualified HStream.Common.Server.MetaData   as P
 import           HStream.Common.Types             (fromInternalServerNodeWithKey)
 import qualified HStream.Exception                as HE
 import           HStream.Gossip
@@ -219,31 +221,8 @@ lookupResource sc@ServerContext{..} ResView rid = do
     Just P.ViewInfo{..} -> lookupResource sc ResQuery (P.queryId viewQuery)
 lookupResource sc@ServerContext{..} rtype rid = do
   let metaId = mkAllocationKey rtype rid
-  -- FIXME: it will insert the results of lookup no matter the resource exists or not
-  M.getMetaWithVer @P.TaskAllocation metaId metaHandle >>= \case
-    Nothing -> do
-      (epoch, hashRing) <- readTVarIO loadBalanceHashRing
-      theNode <- getResNode hashRing rid scAdvertisedListenersKey
-      try (M.insertMeta @P.TaskAllocation metaId (P.TaskAllocation epoch (serverNodeId theNode)) metaHandle) >>=
-        \case
-          Left (_e :: SomeException) -> lookupResource sc rtype rid
-          Right ()                   -> return theNode
-    Just (P.TaskAllocation epoch nodeId, version) -> do
-      serverList <- getMemberList gossipContext >>= fmap V.concat . mapM (fromInternalServerNodeWithKey scAdvertisedListenersKey)
-      case find ((nodeId == ) . serverNodeId) serverList of
-        Just theNode -> return theNode
-        Nothing -> do
-          (epoch', hashRing) <- readTVarIO loadBalanceHashRing
-          if epoch' > epoch
-            then do
-              theNode' <- getResNode hashRing rid scAdvertisedListenersKey
-              try (M.updateMeta @P.TaskAllocation metaId (P.TaskAllocation epoch' (serverNodeId theNode')) (Just version) metaHandle) >>=
-                \case
-                  Left (_e :: SomeException) -> lookupResource sc rtype rid
-                  Right ()                   -> return theNode'
-            else do
-              Log.warning "LookupResource: the server has not yet synced with the latest member list "
-              throwIO $ HE.ResourceAllocationException "the server has not yet synced with the latest member list"
+  lookupNodePersist metaHandle gossipContext loadBalanceHashRing
+                    rid metaId scAdvertisedListenersKey
 
 --------------------------------------------------------------------------------
 
