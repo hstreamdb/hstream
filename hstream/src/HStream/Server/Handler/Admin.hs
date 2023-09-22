@@ -59,16 +59,16 @@ import qualified HStream.Server.Core.ViewNew      as HC
 import qualified HStream.Server.Core.Query        as HC
 import qualified HStream.Server.Core.View         as HC
 #endif
+import           HStream.Common.Server.MetaData   (TaskAllocation,
+                                                   renderTaskAllocationsToTable)
 import           HStream.Server.Exception         (catchDefaultEx,
                                                    defaultExceptionHandle)
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.Server.MetaData          (QVRelation, QueryInfo,
-                                                   QueryStatus, TaskAllocation,
-                                                   ViewInfo,
+                                                   QueryStatus, ViewInfo,
                                                    renderQVRelationToTable,
                                                    renderQueryInfosToTable,
                                                    renderQueryStatusToTable,
-                                                   renderTaskAllocationsToTable,
                                                    renderViewInfosToTable)
 import           HStream.Server.Types
 import qualified HStream.Stats                    as Stats

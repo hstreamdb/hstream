@@ -36,6 +36,8 @@ import           ZooKeeper                        (withResource,
 import           HStream.Base                     (setupFatalSignalHandler)
 import           HStream.Common.ConsistentHashing (HashRing, constructServerMap)
 import           HStream.Common.Server.HashRing   (updateHashRing)
+import           HStream.Common.Server.MetaData   (TaskAllocation (..),
+                                                   clusterStartTimeId)
 import           HStream.Common.Types             (getHStreamVersion)
 import           HStream.Exception
 import           HStream.Gossip                   (GossipContext (..),
@@ -66,9 +68,7 @@ import           HStream.Server.Initialization    (closeRocksDBHandle,
                                                    initializeServer,
                                                    openRocksDBHandle,
                                                    readTlsPemFile)
-import           HStream.Server.MetaData          (TaskAllocation (..),
-                                                   clusterStartTimeId,
-                                                   initializeAncestors,
+import           HStream.Server.MetaData          (initializeAncestors,
                                                    initializeFile,
                                                    initializeTables)
 import           HStream.Server.QueryWorker       (QueryWorker (QueryWorker))

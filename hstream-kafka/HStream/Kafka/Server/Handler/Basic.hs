@@ -19,7 +19,8 @@ import qualified Data.Text                        as Text
 import qualified Data.Vector                      as V
 
 import           HStream.Common.ConsistentHashing (getResNode)
-import           HStream.Common.Server.Lookup     (lookupNode)
+import           HStream.Common.Server.Lookup     (KafkaResource (..),
+                                                   lookupKafkaPersist)
 import qualified HStream.Gossip                   as Gossip
 import           HStream.Kafka.Server.Types       (ServerContext (..),
                                                    transToStreamName)
@@ -115,7 +116,7 @@ handleMetadataV1 ctx@ServerContext{..} _ req = do
                               K.MetadataResponseBrokerV1
                               { nodeId   = fromIntegral serverNodeId
                               , host     = serverNodeHost
-                              , port     = 9092 -- FIXME: hardcoded port
+                              , port     = fromIntegral serverNodePort
                               , rack     = Nothing
                               }
                           ) nodes
@@ -139,7 +140,9 @@ handleMetadataV1 ctx@ServerContext{..} _ req = do
           | otherwise -> do
               respPartitions <-
                 V.iforM shards $ \idx shardId -> do
-                  theNode <- lookupNode loadBalanceHashRing (Text.pack $ show shardId) scAdvertisedListenersKey
+                  theNode <- lookupKafkaPersist metaHandle gossipContext
+                               loadBalanceHashRing scAdvertisedListenersKey
+                               (KafkaResTopic $ Text.pack $ show shardId)
                   -- FIXME: Convert from `Word32` to `Int32`, possible overflow!
                   when ((A.serverNodeId theNode) > fromIntegral (maxBound :: Int32)) $
                     Log.warning $ "ServerID " <> Log.build (A.serverNodeId theNode)
