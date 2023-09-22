@@ -36,6 +36,12 @@ cradle:
     - path: "common/hstream/bench/Util.hs"
       component: "hstream-common:bench:codec-bench"
 
+    - path: "common/server/."
+      component: "lib:hstream-common-server"
+
+    - path: "common/server/test"
+      component: "hstream-common-server:test:hstream-common-server-test"
+
     - path: "common/stats/."
       component: "lib:hstream-common-stats"
 
@@ -228,6 +234,9 @@ cradle:
     - path: "hstream/./app/client.hs"
       component: "hstream:exe:hstream"
 
+    - path: "hstream/./app/kafka-server.hs"
+      component: "hstream:exe:hstream-kafka-server"
+
     - path: "hstream/test"
       component: "hstream:test:hstream-test"
 
@@ -273,11 +282,14 @@ cradle:
     - path: "hstream-io/./"
       component: "lib:hstream-io"
 
-    - path: "hstream-kafka/src"
-      component: "lib:hstream-kafka"
+    - path: "hstream-kafka/protocol"
+      component: "hstream-kafka:lib:kafka-protocol"
 
-    - path: "hstream-kafka/test"
-      component: "hstream-kafka:test:hstream-kafka-test"
+    - path: "hstream-kafka/protocol/test"
+      component: "hstream-kafka:test:kafka-protocol-test"
+
+    - path: "hstream-kafka/."
+      component: "lib:hstream-kafka"
 
     - path: "hstream-processing/src"
       component: "lib:hstream-processing"
