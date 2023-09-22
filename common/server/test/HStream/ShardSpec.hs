@@ -4,24 +4,25 @@
 
 module HStream.ShardSpec where
 
-import           Control.Monad         (when)
-import           Data.Either           (isLeft, isRight, rights)
-import           Data.Foldable         (foldl')
-import qualified Data.Map.Strict       as M
-import           Data.Maybe            (fromJust)
-import           Data.Word             (Word64)
+import           Control.Monad               (when)
+import           Data.Either                 (isLeft, isRight, rights)
+import           Data.Foldable               (foldl')
+import qualified Data.Map.Strict             as M
+import           Data.Maybe                  (fromJust)
+import           Data.Word                   (Word64)
+
+import           HStream.Common.Server.Shard (Shard (..), ShardMap, deleteShard,
+                                              getShard, getShardMapIdx,
+                                              insertShard, mergeShard, mkShard,
+                                              mkShardMap, splitShardByKey)
 import           HStream.Common.Types
-import qualified HStream.Logger        as Log
-import           HStream.Server.Shard  (Shard (..), ShardMap, deleteShard,
-                                        getShard, getShardMapIdx, insertShard,
-                                        mergeShard, mkShard, mkShardMap,
-                                        splitShardByKey)
-import qualified HStream.Store         as S
+import qualified HStream.Logger              as Log
+import qualified HStream.Store               as S
 import           Test.Hspec
 import           Test.Hspec.QuickCheck
 import           Test.QuickCheck
-import           Test.QuickCheck.Gen   (chooseUpTo, chooseWord64)
-import qualified Z.Data.CBytes         as CB
+import           Test.QuickCheck.Gen         (chooseUpTo, chooseWord64)
+import qualified Z.Data.CBytes               as CB
 
 genChar :: Gen Char
 genChar = elements ['a'..'z']

@@ -45,14 +45,14 @@ import           Data.Word                         (Word32, Word64)
 import           GHC.Stack                         (HasCallStack)
 import           Google.Protobuf.Timestamp         (Timestamp)
 import           HStream.Base.Time                 (getSystemNsTimestamp)
+import           HStream.Common.Server.Shard       (createShard, mkShardAttrs,
+                                                    mkShardWithDefaultId)
 import           HStream.Common.Types
 import qualified HStream.Common.ZookeeperSlotAlloc as Slot
 import qualified HStream.Exception                 as HE
 import qualified HStream.Logger                    as Log
 import qualified HStream.Server.HStreamApi         as API
 import qualified HStream.Server.MetaData           as P
-import           HStream.Server.Shard              (createShard, mkShardAttrs,
-                                                    mkShardWithDefaultId)
 import           HStream.Server.Types              (ServerContext (..),
                                                     ServerInternalOffset (..),
                                                     ToOffset (..),

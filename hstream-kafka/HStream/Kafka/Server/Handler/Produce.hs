@@ -1,25 +1,23 @@
-module HStream.Server.KafkaHandler.Produce
+module HStream.Kafka.Server.Handler.Produce
   ( handleProduceV2
   ) where
 
 import           Control.Monad
-import           Data.ByteString            (ByteString)
-import qualified Data.ByteString            as BS
+import           Data.ByteString                    (ByteString)
 import           Data.Int
-import           Data.Maybe                 (fromMaybe)
-import qualified Data.Vector                as V
+import           Data.Maybe                         (fromMaybe)
+import qualified Data.Vector                        as V
 import           Data.Word
 
-import qualified HStream.Logger             as Log
-import           HStream.Server.Types       (ServerContext (..))
-import qualified HStream.Store              as S
-import qualified HStream.Utils              as U
-import qualified Kafka.Common.OffsetManager as K
-import qualified Kafka.Common.RecordFormat  as K
-import qualified Kafka.Protocol.Encoding    as K
-import qualified Kafka.Protocol.Error       as K
-import qualified Kafka.Protocol.Message     as K
-import qualified Kafka.Protocol.Service     as K
+import qualified HStream.Kafka.Common.OffsetManager as K
+import qualified HStream.Kafka.Common.RecordFormat  as K
+import           HStream.Kafka.Server.Types         (ServerContext (..))
+import qualified HStream.Store                      as S
+import qualified HStream.Utils                      as U
+import qualified Kafka.Protocol.Encoding            as K
+import qualified Kafka.Protocol.Error               as K
+import qualified Kafka.Protocol.Message             as K
+import qualified Kafka.Protocol.Service             as K
 
 -- acks: (FIXME: Currently we only support -1)
 --   0: The server will not send any response(this is the only case where the
@@ -40,7 +38,7 @@ handleProduceV2
   -> K.RequestContext
   -> K.ProduceRequestV2
   -> IO K.ProduceResponseV2
-handleProduceV2 ServerContext{..} _ req@K.ProduceRequestV0{..} = do
+handleProduceV2 ServerContext{..} _ K.ProduceRequestV0{..} = do
   -- TODO: handle request args: acks, timeoutMs
 
   let topicData' = fromMaybe V.empty (K.unKaArray topicData)

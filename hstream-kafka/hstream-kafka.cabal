@@ -40,17 +40,15 @@ common shared-properties
       -fspec-constr-keen -fstatic-argument-transformation
       -funbox-strict-fields -O2
 
-library
+library kafka-protocol
   import:             shared-properties
   exposed-modules:
-    Kafka.Common.OffsetManager
-    Kafka.Common.RecordFormat
+    Kafka.Network
     Kafka.Protocol
     Kafka.Protocol.Encoding
     Kafka.Protocol.Error
     Kafka.Protocol.Message
     Kafka.Protocol.Service
-    Kafka.Server
 
   other-modules:
     Kafka.Protocol.Encoding.Encode
@@ -58,20 +56,16 @@ library
     Kafka.Protocol.Encoding.Parser
     Kafka.Protocol.Message.Struct
 
-  hs-source-dirs:     src
+  hs-source-dirs:     protocol
   build-tool-depends: hpp:hpp >=0.6 && <0.7
   build-depends:
     , base                 >=4.11 && <5
     , bytestring
-    , containers
     , digest
-    , hashtables
     , hstream-common-base
-    , hstream-store
     , network
     , text
     , vector
-    , Z-Data
 
   default-language:   GHC2021
   default-extensions:
@@ -80,7 +74,7 @@ library
     OverloadedStrings
     RecordWildCards
 
-test-suite hstream-kafka-test
+test-suite kafka-protocol-test
   import:             shared-properties
   type:               exitcode-stdio-1.0
   main-is:            Spec.hs
@@ -88,15 +82,15 @@ test-suite hstream-kafka-test
     Kafka.Protocol.EncodingSpec
     Kafka.QuickCheck.Instances
 
-  hs-source-dirs:     test
+  hs-source-dirs:     protocol/test
   build-depends:
-    , base                  >=4.11 && <5
+    , base                          >=4.11 && <5
     , bytestring
     , hspec
-    , hstream-kafka
+    , hstream-kafka:kafka-protocol
     , QuickCheck
     , quickcheck-instances
-    , quickcheck-special    ^>=0.1
+    , quickcheck-special            ^>=0.1
     , text
 
   default-extensions:
@@ -107,3 +101,56 @@ test-suite hstream-kafka-test
   default-language:   GHC2021
   build-tool-depends: hspec-discover:hspec-discover >=2 && <3
   ghc-options:        -threaded -rtsopts -with-rtsopts=-N
+
+library
+  import:             shared-properties
+  exposed-modules:
+    HStream.Kafka.Common.OffsetManager
+    HStream.Kafka.Common.RecordFormat
+    HStream.Kafka.Network
+    HStream.Kafka.Server.Config
+    HStream.Kafka.Server.Handler
+    HStream.Kafka.Server.Types
+
+  other-modules:
+    HStream.Kafka.Server.Config.FromCli
+    HStream.Kafka.Server.Config.FromJson
+    HStream.Kafka.Server.Config.Types
+    HStream.Kafka.Server.Handler.Basic
+    HStream.Kafka.Server.Handler.Consume
+    HStream.Kafka.Server.Handler.Produce
+    HStream.Kafka.Server.Handler.Topic
+
+  hs-source-dirs:     .
+  build-depends:
+    , aeson
+    , attoparsec
+    , base                          >=4.11 && <5
+    , bytestring
+    , containers
+    , digest
+    , directory
+    , hashtables
+    , hstream-api-hs
+    , hstream-common
+    , hstream-common-base
+    , hstream-common-server
+    , hstream-common-stats
+    , hstream-gossip
+    , hstream-kafka:kafka-protocol
+    , hstream-store
+    , network
+    , optparse-applicative
+    , stm
+    , text
+    , time
+    , vector
+    , yaml
+    , Z-Data
+
+  default-language:   GHC2021
+  default-extensions:
+    DerivingStrategies
+    LambdaCase
+    OverloadedStrings
+    RecordWildCards

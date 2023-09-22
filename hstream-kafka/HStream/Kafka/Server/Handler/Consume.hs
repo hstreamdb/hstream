@@ -1,27 +1,27 @@
 {-# LANGUAGE BangPatterns #-}
 
-module HStream.Server.KafkaHandler.Consume
+module HStream.Kafka.Server.Handler.Consume
   ( handleFetchV0
   ) where
 
 import           Control.Monad
-import qualified Data.ByteString           as BS
+import qualified Data.ByteString                   as BS
 import           Data.Int
-import qualified Data.List                 as L
+import qualified Data.List                         as L
 import           Data.Maybe
 import           Data.Time
-import qualified Data.Vector               as V
+import qualified Data.Vector                       as V
 
-import qualified HStream.Logger            as Log
-import           HStream.Server.Types      (ServerContext (..),
-                                            transToStreamName)
-import qualified HStream.Store             as S
-import qualified HStream.Utils             as U
-import qualified Kafka.Common.RecordFormat as K
-import qualified Kafka.Protocol.Encoding   as K
-import qualified Kafka.Protocol.Error      as K
-import qualified Kafka.Protocol.Message    as K
-import qualified Kafka.Protocol.Service    as K
+import qualified HStream.Kafka.Common.RecordFormat as K
+import           HStream.Kafka.Server.Types        (ServerContext (..),
+                                                    transToStreamName)
+import qualified HStream.Logger                    as Log
+import qualified HStream.Store                     as S
+import qualified HStream.Utils                     as U
+import qualified Kafka.Protocol.Encoding           as K
+import qualified Kafka.Protocol.Error              as K
+import qualified Kafka.Protocol.Message            as K
+import qualified Kafka.Protocol.Service            as K
 
 --------------------
 -- 1: Fetch

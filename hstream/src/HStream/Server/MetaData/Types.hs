@@ -19,7 +19,6 @@ module HStream.Server.MetaData.Types
   , QueryStatus (QueryRunning, QueryCreating, QueryTerminated
                , QueryAborted, QueryResuming, QueryPaused, ..)
   , ShardReaderMeta (..)
-  , TaskAllocation (..)
   , createInsertQueryInfo
   , createInsertViewQueryInfo
   , deleteQueryInfo
@@ -33,7 +32,6 @@ module HStream.Server.MetaData.Types
   , renderQueryStatusToTable
   , renderViewInfosToTable
   , renderQVRelationToTable
-  , renderTaskAllocationsToTable
 
 #ifdef HStreamEnableSchema
   , hstreamColumnCatalogToColumnCatalog
@@ -71,6 +69,7 @@ import           ZooKeeper.Types                   (ZHandle)
 
 import           Control.Monad                     (forM)
 import qualified Data.Aeson                        as Aeson
+import           HStream.Common.Server.MetaData    (rootPath)
 import qualified HStream.Logger                    as Log
 import           HStream.MetaStore.Types           (FHandle, HasPath (..),
                                                     MetaHandle,
@@ -182,18 +181,6 @@ data ShardReaderMeta = ShardReaderMeta
     -- ^ use to record start time offset
   } deriving (Show, Generic, FromJSON, ToJSON)
 
-data TaskAllocation = TaskAllocation { taskAllocationEpoch :: Word32, taskAllocationServerId :: ServerID}
-  deriving (Show, Generic, FromJSON, ToJSON)
-
-renderTaskAllocationsToTable :: [TaskAllocation] -> Aeson.Value
-renderTaskAllocationsToTable relations =
-  let headers = ["Server ID" :: Text]
-      rows = map (\TaskAllocation{..} -> [taskAllocationServerId]) relations
-   in Aeson.object ["headers" Aeson..= headers, "rows" Aeson..= rows]
-
-rootPath :: Text
-rootPath = "/hstream"
-
 instance HasPath ShardReaderMeta ZHandle where
   myRootPath = rootPath <> "/shardReader"
   myExceptionHandler = zkExceptionHandlers ResShardReader
@@ -209,10 +196,6 @@ instance HasPath ViewInfo ZHandle where
 instance HasPath QueryStatus ZHandle where
   myRootPath = rootPath <> "/queryStatus"
   myExceptionHandler = zkExceptionHandlers ResQuery
-instance HasPath Proto.Timestamp ZHandle where
-  myRootPath = rootPath <> "/timestamp"
-instance HasPath TaskAllocation ZHandle where
-  myRootPath = rootPath <> "/taskAllocations"
 instance HasPath QVRelation ZHandle where
   myRootPath = rootPath <> "/qvRelation"
 
@@ -231,10 +214,6 @@ instance HasPath ViewInfo RHandle where
 instance HasPath QueryStatus RHandle where
   myRootPath = "queryStatus"
   myExceptionHandler = rqExceptionHandlers ResQuery
-instance HasPath Proto.Timestamp RHandle where
-  myRootPath = "timestamp"
-instance HasPath TaskAllocation RHandle where
-  myRootPath = "taskAllocations"
 instance HasPath QVRelation RHandle where
   myRootPath = "qvRelation"
 
@@ -248,10 +227,6 @@ instance HasPath ViewInfo FHandle where
   myRootPath = "views"
 instance HasPath QueryStatus FHandle where
   myRootPath = "queryStatus"
-instance HasPath Proto.Timestamp FHandle where
-  myRootPath = "timestamp"
-instance HasPath TaskAllocation FHandle where
-  myRootPath = "taskAllocations"
 instance HasPath QVRelation FHandle where
   myRootPath = "qvRelation"
 

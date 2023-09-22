@@ -2,7 +2,7 @@
 {-# LANGUAGE NamedFieldPuns            #-}
 {-# LANGUAGE OverloadedStrings         #-}
 
-module HStream.Server.Shard
+module HStream.Common.Server.Shard
   ( Shard (..)
   , mkShard
   , mkShardWithDefaultId
@@ -36,10 +36,9 @@ module HStream.Server.Shard
   ) where
 
 import           Control.Concurrent.STM (STM, TMVar, atomically, newTMVarIO,
-                                         putTMVar, readTMVar, swapTMVar,
-                                         takeTMVar)
+                                         putTMVar, readTMVar, takeTMVar)
 import           Control.Exception      (bracket, throwIO)
-import           Data.Bits              (shiftL, shiftR, (.|.))
+import           Data.Bits              (shiftL, shiftR)
 import           Data.Foldable          (foldl', forM_)
 import           Data.Hashable          (Hashable (hash))
 import           Data.Map.Strict        (Map)
@@ -187,8 +186,8 @@ putShardMap SharedShardMap{..} hashValue = putTMVar ((V.!) shardMaps (fromIntegr
 readShardMap :: SharedShardMap -> Word32 -> STM ShardMap
 readShardMap SharedShardMap{..} hashValue = readTMVar $ (V.!) shardMaps (fromIntegral hashValue)
 
-modifyShardMap :: SharedShardMap -> Word32 -> ShardMap -> STM ShardMap
-modifyShardMap SharedShardMap{..} hashValue = swapTMVar ((V.!) shardMaps (fromIntegral hashValue))
+--modifyShardMap :: SharedShardMap -> Word32 -> ShardMap -> STM ShardMap
+--modifyShardMap SharedShardMap{..} hashValue = swapTMVar ((V.!) shardMaps (fromIntegral hashValue))
 
 getShardByKey :: SharedShardMap -> ShardKey -> IO (Maybe Shard)
 getShardByKey mp key = do

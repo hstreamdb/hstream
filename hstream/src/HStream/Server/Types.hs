@@ -52,7 +52,6 @@ import qualified HStream.Store                    as S
 import           HStream.Utils                    (ResourceType (ResConnector),
                                                    textToCBytes,
                                                    timestampToMsTimestamp)
-import           Kafka.Common.OffsetManager       (OffsetManager)
 import           Network.GRPC.HighLevel.Generated (GRPCIOError)
 
 protocolVersion :: Text
@@ -109,8 +108,6 @@ data ServerContext = ServerContext
   , shardReaderMap           :: MVar (HM.HashMap Text (MVar ShardReader))
   , querySnapshotPath        :: FilePath
   , querySnapshotter         :: Maybe RocksDB.DB
-    -- TODO: Kafka server context
-  , scOffsetManager          :: OffsetManager
 }
 
 data SubscribeContextNewWrapper = SubscribeContextNewWrapper

@@ -1,4 +1,4 @@
-module Kafka.Common.RecordFormat
+module HStream.Kafka.Common.RecordFormat
   ( RecordFormat (..)
   , seekBatch
   ) where

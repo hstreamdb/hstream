@@ -13,77 +13,61 @@ module HStream.Server.Core.Cluster
   , recoverLocalTasks
   ) where
 
-import           Control.Concurrent             (MVar, tryReadMVar, withMVar)
-import           Control.Concurrent.STM         (readTVarIO)
-import           Control.Exception              (Handler (..),
-                                                 SomeException (..), catches)
-import           Control.Monad                  (forM_, when)
-import qualified Data.List                      as L
-import qualified Data.Map.Strict                as Map
-import qualified Data.Text                      as T
-import qualified Data.Vector                    as V
+import           Control.Concurrent               (MVar, tryReadMVar, withMVar)
+import           Control.Concurrent.STM           (readTVarIO)
+import           Control.Exception                (Handler (..),
+                                                   SomeException (..), catches)
+import           Control.Monad                    (forM_, when)
+import qualified Data.List                        as L
+import qualified Data.Map.Strict                  as Map
+import qualified Data.Text                        as T
+import qualified Data.Vector                      as V
 
-import           HStream.Common.Types           (fromInternalServerNodeWithKey,
-                                                 getHStreamVersion)
-import qualified HStream.Exception              as HE
-import           HStream.Gossip                 (GossipContext (..),
-                                                 getFailedNodes, getMemberList)
-import qualified HStream.Gossip.Types           as Gossip
-import qualified HStream.Logger                 as Log
-import           HStream.MetaStore.Types        (MetaStore (..))
-import qualified HStream.MetaStore.Types        as Meta
-import           HStream.Server.Core.Common     (getResNode, lookupResource,
-                                                 parseAllocationKey)
+import           HStream.Common.ConsistentHashing (getResNode)
+import           HStream.Common.Server.Lookup     (lookupNode)
+import           HStream.Common.Server.MetaData   (clusterStartTimeId)
+import           HStream.Common.Types             (fromInternalServerNodeWithKey,
+                                                   getHStreamVersion)
+import qualified HStream.Exception                as HE
+import           HStream.Gossip                   (GossipContext (..),
+                                                   getFailedNodes,
+                                                   getMemberList)
+import qualified HStream.Gossip                   as Gossip
+import qualified HStream.Gossip.Types             as Gossip
+import qualified HStream.Logger                   as Log
+import           HStream.MetaStore.Types          (MetaStore (..))
+import qualified HStream.MetaStore.Types          as Meta
+import           HStream.Server.Core.Common       (lookupResource,
+                                                   parseAllocationKey)
 import           HStream.Server.HStreamApi
-import qualified HStream.Server.HStreamInternal as I
-import qualified HStream.Server.MetaData        as Meta
-import           HStream.Server.MetaData.Value  (clusterStartTimeId)
-import           HStream.Server.QueryWorker     (QueryWorker (QueryWorker))
-import           HStream.Server.Types           (ServerContext (..))
-import qualified HStream.Server.Types           as Types
-import qualified HStream.ThirdParty.Protobuf    as Proto
-import           HStream.Utils                  (ResourceType (..),
-                                                 getProtoTimestamp,
-                                                 pattern EnumPB)
+import qualified HStream.Server.HStreamInternal   as I
+import qualified HStream.Server.MetaData          as Meta
+import           HStream.Server.QueryWorker       (QueryWorker (QueryWorker))
+import           HStream.Server.Types             (ServerContext (..))
+import qualified HStream.Server.Types             as Types
+import qualified HStream.ThirdParty.Protobuf      as Proto
+import           HStream.Utils                    (ResourceType (..),
+                                                   getProtoTimestamp,
+                                                   pattern EnumPB)
 
 describeCluster :: ServerContext -> IO DescribeClusterResponse
 describeCluster ServerContext{gossipContext = gc@GossipContext{..}, ..} = do
   let protocolVer = Types.protocolVersion
-  serverVersion <- getHStreamVersion
-  isReady <- tryReadMVar clusterReady
-  self    <- getListeners serverSelf >>= (pure <$> updateServerVersionVector serverVersion)
-  alives  <- getMemberList gc >>= fmap  V.concat . mapM  (fmap (updateServerVersionVector serverVersion) . getListeners) . L.delete serverSelf
-  deads   <- getFailedNodes gc >>= fmap V.concat . mapM (fmap (updateServerVersionVector serverVersion) . getListeners)
-  let self'   = helper (case isReady of Just _  -> NodeStateRunning; Nothing -> NodeStateStarting) <$> self
-  let alives' = helper NodeStateRunning <$> alives
-  let deads'  = helper NodeStateDead    <$> deads
+  (serverNodes, serverNodesStatus) <- Gossip.describeCluster gc scAdvertisedListenersKey
   _currentTime@(Proto.Timestamp cSec _) <- getProtoTimestamp
   startTime <- getMeta @Proto.Timestamp clusterStartTimeId metaHandle
   return $ DescribeClusterResponse
     { describeClusterResponseProtocolVersion   = protocolVer
-      -- TODO : If Cluster is not ready this should return empty
-    , describeClusterResponseServerNodes       = self <> alives
-    , describeClusterResponseServerNodesStatus = self' <> alives' <> deads'
+    , describeClusterResponseServerNodes       = serverNodes
+    , describeClusterResponseServerNodesStatus = serverNodesStatus
     , describeClusterResponseClusterUpTime     = fromIntegral $ cSec - maybe cSec Proto.timestampSeconds startTime
     }
-  where
-    getListeners = fromInternalServerNodeWithKey scAdvertisedListenersKey
-
-    helper state node = ServerNodeStatus
-      { serverNodeStatusNode  = Just node
-      , serverNodeStatusState = EnumPB state}
-
-    updateServerVersionVector :: HStreamVersion -> V.Vector ServerNode -> V.Vector ServerNode
-    updateServerVersionVector version = V.map (updateServerVersion version)
-
-    updateServerVersion version node = node { serverNodeVersion = Just version }
 
 -- TODO: Currently we use the old version of lookup for minimal impact on performance
 lookupShard :: ServerContext -> LookupShardRequest -> IO LookupShardResponse
 lookupShard ServerContext{..} req@LookupShardRequest {
   lookupShardRequestShardId = shardId} = do
-  (_, hashRing) <- readTVarIO loadBalanceHashRing
-  theNode <- getResNode hashRing (T.pack $ show shardId) scAdvertisedListenersKey
+  theNode <- lookupNode loadBalanceHashRing (T.pack $ show shardId) scAdvertisedListenersKey
   Log.info $ "receive lookupShard request: " <> Log.buildString' req <> ", should send to " <> Log.buildString' (show theNode)
   return $ LookupShardResponse
     { lookupShardResponseShardId    = shardId
@@ -92,8 +76,7 @@ lookupShard ServerContext{..} req@LookupShardRequest {
 
 lookupKey :: ServerContext -> LookupKeyRequest -> IO ServerNode
 lookupKey ServerContext{..} req@LookupKeyRequest{..} = do
-  (_, hashRing) <- readTVarIO loadBalanceHashRing
-  theNode <- getResNode hashRing lookupKeyRequestPartitionKey scAdvertisedListenersKey
+  theNode <- lookupNode loadBalanceHashRing lookupKeyRequestPartitionKey scAdvertisedListenersKey
   Log.info $ "receive lookupKey request: " <> Log.buildString' req <> ", should send to " <> Log.buildString' (show theNode)
   return theNode
 
@@ -126,8 +109,7 @@ nodeChangeEventHandler scMVar Gossip.ServerDead I.ServerNode {..} = do
   Log.info $ "handle Server Dead event: " <> Log.buildString' serverNodeId
   withMVar scMVar $ \sc@ServerContext{..} -> do
     recoverDeadNodeTasks sc scIOWorker serverNodeId
-    -- FIXME: DISABLED QUERY RECOVER
-    -- recoverDeadNodeTasks sc (QueryWorker sc) serverNodeId
+    recoverDeadNodeTasks sc (QueryWorker sc) serverNodeId
 nodeChangeEventHandler _ _ _ = return ()
 
 -- getNodeResources :: Meta.MetaHandle -> ResourceType -> Types.ServerID -> IO [T.Text]

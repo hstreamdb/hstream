@@ -1,15 +1,15 @@
 {-# LANGUAGE CPP       #-}
 {-# LANGUAGE DataKinds #-}
 
-module HStream.Server.KafkaHandler (handlers) where
+module HStream.Kafka.Server.Handler (handlers) where
 
-import           HStream.Server.KafkaHandler.Basic
-import           HStream.Server.KafkaHandler.Consume
-import           HStream.Server.KafkaHandler.Produce
-import           HStream.Server.KafkaHandler.Topic
-import           HStream.Server.Types                (ServerContext (..))
-import qualified Kafka.Protocol.Message              as K
-import qualified Kafka.Protocol.Service              as K
+import           HStream.Kafka.Server.Handler.Basic
+import           HStream.Kafka.Server.Handler.Consume
+import           HStream.Kafka.Server.Handler.Produce
+import           HStream.Kafka.Server.Handler.Topic
+import           HStream.Kafka.Server.Types           (ServerContext (..))
+import qualified Kafka.Protocol.Message               as K
+import qualified Kafka.Protocol.Service               as K
 
 handlers :: ServerContext -> [K.ServiceHandler]
 handlers sc =
