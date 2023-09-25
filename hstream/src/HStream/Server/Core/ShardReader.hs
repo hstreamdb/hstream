@@ -62,8 +62,7 @@ import qualified HStream.Stats               as Stats
 import qualified HStream.Store               as S
 import           HStream.Utils               (decompressBatchedRecord,
                                               getPOSIXTime, getRecordKey,
-                                              msecSince, textToCBytes,
-                                              transToStreamName)
+                                              msecSince, textToCBytes)
 
 createShardReader
   :: HasCallStack
@@ -177,7 +176,7 @@ readStream ServerContext{..}
  where
    ldReaderBufferSize = 10
    maxReadBatch = 10
-   streamId = transToStreamName rStreamName
+   streamId = S.transToStreamName rStreamName
 
    createReader = do
      shards <- M.elems <$> S.listStreamPartitions scLDClient streamId
@@ -272,7 +271,7 @@ readSingleShardStream sc@ServerContext{..}
                                                 , readSingleShardStreamRequestUntil          = rEnd
                                                 }
                 streamWrite = do
-    let streamId = transToStreamName rStreamName
+    let streamId = S.transToStreamName rStreamName
     shards <- M.elems <$> S.listStreamPartitions scLDClient streamId
     when (length shards /= 1) $ throwIO $ HE.TooManyShardCount $ "Stream " <> show rStreamName <> " has more than one shard"
     readShardStream' sc rReaderId rStreamName (head shards) rStart rEnd rMaxBatches streamWrite
@@ -293,7 +292,7 @@ readStreamByKey ServerContext{..} streamWriter streamReader =
      streamReader >>= \case
        Right (Just req@API.ReadStreamByKeyRequest{..}) -> do
          Log.info $ "BiStreamReader receive first request from client " <> Log.build (show req)
-         let streamId = transToStreamName readStreamByKeyRequestStreamName
+         let streamId = S.transToStreamName readStreamByKeyRequestStreamName
          streamExist <- S.doesStreamExist scLDClient streamId
          unless streamExist $ do
            Log.info $ "Create biStreamReader error because stream " <> Log.build readStreamByKeyRequestStreamName <> "is not exist"

@@ -17,6 +17,10 @@ module HStream.Store.Stream
   , getStreamLogAttrs
   , getStreamPartitionHeadTimestamp
   , getStreamPartitionExtraAttrs
+  , transToStreamName
+  , transToTempStreamName
+  , transToViewStreamName
+  , transToTopicStreamName
     -- ** Operations
   , createStream
   , createStreamPartition
@@ -162,6 +166,8 @@ import           Data.IORef                       (IORef, atomicModifyIORef',
                                                    newIORef, readIORef)
 import           Data.Map.Strict                  (Map)
 import qualified Data.Map.Strict                  as Map
+import           Data.Text                        (Text)
+import qualified Data.Text                        as T
 import           Data.Vector                      (Vector)
 import qualified Data.Vector                      as V
 import qualified Data.Vector.Algorithms.Intro     as V
@@ -208,6 +214,7 @@ data StreamSettings = StreamSettings
   { streamNameLogDir    :: CBytes
   , streamViewLogDir    :: CBytes
   , streamTempLogDir    :: CBytes
+  , streamTopicLogDir   :: CBytes
   , streamDefaultKey    :: CBytes
   , streamArchivePrefix :: CBytes
   }
@@ -215,10 +222,11 @@ data StreamSettings = StreamSettings
 gloStreamSettings :: IORef StreamSettings
 gloStreamSettings = unsafePerformIO . newIORef $
   -- NOTE: no trailing slash
-  StreamSettings { streamNameLogDir = "/hstream/stream"
-                 , streamViewLogDir = "/hstream/view"
-                 , streamTempLogDir = "/tmp/hstream"
-                 , streamDefaultKey = "__default_key__"
+  StreamSettings { streamNameLogDir    = "/hstream/stream"
+                 , streamViewLogDir    = "/hstream/view"
+                 , streamTempLogDir    = "/tmp/hstream"
+                 , streamTopicLogDir   = "/hstream/topic"
+                 , streamDefaultKey    = "__default_key__"
                  , streamArchivePrefix = "__archive__"
                  }
 {-# NOINLINE gloStreamSettings #-}
@@ -301,7 +309,7 @@ toArchivedStreamName StreamId{..} = do
 
 -------------------------------------------------------------------------------
 
-data StreamType = StreamTypeStream | StreamTypeView | StreamTypeTemp
+data StreamType = StreamTypeStream | StreamTypeView | StreamTypeTemp | StreamTypeTopic
   deriving (Show, Eq, Generic)
 
 instance Hashable StreamType
@@ -331,10 +339,27 @@ mkStreamIdFromFullLogDir streamType path = do
           StreamTypeStream -> t2 P.makeRelative (streamNameLogDir s) path
           StreamTypeView   -> t2 P.makeRelative (streamViewLogDir s) path
           StreamTypeTemp   -> t2 P.makeRelative (streamTempLogDir s) path
+          StreamTypeTopic  -> t2 P.makeRelative (streamTopicLogDir s) path
   return $ StreamId streamType name
 
 showStreamName :: StreamId -> String
 showStreamName = CBytes.unpack . streamName
+
+transToStreamName :: Text -> StreamId
+transToStreamName = mkStreamId StreamTypeStream . textToCBytes
+
+transToTempStreamName :: Text -> StreamId
+transToTempStreamName = mkStreamId StreamTypeTemp . textToCBytes
+
+transToViewStreamName :: Text -> StreamId
+transToViewStreamName = mkStreamId StreamTypeView . textToCBytes
+
+transToTopicStreamName :: Text -> StreamId
+transToTopicStreamName = mkStreamId StreamTypeTopic . textToCBytes
+
+textToCBytes :: Text -> CBytes.CBytes
+textToCBytes = CBytes.pack . T.unpack
+{-# INLINE textToCBytes #-}
 
 -------------------------------------------------------------------------------
 
@@ -836,6 +861,7 @@ getStreamDirPath StreamId{..} = do
     StreamTypeStream -> pure $ t2 P.combine (streamNameLogDir s) streamName
     StreamTypeView   -> pure $ t2 P.combine (streamViewLogDir s) streamName
     StreamTypeTemp   -> pure $ t2 P.combine (streamTempLogDir s) streamName
+    StreamTypeTopic  -> pure $ t2 P.combine (streamTopicLogDir s) streamName
 {-# INLINABLE getStreamDirPath #-}
 
 getStreamLogPath :: StreamId -> Maybe CBytes -> IO (CBytes, CBytes)

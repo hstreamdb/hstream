@@ -70,7 +70,7 @@ createStream ServerContext{..} stream@API.Stream{
   streamBacklogDuration = backlogSec, streamShardCount = shardCount, ..} = do
   timeStamp <- getProtoTimestamp
   let extraAttr = M.fromList [("createTime", lazyByteStringToCBytes $ PT.toLazyByteString timeStamp)]
-  let streamId = transToStreamName streamStreamName
+  let streamId = S.transToStreamName streamStreamName
       attrs = S.def { S.logReplicationFactor = S.defAttr1 $ fromIntegral streamReplicationFactor
                     , S.logBacklogDuration   = S.defAttr1 $
                        if backlogSec > 0 then Just $ fromIntegral backlogSec else Nothing
@@ -116,7 +116,7 @@ deleteStream ServerContext{..} API.DeleteStreamRequest{deleteStreamRequestForce 
      then doDelete
      else unless deleteStreamRequestIgnoreNonExist $ throwIO $ HE.StreamNotFound sName
   where
-    streamId = transToStreamName sName
+    streamId = S.transToStreamName sName
     doDelete = do
       subs <- P.getSubscriptionWithStream metaHandle sName
       if null subs
@@ -168,7 +168,7 @@ deleteStreamV2 ServerContext{..} slotConfig
 
 getStream :: ServerContext -> API.GetStreamRequest -> IO API.GetStreamResponse
 getStream ServerContext{..} API.GetStreamRequest{ getStreamRequestName = sName} = do
-  let streamId = transToStreamName sName
+  let streamId = S.transToStreamName sName
   storeExists <- S.doesStreamExist scLDClient streamId
   unless storeExists $ throwIO $ HE.StreamNotFound sName
   attrs <- S.getStreamLogAttrs scLDClient streamId
@@ -219,7 +219,7 @@ trimStream ServerContext{..} streamName trimPoint = do
   concurrentCap <- getNumCapabilities
   void $ limitedMapConcuurently (min 8 concurrentCap) (\shardId -> getTrimLSN scLDClient shardId trimPoint >>= S.trim scLDClient shardId) shards
  where
-   streamId = transToStreamName streamName
+   streamId = S.transToStreamName streamName
 
 data Rid = Rid
   { rShardId  :: Word64
@@ -270,7 +270,7 @@ trimShards ServerContext{..} streamName recordIds = do
   let points = map head $ L.groupBy (\Rid{rShardId=rs1} Rid{rShardId=rs2} -> rs1 == rs2) $ L.sort ridWithoutEarliest
   Log.info $ "min recordIds for stream " <> Log.build streamName <> ": " <> Log.build (show points)
 
-  let streamId = transToStreamName streamName
+  let streamId = S.transToStreamName streamName
   shards <- M.elems <$> S.listStreamPartitions scLDClient streamId
   concurrentCap <- getNumCapabilities
   res <- limitedMapConcuurently (min 8 concurrentCap) (trim shards) points
@@ -392,7 +392,7 @@ listShards ServerContext{..} API.ListShardsRequest{..} = do
   shards <- M.elems <$> S.listStreamPartitions scLDClient streamId
   V.foldM' getShardInfo V.empty $ V.fromList shards
  where
-   streamId = transToStreamName listShardsRequestStreamName
+   streamId = S.transToStreamName listShardsRequestStreamName
    startKey = "startKey"
    endKey   = "endKey"
    epoch    = "epoch"

@@ -1,8 +1,6 @@
 module HStream.Kafka.Server.Types
   ( ServerContext (..)
   , initServerContext
-
-  , transToStreamName
   ) where
 
 import           Data.Text                                (Text)
@@ -23,7 +21,6 @@ import           HStream.MetaStore.Types                  (MetaHandle)
 import           HStream.Stats                            (newServerStatsHolder)
 import qualified HStream.Stats                            as Stats
 import qualified HStream.Store                            as S
-import           HStream.Utils                            (textToCBytes)
 
 data ServerContext = ServerContext
   { serverID                 :: !Word32
@@ -71,6 +68,3 @@ initServerContext opts@ServerOpts{..} gossipContext mh = do
       , scOffsetManager          = offsetManager
       , scGroupMetadataManagers  = groupMetadataManager
       }
-
-transToStreamName :: Text -> S.StreamId
-transToStreamName = S.mkStreamId S.StreamTypeStream . textToCBytes

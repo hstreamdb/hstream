@@ -40,10 +40,6 @@ module HStream.Utils.Converter
   , cBytesToIntegral
   , integralToCBytes
 
-  , transToStreamName
-  , transToTempStreamName
-  , transToViewStreamName
-
   --
   , serverNodeToSocketAddr
   ) where
@@ -72,7 +68,6 @@ import qualified Z.Data.Vector               as ZV
 import qualified Z.Foreign                   as ZF
 
 import           HStream.Server.HStreamApi   (ServerNode (..))
-import qualified HStream.Store               as S
 import qualified HStream.ThirdParty.Protobuf as PB
 import qualified HStream.Utils.Aeson         as A
 import           HStream.Utils.RPC           (SocketAddr (SocketAddr))
@@ -228,15 +223,6 @@ cBytesToIntegral cbytes = case Parser.parse' Parser.int . ZCB.toBytes $ cbytes o
 
 integralToCBytes :: (Integral a, Bounded a) => a -> ZCB.CBytes
 integralToCBytes = ZCB.buildCBytes . Build.int
-
-transToStreamName :: Text -> S.StreamId
-transToStreamName = S.mkStreamId S.StreamTypeStream . textToCBytes
-
-transToTempStreamName :: Text -> S.StreamId
-transToTempStreamName = S.mkStreamId S.StreamTypeTemp . textToCBytes
-
-transToViewStreamName :: Text -> S.StreamId
-transToViewStreamName = S.mkStreamId S.StreamTypeView . textToCBytes
 
 --------------------------------------------------------------------------------
 

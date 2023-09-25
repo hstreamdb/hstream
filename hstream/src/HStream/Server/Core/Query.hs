@@ -167,7 +167,7 @@ createQueryWithNamespace'
               -- FIXME: use another exception or find which resource doesn't exist
               throwIO $ HE.StreamNotFound $ "At least one of the streams/views do not exist: " <> T.pack (show sources)
             True  -> do
-              createStreamWithShard scLDClient (transToStreamName sink) "query" factor
+              createStreamWithShard scLDClient (S.transToStreamName sink) "query" factor
               let relatedStreams = (sources, sink)
               -- FIXME: pass custom query name
               createQueryAndRun sc sink (ins `zip` L.map fromJust roles_m) (out, RoleStream) builder createQueryRequestSql relatedStreams
@@ -193,7 +193,7 @@ createQueryWithNamespace'
                 Log.warning "CREATE STREAM only supports sources of stream type"
                 throwIO $ HE.InvalidSqlStatement "CREATE STREAM only supports sources of stream type"
               -- check & prepare sink stream
-              S.doesStreamExist scLDClient (transToStreamName sink) >>= \case
+              S.doesStreamExist scLDClient (S.transToStreamName sink) >>= \case
                 True  -> do
                   Log.warning $ "Sink stream already exists: " <> Log.buildString (show sink)
                   throwIO $ HE.StreamExists sink
@@ -243,7 +243,7 @@ createQueryWithNamespace'
                 Log.warning "Insert by Select only supports all sources of same resource type STREAM"
                 throw $ HE.InvalidSqlStatement "Insert by Select only supports all sources of same resource type STREAM"
               -- check sink stream
-              foundSink <- S.doesStreamExist scLDClient (transToStreamName sink)
+              foundSink <- S.doesStreamExist scLDClient (S.transToStreamName sink)
               when (not foundSink) $ do
                 Log.warning $ "Insert by Select: Stream not found: " <> Log.buildString (show streamName)
                 throw $ HE.StreamNotFound $ "Stream " <> streamName <> " not found"
@@ -297,7 +297,7 @@ deleteQuery ServerContext{..} DeleteQueryRequest{..} = do
     Nothing -> do
       -- do deletion
       -- Note: do not forget to delete the stream for changelog
-      S.removeStream scLDClient (transToTempStreamName deleteQueryRequestId)
+      S.removeStream scLDClient (S.transToTempStreamName deleteQueryRequestId)
       P.deleteQueryInfo deleteQueryRequestId metaHandle
       Stats.connector_stat_erase scStatsHolder (textToCBytes deleteQueryRequestId)
     Just P.QVRelation{..} -> throwIO $ HE.FoundAssociatedView qvRelationViewName

@@ -43,9 +43,7 @@ import qualified HStream.Store                         as S
 import           HStream.Utils                         (cBytesToText,
                                                         getPOSIXTime,
                                                         lazyByteStringToBytes,
-                                                        msecSince, textToCBytes,
-                                                        transToStreamName,
-                                                        transToTempStreamName)
+                                                        msecSince, textToCBytes)
 
 #ifdef HStreamUseV2Engine
 import qualified DiffFlow.Graph                        as DiffFlow
@@ -407,7 +405,7 @@ runTaskWrapper ServerContext{..} sourceConnector sinkConnector taskBuilder query
 createQueryAndRun :: HasCallStack => ServerContext -> QueryRunner -> IO ()
 createQueryAndRun ctx@ServerContext{..} qRunner@QueryRunner{..} = do
   -- prepare logdevice stream for restoration
-  let streamId = transToTempStreamName qRQueryName
+  let streamId = S.transToTempStreamName qRQueryName
   let attrs = S.def { S.logReplicationFactor = S.defAttr1 1 }
   S.doesStreamExist scLDClient streamId >>= \case
     True  -> S.removeStream scLDClient streamId
@@ -456,7 +454,7 @@ restoreState ServerContext{..} QueryRunner{..} = do
   -- changelog
   Log.debug $ "Snapshot restoration for query with name" <> Log.build qRQueryName
            <> " completed, restoring the rest of the computation from changelog"
-  let streamId = transToTempStreamName qRQueryName
+  let streamId = S.transToTempStreamName qRQueryName
   logId <- S.getUnderlyingLogId scLDClient streamId Nothing
   tailLSN <- S.getTailLSN scLDClient logId
   reader <- S.newLDReader scLDClient 1 Nothing
@@ -524,7 +522,7 @@ data IdentifierRole = RoleStream | RoleView deriving (Eq, Show)
 
 findIdentifierRole :: ServerContext -> Text -> IO (Maybe IdentifierRole)
 findIdentifierRole ServerContext{..} name = do
-  isStream <- S.doesStreamExist scLDClient (transToStreamName name)
+  isStream <- S.doesStreamExist scLDClient (S.transToStreamName name)
   case isStream of
     True  -> return (Just RoleStream)
     False -> do
@@ -534,7 +532,7 @@ findIdentifierRole ServerContext{..} name = do
         Just _  -> return (Just RoleView)
 
 amIStream :: ServerContext -> Text -> IO Bool
-amIStream ServerContext{..} name = S.doesStreamExist scLDClient (transToStreamName name)
+amIStream ServerContext{..} name = S.doesStreamExist scLDClient (S.transToStreamName name)
 
 amIView :: ServerContext -> Text -> IO Bool
 amIView ServerContext{..} name = M.checkMetaExists @P.ViewInfo name metaHandle

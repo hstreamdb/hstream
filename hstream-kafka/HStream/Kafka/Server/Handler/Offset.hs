@@ -5,23 +5,22 @@ module HStream.Kafka.Server.Handler.Offset
  )
 where
 
-import           Control.Concurrent                 (withMVar)
-import qualified Data.HashMap.Strict                as HM
-import           Data.Int                           (Int64)
-import           Data.Text                          (Text)
-import           Data.Vector                        (Vector)
-import qualified Data.Vector                        as V
+import           Control.Concurrent                       (withMVar)
+import qualified Data.HashMap.Strict                      as HM
+import           Data.Int                                 (Int64)
+import           Data.Text                                (Text)
+import           Data.Vector                              (Vector)
+import qualified Data.Vector                              as V
+import           HStream.Kafka.Common.OffsetManager       (getLatestOffset,
+                                                           getOffsetByTimestamp,
+                                                           getOldestOffset)
 import           HStream.Kafka.Group.GroupMetadataManager (fetchOffsets,
                                                            storeOffsets)
-import           HStream.Kafka.Common.OffsetManager (getLatestOffset,
-                                                     getOffsetByTimestamp,
-                                                     getOldestOffset)
-import           HStream.Kafka.Server.Types         (ServerContext (..))
-import qualified HStream.Store                      as S
-import qualified HStream.Utils                      as U
-import qualified Kafka.Protocol                     as K
-import qualified Kafka.Protocol.Error               as K
-import qualified Kafka.Protocol.Service             as K
+import           HStream.Kafka.Server.Types               (ServerContext (..))
+import qualified HStream.Store                            as S
+import qualified Kafka.Protocol                           as K
+import qualified Kafka.Protocol.Error                     as K
+import qualified Kafka.Protocol.Service                   as K
 
 --------------------
 -- 2: ListOffsets
@@ -46,7 +45,7 @@ listOffsetTopicPartitions :: ServerContext -> Text -> Maybe (Vector K.ListOffset
 listOffsetTopicPartitions _ topicName Nothing = do
   return $ K.ListOffsetsTopicResponseV0 {partitions = K.KaArray {unKaArray = Nothing}, name = topicName}
 listOffsetTopicPartitions ServerContext{..} topicName (Just offsetsPartitions) = do
-  orderedParts <- S.listStreamPartitionsOrdered scLDClient (U.transToStreamName topicName)
+  orderedParts <- S.listStreamPartitionsOrdered scLDClient (S.transToTopicStreamName topicName)
   res <- V.forM offsetsPartitions $ \K.ListOffsetsPartitionV0{..} -> do
     let logid = orderedParts V.!? (fromIntegral partitionIndex)
     offset <- getOffset logid timestamp
