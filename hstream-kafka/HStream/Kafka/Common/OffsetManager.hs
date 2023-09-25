@@ -21,6 +21,7 @@ import           Data.Word
 import           GHC.Stack                         (HasCallStack)
 
 import           HStream.Kafka.Common.RecordFormat
+import qualified HStream.Logger                    as Log
 import qualified HStream.Store                     as S
 import qualified HStream.Store.Internal.LogDevice  as S
 import qualified Kafka.Protocol.Encoding           as K
@@ -30,7 +31,7 @@ import qualified Kafka.Protocol.Encoding           as K
 type HashTable k v = H.BasicHashTable k v
 
 data OffsetManager = OffsetManager
-  { offsets     :: HashTable Word64 (MVar Int64)
+  { offsets     :: HashTable Word64{- logid -} (MVar Int64)
     -- ^ Offsets cache
     --
     -- TODO:
@@ -45,6 +46,10 @@ newOffsetManager store maxLogs = do
   offsets <- H.new
   offsetsLock <- newMVar ()
   reader <- S.newLDReader store (fromIntegral maxLogs) Nothing
+  -- Always wait. Otherwise, the reader will return empty result when timeout
+  -- and we cannot know whether the log is empty or timeout.
+  S.readerSetTimeout reader (-1)
+  S.readerSetWaitOnlyWhenNoData reader
   pure OffsetManager{..}
 
 withOffset :: OffsetManager -> Word64 -> (Int64 -> IO a) -> IO a
@@ -72,49 +77,53 @@ cleanOffsetCache :: OffsetManager -> Word64 -> IO ()
 cleanOffsetCache OffsetManager{..} = H.delete offsets
 
 getOldestOffset :: HasCallStack => OffsetManager -> Word64 -> IO (Maybe Int64)
-getOldestOffset OffsetManager{..} logid = do
-  isEmpty <- S.isLogEmpty store logid
-  if isEmpty
-     then pure Nothing
-     else do
-       -- Actually, we only need the first lsn but there is no easy way to get
-       Just . offset <$> readOneRecord reader logid S.LSN_MIN S.LSN_MAX
+getOldestOffset OffsetManager{..} logid =
+  -- Actually, we only need the first lsn but there is no easy way to get
+  (fmap offset) <$> readOneRecord store reader logid (pure (S.LSN_MIN, S.LSN_MAX))
 
 getLatestOffset :: HasCallStack => OffsetManager -> Word64 -> IO (Maybe Int64)
-getLatestOffset OffsetManager{..} logid = do
-  -- FIXME: first check is empty log seems blocking.
-  isEmpty <- S.isLogEmpty store logid
-  if isEmpty
-     then pure Nothing
-     else do tailLsn <- S.getTailLSN store logid
-             Just . offset <$> readOneRecord reader logid tailLsn tailLsn
+getLatestOffset OffsetManager{..} logid =
+  let getLsn = do tailLsn <- S.getTailLSN store logid
+                  pure (tailLsn, tailLsn)
+   in (fmap offset) <$> readOneRecord store reader logid getLsn
 
 getOffsetByTimestamp :: HasCallStack => OffsetManager -> Word64 -> Int64 -> IO (Maybe Int64)
 getOffsetByTimestamp OffsetManager{..} logid timestamp = do
-  isEmpty <- S.isLogEmpty store logid
-  if isEmpty
-     then pure Nothing
-     else do lsn <- S.findTime store logid timestamp S.FindKeyStrict
-             Just . offset <$> readOneRecord reader logid lsn lsn
+  let getLsn = do lsn <- S.findTime store logid timestamp S.FindKeyStrict
+                  pure (lsn, lsn)
+   in (fmap offset) <$> readOneRecord store reader logid getLsn
 
 -------------------------------------------------------------------------------
 
 -- Return the first read RecordFormat
---
--- FIXME: what happens when read an empty log?
 readOneRecord
   :: HasCallStack
-  => S.LDReader -> Word64 -> S.LSN -> S.LSN -> IO RecordFormat
-readOneRecord reader logid start end = finally acquire release
+  => S.LDClient
+  -> S.LDReader
+  -> Word64
+  -> IO (S.LSN, S.LSN)
+  -> IO (Maybe RecordFormat)
+readOneRecord store reader logid getLsn = do
+  -- FIXME: This method is blocking until the state can be determined or an
+  -- error occurred. Directly read without check isLogEmpty will also block a
+  -- while for the first time since the state can be determined.
+  isEmpty <- S.isLogEmpty store logid
+  if isEmpty
+     then pure Nothing
+     else do (start, end) <- getLsn
+             finally (acquire start end) release
   where
-    acquire = do
-      S.readerSetTimeout reader 1000
+    acquire start end = do
       S.readerStartReading reader logid start end
-      dataRecords <- S.readerRead @ByteString reader 1
+      dataRecords <- S.readerReadAllowGap @ByteString reader 1
       case dataRecords of
-        [S.DataRecord{..}] -> K.runGet recordPayload
-        xs ->   -- TODO
-          ioError $ userError $ "Invalid reader result " <> show xs
+        Right [S.DataRecord{..}] -> Just <$> K.runGet recordPayload
+        _ -> do Log.fatal $ "readOneRecord read " <> Log.build logid
+                         <> "with lsn (" <> Log.build start <> " "
+                         <> Log.build end <> ") "
+                         <> "get unexpected result "
+                         <> Log.buildString' dataRecords
+                ioError $ userError $ "Invalid reader result " <> show dataRecords
     release = do
       isReading <- S.readerIsReading reader logid
       when isReading $ S.readerStopReading reader logid
