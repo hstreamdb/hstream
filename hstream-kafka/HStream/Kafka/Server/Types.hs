@@ -5,23 +5,25 @@ module HStream.Kafka.Server.Types
   , transToStreamName
   ) where
 
-import           Control.Concurrent.STM
-import           Data.Text                          (Text)
+import           Data.Text                                (Text)
 import           Data.Word
 
-import           HStream.Common.ConsistentHashing   (HashRing)
-import           HStream.Common.Server.HashRing     (LoadBalanceHashRing,
-                                                     initializeHashRing)
-import           HStream.Gossip.Types               (Epoch, GossipContext)
-import           HStream.Kafka.Common.OffsetManager (OffsetManager,
-                                                     newOffsetManager)
-import           HStream.Kafka.Server.Config        (ServerOpts (..))
-import qualified HStream.Logger                     as Log
-import           HStream.MetaStore.Types            (MetaHandle)
-import           HStream.Stats                      (newServerStatsHolder)
-import qualified HStream.Stats                      as Stats
-import qualified HStream.Store                      as S
-import           HStream.Utils                      (textToCBytes)
+import           Control.Concurrent                       (MVar, newMVar)
+import           Data.HashMap.Strict                      (HashMap)
+import qualified Data.HashMap.Strict                      as HM
+import qualified Data.Text                                as T
+import           HStream.Common.Server.HashRing           (LoadBalanceHashRing,
+                                                           initializeHashRing)
+import           HStream.Gossip.Types                     (GossipContext)
+import           HStream.Kafka.Common.OffsetManager       (OffsetManager,
+                                                           newOffsetManager)
+import           HStream.Kafka.Group.GroupMetadataManager (GroupMetadataManager)
+import           HStream.Kafka.Server.Config              (ServerOpts (..))
+import           HStream.MetaStore.Types                  (MetaHandle)
+import           HStream.Stats                            (newServerStatsHolder)
+import qualified HStream.Stats                            as Stats
+import qualified HStream.Store                            as S
+import           HStream.Utils                            (textToCBytes)
 
 data ServerContext = ServerContext
   { serverID                 :: !Word32
@@ -36,6 +38,8 @@ data ServerContext = ServerContext
   , loadBalanceHashRing      :: !LoadBalanceHashRing
   , gossipContext            :: !GossipContext
   , scOffsetManager          :: !OffsetManager
+  , scGroupMetadataManagers  :: MVar (HashMap T.Text GroupMetadataManager)
+    -- ^ {groupID: GroupMetadataManager}
 }
 
 initServerContext
@@ -49,6 +53,7 @@ initServerContext opts@ServerOpts{..} gossipContext mh = do
   statsHolder <- newServerStatsHolder
   epochHashRing <- initializeHashRing gossipContext
   offsetManager <- newOffsetManager ldclient 1000{- TODO: maxLogs -}
+  groupMetadataManager <- newMVar HM.empty
 
   return
     ServerContext
@@ -64,6 +69,7 @@ initServerContext opts@ServerOpts{..} gossipContext mh = do
       , loadBalanceHashRing      = epochHashRing
       , gossipContext            = gossipContext
       , scOffsetManager          = offsetManager
+      , scGroupMetadataManagers  = groupMetadataManager
       }
 
 transToStreamName :: Text -> S.StreamId
