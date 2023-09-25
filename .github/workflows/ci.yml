@@ -93,7 +93,7 @@ jobs:
           ${{ env.CABAL }} install hadmin-store
 
       - name: run hadmin-store
-        run: ${{ env.CABAL }} exec hadmin-store --help
+        run: ${{ env.CABAL }} exec -- hadmin-store --help
 
   build-and-test:
     needs: pre-build
