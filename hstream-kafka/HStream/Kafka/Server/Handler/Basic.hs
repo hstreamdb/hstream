@@ -9,29 +9,26 @@ module HStream.Kafka.Server.Handler.Basic
   , handleMetadataV1
   ) where
 
-import           Control.Concurrent.STM           (readTVarIO)
 import           Control.Exception
 import           Control.Monad
-import           Data.Functor                     ((<&>))
-import           Data.Int                         (Int32)
-import           Data.Text                        (Text)
-import qualified Data.Text                        as Text
-import qualified Data.Vector                      as V
+import           Data.Functor                 ((<&>))
+import           Data.Int                     (Int32)
+import           Data.Text                    (Text)
+import qualified Data.Text                    as Text
+import qualified Data.Vector                  as V
 
-import           HStream.Common.ConsistentHashing (getResNode)
-import           HStream.Common.Server.Lookup     (KafkaResource (..),
-                                                   lookupKafkaPersist)
-import qualified HStream.Gossip                   as Gossip
-import           HStream.Kafka.Server.Types       (ServerContext (..),
-                                                   transToStreamName)
-import qualified HStream.Logger                   as Log
-import qualified HStream.Server.HStreamApi        as A
-import qualified HStream.Store                    as S
-import qualified HStream.Utils                    as Utils
-import qualified Kafka.Protocol.Encoding          as K
-import qualified Kafka.Protocol.Error             as K
-import qualified Kafka.Protocol.Message           as K
-import qualified Kafka.Protocol.Service           as K
+import           HStream.Common.Server.Lookup (KafkaResource (..),
+                                               lookupKafkaPersist)
+import qualified HStream.Gossip               as Gossip
+import           HStream.Kafka.Server.Types   (ServerContext (..))
+import qualified HStream.Logger               as Log
+import qualified HStream.Server.HStreamApi    as A
+import qualified HStream.Store                as S
+import qualified HStream.Utils                as Utils
+import qualified Kafka.Protocol.Encoding      as K
+import qualified Kafka.Protocol.Error         as K
+import qualified Kafka.Protocol.Message       as K
+import qualified Kafka.Protocol.Service       as K
 
 --------------------
 -- 18: ApiVersions
@@ -124,7 +121,7 @@ handleMetadataV1 ctx@ServerContext{..} _ req = do
 
     getRespTopic :: Text -> IO K.MetadataResponseTopicV1
     getRespTopic topicName = do
-      let streamId = transToStreamName topicName
+      let streamId = S.transToTopicStreamName topicName
       shards_e <- try ((V.map snd) <$> S.listStreamPartitionsOrdered scLDClient streamId)
       case shards_e of
         -- FIXME: We catch all exceptions here. Is this proper?

@@ -8,6 +8,7 @@ module HStream.Kafka.Common.OffsetManager
   , cleanOffsetCache
   , getOldestOffset
   , getLatestOffset
+  , getOffsetByTimestamp
   ) where
 
 import           Control.Concurrent
@@ -88,9 +89,13 @@ getLatestOffset OffsetManager{..} logid = do
      else do tailLsn <- S.getTailLSN store logid
              Just . offset <$> readOneRecord reader logid tailLsn tailLsn
 
--- TODO
--- getOffsetByTime :: HasCallStack => OffsetManager -> Word64 -> Int64 -> IO Int64
--- getOffsetByTime OffsetManager{..} logid timestamp = undefined
+getOffsetByTimestamp :: HasCallStack => OffsetManager -> Word64 -> Int64 -> IO (Maybe Int64)
+getOffsetByTimestamp OffsetManager{..} logid timestamp = do
+  isEmpty <- S.isLogEmpty store logid
+  if isEmpty
+     then pure Nothing
+     else do lsn <- S.findTime store logid timestamp S.FindKeyStrict
+             Just . offset <$> readOneRecord reader logid lsn lsn
 
 -------------------------------------------------------------------------------
 

@@ -19,8 +19,7 @@ import qualified Data.Vector                 as V
 import qualified HStream.Base.Time           as BaseTime
 import qualified HStream.Common.Server.Shard as Shard
 import qualified HStream.Common.Types        as CommonTypes
-import           HStream.Kafka.Server.Types  (ServerContext (..),
-                                              transToStreamName)
+import           HStream.Kafka.Server.Types  (ServerContext (..))
 import qualified HStream.Logger              as Log
 import qualified HStream.Stats               as Stats
 import qualified HStream.Store               as S
@@ -57,7 +56,7 @@ handleCreateTopicsV0 ctx _ K.CreateTopicsRequestV0{..} =
           Log.warning $ "Expect a positive numPartitions but got " <> Log.build numPartitions
           return $ K.CreatableTopicResultV0 name K.INVALID_PARTITIONS
       | otherwise = do
-          let streamId = transToStreamName name
+          let streamId = S.transToTopicStreamName name
           timeStamp <- BaseTime.getSystemNsTimestamp
           -- FIXME: Is there any other attrs to store?
           -- FIXME: Should we parse any other attr from `confs` of `CreateableTopicV0`?
@@ -118,7 +117,7 @@ handleDeleteTopicsV0 ctx _ K.DeleteTopicsRequestV0{..} =
     -- TODO: Handle topic that has subscription (i.e. cannot be deleted)
     deleteTopic :: T.Text -> IO K.DeletableTopicResultV0
     deleteTopic topicName = do
-      let streamId = transToStreamName topicName
+      let streamId = S.transToTopicStreamName topicName
       S.doesStreamExist (scLDClient ctx) streamId >>= \case
         True  -> do
           S.removeStream (scLDClient ctx) streamId

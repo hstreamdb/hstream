@@ -122,7 +122,7 @@ getSubscription ServerContext{..} GetSubscriptionRequest{getSubscriptionRequestI
 
 createSubscription :: HasCallStack => ServerContext -> Subscription -> IO Subscription
 createSubscription ServerContext{..} sub@Subscription{..} = do
-  let streamName = transToStreamName subscriptionStreamName
+  let streamName = S.transToStreamName subscriptionStreamName
   streamExists <- S.doesStreamExist scLDClient streamName
   unless streamExists $ do
     Log.info $ "Try to create a subscription to a nonexistent stream. Stream Name: "
@@ -475,7 +475,7 @@ doSubInit ServerContext{..} subId = do
 -- get all partitions of the specified stream
 getShards :: S.LDClient -> T.Text -> IO [S.C_LogID]
 getShards client streamName = do
-  Map.elems <$> S.listStreamPartitions client (transToStreamName streamName)
+  Map.elems <$> S.listStreamPartitions client (S.transToStreamName streamName)
 
 addNewShardsToSubCtx :: SubscribeContext -> [(S.C_LogID, S.LSN)] -> IO ()
 addNewShardsToSubCtx SubscribeContext {subAssignment = Assignment{..}, ..} shards = atomically $ do
