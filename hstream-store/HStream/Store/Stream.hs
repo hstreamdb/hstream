@@ -101,7 +101,16 @@ module HStream.Store.Stream
   , FFI.DataRecord (..)
   , FFI.DataRecordAttr (..)
   , FFI.GapRecord (..)
-  , FFI.GapType (..)
+  , FFI.GapType
+  , pattern FFI.GapTypeUnknown
+  , pattern FFI.GapTypeBridge
+  , pattern FFI.GapTypeHole
+  , pattern FFI.GapTypeDataloss
+  , pattern FFI.GapTypeTrim
+  , pattern FFI.GapTypeAccess
+  , pattern FFI.GapTypeNotInConfig
+  , pattern FFI.GapTypeFilteredOut
+  , pattern FFI.GapTypeMax
   , FFI.recordLogID
   , FFI.recordLSN
   , FFI.recordTimestamp
