@@ -205,6 +205,7 @@ peekLogAttributes ptr = do
 #undef _ARG
 #undef _MAYBE_ARG
 
+-- TODO: Simplify by using peekCppMap function in hstream-common-base
 peekLogAttributesExtras :: Ptr LogDeviceLogAttributes -> IO (Map CBytes CBytes)
 peekLogAttributesExtras attrs = do
   (len, (keys_ptr, (values_ptr, (keys_vec, (values_vec, _))))) <-

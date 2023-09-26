@@ -7,11 +7,12 @@
 module HStream.Store.Internal.Foreign where
 
 import           Control.Concurrent           (newEmptyMVar, takeMVar)
-import           Control.Exception            (mask_, onException)
+import           Control.Exception            (finally, mask_, onException)
 import           Control.Monad.Primitive
 import           Data.Primitive
 import           Foreign.C
 import           Foreign.ForeignPtr
+import           Foreign.Ptr
 import           Foreign.StablePtr
 import           GHC.Conc
 import           GHC.Exts
@@ -20,6 +21,7 @@ import           Z.Data.CBytes                (CBytes)
 import qualified Z.Foreign                    as Z
 import           Z.Foreign                    (BA#, MBA#)
 
+-- TODO: Use HStream.Foreign.BA# instead
 import           HStream.Foreign              hiding (BA#, MBA#)
 import qualified HStream.Logger               as Log
 import qualified HStream.Store.Exception      as E
@@ -104,6 +106,62 @@ withAsyncPrimUnsafe3' a b c f g = mask_ $ do
                                              primitive_ (touch# c'))
       return e
   return (a_, b_, c_, e_)
+
+-- Similar to HStream.Foreign.PeekMapFun
+--
+-- TODO: Use HStream.Foreign.PeekMapFun instead
+type MapFun a pk pv dk dv
+  = MBA# Int
+    -- ^ returned map size
+ -> MBA# (Ptr pk) -> MBA# (Ptr pv)
+    -- ^ pointer to peek
+ -> MBA# (Ptr dk) -> MBA# (Ptr dv)
+    -- ^ pointer to delete
+ -> IO a
+
+withAsyncPrimMapUnsafe
+  :: (Prim p)
+  => p
+  -> PeekNFun pk k -> DeleteFun dk
+  -> PeekNFun pv v -> DeleteFun dv
+  -> (StablePtr PrimMVar -> Int -> MBA# p -> MapFun a k v vk vv)
+  -> IO (a, p, [(k, v)])
+withAsyncPrimMapUnsafe p peekk delk peekv delv f =
+  withAsyncPrimMapUnsafe' p peekk delk peekv delv f pure
+
+withAsyncPrimMapUnsafe'
+  :: (Prim p)
+  => p
+  -> PeekNFun pk k -> DeleteFun dk
+  -> PeekNFun pv v -> DeleteFun dv
+  -> (StablePtr PrimMVar -> Int -> MBA# p -> MapFun a pk pv dk dv)
+  -> (a -> IO b)
+  -> IO (b, p, [(k, v)])
+withAsyncPrimMapUnsafe' p peekk delk peekv delv f g = mask_ $ do
+  mvar <- newEmptyMVar
+  sp <- newStablePtrPrimMVar mvar
+  (p_, (len_, (keys_, (values_, (keys_vec_, (values_vec_, b_)))))) <-
+    withPrimSafe' p $ \p' ->
+    withPrimSafe' (0 :: Int) $ \len ->
+    withPrimSafe' nullPtr $ \keys ->
+    withPrimSafe' nullPtr $ \values ->
+    withPrimSafe' nullPtr $ \keys_vec ->
+    withPrimSafe' nullPtr $ \values_vec -> do
+      (cap, _) <- threadCapability =<< myThreadId
+      b <- g =<< f sp cap p' len keys values keys_vec values_vec
+      takeMVar mvar `onException` forkIO (do takeMVar mvar
+                                             primitive_ (touch# p')
+                                             primitive_ (touch# len)
+                                             primitive_ (touch# keys)
+                                             primitive_ (touch# values)
+                                             primitive_ (touch# keys_vec)
+                                             primitive_ (touch# values_vec))
+      return b
+  finally
+    (do ret_keys <- peekk len_ keys_
+        ret_values <- peekv len_ values_
+        return (b_, p_, zip ret_keys ret_values))
+    (delk keys_vec_ <> delv values_vec_)  -- delete a nullptr is OK
 
 withAsync :: HasCallStack
           => Int -> (Ptr a -> IO a)

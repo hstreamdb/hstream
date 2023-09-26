@@ -18,6 +18,7 @@ import           Z.Data.CBytes                  (CBytes)
 import qualified Z.Foreign                      as Z
 import           Z.Foreign                      (BA#, MBA#)
 
+import qualified HStream.Foreign                as F
 import qualified HStream.Store.Exception        as E
 import qualified HStream.Store.Internal.Foreign as FFI
 import           HStream.Store.Internal.Types
@@ -65,6 +66,22 @@ ckpStoreGetLSN store customid logid =
       c_checkpoint_store_get_lsn store' customid' logid
     _ <- E.throwStreamErrorIfNotOK' errno
     return lsn
+
+ckpStoreGetAllCheckpoints' :: LDCheckpointStore -> CBytes -> IO [(C_LogID, LSN)]
+ckpStoreGetAllCheckpoints' store customid =
+  ZC.withCBytesUnsafe customid $ \customid' ->
+  withForeignPtr store $ \store' -> do
+    (_, errno, ret) <- FFI.withAsyncPrimMapUnsafe
+      C_OK
+      F.peekN F.c_delete_vector_of_uint64
+      F.peekN F.c_delete_vector_of_uint64
+      (checkpoint_store_get_all_checkpoints store' customid')
+    _ <- E.throwStreamErrorIfNotOK' errno
+    pure ret
+
+ckpStoreGetAllCheckpoints :: LDCheckpointStore -> CBytes -> IO (Map C_LogID LSN)
+ckpStoreGetAllCheckpoints store customid =
+  Map.fromList <$> ckpStoreGetAllCheckpoints' store customid
 
 ckpStoreUpdateLSN :: LDCheckpointStore -> CBytes -> C_LogID -> LSN -> IO ()
 ckpStoreUpdateLSN = ckpStoreUpdateLSN' (-1)
@@ -143,6 +160,16 @@ foreign import ccall unsafe "hs_logdevice.h checkpoint_store_get_lsn"
     -> StablePtr PrimMVar -> Int
     -> MBA# ErrorCode  -- ^ value out: error code
     -> MBA# LSN        -- ^ value out: lsn
+    -> IO ()
+
+foreign import ccall unsafe "hs_logdevice.h checkpoint_store_get_all_checkpoints"
+  checkpoint_store_get_all_checkpoints
+    :: Ptr LogDeviceCheckpointStore
+    -> BA# Word8     -- ^ customer_id
+    -> StablePtr PrimMVar -> Int
+    -> MBA# ErrorCode  -- ^ value out: error code
+    -> MBA# Int -> MBA# (Ptr C_LogID) -> MBA# (Ptr LSN)
+    -> MBA# (Ptr (F.StdVector C_LogID)) -> MBA# (Ptr (F.StdVector LSN))
     -> IO ()
 
 foreign import ccall unsafe "hs_logdevice.h checkpoint_store_update_lsn"
