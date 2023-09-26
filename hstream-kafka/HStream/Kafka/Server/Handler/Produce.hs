@@ -45,8 +45,7 @@ handleProduceV2 ServerContext{..} _ K.ProduceRequestV0{..} = do
   responses <- V.forM topicData' $ \K.TopicProduceDataV0{..} -> do
     -- A topic is a stream. Here we donot need to check the topic existence,
     -- because the metadata api does(?)
-    let name' = U.textToCBytes name
-        topic = S.mkStreamId S.StreamTypeStream name'
+    let topic = S.transToTopicStreamName name
     partitions <- S.listStreamPartitionsOrdered scLDClient topic
     let partitionData' = fromMaybe V.empty (K.unKaArray partitionData)
     partitionResponses <- V.forM partitionData' $ \K.PartitionProduceDataV0{..} -> do

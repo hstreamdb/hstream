@@ -11,23 +11,24 @@ module HStream.Kafka.Server.Handler.Topic
 
 import           Control.Exception
 import           Control.Monad
-import qualified Data.Map.Strict             as M
+import qualified Data.Map.Strict                    as M
 import           Data.Maybe
-import qualified Data.Text                   as T
-import qualified Data.Vector                 as V
+import qualified Data.Text                          as T
+import qualified Data.Vector                        as V
 
-import qualified HStream.Base.Time           as BaseTime
-import qualified HStream.Common.Server.Shard as Shard
-import qualified HStream.Common.Types        as CommonTypes
-import           HStream.Kafka.Server.Types  (ServerContext (..))
-import qualified HStream.Logger              as Log
-import qualified HStream.Stats               as Stats
-import qualified HStream.Store               as S
-import qualified HStream.Utils               as Utils
-import qualified Kafka.Protocol.Encoding     as K
-import qualified Kafka.Protocol.Error        as K
-import qualified Kafka.Protocol.Message      as K
-import qualified Kafka.Protocol.Service      as K
+import qualified HStream.Base.Time                  as BaseTime
+import qualified HStream.Common.Server.Shard        as Shard
+import qualified HStream.Common.Types               as CommonTypes
+import           HStream.Kafka.Common.OffsetManager (cleanOffsetCache)
+import           HStream.Kafka.Server.Types         (ServerContext (..))
+import qualified HStream.Logger                     as Log
+import qualified HStream.Stats                      as Stats
+import qualified HStream.Store                      as S
+import qualified HStream.Utils                      as Utils
+import qualified Kafka.Protocol.Encoding            as K
+import qualified Kafka.Protocol.Error               as K
+import qualified Kafka.Protocol.Message             as K
+import qualified Kafka.Protocol.Service             as K
 
 --------------------
 -- 19: CreateTopics
@@ -92,7 +93,7 @@ handleCreateTopicsV0 ctx _ K.CreateTopicsRequestV0{..} =
 -- FIXME: The `timeoutMs` field of request is omitted.
 handleDeleteTopicsV0
   :: ServerContext -> K.RequestContext -> K.DeleteTopicsRequestV0 -> IO K.DeleteTopicsResponseV0
-handleDeleteTopicsV0 ctx _ K.DeleteTopicsRequestV0{..} =
+handleDeleteTopicsV0 ServerContext{..} _ K.DeleteTopicsRequestV0{..} =
   case topicNames of
     K.KaArray Nothing ->
       -- FIXME: We return `[]` when topics is `Nothing`.
@@ -118,10 +119,17 @@ handleDeleteTopicsV0 ctx _ K.DeleteTopicsRequestV0{..} =
     deleteTopic :: T.Text -> IO K.DeletableTopicResultV0
     deleteTopic topicName = do
       let streamId = S.transToTopicStreamName topicName
-      S.doesStreamExist (scLDClient ctx) streamId >>= \case
+      S.doesStreamExist scLDClient streamId >>= \case
         True  -> do
-          S.removeStream (scLDClient ctx) streamId
-          Stats.stream_stat_erase (scStatsHolder ctx) (Utils.textToCBytes topicName)
+          -- delete offset caches.
+          --
+          -- XXX: Normally we do not need to delete this because the logid is a
+          -- random number and will unlikely be reused.
+          partitions <- S.listStreamPartitionsOrdered scLDClient streamId
+          V.forM partitions $ \(_, logid) ->
+            cleanOffsetCache scOffsetManager logid
+          S.removeStream scLDClient streamId
+          Stats.stream_stat_erase scStatsHolder (Utils.textToCBytes topicName)
           return $ K.DeletableTopicResultV0 topicName K.NONE
         False -> do
           Log.warning $ "Stream " <> Log.build (show streamId) <> " does not exist"
