@@ -74,7 +74,10 @@ runServer opts handlers =
           case rpcHandler of
             UnaryHandler rpcHandler' -> do
               req <- runGet l
-              Log.debug $ "Received request: " <> Log.buildString' req
+              Log.debug $ "Received request "
+                       <> Log.buildString' requestApiKey
+                       <> ":v" <> Log.build requestApiVersion
+                       <> ", payload: " <> Log.buildString' req
               resp <- rpcHandler' RequestContext req
               Log.debug $ "Server response: " <> Log.buildString' resp
               let respBs = runPutLazy resp
