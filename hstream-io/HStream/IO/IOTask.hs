@@ -111,7 +111,11 @@ handleStdout ioTask hStdout hStdin = forever $ do
 
 handleConnectorRequest :: IOTask -> MSG.ConnectorRequest -> IO MSG.ConnectorResponse
 handleConnectorRequest ioTask MSG.ConnectorRequest{..} = do
-  MSG.ConnectorResponse crId <$> handleConnectorMessage ioTask crMessage
+  MSG.ConnectorResponse crId <$> E.catch
+    (handleConnectorMessage ioTask crMessage)
+    (\(e :: E.SomeException) -> do
+      Log.warn $ "handleConnectorRequest failed:" <> Log.buildString (show e) <> "ignored"
+      pure J.Null)
 
 handleConnectorMessage :: IOTask -> MSG.ConnectorMessage -> IO J.Value
 handleConnectorMessage IOTask{..} (MSG.KvGet MSG.KvGetMessage{..}) = J.toJSON <$> M.getTaskKv taskHandle taskId kgKey
