@@ -48,7 +48,7 @@ PEEK_VECTOR(vec_of_uint64, std::vector<uint64_t>, uint64_t)
 PEEK_VECTOR(folly_small_vec_of_double, folly::small_vector<double COMMA 4>,
             double);
 
-DEL_FUNCTION(vector_of_int, std::vector<int>);
+DEL_FUNCTION(vector_of_cint, std::vector<int>);
 DEL_FUNCTION(string, std::string);
 DEL_FUNCTION(vector_of_string, std::vector<std::string>);
 DEL_FUNCTION(vector_of_int64, std::vector<int64_t>);

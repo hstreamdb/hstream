@@ -3,24 +3,22 @@
 module HStream.Store.Internal.LogDevice.LDQuery where
 
 import           Control.Exception
-import           Control.Monad                  (forM)
+import           Control.Monad           (forM)
 import           Data.Int
-import           Data.IntMap.Strict             (IntMap)
-import qualified Data.IntMap.Strict             as IntMap
+import           Data.IntMap.Strict      (IntMap)
+import qualified Data.IntMap.Strict      as IntMap
 import           Data.Word
 import           Foreign.C
 import           Foreign.ForeignPtr
-import           Foreign.Marshal.Alloc          (free)
+import           Foreign.Marshal.Alloc   (free)
 import           Foreign.Ptr
 import           GHC.Stack
-import qualified Z.Data.CBytes                  as CBytes
-import           Z.Data.CBytes                  (CBytes)
-import qualified Z.Foreign                      as Z
-import           Z.Foreign                      (BA#, MBA#)
+import qualified Z.Data.CBytes           as CBytes
+import           Z.Data.CBytes           (CBytes)
+import qualified Z.Foreign               as Z
 
-import           HStream.Foreign                hiding (BA#, MBA#)
-import           HStream.Store.Exception        (throwStoreError)
-import           HStream.Store.Internal.Foreign
+import           HStream.Foreign
+import           HStream.Store.Exception (throwStoreError)
 
 data C_LDQuery
 data C_QueryResults
@@ -66,11 +64,12 @@ showTables ldq = withForeignPtr ldq $ \ldq' -> do
     Z.withPrimUnsafe nullPtr $ \name_del' ->
     Z.withPrimUnsafe nullPtr $ \desc_val' ->
     Z.withPrimUnsafe nullPtr $ \desc_del' ->
-      ldquery_show_tables ldq' len' name_val' name_del' desc_val' desc_del'
+      ldquery_show_tables ldq' (MBA# len') (MBA# name_val') (MBA# name_del')
+                          (MBA# desc_val') (MBA# desc_del')
   finally
     (zip <$> peekStdStringToCBytesN (fromIntegral len) name_val
          <*> peekStdStringToCBytesN (fromIntegral len) desc_val)
-    (delete_vector_of_string name_del <> delete_vector_of_string desc_del)
+    (c_delete_vector_of_string name_del <> c_delete_vector_of_string desc_del)
 
 showTableColumns :: LDQuery -> CBytes -> IO ([CBytes], [CBytes], [CBytes])
 showTableColumns ldq tableName =
@@ -84,16 +83,16 @@ showTableColumns ldq tableName =
       Z.withPrimUnsafe nullPtr $ \type_del' ->
       Z.withPrimUnsafe nullPtr $ \desc_val' ->
       Z.withPrimUnsafe nullPtr $ \desc_del' ->
-        ldquery_show_table_columns ldq' tableName' len'
-                                   name_val' name_del'
-                                   type_val' type_del'
-                                   desc_val' desc_del'
+        ldquery_show_table_columns ldq' (BA# tableName') (MBA# len')
+                                   (MBA# name_val') (MBA# name_del')
+                                   (MBA# type_val') (MBA# type_del')
+                                   (MBA# desc_val') (MBA# desc_del')
     finally
       ((,,) <$> peekStdStringToCBytesN (fromIntegral len) name_val
             <*> peekStdStringToCBytesN (fromIntegral len) type_val
             <*> peekStdStringToCBytesN (fromIntegral len) desc_val)
-      (delete_vector_of_string name_del <> delete_vector_of_string type_del
-                                        <> delete_vector_of_string desc_del)
+      (c_delete_vector_of_string name_del <> c_delete_vector_of_string type_del
+                                          <> c_delete_vector_of_string desc_del)
 
 runQuery :: LDQuery -> CBytes -> IO [QueryResult]
 runQuery ldq query = do
@@ -125,7 +124,7 @@ queryResultHeaders :: QueryResults -> Int -> IO [CBytes]
 queryResultHeaders results idx = withForeignPtr results $ \results_ptr -> do
   (len, (val, _)) <-
     Z.withPrimUnsafe 0 $ \len' -> Z.withPrimUnsafe nullPtr $ \val' ->
-      queryResults__headers results_ptr idx len' val'
+      queryResults__headers results_ptr idx (MBA# len') (MBA# val')
   peekStdStringToCBytesN len val
 
 queryResultRows :: QueryResults -> Int -> IO [[CBytes]]
@@ -136,7 +135,7 @@ queryResultRows results idx = withForeignPtr results $ \results_ptr -> do
             (len, (val, _)) <-
               Z.withPrimUnsafe 0 $ \len' ->
               Z.withPrimUnsafe nullPtr $ \val' ->
-                queryResults_rows_val results_ptr idx (fromIntegral rowIdx) len' val'
+                queryResults_rows_val results_ptr idx (fromIntegral rowIdx) (MBA# len') (MBA# val')
             peekStdStringToCBytesN len val
      else return []
 
@@ -144,7 +143,7 @@ queryResultColsMaxSize :: QueryResults -> Int -> IO [CSize]
 queryResultColsMaxSize results idx = withForeignPtr results $ \results_ptr -> do
   (len, (val, _)) <-
     Z.withPrimUnsafe @CSize 0 $ \len' -> Z.withPrimUnsafe nullPtr $ \val' ->
-      queryResults__cols_max_size results_ptr idx len' val'
+      queryResults__cols_max_size results_ptr idx (MBA# len') (MBA# val')
   peekN (fromIntegral len) val
 
 queryResultMetadata :: QueryResults -> Int -> IO ActiveQueryMetadata
@@ -159,17 +158,17 @@ queryResultMetadata results idx = withForeignPtr results $ \results_ptr -> do
     Z.withPrimUnsafe nullPtr $ \addr_del' ->
     Z.withPrimUnsafe nullPtr $ \reason_val' ->
     Z.withPrimUnsafe nullPtr $ \reason_del' ->
-      queryResults__metadata_failures results_ptr idx len'
-                                      key_val' key_del'
-                                      addr_val' addr_del'
-                                      reason_val' reason_del'
+      queryResults__metadata_failures results_ptr idx (MBA# len')
+                                      (MBA# key_val') (MBA# key_del')
+                                      (MBA# addr_val') (MBA# addr_del')
+                                      (MBA# reason_val') (MBA# reason_del')
   failures <- if len >= 1
     then do keys    <- finally (peekN (fromIntegral len) key_val)
-                               (delete_vector_of_cint key_del)
+                               (c_delete_vector_of_cint key_del)
             addrs   <- finally (peekStdStringToCBytesN (fromIntegral len) addr_val)
-                               (delete_vector_of_string addr_del)
+                               (c_delete_vector_of_string addr_del)
             reasons <- finally (peekStdStringToCBytesN (fromIntegral len) reason_val)
-                               (delete_vector_of_string reason_del)
+                               (c_delete_vector_of_string reason_del)
             let details = zipWith FailedNodeDetails addrs reasons
             return $ IntMap.fromList $ zip keys details
     else return IntMap.empty

@@ -219,7 +219,7 @@ peekLogAttributesExtras attrs = do
         (MBA# len) (MBA# keys) (MBA# values) (MBA# keys_vec) (MBA# values_vec)
   finally
     (buildExtras (fromIntegral len) keys_ptr values_ptr)
-    (delete_vector_of_string keys_vec <> delete_vector_of_string values_vec)
+    (c_delete_vector_of_string keys_vec <> c_delete_vector_of_string values_vec)
   where
     buildExtras len keys_ptr values_ptr = do
       keys <- peekStdStringToCBytesN len keys_ptr

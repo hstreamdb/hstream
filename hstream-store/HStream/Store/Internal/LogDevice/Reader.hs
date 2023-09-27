@@ -22,8 +22,8 @@ import qualified Z.Data.CBytes                  as ZC
 import           Z.Data.CBytes                  (CBytes)
 import           Z.Data.Vector.Base             (Bytes)
 import qualified Z.Foreign                      as Z
-import           Z.Foreign                      (BA#, MBA#)
 
+import           HStream.Foreign                (BA# (..), MBA# (..))
 import qualified HStream.Logger                 as Log
 import qualified HStream.Store.Exception        as E
 import           HStream.Store.Internal.Foreign (cbool2bool, retryWhileAgain,
@@ -66,7 +66,7 @@ newLDSyncCkpReader name reader store =
     -- FIXME: The number of retries when synchronously writing checkpoints.
     -- We only use the async cpp function, so this option has no means currently
     let retries = 10
-    i <- c_new_logdevice_sync_checkpointed_reader name' reader' store' retries
+    i <- c_new_logdevice_sync_checkpointed_reader (BA# name') reader' store' retries
     newForeignPtr c_free_sync_checkpointed_reader_fun i
 
 -- | Start reading a log.
@@ -293,7 +293,8 @@ writeCheckpoints reader sns retries =
         va = Z.primArrayFromList $ map snd xs
     Z.withPrimArrayUnsafe ka $ \ks' len ->
       Z.withPrimArrayUnsafe va $ \vs' _ -> do
-        let f = withAsyncPrimUnsafe (0 :: ErrorCode) $ crb_write_checkpoints reader' ks' vs' (fromIntegral len)
+        let f = withAsyncPrimUnsafe (0 :: ErrorCode) $
+                  crb_write_checkpoints reader' (BA# ks') (BA# vs') (fromIntegral len)
         retryWhileAgain f retries
 {-# INLINABLE writeCheckpoints #-}
 
@@ -302,7 +303,8 @@ writeLastCheckpoints reader xs retries =
   withForeignPtr reader $ \reader' -> do
     let topicIDs = Z.primArrayFromList xs
     Z.withPrimArrayUnsafe topicIDs $ \id' len -> do
-      let f = withAsyncPrimUnsafe (0 :: ErrorCode) $ crb_write_last_read_checkpoints reader' id' (fromIntegral len)
+      let f = withAsyncPrimUnsafe (0 :: ErrorCode) $
+                crb_write_last_read_checkpoints reader' (BA# id') (fromIntegral len)
       retryWhileAgain f retries
 {-# INLINABLE writeLastCheckpoints #-}
 
@@ -310,7 +312,7 @@ removeCheckpoints :: HasCallStack => LDSyncCkpReader -> [C_LogID] -> IO ()
 removeCheckpoints reader xs = withForeignPtr reader $ \reader' -> do
   let logids = Z.primArrayFromList xs
   Z.withPrimArrayUnsafe logids $ \id' len -> do
-    let f = crb_asyncRemoveCheckpoints reader' id' (fromIntegral len)
+    let f = crb_asyncRemoveCheckpoints reader' (BA# id') (fromIntegral len)
     (err, _ret) <- withAsyncPrimUnsafe (0 :: ErrorCode) f
     void $ E.throwStreamErrorIfNotOK' err
 
@@ -479,7 +481,7 @@ foreign import ccall unsafe "hs_logdevice.h crb_write_checkpoints"
     -> BA# LSN
     -> Word
     -> StablePtr PrimMVar -> Int
-    -> MBA# Word8
+    -> MBA# ErrorCode
     -> IO ()
 
 foreign import ccall unsafe "hs_logdevice.h crb_write_last_read_checkpoints"
@@ -488,7 +490,7 @@ foreign import ccall unsafe "hs_logdevice.h crb_write_last_read_checkpoints"
     -> BA# C_LogID
     -> Word
     -> StablePtr PrimMVar -> Int
-    -> MBA# Word8
+    -> MBA# ErrorCode
     -> IO ()
 
 foreign import ccall unsafe "hs_logdevice.h crb_asyncRemoveCheckpoints"
@@ -496,14 +498,14 @@ foreign import ccall unsafe "hs_logdevice.h crb_asyncRemoveCheckpoints"
     :: Ptr LogDeviceSyncCheckpointedReader
     -> BA# C_LogID -> Word
     -> StablePtr PrimMVar -> Int
-    -> MBA# Word8
+    -> MBA# ErrorCode
     -> IO ()
 
 foreign import ccall unsafe "hs_logdevice.h crb_asyncRemoveAllCheckpoints"
   crb_asyncRemoveAllCheckpoints
     :: Ptr LogDeviceSyncCheckpointedReader
     -> StablePtr PrimMVar -> Int
-    -> MBA# Word8
+    -> MBA# ErrorCode
     -> IO ()
 
 foreign import ccall safe "hs_logdevice.h sync_write_last_read_checkpoints"

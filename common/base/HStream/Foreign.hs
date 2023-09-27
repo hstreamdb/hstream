@@ -41,7 +41,7 @@ module HStream.Foreign
   -- * Misc
   , c_delete_string
   , c_delete_vector_of_string
-  , c_delete_vector_of_int
+  , c_delete_vector_of_cint
   , c_delete_vector_of_int64
   , c_delete_vector_of_uint64
   , c_delete_std_vec_of_folly_small_vec_of_double
@@ -249,9 +249,9 @@ withPrimListPairUnsafe pairs f = do
 
 HS_CPP_DELETE(delete_string, StdString)
 HS_CPP_DELETE(delete_vector_of_string, (StdVector StdString))
-HS_CPP_DELETE(delete_vector_of_int, (StdVector CInt))
+HS_CPP_DELETE(delete_vector_of_cint, (StdVector CInt))
 HS_CPP_DELETE(delete_vector_of_int64, (StdVector Int64))
-HS_CPP_DELETE(delete_vector_of_uint64, (StdVector Int64))
+HS_CPP_DELETE(delete_vector_of_uint64, (StdVector Word64))
 HS_CPP_DELETE(delete_std_vec_of_folly_small_vec_of_double, (StdVector (FollySmallVector Double)))
 
 bool2cbool :: Bool -> CBool
