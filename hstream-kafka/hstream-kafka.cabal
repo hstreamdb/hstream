@@ -146,6 +146,7 @@ library
     , time
     , vector
     , yaml
+    , uuid
     , Z-Data
 
   default-language:   GHC2021
