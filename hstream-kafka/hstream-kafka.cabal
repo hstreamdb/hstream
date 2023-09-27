@@ -106,6 +106,7 @@ library
   import:             shared-properties
   exposed-modules:
     HStream.Kafka.Common.OffsetManager
+    HStream.Kafka.Common.Read
     HStream.Kafka.Common.RecordFormat
     HStream.Kafka.Group.GroupMetadataManager
     HStream.Kafka.Group.OffsetsStore
@@ -120,9 +121,9 @@ library
     HStream.Kafka.Server.Config.Types
     HStream.Kafka.Server.Handler.Basic
     HStream.Kafka.Server.Handler.Consume
+    HStream.Kafka.Server.Handler.Offset
     HStream.Kafka.Server.Handler.Produce
     HStream.Kafka.Server.Handler.Topic
-    HStream.Kafka.Server.Handler.Offset
 
   hs-source-dirs:     .
   build-depends:
@@ -133,8 +134,8 @@ library
     , containers
     , digest
     , directory
-    , hashtables
     , hashable
+    , hashtables
     , hstream-api-hs
     , hstream-common
     , hstream-common-base
@@ -148,14 +149,15 @@ library
     , stm
     , text
     , time
+    , unordered-containers
     , vector
     , yaml
     , Z-Data
-    , unordered-containers
 
   default-language:   GHC2021
   default-extensions:
     DerivingStrategies
     LambdaCase
+    MultiWayIf
     OverloadedStrings
     RecordWildCards
