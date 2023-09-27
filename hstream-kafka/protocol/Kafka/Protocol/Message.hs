@@ -62,6 +62,14 @@ data ResponseHeader = ResponseHeader
   , responseTaggedFields  :: !(Either Unsupported TaggedFields)
   } deriving (Show, Eq)
 
+instance Serializable ResponseHeader where
+  get = do
+    responseCorrelationId <- get
+    responseTaggedFields  <- pure $ Left Unsupported -- FIXME
+    pure ResponseHeader{..}
+
+  put = putResponseHeader
+
 putResponseHeader :: ResponseHeader -> Builder
 putResponseHeader ResponseHeader{..} =
      put responseCorrelationId

@@ -67,6 +67,7 @@ runServer opts handlers =
         Fail _ err -> E.throwIO $ DecodeError $ "Fail, " <> err
 
     runHandler reqBs = do
+      Log.debug . Log.buildString $ "Kafka runHandler: parsing RequestHeader"
       headerResult <- runParser @RequestHeader get reqBs
       case headerResult of
         Done l RequestHeader{..} -> do

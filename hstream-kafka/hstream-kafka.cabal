@@ -120,9 +120,9 @@ library
     HStream.Kafka.Server.Config.Types
     HStream.Kafka.Server.Handler.Basic
     HStream.Kafka.Server.Handler.Consume
+    HStream.Kafka.Server.Handler.Offset
     HStream.Kafka.Server.Handler.Produce
     HStream.Kafka.Server.Handler.Topic
-    HStream.Kafka.Server.Handler.Offset
 
   hs-source-dirs:     .
   build-depends:
@@ -133,8 +133,8 @@ library
     , containers
     , digest
     , directory
-    , hashtables
     , hashable
+    , hashtables
     , hstream-api-hs
     , hstream-common
     , hstream-common-base
@@ -148,10 +148,10 @@ library
     , stm
     , text
     , time
+    , unordered-containers
     , vector
     , yaml
     , Z-Data
-    , unordered-containers
 
   default-language:   GHC2021
   default-extensions:
@@ -159,3 +159,49 @@ library
     LambdaCase
     OverloadedStrings
     RecordWildCards
+
+executable hstream-kafka-cli
+  ghc-options:        -Wall -Wextra
+  main-is:            Main.hs
+  build-depends:
+    , aeson
+    , base                                                                 >=4.11 && <5
+    , brick
+    , bytestring
+    , haskeline
+    , hstream-common-base
+    , hstream-kafka:{hstream-kafka, hstream-kafka-client, kafka-protocol}
+    , network
+    , optparse-applicative
+    , text
+    , vector
+
+  hs-source-dirs:     app
+  default-language:   GHC2021
+  default-extensions: OverloadedStrings
+
+library hstream-kafka-client
+  ghc-options:        -Wall -Wextra
+  build-depends:
+    , aeson
+    , base                                           >=4.11 && <5
+    , brick
+    , bytestring
+    , haskeline
+    , hstream-common-base
+    , hstream-kafka:{hstream-kafka, kafka-protocol}
+    , network
+    , optparse-applicative
+    , text
+    , vector
+
+  exposed-modules:
+    HStream.Kafka.Client.CliParser
+    HStream.Kafka.Client.Core
+    HStream.Kafka.Client.Network
+
+  hs-source-dirs:     client
+  default-language:   GHC2021
+  default-extensions:
+    OverloadedLists
+    OverloadedStrings
