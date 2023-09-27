@@ -114,7 +114,7 @@ handleConnectorRequest ioTask MSG.ConnectorRequest{..} = do
   MSG.ConnectorResponse crId <$> E.catch
     (handleConnectorMessage ioTask crMessage)
     (\(e :: E.SomeException) -> do
-      Log.warn $ "handleConnectorRequest failed:" <> Log.buildString (show e) <> "ignored"
+      Log.warning $ "handleConnectorRequest failed:" <> Log.buildString (show e) <> "ignored"
       pure J.Null)
 
 handleConnectorMessage :: IOTask -> MSG.ConnectorMessage -> IO J.Value
