@@ -229,7 +229,7 @@ queryResultMetadata results idx = withForeignPtr results $ \results_ptr -> do
                                       (MBA# reason_val') (MBA# reason_del')
   failures <- if len >= 1
     then do keys    <- finally (peekN (fromIntegral len) key_val)
-                               (c_delete_vector_of_int key_del)
+                               (c_delete_vector_of_cint key_del)
             addrs   <- finally (peekStdStringToCBytesN (fromIntegral len) addr_val)
                                (c_delete_vector_of_string addr_del)
             reasons <- finally (peekStdStringToCBytesN (fromIntegral len) reason_val)

@@ -33,6 +33,7 @@ import qualified HStream.Stats              as Stats
 import qualified HStream.Utils              as Utils
 import           System.Directory           (createDirectoryIfMissing)
 import qualified System.Process.Typed       as TP
+import qualified ZooKeeper.Exception        as E
 
 newIOTask :: T.Text -> M.MetaHandle -> Stats.StatsHolder -> TaskInfo -> T.Text -> IOOptions -> IO IOTask
 newIOTask taskId taskHandle taskStatsHolder taskInfo path ioOptions = do
@@ -111,7 +112,11 @@ handleStdout ioTask hStdout hStdin = forever $ do
 
 handleConnectorRequest :: IOTask -> MSG.ConnectorRequest -> IO MSG.ConnectorResponse
 handleConnectorRequest ioTask MSG.ConnectorRequest{..} = do
-  MSG.ConnectorResponse crId <$> handleConnectorMessage ioTask crMessage
+  MSG.ConnectorResponse crId <$> E.catch
+    (handleConnectorMessage ioTask crMessage)
+    (\(e :: E.ZooException) -> do
+      Log.warning $ "handleConnectorRequest failed:" <> Log.buildString (show e) <> "ignored"
+      pure J.Null)
 
 handleConnectorMessage :: IOTask -> MSG.ConnectorMessage -> IO J.Value
 handleConnectorMessage IOTask{..} (MSG.KvGet MSG.KvGetMessage{..}) = J.toJSON <$> M.getTaskKv taskHandle taskId kgKey

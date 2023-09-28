@@ -195,7 +195,7 @@ misc = do
     log1 <- S.readerReadAllowGap @Bytes reader 10
     log2 <- S.readerReadAllowGap @Bytes reader 10
     let expected = S.GapRecord { gapLogID = logid
-                               , gapType  = S.GapType 4
+                               , gapType  = S.GapTypeTrim
                                , gapLoLSN = sn0
                                , gapHiLSN = sn1
                                }

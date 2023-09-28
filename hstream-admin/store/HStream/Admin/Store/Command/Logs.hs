@@ -247,22 +247,26 @@ printLogDirectory' client level maxDepth verbose logDirectory = do
 
 printLogAttributes :: Int -> LogAttributes -> IO ()
 printLogAttributes level LogAttributes{..} = do
-  let cast = Casting.toKebab . Casting.dropPrefix . Casting.fromAny
-      emit s = putStrLn $ replicate ((level + 1) * shift) ' ' <> "- " <> s
-#define _SHOW_ATTR(x) cast #x <> ": " <> showAttributeVal x
+  let formatAttrKey = Casting.toKebab . Casting.dropPrefix . Casting.fromAny
+      emit (Just s) = putStrLn $ replicate ((level + 1) * shift) ' ' <> "- " <> s
+      emit Nothing = pure ()
+#define _SHOW_ATTR(x) showAttributeVal x (formatAttrKey #x <> ": ")
   emit $ _SHOW_ATTR(logReplicationFactor)
   emit $ _SHOW_ATTR(logSyncedCopies)
   emit $ _SHOW_ATTR(logBacklogDuration)
   emit $ _SHOW_ATTR(logReplicateAcross)
   forM_ (Map.toList logAttrsExtras) $ \(k, v) ->
-    emit $ unpack k <> ": " <> unpack v
+    emit $ Just $ unpack k <> ": " <> unpack v
 #undef _SHOW_ATTR
 
-showAttributeVal :: Show a => S.Attribute a -> String
-showAttributeVal S.Attribute{..} =
-  -- TODO
-  let overridden = if not attrInherited then "    (Overridden)" else ""
-   in (show . fromJust $ attrValue) <> overridden
+showAttributeVal :: Show a => S.Attribute a -> String -> Maybe String
+showAttributeVal S.Attribute{..} label =
+  case attrValue of
+    Nothing -> Nothing
+    Just vl ->
+      -- TODO
+      let overridden = if not attrInherited then "    (Overridden)" else ""
+       in Just $ label <> (show vl) <> overridden
 
 runLogsSetRange :: HeaderConfig AdminAPI -> SetRangeOpts -> IO ()
 runLogsSetRange conf SetRangeOpts{..} = do

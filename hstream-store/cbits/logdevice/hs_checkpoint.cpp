@@ -72,6 +72,37 @@ void checkpoint_store_get_lsn(logdevice_checkpoint_store_t* store,
   store->rep->getLSN(customer_id_, logid_t(logid), cb);
 }
 
+void checkpoint_store_get_all_checkpoints(
+    logdevice_checkpoint_store_t* store, const char* customer_id,
+    HsStablePtr mvar, HsInt cap, facebook::logdevice::Status* st_out,
+    HsInt* len, c_logid_t** keys_ptr, c_lsn_t** values_ptr,
+    std::vector<c_logid_t>** keys_, std::vector<c_lsn_t>** values_) {
+  auto cb = [st_out, cap, mvar, len, keys_ptr, values_ptr, keys_,
+             values_](facebook::logdevice::Status st,
+                      std::map<c_logid_t, c_lsn_t>& log_lsn_map) {
+    if (st_out) {
+      *st_out = st;
+    }
+    if (st == ld::Status::OK) {
+      std::vector<c_logid_t>* keys = new std::vector<c_logid_t>;
+      std::vector<c_lsn_t>* values = new std::vector<c_lsn_t>;
+
+      for (const auto& [key, value] : log_lsn_map) {
+        keys->push_back(key);
+        values->push_back(value);
+      }
+
+      *len = keys->size();
+      *keys_ptr = keys->data();
+      *values_ptr = values->data();
+      *keys_ = keys;
+      *values_ = values;
+    }
+    hs_try_putmvar(cap, mvar);
+  };
+  store->rep->getAllCheckpoints(std::string(customer_id), std::move(cb));
+}
+
 void checkpoint_store_update_lsn(logdevice_checkpoint_store_t* store,
                                  const char* customer_id, c_logid_t logid,
                                  c_lsn_t lsn, HsStablePtr mvar, HsInt cap,
@@ -84,6 +115,25 @@ void checkpoint_store_update_lsn(logdevice_checkpoint_store_t* store,
     hs_try_putmvar(cap, mvar);
   };
   store->rep->updateLSN(customer_id_, logid_t(logid), lsn, cb);
+}
+
+void checkpoint_store_update_multi_lsn(logdevice_checkpoint_store_t* store,
+                                       const char* customer_id,
+                                       c_logid_t* logids, c_lsn_t* lsns,
+                                       size_t len, HsStablePtr mvar, HsInt cap,
+                                       facebook::logdevice::Status* st_out) {
+  std::string customer_id_ = std::string(customer_id);
+  std::map<logid_t, lsn_t> checkpoints;
+  for (int i = 0; i < len; ++i)
+    checkpoints[logid_t(logids[i])] = lsns[i];
+  auto cb = [st_out, cap, mvar](facebook::logdevice::Status st) {
+    if (st_out) {
+      *st_out = st;
+    }
+    hs_try_putmvar(cap, mvar);
+  };
+
+  return store->rep->updateLSN(customer_id_, checkpoints, cb);
 }
 
 void checkpoint_store_remove_checkpoints(logdevice_checkpoint_store_t* store,

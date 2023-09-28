@@ -14,8 +14,8 @@ import qualified Z.Data.CBytes                  as CBytes
 import           Z.Data.CBytes                  (CBytes)
 import           Z.Data.Vector                  (Bytes)
 import qualified Z.Foreign                      as Z
-import           Z.Foreign                      (BA#)
 
+import           HStream.Foreign                (BA# (..), MBA# (..))
 import qualified HStream.Logger                 as Log
 import qualified HStream.Store.Exception        as E
 import           HStream.Store.Internal.Foreign
@@ -56,7 +56,7 @@ vcsGetConfig
   -> IO Bytes
 vcsGetConfig vcs key m_base_version auto_retries =
   withForeignPtr vcs $ \vcs' -> CBytes.withCBytesUnsafe key $ \key' ->
-    go vcs' key' auto_retries
+    go vcs' (BA# key') auto_retries
   where
     go vcs' key' retries = do
       cbData <- run vcs' key'
@@ -71,7 +71,7 @@ vcsGetConfig vcs key m_base_version auto_retries =
     run vcs' key' =
       case m_base_version of
         Just bv -> fmap snd $ Z.withPrimUnsafe bv $ \ver_ ->
-          f $ c_logdevice_vcs_get_config vcs' key' (unsafeFreezeBA# ver_)
+          f $ c_logdevice_vcs_get_config vcs' key' (unsafeFreezeBA# (MBA# ver_))
         Nothing -> f $ c_logdevice_vcs_get_config' vcs' key' nullPtr
     f = withAsyncVoid vcsValueCallbackDataSize peekVcsValueCallbackData
 
@@ -91,7 +91,7 @@ ldVcsGetLatestConfig
   -> IO Bytes
 ldVcsGetLatestConfig vcs key auto_retries =
   withForeignPtr vcs $ \vcs' -> CBytes.withCBytesUnsafe key $ \key' ->
-    go vcs' key' auto_retries
+    go vcs' (BA# key') auto_retries
   where
     go vcs' key' retries = do
       cbData <- withAsyncVoid vcsValueCallbackDataSize peekVcsValueCallbackData
@@ -149,7 +149,7 @@ ldVcsUpdateConfig vcs key val cond auto_retries =
   withForeignPtr vcs $ \vcs' ->
   CBytes.withCBytesUnsafe key $ \key' ->
     Z.withPrimVectorUnsafe val $ \val' offset len ->
-      go vcs' key' val' offset len auto_retries
+      go vcs' (BA# key') (BA# val') offset len auto_retries
   where
     go vcs' key' val' offset len retries = do
       cbData <- withAsyncVoid vcsWriteCallbackDataSize peekVcsWriteCallbackData

@@ -5,6 +5,7 @@ module HStream.Kafka.Server.Handler (handlers) where
 
 import           HStream.Kafka.Server.Handler.Basic
 import           HStream.Kafka.Server.Handler.Consume
+import           HStream.Kafka.Server.Handler.Offset
 import           HStream.Kafka.Server.Handler.Produce
 import           HStream.Kafka.Server.Handler.Topic
 import           HStream.Kafka.Server.Types           (ServerContext (..))
@@ -28,4 +29,7 @@ handlers sc =
   , K.hd (K.RPC :: K.RPC K.HStreamKafkaV2 "produce") (handleProduceV2 sc)
 
   , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "fetch") (handleFetchV0 sc)
+
+  , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "offsetCommit") (handleOffsetCommitV0 sc)
+  , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "offsetFetch") (handleOffsetFetchV0 sc)
   ]

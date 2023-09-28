@@ -9,12 +9,10 @@ import qualified Data.ByteString                   as BS
 import           Data.Int
 import qualified Data.List                         as L
 import           Data.Maybe
-import           Data.Time
 import qualified Data.Vector                       as V
 
 import qualified HStream.Kafka.Common.RecordFormat as K
-import           HStream.Kafka.Server.Types        (ServerContext (..),
-                                                    transToStreamName)
+import           HStream.Kafka.Server.Types        (ServerContext (..))
 import qualified HStream.Logger                    as Log
 import qualified HStream.Store                     as S
 import qualified HStream.Utils                     as U
@@ -68,7 +66,7 @@ readSingleTopic
 readSingleTopic ldclient K.FetchTopicV0{..} totalMaxBytes_m timeLeftMs isFirstTopic = case partitions of
   K.KaArray Nothing    -> return (totalMaxBytes_m, timeLeftMs, K.FetchableTopicResponseV0 topic (K.KaArray Nothing))
   K.KaArray (Just parts) -> do
-    orderedParts <- S.listStreamPartitionsOrdered ldclient (transToStreamName topic)
+    orderedParts <- S.listStreamPartitionsOrdered ldclient (S.transToTopicStreamName topic)
     -- FIXME: is it proper to use one reader for all partitions of a topic?
     reader <- S.newLDReader ldclient 1 (Just 1)
     (_,totalMaxBytes_m', timeLeftMs', resps) <-

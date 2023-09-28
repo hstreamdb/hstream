@@ -7,20 +7,20 @@
 module HStream.Store.Internal.Foreign where
 
 import           Control.Concurrent           (newEmptyMVar, takeMVar)
-import           Control.Exception            (mask_, onException)
+import           Control.Exception            (finally, mask_, onException)
 import           Control.Monad.Primitive
 import           Data.Primitive
 import           Foreign.C
 import           Foreign.ForeignPtr
+import           Foreign.Ptr
 import           Foreign.StablePtr
 import           GHC.Conc
 import           GHC.Exts
 import           GHC.Stack
 import           Z.Data.CBytes                (CBytes)
 import qualified Z.Foreign                    as Z
-import           Z.Foreign                    (BA#, MBA#)
 
-import           HStream.Foreign              hiding (BA#, MBA#)
+import           HStream.Foreign
 import qualified HStream.Logger               as Log
 import qualified HStream.Store.Exception      as E
 import           HStream.Store.Internal.Types
@@ -30,9 +30,9 @@ cbool2bool = (/= 0)
 {-# INLINE cbool2bool #-}
 
 unsafeFreezeBA# :: MBA# a -> BA# a
-unsafeFreezeBA# mba# =
+unsafeFreezeBA# (MBA# mba#) =
   case unsafeFreezeByteArray# mba# realWorld# of
-    (# _, ba# #) -> ba#
+    (# _, ba# #) -> BA# ba#
 
 -- Actually, these unsafe functions can be used for both unsafe & safe ffi(?).
 withAsyncPrimUnsafe
@@ -105,6 +105,62 @@ withAsyncPrimUnsafe3' a b c f g = mask_ $ do
       return e
   return (a_, b_, c_, e_)
 
+-- Similar to HStream.Foreign.PeekMapFun
+--
+-- TODO: Use HStream.Foreign.PeekMapFun instead
+type MapFun a pk pv dk dv
+  = MBA# Int
+    -- ^ returned map size
+ -> MBA# (Ptr pk) -> MBA# (Ptr pv)
+    -- ^ pointer to peek
+ -> MBA# (Ptr dk) -> MBA# (Ptr dv)
+    -- ^ pointer to delete
+ -> IO a
+
+withAsyncPrimMapUnsafe
+  :: (Prim p)
+  => p
+  -> PeekNFun pk k -> DeleteFun dk
+  -> PeekNFun pv v -> DeleteFun dv
+  -> (StablePtr PrimMVar -> Int -> MBA# p -> MapFun a pk pv dk dv)
+  -> IO (a, p, [(k, v)])
+withAsyncPrimMapUnsafe p peekk delk peekv delv f =
+  withAsyncPrimMapUnsafe' p peekk delk peekv delv f pure
+
+withAsyncPrimMapUnsafe'
+  :: (Prim p)
+  => p
+  -> PeekNFun pk k -> DeleteFun dk
+  -> PeekNFun pv v -> DeleteFun dv
+  -> (StablePtr PrimMVar -> Int -> MBA# p -> MapFun a pk pv dk dv)
+  -> (a -> IO b)
+  -> IO (b, p, [(k, v)])
+withAsyncPrimMapUnsafe' p peekk delk peekv delv f g = mask_ $ do
+  mvar <- newEmptyMVar
+  sp <- newStablePtrPrimMVar mvar
+  (p_, (len_, (keys_, (values_, (keys_vec_, (values_vec_, b_)))))) <-
+    withPrimSafe' p $ \p' ->
+    withPrimSafe' (0 :: Int) $ \len ->
+    withPrimSafe' nullPtr $ \keys ->
+    withPrimSafe' nullPtr $ \values ->
+    withPrimSafe' nullPtr $ \keys_vec ->
+    withPrimSafe' nullPtr $ \values_vec -> do
+      (cap, _) <- threadCapability =<< myThreadId
+      b <- g =<< f sp cap p' len keys values keys_vec values_vec
+      takeMVar mvar `onException` forkIO (do takeMVar mvar
+                                             primitive_ (touch# p')
+                                             primitive_ (touch# len)
+                                             primitive_ (touch# keys)
+                                             primitive_ (touch# values)
+                                             primitive_ (touch# keys_vec)
+                                             primitive_ (touch# values_vec))
+      return b
+  finally
+    (do ret_keys <- peekk len_ keys_
+        ret_values <- peekv len_ values_
+        return (b_, p_, zip ret_keys ret_values))
+    (delk keys_vec_ <> delv values_vec_)  -- delete a nullptr is OK
+
 withAsync :: HasCallStack
           => Int -> (Ptr a -> IO a)
           -> (StablePtr PrimMVar -> Int -> Ptr a -> IO ErrorCode)
@@ -153,7 +209,7 @@ withPrimSafe' :: forall a b. Prim a => a -> (MBA# a -> IO b) -> IO (a, b)
 withPrimSafe' v f = do
     mpa@(MutablePrimArray mba#) <- newAlignedPinnedPrimArray 1
     writePrimArray mpa 0 v
-    !b <- f mba#
+    !b <- f (MBA# mba#)
     !a <- readPrimArray mpa 0
     return (a, b)
 {-# INLINE withPrimSafe' #-}
@@ -166,12 +222,6 @@ peekVectorStringToCBytes ptr = do
 
 foreign import ccall unsafe "hs_logdevice.h hs_cal_std_string_off"
   hs_cal_std_string_off :: Ptr Z.StdString -> Int -> IO (Ptr Z.StdString)
-
-foreign import ccall unsafe "hs_logdevice.h delete_vector_of_string"
-  delete_vector_of_string :: Ptr (StdVector Z.StdString) -> IO ()
-
-foreign import ccall unsafe "hs_logdevice.h delete_vector_of_cint"
-  delete_vector_of_cint :: Ptr (StdVector CInt) -> IO ()
 
 foreign import ccall unsafe "hs_logdevice.h get_vector_of_string_size"
   get_vector_of_string_size :: Ptr (StdVector Z.StdString) -> IO Int

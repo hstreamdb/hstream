@@ -107,6 +107,8 @@ library
   exposed-modules:
     HStream.Kafka.Common.OffsetManager
     HStream.Kafka.Common.RecordFormat
+    HStream.Kafka.Group.GroupMetadataManager
+    HStream.Kafka.Group.OffsetsStore
     HStream.Kafka.Network
     HStream.Kafka.Server.Config
     HStream.Kafka.Server.Handler
@@ -120,6 +122,7 @@ library
     HStream.Kafka.Server.Handler.Consume
     HStream.Kafka.Server.Handler.Produce
     HStream.Kafka.Server.Handler.Topic
+    HStream.Kafka.Server.Handler.Offset
 
   hs-source-dirs:     .
   build-depends:
@@ -131,6 +134,7 @@ library
     , digest
     , directory
     , hashtables
+    , hashable
     , hstream-api-hs
     , hstream-common
     , hstream-common-base
@@ -148,6 +152,7 @@ library
     , yaml
     , uuid
     , Z-Data
+    , unordered-containers
 
   default-language:   GHC2021
   default-extensions:
