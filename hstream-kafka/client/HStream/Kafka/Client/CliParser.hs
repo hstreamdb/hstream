@@ -1,3 +1,5 @@
+{-# LANGUAGE LambdaCase #-}
+
 module HStream.Kafka.Client.CliParser where
 
 import           Control.Exception
@@ -19,14 +21,15 @@ data Command
   | DeleteTopic String
   | Groups
   | DescribeGroup String
+  | Produce K.ProduceRequestV2
   deriving (Show)
 
 data Options = Options
-  { brokers        :: Maybe String,
-    cluster        :: Maybe String,
-    config         :: Maybe String,
-    schemaRegistry :: Maybe String,
-    verbose        :: Bool
+  { brokers        :: Maybe String
+  , cluster        :: Maybe String
+  , config         :: Maybe String
+  , schemaRegistry :: Maybe String
+  , verbose        :: Bool
   }
   deriving (Show)
 
@@ -52,6 +55,33 @@ parseCommand =
   <> command "group"
       (info (DescribeGroup <$> argument str (metavar "GROUP"))
         (progDesc "Describe a given consumer group"))
+  <> command "produce"
+      (info (Produce <$> produceOptions)
+        (progDesc "Produce data to a topic"))
+
+produceOptions :: Parser K.ProduceRequestV2
+produceOptions =
+  K.ProduceRequestV2
+    <$> (( \case
+             "no"     -> 0
+             "leader" -> 1
+             "full"   -> -1
+         )
+          <$> option auto (short 'a' <> long "acks" <> metavar "ACKS" <> value "leader" <> help "The number of acknowledgments the producer requires the leader to have received"))
+    <*> option auto (short 't' <> long "timeout" <> metavar "TIMEOUT" <> value 5000 <> help "The timeout to await a response in milliseconds")
+    <*> (K.KaArray . Just . V.fromList <$> some produceTopicDataOptions)
+
+produceTopicDataOptions :: Parser K.TopicProduceDataV2
+produceTopicDataOptions =
+  K.TopicProduceDataV2
+    <$> argument str (metavar "TOPIC")
+    <*> (K.KaArray . Just . V.fromList <$> some producePartitionDataOptions)
+
+producePartitionDataOptions :: Parser K.PartitionProduceDataV2
+producePartitionDataOptions =
+  K.PartitionProduceDataV2
+    <$> argument auto (metavar "PARTITION")
+    <*> (Just <$> argument str (metavar "RECORD_DATA"))
 
 parseOptions :: Parser Options
 parseOptions =

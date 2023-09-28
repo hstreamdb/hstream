@@ -124,3 +124,28 @@ handleDeleteTopic opts topicName = do
                ]
       stats  = (\s -> ($ s) <$> lenses) <$> rets
   putStrLn $ simpleShowTable (map (, 30, Table.left) titles) (V.toList stats)
+
+handleProduce :: Options -> K.ProduceRequestV2 -> IO ()
+handleProduce opts reqBody = do
+  let reqHeader = K.RequestHeader
+                    { K.requestApiKey        = 0
+                    , K.requestApiVersion    = 2
+                    , K.requestCorrelationId = 1 -- FIXME
+                    , K.requestClientId      = requestClientId
+                    , K.requesteTaggedFields = Left K.Unsupported
+                    }
+  resp <- sendAndRecv @K.ProduceRequestV2 @K.ProduceResponseV2
+            opts reqHeader reqBody
+  let K.ProduceResponseV2 responses _                        = resp
+      K.KaArray (Just [K.TopicProduceResponseV2 _ response]) = responses
+      K.KaArray (Just (response' :: V.Vector K.PartitionProduceResponseV2)) = (response :: K.KaArray K.PartitionProduceResponseV2)
+  let titles :: [String]
+      titles = ["INDEX", "ERROR CODE", "BASE OFFSET", "LOG APPEND TIME (ms)"]
+      lenses :: [K.PartitionProduceResponseV2 -> String]
+      lenses = [ \(K.PartitionProduceResponseV2 index errorCode baseOffset logAppendTimeMs) -> show index
+               , \(K.PartitionProduceResponseV2 index errorCode baseOffset logAppendTimeMs) -> show errorCode
+               , \(K.PartitionProduceResponseV2 index errorCode baseOffset logAppendTimeMs) -> show baseOffset
+               , \(K.PartitionProduceResponseV2 index errorCode baseOffset logAppendTimeMs) -> show logAppendTimeMs
+               ]
+      stats  = (\s -> ($ s) <$> lenses) <$> (response' :: V.Vector K.PartitionProduceResponseV2)
+  putStrLn $ simpleShowTable (map (, 30, Table.left) titles) (V.toList stats)

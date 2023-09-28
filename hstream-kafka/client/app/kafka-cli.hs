@@ -22,11 +22,12 @@ main = do
   parsed@(cmd, opts) <- runKafkaCliParser
   Log.debug . Log.buildString $ "command and options: " <> show parsed
   case cmd of
-    Nodes               -> handleCmdNodes opts
-    Topics              -> handleCmdTopics opts
-    DescribeTopic topic -> handleCmdDescribeTopic opts topic
-    Groups              -> handleCmdGroups opts
-    DescribeGroup group -> handleCmdDescribeGroup opts group
+    Nodes                 -> handleCmdNodes opts
+    Topics                -> handleCmdTopics opts
+    DescribeTopic topic   -> handleCmdDescribeTopic opts topic
+    Groups                -> handleCmdGroups opts
+    DescribeGroup group   -> handleCmdDescribeGroup opts group
+    DeleteTopic topicName -> handleDeleteTopic opts topicName
     CreateTopic topicName numPartitions replicationFactor ->
       handleCreateTopic opts topicName numPartitions replicationFactor
-    DeleteTopic topicName -> handleDeleteTopic opts topicName
+    Produce request       -> handleProduce opts request
