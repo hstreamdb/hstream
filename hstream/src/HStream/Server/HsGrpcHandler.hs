@@ -56,7 +56,7 @@ handlers sc =
   , unary (GRPC :: GRPC P.HStreamApi "listConsumers") (H.handleListConsumers sc)
   , unary (GRPC :: GRPC P.HStreamApi "checkSubscriptionExist") (H.handleCheckSubscriptionExist sc)
     -- Append
-  , unary (GRPC :: GRPC P.HStreamApi "append") (H.handleAppend sc)
+  , shortUnary (GRPC :: GRPC P.HStreamApi "append") (H.handleAppend sc)
     -- Read
   , unary (GRPC :: GRPC P.HStreamApi "readShard") (H.handleReadShard sc)
   , serverStream (GRPC :: GRPC P.HStreamApi "readShardStream") (H.handleReadShardStream sc)
