@@ -16,14 +16,10 @@ import qualified Kafka.Protocol.Error    as K
 import qualified Kafka.Protocol.Message  as K
 import qualified Kafka.Protocol.Service  as K
 import qualified Data.Text as T
--- import qualified Data.HashMap.Strict as HM
--- import qualified Data.HashSet as HS
 import qualified Control.Concurrent as C
-import qualified Data.Map as Map
-import qualified Data.Set as Set
 import qualified Data.UUID.V4 as UUID
 import qualified Data.UUID as UUID
-import Data.Int (Int32)
+import Data.Int (Int32, Int64)
 import qualified Data.IORef as IO
 import qualified Data.HashTable.IO as H
 import Data.Maybe (isNothing, fromMaybe)
@@ -32,24 +28,25 @@ import qualified Control.Monad as M
 import qualified Data.Vector as V
 import qualified Data.ByteString as BS
 import qualified HStream.Logger as Log
+import qualified HStream.Base.Time as Time
+import qualified Control.Exception as E
+import Control.Exception (throw)
+import HStream.Kafka.Server.Types (ServerContext)
 
 type HashTable k v = H.BasicHashTable k v
-type Assignments = Maybe (K.KaArray K.SyncGroupRequestAssignmentV0)
 
 hashtableGet hashTable key errorCode = H.lookup hashTable key >>= \case
-  Nothing -> error "ERROR"
+  Nothing -> throw (ErrorCodeException errorCode)
   Just v -> return v
 
 hashtableDeleteAll hashTable = do
   lst <- H.toList hashTable
   M.forM_ lst $ \(key, _) -> H.delete hashTable key
 
--- handleFindCoordinatorV0
---   :: HsTypes.ServerContext -> K.RequestContext -> K.FindCoordinatorRequestV0 -> IO K.FindCoordinatorResponseV0
+handleFindCoordinatorV0 :: ServerContext -> K.RequestContext -> K.FindCoordinatorRequestV0 -> IO K.FindCoordinatorResponseV0
 handleFindCoordinatorV0 ctx _ K.FindCoordinatorRequestV0{..} = undefined
 
--- handleJoinGroupV0
---   :: HsTypes.ServerContext -> K.RequestContext -> K.JoinGroupRequestV0 -> IO K.JoinGroupResponseV0
+handleJoinGroupV0 :: ServerContext -> K.RequestContext -> K.JoinGroupRequestV0 -> IO K.JoinGroupResponseV0
 handleJoinGroupV0 = joinGroup
 
 data GroupState
@@ -130,11 +127,15 @@ data Member
   { memberId :: T.Text
   , sessionTimeoutMs :: Int32
   , assignment :: IO.IORef BS.ByteString
+  , lastHeartbeat :: IO.IORef Int64
+  , heartbeatThread :: IO.IORef (Maybe C.ThreadId)
   }
 
 newMember :: T.Text -> Int32 -> IO Member
 newMember memberId sessionTimeoutMs = do
   assignment <- IO.newIORef BS.empty
+  lastHeartbeat <- IO.newIORef 0
+  heartbeatThread <- IO.newIORef Nothing
   return $ Member {..}
 
 
@@ -193,22 +194,29 @@ data GroupCoordinator = GroupCoordinator
   }
 
 joinGroup :: GroupCoordinator -> K.JoinGroupRequestV0 -> IO K.JoinGroupResponseV0
-joinGroup coordinator@GroupCoordinator{..} req@K.JoinGroupRequestV0{..} = do
-  group@Group{delayedJoinResponses=delayedJoinResponses} <- getOrMaybeCreateGroup coordinator groupId memberId
+joinGroup coordinator req = do
+  -- get or create group
+  group@Group{delayedJoinResponses=delayedJoinResponses} <- getOrMaybeCreateGroup coordinator req.groupId req.memberId
+
+  -- delayed response(join barrier)
   delayedResponse <- C.newEmptyMVar
   C.withMVar (lock group) $ \_ -> do
-    -- accepted <- acceptJoiningMember group memberId
-    -- M.unless accepted $ error "TODO: GROUP MAX SIZE"
-    -- TODO: check state
-    IO.readIORef group.state >>= \s -> do
-      if s `elem` [CompletingRebalance, Stable] then resetGroup group
-      else if s `elem` [CompletingRebalance, Stable] then pure ()
-      else error "TODO: UNKNOWN_NUMBER_ID"
-    -- TODO: check memberId
-    newMemberId <- if T.null memberId
+    -- TODO: GROUP MAX SIZE
+
+    -- check state
+    IO.readIORef group.state >>= \case
+      CompletingRebalance -> resetGroup group
+      Stable -> resetGroup group
+      PreparingRebalance -> pure ()
+      Empty -> pure ()
+      Dead -> throw (ErrorCodeException K.UNKNOWN_MEMBER_ID)
+
+    newMemberId <- if T.null req.memberId
       then doNewMemberJoinGoup group req
       else doCurrentMemeberJoinGroup group req
     H.insert delayedJoinResponses newMemberId delayedResponse
+
+  -- waiting other consumers
   C.takeMVar delayedResponse
 
 getOrMaybeCreateGroup :: GroupCoordinator -> T.Text -> T.Text -> IO Group
@@ -220,19 +228,15 @@ getOrMaybeCreateGroup GroupCoordinator{..} groupId memberId = do
           ng <- newGroup groupId
           H.insert gs groupId ng
           return ng
-        else error "TODO: INVALID MEMBER ID"
+        else throw (ErrorCodeException K.UNKNOWN_MEMBER_ID)
       Just g -> return g
 
 getGroup :: GroupCoordinator -> T.Text -> IO Group
 getGroup GroupCoordinator{..} groupId = do
   C.withMVar groups $ \gs -> do
     H.lookup gs groupId >>= \case
-      Nothing -> error "TODO: INVALID GROUP"
+      Nothing -> throw (ErrorCodeException K.GROUP_ID_NOT_FOUND)
       Just g -> return g
-
--- TODO: check
-prepareJoinGroup :: Group -> T.Text -> IO Bool
-prepareJoinGroup Group{..} memberId = pure True
 
 resetGroup :: Group -> IO ()
 resetGroup group@Group{..} = do
@@ -244,7 +248,7 @@ cancelDelayedSyncResponses :: Group -> IO ()
 cancelDelayedSyncResponses Group{..} = do
   lst <- H.toList delayedSyncResponses
   M.forM_ lst $ \(memberId, delayed) -> do
-    Log.info $ "cancel delayed sync response for " <> Log.buildString (T.unpack memberId)
+    Log.info $ "cancel delayed sync response for " <> Log.buildString' memberId
     C.putMVar delayed $ K.SyncGroupResponseV0 K.REASSIGNMENT_IN_PROGRESS BS.empty
     H.delete delayedSyncResponses memberId
 
@@ -276,7 +280,6 @@ addMemberAndRebalance group K.JoinGroupRequestV0{..} newMemberId = do
   addMember group member
   -- TODO: check state
   prepareRebalance group
-  undefined
 
 prepareRebalance :: Group -> IO ()
 prepareRebalance group@Group{..} = do
@@ -306,8 +309,8 @@ rebalance Group{..} = C.withMVar lock $ \() -> do
 
   -- next generation id
   nextGenerationId <- IO.atomicModifyIORef' groupGenerationId (\ggid -> (ggid + 1, ggid + 1))
-  Log.info $ "next generation id:" <> Log.buildString (show nextGenerationId)
-    <> ", leader:" <> Log.buildString (T.unpack leaderMemberId)
+  Log.info $ "next generation id:" <> Log.buildString' nextGenerationId
+    <> ", leader:" <> Log.buildString' leaderMemberId
 
   delayedJoinResponseList <- H.toList delayedJoinResponses
   let membersInResponse = map (\(m, _) -> K.JoinGroupResponseMemberV0 m BS.empty) delayedJoinResponseList
@@ -371,6 +374,9 @@ doSyncGroup group@Group{..} req@K.SyncGroupRequestV0{memberId=memberId, assignme
   (Just leaderMemberId) <- IO.readIORef leader
   when (memberId == leaderMemberId) $ setAndPropagateAssignment group req
 
+  -- setup delayedCheckHeart
+  setupDelayedCheckHeartbeat group
+
   -- set state
   IO.writeIORef state Stable
 
@@ -390,13 +396,103 @@ setAndPropagateAssignment Group{..} req = do
         H.delete delayedJoinResponses assignment.memberId
 
 leaveGroup :: GroupCoordinator -> K.LeaveGroupRequestV0 -> IO K.LeaveGroupResponseV0
-leaveGroup group req = do
-  -- check
-  undefined
+leaveGroup coordinator req = do
+  group@Group{..} <- getGroup coordinator req.groupId
+  C.withMVar lock $ \() -> do
+    -- get member
+    H.lookup members req.memberId >>= \case
+      Nothing -> throw (ErrorCodeException K.UNKNOWN_MEMBER_ID)
+      _ -> pure ()
+
+    -- check state
+    IO.readIORef state >>= \case
+      Dead -> throw (ErrorCodeException K.UNKNOWN_MEMBER_ID)
+      Empty -> throw (ErrorCodeException K.UNKNOWN_MEMBER_ID)
+      CompletingRebalance -> resetGroupAndRebalance group
+      Stable -> resetGroupAndRebalance group
+      PreparingRebalance -> do
+          -- TODO: should NOT BE PASSIBLE in this version
+          Log.warning $ "received a leave group in PreparingRebalance state, ignored it"
+            <> ", groupId:" <> Log.buildString' req.groupId
+            <> ", memberId:" <> Log.buildString' req.memberId
+          throw (ErrorCodeException K.UNKNOWN_MEMBER_ID)
+
+    return $ K.LeaveGroupResponseV0 0
+    
 
 heartbeat :: GroupCoordinator -> K.HeartbeatRequestV0 -> IO K.HeartbeatResponseV0
-heartbeat group req = do
-  -- TODO: check generation id
-  -- TODO: check state: rebalance
-  return $ K.HeartbeatResponseV0 0
+heartbeat coordinator req = do
+  group@Group{..} <- getGroup coordinator req.groupId
+  C.withMVar lock $ \() -> do
+    -- check generation id
+    checkGroupGenerationId group req.generationId
 
+    -- check state
+    IO.readIORef state >>= \case
+      PreparingRebalance -> throw (ErrorCodeException K.REBALANCE_IN_PROGRESS)
+      CompletingRebalance -> throw (ErrorCodeException K.REBALANCE_IN_PROGRESS)
+      Dead -> throw (ErrorCodeException K.UNKNOWN_MEMBER_ID)
+      Empty -> throw (ErrorCodeException K.UNKNOWN_MEMBER_ID)
+      Stable -> pure ()
+
+    H.lookup members req.memberId >>= \case
+      Nothing -> throw (ErrorCodeException K.UNKNOWN_MEMBER_ID)
+      Just member -> updateLatestHeartbeat member
+    return $ K.HeartbeatResponseV0 0
+
+checkGroupGenerationId :: Group -> Int32 -> IO ()
+checkGroupGenerationId Group{..} generationId = do
+  currentGenerationId <- IO.readIORef groupGenerationId
+  M.unless (currentGenerationId == generationId) $ do
+    Log.debug $ "invalid generation id" 
+      <> ", current generationId:" <> Log.buildString' currentGenerationId
+      <> ", expected generationId" <> Log.buildString' generationId
+    throw (ErrorCodeException K.ILLEGAL_GENERATION)
+
+updateLatestHeartbeat :: Member -> IO ()
+updateLatestHeartbeat Member{..} = do
+  Time.getSystemMsTimestamp >>= IO.writeIORef lastHeartbeat
+
+setupDelayedCheckHeartbeat :: Group -> IO ()
+setupDelayedCheckHeartbeat group@Group{..} = do
+  (flip H.mapM_) members $ \(_, member) -> do
+    updateLatestHeartbeat member
+    threadId <- C.forkIO $ delayedCheckHeart group member member.sessionTimeoutMs
+    IO.writeIORef member.heartbeatThread (Just threadId)
+
+delayedCheckHeart :: Group -> Member -> Int32 -> IO ()
+delayedCheckHeart group member delayMs = do
+  C.threadDelay (fromIntegral delayMs)
+  nextDelayMs <- checkHeartbeatAndMaybeRebalance group member
+  M.when (nextDelayMs <= 0) $ do
+    delayedCheckHeart group member nextDelayMs
+
+resetGroupAndRebalance :: Group -> IO ()
+resetGroupAndRebalance group = do
+  Log.info $ "starting reset group and prepare rebalance"
+  resetGroup group
+  prepareRebalance group
+
+-- return: nextDelayMs
+--   0 or <0: timeout
+--   >0: nextDelayMs
+checkHeartbeatAndMaybeRebalance :: Group -> Member -> IO Int32
+checkHeartbeatAndMaybeRebalance group Member{..} = do
+  C.withMVar group.lock $ \() -> do
+    now <- Time.getSystemMsTimestamp
+    lastUpdated <- IO.readIORef lastHeartbeat
+    let nextDelayMs = sessionTimeoutMs - (fromIntegral (now - lastUpdated))
+    M.when (nextDelayMs > 0) $ do
+      Log.info $ "heartbeat timeout, memberId:" <> Log.buildString' memberId
+      resetGroupAndRebalance group
+    return nextDelayMs
+
+-- Exceptions
+
+newtype ErrorCodeException = ErrorCodeException K.ErrorCode deriving Show
+instance E.Exception ErrorCodeException
+
+-- TODO:
+-- * FindCoordinator
+-- * protocols
+-- * error handler
