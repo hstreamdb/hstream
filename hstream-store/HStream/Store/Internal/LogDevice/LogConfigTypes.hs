@@ -29,11 +29,8 @@ import           GHC.Stack                                      (HasCallStack,
 import qualified Z.Data.CBytes                                  as CBytes
 import           Z.Data.CBytes                                  (CBytes)
 import qualified Z.Foreign                                      as Z
-import           Z.Foreign                                      (BA#, BAArray#,
-                                                                 MBA#)
 
-import           HStream.Foreign                                hiding (BA#,
-                                                                 BAArray#, MBA#)
+import           HStream.Foreign
 import qualified HStream.Store.Exception                        as E
 import           HStream.Store.Internal.Foreign
 import           HStream.Store.Internal.LogDevice.LogAttributes
@@ -45,8 +42,8 @@ import           HStream.Store.Internal.Types
 getLogAttrsExtra :: LDLogAttrs -> CBytes -> IO (Maybe CBytes)
 getLogAttrsExtra attrs key = withForeignPtr attrs $ \attrs' ->
   CBytes.withCBytesUnsafe key $ \key' -> do
-    et <- c_exist_log_attrs_extras attrs' key'
-    if et then Just . CBytes.fromBytes <$> Z.fromStdString (c_get_log_attrs_extra attrs' key')
+    et <- c_exist_log_attrs_extras attrs' (BA# key')
+    if et then Just . CBytes.fromBytes <$> Z.fromStdString (c_get_log_attrs_extra attrs' (BA# key'))
           else return Nothing
 
 updateLogAttrsExtrasPtr
@@ -59,7 +56,7 @@ updateLogAttrsExtrasPtr attrs' logExtraAttrs = do
       vs = map (CBytes.rawPrimArray . snd) extras
   Z.withPrimArrayListUnsafe ks $ \ks' l ->
     Z.withPrimArrayListUnsafe vs $ \vs' _ -> do
-      i <- c_update_log_attrs_extras attrs' l ks' vs'
+      i <- c_update_log_attrs_extras attrs' l (BAArray# ks') (BAArray# vs')
       newForeignPtr c_free_log_attributes_fun i
 
 getAttrsExtrasFromPtr :: Ptr LogDeviceLogAttributes -> IO (Map.Map CBytes CBytes)
@@ -70,10 +67,11 @@ getAttrsExtrasFromPtr attrs = do
     Z.withPrimUnsafe nullPtr $ \values ->
     Z.withPrimUnsafe nullPtr $ \keys_vec ->
     Z.withPrimUnsafe nullPtr $ \values_vec ->
-      c_get_attribute_extras attrs len keys values keys_vec values_vec
+      c_get_attribute_extras attrs (MBA# len) (MBA# keys) (MBA# values)
+                             (MBA# keys_vec) (MBA# values_vec)
   finally
     (buildExtras (fromIntegral len) keys_ptr values_ptr)
-    (delete_vector_of_string keys_vec <> delete_vector_of_string values_vec)
+    (c_delete_vector_of_string keys_vec <> c_delete_vector_of_string values_vec)
   where
     buildExtras len keys_ptr values_ptr = do
       keys <- peekStdStringToCBytesN len keys_ptr
@@ -86,10 +84,10 @@ getAttrsReplicationFactorFromPtr attrs = fromIntegral <$> c_get_replication_fact
 foreign import ccall unsafe "hs_logdevice.h get_attribute_extras"
   c_get_attribute_extras :: Ptr LogDeviceLogAttributes
                          -> MBA# CSize
-                         -> MBA# (Ptr Z.StdString)
-                         -> MBA# (Ptr Z.StdString)
-                         -> MBA# (Ptr (StdVector Z.StdString))
-                         -> MBA# (Ptr (StdVector Z.StdString))
+                         -> MBA# (Ptr StdString)
+                         -> MBA# (Ptr StdString)
+                         -> MBA# (Ptr (StdVector StdString))
+                         -> MBA# (Ptr (StdVector StdString))
                          -> IO ()
 
 foreign import ccall unsafe "hs_logdevice.h get_replication_factor"
@@ -117,7 +115,7 @@ foreign import ccall unsafe "hs_logdevice.h get_log_attrs_extra"
   c_get_log_attrs_extra
     :: Ptr LogDeviceLogAttributes
     -> BA# Word8
-    -> IO (Ptr Z.StdString)
+    -> IO (Ptr StdString)
 
 foreign import ccall unsafe "hs_logdevice.h free_log_attributes"
   c_free_log_attributes :: Ptr LogDeviceLogAttributes -> IO ()
@@ -217,7 +215,7 @@ getLogDirectory :: HasCallStack => LDClient -> CBytes -> IO LDDirectory
 getLogDirectory client path =
   CBytes.withCBytesUnsafe path $ \path' ->
     withForeignPtr client $ \client' -> do
-      let cfun = c_ld_client_get_directory client' path'
+      let cfun = c_ld_client_get_directory client' (BA# path')
       (errno, dir, _) <- withAsyncPrimUnsafe2' (0 :: ErrorCode)
           nullPtr cfun (E.throwSubmitIfNotOK . fromIntegral)
       _ <- E.throwStreamErrorIfNotOK' errno
@@ -236,8 +234,9 @@ logDirectoryGetLogsName recursive dir = withForeignPtr dir $ \dir' -> do
   (len, (names_ptr, stdvec_ptr)) <-
     Z.withPrimUnsafe 0 $ \len' ->
     Z.withPrimUnsafe nullPtr $ \names' ->
-    fst <$> Z.withPrimUnsafe nullPtr (c_ld_logdirectory_get_logs_name dir' recursive len' names')
-  finally (peekStdStringToCBytesN len names_ptr) (delete_vector_of_string stdvec_ptr)
+    fst <$> Z.withPrimUnsafe nullPtr (\p ->
+              c_ld_logdirectory_get_logs_name dir' recursive (MBA# len') (MBA# names') (MBA# p))
+  finally (peekStdStringToCBytesN len names_ptr) (c_delete_vector_of_string stdvec_ptr)
 
 logDirectoryGetVersion :: LDDirectory -> IO C_LogsConfigVersion
 logDirectoryGetVersion dir = withForeignPtr dir c_ld_logdirectory_get_version
@@ -253,7 +252,7 @@ makeLogDirectory client path attrs mkParent = do
   withForeignPtr client $ \client' ->
     withForeignPtr logAttrs $ \attrs' ->
       CBytes.withCBytesUnsafe path $ \path' -> do
-        let cfun = c_ld_client_make_directory client' path' mkParent attrs'
+        let cfun = c_ld_client_make_directory client' (BA# path') mkParent attrs'
         MakeDirectoryCbData errno directory _ <-
           withAsync makeDirectoryCbDataSize peekMakeDirectoryCbData cfun
         void $ E.throwStreamErrorIfNotOK' errno
@@ -265,7 +264,7 @@ removeLogDirectory client path recursive =
     withForeignPtr client $ \client' -> do
       let size = logsConfigStatusCbDataSize
           peek_data = peekLogsConfigStatusCbData
-          cfun = c_ld_client_remove_directory client' path' recursive
+          cfun = c_ld_client_remove_directory client' (BA# path') recursive
       LogsConfigStatusCbData errno version _ <- withAsync size peek_data cfun
       void $ E.throwStreamErrorIfNotOK' errno
       return version
@@ -275,28 +274,28 @@ logDirChildrenNames dir = withForeignPtr dir $ \dir' -> do
   (len, (raw_ptr, names_ptr)) <-
     Z.withPrimUnsafe @Int 0 $ \len' ->
     Z.withPrimUnsafe nullPtr $ \names' ->
-      c_ld_logdir_children_keys dir' len' names'
-  finally (peekStdStringToCBytesN len names_ptr) (delete_vector_of_string raw_ptr)
+      c_ld_logdir_children_keys dir' (MBA# len') (MBA# names')
+  finally (peekStdStringToCBytesN len names_ptr) (c_delete_vector_of_string raw_ptr)
 
 logDirLogsNames :: LDDirectory -> IO [CBytes]
 logDirLogsNames dir = withForeignPtr dir $ \dir' -> do
   (len, (raw_ptr, names_ptr)) <-
     Z.withPrimUnsafe @Int 0 $ \len' ->
     Z.withPrimUnsafe nullPtr $ \names' ->
-      c_ld_logdir_logs_keys dir' len' names'
-  finally (peekStdStringToCBytesN len names_ptr) (delete_vector_of_string raw_ptr)
+      c_ld_logdir_logs_keys dir' (MBA# len') (MBA# names')
+  finally (peekStdStringToCBytesN len names_ptr) (c_delete_vector_of_string raw_ptr)
 
 logDirChildFullName :: LDDirectory -> CBytes -> IO CBytes
 logDirChildFullName dir name =
   withForeignPtr dir $ \dir' ->
     CBytes.withCBytesUnsafe name $ \name' ->
-      CBytes.fromCString =<< c_ld_logdir_child_full_name dir' name'
+      CBytes.fromCString =<< c_ld_logdir_child_full_name dir' (BA# name')
 
 logDirLogFullName :: LDDirectory -> CBytes -> IO CBytes
 logDirLogFullName dir name =
   withForeignPtr dir $ \dir' ->
     CBytes.withCBytesUnsafe name $ \name' ->
-      CBytes.fromCString =<< c_ld_logdir_log_full_name dir' name'
+      CBytes.fromCString =<< c_ld_logdir_log_full_name dir' (BA# name')
 
 -- Note that this pointer is only valid if LogDirectory is valid.
 logDirectoryGetAttrsPtr :: LDDirectory -> IO (Ptr LogDeviceLogAttributes)
@@ -321,14 +320,14 @@ foreign import ccall unsafe "hs_logdevice.h ld_logdir_log_full_name"
 foreign import ccall unsafe "hs_logdevice.h ld_logdir_children_keys"
   c_ld_logdir_children_keys
     :: Ptr LogDeviceLogDirectory
-    -> MBA# CSize -> MBA# (Ptr (StdVector Z.StdString))
-    -> IO (Ptr Z.StdString)
+    -> MBA# Int -> MBA# (Ptr (StdVector StdString))
+    -> IO (Ptr StdString)
 
 foreign import ccall unsafe "hs_logdevice.h ld_logdir_logs_keys"
   c_ld_logdir_logs_keys
     :: Ptr LogDeviceLogDirectory
-    -> MBA# CSize -> MBA# (Ptr (StdVector Z.StdString))
-    -> IO (Ptr Z.StdString)
+    -> MBA# Int -> MBA# (Ptr (StdVector StdString))
+    -> IO (Ptr StdString)
 
 foreign import ccall unsafe "hs_logdevice.h ld_client_make_directory_sync"
   c_ld_client_make_directory_sync
@@ -388,8 +387,8 @@ foreign import ccall unsafe "hs_logdevice.h ld_logdirectory_get_logs_name"
   c_ld_logdirectory_get_logs_name
     :: Ptr LogDeviceLogDirectory
     -> Bool     -- ^ recursive
-    -> MBA# CSize -> MBA# (Ptr Z.StdString)
-    -> MBA# (Ptr (StdVector Z.StdString))
+    -> MBA# CSize -> MBA# (Ptr StdString)
+    -> MBA# (Ptr (StdVector StdString))
     -> IO ()
 
 -------------------------------------------------------------------------------
@@ -418,7 +417,7 @@ makeLogGroupSync client path start end attrs mkParent = do
       CBytes.withCBytesUnsafe path $ \path' -> do
         (group', _) <- Z.withPrimUnsafe nullPtr $ \group'' ->
           void $ E.throwStreamErrorIfNotOK $
-            c_ld_client_make_loggroup_sync client' path' start end attrs' mkParent group''
+            c_ld_client_make_loggroup_sync client' (BA# path') start end attrs' mkParent (MBA# group'')
         newForeignPtr c_free_logdevice_loggroup_fun group'
 
 makeLogGroup
@@ -434,7 +433,7 @@ makeLogGroup client path start end attrs mkParent = do
   withForeignPtr client $ \client' ->
     withForeignPtr logAttrs $ \attrs' ->
       CBytes.withCBytesUnsafe path $ \path' -> do
-        let cfun = c_ld_client_make_loggroup client' path' start end attrs' mkParent
+        let cfun = c_ld_client_make_loggroup client' (BA# path') start end attrs' mkParent
         MakeLogGroupCbData errno group _ <-
           withAsync makeLogGroupCbDataSize peekMakeLogGroupCbData cfun
         void $ E.throwStreamErrorIfNotOK' errno
@@ -445,7 +444,7 @@ getLogGroup :: HasCallStack => LDClient -> CBytes -> IO LDLogGroup
 getLogGroup client path =
   withForeignPtr client $ \client' ->
   CBytes.withCBytesUnsafe path $ \path' -> do
-    let cfun = c_ld_client_get_loggroup client' path'
+    let cfun = c_ld_client_get_loggroup client' (BA# path')
     (errno, group_ptr, _) <- withAsyncPrimUnsafe2 (0 :: ErrorCode) nullPtr cfun
     void $ E.throwStreamErrorIfNotOK' errno
     newForeignPtr c_free_logdevice_loggroup_fun group_ptr
@@ -496,7 +495,7 @@ renameLogGroup client from_path to_path =
       withForeignPtr client $ \client' -> do
         let size = logsConfigStatusCbDataSize
             peek_data = peekLogsConfigStatusCbData
-            cfun = c_ld_client_rename client' from_path_ to_path_
+            cfun = c_ld_client_rename client' (BA# from_path_) (BA# to_path_)
         LogsConfigStatusCbData errno version _ <- withAsync size peek_data cfun
         void $ E.throwStreamErrorIfNotOK' errno
         return version
@@ -521,7 +520,7 @@ removeLogGroup client path =
     withForeignPtr client $ \client' -> do
       let size = logsConfigStatusCbDataSize
           peek_data = peekLogsConfigStatusCbData
-          cfun = c_ld_client_remove_loggroup client' path_
+          cfun = c_ld_client_remove_loggroup client' (BA# path_)
       LogsConfigStatusCbData errno version _ <- withAsync size peek_data cfun
       void $ E.throwStreamErrorIfNotOK' errno
       return version
@@ -532,7 +531,7 @@ logGroupGetRange group =
     (start_ret, (end_ret, _)) <-
       Z.withPrimUnsafe C_LOGID_MIN_INVALID $ \start' ->
       Z.withPrimUnsafe C_LOGID_MIN_INVALID $ \end' ->
-        c_ld_loggroup_get_range group' start' end'
+        c_ld_loggroup_get_range group' (MBA# start') (MBA# end')
     return (start_ret, end_ret)
 {-# INLINE logGroupGetRange #-}
 
@@ -560,8 +559,8 @@ logGroupGetExtraAttr :: LDLogGroup -> CBytes -> IO (Maybe CBytes)
 logGroupGetExtraAttr group key = withForeignPtr group $ \group' ->
   CBytes.withCBytesUnsafe key $ \key' -> do
     attrs' <- c_ld_loggroup_get_attrs group'
-    et <- c_exist_log_attrs_extras attrs' key'
-    if et then Just . CBytes.fromBytes <$> Z.fromStdString (c_get_log_attrs_extra attrs' key')
+    et <- c_exist_log_attrs_extras attrs' (BA# key')
+    if et then Just . CBytes.fromBytes <$> Z.fromStdString (c_get_log_attrs_extra attrs' (BA# key'))
           else return Nothing
 {-# INLINE logGroupGetExtraAttr #-}
 
@@ -578,7 +577,7 @@ logGroupUpdateExtraAttrs client group extraAttrs =
       Z.withPrimArrayListUnsafe vs $ \vs' _ -> do
         let size = logsConfigStatusCbDataSize
             peek_data = peekLogsConfigStatusCbData
-            cfun = c_ld_loggroup_update_extra_attrs client' group' l ks' vs'
+            cfun = c_ld_loggroup_update_extra_attrs client' group' l (BAArray# ks') (BAArray# vs')
         LogsConfigStatusCbData errno version _failure_reason <- withAsync size peek_data cfun
         void $ E.throwStreamErrorIfNotOK' errno
         syncLogsConfigVersion client version
@@ -611,7 +610,7 @@ logGroupSetRange client path (start, end) =
     CBytes.withCBytesUnsafe path $ \path' -> do
     let size = logsConfigStatusCbDataSize
         peek_data = peekLogsConfigStatusCbData
-        cfun = c_ld_client_set_log_group_range client' path' start end
+        cfun = c_ld_client_set_log_group_range client' (BA# path') start end
     LogsConfigStatusCbData errno version _ <- withAsync size peek_data cfun
     void $ E.throwStreamErrorIfNotOK' errno
     return version
@@ -749,7 +748,7 @@ ldWriteAttributes client path attrs' =
   CBytes.withCBytesUnsafe path $ \path' -> do
     let size = logsConfigStatusCbDataSize
         peek_data = peekLogsConfigStatusCbData
-        cfun = c_ld_client_set_attributes client' path' attrs'
+        cfun = c_ld_client_set_attributes client' (BA# path') attrs'
     LogsConfigStatusCbData errno version _ <- withAsync size peek_data cfun
     void $ E.throwStreamErrorIfNotOK' errno
     return version

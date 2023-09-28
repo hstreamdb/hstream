@@ -34,11 +34,10 @@ template <typename T> char* copyString(const T& payload) {
 
 extern "C" {
 
+// TODO: remove
 std::string* hs_cal_std_string_off(std::string* str, HsInt idx) {
   return str + idx;
 }
-
-void delete_vector_of_cint(std::vector<int>* ss) { delete ss; }
 
 HsInt get_vector_of_string_size(std::vector<std::string>* ss) {
   return ss->size();

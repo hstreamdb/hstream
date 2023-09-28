@@ -36,12 +36,10 @@ import qualified Z.Data.CBytes                                         as CBytes
 import           Z.Data.CBytes                                         (CBytes)
 import           Z.Data.Vector                                         (Bytes)
 import qualified Z.Foreign                                             as Z
-import           Z.Foreign                                             (BA#,
-                                                                        MBA#)
 
+import           HStream.Foreign                                       (BA# (..),
+                                                                        MBA# (..))
 import qualified HStream.Store.Exception                               as E
-import           HStream.Store.Internal.Types
-
 import           HStream.Store.Internal.Foreign
 import           HStream.Store.Internal.LogDevice.Checkpoint
 import           HStream.Store.Internal.LogDevice.Configuration
@@ -51,6 +49,7 @@ import           HStream.Store.Internal.LogDevice.LogConfigTypes
 import           HStream.Store.Internal.LogDevice.Reader
 import           HStream.Store.Internal.LogDevice.VersionedConfigStore
 import           HStream.Store.Internal.LogDevice.Writer
+import           HStream.Store.Internal.Types
 
 -------------------------------------------------------------------------------
 -- Client
@@ -260,7 +259,7 @@ findKey client logid key accuracy =
   withForeignPtr client $ \client' ->
   CBytes.withCBytesUnsafe key $ \key' -> do
     (errno, lo_lsn, hi_lsn, _) <- withAsyncPrimUnsafe3' (0 :: ErrorCode) LSN_INVALID LSN_INVALID
-      (ld_client_find_key client' logid key' $ unFindKeyAccuracy accuracy) E.throwSubmitIfNotOK
+      (ld_client_find_key client' logid (BA# key') $ unFindKeyAccuracy accuracy) E.throwSubmitIfNotOK
     void $ E.throwStreamErrorIfNotOK' errno
     return (lo_lsn, hi_lsn)
 

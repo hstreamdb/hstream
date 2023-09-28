@@ -2,7 +2,7 @@
 
 module HStream.Store.CheckpointStoreSpec (spec) where
 
-import           Control.Monad           (void)
+import           Control.Monad           (forM, void)
 import qualified Data.Map.Strict         as Map
 import qualified Data.Vector.Primitive   as VP
 import           Test.Hspec
@@ -34,6 +34,13 @@ storeSpec new_ckp_store = do
   it "write & read should be same" $ do
     S.ckpStoreUpdateLSN checkpointStore "customer1" logid 2
     S.ckpStoreGetLSN checkpointStore "customer1" logid `shouldReturn` 2
+
+  it "get all" $ do
+    expected <- forM [1..1000] $ \i -> do
+      S.ckpStoreUpdateLSN checkpointStore "customer_get_all" i i
+      pure (i, i)
+    allCkps <- S.ckpStoreGetAllCheckpoints checkpointStore "customer_get_all"
+    Map.toAscList allCkps `shouldBe` expected
 
   it "update multi lsn" $ do
     S.ckpStoreUpdateLSN checkpointStore "customer1" 1 1

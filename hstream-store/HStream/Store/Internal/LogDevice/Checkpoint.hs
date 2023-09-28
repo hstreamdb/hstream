@@ -16,8 +16,8 @@ import           GHC.Stack                      (HasCallStack)
 import qualified Z.Data.CBytes                  as ZC
 import           Z.Data.CBytes                  (CBytes)
 import qualified Z.Foreign                      as Z
-import           Z.Foreign                      (BA#, MBA#)
 
+import           HStream.Foreign
 import qualified HStream.Store.Exception        as E
 import qualified HStream.Store.Internal.Foreign as FFI
 import           HStream.Store.Internal.Types
@@ -33,7 +33,7 @@ import           HStream.Store.Internal.Types
 newFileBasedCheckpointStore :: CBytes -> IO LDCheckpointStore
 newFileBasedCheckpointStore root_path =
   ZC.withCBytesUnsafe root_path $ \path' -> do
-    i <- c_new_file_based_checkpoint_store path'
+    i <- c_new_file_based_checkpoint_store (BA# path')
     newForeignPtr c_free_checkpoint_store_fun i
 
 newRSMBasedCheckpointStore
@@ -62,9 +62,25 @@ ckpStoreGetLSN store customid logid =
   ZC.withCBytesUnsafe customid $ \customid' ->
   withForeignPtr store $ \store' -> do
     (errno, lsn, _) <- FFI.withAsyncPrimUnsafe2 (0 :: ErrorCode) LSN_INVALID $
-      c_checkpoint_store_get_lsn store' customid' logid
+      c_checkpoint_store_get_lsn store' (BA# customid') logid
     _ <- E.throwStreamErrorIfNotOK' errno
     return lsn
+
+ckpStoreGetAllCheckpoints' :: LDCheckpointStore -> CBytes -> IO [(C_LogID, LSN)]
+ckpStoreGetAllCheckpoints' store customid =
+  ZC.withCBytesUnsafe customid $ \customid' ->
+  withForeignPtr store $ \store' -> do
+    (_, errno, ret) <- FFI.withAsyncPrimMapUnsafe
+      C_OK
+      peekN c_delete_vector_of_uint64
+      peekN c_delete_vector_of_uint64
+      (checkpoint_store_get_all_checkpoints store' (BA# customid'))
+    _ <- E.throwStreamErrorIfNotOK' errno
+    pure ret
+
+ckpStoreGetAllCheckpoints :: LDCheckpointStore -> CBytes -> IO (Map C_LogID LSN)
+ckpStoreGetAllCheckpoints store customid =
+  Map.fromList <$> ckpStoreGetAllCheckpoints' store customid
 
 ckpStoreUpdateLSN :: LDCheckpointStore -> CBytes -> C_LogID -> LSN -> IO ()
 ckpStoreUpdateLSN = ckpStoreUpdateLSN' (-1)
@@ -73,7 +89,7 @@ ckpStoreUpdateLSN' :: Int -> LDCheckpointStore -> CBytes -> C_LogID -> LSN -> IO
 ckpStoreUpdateLSN' retries store customid logid sn =
   ZC.withCBytesUnsafe customid $ \customid' ->
   withForeignPtr store $ \store' -> do
-    let f = FFI.withAsyncPrimUnsafe (0 :: ErrorCode) $ c_checkpoint_store_update_lsn store' customid' logid sn
+    let f = FFI.withAsyncPrimUnsafe (0 :: ErrorCode) $ c_checkpoint_store_update_lsn store' (BA# customid') logid sn
     void $ FFI.retryWhileAgain f retries
 
 ckpStoreUpdateMultiLSN
@@ -92,7 +108,8 @@ ckpStoreUpdateMultiLSN' retries store customid sns =
           Z.withPrimArrayUnsafe ka $ \ks' len ->
           Z.withPrimArrayUnsafe va $ \vs' _len ->
             FFI.withAsyncPrimUnsafe (0 :: ErrorCode) $
-              checkpoint_store_update_multi_lsn store' customid' ks' vs' (fromIntegral len)
+              checkpoint_store_update_multi_lsn store'
+                (BA# customid') (BA# ks') (BA# vs') (fromIntegral len)
     void $ FFI.retryWhileAgain f retries
 
 ckpStoreRemoveCheckpoints
@@ -102,7 +119,7 @@ ckpStoreRemoveCheckpoints store customid (VP.Vector offset len (Z.ByteArray ba#)
   ZC.withCBytesUnsafe customid $ \customid' ->
   withForeignPtr store $ \store' -> do
     (errno, _) <- FFI.withAsyncPrimUnsafe (0 :: ErrorCode) $
-      checkpoint_store_remove_checkpoints store' customid' ba# offset len
+      checkpoint_store_remove_checkpoints store' (BA# customid') (BA# ba#) offset len
     void $ E.throwStreamErrorIfNotOK' errno
 
 ckpStoreRemoveAllCheckpoints :: HasCallStack => LDCheckpointStore -> CBytes -> IO ()
@@ -110,7 +127,7 @@ ckpStoreRemoveAllCheckpoints store customid =
   ZC.withCBytesUnsafe customid $ \customid' ->
   withForeignPtr store $ \store' -> do
     (errno, _) <- FFI.withAsyncPrimUnsafe (0 :: ErrorCode) $
-      checkpoint_store_remove_all_checkpoints store' customid'
+      checkpoint_store_remove_all_checkpoints store' (BA# customid')
     void $ E.throwStreamErrorIfNotOK' errno
 
 foreign import ccall unsafe "hs_logdevice.h new_file_based_checkpoint_store"
@@ -143,6 +160,16 @@ foreign import ccall unsafe "hs_logdevice.h checkpoint_store_get_lsn"
     -> StablePtr PrimMVar -> Int
     -> MBA# ErrorCode  -- ^ value out: error code
     -> MBA# LSN        -- ^ value out: lsn
+    -> IO ()
+
+foreign import ccall unsafe "hs_logdevice.h checkpoint_store_get_all_checkpoints"
+  checkpoint_store_get_all_checkpoints
+    :: Ptr LogDeviceCheckpointStore
+    -> BA# Word8     -- ^ customer_id
+    -> StablePtr PrimMVar -> Int
+    -> MBA# ErrorCode  -- ^ value out: error code
+    -> MBA# Int -> MBA# (Ptr C_LogID) -> MBA# (Ptr LSN)
+    -> MBA# (Ptr (StdVector C_LogID)) -> MBA# (Ptr (StdVector LSN))
     -> IO ()
 
 foreign import ccall unsafe "hs_logdevice.h checkpoint_store_update_lsn"
