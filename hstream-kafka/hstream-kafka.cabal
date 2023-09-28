@@ -161,26 +161,7 @@ library
     RecordWildCards
 
 executable hstream-kafka-cli
-  ghc-options:        -Wall -Wextra
-  main-is:            Main.hs
-  build-depends:
-    , aeson
-    , base                                                                 >=4.11 && <5
-    , brick
-    , bytestring
-    , haskeline
-    , hstream-common-base
-    , hstream-kafka:{hstream-kafka, hstream-kafka-client, kafka-protocol}
-    , network
-    , optparse-applicative
-    , text
-    , vector
-
-  hs-source-dirs:     app
-  default-language:   GHC2021
-  default-extensions: OverloadedStrings
-
-library hstream-kafka-client
+  main-is:            ../client/app/kafka-cli.hs
   ghc-options:        -Wall -Wextra
   build-depends:
     , aeson
