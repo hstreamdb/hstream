@@ -51,7 +51,7 @@ recvByteString sock = do
 recvResp :: forall a. K.Serializable a => NW.Socket -> IO a
 recvResp sock = do
   bs <- recvByteString sock
-  ret <- K.runParser @K.ResponseHeader K.get bs
+  ret <- K.runParser K.getResponseHeaderV0 bs
   (l, header) <- case ret of
     K.Done l header -> pure (l, header)
     K.More k        -> undefined

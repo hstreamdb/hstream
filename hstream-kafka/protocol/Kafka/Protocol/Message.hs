@@ -3,6 +3,8 @@
 module Kafka.Protocol.Message
   ( RequestHeader (..)
   , ResponseHeader (..)
+  , getResponseHeaderV0
+  , getResponseHeaderV1
   , putResponseHeader
   , runPutResponseHeaderLazy
   , Unsupported (..)
@@ -62,13 +64,17 @@ data ResponseHeader = ResponseHeader
   , responseTaggedFields  :: !(Either Unsupported TaggedFields)
   } deriving (Show, Eq)
 
-instance Serializable ResponseHeader where
-  get = do
-    responseCorrelationId <- get
-    responseTaggedFields  <- pure $ Left Unsupported -- FIXME
-    pure ResponseHeader{..}
+getResponseHeaderV0 :: Parser ResponseHeader
+getResponseHeaderV0 = do
+  responseCorrelationId <- get
+  responseTaggedFields  <- pure $ Left Unsupported
+  pure ResponseHeader{..}
 
-  put = putResponseHeader
+getResponseHeaderV1 :: Parser ResponseHeader
+getResponseHeaderV1 = do
+  responseCorrelationId <- get
+  responseTaggedFields  <- getEither True
+  pure ResponseHeader{..}
 
 putResponseHeader :: ResponseHeader -> Builder
 putResponseHeader ResponseHeader{..} =
