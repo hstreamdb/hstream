@@ -52,9 +52,9 @@ handleCmdNodes opts = do
   Log.debug . Log.buildString $ "handleCmdNodes: begin"
   K.MetadataResponseV1 brokers controllerId _topics <- getAllMetadata opts
   let titles   = ["ID", "ADDRESS", "CONTROLLER"]
-      lenses   = [ \(K.MetadataResponseBrokerV1 nodeId host port rack) -> show nodeId                   -- broker.nodeId
-                 , \(K.MetadataResponseBrokerV1 nodeId host port rack) -> show host <> ":" <> show port -- broker.host <> broker.port
-                 , \(K.MetadataResponseBrokerV1 nodeId host port rack) -> show (nodeId == controllerId) -- broker.nodeId == controllerId
+      lenses   = [ \(K.MetadataResponseBrokerV1 nodeId host port rack) -> show nodeId                       -- broker.nodeId
+                 , \(K.MetadataResponseBrokerV1 nodeId host port rack) -> T.unpack host <> ":" <> show port -- broker.host <> broker.port
+                 , \(K.MetadataResponseBrokerV1 nodeId host port rack) -> show (nodeId == controllerId)     -- broker.nodeId == controllerId
                  ]
       brokers' = let K.KaArray (Just xs) = brokers
                  in V.toList xs

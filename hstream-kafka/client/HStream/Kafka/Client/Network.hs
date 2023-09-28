@@ -4,6 +4,7 @@ import           Control.Exception
 import           Control.Monad
 import qualified Data.ByteString                as BS
 import           Data.Int
+import qualified Data.Text                      as T
 import qualified Data.Vector                    as V
 import qualified Kafka.Protocol.Encoding        as K
 import qualified Kafka.Protocol.Message         as K
@@ -16,6 +17,18 @@ import           HStream.Kafka.Client.CliParser
 defaultAddr = "127.0.0.1"
 defaultPort = 46721
 
+getAddrPort :: Options -> (String, Int)
+getAddrPort Options {brokers = brokers} =
+  case brokers of
+    Nothing      -> (defaultAddr, defaultPort)
+    Just brokers ->
+      let brokers' = T.split (== ',') $ T.pack brokers
+      in case brokers' of
+           []    -> (defaultAddr, defaultPort)
+           x : _ -> case T.split (== ':') x of
+                      [addr, port] -> (T.unpack addr, read $ T.unpack port)
+                      _            -> error $ "invalid broker URL: " <> show x
+
 withSock :: Options -> (NW.Socket -> IO a) -> IO a
 withSock opts talk = do
   addr <- resolve
@@ -26,7 +39,8 @@ withSock opts talk = do
             { NW.addrFlags      = [NW.AI_PASSIVE]
             , NW.addrSocketType = NW.Stream
             }
-      head <$> NW.getAddrInfo (Just hints) (Just defaultAddr) (Just $ show defaultPort)
+      let (addr, port) = getAddrPort opts
+      head <$> NW.getAddrInfo (Just hints) (Just addr) (Just $ show port)
 
     open addr = do
       sock <- NW.socket (NW.addrFamily addr) (NW.addrSocketType addr) (NW.addrProtocol addr)
