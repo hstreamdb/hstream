@@ -18,8 +18,7 @@ import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import           Data.Word                        (Word64)
 import           GHC.Generics                     (Generic)
-import           HStream.Kafka.Group.OffsetsStore (OffsetStorage (..),
-                                                   OffsetStore)
+import           HStream.Kafka.Group.OffsetsStore (OffsetStorage (..))
 import qualified HStream.Logger                   as Log
 import           Kafka.Protocol.Encoding          (KaArray (KaArray, unKaArray))
 import qualified Kafka.Protocol.Error             as K
@@ -27,17 +26,17 @@ import           Kafka.Protocol.Message           (OffsetCommitRequestPartitionV
                                                    OffsetCommitResponsePartitionV0 (..),
                                                    OffsetFetchResponsePartitionV0 (..))
 
-data GroupMetadataManager = GroupMetadataManager
-  { serverId      :: Int
+data GroupMetadataManager = forall os. OffsetStorage os => GroupMetadataManager
+  { serverId      :: Int32
   , groupName     :: T.Text
-  , offsetsStore  :: OffsetStore
+  , offsetStorage :: os
   , offsetsCache  :: MVar (Map.Map TopicPartition Int64)
   , partitionsMap :: MVar (HM.HashMap TopicPartition Word64)
     -- ^ partitionsMap maps TopicPartition to the underlying logID
   }
 
-mkGroupMetadataManager :: OffsetStore -> Int -> T.Text -> IO GroupMetadataManager
-mkGroupMetadataManager offsetsStore serverId groupName = do
+mkGroupMetadataManager :: OffsetStorage os => os -> Int32 -> T.Text -> IO GroupMetadataManager
+mkGroupMetadataManager offsetStorage serverId groupName = do
   offsetsCache  <- newMVar Map.empty
   partitionsMap <- newMVar HM.empty
 
@@ -72,7 +71,7 @@ storeOffsets GroupMetadataManager{..} topicName arrayOffsets = do
 
   -- write checkpoints
   let checkPoints = V.foldl' (\acc (_, logId, offset) -> Map.insert logId offset acc) Map.empty offsets'
-  commitOffsets offsetsStore topicName checkPoints
+  commitOffsets offsetStorage topicName checkPoints
   Log.debug $ "consumer group " <> Log.build groupName <> " commit offsets {" <> Log.build (show checkPoints)
            <> "} to topic " <> Log.build topicName
 

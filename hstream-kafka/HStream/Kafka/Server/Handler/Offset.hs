@@ -5,22 +5,19 @@ module HStream.Kafka.Server.Handler.Offset
  )
 where
 
-import           Control.Concurrent                       (withMVar)
-import qualified Data.HashMap.Strict                      as HM
-import           Data.Int                                 (Int64)
-import           Data.Text                                (Text)
-import           Data.Vector                              (Vector)
-import qualified Data.Vector                              as V
-import           HStream.Kafka.Common.OffsetManager       (getLatestOffset,
-                                                           getOffsetByTimestamp,
-                                                           getOldestOffset)
-import           HStream.Kafka.Group.GroupMetadataManager (fetchOffsets,
-                                                           storeOffsets)
-import           HStream.Kafka.Server.Types               (ServerContext (..))
-import qualified HStream.Store                            as S
-import qualified Kafka.Protocol                           as K
-import qualified Kafka.Protocol.Error                     as K
-import qualified Kafka.Protocol.Service                   as K
+import           Data.Int                             (Int64)
+import           Data.Text                            (Text)
+import           Data.Vector                          (Vector)
+import qualified Data.Vector                          as V
+import           HStream.Kafka.Common.OffsetManager   (getLatestOffset,
+                                                       getOffsetByTimestamp,
+                                                       getOldestOffset)
+import qualified HStream.Kafka.Group.GroupCoordinator as GC
+import           HStream.Kafka.Server.Types           (ServerContext (..))
+import qualified HStream.Store                        as S
+import qualified Kafka.Protocol                       as K
+import qualified Kafka.Protocol.Error                 as K
+import qualified Kafka.Protocol.Service               as K
 
 --------------------
 -- 2: ListOffsets
@@ -67,33 +64,13 @@ listOffsetTopicPartitions ServerContext{..} topicName (Just offsetsPartitions) =
 --------------------
 handleOffsetCommitV0
   :: ServerContext -> K.RequestContext -> K.OffsetCommitRequestV0 -> IO K.OffsetCommitResponseV0
-handleOffsetCommitV0 ServerContext{..} _ K.OffsetCommitRequestV0{..} = do
-  case K.unKaArray topics of
-    Nothing      -> undefined
-    Just topics' -> do
-      mgr <- withMVar scGroupMetadataManagers $ return . HM.lookup groupId
-      case mgr of
-        Nothing       -> undefined
-        Just groupMgr -> do
-          response <- V.forM topics' $ \K.OffsetCommitRequestTopicV0{..} -> do
-            res <- storeOffsets groupMgr name partitions
-            return $ K.OffsetCommitResponseTopicV0 {partitions = res, name = name}
-          return . K.OffsetCommitResponseV0 $ K.KaArray {unKaArray = Just response}
+handleOffsetCommitV0 ServerContext{..} _ req = do
+  GC.commitOffsets scGroupCoordinator req
 
 --------------------
 -- 9: OffsetFetch
 --------------------
 handleOffsetFetchV0
   :: ServerContext -> K.RequestContext -> K.OffsetFetchRequestV0 -> IO K.OffsetFetchResponseV0
-handleOffsetFetchV0 ServerContext{..} _ K.OffsetFetchRequestV0{..} = do
-  case K.unKaArray topics of
-    Nothing      -> undefined
-    Just topics' -> do
-      mgr <- withMVar scGroupMetadataManagers $ return . HM.lookup groupId
-      case mgr of
-        Nothing       -> undefined
-        Just groupMgr -> do
-          response <- V.forM topics' $ \K.OffsetFetchRequestTopicV0{..} -> do
-            res <- fetchOffsets groupMgr name partitionIndexes
-            return $ K.OffsetFetchResponseTopicV0 {partitions = res, name = name}
-          return . K.OffsetFetchResponseV0 $ K.KaArray {unKaArray = Just response}
+handleOffsetFetchV0 ServerContext{..} _ req = do
+  GC.fetchOffsets scGroupCoordinator req

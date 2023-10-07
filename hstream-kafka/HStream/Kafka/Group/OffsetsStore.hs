@@ -1,6 +1,5 @@
 module HStream.Kafka.Group.OffsetsStore
   ( OffsetStorage(..)
-  , OffsetStore(..)
   , mkCkpOffsetStorage
   )
 where
@@ -16,11 +15,6 @@ import           HStream.Utils   (textToCBytes)
 
 class OffsetStorage s where
   commitOffsets :: s -> T.Text -> Map Word64 Word64 -> IO ()
-
-data OffsetStore = Ckp CkpOffsetStorage
-
-instance OffsetStorage OffsetStore where
-  commitOffsets (Ckp s) = commitOffsets s
 
 --------------------------------------------------------------------------------
 

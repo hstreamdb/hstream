@@ -1,37 +1,42 @@
-{-# LANGUAGE CPP               #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE OverloadedRecordDot #-}
+{-# LANGUAGE CPP                   #-}
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE OverloadedRecordDot   #-}
+{-# LANGUAGE OverloadedStrings     #-}
 
-module HStream.Server.KafkaHandler.GroupCoordinator
-  ( -- 19: CreateTopics
-    handleFindCoordinatorV0
-  , handleJoinGroupV0
-  ) where
+module HStream.Kafka.Group.Group where
 
--- import qualified HStream.Server.Types    as HsTypes
+import qualified Control.Concurrent                       as C
+import           Control.Exception                        (throw)
+import           Control.Monad                            (when)
+import qualified Control.Monad                            as M
+import qualified Data.ByteString                          as BS
+import qualified Data.HashTable.IO                        as H
+import           Data.Int                                 (Int32)
+import qualified Data.IORef                               as IO
+import           Data.Maybe                               (fromMaybe)
+import qualified Data.Set                                 as Set
+import qualified Data.Text                                as T
+import qualified Data.UUID                                as UUID
+import qualified Data.UUID.V4                             as UUID
+import qualified Data.Vector                              as V
+import qualified HStream.Base.Time                        as Time
+import           HStream.Kafka.Common.KafkaException      (ErrorCodeException (ErrorCodeException))
+import qualified HStream.Kafka.Common.Utils               as Utils
+import           HStream.Kafka.Group.GroupMetadataManager (GroupMetadataManager)
+import qualified HStream.Kafka.Group.GroupMetadataManager as GMM
+import           HStream.Kafka.Group.Member
+import qualified HStream.Logger                           as Log
+import qualified Kafka.Protocol.Encoding                  as K
+import qualified Kafka.Protocol.Error                     as K
+import qualified Kafka.Protocol.Message                   as K
 
-import qualified Kafka.Protocol.Encoding as K
-import qualified Kafka.Protocol.Error    as K
-import qualified Kafka.Protocol.Message  as K
-import qualified Kafka.Protocol.Service  as K
-import qualified Data.Text as T
-import qualified Control.Concurrent as C
-import qualified Data.UUID.V4 as UUID
-import qualified Data.UUID as UUID
-import Data.Int (Int32, Int64)
-import qualified Data.IORef as IO
-import qualified Data.HashTable.IO as H
-import Data.Maybe (isNothing, fromMaybe)
-import Control.Monad (when)
-import qualified Control.Monad as M
-import qualified Data.Vector as V
-import qualified Data.ByteString as BS
-import qualified HStream.Logger as Log
-import qualified HStream.Base.Time as Time
-import qualified Control.Exception as E
-import Control.Exception (throw)
-import HStream.Kafka.Server.Types (ServerContext)
+-- TODO:
+-- * kafka/group config
+--  * configurable
+--  * sessionTimeoutMs vs. delayedRebalanceTimeoutMs
+--  * heartbeat interval vs. delayedRebalanceTimeoutMs
+-- * group metadata manager
+--  * store group information
 
 type HashTable k v = H.BasicHashTable k v
 
@@ -43,15 +48,9 @@ hashtableDeleteAll hashTable = do
   lst <- H.toList hashTable
   M.forM_ lst $ \(key, _) -> H.delete hashTable key
 
-handleFindCoordinatorV0 :: ServerContext -> K.RequestContext -> K.FindCoordinatorRequestV0 -> IO K.FindCoordinatorResponseV0
-handleFindCoordinatorV0 ctx _ K.FindCoordinatorRequestV0{..} = undefined
-
-handleJoinGroupV0 :: ServerContext -> K.RequestContext -> K.JoinGroupRequestV0 -> IO K.JoinGroupResponseV0
-handleJoinGroupV0 = joinGroup
-
 data GroupState
   -- Group is preparing to rebalance
-  -- 
+  --
   -- action: respond to heartbeats with REBALANCE_IN_PROGRESS
   --         respond to sync group with REBALANCE_IN_PROGRESS
   --         remove member on leave group request
@@ -91,7 +90,7 @@ data GroupState
   | Stable
 
   -- Group has no more members and its metadata is being removed
-  -- 
+  --
   -- action: respond to join group with UNKNOWN_MEMBER_ID
   --         respond to sync group with UNKNOWN_MEMBER_ID
   --         respond to heartbeat with UNKNOWN_MEMBER_ID
@@ -103,7 +102,7 @@ data GroupState
 
   -- Group has no more members, but lingers until all offsets have expired. This state
   -- also represents groups which use Kafka only for offset commits and have no members.
-  -- 
+  --
   -- action: respond normally to join group from new members
   --         respond to sync group with UNKNOWN_MEMBER_ID
   --         respond to heartbeat with UNKNOWN_MEMBER_ID
@@ -122,43 +121,33 @@ data GroupConfig
   {
   }
 
-data Member
-  = Member
-  { memberId :: T.Text
-  , sessionTimeoutMs :: Int32
-  , assignment :: IO.IORef BS.ByteString
-  , lastHeartbeat :: IO.IORef Int64
-  , heartbeatThread :: IO.IORef (Maybe C.ThreadId)
-  }
-
-newMember :: T.Text -> Int32 -> IO Member
-newMember memberId sessionTimeoutMs = do
-  assignment <- IO.newIORef BS.empty
-  lastHeartbeat <- IO.newIORef 0
-  heartbeatThread <- IO.newIORef Nothing
-  return $ Member {..}
-
-
 data Group
   = Group
-  { lock               :: C.MVar ()
-  , groupId :: T.Text
-  , groupGenerationId  :: IO.IORef Int32
-  , state              :: IO.IORef GroupState
-  , config             :: GroupConfig
-  , leader             :: IO.IORef (Maybe T.Text)
-  , members            :: HashTable T.Text Member
+  { lock                 :: C.MVar ()
+  , groupId              :: T.Text
+  , groupGenerationId    :: IO.IORef Int32
+  , state                :: IO.IORef GroupState
+  , config               :: GroupConfig
+  , leader               :: IO.IORef (Maybe T.Text)
+  , members              :: HashTable T.Text Member
   -- , pendingMembers     :: HashTable T.Text ()
   , delayedJoinResponses :: HashTable T.Text (C.MVar K.JoinGroupResponseV0)
   -- , pendingSyncMembers :: HashTable T.Text ()
   -- , newMemberAdded     :: IO.IORef Bool
-  , delayedRebalance :: IO.IORef (Maybe C.ThreadId)
+  , delayedRebalance     :: IO.IORef (Maybe C.ThreadId)
 
   , delayedSyncResponses :: HashTable T.Text (C.MVar K.SyncGroupResponseV0)
+
+  , metadataManager      :: GroupMetadataManager
+
+  -- protocols
+  , protocolType         :: IO.IORef (Maybe T.Text)
+  , protocolName         :: IO.IORef (Maybe T.Text)
+  , supportedProtcols    :: IO.IORef (Set.Set T.Text)
   }
 
-newGroup :: T.Text -> IO Group
-newGroup group = do
+newGroup :: T.Text -> GroupMetadataManager -> IO Group
+newGroup group metadataManager = do
   lock <- C.newMVar ()
   state <- IO.newIORef Empty
   groupGenerationId <- IO.newIORef 0
@@ -171,6 +160,10 @@ newGroup group = do
   delayedRebalance <- IO.newIORef Nothing
 
   delayedSyncResponses <- H.new
+
+  protocolType <- IO.newIORef Nothing
+  protocolName <- IO.newIORef Nothing
+  supportedProtcols <- IO.newIORef Set.empty
 
   return $ Group
     { lock = lock
@@ -187,20 +180,21 @@ newGroup group = do
     , delayedRebalance = delayedRebalance
 
     , delayedSyncResponses = delayedSyncResponses
+
+    , metadataManager = metadataManager
+
+    , protocolType = protocolType
+    , protocolName = protocolName
+    , supportedProtcols = supportedProtcols
     }
 
-data GroupCoordinator = GroupCoordinator
-  { groups :: C.MVar (HashTable T.Text Group)
-  }
+------------------------------------------------------------------------
 
-joinGroup :: GroupCoordinator -> K.JoinGroupRequestV0 -> IO K.JoinGroupResponseV0
-joinGroup coordinator req = do
-  -- get or create group
-  group@Group{delayedJoinResponses=delayedJoinResponses} <- getOrMaybeCreateGroup coordinator req.groupId req.memberId
-
+joinGroup :: Group -> K.JoinGroupRequestV0 -> IO K.JoinGroupResponseV0
+joinGroup group@Group{..} req = do
   -- delayed response(join barrier)
   delayedResponse <- C.newEmptyMVar
-  C.withMVar (lock group) $ \_ -> do
+  C.withMVar lock $ \_ -> do
     -- TODO: GROUP MAX SIZE
 
     -- check state
@@ -211,6 +205,8 @@ joinGroup coordinator req = do
       Empty -> pure ()
       Dead -> throw (ErrorCodeException K.UNKNOWN_MEMBER_ID)
 
+    checkSupportedProtocols group req
+
     newMemberId <- if T.null req.memberId
       then doNewMemberJoinGoup group req
       else doCurrentMemeberJoinGroup group req
@@ -219,28 +215,21 @@ joinGroup coordinator req = do
   -- waiting other consumers
   C.takeMVar delayedResponse
 
-getOrMaybeCreateGroup :: GroupCoordinator -> T.Text -> T.Text -> IO Group
-getOrMaybeCreateGroup GroupCoordinator{..} groupId memberId = do
-  C.withMVar groups $ \gs -> do
-    H.lookup gs groupId >>= \case
-      Nothing -> if T.null memberId
-        then do
-          ng <- newGroup groupId
-          H.insert gs groupId ng
-          return ng
-        else throw (ErrorCodeException K.UNKNOWN_MEMBER_ID)
-      Just g -> return g
-
-getGroup :: GroupCoordinator -> T.Text -> IO Group
-getGroup GroupCoordinator{..} groupId = do
-  C.withMVar groups $ \gs -> do
-    H.lookup gs groupId >>= \case
-      Nothing -> throw (ErrorCodeException K.GROUP_ID_NOT_FOUND)
-      Just g -> return g
+checkSupportedProtocols :: Group -> K.JoinGroupRequestV0 -> IO ()
+checkSupportedProtocols Group{..} req = do
+  IO.readIORef protocolType >>= \case
+    Nothing -> pure ()
+    Just pt -> do
+      when (pt /= req.protocolType) $ do
+        throw (ErrorCodeException K.INCONSISTENT_GROUP_PROTOCOL)
+      ps <- IO.readIORef supportedProtcols
+      let refinedRequestProtocols = (plainProtocols (refineProtocols req.protocols))
+      M.when (Set.null (Set.intersection ps refinedRequestProtocols)) $ do
+        throw (ErrorCodeException K.INCONSISTENT_GROUP_PROTOCOL)
 
 resetGroup :: Group -> IO ()
 resetGroup group@Group{..} = do
-  cancelDelayedSyncResponses group 
+  cancelDelayedSyncResponses group
   IO.writeIORef leader Nothing
   hashtableDeleteAll members
 
@@ -254,9 +243,6 @@ cancelDelayedSyncResponses Group{..} = do
 
 doNewMemberJoinGoup :: Group -> K.JoinGroupRequestV0 -> IO T.Text
 doNewMemberJoinGoup group req = do
-  -- TODO: check group state
-  -- TODO: check protocol
-
   newMemberId <- generateMemberId
   doDynamicNewMemberJoinGroup group req newMemberId
   return newMemberId
@@ -275,8 +261,8 @@ doDynamicNewMemberJoinGroup group req newMemberId = do
   addMemberAndRebalance group req newMemberId
 
 addMemberAndRebalance :: Group -> K.JoinGroupRequestV0 -> T.Text -> IO ()
-addMemberAndRebalance group K.JoinGroupRequestV0{..} newMemberId = do
-  member <- newMember newMemberId sessionTimeoutMs
+addMemberAndRebalance group req newMemberId = do
+  member <- newMember newMemberId req.sessionTimeoutMs req.protocolType (refineProtocols req.protocols)
   addMember group member
   -- TODO: check state
   prepareRebalance group
@@ -303,7 +289,7 @@ makeDelayedRebalance group rebalanceDelayMs = C.forkIO $ do
   rebalance group
 
 rebalance :: Group -> IO ()
-rebalance Group{..} = C.withMVar lock $ \() -> do
+rebalance group@Group{..} = C.withMVar lock $ \() -> do
   Log.info "rebalancing is starting"
   (Just leaderMemberId) <- IO.readIORef leader
 
@@ -314,16 +300,18 @@ rebalance Group{..} = C.withMVar lock $ \() -> do
 
   delayedJoinResponseList <- H.toList delayedJoinResponses
   let membersInResponse = map (\(m, _) -> K.JoinGroupResponseMemberV0 m BS.empty) delayedJoinResponseList
-  
+
+  -- compute and update protocolName
+  selectedProtocolName <- computeProtocolName group
+
   -- response all delayedJoinResponses
   M.forM_ delayedJoinResponseList $ \(memberId, delayed) -> do
     -- TODO: leader vs. normal member
-    -- TODO: protocol name
     -- TODO: member metadata
     let resp = K.JoinGroupResponseV0 {
         errorCode = 0
       , generationId = nextGenerationId
-      , protocolName = ""
+      , protocolName = selectedProtocolName
       , leader = leaderMemberId
       , memberId = memberId
       , members = K.KaArray (Just $ V.fromList membersInResponse)
@@ -335,17 +323,45 @@ rebalance Group{..} = C.withMVar lock $ \() -> do
   IO.writeIORef delayedRebalance Nothing
   Log.info "rebalancing is finished"
 
+computeProtocolName :: Group -> IO T.Text
+computeProtocolName group@Group{..} = do
+  IO.readIORef protocolName >>= \case
+    Nothing -> do
+      pn <- chooseProtocolName group
+      IO.writeIORef protocolName (Just pn)
+      pure pn
+    Just pn -> pure pn
+
+-- choose protocol name from supportedProtcols
+chooseProtocolName :: Group -> IO T.Text
+chooseProtocolName Group {..} = head . Set.toList <$> IO.readIORef supportedProtcols
+
 addMember :: Group -> Member -> IO ()
-addMember Group{..} member@Member{..} = do
+addMember Group{..} member = do
   -- leaderIsEmpty <- IO.readIORef leader
   IO.readIORef leader >>= \case
-    Nothing -> IO.writeIORef leader (Just memberId)
+    Nothing -> do
+      IO.writeIORef leader (Just member.memberId)
+      IO.writeIORef protocolType (Just member.protocolType)
+      IO.writeIORef supportedProtcols (plainProtocols member.supportedProtcols)
     _ -> pure ()
-  H.insert members memberId member
+  H.insert members member.memberId member
 
-syncGroup :: GroupCoordinator -> K.SyncGroupRequestV0 -> IO K.SyncGroupResponseV0
-syncGroup coordinator@GroupCoordinator{..} req@K.SyncGroupRequestV0{..} = do
-  group <- getGroup coordinator groupId
+plainProtocols :: [(T.Text, BS.ByteString)] -> Set.Set T.Text
+plainProtocols = Set.fromList . (map fst)
+
+-- should return a non-null protocol list
+refineProtocols :: K.KaArray K.JoinGroupRequestProtocolV0 -> [(T.Text, BS.ByteString)]
+refineProtocols protocols = case K.unKaArray protocols of
+  Nothing -> throw (ErrorCodeException K.INCONSISTENT_GROUP_PROTOCOL)
+  Just ps -> if (V.null ps)
+    then throw (ErrorCodeException K.INCONSISTENT_GROUP_PROTOCOL)
+    else map (\p -> (p.name, p.metadata)) (V.toList ps)
+
+------------------- Sync Group ----------------------
+
+syncGroup :: Group -> K.SyncGroupRequestV0 -> IO K.SyncGroupResponseV0
+syncGroup group req@K.SyncGroupRequestV0{..} = do
   delayed <- C.newEmptyMVar
   C.withMVar (group.lock) $ \() -> do
     -- check member id
@@ -355,16 +371,14 @@ syncGroup coordinator@GroupCoordinator{..} req@K.SyncGroupRequestV0{..} = do
     IO.readIORef group.state >>= \case
       CompletingRebalance -> doSyncGroup group req delayed
       Stable -> do
-        assignment <- IO.readIORef member.assignment 
+        assignment <- IO.readIORef member.assignment
         C.putMVar delayed (K.SyncGroupResponseV0 0 assignment)
-      _ -> error "INVALID STATE"
+      PreparingRebalance -> throw (ErrorCodeException K.REASSIGNMENT_IN_PROGRESS)
+      _ -> throw (ErrorCodeException K.UNKNOWN_MEMBER_ID)
   C.readMVar delayed
 
 doSyncGroup :: Group -> K.SyncGroupRequestV0 -> C.MVar K.SyncGroupResponseV0 -> IO ()
-doSyncGroup group@Group{..} req@K.SyncGroupRequestV0{memberId=memberId, assignments=assignments} delayedResponse = do
-  -- check assignment
-  when (isNothing (K.unKaArray req.assignments)) $ error "TODO: INVALID ASSIGNEMNTS"
-
+doSyncGroup group@Group{..} req@K.SyncGroupRequestV0{memberId=memberId} delayedResponse = do
   -- set delayed response
   H.lookup delayedSyncResponses memberId >>= \case
     Nothing -> H.insert delayedSyncResponses memberId delayedResponse
@@ -395,9 +409,8 @@ setAndPropagateAssignment Group{..} req = do
         C.putMVar delayed (K.SyncGroupResponseV0 0 assignment.assignment)
         H.delete delayedJoinResponses assignment.memberId
 
-leaveGroup :: GroupCoordinator -> K.LeaveGroupRequestV0 -> IO K.LeaveGroupResponseV0
-leaveGroup coordinator req = do
-  group@Group{..} <- getGroup coordinator req.groupId
+leaveGroup :: Group -> K.LeaveGroupRequestV0 -> IO K.LeaveGroupResponseV0
+leaveGroup group@Group{..} req = do
   C.withMVar lock $ \() -> do
     -- get member
     H.lookup members req.memberId >>= \case
@@ -418,11 +431,10 @@ leaveGroup coordinator req = do
           throw (ErrorCodeException K.UNKNOWN_MEMBER_ID)
 
     return $ K.LeaveGroupResponseV0 0
-    
 
-heartbeat :: GroupCoordinator -> K.HeartbeatRequestV0 -> IO K.HeartbeatResponseV0
-heartbeat coordinator req = do
-  group@Group{..} <- getGroup coordinator req.groupId
+
+heartbeat :: Group -> K.HeartbeatRequestV0 -> IO K.HeartbeatResponseV0
+heartbeat group@Group{..} req = do
   C.withMVar lock $ \() -> do
     -- check generation id
     checkGroupGenerationId group req.generationId
@@ -444,7 +456,7 @@ checkGroupGenerationId :: Group -> Int32 -> IO ()
 checkGroupGenerationId Group{..} generationId = do
   currentGenerationId <- IO.readIORef groupGenerationId
   M.unless (currentGenerationId == generationId) $ do
-    Log.debug $ "invalid generation id" 
+    Log.debug $ "invalid generation id"
       <> ", current generationId:" <> Log.buildString' currentGenerationId
       <> ", expected generationId" <> Log.buildString' generationId
     throw (ErrorCodeException K.ILLEGAL_GENERATION)
@@ -487,12 +499,18 @@ checkHeartbeatAndMaybeRebalance group Member{..} = do
       resetGroupAndRebalance group
     return nextDelayMs
 
--- Exceptions
+------------------- Commit Offsets -------------------------
+commitOffsets :: Group -> K.OffsetCommitRequestV0 -> IO K.OffsetCommitResponseV0
+commitOffsets Group{..} req = do
+  topics <- Utils.forKaArrayM req.topics $ \K.OffsetCommitRequestTopicV0{..} -> do
+    res <- GMM.storeOffsets metadataManager name partitions
+    return $ K.OffsetCommitResponseTopicV0 {partitions = res, name = name}
+  return K.OffsetCommitResponseV0 {topics=topics}
 
-newtype ErrorCodeException = ErrorCodeException K.ErrorCode deriving Show
-instance E.Exception ErrorCodeException
-
--- TODO:
--- * FindCoordinator
--- * protocols
--- * error handler
+------------------- Fetch Offsets -------------------------
+fetchOffsets :: Group -> K.OffsetFetchRequestV0 -> IO K.OffsetFetchResponseV0
+fetchOffsets Group{..} req = do
+  topics <- Utils.forKaArrayM req.topics $ \K.OffsetFetchRequestTopicV0{..} -> do
+    res <- GMM.fetchOffsets metadataManager name partitionIndexes
+    return $ K.OffsetFetchResponseTopicV0 {partitions = res, name = name}
+  return K.OffsetFetchResponseV0 {topics=topics}

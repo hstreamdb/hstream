@@ -107,6 +107,11 @@ library
   exposed-modules:
     HStream.Kafka.Common.OffsetManager
     HStream.Kafka.Common.RecordFormat
+    HStream.Kafka.Common.KafkaException
+    HStream.Kafka.Common.Utils
+    HStream.Kafka.Group.Group
+    HStream.Kafka.Group.Member
+    HStream.Kafka.Group.GroupCoordinator
     HStream.Kafka.Group.GroupMetadataManager
     HStream.Kafka.Group.OffsetsStore
     HStream.Kafka.Network

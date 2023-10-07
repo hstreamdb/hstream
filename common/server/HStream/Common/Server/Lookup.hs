@@ -85,9 +85,18 @@ lookupNodePersist metaHandle gossipContext loadBalanceHashRing
 
 data KafkaResource
   = KafkaResTopic Text
+  | KafkaResGroup Text
+
+kafkaResourceKey :: KafkaResource -> Text
+kafkaResourceKey (KafkaResTopic name) = name
+kafkaResourceKey (KafkaResGroup name) = name
+
+kafkaResourceMetaId :: KafkaResource -> Text
+kafkaResourceMetaId (KafkaResTopic name) = "KafkaResTopic_" <> name
+kafkaResourceMetaId (KafkaResGroup name) = "KafkaResGruop_" <> name
 
 lookupKafka :: LoadBalanceHashRing -> Maybe Text -> KafkaResource -> IO A.ServerNode
-lookupKafka lbhr alk (KafkaResTopic topicId) = lookupNode lbhr topicId alk
+lookupKafka lbhr alk res = lookupNode lbhr (kafkaResourceKey res) alk
 
 lookupKafkaPersist
   :: M.MetaHandle
@@ -96,6 +105,7 @@ lookupKafkaPersist
   -> Maybe Text
   -> KafkaResource
   -> IO A.ServerNode
-lookupKafkaPersist mh gc lbhr alk (KafkaResTopic topicId) =
-  let metaId = "KafkaResTopic_" <> topicId
-   in lookupNodePersist mh gc lbhr topicId metaId alk
+lookupKafkaPersist mh gc lbhr alk kafkaResource =
+  let key = kafkaResourceKey kafkaResource
+      metaId = kafkaResourceMetaId kafkaResource
+   in lookupNodePersist mh gc lbhr key metaId alk
