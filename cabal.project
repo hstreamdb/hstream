@@ -57,11 +57,14 @@ package rocksdb-haskell-bindings
   extra-lib-dirs:     /usr/local/lib
 
 constraints:
-    Z-Data        == 2.0.0.2
-  , zoovisitor    == 0.2.6.1
-  , blaze-textual == 0.2.1.0
-  , entropy       == 0.4.1.7
-  , criterion    ^>= 1.6
-  , aeson        ^>= 2.0
-  , filepath      >= 1.4.100
-  , stm-hamt      == 1.2.0.9
+    Z-Data      == 2.0.0.2
+  , zoovisitor  == 0.2.6.1
+  , criterion  ^>= 1.6
+  , aeson      ^>= 2.0
+  , filepath    >= 1.4.100
+
+  -- The following is needed to avoid breaking the build.
+  , blaze-textual == 0.2.1.0 || > 0.2.2.0
+  , entropy == 0.4.1.7 || > 0.4.1.9
+    -- https://github.com/nikita-volkov/deferred-folds/issues/6
+  , deferred-folds == 0.9.18.3 || > 0.9.18.4
