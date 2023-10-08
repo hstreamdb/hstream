@@ -93,7 +93,7 @@ kafkaResourceKey (KafkaResGroup name) = name
 
 kafkaResourceMetaId :: KafkaResource -> Text
 kafkaResourceMetaId (KafkaResTopic name) = "KafkaResTopic_" <> name
-kafkaResourceMetaId (KafkaResGroup name) = "KafkaResGruop_" <> name
+kafkaResourceMetaId (KafkaResGroup name) = "KafkaResGroup_" <> name
 
 lookupKafka :: LoadBalanceHashRing -> Maybe Text -> KafkaResource -> IO A.ServerNode
 lookupKafka lbhr alk res = lookupNode lbhr (kafkaResourceKey res) alk

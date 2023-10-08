@@ -2,7 +2,7 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE OverloadedRecordDot   #-}
 
-module HStream.Server.KafkaHandler.GroupCoordinator
+module HStream.Kafka.Server.Handler.Group
   ( -- 19: CreateTopics
     handleFindCoordinatorV0
   , handleJoinGroupV0
@@ -28,7 +28,7 @@ handleFindCoordinatorV0 ServerContext{..} _ req = do
   return $ K.FindCoordinatorResponseV0 0 (fromIntegral serverNodeId) serverNodeHost (fromIntegral serverNodePort)
 
 handleJoinGroupV0 :: ServerContext -> K.RequestContext -> K.JoinGroupRequestV0 -> IO K.JoinGroupResponseV0
-handleJoinGroupV0 ServerContext{..} _ = GC.joinGroup scGroupCoordinator
+handleJoinGroupV0 ServerContext{..} _ = GC.joinGroup scGroupCoordinator scLDClient (fromIntegral serverID)
 
 handleSyncGroupV0 :: ServerContext -> K.RequestContext -> K.SyncGroupRequestV0 -> IO K.SyncGroupResponseV0
 handleSyncGroupV0 ServerContext{..} _ = GC.syncGroup scGroupCoordinator

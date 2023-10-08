@@ -33,8 +33,6 @@ import qualified Kafka.Protocol.Message                   as K
 -- TODO:
 -- * kafka/group config
 --  * configurable
---  * sessionTimeoutMs vs. delayedRebalanceTimeoutMs
---  * heartbeat interval vs. delayedRebalanceTimeoutMs
 -- * group metadata manager
 --  * store group information
 
@@ -197,6 +195,8 @@ joinGroup group@Group{..} req = do
   C.withMVar lock $ \_ -> do
     -- TODO: GROUP MAX SIZE
 
+    checkSupportedProtocols group req
+
     -- check state
     IO.readIORef group.state >>= \case
       CompletingRebalance -> resetGroup group
@@ -204,8 +204,6 @@ joinGroup group@Group{..} req = do
       PreparingRebalance -> pure ()
       Empty -> pure ()
       Dead -> throw (ErrorCodeException K.UNKNOWN_MEMBER_ID)
-
-    checkSupportedProtocols group req
 
     newMemberId <- if T.null req.memberId
       then doNewMemberJoinGoup group req
@@ -227,18 +225,25 @@ checkSupportedProtocols Group{..} req = do
       M.when (Set.null (Set.intersection ps refinedRequestProtocols)) $ do
         throw (ErrorCodeException K.INCONSISTENT_GROUP_PROTOCOL)
 
+-- reset group: make it to logical Empty state
 resetGroup :: Group -> IO ()
 resetGroup group@Group{..} = do
+  Log.info "reseting group"
   cancelDelayedSyncResponses group
   IO.writeIORef leader Nothing
   hashtableDeleteAll members
+
+  -- update protocols
+  IO.writeIORef protocolType Nothing
+  IO.writeIORef protocolName Nothing
+  IO.writeIORef supportedProtcols (Set.empty)
 
 cancelDelayedSyncResponses :: Group -> IO ()
 cancelDelayedSyncResponses Group{..} = do
   lst <- H.toList delayedSyncResponses
   M.forM_ lst $ \(memberId, delayed) -> do
     Log.info $ "cancel delayed sync response for " <> Log.buildString' memberId
-    C.putMVar delayed $ K.SyncGroupResponseV0 K.REASSIGNMENT_IN_PROGRESS BS.empty
+    C.putMVar delayed $ K.SyncGroupResponseV0 K.REBALANCE_IN_PROGRESS BS.empty
     H.delete delayedSyncResponses memberId
 
 doNewMemberJoinGoup :: Group -> K.JoinGroupRequestV0 -> IO T.Text
@@ -278,50 +283,53 @@ prepareRebalance group@Group{..} = do
   IO.readIORef delayedRebalance >>= \case
     Nothing -> do
       delayed <- makeDelayedRebalance group 5000
+      Log.info $ "created delayed rebalance thread:" <> Log.buildString' delayed
       IO.writeIORef delayedRebalance (Just delayed)
       IO.writeIORef state PreparingRebalance
     _ -> pure ()
 
 -- TODO: dynamically delay
 makeDelayedRebalance :: Group -> Int32 -> IO C.ThreadId
-makeDelayedRebalance group rebalanceDelayMs = C.forkIO $ do
-  C.threadDelay (1000 * fromIntegral rebalanceDelayMs)
-  rebalance group
+makeDelayedRebalance group rebalanceDelayMs = do
+  C.forkIO $ do
+    C.threadDelay (1000 * fromIntegral rebalanceDelayMs)
+    rebalance group
 
 rebalance :: Group -> IO ()
-rebalance group@Group{..} = C.withMVar lock $ \() -> do
-  Log.info "rebalancing is starting"
-  (Just leaderMemberId) <- IO.readIORef leader
+rebalance group@Group{..} = do
+  C.withMVar lock $ \() -> do
+    Log.info "rebalancing is starting"
+    (Just leaderMemberId) <- IO.readIORef leader
 
-  -- next generation id
-  nextGenerationId <- IO.atomicModifyIORef' groupGenerationId (\ggid -> (ggid + 1, ggid + 1))
-  Log.info $ "next generation id:" <> Log.buildString' nextGenerationId
-    <> ", leader:" <> Log.buildString' leaderMemberId
+    -- next generation id
+    nextGenerationId <- IO.atomicModifyIORef' groupGenerationId (\ggid -> (ggid + 1, ggid + 1))
+    Log.info $ "next generation id:" <> Log.buildString' nextGenerationId
+      <> ", leader:" <> Log.buildString' leaderMemberId
 
-  delayedJoinResponseList <- H.toList delayedJoinResponses
-  let membersInResponse = map (\(m, _) -> K.JoinGroupResponseMemberV0 m BS.empty) delayedJoinResponseList
+    delayedJoinResponseList <- H.toList delayedJoinResponses
+    let membersInResponse = map (\(m, _) -> K.JoinGroupResponseMemberV0 m BS.empty) delayedJoinResponseList
 
-  -- compute and update protocolName
-  selectedProtocolName <- computeProtocolName group
+    -- compute and update protocolName
+    selectedProtocolName <- computeProtocolName group
 
-  -- response all delayedJoinResponses
-  M.forM_ delayedJoinResponseList $ \(memberId, delayed) -> do
-    -- TODO: leader vs. normal member
-    -- TODO: member metadata
-    let resp = K.JoinGroupResponseV0 {
-        errorCode = 0
-      , generationId = nextGenerationId
-      , protocolName = selectedProtocolName
-      , leader = leaderMemberId
-      , memberId = memberId
-      , members = K.KaArray (Just $ V.fromList membersInResponse)
-      }
-    C.putMVar delayed resp
-    H.delete delayedJoinResponses memberId
-  IO.writeIORef state CompletingRebalance
-  Log.info "state changed: PreparingRebalance -> CompletingRebalance"
-  IO.writeIORef delayedRebalance Nothing
-  Log.info "rebalancing is finished"
+    -- response all delayedJoinResponses
+    M.forM_ delayedJoinResponseList $ \(memberId, delayed) -> do
+      -- TODO: leader vs. normal member
+      -- TODO: member metadata
+      let resp = K.JoinGroupResponseV0 {
+          errorCode = 0
+        , generationId = nextGenerationId
+        , protocolName = selectedProtocolName
+        , leader = leaderMemberId
+        , memberId = memberId
+        , members = K.KaArray (Just $ V.fromList membersInResponse)
+        }
+      C.putMVar delayed resp
+      H.delete delayedJoinResponses memberId
+    IO.writeIORef state CompletingRebalance
+    Log.info "state changed: PreparingRebalance -> CompletingRebalance"
+    IO.writeIORef delayedRebalance Nothing
+    Log.info "rebalancing is finished"
 
 computeProtocolName :: Group -> IO T.Text
 computeProtocolName group@Group{..} = do
@@ -373,7 +381,7 @@ syncGroup group req@K.SyncGroupRequestV0{..} = do
       Stable -> do
         assignment <- IO.readIORef member.assignment
         C.putMVar delayed (K.SyncGroupResponseV0 0 assignment)
-      PreparingRebalance -> throw (ErrorCodeException K.REASSIGNMENT_IN_PROGRESS)
+      PreparingRebalance -> throw (ErrorCodeException K.REBALANCE_IN_PROGRESS)
       _ -> throw (ErrorCodeException K.UNKNOWN_MEMBER_ID)
   C.readMVar delayed
 
@@ -433,6 +441,7 @@ leaveGroup group@Group{..} req = do
     return $ K.LeaveGroupResponseV0 0
 
 
+-- default heartbeat interval: 3s
 heartbeat :: Group -> K.HeartbeatRequestV0 -> IO K.HeartbeatResponseV0
 heartbeat group@Group{..} req = do
   C.withMVar lock $ \() -> do
@@ -502,10 +511,15 @@ checkHeartbeatAndMaybeRebalance group Member{..} = do
 ------------------- Commit Offsets -------------------------
 commitOffsets :: Group -> K.OffsetCommitRequestV0 -> IO K.OffsetCommitResponseV0
 commitOffsets Group{..} req = do
-  topics <- Utils.forKaArrayM req.topics $ \K.OffsetCommitRequestTopicV0{..} -> do
-    res <- GMM.storeOffsets metadataManager name partitions
-    return $ K.OffsetCommitResponseTopicV0 {partitions = res, name = name}
-  return K.OffsetCommitResponseV0 {topics=topics}
+  C.withMVar lock $ \() -> do
+    IO.readIORef state >>= \case
+      CompletingRebalance -> throw (ErrorCodeException K.REBALANCE_IN_PROGRESS)
+      Dead -> throw (ErrorCodeException K.UNKNOWN_MEMBER_ID)
+      _ -> do
+        topics <- Utils.forKaArrayM req.topics $ \K.OffsetCommitRequestTopicV0{..} -> do
+          res <- GMM.storeOffsets metadataManager name partitions
+          return $ K.OffsetCommitResponseTopicV0 {partitions = res, name = name}
+        return K.OffsetCommitResponseV0 {topics=topics}
 
 ------------------- Fetch Offsets -------------------------
 fetchOffsets :: Group -> K.OffsetFetchRequestV0 -> IO K.OffsetFetchResponseV0
