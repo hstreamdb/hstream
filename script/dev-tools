@@ -1002,11 +1002,11 @@ class QuickBuildDevImageCommand:
         else:
             exe_renames = {}
 
-        build_targets = ["hstream", "hstream-admin"]
-        exe_targets = ["hstream-server", "hstream", "hadmin"]
+        build_targets = ["hstream", "hstream-admin", "hstream-kafka-server"]
+        exe_targets = ["hstream-server", "hstream", "hadmin", "hstream-kafka-server"]
         if only_hstream:
             build_targets = ["hstream"]
-            exe_targets = ["hstream-server", "hstream"]
+            exe_targets = ["hstream-server", "hstream", "hstream-kafka-server"]
 
         tmp_container_name = f"tmp_build_dev_image_{gen_randoms(20)}"
         try:
