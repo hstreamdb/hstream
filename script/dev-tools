@@ -1002,7 +1002,7 @@ class QuickBuildDevImageCommand:
         else:
             exe_renames = {}
 
-        build_targets = ["hstream", "hstream-admin", "hstream-kafka-server"]
+        build_targets = ["hstream", "hstream-admin"]
         exe_targets = ["hstream-server", "hstream", "hadmin", "hstream-kafka-server"]
         if only_hstream:
             build_targets = ["hstream"]
