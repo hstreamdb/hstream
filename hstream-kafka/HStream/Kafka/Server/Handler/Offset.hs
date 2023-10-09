@@ -47,7 +47,8 @@ listOffsetTopicPartitions ServerContext{..} topicName (Just offsetsPartitions) =
     let logid = orderedParts V.!? (fromIntegral partitionIndex)
     offset <- getOffset logid timestamp
     return $ K.ListOffsetsPartitionResponseV0
-              { oldStyleOffsets = K.KaArray {unKaArray = V.singleton <$> offset}
+              { oldStyleOffsets = K.KaArray {unKaArray = Just $ maybe V.empty V.singleton offset}
+              -- { oldStyleOffsets = K.KaArray {unKaArray = V.singleton <$> offset}
               , partitionIndex = partitionIndex
               , errorCode = K.NONE
               }

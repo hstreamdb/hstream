@@ -13,6 +13,7 @@ import qualified Data.ByteString                          as BS
 import qualified Data.HashTable.IO                        as H
 import           Data.Int                                 (Int32)
 import qualified Data.IORef                               as IO
+import qualified Data.List                                as List
 import           Data.Maybe                               (fromMaybe)
 import qualified Data.Set                                 as Set
 import qualified Data.Text                                as T
@@ -191,11 +192,13 @@ newGroup group metadataManager = do
 joinGroup :: Group -> K.JoinGroupRequestV0 -> IO K.JoinGroupResponseV0
 joinGroup group@Group{..} req = do
   -- delayed response(join barrier)
+  Log.debug $ "received joinGroup"
   delayedResponse <- C.newEmptyMVar
   C.withMVar lock $ \_ -> do
     -- TODO: GROUP MAX SIZE
 
     checkSupportedProtocols group req
+    Log.debug $ "checked protocols"
 
     -- check state
     IO.readIORef group.state >>= \case
@@ -205,16 +208,22 @@ joinGroup group@Group{..} req = do
       Empty -> pure ()
       Dead -> throw (ErrorCodeException K.UNKNOWN_MEMBER_ID)
 
+    Log.debug $ "checked state"
     newMemberId <- if T.null req.memberId
       then doNewMemberJoinGoup group req
       else doCurrentMemeberJoinGroup group req
+
+    Log.debug $ "add delayed response into response list for member:" <> Log.buildString' newMemberId
     H.insert delayedJoinResponses newMemberId delayedResponse
 
   -- waiting other consumers
-  C.takeMVar delayedResponse
+  resp <- C.takeMVar delayedResponse
+  Log.info $ "joinGroup: received delayed response:" <> Log.buildString' resp
+  return resp
 
 checkSupportedProtocols :: Group -> K.JoinGroupRequestV0 -> IO ()
 checkSupportedProtocols Group{..} req = do
+  Log.debug $ "checking protocols"
   IO.readIORef protocolType >>= \case
     Nothing -> pure ()
     Just pt -> do
@@ -243,12 +252,13 @@ cancelDelayedSyncResponses Group{..} = do
   lst <- H.toList delayedSyncResponses
   M.forM_ lst $ \(memberId, delayed) -> do
     Log.info $ "cancel delayed sync response for " <> Log.buildString' memberId
-    C.putMVar delayed $ K.SyncGroupResponseV0 K.REBALANCE_IN_PROGRESS BS.empty
+    _ <- C.tryPutMVar delayed $ K.SyncGroupResponseV0 K.REBALANCE_IN_PROGRESS BS.empty
     H.delete delayedSyncResponses memberId
 
 doNewMemberJoinGoup :: Group -> K.JoinGroupRequestV0 -> IO T.Text
 doNewMemberJoinGoup group req = do
   newMemberId <- generateMemberId
+  Log.debug $ "generated member id:" <> Log.buildString' newMemberId
   doDynamicNewMemberJoinGroup group req newMemberId
   return newMemberId
 
@@ -306,16 +316,19 @@ rebalance group@Group{..} = do
     Log.info $ "next generation id:" <> Log.buildString' nextGenerationId
       <> ", leader:" <> Log.buildString' leaderMemberId
 
-    delayedJoinResponseList <- H.toList delayedJoinResponses
-    let membersInResponse = map (\(m, _) -> K.JoinGroupResponseMemberV0 m BS.empty) delayedJoinResponseList
-
     -- compute and update protocolName
     selectedProtocolName <- computeProtocolName group
+    Log.info $ "selected protocolName:" <> Log.buildString' selectedProtocolName
 
+    membersInResponse <- map (\(_, m) -> getJoinResponseMember selectedProtocolName m) <$> H.toList members
+    Log.debug $ "members in join responses" <> Log.buildString' membersInResponse
+
+    delayedJoinResponseList <- H.toList delayedJoinResponses
+
+    Log.info $ "set all delayed responses, response list size:" <> Log.buildString' (length delayedJoinResponseList)
     -- response all delayedJoinResponses
     M.forM_ delayedJoinResponseList $ \(memberId, delayed) -> do
       -- TODO: leader vs. normal member
-      -- TODO: member metadata
       let resp = K.JoinGroupResponseV0 {
           errorCode = 0
         , generationId = nextGenerationId
@@ -324,25 +337,36 @@ rebalance group@Group{..} = do
         , memberId = memberId
         , members = K.KaArray (Just $ V.fromList membersInResponse)
         }
-      C.putMVar delayed resp
+      Log.debug $ "set delayed response:" <> Log.buildString' resp
+        <> " for " <> Log.buildString' memberId
+      _ <- C.tryPutMVar delayed resp
       H.delete delayedJoinResponses memberId
     IO.writeIORef state CompletingRebalance
     Log.info "state changed: PreparingRebalance -> CompletingRebalance"
     IO.writeIORef delayedRebalance Nothing
     Log.info "rebalancing is finished"
 
+getJoinResponseMember :: T.Text -> Member -> K.JoinGroupResponseMemberV0
+getJoinResponseMember protocol m =
+  let metadata = snd. fromMaybe ("", "") $ List.find (\(n, _) -> n == protocol) m.supportedProtcols
+  in K.JoinGroupResponseMemberV0 m.memberId metadata
+
 computeProtocolName :: Group -> IO T.Text
 computeProtocolName group@Group{..} = do
   IO.readIORef protocolName >>= \case
     Nothing -> do
       pn <- chooseProtocolName group
+      Log.debug $ "choosed protocolName" <> Log.buildString' pn
       IO.writeIORef protocolName (Just pn)
       pure pn
     Just pn -> pure pn
 
 -- choose protocol name from supportedProtcols
 chooseProtocolName :: Group -> IO T.Text
-chooseProtocolName Group {..} = head . Set.toList <$> IO.readIORef supportedProtcols
+chooseProtocolName Group {..} = do
+  ps <- IO.readIORef supportedProtcols
+  Log.debug $ "protocols:" <> Log.buildString' ps
+  return . head $ Set.toList ps
 
 addMember :: Group -> Member -> IO ()
 addMember Group{..} member = do
@@ -351,6 +375,8 @@ addMember Group{..} member = do
     Nothing -> do
       IO.writeIORef leader (Just member.memberId)
       IO.writeIORef protocolType (Just member.protocolType)
+      Log.debug $ "init supportedProtcols:" <> Log.buildString' member.supportedProtcols
+      Log.debug $ "plain supportedProtcols:" <> Log.buildString' (plainProtocols member.supportedProtcols)
       IO.writeIORef supportedProtcols (plainProtocols member.supportedProtcols)
     _ -> pure ()
   H.insert members member.memberId member
@@ -380,7 +406,7 @@ syncGroup group req@K.SyncGroupRequestV0{..} = do
       CompletingRebalance -> doSyncGroup group req delayed
       Stable -> do
         assignment <- IO.readIORef member.assignment
-        C.putMVar delayed (K.SyncGroupResponseV0 0 assignment)
+        M.void $ C.tryPutMVar delayed (K.SyncGroupResponseV0 0 assignment)
       PreparingRebalance -> throw (ErrorCodeException K.REBALANCE_IN_PROGRESS)
       _ -> throw (ErrorCodeException K.UNKNOWN_MEMBER_ID)
   C.readMVar delayed
@@ -414,7 +440,7 @@ setAndPropagateAssignment Group{..} req = do
     H.lookup delayedSyncResponses assignment.memberId >>= \case
       Nothing -> pure ()
       Just delayed -> do
-        C.putMVar delayed (K.SyncGroupResponseV0 0 assignment.assignment)
+        _ <- C.tryPutMVar delayed (K.SyncGroupResponseV0 0 assignment.assignment)
         H.delete delayedJoinResponses assignment.memberId
 
 leaveGroup :: Group -> K.LeaveGroupRequestV0 -> IO K.LeaveGroupResponseV0
@@ -472,18 +498,23 @@ checkGroupGenerationId Group{..} generationId = do
 
 updateLatestHeartbeat :: Member -> IO ()
 updateLatestHeartbeat Member{..} = do
-  Time.getSystemMsTimestamp >>= IO.writeIORef lastHeartbeat
+  newLastHeartbeat <- Time.getSystemMsTimestamp
+  IO.writeIORef lastHeartbeat newLastHeartbeat
+  Log.debug $ "lastHeartbeat updated, memeber:" <> Log.buildString' memberId
+    <> ", newLastHeartbeat:" <> Log.buildString' newLastHeartbeat
 
 setupDelayedCheckHeartbeat :: Group -> IO ()
 setupDelayedCheckHeartbeat group@Group{..} = do
   (flip H.mapM_) members $ \(_, member) -> do
     updateLatestHeartbeat member
     threadId <- C.forkIO $ delayedCheckHeart group member member.sessionTimeoutMs
+    Log.debug $ "setup delayed heartbeat check, threadId:" <> Log.buildString' threadId
+      <> ", member:" <> Log.buildString' member.memberId
     IO.writeIORef member.heartbeatThread (Just threadId)
 
 delayedCheckHeart :: Group -> Member -> Int32 -> IO ()
 delayedCheckHeart group member delayMs = do
-  C.threadDelay (fromIntegral delayMs)
+  C.threadDelay (1000 * fromIntegral delayMs)
   nextDelayMs <- checkHeartbeatAndMaybeRebalance group member
   M.when (nextDelayMs <= 0) $ do
     delayedCheckHeart group member nextDelayMs
@@ -503,8 +534,11 @@ checkHeartbeatAndMaybeRebalance group Member{..} = do
     now <- Time.getSystemMsTimestamp
     lastUpdated <- IO.readIORef lastHeartbeat
     let nextDelayMs = sessionTimeoutMs - (fromIntegral (now - lastUpdated))
-    M.when (nextDelayMs > 0) $ do
+    M.when (nextDelayMs <= 0) $ do
       Log.info $ "heartbeat timeout, memberId:" <> Log.buildString' memberId
+        <> "lastHeartbeat:" <> Log.buildString' lastUpdated
+        <> "now:" <> Log.buildString' now
+        <> "sessionTimeoutMs:" <> Log.buildString' sessionTimeoutMs
       resetGroupAndRebalance group
     return nextDelayMs
 
