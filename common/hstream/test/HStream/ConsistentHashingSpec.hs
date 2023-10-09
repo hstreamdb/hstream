@@ -24,7 +24,11 @@ import           HStream.Common.ConsistentHashing (ServerMap,
                                                    constructServerMap,
                                                    getAllocatedNode)
 import qualified HStream.Common.ConsistentHashing as CH
-import           HStream.Server.HStreamInternal   (ServerNode (..))
+import           HStream.Server.HStreamInternal   (HStreamVersion (..),
+                                                   ServerNode (..))
+
+instance Arbitrary HStreamVersion where
+  arbitrary = HStreamVersion <$> arbitrary <*> arbitrary
 
 instance Arbitrary ServerNode where
   arbitrary = do
@@ -33,6 +37,7 @@ instance Arbitrary ServerNode where
     serverNodeGossipPort <- arbitrarySizedNatural
     serverNodeAdvertisedAddress <- genAddr
     serverNodeGossipAddress <- genAddr
+    serverNodeVersion <- arbitrary
     let serverNodeAdvertisedListeners = Map.empty
     return ServerNode {..}
     where
