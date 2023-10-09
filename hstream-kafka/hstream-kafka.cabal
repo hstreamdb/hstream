@@ -43,7 +43,6 @@ common shared-properties
 library kafka-protocol
   import:             shared-properties
   exposed-modules:
-    Kafka.Network
     Kafka.Protocol
     Kafka.Protocol.Encoding
     Kafka.Protocol.Error
