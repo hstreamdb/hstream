@@ -5,29 +5,23 @@ module Kafka.Protocol.Message
   , ResponseHeader (..)
   , putResponseHeader
   , runPutResponseHeaderLazy
-  , Unsupported (..)
+  , getResponseHeader
 
   , module Kafka.Protocol.Message.Struct
   ) where
 
 import qualified Data.ByteString.Lazy          as BL
 import           Data.Int
-import           GHC.Generics
 
 import           Kafka.Protocol.Encoding
 import           Kafka.Protocol.Message.Struct
-
-data Unsupported = Unsupported
-  deriving (Show, Eq, Generic)
-
-instance Serializable Unsupported
 
 data RequestHeader = RequestHeader
   { requestApiKey        :: {-# UNPACK #-} !ApiKey
   , requestApiVersion    :: {-# UNPACK #-} !Int16
   , requestCorrelationId :: {-# UNPACK #-} !Int32
-  , requestClientId      :: !(Either Unsupported NullableString)
-  , requesteTaggedFields :: !(Either Unsupported TaggedFields)
+  , requestClientId      :: !(Maybe NullableString)
+  , requesteTaggedFields :: !(Maybe TaggedFields)
   } deriving (Show, Eq)
 
 instance Serializable RequestHeader where
@@ -37,14 +31,14 @@ instance Serializable RequestHeader where
     requestCorrelationId <- get
     let (reqHeaderVer, _) = getHeaderVersion requestApiKey requestApiVersion
     case reqHeaderVer of
-      2 -> do requestClientId <- getEither True
-              requesteTaggedFields <- getEither True
+      2 -> do requestClientId <- getMaybe True
+              requesteTaggedFields <- getMaybe True
               pure RequestHeader{..}
-      1 -> do requestClientId <- getEither True
-              let requesteTaggedFields = Left Unsupported
+      1 -> do requestClientId <- getMaybe True
+              let requesteTaggedFields = Nothing
                in pure RequestHeader{..}
-      0 -> let requestClientId = Left Unsupported
-               requesteTaggedFields = Left Unsupported
+      0 -> let requestClientId = Nothing
+               requesteTaggedFields = Nothing
             in pure RequestHeader{..}
       v -> error $ "Unknown request header version" <> show v
   {-# INLINE get #-}
@@ -53,21 +47,30 @@ instance Serializable RequestHeader where
        put requestApiKey
     <> put requestApiVersion
     <> put requestCorrelationId
-    <> putEither requestClientId
-    <> putEither requesteTaggedFields
+    <> putMaybe requestClientId
+    <> putMaybe requesteTaggedFields
   {-# INLINE put #-}
 
 data ResponseHeader = ResponseHeader
   { responseCorrelationId :: {-# UNPACK #-} !Int32
-  , responseTaggedFields  :: !(Either Unsupported TaggedFields)
+  , responseTaggedFields  :: !(Maybe TaggedFields)
   } deriving (Show, Eq)
 
 putResponseHeader :: ResponseHeader -> Builder
 putResponseHeader ResponseHeader{..} =
      put responseCorrelationId
-  <> putEither responseTaggedFields
+  <> putMaybe responseTaggedFields
 {-# INLINE putResponseHeader #-}
 
 runPutResponseHeaderLazy :: ResponseHeader -> BL.ByteString
 runPutResponseHeaderLazy = toLazyByteString . putResponseHeader
 {-# INLINE runPutResponseHeaderLazy #-}
+
+getResponseHeader :: Int16 -> Parser ResponseHeader
+getResponseHeader 0 = do responseCorrelationId <- get
+                         let responseTaggedFields = Nothing
+                          in pure ResponseHeader{..}
+getResponseHeader 1 = do responseCorrelationId <- get
+                         responseTaggedFields <- getMaybe True
+                         pure ResponseHeader{..}
+getResponseHeader v = error $ "Unknown response header version " <> show v

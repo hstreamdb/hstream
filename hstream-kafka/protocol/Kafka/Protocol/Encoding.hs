@@ -7,8 +7,8 @@
 
 module Kafka.Protocol.Encoding
   ( Serializable (..)
-  , putEither
-  , getEither
+  , putEither, getEither
+  , putMaybe, getMaybe
   , runGet
   , runGet'
   , runPut
@@ -128,6 +128,19 @@ getEither
 getEither True  = Right <$> get
 getEither False = Left <$> get
 {-# INLINE getEither #-}
+
+putMaybe :: (Serializable a) => Maybe a -> Builder
+putMaybe (Just x) = put x
+putMaybe Nothing  = mempty
+{-# INLINE putMaybe #-}
+
+getMaybe
+  :: (Serializable a)
+  => Bool  -- ^ True for Just, False for Nothing
+  -> Parser (Maybe a)
+getMaybe True  = Just <$> get
+getMaybe False = pure Nothing
+{-# INLINE getMaybe #-}
 
 -------------------------------------------------------------------------------
 

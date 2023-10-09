@@ -120,8 +120,8 @@ realSpec = describe "Kafka.Protocol.Encoding" $ do
     let clientReqBs = "\NUL\NUL\NUL \NUL\DC2\NUL\NUL\NUL\NUL\NUL\SOH\NUL\SYN"
                    <> "kafka-python-2.0.3-dev"
     let reqHeader = RequestHeader (ApiKey 18) 0 1
-                                  (Right $ Just "kafka-python-2.0.3-dev")
-                                  (Left Unsupported)
+                                  (Just $ Just "kafka-python-2.0.3-dev")
+                                  Nothing
         reqBody = ApiVersionsRequestV0
         reqHeaderBs = runPut reqHeader
         reqBodyBs = runPut reqBody
@@ -136,8 +136,8 @@ realSpec = describe "Kafka.Protocol.Encoding" $ do
                    <> "2.2.0-rdkafka-2.2.0\NUL"
     let reqHeader = RequestHeader
                       (ApiKey 18) 3 1
-                      (Right $ Just "confluent_kafka_client")
-                      (Right EmptyTaggedFields)
+                      (Just $ Just "confluent_kafka_client")
+                      (Just EmptyTaggedFields)
         reqBody = ApiVersionsRequestV3
                     (CompactString "confluent-kafka-python")
                     (CompactString "2.2.0-rdkafka-2.2.0")
