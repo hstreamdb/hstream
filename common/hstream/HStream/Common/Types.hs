@@ -36,7 +36,7 @@ fromInternalServerNode I.ServerNode{..} =
   A.ServerNode { serverNodeId   = serverNodeId
                , serverNodeHost = Text.decodeUtf8 serverNodeAdvertisedAddress
                , serverNodePort = serverNodePort
-               , serverNodeVersion = convertHStreamVersion serverNodeVersion
+               , serverNodeVersion = serverNodeVersion
                }
 
 fromInternalServerNodeWithKey :: Maybe Text -> I.ServerNode -> IO (V.Vector A.ServerNode)
@@ -44,7 +44,7 @@ fromInternalServerNodeWithKey Nothing I.ServerNode{..} = pure . V.singleton $
   A.ServerNode { serverNodeId   = serverNodeId
                , serverNodeHost = Text.decodeUtf8 serverNodeAdvertisedAddress
                , serverNodePort = serverNodePort
-               , serverNodeVersion = convertHStreamVersion serverNodeVersion
+               , serverNodeVersion = serverNodeVersion
                }
 fromInternalServerNodeWithKey (Just key) I.ServerNode{..} =
   case Map.lookup key serverNodeAdvertisedListeners of
@@ -56,13 +56,8 @@ fromInternalServerNodeWithKey (Just key) I.ServerNode{..} =
       A.ServerNode { serverNodeId   = serverNodeId
                    , serverNodeHost = listenerAddress
                    , serverNodePort = fromIntegral listenerPort
-                   , serverNodeVersion = convertHStreamVersion serverNodeVersion
+                   , serverNodeVersion = serverNodeVersion
                    }) xs
-
-convertHStreamVersion :: Maybe I.HStreamVersion -> Maybe A.HStreamVersion
-convertHStreamVersion vs = do
-  I.HStreamVersion{..} <- vs
-  return A.HStreamVersion{..}
 
 getHStreamVersion :: IO A.HStreamVersion
 getHStreamVersion = do

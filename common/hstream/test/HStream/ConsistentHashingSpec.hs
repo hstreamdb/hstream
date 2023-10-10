@@ -24,8 +24,9 @@ import           HStream.Common.ConsistentHashing (ServerMap,
                                                    constructServerMap,
                                                    getAllocatedNode)
 import qualified HStream.Common.ConsistentHashing as CH
-import           HStream.Server.HStreamInternal   (HStreamVersion (..),
-                                                   ServerNode (..))
+import           HStream.Server.HStreamApi        (HStreamVersion (..))
+import           HStream.Server.HStreamInternal   (ServerNode (..))
+
 
 instance Arbitrary HStreamVersion where
   arbitrary = HStreamVersion <$> arbitrary <*> arbitrary

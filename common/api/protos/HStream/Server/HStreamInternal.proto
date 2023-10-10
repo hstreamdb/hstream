@@ -2,14 +2,11 @@ syntax = "proto3";
 
 package hstream.server.internal;
 
-message HStreamVersion {
-  string version = 1;
-  string commit = 2;
-}
+import "HStream/Server/HStreamApi.proto";
 
 message ServerNode {
   uint32 id = 1;
-  HStreamVersion version = 2; 
+  hstream.server.HStreamVersion version = 2; 
   uint32 port = 3;
   uint32 gossipPort = 4;
   bytes advertisedAddress = 5;
