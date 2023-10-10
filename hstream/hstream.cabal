@@ -345,6 +345,33 @@ executable hstream-kafka-server
   ghc-options:
     -threaded -rtsopts "-with-rtsopts=-N -A64m -n4m -qg -qn1"
 
+executable hstream-kafka-client
+  if flag(hstream_enable_asan)
+    import: shared-properties, link-asan
+
+  if !flag(hstream_enable_asan)
+    import: shared-properties
+
+  main-is:          app/kafka-client.hs
+  build-depends:
+    , aeson
+    , base                  >=4.11 && <5
+    , bytestring
+    , hstream-common-base
+    , hstream-kafka
+    , optparse-applicative
+    , text
+    , vector
+
+  if flag(hstream_use_grpc_haskell)
+    cpp-options: -DHStreamUseGrpcHaskell
+
+  if flag(hstream_enable_asan)
+    cpp-options: -DHSTREAM_ENABLE_ASAN
+
+  default-language: GHC2021
+  ghc-options:      -threaded -rtsopts -with-rtsopts=-N
+
 test-suite hstream-test
   import:             shared-properties
   type:               exitcode-stdio-1.0

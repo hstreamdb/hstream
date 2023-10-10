@@ -11,6 +11,7 @@ module Kafka.Protocol.Service
   , hd
 
   , RPC (..)
+  , getRpcMethod
   , Service (..)
   , HasAllMethods
   , HasMethodImpl (..)

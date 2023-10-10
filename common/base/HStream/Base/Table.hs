@@ -6,6 +6,7 @@ module HStream.Base.Table
   , defaultShowTableIO
   , defaultShowTableIO'
   , simpleShowTable
+  , Table.left
   ) where
 
 import           Control.Exception      (IOException, try)
