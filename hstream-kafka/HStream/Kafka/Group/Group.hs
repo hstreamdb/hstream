@@ -238,8 +238,17 @@ checkSupportedProtocols Group{..} req = do
 resetGroup :: Group -> IO ()
 resetGroup group@Group{..} = do
   Log.info "reseting group"
+
+  -- cancel all delayedSyncResponses
   cancelDelayedSyncResponses group
+
+  -- reset leader
   IO.writeIORef leader Nothing
+
+  -- cancelDelayedCheckHeartbeats
+  cancelDelayedCheckHeartbeats group
+
+  -- remove all members
   hashtableDeleteAll members
 
   -- update protocols
@@ -320,22 +329,22 @@ rebalance group@Group{..} = do
     selectedProtocolName <- computeProtocolName group
     Log.info $ "selected protocolName:" <> Log.buildString' selectedProtocolName
 
-    membersInResponse <- map (\(_, m) -> getJoinResponseMember selectedProtocolName m) <$> H.toList members
-    Log.debug $ "members in join responses" <> Log.buildString' membersInResponse
+    leaderMembersInResponse <- map (\(_, m) -> getJoinResponseMember selectedProtocolName m) <$> H.toList members
+    Log.debug $ "members in join responses" <> Log.buildString' leaderMembersInResponse
 
     delayedJoinResponseList <- H.toList delayedJoinResponses
 
     Log.info $ "set all delayed responses, response list size:" <> Log.buildString' (length delayedJoinResponseList)
     -- response all delayedJoinResponses
     M.forM_ delayedJoinResponseList $ \(memberId, delayed) -> do
-      -- TODO: leader vs. normal member
-      let resp = K.JoinGroupResponseV0 {
+      let memebersInResponse = if leaderMemberId == memberId then leaderMembersInResponse else []
+          resp = K.JoinGroupResponseV0 {
           errorCode = 0
         , generationId = nextGenerationId
         , protocolName = selectedProtocolName
         , leader = leaderMemberId
         , memberId = memberId
-        , members = K.KaArray (Just $ V.fromList membersInResponse)
+        , members = K.KaArray (Just $ V.fromList memebersInResponse)
         }
       Log.debug $ "set delayed response:" <> Log.buildString' resp
         <> " for " <> Log.buildString' memberId
@@ -416,23 +425,32 @@ doSyncGroup group@Group{..} req@K.SyncGroupRequestV0{memberId=memberId} delayedR
   -- set delayed response
   H.lookup delayedSyncResponses memberId >>= \case
     Nothing -> H.insert delayedSyncResponses memberId delayedResponse
-    _ -> error "TODO: DUPLICATED SYNC GROUP"
+    _ -> do
+      Log.warning $ "received duplicated sync group request:" <> Log.buildString' req <> ", rejected"
+      throw (ErrorCodeException K.UNKNOWN_SERVER_ERROR)
 
   -- set assignments if this req from leader
   (Just leaderMemberId) <- IO.readIORef leader
-  when (memberId == leaderMemberId) $ setAndPropagateAssignment group req
+  Log.info $ "sync group leaderMemberId: " <> Log.buildString' leaderMemberId
+    <> " memberId:" <> Log.buildString' memberId
+  when (memberId == leaderMemberId) $ do
+    Log.info $ "received leader SyncGroup request, " <> Log.buildString' memberId
+    setAndPropagateAssignment group req
 
-  -- setup delayedCheckHeart
-  setupDelayedCheckHeartbeat group
+    -- setup delayedCheckHeart
+    setupDelayedCheckHeartbeat group
 
-  -- set state
-  IO.writeIORef state Stable
+    -- set state
+    IO.writeIORef state Stable
 
 setAndPropagateAssignment :: Group -> K.SyncGroupRequestV0 -> IO ()
 setAndPropagateAssignment Group{..} req = do
   -- set assignments
   let assignments = fromMaybe V.empty (K.unKaArray req.assignments)
+  Log.info $ "setting assignments:" <> Log.buildString' assignments
   V.forM_ assignments $ \assignment -> do
+    Log.info $ "set member assignment, member:" <> Log.buildString' req.memberId
+      <> ", assignment:" <> Log.buildString' assignment.assignment
     Just member <- H.lookup members assignment.memberId
     -- set assignments
     IO.writeIORef member.assignment assignment.assignment
@@ -440,8 +458,10 @@ setAndPropagateAssignment Group{..} req = do
     H.lookup delayedSyncResponses assignment.memberId >>= \case
       Nothing -> pure ()
       Just delayed -> do
-        _ <- C.tryPutMVar delayed (K.SyncGroupResponseV0 0 assignment.assignment)
-        H.delete delayedJoinResponses assignment.memberId
+        M.void $ C.tryPutMVar delayed (K.SyncGroupResponseV0 0 assignment.assignment)
+  -- delete all pending delayedSyncResponses
+  hashtableDeleteAll delayedSyncResponses
+  Log.info $ "setAndPropagateAssignment completed"
 
 leaveGroup :: Group -> K.LeaveGroupRequestV0 -> IO K.LeaveGroupResponseV0
 leaveGroup group@Group{..} req = do
@@ -512,11 +532,22 @@ setupDelayedCheckHeartbeat group@Group{..} = do
       <> ", member:" <> Log.buildString' member.memberId
     IO.writeIORef member.heartbeatThread (Just threadId)
 
+-- cancel all delayedCheckHearts
+cancelDelayedCheckHeartbeats :: Group -> IO ()
+cancelDelayedCheckHeartbeats Group{..} = do
+  (flip H.mapM_) members $ \(mid, member)-> do
+    IO.readIORef member.heartbeatThread >>= \case
+      Nothing -> pure ()
+      Just tid -> do
+        Log.info $ "cancel delayedCheckHeart, member:" <> Log.buildString' mid
+        C.killThread tid
+        IO.writeIORef member.heartbeatThread Nothing
+
 delayedCheckHeart :: Group -> Member -> Int32 -> IO ()
 delayedCheckHeart group member delayMs = do
   C.threadDelay (1000 * fromIntegral delayMs)
   nextDelayMs <- checkHeartbeatAndMaybeRebalance group member
-  M.when (nextDelayMs <= 0) $ do
+  M.when (nextDelayMs > 0) $ do
     delayedCheckHeart group member nextDelayMs
 
 resetGroupAndRebalance :: Group -> IO ()
@@ -536,9 +567,11 @@ checkHeartbeatAndMaybeRebalance group Member{..} = do
     let nextDelayMs = sessionTimeoutMs - (fromIntegral (now - lastUpdated))
     M.when (nextDelayMs <= 0) $ do
       Log.info $ "heartbeat timeout, memberId:" <> Log.buildString' memberId
-        <> "lastHeartbeat:" <> Log.buildString' lastUpdated
-        <> "now:" <> Log.buildString' now
-        <> "sessionTimeoutMs:" <> Log.buildString' sessionTimeoutMs
+        <> ", lastHeartbeat:" <> Log.buildString' lastUpdated
+        <> ", now:" <> Log.buildString' now
+        <> ", sessionTimeoutMs:" <> Log.buildString' sessionTimeoutMs
+      -- remove itself (to avoid kill itself in resetGroupAndRebalance)
+      IO.writeIORef heartbeatThread Nothing
       resetGroupAndRebalance group
     return nextDelayMs
 
