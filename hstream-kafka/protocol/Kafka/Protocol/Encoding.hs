@@ -1,6 +1,7 @@
 {-# LANGUAGE CPP                   #-}
 {-# LANGUAGE DefaultSignatures     #-}
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE OverloadedRecordDot   #-}
 -- As of GHC 8.8.1, GHC started complaining about -optP--cpp when profling
 -- is enabled. See https://gitlab.haskell.org/ghc/ghc/issues/17185.
 {-# OPTIONS_GHC -pgmP "hpp --cpp -P" #-}
@@ -31,6 +32,7 @@ module Kafka.Protocol.Encoding
   , decodeBatchRecords
   , encodeBatchRecords
   , encodeBatchRecordsLazy
+  , modifyBatchRecordsOffset
   , RecordV0 (..)
   , RecordV1 (..)
   , RecordV2 (..)
@@ -334,6 +336,64 @@ data BatchRecord
   | BatchRecordV2 RecordBatch
   deriving (Show)
 
+decodeBatchRecords :: Bool -> ByteString -> IO (Vector BatchRecord)
+decodeBatchRecords shouldValidateCrc batchBs = Growing.new >>= decode batchBs
+  where
+    decode "" !v = Growing.unsafeFreeze v
+    decode !bs !v = do
+      (RecordBase{..}, bs') <- runGet' @RecordBase bs
+      case magic of
+        0 -> do let crc = partitionLeaderEpochOrCrc
+                    messageSize = batchLength
+                when (messageSize < fromIntegral minRecordSizeV0) $
+                  throwIO $ DecodeError $ "Invalid messageSize"
+                when shouldValidateCrc $ do
+                  -- NOTE: pass the origin inputs to validLegacyCrc, not the bs'
+                  validLegacyCrc (fromIntegral batchLength) crc bs
+                (RecordBodyV0{..}, remainder) <- runGet' @RecordBodyV0 bs'
+                !v' <- Growing.append v (BatchRecordV0 RecordV0{..})
+                decode remainder v'
+        1 -> do let crc = partitionLeaderEpochOrCrc
+                    messageSize = batchLength
+                when (messageSize < fromIntegral minRecordSizeV1) $
+                  throwIO $ DecodeError $ "Invalid messageSize"
+                when shouldValidateCrc $ do
+                  -- NOTE: pass the origin inputs to validLegacyCrc, not the bs'
+                  validLegacyCrc (fromIntegral batchLength) crc bs
+                (RecordBodyV1{..}, remainder) <- runGet' @RecordBodyV1 bs'
+                !v' <- Growing.append v (BatchRecordV1 RecordV1{..})
+                decode remainder v'
+        2 -> do let partitionLeaderEpoch = partitionLeaderEpochOrCrc
+                (crc, bs'') <- runGet' @Int32 bs'
+                when (shouldValidateCrc && fromIntegral (crc32 bs'') /= crc) $
+                  throwIO $ DecodeError "Invalid CRC32"
+                (RecordBodyV2{..}, remainder) <- runGet' @RecordBodyV2 bs'
+                !v' <- Growing.append v (BatchRecordV2 RecordBatch{..})
+                decode remainder v'
+        _ -> throwIO $ DecodeError $ "Invalid magic " <> show magic
+{-# INLINABLE decodeBatchRecords #-}
+
+encodeBatchRecordsLazy :: Vector BatchRecord -> BL.ByteString
+encodeBatchRecordsLazy rs =
+  let builder = V.foldl' (\s x -> s <> putBatchRecord x) mempty rs
+   in toLazyByteString builder
+{-# INLINABLE encodeBatchRecordsLazy #-}
+
+encodeBatchRecords :: Vector BatchRecord -> ByteString
+encodeBatchRecords = BL.toStrict . encodeBatchRecordsLazy
+{-# INLINABLE encodeBatchRecords #-}
+
+modifyBatchRecordsOffset
+  :: (Int64 -> Int64)
+  -> Vector BatchRecord
+  -> Vector BatchRecord
+modifyBatchRecordsOffset f rs = V.map go rs
+  where
+    go (BatchRecordV0 r) = BatchRecordV0 r{baseOffset = f r.baseOffset}
+    go (BatchRecordV1 r) = BatchRecordV1 r{baseOffset = f r.baseOffset}
+    go (BatchRecordV2 r) = BatchRecordV2 r{baseOffset = f r.baseOffset}
+{-# INLINABLE modifyBatchRecordsOffset #-}
+
 putBatchRecord :: BatchRecord -> Builder
 putBatchRecord (BatchRecordV0 r) = put r
 putBatchRecord (BatchRecordV1 r) = put r
@@ -392,43 +452,6 @@ data RecordBodyV2 = RecordBodyV2
 
 instance Serializable RecordBodyV2
 
-decodeBatchRecords :: Bool -> ByteString -> IO (Vector BatchRecord)
-decodeBatchRecords shouldValidateCrc batchBs = Growing.new >>= decode batchBs
-  where
-    decode "" !v = Growing.unsafeFreeze v
-    decode !bs !v = do
-      (RecordBase{..}, bs') <- runGet' @RecordBase bs
-      case magic of
-        0 -> do let crc = partitionLeaderEpochOrCrc
-                    messageSize = batchLength
-                when (messageSize < fromIntegral minRecordSizeV0) $
-                  throwIO $ DecodeError $ "Invalid messageSize"
-                when shouldValidateCrc $ do
-                  -- NOTE: pass the origin inputs to validLegacyCrc, not the bs'
-                  validLegacyCrc (fromIntegral batchLength) crc bs
-                (RecordBodyV0{..}, remainder) <- runGet' @RecordBodyV0 bs'
-                !v' <- Growing.append v (BatchRecordV0 RecordV0{..})
-                decode remainder v'
-        1 -> do let crc = partitionLeaderEpochOrCrc
-                    messageSize = batchLength
-                when (messageSize < fromIntegral minRecordSizeV1) $
-                  throwIO $ DecodeError $ "Invalid messageSize"
-                when shouldValidateCrc $ do
-                  -- NOTE: pass the origin inputs to validLegacyCrc, not the bs'
-                  validLegacyCrc (fromIntegral batchLength) crc bs
-                (RecordBodyV1{..}, remainder) <- runGet' @RecordBodyV1 bs'
-                !v' <- Growing.append v (BatchRecordV1 RecordV1{..})
-                decode remainder v'
-        2 -> do let partitionLeaderEpoch = partitionLeaderEpochOrCrc
-                (crc, bs'') <- runGet' @Int32 bs'
-                when (shouldValidateCrc && fromIntegral (crc32 bs'') /= crc) $
-                  throwIO $ DecodeError "Invalid CRC32"
-                (RecordBodyV2{..}, remainder) <- runGet' @RecordBodyV2 bs'
-                !v' <- Growing.append v (BatchRecordV2 RecordBatch{..})
-                decode remainder v'
-        _ -> throwIO $ DecodeError $ "Invalid magic " <> show magic
-{-# INLINABLE decodeBatchRecords #-}
-
 validLegacyCrc :: Int -> Int32 -> ByteString -> IO ()
 validLegacyCrc batchLength crc bs = do
   crcPayload <- getLegacyCrcPayload batchLength bs
@@ -442,16 +465,6 @@ getLegacyCrcPayload msgSize bs =
                   takeBytes (msgSize - 4)
    in fst <$> runParser' parser bs
 {-# INLINE getLegacyCrcPayload #-}
-
-encodeBatchRecordsLazy :: Vector BatchRecord -> BL.ByteString
-encodeBatchRecordsLazy rs =
-  let builder = V.foldl' (\s x -> s <> putBatchRecord x) mempty rs
-   in toLazyByteString builder
-{-# INLINABLE encodeBatchRecordsLazy #-}
-
-encodeBatchRecords :: Vector BatchRecord -> ByteString
-encodeBatchRecords = BL.toStrict . encodeBatchRecordsLazy
-{-# INLINABLE encodeBatchRecords #-}
 
 -------------------------------------------------------------------------------
 -- LegacyRecord(MessageSet): v0-1
