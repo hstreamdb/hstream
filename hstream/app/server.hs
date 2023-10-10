@@ -2,6 +2,7 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE NamedFieldPuns      #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE QuasiQuotes         #-}
@@ -120,6 +121,7 @@ app config@ServerOpts{..} = do
        action (FileHandle addr) db_m
   where
     action h db_m = do
+      hstreamVersion <- getHStreamVersion
       let serverNode =
             I.ServerNode{ serverNodeId = _serverID
                         , serverNodePort = fromIntegral _serverPort
@@ -127,6 +129,7 @@ app config@ServerOpts{..} = do
                         , serverNodeGossipPort = fromIntegral _serverInternalPort
                         , serverNodeGossipAddress = encodeUtf8 . T.pack $ _serverGossipAddress
                         , serverNodeAdvertisedListeners = advertisedListenersToPB _serverAdvertisedListeners
+                        , serverNodeVersion = Just hstreamVersion
                         }
 
       scMVar <- newEmptyMVar
