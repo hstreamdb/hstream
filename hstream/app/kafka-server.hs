@@ -29,6 +29,7 @@ import           ZooKeeper                      (withResource, zookeeperResInit)
 import           HStream.Base                   (setupFatalSignalHandler)
 import           HStream.Common.Server.HashRing (updateHashRing)
 import qualified HStream.Common.Server.MetaData as M
+import           HStream.Common.Types           (getHStreamVersion)
 import qualified HStream.Exception              as HE
 import           HStream.Gossip                 (GossipContext (..),
                                                  defaultGossipOpts,
@@ -85,8 +86,10 @@ app config@ServerOpts{..} = do
 
   where
     action h = do
+      hstreamVersion <- getHStreamVersion
       let serverNode =
             I.ServerNode{ serverNodeId = _serverID
+                        , serverNodeVersion = Just hstreamVersion
                         , serverNodePort = fromIntegral _serverPort
                         , serverNodeAdvertisedAddress = encodeUtf8 . T.pack $ _advertisedAddress
                         , serverNodeGossipPort = fromIntegral _serverGossipPort
