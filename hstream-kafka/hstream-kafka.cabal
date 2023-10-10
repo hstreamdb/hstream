@@ -104,6 +104,8 @@ test-suite kafka-protocol-test
 library
   import:             shared-properties
   exposed-modules:
+    HStream.Kafka.Client.Api
+    HStream.Kafka.Client.Cli
     HStream.Kafka.Common.OffsetManager
     HStream.Kafka.Common.Read
     HStream.Kafka.Common.RecordFormat
