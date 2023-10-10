@@ -19,7 +19,8 @@ import           Data.Int
 import           Data.Word
 import           GHC.Stack                         (HasCallStack)
 
-import           HStream.Kafka.Common.Read         (readOneRecord)
+import           HStream.Kafka.Common.Read         (readOneRecord,
+                                                    readOneRecordBypassGap)
 import           HStream.Kafka.Common.RecordFormat
 import qualified HStream.Store                     as S
 
@@ -76,7 +77,7 @@ cleanOffsetCache OffsetManager{..} = H.delete offsets
 getOldestOffset :: HasCallStack => OffsetManager -> Word64 -> IO (Maybe Int64)
 getOldestOffset OffsetManager{..} logid = do
   -- Actually, we only need the first lsn but there is no easy way to get
-  (fmap $ offset . third) <$> readOneRecord store reader logid (pure (S.LSN_MIN, S.LSN_MAX))
+  (fmap $ offset . third) <$> readOneRecordBypassGap store reader logid (pure (S.LSN_MIN, S.LSN_MAX))
 
 getLatestOffset :: HasCallStack => OffsetManager -> Word64 -> IO (Maybe Int64)
 getLatestOffset o logid = (fmap fst) <$> getLatestOffsetWithLsn o logid
