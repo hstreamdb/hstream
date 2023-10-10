@@ -50,7 +50,9 @@ readOneRecord_ bypassGap store reader logid getLsn = do
   if isEmpty
      then pure Nothing
      else do (start, end) <- getLsn
-             finally (acquire start end) release
+             if start == S.LSN_INVALID || end == S.LSN_INVALID
+                then pure Nothing
+                else finally (acquire start end) release
   where
     acquire start end = do
       -- the log is not empty

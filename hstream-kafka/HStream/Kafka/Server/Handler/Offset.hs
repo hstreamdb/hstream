@@ -1,3 +1,5 @@
+{-# LANGUAGE PatternSynonyms #-}
+
 module HStream.Kafka.Server.Handler.Offset
  ( handleOffsetCommitV0
  , handleOffsetFetchV0
@@ -8,6 +10,7 @@ where
 import           Control.Concurrent                       (withMVar)
 import qualified Data.HashMap.Strict                      as HM
 import           Data.Int                                 (Int64)
+import           Data.Maybe                               (fromMaybe)
 import           Data.Text                                (Text)
 import           Data.Vector                              (Vector)
 import qualified Data.Vector                              as V
@@ -25,6 +28,12 @@ import qualified Kafka.Protocol.Service                   as K
 --------------------
 -- 2: ListOffsets
 --------------------
+pattern LatestTimestamp :: Int64
+pattern LatestTimestamp = (-1)
+
+pattern EarliestTimestamp :: Int64
+pattern EarliestTimestamp = (-2)
+
 handleListOffsetsV0
   :: ServerContext -> K.RequestContext -> K.ListOffsetsRequestV0 -> IO K.ListOffsetsResponseV0
 handleListOffsetsV0 sc _ K.ListOffsetsRequestV0{..} = do
@@ -35,32 +44,34 @@ handleListOffsetsV0 sc _ K.ListOffsetsRequestV0{..} = do
                listOffsetTopicPartitions sc name (K.unKaArray partitions)
       return $ K.ListOffsetsResponseV0 {topics = K.KaArray {unKaArray = Just res}}
 
-latestTimestamp :: Int64
-latestTimestamp = -1
-
-earliestTimestamp :: Int64
-earliestTimestamp = -2
-
 listOffsetTopicPartitions :: ServerContext -> Text -> Maybe (Vector K.ListOffsetsPartitionV0) -> IO K.ListOffsetsTopicResponseV0
 listOffsetTopicPartitions _ topicName Nothing = do
   return $ K.ListOffsetsTopicResponseV0 {partitions = K.KaArray {unKaArray = Nothing}, name = topicName}
 listOffsetTopicPartitions ServerContext{..} topicName (Just offsetsPartitions) = do
   orderedParts <- S.listStreamPartitionsOrdered scLDClient (S.transToTopicStreamName topicName)
   res <- V.forM offsetsPartitions $ \K.ListOffsetsPartitionV0{..} -> do
-    let logid = orderedParts V.!? (fromIntegral partitionIndex)
-    offset <- getOffset logid timestamp
+    -- TODO: handle Nothing
+    let partition = orderedParts V.! (fromIntegral partitionIndex)
+    offset <- getOffset (snd partition) timestamp
     return $ K.ListOffsetsPartitionResponseV0
-              { oldStyleOffsets = K.KaArray {unKaArray = V.singleton <$> offset}
+              { oldStyleOffsets = K.KaArray $ Just $ V.singleton offset
               , partitionIndex = partitionIndex
               , errorCode = K.NONE
               }
   return $ K.ListOffsetsTopicResponseV0 {partitions = K.KaArray {unKaArray = Just res}, name = topicName}
  where
-   getOffset Nothing _ = undefined
-   getOffset (Just (_, logid)) timestamp
-     | timestamp == latestTimestamp   = getLatestOffset scOffsetManager logid
-     | timestamp == earliestTimestamp = getOldestOffset scOffsetManager logid
-     | otherwise                      = getOffsetByTimestamp scOffsetManager logid timestamp
+   -- NOTE: The last offset of a partition is the offset of the upcoming
+   -- message, i.e. the offset of the last available message + 1.
+   getOffset logid LatestTimestamp =
+     maybe 0 (+ 1) <$> getLatestOffset scOffsetManager logid
+   getOffset logid EarliestTimestamp =
+     fromMaybe 0 <$> getOldestOffset scOffsetManager logid
+   -- Return the earliest offset whose timestamp is greater than or equal to
+   -- the given timestamp.
+   --
+   -- TODO: actually, this is not supported currently.
+   getOffset logid timestamp =
+     fromMaybe (-1) <$> getOffsetByTimestamp scOffsetManager logid timestamp
 
 --------------------
 -- 8: OffsetCommit
