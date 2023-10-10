@@ -150,7 +150,7 @@ data DescribedGroupV0 = DescribedGroupV0
   } deriving (Show, Eq, Generic)
 instance Serializable DescribedGroupV0
 
-data FetchPartitionV0 = FetchPartitionV0
+data FetchPartitionV2 = FetchPartitionV2
   { partition         :: {-# UNPACK #-} !Int32
     -- ^ The partition index.
   , fetchOffset       :: {-# UNPACK #-} !Int64
@@ -159,17 +159,17 @@ data FetchPartitionV0 = FetchPartitionV0
     -- ^ The maximum bytes to fetch from this partition.  See KIP-74 for cases
     -- where this limit may not be honored.
   } deriving (Show, Eq, Generic)
-instance Serializable FetchPartitionV0
+instance Serializable FetchPartitionV2
 
-data FetchTopicV0 = FetchTopicV0
+data FetchTopicV2 = FetchTopicV2
   { topic      :: !Text
     -- ^ The name of the topic to fetch.
-  , partitions :: !(KaArray FetchPartitionV0)
+  , partitions :: !(KaArray FetchPartitionV2)
     -- ^ The partitions to fetch.
   } deriving (Show, Eq, Generic)
-instance Serializable FetchTopicV0
+instance Serializable FetchTopicV2
 
-data PartitionDataV0 = PartitionDataV0
+data PartitionDataV2 = PartitionDataV2
   { partitionIndex :: {-# UNPACK #-} !Int32
     -- ^ The partition index.
   , errorCode      :: {-# UNPACK #-} !ErrorCode
@@ -179,15 +179,15 @@ data PartitionDataV0 = PartitionDataV0
   , recordBytes    :: !NullableBytes
     -- ^ The record data.
   } deriving (Show, Eq, Generic)
-instance Serializable PartitionDataV0
+instance Serializable PartitionDataV2
 
-data FetchableTopicResponseV0 = FetchableTopicResponseV0
+data FetchableTopicResponseV2 = FetchableTopicResponseV2
   { topic      :: !Text
     -- ^ The topic name.
-  , partitions :: !(KaArray PartitionDataV0)
+  , partitions :: !(KaArray PartitionDataV2)
     -- ^ The topic partitions.
   } deriving (Show, Eq, Generic)
-instance Serializable FetchableTopicResponseV0
+instance Serializable FetchableTopicResponseV2
 
 data JoinGroupRequestProtocolV0 = JoinGroupRequestProtocolV0
   { name     :: !Text
@@ -514,7 +514,7 @@ newtype DescribeGroupsResponseV0 = DescribeGroupsResponseV0
   } deriving (Show, Eq, Generic)
 instance Serializable DescribeGroupsResponseV0
 
-data FetchRequestV0 = FetchRequestV0
+data FetchRequestV2 = FetchRequestV2
   { replicaId :: {-# UNPACK #-} !Int32
     -- ^ The broker ID of the follower, of -1 if this request is from a
     -- consumer.
@@ -522,15 +522,19 @@ data FetchRequestV0 = FetchRequestV0
     -- ^ The maximum time in milliseconds to wait for the response.
   , minBytes  :: {-# UNPACK #-} !Int32
     -- ^ The minimum bytes to accumulate in the response.
-  , topics    :: !(KaArray FetchTopicV0)
+  , topics    :: !(KaArray FetchTopicV2)
     -- ^ The topics to fetch.
   } deriving (Show, Eq, Generic)
-instance Serializable FetchRequestV0
+instance Serializable FetchRequestV2
 
-newtype FetchResponseV0 = FetchResponseV0
-  { responses :: (KaArray FetchableTopicResponseV0)
+data FetchResponseV2 = FetchResponseV2
+  { throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
+  , responses      :: !(KaArray FetchableTopicResponseV2)
+    -- ^ The response topics.
   } deriving (Show, Eq, Generic)
-instance Serializable FetchResponseV0
+instance Serializable FetchResponseV2
 
 newtype FindCoordinatorRequestV0 = FindCoordinatorRequestV0
   { key :: Text
@@ -734,8 +738,7 @@ data HStreamKafkaV0
 instance Service HStreamKafkaV0 where
   type ServiceName HStreamKafkaV0 = "HStreamKafkaV0"
   type ServiceMethods HStreamKafkaV0 =
-    '[ "fetch"
-     , "listOffsets"
+    '[ "listOffsets"
      , "metadata"
      , "offsetCommit"
      , "offsetFetch"
@@ -750,13 +753,6 @@ instance Service HStreamKafkaV0 where
      , "createTopics"
      , "deleteTopics"
      ]
-
-instance HasMethodImpl HStreamKafkaV0 "fetch" where
-  type MethodName HStreamKafkaV0 "fetch" = "fetch"
-  type MethodKey HStreamKafkaV0 "fetch" = 1
-  type MethodVersion HStreamKafkaV0 "fetch" = 0
-  type MethodInput HStreamKafkaV0 "fetch" = FetchRequestV0
-  type MethodOutput HStreamKafkaV0 "fetch" = FetchResponseV0
 
 instance HasMethodImpl HStreamKafkaV0 "listOffsets" where
   type MethodName HStreamKafkaV0 "listOffsets" = "listOffsets"
@@ -885,6 +881,7 @@ instance Service HStreamKafkaV2 where
   type ServiceName HStreamKafkaV2 = "HStreamKafkaV2"
   type ServiceMethods HStreamKafkaV2 =
     '[ "produce"
+     , "fetch"
      , "apiVersions"
      ]
 
@@ -894,6 +891,13 @@ instance HasMethodImpl HStreamKafkaV2 "produce" where
   type MethodVersion HStreamKafkaV2 "produce" = 2
   type MethodInput HStreamKafkaV2 "produce" = ProduceRequestV2
   type MethodOutput HStreamKafkaV2 "produce" = ProduceResponseV2
+
+instance HasMethodImpl HStreamKafkaV2 "fetch" where
+  type MethodName HStreamKafkaV2 "fetch" = "fetch"
+  type MethodKey HStreamKafkaV2 "fetch" = 1
+  type MethodVersion HStreamKafkaV2 "fetch" = 2
+  type MethodInput HStreamKafkaV2 "fetch" = FetchRequestV2
+  type MethodOutput HStreamKafkaV2 "fetch" = FetchResponseV2
 
 instance HasMethodImpl HStreamKafkaV2 "apiVersions" where
   type MethodName HStreamKafkaV2 "apiVersions" = "apiVersions"
@@ -944,7 +948,7 @@ instance Show ApiKey where
 supportedApiVersions :: [ApiVersionV0]
 supportedApiVersions =
   [ ApiVersionV0 (ApiKey 0) 2 2
-  , ApiVersionV0 (ApiKey 1) 0 0
+  , ApiVersionV0 (ApiKey 1) 2 2
   , ApiVersionV0 (ApiKey 2) 0 0
   , ApiVersionV0 (ApiKey 3) 0 1
   , ApiVersionV0 (ApiKey 8) 0 0
@@ -963,7 +967,7 @@ supportedApiVersions =
 
 getHeaderVersion :: ApiKey -> Int16 -> (Int16, Int16)
 getHeaderVersion (ApiKey 0) 2  = (1, 0)
-getHeaderVersion (ApiKey 1) 0  = (1, 0)
+getHeaderVersion (ApiKey 1) 2  = (1, 0)
 getHeaderVersion (ApiKey 2) 0  = (1, 0)
 getHeaderVersion (ApiKey 3) 0  = (1, 0)
 getHeaderVersion (ApiKey 3) 1  = (1, 0)
