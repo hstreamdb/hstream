@@ -449,7 +449,7 @@ setAndPropagateAssignment Group{..} req = do
   let assignments = fromMaybe V.empty (K.unKaArray req.assignments)
   Log.info $ "setting assignments:" <> Log.buildString' assignments
   V.forM_ assignments $ \assignment -> do
-    Log.info $ "set member assignment, member:" <> Log.buildString' req.memberId
+    Log.info $ "set member assignment, member:" <> Log.buildString' assignment.memberId
       <> ", assignment:" <> Log.buildString' assignment.assignment
     Just member <- H.lookup members assignment.memberId
     -- set assignments
