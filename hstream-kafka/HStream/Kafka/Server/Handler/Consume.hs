@@ -1,7 +1,7 @@
 {-# LANGUAGE BangPatterns #-}
 
 module HStream.Kafka.Server.Handler.Consume
-  ( handleFetchV0
+  ( handleFetchV2
   ) where
 
 import           Control.Monad
@@ -25,9 +25,9 @@ import qualified Kafka.Protocol.Service             as K
 --------------------
 -- 1: Fetch
 --------------------
-handleFetchV0
-  :: ServerContext -> K.RequestContext -> K.FetchRequestV0 -> IO K.FetchResponseV0
-handleFetchV0 ServerContext{..} _ K.FetchRequestV0{..} = case topics of
+handleFetchV2
+  :: ServerContext -> K.RequestContext -> K.FetchRequestV2 -> IO K.FetchResponseV2
+handleFetchV2 ServerContext{..} _ K.FetchRequestV2{..} = case topics of
   K.KaArray Nothing -> undefined
   K.KaArray (Just topicReqs_) -> do
     (_,_,_,resps) <-
@@ -55,21 +55,20 @@ handleFetchV0 ServerContext{..} _ K.FetchRequestV0{..} = case topics of
                         , acc_resps ++ [resp]
                         )
             ) (True, Nothing, maxWaitMs, []) topicReqs_
-    return $ K.FetchResponseV0 (K.KaArray $ Just $ V.fromList resps)
-
+    return $ K.FetchResponseV2 0{- TODO: throttleTimeMs -} (K.KaArray $ Just $ V.fromList resps)
 
 -------------------------------------------------------------------------------
 
 readSingleTopic
   :: S.LDClient
   -> K.OffsetManager
-  -> K.FetchTopicV0
+  -> K.FetchTopicV2
   -> Maybe Int32 -- limit: total bytes left now
   -> Int32       -- limit: time left now
   -> Bool        -- is this the first topic? (if so, omit the bytes limit of this )
-  -> IO (Maybe Int32, Int32, K.FetchableTopicResponseV0) -- (total bytes left, time left, response of this topic)
-readSingleTopic ldclient om K.FetchTopicV0{..} totalMaxBytes_m timeLeftMs isFirstTopic = case partitions of
-  K.KaArray Nothing    -> return (totalMaxBytes_m, timeLeftMs, K.FetchableTopicResponseV0 topic (K.KaArray Nothing))
+  -> IO (Maybe Int32, Int32, K.FetchableTopicResponseV2) -- (total bytes left, time left, response of this topic)
+readSingleTopic ldclient om K.FetchTopicV2{..} totalMaxBytes_m timeLeftMs isFirstTopic = case partitions of
+  K.KaArray Nothing    -> return (totalMaxBytes_m, timeLeftMs, K.FetchableTopicResponseV2 topic (K.KaArray Nothing))
   K.KaArray (Just parts) -> do
     orderedParts <- S.listStreamPartitionsOrdered ldclient (S.transToTopicStreamName topic)
     -- FIXME: is it proper to use one reader for all partitions of a topic?
@@ -79,7 +78,7 @@ readSingleTopic ldclient om K.FetchTopicV0{..} totalMaxBytes_m timeLeftMs isFirs
               , acc_totalMaxBytes_m
               , acc_timeLeft
               , acc_resps
-              ) K.FetchPartitionV0{..} ->
+              ) K.FetchPartitionV2{..} ->
                if acc_timeLeft <= 0 then
                  return (acc_isFirstPartition, acc_totalMaxBytes_m, acc_timeLeft, acc_resps)
                else do
@@ -87,10 +86,10 @@ readSingleTopic ldclient om K.FetchTopicV0{..} totalMaxBytes_m timeLeftMs isFirs
                  mlsn <- getPartitionLsn ldclient om logId fetchOffset
                  case mlsn of
                    Nothing ->
-                     let resp = errorPartitionResponseV0 partition K.OFFSET_OUT_OF_RANGE
+                     let resp = errorPartitionResponseV2 partition K.OFFSET_OUT_OF_RANGE
                       in pure (acc_isFirstPartition, acc_totalMaxBytes_m, acc_timeLeft, acc_resps ++ [resp])
                    Just (S.LSN_INVALID, S.LSN_INVALID, hioffset) ->
-                     let resp = K.PartitionDataV0 partition K.NONE hioffset (Just "")
+                     let resp = K.PartitionDataV2 partition K.NONE hioffset (Just "")
                       in pure (acc_isFirstPartition, acc_totalMaxBytes_m, acc_timeLeft, acc_resps ++ [resp])
                    Just (startlsn, endlsn, hioffset) -> do
                      (len, timeLeftMs', resp) <-
@@ -112,7 +111,7 @@ readSingleTopic ldclient om K.FetchTopicV0{..} totalMaxBytes_m timeLeftMs isFirs
             ) (True, totalMaxBytes_m, timeLeftMs, []) parts -- !!! FIXME: update time left!!!
     return ( totalMaxBytes_m'
            , timeLeftMs'
-           , K.FetchableTopicResponseV0 topic (K.KaArray $ Just $ V.fromList resps)
+           , K.FetchableTopicResponseV2 topic (K.KaArray $ Just $ V.fromList resps)
            )
 
 -- Return tuple of (startLsn, endLsn, highwaterOffset)
@@ -152,7 +151,7 @@ readSinglePartition
   -> Int32        -- limit: time left now
   -> Bool         -- is this the first partition? (if so, return the data even if it exceeds the limit)
   -> Bool         -- is this the first topic? (if so and this is also the first partition, return the data even if it exceeds the limit)
-  -> IO (Int32, Int32, K.PartitionDataV0) -- (the number of bytes read, time left, response of this partition)
+  -> IO (Int32, Int32, K.PartitionDataV2) -- (the number of bytes read, time left, response of this partition)
 readSinglePartition reader logId (startLSN, endLSN) partitionIndex
                     offset highwaterOffset totalMaxBytes_m partitionMaxBytes
                     timeLeftMs isFirstPartition isFirstTopic = do
@@ -165,7 +164,7 @@ readSinglePartition reader logId (startLSN, endLSN) partitionIndex
     S.readerStopReading reader logId -- FIXME: does `readerStopReading` actually stop the reading of the logId?
   let returnBytes = BS.concat acc    -- FIXME: we just concat the payload bytes of each record, is this proper?
       returnBytesLen = BS.length returnBytes -- FIXME: is the length correct?
-  let resp = K.PartitionDataV0 partitionIndex K.NONE highwaterOffset (Just returnBytes) -- FIXME: exceptions?
+  let resp = K.PartitionDataV2 partitionIndex K.NONE highwaterOffset (Just returnBytes) -- FIXME: exceptions?
   return (fromIntegral returnBytesLen, timeLeftMs', resp) -- !!! FIXME: update time left!!!
   where
     -- Note: `go` reads records from a logId **one by one** until the time limit or bytes limit is reached.
@@ -217,7 +216,7 @@ readSinglePartition reader logId (startLSN, endLSN) partitionIndex
 
 -------------------------------------------------------------------------------
 
-errorPartitionResponseV0 :: Int32 -> K.ErrorCode -> K.PartitionDataV0
-errorPartitionResponseV0 partitionIndex ec =
-  K.PartitionDataV0 partitionIndex ec (-1) (Just "")
-{-# INLINE errorPartitionResponseV0 #-}
+errorPartitionResponseV2 :: Int32 -> K.ErrorCode -> K.PartitionDataV2
+errorPartitionResponseV2 partitionIndex ec =
+  K.PartitionDataV2 partitionIndex ec (-1) (Just "")
+{-# INLINE errorPartitionResponseV2 #-}
