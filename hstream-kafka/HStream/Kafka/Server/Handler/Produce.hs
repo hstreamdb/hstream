@@ -98,11 +98,14 @@ appendRecords shouldValidateCrc ldclient om logid bs = do
   --
   -- we can always get the correct result with the hi.
   K.withOffsetN om logid (fromIntegral batchLength) $ \o -> do
+    let startOffset = o + 1 - fromIntegral batchLength
+        records' = K.modifyBatchRecordsOffset (+ startOffset) records
     let appendKey = U.int2cbytes o
         appendAttrs = Just [(S.KeyTypeFindKey, appendKey)]
+        storedBs = K.encodeBatchRecords records'
         -- FIXME unlikely overflow: convert batchLength from Int to Int32
-        storedRecord = K.RecordFormat o (fromIntegral batchLength) (K.CompactBytes bs)
+        storedRecord = K.RecordFormat o (fromIntegral batchLength) (K.CompactBytes storedBs)
     r <- S.appendCompressedBS ldclient
                               logid (K.runPut storedRecord)
                               S.CompressionNone appendAttrs
-    pure (r, o - fromIntegral batchLength + 1)
+    pure (r, startOffset)

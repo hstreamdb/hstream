@@ -1,8 +1,5 @@
-{-# LANGUAGE LambdaCase        #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE PatternSynonyms   #-}
-{-# LANGUAGE RecordWildCards   #-}
-{-# LANGUAGE TypeApplications  #-}
+{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module HStream.Gossip
   ( GossipContext(..)
@@ -35,8 +32,7 @@ import qualified Data.List                 as L
 import           Data.Text                 (Text)
 import qualified Data.Vector               as V
 
-import           HStream.Common.Types      (fromInternalServerNodeWithKey,
-                                            getHStreamVersion)
+import           HStream.Common.Types      (fromInternalServerNodeWithKey)
 import           HStream.Gossip.Start      (bootstrap, initGossipContext,
                                             startGossip, waitGossipBoot)
 import           HStream.Gossip.Types      (GossipContext (..), GossipOpts (..),
@@ -53,11 +49,10 @@ import           HStream.Utils             (pattern EnumPB)
 
 describeCluster :: GossipContext -> Maybe Text -> IO (V.Vector ServerNode, V.Vector ServerNodeStatus)
 describeCluster gc@GossipContext{..} advertisedListenersKey = do
-  serverVersion <- getHStreamVersion
   isReady <- tryReadMVar clusterReady
-  self    <- getListeners serverSelf >>= (pure <$> updateServerVersionVector serverVersion)
-  alives  <- getMemberList gc >>= fmap  V.concat . mapM  (fmap (updateServerVersionVector serverVersion) . getListeners) . L.delete serverSelf
-  deads   <- getFailedNodes gc >>= fmap V.concat . mapM (fmap (updateServerVersionVector serverVersion) . getListeners)
+  self    <- getListeners serverSelf
+  alives  <- getMemberList gc >>= fmap  V.concat . mapM getListeners . L.delete serverSelf
+  deads   <- getFailedNodes gc >>= fmap V.concat . mapM getListeners
   let self'   = helper (case isReady of Just _  -> NodeStateRunning; Nothing -> NodeStateStarting) <$> self
       alives' = helper NodeStateRunning <$> alives
       deads'  = helper NodeStateDead    <$> deads
@@ -72,8 +67,3 @@ describeCluster gc@GossipContext{..} advertisedListenersKey = do
       { serverNodeStatusNode  = Just node
       , serverNodeStatusState = EnumPB state
       }
-
-    updateServerVersionVector :: HStreamVersion -> V.Vector ServerNode -> V.Vector ServerNode
-    updateServerVersionVector version = V.map (updateServerVersion version)
-
-    updateServerVersion version node = node { serverNodeVersion = Just version }
