@@ -18,18 +18,21 @@ module HStream.Kafka.Network
   ) where
 
 import           Control.Concurrent
-import qualified Control.Exception              as E
+import qualified Control.Exception                  as E
 import           Control.Monad
-import           Data.ByteString                (ByteString)
-import qualified Data.ByteString.Lazy           as BSL
+import           Data.ByteString                    (ByteString)
+import qualified Data.ByteString.Lazy               as BSL
 import           Data.Int
-import           Data.List                      (find)
-import           Data.Maybe                     (fromMaybe, isJust, isNothing)
-import qualified Network.Socket                 as N
-import qualified Network.Socket.ByteString      as N
-import qualified Network.Socket.ByteString.Lazy as NL
+import           Data.List                          (find)
+import           Data.Maybe                         (fromMaybe, isJust,
+                                                     isNothing)
+import qualified Network.Socket                     as N
+import qualified Network.Socket.ByteString          as N
+import qualified Network.Socket.ByteString.Lazy     as NL
 
-import qualified HStream.Logger                 as Log
+import           HStream.Kafka.Common.OffsetManager (initOffsetReader)
+import           HStream.Kafka.Server.Types         (ServerContext (..))
+import qualified HStream.Logger                     as Log
 import           Kafka.Protocol.Encoding
 import           Kafka.Protocol.Message
 import           Kafka.Protocol.Service
@@ -38,11 +41,10 @@ import           Kafka.Protocol.Service
 data SslOptions
 
 data ServerOptions = ServerOptions
-  { serverHost           :: !String
-  , serverPort           :: !Int
-  , serverSslOptions     :: !(Maybe SslOptions)
-  , serverOnStarted      :: !(Maybe (IO ()))
-  , serverBufferChanSize :: !Word
+  { serverHost       :: !String
+  , serverPort       :: !Int
+  , serverSslOptions :: !(Maybe SslOptions)
+  , serverOnStarted  :: !(Maybe (IO ()))
   }
 
 defaultServerOpts :: ServerOptions
@@ -51,39 +53,46 @@ defaultServerOpts = ServerOptions
   , serverPort           = 9092
   , serverSslOptions     = Nothing
   , serverOnStarted      = Nothing
-  , serverBufferChanSize = 64
   }
 
 -- TODO: This server primarily serves as a demonstration, and there is
 -- certainly room for enhancements and refinements.
-runServer :: ServerOptions -> [ServiceHandler] -> IO ()
-runServer opts handlers =
+runServer
+  :: ServerOptions
+  -> ServerContext
+  -> (ServerContext -> [ServiceHandler])
+  -> IO ()
+runServer opts sc mkHandlers =
   startTCPServer opts $ \s -> do
+    -- Since the Reader is thread-unsafe, for each connection we create a new
+    -- Reader.
+    om <- initOffsetReader $ scOffsetManager sc
+    let sc' = sc{scOffsetManager = om}
     i <- N.recv s 1024
-    talk i Nothing s
+    talk (mkHandlers sc') i Nothing s
   where
-    talk "" _ _ = pure ()  -- client exit
-    talk i m_more s = do
+    talk _ "" _ _ = pure ()  -- client exit
+    talk hds i m_more s = do
       reqBsResult <- case m_more of
                        Nothing -> runParser @ByteString get i
                        Just mf -> mf i
       case reqBsResult of
-        Done "" reqBs -> do respBs <- runHandler reqBs
+        Done "" reqBs -> do respBs <- runHandler hds reqBs
                             NL.sendAll s respBs
                             msg <- N.recv s 1024
-                            talk msg Nothing s
-        Done l reqBs -> do respBs <- runHandler reqBs
+                            talk hds msg Nothing s
+        Done l reqBs -> do respBs <- runHandler hds reqBs
                            NL.sendAll s respBs
-                           talk l Nothing s
+                           talk hds l Nothing s
         More f -> do msg <- N.recv s 1024
-                     talk msg (Just f) s
+                     talk hds msg (Just f) s
         Fail _ err -> E.throwIO $ DecodeError $ "Fail, " <> err
 
-    runHandler reqBs = do
+    runHandler handlers reqBs = do
       headerResult <- runParser @RequestHeader get reqBs
       case headerResult of
         Done l RequestHeader{..} -> do
-          let ServiceHandler{..} = findHandler requestApiKey requestApiVersion
+          let ServiceHandler{..} = findHandler handlers requestApiKey requestApiVersion
           case rpcHandler of
             UnaryHandler rpcHandler' -> do
               req <- runGet l
@@ -106,7 +115,7 @@ runServer opts handlers =
         Fail _ err -> E.throwIO $ DecodeError $ "Fail, " <> err
         More _ -> E.throwIO $ DecodeError $ "More"
 
-    findHandler apikey@(ApiKey key) version = do
+    findHandler handlers apikey@(ApiKey key) version = do
       let m_handler = find (\ServiceHandler{..} ->
             rpcMethod == (key, version)) handlers
           errmsg = "NotImplemented: " <> show apikey <> ":v" <> show version
@@ -132,7 +141,8 @@ startTCPServer ServerOptions{..} server = do
         Just onStarted -> onStarted >> pure sock
         Nothing        -> pure sock
     loop sock = forever $ E.bracketOnError (N.accept sock) (N.close . fst)
-      $ \(conn, _peer) -> void $
+      $ \(conn, peer) -> void $ do
+        Log.info $ "Recv client connection: " <> Log.buildString' peer
         -- 'forkFinally' alone is unlikely to fail thus leaking @conn@,
         -- but 'E.bracketOnError' above will be necessary if some
         -- non-atomic setups (e.g. spawning a subprocess to handle

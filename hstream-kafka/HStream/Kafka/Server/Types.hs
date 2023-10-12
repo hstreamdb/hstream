@@ -49,7 +49,7 @@ initServerContext opts@ServerOpts{..} gossipContext mh = do
   -- XXX: Should we add a server option to toggle Stats?
   statsHolder <- newServerStatsHolder
   epochHashRing <- initializeHashRing gossipContext
-  offsetManager <- newOffsetManager ldclient 1000{- TODO: maxLogs -}
+  offsetManager <- newOffsetManager ldclient
   groupMetadataManager <- newMVar HM.empty
 
   return
