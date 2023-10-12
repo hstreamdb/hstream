@@ -12,6 +12,7 @@ import           Data.Maybe                           (fromMaybe)
 import           Data.Text                            (Text)
 import           Data.Vector                          (Vector)
 import qualified Data.Vector                          as V
+
 import           HStream.Kafka.Common.OffsetManager   (getLatestOffset,
                                                        getOffsetByTimestamp,
                                                        getOldestOffset)

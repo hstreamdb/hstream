@@ -1,8 +1,10 @@
-{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE BangPatterns        #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 
 module HStream.Kafka.Common.OffsetManager
   ( OffsetManager
   , newOffsetManager
+  , initOffsetReader
   , withOffset
   , withOffsetN
   , cleanOffsetCache
@@ -17,6 +19,8 @@ import           Control.Exception
 import qualified Data.HashTable.IO                 as H
 import           Data.Int
 import           Data.Word
+import           Foreign.ForeignPtr                (newForeignPtr_)
+import           Foreign.Ptr                       (nullPtr)
 import           GHC.Stack                         (HasCallStack)
 
 import           HStream.Kafka.Common.Read         (readOneRecord,
@@ -29,26 +33,32 @@ import qualified HStream.Store                     as S
 type HashTable k v = H.BasicHashTable k v
 
 data OffsetManager = OffsetManager
-  { offsets     :: HashTable Word64{- logid -} (MVar Int64)
+  { offsets     :: !(HashTable Word64{- logid -} (MVar Int64))
     -- ^ Offsets cache
     --
     -- TODO:
     -- * use FastMutInt as value (?)
-  , offsetsLock :: MVar ()
-  , store       :: S.LDClient
-  , reader      :: S.LDReader
+  , offsetsLock :: !(MVar ())
+  , store       :: !S.LDClient
+  , reader      :: !S.LDReader
   }
 
-newOffsetManager :: S.LDClient -> Int -> IO OffsetManager
-newOffsetManager store maxLogs = do
+newOffsetManager :: S.LDClient -> IO OffsetManager
+newOffsetManager store = do
   offsets <- H.new
   offsetsLock <- newMVar ()
-  reader <- S.newLDReader store (fromIntegral maxLogs) Nothing
+  reader <- newForeignPtr_ nullPtr   -- Must be initialized later
+  pure OffsetManager{..}
+
+initOffsetReader :: OffsetManager -> IO OffsetManager
+initOffsetReader om = do
+  -- set maxLogs to 10 seems enough
+  reader <- S.newLDReader om.store 10 Nothing
   -- Always wait. Otherwise, the reader will return empty result when timeout
   -- and we cannot know whether the log is empty or timeout.
   S.readerSetTimeout reader (-1)
   S.readerSetWaitOnlyWhenNoData reader
-  pure OffsetManager{..}
+  pure om{reader = reader}
 
 withOffset :: OffsetManager -> Word64 -> (Int64 -> IO a) -> IO a
 withOffset m logid = withOffsetN m logid 0
@@ -89,7 +99,7 @@ getLatestOffsetWithLsn
 getLatestOffsetWithLsn OffsetManager{..} logid =
   let getLsn = do tailLsn <- S.getTailLSN store logid
                   pure (tailLsn, tailLsn)
-   in do m <- readOneRecord store reader logid getLsn
+   in do m <- readOneRecordBypassGap store reader logid getLsn
          pure $ do (lsn, _, record) <- m
                    pure (offset record, lsn)
 

@@ -157,7 +157,7 @@ serve sc@ServerContext{..} netOpts = do
   Log.info $ "Starting"
         <> if isJust (K.serverSslOptions netOpts') then " secure " else " insecure "
         <> "kafka server..."
-  K.runServer netOpts' (K.handlers sc)
+  K.runServer netOpts' sc K.handlers
 
 serveListeners
   :: ServerContext
@@ -188,7 +188,7 @@ serveListeners sc netOpts
             <> Log.build key <> ":"
             <> Log.build listenerAddress <> ":"
             <> Log.build listenerPort
-    K.runServer netOpts' (K.handlers sc')
+    K.runServer netOpts' sc' K.handlers
 
 -------------------------------------------------------------------------------
 
