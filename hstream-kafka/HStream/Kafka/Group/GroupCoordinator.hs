@@ -56,8 +56,7 @@ getOrMaybeCreateGroup GroupCoordinator{..} ldClient serverId groupId memberId = 
     H.lookup gs groupId >>= \case
       Nothing -> if T.null memberId
         then do
-          offsetStorage <- mkCkpOffsetStorage ldClient groupId
-          metadataManager <- mkGroupMetadataManager offsetStorage serverId groupId
+          metadataManager <- mkGroupMetadataManager ldClient serverId groupId
           ng <- G.newGroup groupId metadataManager
           H.insert gs groupId ng
           return ng

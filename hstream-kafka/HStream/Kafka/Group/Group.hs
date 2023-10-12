@@ -318,42 +318,52 @@ rebalance :: Group -> IO ()
 rebalance group@Group{..} = do
   C.withMVar lock $ \() -> do
     Log.info "rebalancing is starting"
-    (Just leaderMemberId) <- IO.readIORef leader
+    IO.readIORef leader >>= \case
+      Nothing -> do
+        Log.info "cancel rebalance without any join request"
+        IO.writeIORef delayedRebalance Nothing
+        Log.info "removed delayedRebalance"
+        IO.writeIORef state Empty
+        Log.info "state changed: PreparingRebalance -> Empty"
+      Just leaderMemberId -> do
+        doRelance group leaderMemberId
 
-    -- next generation id
-    nextGenerationId <- IO.atomicModifyIORef' groupGenerationId (\ggid -> (ggid + 1, ggid + 1))
-    Log.info $ "next generation id:" <> Log.buildString' nextGenerationId
-      <> ", leader:" <> Log.buildString' leaderMemberId
+doRelance :: Group -> T.Text -> IO ()
+doRelance group@Group{..} leaderMemberId = do
+  -- next generation id
+  nextGenerationId <- IO.atomicModifyIORef' groupGenerationId (\ggid -> (ggid + 1, ggid + 1))
+  Log.info $ "next generation id:" <> Log.buildString' nextGenerationId
+    <> ", leader:" <> Log.buildString' leaderMemberId
 
-    -- compute and update protocolName
-    selectedProtocolName <- computeProtocolName group
-    Log.info $ "selected protocolName:" <> Log.buildString' selectedProtocolName
+  -- compute and update protocolName
+  selectedProtocolName <- computeProtocolName group
+  Log.info $ "selected protocolName:" <> Log.buildString' selectedProtocolName
 
-    leaderMembersInResponse <- map (\(_, m) -> getJoinResponseMember selectedProtocolName m) <$> H.toList members
-    Log.debug $ "members in join responses" <> Log.buildString' leaderMembersInResponse
+  leaderMembersInResponse <- map (\(_, m) -> getJoinResponseMember selectedProtocolName m) <$> H.toList members
+  Log.debug $ "members in join responses" <> Log.buildString' leaderMembersInResponse
 
-    delayedJoinResponseList <- H.toList delayedJoinResponses
+  delayedJoinResponseList <- H.toList delayedJoinResponses
 
-    Log.info $ "set all delayed responses, response list size:" <> Log.buildString' (length delayedJoinResponseList)
-    -- response all delayedJoinResponses
-    M.forM_ delayedJoinResponseList $ \(memberId, delayed) -> do
-      let memebersInResponse = if leaderMemberId == memberId then leaderMembersInResponse else []
-          resp = K.JoinGroupResponseV0 {
-          errorCode = 0
-        , generationId = nextGenerationId
-        , protocolName = selectedProtocolName
-        , leader = leaderMemberId
-        , memberId = memberId
-        , members = K.KaArray (Just $ V.fromList memebersInResponse)
-        }
-      Log.debug $ "set delayed response:" <> Log.buildString' resp
-        <> " for " <> Log.buildString' memberId
-      _ <- C.tryPutMVar delayed resp
-      H.delete delayedJoinResponses memberId
-    IO.writeIORef state CompletingRebalance
-    Log.info "state changed: PreparingRebalance -> CompletingRebalance"
-    IO.writeIORef delayedRebalance Nothing
-    Log.info "rebalancing is finished"
+  Log.info $ "set all delayed responses, response list size:" <> Log.buildString' (length delayedJoinResponseList)
+  -- response all delayedJoinResponses
+  M.forM_ delayedJoinResponseList $ \(memberId, delayed) -> do
+    let memebersInResponse = if leaderMemberId == memberId then leaderMembersInResponse else []
+        resp = K.JoinGroupResponseV0 {
+        errorCode = 0
+      , generationId = nextGenerationId
+      , protocolName = selectedProtocolName
+      , leader = leaderMemberId
+      , memberId = memberId
+      , members = K.KaArray (Just $ V.fromList memebersInResponse)
+      }
+    Log.debug $ "set delayed response:" <> Log.buildString' resp
+      <> " for " <> Log.buildString' memberId
+    _ <- C.tryPutMVar delayed resp
+    H.delete delayedJoinResponses memberId
+  IO.writeIORef state CompletingRebalance
+  Log.info "state changed: PreparingRebalance -> CompletingRebalance"
+  IO.writeIORef delayedRebalance Nothing
+  Log.info "rebalancing is finished"
 
 getJoinResponseMember :: T.Text -> Member -> K.JoinGroupResponseMemberV0
 getJoinResponseMember protocol m =

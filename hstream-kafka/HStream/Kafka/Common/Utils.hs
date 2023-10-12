@@ -3,9 +3,23 @@
 
 module HStream.Kafka.Common.Utils where
 
-import           Data.Maybe              (fromMaybe)
-import qualified Data.Vector             as V
-import qualified Kafka.Protocol.Encoding as K
+import           Control.Exception                   (throw)
+import qualified Control.Monad                       as M
+import qualified Data.HashTable.IO                   as H
+import           Data.Maybe                          (fromMaybe)
+import qualified Data.Vector                         as V
+import           HStream.Kafka.Common.KafkaException (ErrorCodeException (ErrorCodeException))
+import qualified Kafka.Protocol.Encoding             as K
+
+type HashTable k v = H.BasicHashTable k v
+
+hashtableGet hashTable key errorCode = H.lookup hashTable key >>= \case
+  Nothing -> throw (ErrorCodeException errorCode)
+  Just v -> return v
+
+hashtableDeleteAll hashTable = do
+  lst <- H.toList hashTable
+  M.forM_ lst $ \(key, _) -> H.delete hashTable key
 
 kaArrayToList :: K.KaArray a -> [a]
 kaArrayToList = undefined
