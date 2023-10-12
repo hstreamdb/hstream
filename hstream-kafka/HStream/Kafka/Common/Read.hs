@@ -66,8 +66,15 @@ readOneRecord_ bypassGap store reader logid getLsn = do
           case dataRecords of
             Right [S.DataRecord{..}] ->
               (Just . (start, end, )) <$> K.runGet recordPayload
+            Right [] -> do
+              Log.fatal "readOneRecord got an empty results!"
+              error "Invalid reader result"
+            Right da -> do
+              Log.fatal $ "readOneRecord: unexpected happened, "
+                       <> "got " <> Log.build (length da) <> " records"
+              error "Invalid reader result"
             _ -> do Log.fatal $ "readOneRecord read " <> Log.build logid
-                             <> " with lsn (" <> Log.build start <> " "
+                             <> " with lsn (" <> Log.build start <> ", "
                              <> Log.build end <> ") "
                              <> "get unexpected result "
                              <> Log.buildString' dataRecords
