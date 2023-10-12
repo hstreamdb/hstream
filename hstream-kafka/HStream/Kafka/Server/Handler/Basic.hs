@@ -102,7 +102,7 @@ handleMetadataV1 ctx@ServerContext{..} _ req = do
     returnAllTopics respBrokers_ ctlId_ = do
       -- FIXME: `serverID` is a `Word32` but kafka expects an `Int32`,
       -- causing a potential overflow.
-      allStreamNames <- S.findStreams scLDClient S.StreamTypeStream <&> (fmap (Utils.cBytesToText . S.streamName))
+      allStreamNames <- S.findStreams scLDClient S.StreamTypeTopic <&> (fmap (Utils.cBytesToText . S.streamName))
       respTopics <- forM allStreamNames getRespTopic <&> V.fromList
       return $ K.MetadataResponseV1 (K.KaArray $ Just respBrokers_) ctlId_ (K.KaArray $ Just respTopics)
 

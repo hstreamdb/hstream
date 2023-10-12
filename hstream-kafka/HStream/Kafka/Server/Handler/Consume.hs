@@ -83,15 +83,11 @@ readSingleTopic ldclient om K.FetchTopicV2{..} totalMaxBytes_m timeLeftMs isFirs
                  return (acc_isFirstPartition, acc_totalMaxBytes_m, acc_timeLeft, acc_resps)
                else do
                  let (_, logId) = orderedParts V.! fromIntegral partition
-                 mlsn <- getPartitionLsn ldclient om logId fetchOffset
-                 case mlsn of
-                   Nothing ->
-                     let resp = errorPartitionResponseV2 partition K.OFFSET_OUT_OF_RANGE
-                      in pure (acc_isFirstPartition, acc_totalMaxBytes_m, acc_timeLeft, acc_resps ++ [resp])
-                   Just (S.LSN_INVALID, S.LSN_INVALID, hioffset) ->
-                     let resp = K.PartitionDataV2 partition K.NONE hioffset (Just "")
-                      in pure (acc_isFirstPartition, acc_totalMaxBytes_m, acc_timeLeft, acc_resps ++ [resp])
-                   Just (startlsn, endlsn, hioffset) -> do
+                 elsn <- getPartitionLsn ldclient om logId partition fetchOffset
+                 case elsn of
+                   Left resp ->
+                     pure (acc_isFirstPartition, acc_totalMaxBytes_m, acc_timeLeft, acc_resps ++ [resp])
+                   Right (startlsn, endlsn, hioffset) -> do
                      (len, timeLeftMs', resp) <-
                        readSinglePartition reader
                                            logId (startlsn, endlsn)
@@ -116,28 +112,32 @@ readSingleTopic ldclient om K.FetchTopicV2{..} totalMaxBytes_m timeLeftMs isFirs
 
 -- Return tuple of (startLsn, endLsn, highwaterOffset)
 getPartitionLsn
-  :: S.LDClient -> K.OffsetManager
-  -> S.C_LogID
+  :: S.LDClient
+  -> K.OffsetManager
+  -> S.C_LogID -> Int32
   -> Int64        -- ^ kafka start offset
-  -> IO (Maybe (S.LSN, S.LSN, Int64))
-getPartitionLsn ldclient om logid offset = do
+  -> IO (Either K.PartitionDataV2 (S.LSN, S.LSN, Int64))
+getPartitionLsn ldclient om logid partition offset = do
   m <- K.getLatestOffsetWithLsn om logid
   case m of
     Just (latestOffset, endLsn) -> do
       if | offset < latestOffset -> do
              let key = U.int2cbytes offset
              (_, startLsn) <- S.findKey ldclient logid key S.FindKeyStrict
-             pure $ Just (startLsn, endLsn, latestOffset + 1)
+             pure $ Right (startLsn, endLsn, latestOffset + 1)
          | offset == latestOffset ->
-             pure $ Just (endLsn, endLsn, latestOffset + 1)
+             pure $ Right (endLsn, endLsn, latestOffset + 1)
          | offset == (latestOffset + 1) ->
-             pure $ Just (S.LSN_INVALID, S.LSN_INVALID, latestOffset + 1)
-         | offset > (latestOffset + 1) -> pure Nothing
-           -- ghc is not smart enough to detact my partten matching is complete
+             pure $ Left $ K.PartitionDataV2 partition K.NONE (latestOffset + 1) (Just "")
+         | offset > (latestOffset + 1) ->
+             pure $ Left $ errorPartitionResponseV2 partition K.OFFSET_OUT_OF_RANGE
+         -- ghc is not smart enough to detact my partten matching is complete
          | otherwise -> error "This should not be reached (getPartitionLsn)"
-    -- log is empty, which means any offsets are out of range
-    Nothing -> do Log.debug "Empty LatestOffsetWithLsn"
-                  pure Nothing
+    Nothing -> do
+      Log.debug $ "Partition " <> Log.build logid <> " is empty"
+      if offset == 0
+         then pure $ Left $ K.PartitionDataV2 partition K.NONE 0 (Just "")
+         else pure $ Left $ errorPartitionResponseV2 partition K.OFFSET_OUT_OF_RANGE
 
 readSinglePartition
   :: S.LDReader   -- the logdevice reader of this **topic**, but only one logId is read at the same time
