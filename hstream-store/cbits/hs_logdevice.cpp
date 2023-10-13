@@ -139,7 +139,7 @@ HsInt ld_client_find_key(logdevice_client_t* client, c_logid_t logid,
                          const char* key, HsInt accuracy, HsStablePtr mvar,
                          HsInt cap, c_error_code_t* st_out, c_lsn_t* lo_lsn_out,
                          c_lsn_t* hi_lsn_out) {
-  auto cb = [&](facebook::logdevice::FindKeyResult result) {
+  auto cb = [st_out, lo_lsn_out, hi_lsn_out, cap, mvar](facebook::logdevice::FindKeyResult result) {
     if (st_out) {
       *st_out = static_cast<c_error_code_t>(result.status);
     }
