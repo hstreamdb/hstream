@@ -1,6 +1,5 @@
 module HStream.Kafka.Group.OffsetsStore
   ( OffsetStorage(..)
-  , OffsetStore(..)
   , mkCkpOffsetStorage
   )
 where
@@ -17,11 +16,6 @@ import           HStream.Utils   (textToCBytes)
 class OffsetStorage s where
   commitOffsets :: s -> T.Text -> Map Word64 Word64 -> IO ()
 
-data OffsetStore = Ckp CkpOffsetStorage
-
-instance OffsetStorage OffsetStore where
-  commitOffsets (Ckp s) = commitOffsets s
-
 --------------------------------------------------------------------------------
 
 data CkpOffsetStorage = CkpOffsetStorage
@@ -34,8 +28,9 @@ data CkpOffsetStorage = CkpOffsetStorage
 mkCkpOffsetStorage :: S.LDClient -> T.Text -> IO CkpOffsetStorage
 mkCkpOffsetStorage client ckpStoreName = do
   let cbGroupName = textToCBytes ckpStoreName
+      logAttrs = S.def{S.logReplicationFactor = S.defAttr1 1}
   -- FIXME: need to get log attributes from somewhere
-  S.initOffsetCheckpointDir client S.def
+  S.initOffsetCheckpointDir client logAttrs
   ckpStoreId <- S.allocOffsetCheckpointId client cbGroupName
   ckpStore <- S.newRSMBasedCheckpointStore client ckpStoreId 5000
   Log.info $ "mkCkpOffsetStorage with name: " <> Log.build ckpStoreName <> ", storeId: " <> Log.build ckpStoreId

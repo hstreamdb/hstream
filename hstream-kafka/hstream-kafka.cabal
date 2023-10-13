@@ -109,6 +109,11 @@ library
     HStream.Kafka.Common.OffsetManager
     HStream.Kafka.Common.Read
     HStream.Kafka.Common.RecordFormat
+    HStream.Kafka.Common.KafkaException
+    HStream.Kafka.Common.Utils
+    HStream.Kafka.Group.Group
+    HStream.Kafka.Group.Member
+    HStream.Kafka.Group.GroupCoordinator
     HStream.Kafka.Group.GroupMetadataManager
     HStream.Kafka.Group.OffsetsStore
     HStream.Kafka.Network
@@ -125,6 +130,8 @@ library
     HStream.Kafka.Server.Handler.Offset
     HStream.Kafka.Server.Handler.Produce
     HStream.Kafka.Server.Handler.Topic
+    HStream.Kafka.Server.Handler.Offset
+    HStream.Kafka.Server.Handler.Group
 
   hs-source-dirs:     .
   build-depends:
@@ -153,6 +160,7 @@ library
     , unordered-containers
     , vector
     , yaml
+    , uuid
     , Z-Data
 
   default-language:   GHC2021

@@ -5,41 +5,47 @@ module HStream.Kafka.Group.GroupMetadataManager
   , fetchOffsets
   ) where
 
-import           Control.Concurrent               (MVar, modifyMVar_, newMVar,
-                                                   withMVar)
-import           Control.Concurrent.MVar          (readMVar)
-import           Control.Monad                    (unless)
+import           Control.Concurrent                  (MVar, modifyMVar_,
+                                                      newMVar, withMVar)
+import           Control.Exception                   (throw)
+import qualified Control.Monad                       as M
 import           Data.Hashable
-import qualified Data.HashMap.Strict              as HM
-import           Data.Int                         (Int32, Int64)
-import qualified Data.Map.Strict                  as Map
-import           Data.Maybe                       (fromMaybe)
-import qualified Data.Text                        as T
-import qualified Data.Vector                      as V
-import           Data.Word                        (Word64)
-import           GHC.Generics                     (Generic)
-import           HStream.Kafka.Group.OffsetsStore (OffsetStorage (..),
-                                                   OffsetStore)
-import qualified HStream.Logger                   as Log
-import           Kafka.Protocol.Encoding          (KaArray (KaArray, unKaArray))
-import qualified Kafka.Protocol.Error             as K
-import           Kafka.Protocol.Message           (OffsetCommitRequestPartitionV0 (..),
-                                                   OffsetCommitResponsePartitionV0 (..),
-                                                   OffsetFetchResponsePartitionV0 (..))
+import qualified Data.HashTable.IO                   as H
+import           Data.Int                            (Int32, Int64)
+import qualified Data.Map.Strict                     as Map
+import           Data.Maybe                          (fromMaybe)
+import qualified Data.Text                           as T
+import qualified Data.Vector                         as V
+import           Data.Word                           (Word64)
+import           GHC.Generics                        (Generic)
+import           HStream.Kafka.Common.KafkaException (ErrorCodeException (ErrorCodeException))
+import qualified HStream.Kafka.Common.Utils          as Utils
+import           HStream.Kafka.Group.OffsetsStore    (OffsetStorage (..),
+                                                      mkCkpOffsetStorage)
+import qualified HStream.Logger                      as Log
+import qualified HStream.Store                       as S
+import qualified Kafka.Protocol                      as K
+import           Kafka.Protocol.Encoding             (KaArray (KaArray, unKaArray))
+import qualified Kafka.Protocol.Error                as K
+import           Kafka.Protocol.Message              (OffsetCommitRequestPartitionV0 (..),
+                                                      OffsetCommitResponsePartitionV0 (..),
+                                                      OffsetFetchResponsePartitionV0 (..))
 
-data GroupMetadataManager = GroupMetadataManager
-  { serverId      :: Int
+data GroupMetadataManager = forall os. OffsetStorage os => GroupMetadataManager
+  { serverId      :: Int32
+  , ldClient      :: S.LDClient
   , groupName     :: T.Text
-  , offsetsStore  :: OffsetStore
+  , offsetStorage :: os
   , offsetsCache  :: MVar (Map.Map TopicPartition Int64)
-  , partitionsMap :: MVar (HM.HashMap TopicPartition Word64)
+  , partitionsMap :: Utils.HashTable TopicPartition Word64
     -- ^ partitionsMap maps TopicPartition to the underlying logID
   }
 
-mkGroupMetadataManager :: OffsetStore -> Int -> T.Text -> IO GroupMetadataManager
-mkGroupMetadataManager offsetsStore serverId groupName = do
+mkGroupMetadataManager :: S.LDClient -> Int32 -> T.Text -> IO GroupMetadataManager
+mkGroupMetadataManager ldClient serverId groupName = do
   offsetsCache  <- newMVar Map.empty
-  partitionsMap <- newMVar HM.empty
+  partitionsMap <- H.new
+  offsetStorage <- mkCkpOffsetStorage ldClient groupName
 
   return GroupMetadataManager{..}
  where
@@ -51,28 +57,17 @@ storeOffsets
   -> T.Text
   -> KaArray OffsetCommitRequestPartitionV0
   -> IO (KaArray OffsetCommitResponsePartitionV0)
-storeOffsets GroupMetadataManager{..} topicName arrayOffsets = do
+storeOffsets gmm@GroupMetadataManager{..} topicName arrayOffsets = do
   let offsets = fromMaybe V.empty (unKaArray arrayOffsets)
 
   -- check if a TopicPartition that has an offset to be committed is contained in current
   -- consumer group's partitionsMap. If not, server will return a UNKNOWN_TOPIC_OR_PARTITION
   -- error, and that error will be convert to COORDINATOR_NOT_AVAILABLE error finally
-  partitionsInfo <- readMVar partitionsMap
-  let (notFoundErrs, offsets') = V.partitionWith
-       ( \OffsetCommitRequestPartitionV0{..} ->
-            let key = mkTopicPartition topicName partitionIndex
-             in case HM.lookup key partitionsInfo of
-                  Just logId -> Right $ (key, logId, fromIntegral committedOffset)
-                  Nothing    -> Left $ (partitionIndex, K.COORDINATOR_NOT_AVAILABLE)
-       ) offsets
-  unless (V.null notFoundErrs) $ do
-    Log.info $ "consumer group " <> Log.build groupName <> " receive OffsetCommitRequestPartition with unknown topic or partion"
-            <> ", topic name: " <> Log.build topicName
-            <> ", partitions: " <> Log.build (show $ V.map fst notFoundErrs)
+  offsets' <- computeCheckpointOffsets gmm topicName offsets
 
   -- write checkpoints
   let checkPoints = V.foldl' (\acc (_, logId, offset) -> Map.insert logId offset acc) Map.empty offsets'
-  commitOffsets offsetsStore topicName checkPoints
+  commitOffsets offsetStorage topicName checkPoints
   Log.debug $ "consumer group " <> Log.build groupName <> " commit offsets {" <> Log.build (show checkPoints)
            <> "} to topic " <> Log.build topicName
 
@@ -82,8 +77,29 @@ storeOffsets GroupMetadataManager{..} topicName arrayOffsets = do
     return $ Map.union updates cache
 
   let suc = V.map (\(TopicPartition{topicPartitionIdx}, _, _) -> (topicPartitionIdx, K.NONE)) offsets'
-      res = V.map (\(partitionIndex, errorCode) -> OffsetCommitResponsePartitionV0{..}) (suc <> notFoundErrs)
+      res = V.map (\(partitionIndex, errorCode) -> OffsetCommitResponsePartitionV0{..}) suc
   return KaArray {unKaArray = Just res}
+
+computeCheckpointOffsets :: GroupMetadataManager -> T.Text -> V.Vector K.OffsetCommitRequestPartitionV0
+  -> IO (V.Vector (TopicPartition, Word64, Word64))
+computeCheckpointOffsets GroupMetadataManager{..} topicName requestOffsets = do
+  V.forM requestOffsets $ \OffsetCommitRequestPartitionV0{..} -> do
+    let tp = mkTopicPartition topicName partitionIndex
+    H.lookup partitionsMap tp >>= \case
+      Nothing -> do
+        -- read partitions and build partitionsMap
+        partitions <- S.listStreamPartitionsOrdered ldClient (S.transToTopicStreamName topicName)
+        M.forM_ (zip [0..] (V.toList partitions)) $ \(idx, (_, logId)) -> do
+          H.insert partitionsMap (TopicPartition topicName idx) logId
+        case partitions V.!? (fromIntegral partitionIndex) of
+          Nothing -> do
+            Log.info $ "consumer group " <> Log.build groupName <> " receive OffsetCommitRequestPartition with unknown topic or partion"
+                    <> ", topic name: " <> Log.build topicName
+                    <> ", partition: " <> Log.build partitionIndex
+            throw (ErrorCodeException K.UNKNOWN_TOPIC_OR_PARTITION)
+          -- ^ TODO: better response(and exception)
+          Just (_, logId) -> return (tp, logId, fromIntegral committedOffset)
+      Just logId -> return (tp, logId, fromIntegral committedOffset)
 
 fetchOffsets
   :: GroupMetadataManager
