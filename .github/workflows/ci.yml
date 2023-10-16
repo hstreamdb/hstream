@@ -265,11 +265,41 @@ jobs:
   integration-tests:
     needs: [pre-build, build-and-test]
     runs-on: ubuntu-latest
-    name: integration-tests-ghc-${{ matrix.ghc }}
     strategy:
       fail-fast: false
       matrix:
         ghc: ${{ fromJson(needs.pre-build.outputs.ghc) }}
+        test:
+          - integration-tests
+          - integration-tests-rqlite
+          - integration-tests-kafka
+          - integration-tests-kafka-rqlite
+          - distributed-tests
+        include:
+          - test: integration-tests
+            repo: hstreamdb/integration-tests
+            command: |
+              ./gradlew test --info --fail-fast -Dtag='basicTest'
+          - test: integration-tests-rqlite
+            repo: hstreamdb/integration-tests
+            command: |
+              export HSTREAM_META_STORE=RQLITE
+              ./gradlew test --info --fail-fast -Dtag='basicTest'
+          - test: integration-tests-kafka
+            repo: hstreamdb/kafka-tests
+            command: |
+              ./gradlew test --info --fail-fast
+          - test: integration-tests-kafka-rqlite
+            repo: hstreamdb/kafka-tests
+            command: |
+              export HSTREAM_META_STORE=RQLITE
+              ./gradlew test --info --fail-fast
+          - test: distributed-tests
+            repo: hstreamdb/distributed-tests
+            command: |
+              ./gradlew test --info --fail-fast
+
+    name: ${{ matrix.test }}-${{ matrix.ghc }}
 
     steps:
       - name: Free disk space
@@ -294,11 +324,12 @@ jobs:
         run: |
           docker load -i ~/data/new_hstream_image.tar
           docker run -t --rm $NEW_HSTREAM_IMAGE /usr/local/bin/hstream-server +RTS --info
+          docker run -t --rm $NEW_HSTREAM_IMAGE /usr/local/bin/hstream-kafka-server +RTS --info
 
-      - name: fetch integration tests source code
+      - name: fetch tests source code
         uses: actions/checkout@v3
         with:
-          repository: "hstreamdb/integration-tests"
+          repository: ${{ matrix.repo }}
           submodules: "recursive"
           path: integration-tests
 
@@ -310,11 +341,11 @@ jobs:
 
       - uses: gradle/wrapper-validation-action@v1
 
-      - name: run integration tests
+      - name: run tests
         run: |
           cd integration-tests
           export HSTREAM_IMAGE_NAME=$NEW_HSTREAM_IMAGE
-          ./gradlew test --info --fail-fast -Dtag='basicTest'
+          ${{ matrix.command }}
 
       - name: collect tests reports
         if: ${{ success() }} || ${{ failure() }}
@@ -327,135 +358,7 @@ jobs:
         uses: actions/upload-artifact@v3
         if: ${{ success() }} || ${{ failure() }}
         with:
-          name: integration-tests-reports-${{ matrix.ghc }}
-          path: ci_artifact
-          retention-days: 7
-
-  integration-tests-rqlite:
-    needs: [pre-build, build-and-test]
-    runs-on: ubuntu-latest
-    name: integration-tests-rqlite-ghc-${{ matrix.ghc }}
-    strategy:
-      fail-fast: false
-      matrix:
-        ghc: ${{ fromJson(needs.pre-build.outputs.ghc) }}
-
-    steps:
-      - name: Free disk space
-        run: |
-          echo "Before..."
-          df -h
-          sudo rm -rf \
-            /usr/share/dotnet /usr/local/lib/android /opt/ghc \
-            /usr/local/share/powershell /usr/share/swift /usr/local/.ghcup \
-            "/usr/local/share/boost" \
-            /usr/lib/jvm || true
-          echo "After..."
-          df -h
-
-      - name: retrieve saved docker image
-        uses: actions/download-artifact@v3
-        with:
-          name: image-testing-${{ matrix.ghc }}
-          path: ~/data
-
-      - name: docker load
-        run: |
-          docker load -i ~/data/new_hstream_image.tar
-          docker run -t --rm $NEW_HSTREAM_IMAGE /usr/local/bin/hstream-server +RTS --info
-
-      - name: fetch integration tests source code
-        uses: actions/checkout@v3
-        with:
-          repository: "hstreamdb/integration-tests"
-          submodules: "recursive"
-          path: integration-tests
-
-      - uses: actions/setup-java@v3
-        with:
-          distribution: "adopt"
-          java-version: 11
-          cache: "gradle"
-
-      - uses: gradle/wrapper-validation-action@v1
-
-      - name: run integration tests
-        run: |
-          cd integration-tests
-          export HSTREAM_IMAGE_NAME=$NEW_HSTREAM_IMAGE
-          export HSTREAM_META_STORE=RQLITE
-          ./gradlew test --info --fail-fast -Dtag='basicTest'
-
-      - name: collect tests reports
-        if: ${{ success() }} || ${{ failure() }}
-        run: |
-          rm -rf ci_artifact && mkdir ci_artifact
-          mv integration-tests/.logs ci_artifact/logs
-          mv integration-tests/app/build/reports ci_artifact/reports
-
-      - name: upload tests-reports
-        uses: actions/upload-artifact@v3
-        if: ${{ success() }} || ${{ failure() }}
-        with:
-          name: integration-tests-rqlite-reports-${{ matrix.ghc }}
-          path: ci_artifact
-          retention-days: 7
-
-  distributed-tests:
-    needs: [pre-build, build-and-test]
-    runs-on: ubuntu-latest
-    name: distributed-tests-ghc-${{ matrix.ghc }}
-    strategy:
-      fail-fast: false
-      matrix:
-        ghc: ${{ fromJson(needs.pre-build.outputs.ghc) }}
-
-    steps:
-      - name: retrieve saved docker image
-        uses: actions/download-artifact@v3
-        with:
-          name: image-testing-${{ matrix.ghc }}
-          path: ~/data
-
-      - name: docker load
-        run: |
-          docker load -i ~/data/new_hstream_image.tar
-          docker run -t --rm $NEW_HSTREAM_IMAGE /usr/local/bin/hstream-server +RTS --info
-
-      - name: fetch distributed tests source code
-        uses: actions/checkout@v3
-        with:
-          repository: "hstreamdb/distributed-tests"
-          submodules: "recursive"
-          path: distributed-tests
-
-      - uses: actions/setup-java@v3
-        with:
-          distribution: "adopt"
-          java-version: 11
-          cache: "gradle"
-
-      # https://github.com/gradle/wrapper-validation-action/issues/66
-      - uses: gradle/wrapper-validation-action@v1
-
-      - name: run distributed tests
-        run: |
-          cd distributed-tests
-          export HSTREAM_IMAGE_NAME=$NEW_HSTREAM_IMAGE
-          ./gradlew test --info --fail-fast
-
-      - name: collect tests reports
-        if: ${{ success() }} || ${{ failure() }}
-        run: |
-          rm -rf ci_artifact && mkdir ci_artifact
-          mv distributed-tests/.logs ci_artifact/logs
-          mv distributed-tests/app/build/reports ci_artifact/reports
-
-      - name: upload tests-reports
-        uses: actions/upload-artifact@v3
-        if: ${{ success() }} || ${{ failure() }}
-        with:
-          name: distributed-tests-reports-${{ matrix.ghc }}
+          name: reports-${{ matrix.test }}-${{ matrix.ghc }}
           path: ci_artifact
           retention-days: 7
 
