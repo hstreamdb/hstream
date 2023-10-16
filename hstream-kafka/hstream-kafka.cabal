@@ -106,15 +106,15 @@ library
   exposed-modules:
     HStream.Kafka.Client.Api
     HStream.Kafka.Client.Cli
+    HStream.Kafka.Common.KafkaException
     HStream.Kafka.Common.OffsetManager
     HStream.Kafka.Common.Read
     HStream.Kafka.Common.RecordFormat
-    HStream.Kafka.Common.KafkaException
     HStream.Kafka.Common.Utils
     HStream.Kafka.Group.Group
-    HStream.Kafka.Group.Member
     HStream.Kafka.Group.GroupCoordinator
     HStream.Kafka.Group.GroupMetadataManager
+    HStream.Kafka.Group.Member
     HStream.Kafka.Group.OffsetsStore
     HStream.Kafka.Network
     HStream.Kafka.Server.Config
@@ -127,11 +127,10 @@ library
     HStream.Kafka.Server.Config.Types
     HStream.Kafka.Server.Handler.Basic
     HStream.Kafka.Server.Handler.Consume
+    HStream.Kafka.Server.Handler.Group
     HStream.Kafka.Server.Handler.Offset
     HStream.Kafka.Server.Handler.Produce
     HStream.Kafka.Server.Handler.Topic
-    HStream.Kafka.Server.Handler.Offset
-    HStream.Kafka.Server.Handler.Group
 
   hs-source-dirs:     .
   build-depends:
@@ -158,9 +157,10 @@ library
     , text
     , time
     , unordered-containers
-    , vector
-    , yaml
     , uuid
+    , vector
+    , vector-hashtables
+    , yaml
     , Z-Data
 
   default-language:   GHC2021
