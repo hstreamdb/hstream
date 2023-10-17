@@ -77,7 +77,7 @@ listOffsetTopicPartitions ServerContext{..} topicName (Just offsetsPartitions) =
 handleOffsetCommitV0
   :: ServerContext -> K.RequestContext -> K.OffsetCommitRequestV0 -> IO K.OffsetCommitResponseV0
 handleOffsetCommitV0 ServerContext{..} _ req = do
-  GC.commitOffsets scGroupCoordinator req
+  GC.commitOffsets scGroupCoordinator scLDClient (fromIntegral serverID) req
 
 --------------------
 -- 9: OffsetFetch
