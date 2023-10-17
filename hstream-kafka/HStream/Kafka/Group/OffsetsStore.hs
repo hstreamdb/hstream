@@ -5,6 +5,7 @@ module HStream.Kafka.Group.OffsetsStore
 where
 
 import           Control.Monad   (unless)
+import           Data.Bifunctor  (bimap)
 import           Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import qualified Data.Text       as T
@@ -15,6 +16,7 @@ import           HStream.Utils   (textToCBytes)
 
 class OffsetStorage s where
   commitOffsets :: s -> T.Text -> Map Word64 Word64 -> IO ()
+  loadOffsets :: s -> T.Text -> IO (Map Word64 Word64)
 
 --------------------------------------------------------------------------------
 
@@ -40,3 +42,6 @@ instance OffsetStorage CkpOffsetStorage where
   commitOffsets CkpOffsetStorage{..} offsetsKey offsets = do
     unless (Map.null offsets) $ do
       S.ckpStoreUpdateMultiLSN ckpStore (textToCBytes offsetsKey) offsets
+  loadOffsets CkpOffsetStorage{..} offsetKey = do
+    checkpoints <- S.ckpStoreGetAllCheckpoints' ckpStore (textToCBytes offsetKey)
+    return . Map.fromList $ map (bimap fromIntegral fromIntegral) checkpoints

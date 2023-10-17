@@ -15,6 +15,7 @@ import           HStream.Kafka.Group.Group                (Group)
 import qualified HStream.Kafka.Group.Group                as G
 import           HStream.Kafka.Group.GroupMetadataManager (mkGroupMetadataManager)
 import           HStream.Kafka.Group.OffsetsStore         (mkCkpOffsetStorage)
+import qualified HStream.Logger                           as Log
 import           HStream.Store                            (LDClient)
 import qualified Kafka.Protocol.Encoding                  as K
 import qualified Kafka.Protocol.Error                     as K
@@ -104,8 +105,14 @@ commitOffsets coordinator req = do
   handle (\(ErrorCodeException code) -> makeErrorResponse code) $ do
     -- TODO: check group and generation id(and if generationId < 0 then add self-management offsets strategy support)
     group <- getGroup coordinator req.groupId
+    Log.debug $ "getGroup for " <> Log.build (show req.groupId) <> " success"
     G.commitOffsets group req
-  where makeErrorResponse code = return $ K.OffsetCommitResponseV0 {topics = Utils.mapKaArray (mapTopic code) req.topics}
+  where makeErrorResponse code = do
+          let resp = K.OffsetCommitResponseV0 {topics = Utils.mapKaArray (mapTopic code) req.topics}
+          Log.fatal $ "commitOffsets error with code: " <> Log.build (show code)
+                   <> "\n\trequest: " <> Log.build (show req)
+                   <> "\n\tresponse: " <> Log.build (show resp)
+          return resp
         mapTopic code topic = K.OffsetCommitResponseTopicV0 {partitions=Utils.mapKaArray (mapPartition code) topic.partitions, name=topic.name}
         mapPartition code partition = K.OffsetCommitResponsePartitionV0 {errorCode=code, partitionIndex=partition.partitionIndex}
 
