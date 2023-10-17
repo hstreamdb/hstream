@@ -82,11 +82,11 @@ createIOTask worker@Worker{..} name typ target cfg = do
         , taskConfig = TaskConfig image optTasksNetwork
         , connectorConfig = connectorConfig
         }
-  createIOTaskFromTaskInfo worker taskId taskInfo options False True
+  createIOTaskFromTaskInfo worker taskId taskInfo options False True True
   showIOTask_ worker name
 
-createIOTaskFromTaskInfo :: HasCallStack => Worker -> T.Text -> TaskInfo -> IOOptions -> Bool -> Bool -> IO ()
-createIOTaskFromTaskInfo worker@Worker{..} taskId taskInfo@TaskInfo {..} ioOptions cleanIfExists createMetaData = do
+createIOTaskFromTaskInfo :: HasCallStack => Worker -> T.Text -> TaskInfo -> IOOptions -> Bool -> Bool -> Bool -> IO ()
+createIOTaskFromTaskInfo worker@Worker{..} taskId taskInfo@TaskInfo {..} ioOptions cleanIfExists createMetaData enableCheck = do
   getIOTask worker taskName >>= \case
     Nothing -> pure ()
     Just _  -> do
@@ -96,7 +96,10 @@ createIOTaskFromTaskInfo worker@Worker{..} taskId taskInfo@TaskInfo {..} ioOptio
   let taskPath = optTasksPath options <> "/" <> taskId
   task <- IOTask.newIOTask taskId workerHandle statsHolder taskInfo taskPath ioOptions
   IOTask.initIOTask task cleanIfExists
-  IOTask.checkIOTask task
+
+  -- check task
+  when enableCheck $ IOTask.checkIOTask task
+
   when createMetaData $ M.createIOTaskMeta workerHandle taskName taskId taskInfo
   C.modifyMVar_ ioTasksM $ \ioTasks -> do
     case HM.lookup taskName ioTasks of
@@ -172,7 +175,7 @@ recoverTask worker@Worker{..} name = do
     Nothing -> throwIO $ HE.ConnectorNotFound name
     Just (taskId, TaskMeta{taskInfoMeta=taskInfo@TaskInfo{..}}) -> do
       let newConnCfg = J.insert "hstream" (J.toJSON hsConfig) connectorConfig
-      createIOTaskFromTaskInfo worker taskId taskInfo{connectorConfig=newConnCfg} options True False
+      createIOTaskFromTaskInfo worker taskId taskInfo{connectorConfig=newConnCfg} options True False False
 
 getIOTask :: Worker -> T.Text -> IO (Maybe IOTask)
 getIOTask Worker{..} name = HM.lookup name <$> C.readMVar ioTasksM
