@@ -14,16 +14,13 @@ import qualified HStream.Kafka.Common.Utils               as Utils
 import           HStream.Kafka.Group.Group                (Group)
 import qualified HStream.Kafka.Group.Group                as G
 import           HStream.Kafka.Group.GroupMetadataManager (mkGroupMetadataManager)
-import           HStream.Kafka.Group.OffsetsStore         (mkCkpOffsetStorage)
 import           HStream.Store                            (LDClient)
 import qualified Kafka.Protocol.Encoding                  as K
 import qualified Kafka.Protocol.Error                     as K
 import qualified Kafka.Protocol.Message                   as K
 
-type HashTable k v = H.BasicHashTable k v
-
 data GroupCoordinator = GroupCoordinator
-  { groups :: C.MVar (HashTable T.Text Group)
+  { groups :: C.MVar (Utils.HashTable T.Text Group)
   }
 
 -- TODO: setup from metadata
@@ -99,11 +96,11 @@ heartbeat coordinator req = do
   where makeErrorResponse code = return $ K.HeartbeatResponseV0 {errorCode=code}
 
 ------------------- Commit Offsets -------------------------
-commitOffsets :: GroupCoordinator -> K.OffsetCommitRequestV0 -> IO K.OffsetCommitResponseV0
-commitOffsets coordinator req = do
+commitOffsets :: GroupCoordinator -> LDClient -> Int32 -> K.OffsetCommitRequestV0 -> IO K.OffsetCommitResponseV0
+commitOffsets coordinator ldClient serverId req = do
   handle (\(ErrorCodeException code) -> makeErrorResponse code) $ do
     -- TODO: check group and generation id(and if generationId < 0 then add self-management offsets strategy support)
-    group <- getGroup coordinator req.groupId
+    group <- getOrMaybeCreateGroup coordinator ldClient serverId req.groupId ""
     G.commitOffsets group req
   where makeErrorResponse code = return $ K.OffsetCommitResponseV0 {topics = Utils.mapKaArray (mapTopic code) req.topics}
         mapTopic code topic = K.OffsetCommitResponseTopicV0 {partitions=Utils.mapKaArray (mapPartition code) topic.partitions, name=topic.name}
@@ -113,7 +110,14 @@ commitOffsets coordinator req = do
 -- TODO: improve error report
 fetchOffsets :: GroupCoordinator -> K.OffsetFetchRequestV0 -> IO K.OffsetFetchResponseV0
 fetchOffsets coordinator req = do
-  handle (\(ErrorCodeException code) -> makeErrorResponse code) $ do
+  handle (\(ErrorCodeException _) -> makeErrorResponse) $ do
     group <- getGroup coordinator req.groupId
     G.fetchOffsets group req
-  where makeErrorResponse _ = return $ K.OffsetFetchResponseV0 {topics=K.KaArray Nothing}
+  where makeErrorResponse = return $ K.OffsetFetchResponseV0 {topics = Utils.mapKaArray mapTopic req.topics}
+        mapTopic topic = K.OffsetFetchResponseTopicV0 {partitions=Utils.mapKaArray mapPartition topic.partitionIndexes, name=topic.name}
+        mapPartition partition = K.OffsetFetchResponsePartitionV0 {
+          errorCode=0
+          , partitionIndex=partition
+          , metadata = Nothing
+          , committedOffset = -1
+        }

@@ -39,14 +39,6 @@ import qualified Kafka.Protocol.Message                   as K
 
 type HashTable k v = H.BasicHashTable k v
 
-hashtableGet hashTable key errorCode = H.lookup hashTable key >>= \case
-  Nothing -> throw (ErrorCodeException errorCode)
-  Just v -> return v
-
-hashtableDeleteAll hashTable = do
-  lst <- H.toList hashTable
-  M.forM_ lst $ \(key, _) -> H.delete hashTable key
-
 data GroupState
   -- Group is preparing to rebalance
   --
@@ -249,7 +241,7 @@ resetGroup group@Group{..} = do
   cancelDelayedCheckHeartbeats group
 
   -- remove all members
-  hashtableDeleteAll members
+  Utils.hashtableDeleteAll members
 
   -- update protocols
   IO.writeIORef protocolType Nothing
@@ -418,7 +410,7 @@ syncGroup group req@K.SyncGroupRequestV0{..} = do
   delayed <- C.newEmptyMVar
   C.withMVar (group.lock) $ \() -> do
     -- check member id
-    member <- hashtableGet group.members memberId K.UNKNOWN_MEMBER_ID
+    member <- Utils.hashtableGet group.members memberId K.UNKNOWN_MEMBER_ID
 
     -- TODO: check generation id
     IO.readIORef group.state >>= \case
@@ -470,7 +462,7 @@ setAndPropagateAssignment Group{..} req = do
       Just delayed -> do
         M.void $ C.tryPutMVar delayed (K.SyncGroupResponseV0 0 assignment.assignment)
   -- delete all pending delayedSyncResponses
-  hashtableDeleteAll delayedSyncResponses
+  Utils.hashtableDeleteAll delayedSyncResponses
   Log.info $ "setAndPropagateAssignment completed"
 
 leaveGroup :: Group -> K.LeaveGroupRequestV0 -> IO K.LeaveGroupResponseV0
