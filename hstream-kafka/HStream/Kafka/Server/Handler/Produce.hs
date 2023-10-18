@@ -65,7 +65,6 @@ handleProduceV2 ServerContext{..} _ K.ProduceRequestV2{..} = do
 
 -------------------------------------------------------------------------------
 
--- TODO
 appendRecords
   :: Bool
   -> S.LDClient
