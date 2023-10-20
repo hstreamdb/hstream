@@ -9,6 +9,8 @@ module HStream.Kafka.Server.Handler.Group
   , handleSyncGroupV0
   , handleHeartbeatV0
   , handleLeaveGroupV0
+  , handleListGroupsV0
+  , handleDescribeGroupsV0
   ) where
 
 import           HStream.Common.Server.Lookup         (KafkaResource (..),
@@ -28,7 +30,7 @@ handleFindCoordinatorV0 ServerContext{..} _ req = do
   return $ K.FindCoordinatorResponseV0 0 (fromIntegral serverNodeId) serverNodeHost (fromIntegral serverNodePort)
 
 handleJoinGroupV0 :: ServerContext -> K.RequestContext -> K.JoinGroupRequestV0 -> IO K.JoinGroupResponseV0
-handleJoinGroupV0 ServerContext{..} _ = GC.joinGroup scGroupCoordinator scLDClient (fromIntegral serverID)
+handleJoinGroupV0 ServerContext{..} reqCtx = GC.joinGroup scGroupCoordinator reqCtx scLDClient (fromIntegral serverID)
 
 handleSyncGroupV0 :: ServerContext -> K.RequestContext -> K.SyncGroupRequestV0 -> IO K.SyncGroupResponseV0
 handleSyncGroupV0 ServerContext{..} _ = GC.syncGroup scGroupCoordinator
@@ -38,3 +40,9 @@ handleHeartbeatV0 ServerContext{..} _ = GC.heartbeat scGroupCoordinator
 
 handleLeaveGroupV0 :: ServerContext -> K.RequestContext -> K.LeaveGroupRequestV0 -> IO K.LeaveGroupResponseV0
 handleLeaveGroupV0 ServerContext{..} _ = GC.leaveGroup scGroupCoordinator
+
+handleListGroupsV0 :: ServerContext -> K.RequestContext -> K.ListGroupsRequestV0 -> IO K.ListGroupsResponseV0
+handleListGroupsV0 ServerContext{..} _ = GC.listGroups scGroupCoordinator
+
+handleDescribeGroupsV0 :: ServerContext -> K.RequestContext -> K.DescribeGroupsRequestV0 -> IO K.DescribeGroupsResponseV0
+handleDescribeGroupsV0 ServerContext{..} _ = GC.describeGroups scGroupCoordinator

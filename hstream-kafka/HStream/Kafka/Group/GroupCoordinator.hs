@@ -6,6 +6,7 @@ module HStream.Kafka.Group.GroupCoordinator where
 
 import qualified Control.Concurrent                       as C
 import           Control.Exception                        (handle, throw)
+import qualified Control.Monad                            as M
 import qualified Data.HashTable.IO                        as H
 import           Data.Int                                 (Int32)
 import qualified Data.Text                                as T
@@ -18,8 +19,9 @@ import           HStream.Store                            (LDClient)
 import qualified Kafka.Protocol.Encoding                  as K
 import qualified Kafka.Protocol.Error                     as K
 import qualified Kafka.Protocol.Message                   as K
+import qualified Kafka.Protocol.Service                   as K
 
-data GroupCoordinator = GroupCoordinator
+newtype GroupCoordinator = GroupCoordinator
   { groups :: C.MVar (Utils.HashTable T.Text Group)
   }
 
@@ -29,14 +31,14 @@ mkGroupCoordinator = do
   groups <- H.new >>= C.newMVar
   return $ GroupCoordinator {..}
 
-joinGroup :: GroupCoordinator -> LDClient -> Int32 -> K.JoinGroupRequestV0 -> IO K.JoinGroupResponseV0
-joinGroup coordinator ldClient serverId req = do
+joinGroup :: GroupCoordinator -> K.RequestContext -> LDClient -> Int32 -> K.JoinGroupRequestV0 -> IO K.JoinGroupResponseV0
+joinGroup coordinator reqCtx ldClient serverId req = do
   handle (\((ErrorCodeException code)) -> makeErrorResponse code) $ do
     -- get or create group
     group <- getOrMaybeCreateGroup coordinator ldClient serverId req.groupId req.memberId
 
     -- join group
-    G.joinGroup group req
+    G.joinGroup group reqCtx req
   where
     makeErrorResponse code = return $ K.JoinGroupResponseV0 {
         errorCode = code
@@ -66,6 +68,15 @@ getGroup GroupCoordinator{..} groupId = do
     H.lookup gs groupId >>= \case
       Nothing -> throw (ErrorCodeException K.GROUP_ID_NOT_FOUND)
       Just g -> return g
+
+getAllGroups :: GroupCoordinator -> IO [Group]
+getAllGroups GroupCoordinator{..} = do
+  C.withMVar groups $ (fmap (map snd) . H.toList)
+
+getGroups :: GroupCoordinator -> [T.Text] -> IO [(T.Text, Maybe Group)]
+getGroups GroupCoordinator{..} ids = do
+  C.withMVar groups $ \gs -> do
+    M.forM ids $ \gid -> (gid,) <$> (H.lookup gs gid)
 
 getGroupM :: GroupCoordinator -> T.Text -> IO (Maybe Group)
 getGroupM GroupCoordinator{..} groupId = do
@@ -121,3 +132,27 @@ fetchOffsets coordinator req = do
           , metadata = Nothing
           , committedOffset = -1
         }
+
+------------------- List Groups -------------------------
+listGroups :: GroupCoordinator -> K.ListGroupsRequestV0 -> IO K.ListGroupsResponseV0
+listGroups gc _ = do
+  gs <- getAllGroups gc
+  listedGroups <-  M.mapM G.overview gs
+  return $ K.ListGroupsResponseV0 {errorCode=0, groups=Utils.listToKaArray listedGroups}
+
+------------------- Describe Groups -------------------------
+describeGroups :: GroupCoordinator -> K.DescribeGroupsRequestV0 -> IO K.DescribeGroupsResponseV0
+describeGroups gc req = do
+  getGroups gc (Utils.kaArrayToList req.groups) >>= \gs -> do
+    listedGroups <- M.forM gs $ \case
+      (gid, Nothing) -> return $ K.DescribedGroupV0 {
+        protocolData=""
+      , groupState=""
+      , errorCode=K.GROUP_ID_NOT_FOUND
+      , members=Utils.listToKaArray []
+      , groupId=gid
+      , protocolType=""
+      }
+      (_, Just g) -> G.describe g
+    return $ K.DescribeGroupsResponseV0 {groups=Utils.listToKaArray listedGroups}
+
