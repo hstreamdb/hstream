@@ -1,17 +1,14 @@
 module Main where
 
+import           HStream.Base             (setupFatalSignalHandler)
 import           HStream.Kafka.Client.Cli
 
 main :: IO ()
 main = do
-  parsed@(cmd, opts) <- runCliParser
+  setupFatalSignalHandler
+  (opts, cmd) <- runCliParser
   case cmd of
-    Nodes                 -> handleCmdNodes opts
-    Topics                -> handleCmdTopics opts
-    DescribeTopic topic   -> handleCmdDescribeTopic opts topic
-    Groups                -> handleCmdGroups opts
-    DescribeGroup group   -> handleCmdDescribeGroup opts group
-    DeleteTopic topicName -> handleDeleteTopic opts topicName
-    CreateTopic topicName numPartitions replicationFactor ->
-      handleCreateTopic opts topicName numPartitions replicationFactor
-    Produce request       -> handleProduce opts request
+    TopicCommand c   -> handleTopicCommand opts c
+    NodeCommand c    -> handleNodeCommand opts c
+    ProduceCommand c -> handleProduceCommand opts c
+    ConsumeCommand c -> handleConsumeCommand opts c

@@ -234,6 +234,8 @@ sendAndRecv rpc correlationId mClientId mTaggedFields req ClientHandler{..} = do
     (bs, "") -> do r <- runParser' respParser bs
                    case r of
                      (resp, "") -> pure resp
+                     _          -> error "FIXME: unexpected result"
+    _ -> error "FIXME: unexpected result"
 
 withClient :: ClientOptions -> (ClientHandler -> IO a) -> IO a
 withClient ClientOptions{..} client = N.withSocketsDo $ do
@@ -266,9 +268,9 @@ runParseIO more parser = more >>= go Nothing
         Fail _ err -> E.throwIO $ DecodeError $ "Fail, " <> err
 
 showSockAddrHost :: N.SockAddr -> String
-showSockAddrHost (N.SockAddrUnix str)           = str
-showSockAddrHost (N.SockAddrInet port ha)       = showHostAddress ha ""
-showSockAddrHost (N.SockAddrInet6 port _ ha6 _) = showHostAddress6 ha6 ""
+showSockAddrHost (N.SockAddrUnix str)            = str
+showSockAddrHost (N.SockAddrInet _port ha)       = showHostAddress ha ""
+showSockAddrHost (N.SockAddrInet6 _port _ ha6 _) = showHostAddress6 ha6 ""
 
 -- Taken from network Network/Socket/Info.hsc
 showHostAddress :: N.HostAddress -> ShowS

@@ -49,6 +49,7 @@ module Kafka.Protocol.Encoding
   , decodeLegacyRecordBatch
     -- ** Misc
   , pattern NonNullKaArray
+  , unNonNullKaArray
     -- * Internals
   , Parser
   , runParser
@@ -576,13 +577,13 @@ instance Serializable RecordBatch
 
 -- for non-nullable array
 pattern NonNullKaArray :: Vector a -> KaArray a
-pattern NonNullKaArray vec
-  <- ( fromMaybe (error "non-nullable field was serialized as null") . unKaArray
-    -> vec
-     ) where
+pattern NonNullKaArray vec <- (unNonNullKaArray -> vec) where
   NonNullKaArray vec = KaArray (Just vec)
-
 {-# COMPLETE NonNullKaArray #-}
+
+unNonNullKaArray :: KaArray a -> Vector a
+unNonNullKaArray =
+  fromMaybe (error "non-nullable field was serialized as null") . unKaArray
 
 -------------------------------------------------------------------------------
 -- Internals
