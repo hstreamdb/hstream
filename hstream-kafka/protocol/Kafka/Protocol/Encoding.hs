@@ -63,6 +63,7 @@ import           Control.Exception
 import           Control.Monad
 import           Data.ByteString                (ByteString)
 import qualified Data.ByteString                as BS
+import           Data.ByteString.Internal       (w2c)
 import qualified Data.ByteString.Lazy           as BL
 import           Data.Digest.CRC32              (crc32)
 import           Data.Int
@@ -169,7 +170,8 @@ runGet :: Serializable a => ByteString -> IO a
 runGet bs = do
   (r, l) <- runParser' get bs
   if BS.null l then pure r
-               else throwIO $ DecodeError $ "Done, but left " <> show l
+               else throwIO $ DecodeError $
+                      "runGet done, but left " <> map w2c (BS.unpack l)
 {-# INLINE runGet #-}
 
 runGet' :: Serializable a => ByteString -> IO (a, ByteString)
