@@ -23,11 +23,14 @@ import           Data.Kind               (Constraint, Type)
 import           Data.Proxy              (Proxy (..))
 import           GHC.TypeLits
 
-import           Kafka.Protocol.Encoding (Serializable)
+import           Kafka.Protocol.Encoding (NullableString, Serializable)
 
 -------------------------------------------------------------------------------
 
 data RequestContext = RequestContext
+  { clientId   :: !(Maybe NullableString)
+  , clientHost :: !String
+  } deriving (Show, Eq)
 
 type UnaryHandler i o = RequestContext -> i -> IO o
 
