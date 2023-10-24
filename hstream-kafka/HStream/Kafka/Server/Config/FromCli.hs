@@ -72,8 +72,10 @@ cliOptionsParser = do
 
   cliServerID           <- optional serverIDParser
   cliMetaStore          <- optional metaStoreAddrParser
+
   cliServerLogLevel     <- optional logLevelParser
   cliServerLogWithColor <- logWithColorParser
+  cliServerLogFlushImmediately <- logFlushImmediatelyParser
 
   cliServerGossipAddress <- optional serverGossipAddressParser
   cliServerGossipPort    <- optional serverGossipPortParser
@@ -226,9 +228,14 @@ logLevelParser = option auto
   <> help "Server log level"
 
 logWithColorParser :: O.Parser Bool
-logWithColorParser = flag False True
-  $  long "log-with-color"
+logWithColorParser = O.switch
+   $ long "log-with-color"
   <> help "Server log with color"
+
+logFlushImmediatelyParser :: O.Parser Bool
+logFlushImmediatelyParser = O.switch
+   $ long "log-flush-immediately"
+  <> help "Flush immediately after logging, this may help debugging"
 
 ldLogLevelParser :: O.Parser LDLogLevel
 ldLogLevelParser = option auto

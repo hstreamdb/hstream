@@ -259,17 +259,19 @@ data LogType' a where
 
 -- | Logger config type used in this module.
 data LoggerConfig = LoggerConfig
-  { loggerBufSize   :: {-# UNPACK #-} !Int
+  { loggerBufSize          :: {-# UNPACK #-} !Int
     -- ^ Buffer size of each core
-  , loggerLevel     :: {-# UNPACK #-} !Level
+  , loggerLevel            :: {-# UNPACK #-} !Level
     -- ^ Config log's filter level
-  , loggerFormatter :: LogFormatter
+  , loggerFormatter        :: LogFormatter
     -- ^ Log formatter
-  , loggerType      :: LogType
+  , loggerType             :: LogType
+  , loggerFlushImmediately :: Bool
+    -- ^ Flush immediately after logging
   }
 
 defaultLoggerConfig :: LoggerConfig
-defaultLoggerConfig = LoggerConfig 4096 NOTSET defaultFmt LogStderr
+defaultLoggerConfig = LoggerConfig 4096 NOTSET defaultFmt LogStderr False
 {-# INLINABLE defaultLoggerConfig #-}
 
 -- FIXME: 'Log.newTimeCache' updates every 1 second, so it doesn't provide
@@ -285,13 +287,15 @@ defaultTimeCache = unsafePerformIO $ Log.newTimeCache iso8061DateFormat
 data Logger = Logger
   (Level -> CallStack -> Log.LogStr -> IO ())  -- ^ logging function
   (IO ()) -- ^ clean up action
-  (IO ()) -- ^ manually flush
+  (IO ()) -- ^ manually flush function
+  Bool    -- ^ flush immediately?
 
 -- 'Log.newTimedFastLogger' doesn't export the flush function
 newLogger :: LoggerConfig -> IO Logger
 newLogger LoggerConfig{..} =
   case loggerType of
     LogNone    -> return $ Logger (\_ _ _ -> pure ()) (pure ()) (pure ())
+                                  loggerFlushImmediately
     LogStdout  -> Log.newStdoutLoggerSet loggerBufSize >>= loggerInit
     LogStderr  -> Log.newStderrLoggerSet loggerBufSize >>= loggerInit
     LogFile fp -> Log.newFileLoggerSet loggerBufSize fp >>= loggerInit
@@ -306,6 +310,7 @@ newLogger LoggerConfig{..} =
       )
       (Log.rmLoggerSet lgrset)
       (Log.flushLogStr lgrset)
+      loggerFlushImmediately
 
 globalLogger :: IORef Logger
 globalLogger = unsafePerformIO $ do
@@ -324,12 +329,13 @@ getGlobalLogger = readIORef globalLogger
 {-# INLINABLE getGlobalLogger #-}
 
 -- | Set the global logger by config.
-setDefaultLogger :: Level -> Bool -> LogType -> IO ()
-setDefaultLogger level withColor typ = do
+setDefaultLogger :: Level -> Bool -> LogType -> Bool -> IO ()
+setDefaultLogger level withColor typ flushImdt = do
   let config = defaultLoggerConfig
         { loggerLevel = level
         , loggerFormatter = if withColor then defaultColoredFmt else defaultFmt
         , loggerType = typ
+        , loggerFlushImmediately = flushImdt
         }
   setGlobalLogger =<< newLogger config
 
@@ -352,7 +358,7 @@ setDefaultLoggerLevel lvl =
 withDefaultLogger :: IO () -> IO ()
 withDefaultLogger = (`finally` clean)
   where
-    clean = getGlobalLogger >>= \(Logger _ c _) -> c
+    clean = getGlobalLogger >>= \(Logger _ c _ _) -> c
 {-# INLINABLE withDefaultLogger #-}
 
 -------------------------------------------------------------------------------
@@ -384,10 +390,10 @@ warnSlow starter duration msg f = Async.withAsync f $ \a1 ->
                         threadDelay duration
 
 logBylevel :: Bool -> Level -> CallStack -> Log.LogStr -> IO ()
-logBylevel flushNow level cstack s = do
-  Logger f _ flush_ <- getGlobalLogger
+logBylevel flushLevel level cstack s = do
+  Logger f _ flush_ flushNow <- getGlobalLogger
   f level cstack s
-  when flushNow flush_
+  when (flushNow || flushLevel) flush_
 {-# INLINABLE logBylevel #-}
 
 -------------------------------------------------------------------------------

@@ -97,10 +97,12 @@ data CliOptions = CliOptions
   , cliListenersSecurityProtocolMap :: !ListenersSecurityProtocolMap
 
   , cliServerID                     :: !(Maybe Word32)
-  , cliServerLogLevel               :: !(Maybe Log.Level)
-  , cliServerLogWithColor           :: !Bool
   , cliMetaStore                    :: !(Maybe MetaStoreAddr)
   , cliSeedNodes                    :: !(Maybe Text)
+
+  , cliServerLogLevel               :: !(Maybe Log.Level)
+  , cliServerLogWithColor           :: !Bool
+  , cliServerLogFlushImmediately    :: !Bool
 
     -- TLS config
   , cliEnableTls                    :: !Bool
@@ -143,8 +145,10 @@ cliOptionsParser = do
   cliSeedNodes          <- optional seedNodesParser
   cliServerID           <- optional serverIDParser
   cliMetaStore          <- optional metaStoreAddrParser
+
   cliServerLogLevel     <- optional logLevelParser
   cliServerLogWithColor <- logWithColorParser
+  cliServerLogFlushImmediately <- logFlushImmediatelyParser
 
   cliLdAdminPort     <- optional ldAdminPortParser
   cliLdAdminHost     <- optional ldAdminHostParser
@@ -354,6 +358,11 @@ logWithColorParser :: O.Parser Bool
 logWithColorParser = flag False True
   $  long "log-with-color"
   <> help "Server log with color"
+
+logFlushImmediatelyParser :: O.Parser Bool
+logFlushImmediatelyParser = O.switch
+   $ long "log-flush-immediately"
+  <> help "Flush immediately after logging, this may help debugging"
 
 ldAdminPortParser :: O.Parser Int
 ldAdminPortParser = option auto
