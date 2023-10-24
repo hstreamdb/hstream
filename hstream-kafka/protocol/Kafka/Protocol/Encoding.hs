@@ -2,6 +2,8 @@
 {-# LANGUAGE DefaultSignatures     #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE OverloadedRecordDot   #-}
+{-# LANGUAGE PatternSynonyms       #-}
+{-# LANGUAGE ViewPatterns          #-}
 -- As of GHC 8.8.1, GHC started complaining about -optP--cpp when profling
 -- is enabled. See https://gitlab.haskell.org/ghc/ghc/issues/17185.
 {-# OPTIONS_GHC -pgmP "hpp --cpp -P" #-}
@@ -43,8 +45,10 @@ module Kafka.Protocol.Encoding
   , RecordHeader
   , RecordHeaderKey (..)
   , RecordHeaderValue (..)
-    -- ** Misc
+    -- ** Helpers
   , decodeLegacyRecordBatch
+    -- ** Misc
+  , pattern NonNullKaArray
     -- * Internals
   , Parser
   , runParser
@@ -62,6 +66,7 @@ import qualified Data.ByteString                as BS
 import qualified Data.ByteString.Lazy           as BL
 import           Data.Digest.CRC32              (crc32)
 import           Data.Int
+import           Data.Maybe
 import           Data.String                    (IsString)
 import           Data.Text                      (Text)
 import           Data.Vector                    (Vector)
@@ -563,6 +568,19 @@ data RecordBatch = RecordBatch
   } deriving (Generic, Show)
 
 instance Serializable RecordBatch
+
+-------------------------------------------------------------------------------
+-- Misc
+
+-- for non-nullable array
+pattern NonNullKaArray :: Vector a -> KaArray a
+pattern NonNullKaArray vec
+  <- ( fromMaybe (error "non-nullable field was serialized as null") . unKaArray
+    -> vec
+     ) where
+  NonNullKaArray vec = KaArray (Just vec)
+
+{-# COMPLETE NonNullKaArray #-}
 
 -------------------------------------------------------------------------------
 -- Internals

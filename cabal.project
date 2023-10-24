@@ -55,6 +55,7 @@ package grpc-haskell-core
 package rocksdb-haskell-bindings
   extra-include-dirs: /usr/local/include
   extra-lib-dirs:     /usr/local/lib
+  tests: false
 
 constraints:
     Z-Data      == 2.0.0.2

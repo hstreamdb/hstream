@@ -22,10 +22,10 @@ hashtableDeleteAll hashTable = do
   M.forM_ lst $ \(key, _) -> H.delete hashTable key
 
 kaArrayToList :: K.KaArray a -> [a]
-kaArrayToList = undefined
+kaArrayToList = V.toList . fromMaybe V.empty . K.unKaArray
 
 listToKaArray :: [a] -> K.KaArray a
-listToKaArray = undefined
+listToKaArray = K.KaArray . Just . V.fromList
 
 kaArrayToVector :: K.KaArray a -> V.Vector a
 kaArrayToVector kaArray = fromMaybe V.empty (K.unKaArray kaArray)

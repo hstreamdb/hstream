@@ -95,10 +95,10 @@ jobs:
       - name: run hadmin-store
         run: ${{ env.CABAL }} exec -- hadmin-store --help
 
-  build-and-test:
+  build:
     needs: pre-build
     runs-on: ubuntu-latest
-    name: ghc-${{ matrix.ghc }}
+    name: build-ghc-${{ matrix.ghc }}
     strategy:
       fail-fast: false
       matrix:
@@ -135,14 +135,10 @@ jobs:
           else
             echo "EXTRA_CABAL_ARGS=''" >> $GITHUB_ENV
           fi
-          echo "CABAL=python3 script/dev-tools cabal --check --no-interactive \
+          echo "CABAL=python3 script/dev-tools cabal --check --no-interactive --no-services-required \
                 -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- " >> $GITHUB_ENV
-          echo "SHELL=python3 script/dev-tools shell --check --no-interactive \
+          echo "SHELL=python3 script/dev-tools shell --check --no-interactive --no-services-required \
                 -i docker.io/hstreamdb/haskell:${{ matrix.ghc }}" >> $GITHUB_ENV
-          echo "TEST_CONTAINER_NAME=test-hstream-server" >> $GITHUB_ENV
-
-      - name: start required services
-        run: python3 script/dev-tools start-services
 
       - name: cabal freeze
         run: |
@@ -160,12 +156,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ matrix.ghc }}-v1-
 
-      # Since we use the upgraded version of z-data and z-io, this should resolve the problem.
-      #
-      # We remove these caches because there is an unknown reason that will cause ci to fail without any error message.
-      #- name: remove all Z related builds
-      #  run: find ~/.cabal/store/ -maxdepth 2 -type d -name "Z*" -o -name "zoo*" | xargs rm -rf
-
       - name: build
         run: |
           ${{ env.CABAL }} update
@@ -173,6 +163,93 @@ jobs:
           ${{ env.SHELL }} make
           ${{ env.CABAL }} ${{ env.EXTRA_CABAL_ARGS }} build --enable-tests --enable-benchmarks all
           ${{ env.CABAL }} ${{ env.EXTRA_CABAL_ARGS }} install hstream
+
+      # TODO: move to "test" job
+      - name: test
+        run: |
+          ${{ env.SHELL }} "'make syntax-test-run'"
+          ${{ env.SHELL }} "'make plan-test-run'"
+
+      # NOTE: The quick-build-dev-image relies on the "hstreamdb/hstream" base image.
+      # If you have installed any additional libraries in the builder image (hstreamdb/haskell),
+      # and these libraries are required (e.g., if a lib.so file is needed), you may encounter a
+      # linking error during the integration tests that follow. In such cases, you will need to
+      # publish a new version of the hstreamdb/hstream image first, which includes the necessary
+      # libraries.
+      - name: quick build new hstream image
+        run: |
+          mkdir -p ~/data
+          if [ "${{ env.GHC_MAJOR_VER }}" = "8" ]; then
+            python3 script/dev-tools quick-build-dev-image \
+              --builder-image docker.io/hstreamdb/haskell:${{ matrix.ghc }} \
+              --project-file cabal.project.ghc810 \
+              --only-hstream \
+              -t $NEW_HSTREAM_IMAGE
+          else
+            python3 script/dev-tools quick-build-dev-image \
+              --builder-image docker.io/hstreamdb/haskell:${{ matrix.ghc }} \
+              --only-hstream \
+              -t $NEW_HSTREAM_IMAGE
+          fi
+
+          docker save -o ~/data/new_hstream_image.tar $NEW_HSTREAM_IMAGE
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: image-testing-${{ matrix.ghc }}
+          path: ~/data/new_hstream_image.tar
+          retention-days: 2
+
+      - name: tar tests
+        run: |
+          mkdir -p ~/data
+          rm -f ~/data/hstream_tests.tar
+          find dist-newstyle/build -type f \( \
+            -name "*-test" -o \
+            -name "hstream-server" -o \
+            -name "hstream-kafka-server" \) \
+            -exec tar -rvf ~/data/hstream_tests.tar {} \;
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: hstream-tests-${{ matrix.ghc }}
+          path: ~/data/hstream_tests.tar
+          retention-days: 2
+
+  test:
+    needs: [pre-build, build]
+    runs-on: ubuntu-latest
+    name: test-ghc-${{ matrix.ghc }}
+    strategy:
+      fail-fast: false
+      matrix:
+        ghc: ${{ fromJson(needs.pre-build.outputs.ghc) }}
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: "recursive"
+
+      - name: set env
+        run: |
+          docker pull docker.io/hstreamdb/haskell:${{ matrix.ghc }}
+          echo "CABAL=python3 script/dev-tools cabal --check --no-interactive \
+                -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- " >> $GITHUB_ENV
+          echo "SHELL=python3 script/dev-tools shell --check --no-interactive \
+                -i docker.io/hstreamdb/haskell:${{ matrix.ghc }}" >> $GITHUB_ENV
+          echo "TEST_CONTAINER_NAME=test-hstream-server" >> $GITHUB_ENV
+
+      - name: retrieve saved tests
+        uses: actions/download-artifact@v3
+        with:
+          name: hstream-tests-${{ matrix.ghc }}
+          path: ~/data
+
+      - name: untar tests
+        run: tar -xf ~/data/hstream_tests.tar
+
+      - name: start required services
+        run: python3 script/dev-tools start-services
 
       - name: start hstream server
         run: |
@@ -185,11 +262,8 @@ jobs:
           sleep 5
           docker logs --tail 100 $TEST_CONTAINER_NAME
 
-      - name: test
-        run: |
-          ${{ env.SHELL }} "'make syntax-test-run'"
-          ${{ env.SHELL }} "'make plan-test-run'"
-          ${{ env.CABAL }} ${{ env.EXTRA_CABAL_ARGS }} test --test-show-details=direct all
+      - name: run tests
+        run: ${{ env.SHELL }} "'find dist-newstyle/build -type f -name \"*-test\" -exec {} \;'"
 
       - name: collect hserver logs
         if: ${{ success() }} || ${{ failure() }}
@@ -223,47 +297,13 @@ jobs:
       #      python3 script/dev-tools shell --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} "'cd $dir && cabal check'"
       #    done
 
-      # TODO
-      #- name: haddock
-      #    python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- haddock haddock --enable-documentation --haddock-for-hackage all
-
       # -------------------------------------------------------------------------------
 
       - name: stop all started services
         run: docker rm -f $(docker ps -a -q)
 
-      # NOTE: The quick-build-dev-image relies on the "hstreamdb/hstream" base image.
-      # If you have installed any additional libraries in the builder image (hstreamdb/haskell),
-      # and these libraries are required (e.g., if a lib.so file is needed), you may encounter a
-      # linking error during the integration tests that follow. In such cases, you will need to
-      # publish a new version of the hstreamdb/hstream image first, which includes the necessary
-      # libraries.
-      - name: quick build new hstream image
-        run: |
-          mkdir -p ~/data
-          if [ "${{ env.GHC_MAJOR_VER }}" = "8" ]; then
-            python3 script/dev-tools quick-build-dev-image \
-              --builder-image docker.io/hstreamdb/haskell:${{ matrix.ghc }} \
-              --project-file cabal.project.ghc810 \
-              --only-hstream \
-              -t $NEW_HSTREAM_IMAGE
-          else
-            python3 script/dev-tools quick-build-dev-image \
-              --builder-image docker.io/hstreamdb/haskell:${{ matrix.ghc }} \
-              --only-hstream \
-              -t $NEW_HSTREAM_IMAGE
-          fi
-
-          docker save -o ~/data/new_hstream_image.tar $NEW_HSTREAM_IMAGE
-
-      - uses: actions/upload-artifact@v3
-        with:
-          name: image-testing-${{ matrix.ghc }}
-          path: ~/data/new_hstream_image.tar
-          retention-days: 2
-
   integration-tests:
-    needs: [pre-build, build-and-test]
+    needs: [pre-build, build]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -363,7 +403,7 @@ jobs:
           retention-days: 7
 
   # hstream-io-tests:
-  #   needs: [pre-build, build-and-test]
+  #   needs: [pre-build, build]
   #   runs-on: ubuntu-latest
   #   name: hstream-io-tests-ghc-${{ matrix.ghc }}
   #   strategy:
@@ -432,7 +472,7 @@ jobs:
   deploy-k8s:
     # disabled due to a lack of hardware resources of the github action
     if: false
-    needs: [pre-build, build-and-test]
+    needs: [pre-build, build]
     runs-on: ubuntu-latest
     name: deploy-to-minikube-ghc-${{ matrix.ghc }}
     strategy:

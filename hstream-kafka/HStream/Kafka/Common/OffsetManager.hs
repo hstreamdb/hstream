@@ -23,8 +23,7 @@ import           Foreign.ForeignPtr                (newForeignPtr_)
 import           Foreign.Ptr                       (nullPtr)
 import           GHC.Stack                         (HasCallStack)
 
-import           HStream.Kafka.Common.Read         (readOneRecord,
-                                                    readOneRecordBypassGap)
+import           HStream.Kafka.Common.Read         (readOneRecordBypassGap)
 import           HStream.Kafka.Common.RecordFormat
 import qualified HStream.Store                     as S
 
@@ -69,6 +68,9 @@ withOffset m logid = withOffsetN m logid 0
 withOffsetN :: OffsetManager -> Word64 -> Int64 -> (Int64 -> IO a) -> IO a
 withOffsetN m@OffsetManager{..} logid n f = do
   m_offset <- H.lookup offsets logid
+  -- FIXME: currently, any exception happen in f will cause the offset not
+  -- updated. This may cause inconsistent between the offset and the actual
+  -- stored data.
   case m_offset of
     Just offset -> modifyMVar offset $ \o -> do
       let !o' = o + n
@@ -78,8 +80,11 @@ withOffsetN m@OffsetManager{..} logid n f = do
       o' <- catch (do mo <- getLatestOffset m logid
                       pure $ maybe (n - 1) (+ n) mo)
                   (\(_ :: S.NOTFOUND) -> pure $ n - 1)
-      H.insert offsets logid =<< newMVar o'
-      f o'
+      mask $ \restore -> do
+        ov <- newMVar o'
+        a <- restore (f o') `onException` pure ()
+        H.insert offsets logid ov
+        pure a
 
 cleanOffsetCache :: OffsetManager -> Word64 -> IO ()
 cleanOffsetCache OffsetManager{..} = H.delete offsets
