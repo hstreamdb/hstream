@@ -103,7 +103,8 @@ main = do
 app :: ServerOpts -> IO ()
 app config@ServerOpts{..} = do
   setupFatalSignalHandler
-  Log.setDefaultLogger _serverLogLevel _serverLogWithColor Log.LogStderr
+  Log.setDefaultLogger _serverLogLevel _serverLogWithColor
+                       Log.LogStderr _serverLogFlushImmediately
   Log.setLogDeviceDbgLevel' _ldLogLevel
 
   bracket (openRocksDBHandle _querySnapshotPath) closeRocksDBHandle $ \db_m ->
