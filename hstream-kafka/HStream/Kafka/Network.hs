@@ -23,12 +23,13 @@ import           Control.Monad
 import           Data.ByteString                    (ByteString)
 import qualified Data.ByteString.Lazy               as BSL
 import           Data.Int
-import           Data.List                          (find)
+import           Data.List                          (find, intersperse)
 import           Data.Maybe                         (fromMaybe, isJust,
                                                      isNothing)
 import qualified Network.Socket                     as N
 import qualified Network.Socket.ByteString          as N
 import qualified Network.Socket.ByteString.Lazy     as NL
+import           Numeric                            (showHex, showInt)
 
 import           HStream.Kafka.Common.OffsetManager (initOffsetReader)
 import           HStream.Kafka.Server.Types         (ServerContext (..))
@@ -36,6 +37,9 @@ import qualified HStream.Logger                     as Log
 import           Kafka.Protocol.Encoding
 import           Kafka.Protocol.Message
 import           Kafka.Protocol.Service
+
+-------------------------------------------------------------------------------
+-- Server
 
 -- TODO
 data SslOptions
@@ -63,32 +67,32 @@ runServer
   -> (ServerContext -> [ServiceHandler])
   -> IO ()
 runServer opts sc mkHandlers =
-  startTCPServer opts $ \s -> do
+  startTCPServer opts $ \(s, peer) -> do
     -- Since the Reader is thread-unsafe, for each connection we create a new
     -- Reader.
     om <- initOffsetReader $ scOffsetManager sc
     let sc' = sc{scOffsetManager = om}
     i <- N.recv s 1024
-    talk (mkHandlers sc') i Nothing s
+    talk (peer, (mkHandlers sc')) i Nothing s
   where
     talk _ "" _ _ = pure ()  -- client exit
-    talk hds i m_more s = do
+    talk !(peer, hds) i m_more s = do
       reqBsResult <- case m_more of
                        Nothing -> runParser @ByteString get i
                        Just mf -> mf i
       case reqBsResult of
-        Done "" reqBs -> do respBs <- runHandler hds reqBs
+        Done "" reqBs -> do respBs <- runHandler peer hds reqBs
                             NL.sendAll s respBs
                             msg <- N.recv s 1024
-                            talk hds msg Nothing s
-        Done l reqBs -> do respBs <- runHandler hds reqBs
+                            talk (peer, hds) msg Nothing s
+        Done l reqBs -> do respBs <- runHandler peer hds reqBs
                            NL.sendAll s respBs
-                           talk hds l Nothing s
+                           talk (peer, hds) l Nothing s
         More f -> do msg <- N.recv s 1024
-                     talk hds msg (Just f) s
+                     talk (peer, hds) msg (Just f) s
         Fail _ err -> E.throwIO $ DecodeError $ "Fail, " <> err
 
-    runHandler handlers reqBs = do
+    runHandler peer handlers reqBs = do
       headerResult <- runParser @RequestHeader get reqBs
       case headerResult of
         Done l RequestHeader{..} -> do
@@ -99,8 +103,14 @@ runServer opts sc mkHandlers =
               Log.debug $ "Received request "
                        <> Log.buildString' requestApiKey
                        <> ":v" <> Log.build requestApiVersion
+                       <> " from " <> Log.buildString' peer
                        <> ", payload: " <> Log.buildString' req
-              resp <- rpcHandler' RequestContext req
+              let reqContext =
+                    RequestContext
+                      { clientId = requestClientId
+                      , clientHost = showSockAddrHost peer
+                      }
+              resp <- rpcHandler' reqContext req
               Log.debug $ "Server response: " <> Log.buildString' resp
               let respBs = runPutLazy resp
                   (_, respHeaderVer) = getHeaderVersion requestApiKey requestApiVersion
@@ -121,7 +131,7 @@ runServer opts sc mkHandlers =
           errmsg = "NotImplemented: " <> show apikey <> ":v" <> show version
       fromMaybe (error errmsg) m_handler
 
-startTCPServer :: ServerOptions -> (N.Socket -> IO a) -> IO a
+startTCPServer :: ServerOptions -> ((N.Socket, N.SockAddr) -> IO a) -> IO a
 startTCPServer ServerOptions{..} server = do
   addr <- resolve
   E.bracket (open addr) N.close loop
@@ -142,17 +152,17 @@ startTCPServer ServerOptions{..} server = do
         Nothing        -> pure sock
     loop sock = forever $ E.bracketOnError (N.accept sock) (N.close . fst)
       $ \(conn, peer) -> void $ do
-        Log.info $ "Recv client connection: " <> Log.buildString' peer
         -- 'forkFinally' alone is unlikely to fail thus leaking @conn@,
         -- but 'E.bracketOnError' above will be necessary if some
         -- non-atomic setups (e.g. spawning a subprocess to handle
         -- @conn@) before proper cleanup of @conn@ is your case
-        forkFinally (server conn) $ \e -> do
+        forkFinally (server (conn, peer)) $ \e -> do
           case e of
             Left err -> print err >> N.gracefulClose conn 5000
             Right _  -> pure ()
 
 -------------------------------------------------------------------------------
+-- Client
 
 data ClientOptions = ClientOptions
   { host         :: !String
@@ -251,3 +261,39 @@ runParseIO more parser = more >>= go Nothing
         More f     -> do msg <- more
                          go (Just f) msg
         Fail _ err -> E.throwIO $ DecodeError $ "Fail, " <> err
+
+showSockAddrHost :: N.SockAddr -> String
+showSockAddrHost (N.SockAddrUnix str)           = str
+showSockAddrHost (N.SockAddrInet port ha)       = showHostAddress ha ""
+showSockAddrHost (N.SockAddrInet6 port _ ha6 _) = showHostAddress6 ha6 ""
+
+-- Taken from network Network/Socket/Info.hsc
+showHostAddress :: N.HostAddress -> ShowS
+showHostAddress ip =
+  let (u3, u2, u1, u0) = N.hostAddressToTuple ip in
+  foldr1 (.) . intersperse (showChar '.') $ map showInt [u3, u2, u1, u0]
+
+-- Taken from network Network/Socket/Info.hsc
+showHostAddress6 :: N.HostAddress6 -> ShowS
+showHostAddress6 ha6@(a1, a2, a3, a4)
+    -- IPv4-Mapped IPv6 Address
+    | a1 == 0 && a2 == 0 && a3 == 0xffff =
+      showString "::ffff:" . showHostAddress a4
+    -- IPv4-Compatible IPv6 Address (exclude IPRange ::/112)
+    | a1 == 0 && a2 == 0 && a3 == 0 && a4 >= 0x10000 =
+        showString "::" . showHostAddress a4
+    -- length of longest run > 1, replace it with "::"
+    | end - begin > 1 =
+        showFields prefix . showString "::" . showFields suffix
+    | otherwise =
+        showFields fields
+  where
+    fields =
+        let (u7, u6, u5, u4, u3, u2, u1, u0) = N.hostAddress6ToTuple ha6 in
+        [u7, u6, u5, u4, u3, u2, u1, u0]
+    showFields = foldr (.) id . intersperse (showChar ':') . map showHex
+    prefix = take begin fields  -- fields before "::"
+    suffix = drop end fields    -- fields after "::"
+    begin = end + diff          -- the longest run of zeros
+    (diff, end) = minimum $
+        scanl (\c i -> if i == 0 then c - 1 else 0) 0 fields `zip` [0..]

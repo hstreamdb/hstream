@@ -53,9 +53,11 @@ data ServerOpts = ServerOpts
 
   , _serverID                     :: !Word32
   , _metaStore                    :: !MetaStoreAddr
+  , _tlsConfig                    :: !(Maybe TlsConfig)
+
   , _serverLogLevel               :: !Log.Level
   , _serverLogWithColor           :: !Bool
-  , _tlsConfig                    :: !(Maybe TlsConfig)
+  , _serverLogFlushImmediately    :: !Bool
 
   , _serverGossipAddress          :: !String
   , _serverGossipPort             :: !Word16
@@ -86,9 +88,12 @@ data CliOptions = CliOptions
   , cliServerBindAddress            :: !(Maybe ByteString)
 
   , cliServerID                     :: !(Maybe Word32)
+  , cliMetaStore                    :: !(Maybe MetaStoreAddr)
+
+    -- Logger settings
   , cliServerLogLevel               :: !(Maybe Log.Level)
   , cliServerLogWithColor           :: !Bool
-  , cliMetaStore                    :: !(Maybe MetaStoreAddr)
+  , cliServerLogFlushImmediately    :: !Bool
 
     -- Gossip
   , cliServerGossipAddress          :: !(Maybe String)

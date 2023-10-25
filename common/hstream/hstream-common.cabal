@@ -134,6 +134,7 @@ library
     , zlib
     , zoovisitor
     , zstd
+    , async
 
   cxx-options:        -std=c++17
   cpp-options:        -std=c++17

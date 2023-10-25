@@ -50,9 +50,11 @@ parseJSONToOptions CliOptions{..} obj = do
   let !_serverGossipAddress = fromMaybe _advertisedAddress (cliServerGossipAddress <|> nodeGossipAddress)
 
   let !_metaStore          = fromMaybe nodeMetaStore cliMetaStore
+  let !_compression        = fromMaybe CompressionNone cliStoreCompression
+
   let !_serverLogLevel     = fromMaybe (readWithErrLog "log-level" nodeLogLevel) cliServerLogLevel
   let !_serverLogWithColor = nodeLogWithColor || cliServerLogWithColor
-  let !_compression        = fromMaybe CompressionNone cliStoreCompression
+  let !_serverLogFlushImmediately = cliServerLogFlushImmediately
 
   -- Cluster Option
   seeds <- flip fromMaybe cliSeedNodes <$> (nodeCfgObj .: "seed-nodes")

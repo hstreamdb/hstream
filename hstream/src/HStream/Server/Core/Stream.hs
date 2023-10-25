@@ -24,10 +24,7 @@ module HStream.Server.Core.Stream
   ) where
 
 import           Control.Concurrent                (getNumCapabilities)
-import           Control.Concurrent.Async          (mapConcurrently)
-import           Control.Concurrent.QSem           (QSem, newQSem, signalQSem,
-                                                    waitQSem)
-import           Control.Exception                 (bracket_, catch, throwIO)
+import           Control.Exception                 (catch, throwIO)
 import           Control.Monad                     (forM, forM_, unless, void,
                                                     when)
 import qualified Data.Attoparsec.Text              as AP
@@ -217,7 +214,7 @@ trimStream ServerContext{..} streamName trimPoint = do
     throwIO $ HE.StreamNotFound $ "stream " <> T.pack (show streamName) <> " is not found."
   shards <- M.elems <$> S.listStreamPartitions scLDClient streamId
   concurrentCap <- getNumCapabilities
-  void $ limitedMapConcuurently (min 8 concurrentCap) (\shardId -> getTrimLSN scLDClient shardId trimPoint >>= S.trim scLDClient shardId) shards
+  void $ limitedMapConcurrently (min 8 concurrentCap) (\shardId -> getTrimLSN scLDClient shardId trimPoint >>= S.trim scLDClient shardId) shards
  where
    streamId = S.transToStreamName streamName
 
@@ -273,7 +270,7 @@ trimShards ServerContext{..} streamName recordIds = do
   let streamId = S.transToStreamName streamName
   shards <- M.elems <$> S.listStreamPartitions scLDClient streamId
   concurrentCap <- getNumCapabilities
-  res <- limitedMapConcuurently (min 8 concurrentCap) (trim shards) points
+  res <- limitedMapConcurrently (min 8 concurrentCap) (trim shards) points
   return $ M.fromList res
  where
    trim shards r@Rid{..} = do
@@ -487,11 +484,3 @@ getTrimLSN client shardId trimPoint = do
       OffsetTimestamp API.TimestampOffset{..} -> do
         let accuracy = if timestampOffsetStrictAccuracy then S.FindKeyStrict else S.FindKeyApproximate
         S.findTime scLDClient logId timestampOffsetTimestampInMs accuracy
-
-limitedMapConcuurently :: Int -> (a -> IO b) -> [a] -> IO [b]
-limitedMapConcuurently maxConcurrency f inputs = do
-  sem <- newQSem maxConcurrency
-  mapConcurrently (limited sem . f) inputs
- where
-   limited :: QSem -> IO c -> IO c
-   limited sem = bracket_ (waitQSem sem) (signalQSem sem)

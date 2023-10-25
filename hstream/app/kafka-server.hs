@@ -69,7 +69,8 @@ main = do
 app :: ServerOpts -> IO ()
 app config@ServerOpts{..} = do
   setupFatalSignalHandler
-  Log.setDefaultLogger _serverLogLevel _serverLogWithColor Log.LogStderr
+  Log.setDefaultLogger _serverLogLevel _serverLogWithColor
+                       Log.LogStderr _serverLogFlushImmediately
   S.setLogDeviceDbgLevel' _ldLogLevel
   case _metaStore of
     ZkAddr addr -> do
