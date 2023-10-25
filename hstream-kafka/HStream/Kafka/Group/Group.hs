@@ -596,12 +596,17 @@ commitOffsets Group{..} req = do
         return K.OffsetCommitResponseV0 {topics=topics}
 
 ------------------- Fetch Offsets -------------------------
-fetchOffsets :: Group -> K.OffsetFetchRequestV0 -> IO K.OffsetFetchResponseV0
+fetchOffsets :: Group -> K.OffsetFetchRequestV2 -> IO K.OffsetFetchResponseV2
 fetchOffsets Group{..} req = do
-  topics <- Utils.forKaArrayM req.topics $ \K.OffsetFetchRequestTopicV0{..} -> do
-    res <- GMM.fetchOffsets metadataManager name partitionIndexes
-    return $ K.OffsetFetchResponseTopicV0 {partitions = res, name = name}
-  return K.OffsetFetchResponseV0 {topics=topics}
+  case K.unKaArray req.topics of
+    Nothing -> do
+      Log.debug $ "fetching all offsets in group:" <> Log.build req.groupId
+      undefined
+    Just ts -> do
+      topics <- V.forM ts $ \K.OffsetFetchRequestTopicV0{..} -> do
+        res <- GMM.fetchOffsets metadataManager name partitionIndexes
+        return $ K.OffsetFetchResponseTopicV0 {partitions = res, name = name}
+      return K.OffsetFetchResponseV2 {topics=K.KaArray (Just topics), errorCode=0}
 
 ------------------- Group Overview(ListedGroup) -------------------------
 overview :: Group -> IO K.ListedGroupV0

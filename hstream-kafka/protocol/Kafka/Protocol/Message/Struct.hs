@@ -334,6 +334,30 @@ data OffsetCommitRequestTopicV0 = OffsetCommitRequestTopicV0
   } deriving (Show, Eq, Generic)
 instance Serializable OffsetCommitRequestTopicV0
 
+data OffsetCommitRequestPartitionV1 = OffsetCommitRequestPartitionV1
+  { partitionIndex    :: {-# UNPACK #-} !Int32
+    -- ^ The partition index.
+  , committedOffset   :: {-# UNPACK #-} !Int64
+    -- ^ The message offset to be committed.
+  , commitTimestamp   :: {-# UNPACK #-} !Int64
+    -- ^ The timestamp of the commit.
+  , committedMetadata :: !NullableString
+    -- ^ Any associated metadata the client wants to keep.
+  } deriving (Show, Eq, Generic)
+instance Serializable OffsetCommitRequestPartitionV1
+
+data OffsetCommitRequestTopicV1 = OffsetCommitRequestTopicV1
+  { name       :: !Text
+    -- ^ The topic name.
+  , partitions :: !(KaArray OffsetCommitRequestPartitionV1)
+    -- ^ Each partition to commit offsets for.
+  } deriving (Show, Eq, Generic)
+instance Serializable OffsetCommitRequestTopicV1
+
+type OffsetCommitRequestPartitionV2 = OffsetCommitRequestPartitionV0
+
+type OffsetCommitRequestTopicV2 = OffsetCommitRequestTopicV0
+
 data OffsetCommitResponsePartitionV0 = OffsetCommitResponsePartitionV0
   { partitionIndex :: {-# UNPACK #-} !Int32
     -- ^ The partition index.
@@ -350,6 +374,14 @@ data OffsetCommitResponseTopicV0 = OffsetCommitResponseTopicV0
   } deriving (Show, Eq, Generic)
 instance Serializable OffsetCommitResponseTopicV0
 
+type OffsetCommitResponsePartitionV1 = OffsetCommitResponsePartitionV0
+
+type OffsetCommitResponseTopicV1 = OffsetCommitResponseTopicV0
+
+type OffsetCommitResponsePartitionV2 = OffsetCommitResponsePartitionV0
+
+type OffsetCommitResponseTopicV2 = OffsetCommitResponseTopicV0
+
 data OffsetFetchRequestTopicV0 = OffsetFetchRequestTopicV0
   { name             :: !Text
     -- ^ The topic name.
@@ -357,6 +389,10 @@ data OffsetFetchRequestTopicV0 = OffsetFetchRequestTopicV0
     -- ^ The partition indexes we would like to fetch offsets for.
   } deriving (Show, Eq, Generic)
 instance Serializable OffsetFetchRequestTopicV0
+
+type OffsetFetchRequestTopicV1 = OffsetFetchRequestTopicV0
+
+type OffsetFetchRequestTopicV2 = OffsetFetchRequestTopicV0
 
 data OffsetFetchResponsePartitionV0 = OffsetFetchResponsePartitionV0
   { partitionIndex  :: {-# UNPACK #-} !Int32
@@ -377,6 +413,14 @@ data OffsetFetchResponseTopicV0 = OffsetFetchResponseTopicV0
     -- ^ The responses per partition
   } deriving (Show, Eq, Generic)
 instance Serializable OffsetFetchResponseTopicV0
+
+type OffsetFetchResponsePartitionV1 = OffsetFetchResponsePartitionV0
+
+type OffsetFetchResponseTopicV1 = OffsetFetchResponseTopicV0
+
+type OffsetFetchResponsePartitionV2 = OffsetFetchResponsePartitionV0
+
+type OffsetFetchResponseTopicV2 = OffsetFetchResponseTopicV0
 
 data PartitionProduceDataV2 = PartitionProduceDataV2
   { index       :: {-# UNPACK #-} !Int32
@@ -671,10 +715,40 @@ data OffsetCommitRequestV0 = OffsetCommitRequestV0
   } deriving (Show, Eq, Generic)
 instance Serializable OffsetCommitRequestV0
 
+data OffsetCommitRequestV1 = OffsetCommitRequestV1
+  { groupId      :: !Text
+    -- ^ The unique group identifier.
+  , generationId :: {-# UNPACK #-} !Int32
+    -- ^ The generation of the group.
+  , memberId     :: !Text
+    -- ^ The member ID assigned by the group coordinator.
+  , topics       :: !(KaArray OffsetCommitRequestTopicV1)
+    -- ^ The topics to commit offsets for.
+  } deriving (Show, Eq, Generic)
+instance Serializable OffsetCommitRequestV1
+
+data OffsetCommitRequestV2 = OffsetCommitRequestV2
+  { groupId         :: !Text
+    -- ^ The unique group identifier.
+  , generationId    :: {-# UNPACK #-} !Int32
+    -- ^ The generation of the group.
+  , memberId        :: !Text
+    -- ^ The member ID assigned by the group coordinator.
+  , retentionTimeMs :: {-# UNPACK #-} !Int64
+    -- ^ The time period in ms to retain the offset.
+  , topics          :: !(KaArray OffsetCommitRequestTopicV0)
+    -- ^ The topics to commit offsets for.
+  } deriving (Show, Eq, Generic)
+instance Serializable OffsetCommitRequestV2
+
 newtype OffsetCommitResponseV0 = OffsetCommitResponseV0
   { topics :: (KaArray OffsetCommitResponseTopicV0)
   } deriving (Show, Eq, Generic)
 instance Serializable OffsetCommitResponseV0
+
+type OffsetCommitResponseV1 = OffsetCommitResponseV0
+
+type OffsetCommitResponseV2 = OffsetCommitResponseV0
 
 data OffsetFetchRequestV0 = OffsetFetchRequestV0
   { groupId :: !Text
@@ -685,10 +759,24 @@ data OffsetFetchRequestV0 = OffsetFetchRequestV0
   } deriving (Show, Eq, Generic)
 instance Serializable OffsetFetchRequestV0
 
+type OffsetFetchRequestV1 = OffsetFetchRequestV0
+
+type OffsetFetchRequestV2 = OffsetFetchRequestV0
+
 newtype OffsetFetchResponseV0 = OffsetFetchResponseV0
   { topics :: (KaArray OffsetFetchResponseTopicV0)
   } deriving (Show, Eq, Generic)
 instance Serializable OffsetFetchResponseV0
+
+type OffsetFetchResponseV1 = OffsetFetchResponseV0
+
+data OffsetFetchResponseV2 = OffsetFetchResponseV2
+  { topics    :: !(KaArray OffsetFetchResponseTopicV0)
+    -- ^ The responses per topic.
+  , errorCode :: {-# UNPACK #-} !ErrorCode
+    -- ^ The top-level error code, or 0 if there was no error.
+  } deriving (Show, Eq, Generic)
+instance Serializable OffsetFetchResponseV2
 
 data ProduceRequestV2 = ProduceRequestV2
   { acks      :: {-# UNPACK #-} !Int16
@@ -858,6 +946,8 @@ instance Service HStreamKafkaV1 where
   type ServiceName HStreamKafkaV1 = "HStreamKafkaV1"
   type ServiceMethods HStreamKafkaV1 =
     '[ "metadata"
+     , "offsetCommit"
+     , "offsetFetch"
      , "apiVersions"
      ]
 
@@ -867,6 +957,20 @@ instance HasMethodImpl HStreamKafkaV1 "metadata" where
   type MethodVersion HStreamKafkaV1 "metadata" = 1
   type MethodInput HStreamKafkaV1 "metadata" = MetadataRequestV1
   type MethodOutput HStreamKafkaV1 "metadata" = MetadataResponseV1
+
+instance HasMethodImpl HStreamKafkaV1 "offsetCommit" where
+  type MethodName HStreamKafkaV1 "offsetCommit" = "offsetCommit"
+  type MethodKey HStreamKafkaV1 "offsetCommit" = 8
+  type MethodVersion HStreamKafkaV1 "offsetCommit" = 1
+  type MethodInput HStreamKafkaV1 "offsetCommit" = OffsetCommitRequestV1
+  type MethodOutput HStreamKafkaV1 "offsetCommit" = OffsetCommitResponseV1
+
+instance HasMethodImpl HStreamKafkaV1 "offsetFetch" where
+  type MethodName HStreamKafkaV1 "offsetFetch" = "offsetFetch"
+  type MethodKey HStreamKafkaV1 "offsetFetch" = 9
+  type MethodVersion HStreamKafkaV1 "offsetFetch" = 1
+  type MethodInput HStreamKafkaV1 "offsetFetch" = OffsetFetchRequestV1
+  type MethodOutput HStreamKafkaV1 "offsetFetch" = OffsetFetchResponseV1
 
 instance HasMethodImpl HStreamKafkaV1 "apiVersions" where
   type MethodName HStreamKafkaV1 "apiVersions" = "apiVersions"
@@ -882,6 +986,8 @@ instance Service HStreamKafkaV2 where
   type ServiceMethods HStreamKafkaV2 =
     '[ "produce"
      , "fetch"
+     , "offsetCommit"
+     , "offsetFetch"
      , "apiVersions"
      ]
 
@@ -898,6 +1004,20 @@ instance HasMethodImpl HStreamKafkaV2 "fetch" where
   type MethodVersion HStreamKafkaV2 "fetch" = 2
   type MethodInput HStreamKafkaV2 "fetch" = FetchRequestV2
   type MethodOutput HStreamKafkaV2 "fetch" = FetchResponseV2
+
+instance HasMethodImpl HStreamKafkaV2 "offsetCommit" where
+  type MethodName HStreamKafkaV2 "offsetCommit" = "offsetCommit"
+  type MethodKey HStreamKafkaV2 "offsetCommit" = 8
+  type MethodVersion HStreamKafkaV2 "offsetCommit" = 2
+  type MethodInput HStreamKafkaV2 "offsetCommit" = OffsetCommitRequestV2
+  type MethodOutput HStreamKafkaV2 "offsetCommit" = OffsetCommitResponseV2
+
+instance HasMethodImpl HStreamKafkaV2 "offsetFetch" where
+  type MethodName HStreamKafkaV2 "offsetFetch" = "offsetFetch"
+  type MethodKey HStreamKafkaV2 "offsetFetch" = 9
+  type MethodVersion HStreamKafkaV2 "offsetFetch" = 2
+  type MethodInput HStreamKafkaV2 "offsetFetch" = OffsetFetchRequestV2
+  type MethodOutput HStreamKafkaV2 "offsetFetch" = OffsetFetchResponseV2
 
 instance HasMethodImpl HStreamKafkaV2 "apiVersions" where
   type MethodName HStreamKafkaV2 "apiVersions" = "apiVersions"
@@ -951,8 +1071,8 @@ supportedApiVersions =
   , ApiVersionV0 (ApiKey 1) 2 2
   , ApiVersionV0 (ApiKey 2) 0 0
   , ApiVersionV0 (ApiKey 3) 0 1
-  , ApiVersionV0 (ApiKey 8) 0 0
-  , ApiVersionV0 (ApiKey 9) 0 0
+  , ApiVersionV0 (ApiKey 8) 0 2
+  , ApiVersionV0 (ApiKey 9) 0 2
   , ApiVersionV0 (ApiKey 10) 0 0
   , ApiVersionV0 (ApiKey 11) 0 0
   , ApiVersionV0 (ApiKey 12) 0 0
@@ -972,7 +1092,11 @@ getHeaderVersion (ApiKey 2) 0  = (1, 0)
 getHeaderVersion (ApiKey 3) 0  = (1, 0)
 getHeaderVersion (ApiKey 3) 1  = (1, 0)
 getHeaderVersion (ApiKey 8) 0  = (1, 0)
+getHeaderVersion (ApiKey 8) 1  = (1, 0)
+getHeaderVersion (ApiKey 8) 2  = (1, 0)
 getHeaderVersion (ApiKey 9) 0  = (1, 0)
+getHeaderVersion (ApiKey 9) 1  = (1, 0)
+getHeaderVersion (ApiKey 9) 2  = (1, 0)
 getHeaderVersion (ApiKey 10) 0 = (1, 0)
 getHeaderVersion (ApiKey 11) 0 = (1, 0)
 getHeaderVersion (ApiKey 12) 0 = (1, 0)
