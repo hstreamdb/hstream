@@ -583,9 +583,10 @@ checkHeartbeatAndMaybeRebalance group Member{..} = do
     return nextDelayMs
 
 ------------------- Commit Offsets -------------------------
-commitOffsets :: Group -> K.OffsetCommitRequestV0 -> IO K.OffsetCommitResponseV0
-commitOffsets Group{..} req = do
+commitOffsets :: Group -> K.OffsetCommitRequestV2 -> IO K.OffsetCommitResponseV2
+commitOffsets group@Group{..} req = do
   C.withMVar lock $ \() -> do
+    validateOffsetcommit group req
     IO.readIORef state >>= \case
       CompletingRebalance -> throw (ErrorCodeException K.REBALANCE_IN_PROGRESS)
       Dead -> throw (ErrorCodeException K.UNKNOWN_MEMBER_ID)
@@ -595,13 +596,32 @@ commitOffsets Group{..} req = do
           return $ K.OffsetCommitResponseTopicV0 {partitions = res, name = name}
         return K.OffsetCommitResponseV0 {topics=topics}
 
+validateOffsetcommit :: Group -> K.OffsetCommitRequestV2 -> IO ()
+validateOffsetcommit Group{..} req = do
+  currentState <- IO.readIORef state
+  currentGenerationId <- IO.readIORef groupGenerationId
+  if (req.generationId < 0) then do
+    -- When the generation id is -1, the request comes from either the admin client
+    -- or a consumer which does not use the group management facility. In this case,
+    -- the request can commit offsets if the group is empty.
+    when (currentState /= Empty) $ do
+      throw (ErrorCodeException K.ILLEGAL_GENERATION)
+  else do
+    when (req.generationId /= currentGenerationId) $ do
+      throw (ErrorCodeException K.ILLEGAL_GENERATION)
+
+    H.lookup members req.memberId >>= \case
+      Nothing -> throw (ErrorCodeException K.UNKNOWN_MEMBER_ID)
+      Just _ -> pure ()
+
 ------------------- Fetch Offsets -------------------------
 fetchOffsets :: Group -> K.OffsetFetchRequestV2 -> IO K.OffsetFetchResponseV2
 fetchOffsets Group{..} req = do
   case K.unKaArray req.topics of
     Nothing -> do
       Log.debug $ "fetching all offsets in group:" <> Log.build req.groupId
-      undefined
+      topics <- GMM.fetchAllOffsets metadataManager
+      return K.OffsetFetchResponseV2 {topics=topics, errorCode=0}
     Just ts -> do
       topics <- V.forM ts $ \K.OffsetFetchRequestTopicV0{..} -> do
         res <- GMM.fetchOffsets metadataManager name partitionIndexes

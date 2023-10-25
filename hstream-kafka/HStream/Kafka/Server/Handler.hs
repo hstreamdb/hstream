@@ -31,9 +31,16 @@ handlers sc =
 
   , K.hd (K.RPC :: K.RPC K.HStreamKafkaV2 "fetch") (handleFetchV2 sc)
 
+  -- Offsets
   , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "listOffsets") (handleListOffsetsV0 sc)
+
   , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "offsetCommit") (handleOffsetCommitV0 sc)
+  , K.hd (K.RPC :: K.RPC K.HStreamKafkaV1 "offsetCommit") (handleOffsetCommitV1 sc)
+  , K.hd (K.RPC :: K.RPC K.HStreamKafkaV2 "offsetCommit") (handleOffsetCommitV2 sc)
+
   , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "offsetFetch") (handleOffsetFetchV0 sc)
+  , K.hd (K.RPC :: K.RPC K.HStreamKafkaV1 "offsetFetch") (handleOffsetFetchV1 sc)
+  , K.hd (K.RPC :: K.RPC K.HStreamKafkaV2 "offsetFetch") (handleOffsetFetchV2 sc)
 
   , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "findCoordinator") (handleFindCoordinatorV0 sc)
 

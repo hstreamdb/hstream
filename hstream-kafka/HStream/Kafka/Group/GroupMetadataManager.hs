@@ -1,13 +1,17 @@
+{-# LANGUAGE OverloadedRecordDot #-}
+
 module HStream.Kafka.Group.GroupMetadataManager
   ( GroupMetadataManager
   , mkGroupMetadataManager
   , storeOffsets
   , fetchOffsets
+  , fetchAllOffsets
   ) where
 
 import           Control.Concurrent                  (MVar, getNumCapabilities,
                                                       modifyMVar, modifyMVar_,
-                                                      newMVar, withMVar)
+                                                      newMVar, readMVar,
+                                                      withMVar)
 import           Control.Exception                   (throw)
 import           Control.Monad                       (void)
 import           Data.Hashable
@@ -164,6 +168,20 @@ fetchOffsets GroupMetadataManager{..} topicName partitions = do
       ) partitions'
 
   return $ KaArray {unKaArray = Just res}
+
+fetchAllOffsets :: GroupMetadataManager -> IO (KaArray K.OffsetFetchResponseTopicV0)
+fetchAllOffsets GroupMetadataManager{..} = do
+  -- group offsets by TopicName
+  cachedOffset <- Map.foldrWithKey foldF Map.empty <$> readMVar offsetsCache
+  return . KaArray . Just . V.map makeTopic . V.fromList . Map.toList $ cachedOffset
+  where makePartition partition offset = OffsetFetchResponsePartitionV0
+                   { committedOffset = offset
+                   , metadata = Nothing
+                   , partitionIndex=partition
+                   , errorCode = K.NONE
+                   }
+        foldF tp offset = Map.insertWith (V.++) tp.topicName (V.singleton (makePartition tp.topicPartitionIdx offset))
+        makeTopic (name, partitions) = K.OffsetFetchResponseTopicV0 {partitions=KaArray (Just partitions), name=name}
 
 -------------------------------------------------------------------------------------------------
 -- helper
