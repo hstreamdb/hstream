@@ -48,3 +48,6 @@ hstream-sql/etc/SQL.cf
 
 ## hstream version
 common/hstream/HStream/Version.hs
+
+## for python env
+.pyenv

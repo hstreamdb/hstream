@@ -43,3 +43,6 @@ mapKaArrayM f arr = case K.unKaArray arr of
 
 forKaArrayM :: K.KaArray a -> (a -> IO b) -> IO (K.KaArray b)
 forKaArrayM = flip mapKaArrayM
+
+emptyKaArray :: K.KaArray a
+emptyKaArray = K.KaArray (Just V.empty)
