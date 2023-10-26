@@ -131,6 +131,16 @@ hserver:
       las: hstreamdb/sink-las:latest
       elasticsearch: hstreamdb/sink-elasticsearch:latest
 
+  # Internal grpc settings (typically, there's no need to modify these)
+  #grpc:
+  #  channel-args:
+  #    GRPC_ARG_KEEPALIVE_TIME_MS: 7200000 # (2 hours)
+  #    GRPC_ARG_KEEPALIVE_TIMEOUT_MS: 20000 # (20 seconds)
+  #    GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS: 0 # (false)
+  #    GRPC_ARG_HTTP2_MAX_PINGS_WITHOUT_DATA: 2
+  #    GRPC_ARG_HTTP2_MIN_RECV_PING_INTERVAL_WITHOUT_DATA_MS: 300000 # (5 minutes)
+  #    GRPC_ARG_HTTP2_MAX_PING_STRIKES: 2
+
 # Configuration for HStream Kafka Server
 kafka:
   # The identifier of a single HServer node,
