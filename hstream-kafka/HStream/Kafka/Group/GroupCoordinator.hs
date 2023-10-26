@@ -158,24 +158,14 @@ commitOffsetsV0 coordinator ldClient serverId req = do
     }
 
 ------------------- Fetch Offsets -------------------------
+-- TODO: improve error report
 fetchOffsetsV2 :: GroupCoordinator -> K.OffsetFetchRequestV2 -> IO K.OffsetFetchResponseV2
 fetchOffsetsV2 coordinator req = do
-  handle (\(ErrorCodeException code) -> makeErrorResponse code) $ do
-    group <- getGroup coordinator req.groupId
-    G.fetchOffsets group req
-  where makeErrorResponse code = return $ K.OffsetFetchResponseV2 {
-      topics = Utils.emptyKaArray
-      , errorCode = code
-    }
-
--- TODO: improve error report
-fetchOffsetsV1 :: GroupCoordinator -> K.OffsetFetchRequestV1 -> IO K.OffsetFetchResponseV1
-fetchOffsetsV1 coordinator req = do
   handle (\(ErrorCodeException _) -> makeErrorResponse) $ do
     group <- getGroup coordinator req.groupId
     respV2 <- G.fetchOffsets group req
-    return K.OffsetFetchResponseV0 {topics = respV2.topics}
-  where makeErrorResponse = return $ K.OffsetFetchResponseV0 {topics = Utils.mapKaArray mapTopic req.topics}
+    return K.OffsetFetchResponseV2 {topics = respV2.topics, errorCode = 0}
+  where makeErrorResponse = return $ K.OffsetFetchResponseV2 {topics = Utils.mapKaArray mapTopic req.topics, errorCode=0}
         mapTopic topic = K.OffsetFetchResponseTopicV0 {partitions=Utils.mapKaArray mapPartition topic.partitionIndexes, name=topic.name}
         mapPartition partition = K.OffsetFetchResponsePartitionV0 {
           errorCode=0
@@ -183,6 +173,11 @@ fetchOffsetsV1 coordinator req = do
           , metadata = Nothing
           , committedOffset = -1
         }
+
+fetchOffsetsV1 :: GroupCoordinator -> K.OffsetFetchRequestV1 -> IO K.OffsetFetchResponseV1
+fetchOffsetsV1 coordinator req = do
+  respV2 <- fetchOffsetsV2 coordinator req
+  return K.OffsetFetchResponseV0 {topics = respV2.topics}
 
 fetchOffsetsV0 :: GroupCoordinator -> K.OffsetFetchRequestV0 -> IO K.OffsetFetchResponseV0
 fetchOffsetsV0 coordinator req = do
