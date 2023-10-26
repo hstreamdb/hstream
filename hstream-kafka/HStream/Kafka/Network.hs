@@ -21,6 +21,7 @@ import           Control.Concurrent
 import qualified Control.Exception                  as E
 import           Control.Monad
 import           Data.ByteString                    (ByteString)
+import qualified Data.ByteString                    as BS
 import qualified Data.ByteString.Lazy               as BSL
 import           Data.Int
 import           Data.List                          (find, intersperse)
@@ -99,7 +100,9 @@ runServer opts sc mkHandlers =
           let ServiceHandler{..} = findHandler handlers requestApiKey requestApiVersion
           case rpcHandler of
             UnaryHandler rpcHandler' -> do
-              req <- runGet l
+              (req, left) <- runGet' l
+              when (not . BS.null $ left) $
+                Log.warning $ "Leftover bytes: " <> Log.buildString' left
               Log.debug $ "Received request "
                        <> Log.buildString' requestApiKey
                        <> ":v" <> Log.build requestApiVersion
