@@ -1,3 +1,6 @@
+{-# LANGUAGE OverloadedRecordDot #-}
+{-# LANGUAGE OverloadedStrings   #-}
+
 module HStream.Kafka.Server.Handler.Basic
   ( -- 18: ApiVersions
     handleApiversionsV0
@@ -7,6 +10,9 @@ module HStream.Kafka.Server.Handler.Basic
     -- 3: Metadata
   , handleMetadataV0
   , handleMetadataV1
+  , handleMetadataV2
+  , handleMetadataV3
+  , handleMetadataV4
   ) where
 
 import           Control.Exception
@@ -81,12 +87,37 @@ handleMetadataV0 ctx reqCtx req = do
 
 handleMetadataV1
   :: ServerContext -> K.RequestContext -> K.MetadataRequestV1 -> IO K.MetadataResponseV1
-handleMetadataV1 ctx@ServerContext{..} _ req = do
+handleMetadataV1 ctx reqCtx req = do
+  respV3 <- handleMetadataV3 ctx reqCtx req
+  return $ K.MetadataResponseV1 {
+    controllerId=respV3.controllerId
+    , topics=respV3.topics
+    , brokers=respV3.brokers}
+
+handleMetadataV2
+  :: ServerContext -> K.RequestContext -> K.MetadataRequestV2 -> IO K.MetadataResponseV2
+handleMetadataV2 ctx reqCtx req = do
+  respV3 <- handleMetadataV3 ctx reqCtx req
+  return $ K.MetadataResponseV2 {
+    controllerId=respV3.controllerId
+    , clusterId=respV3.clusterId
+    , topics=respV3.topics
+    , brokers=respV3.brokers}
+
+handleMetadataV3
+  :: ServerContext -> K.RequestContext -> K.MetadataRequestV3 -> IO K.MetadataResponseV3
+handleMetadataV3 ctx reqCtx req = do
+  let reqV4 = K.MetadataRequestV4 {allowAutoTopicCreation=False, topics=req.topics}
+  handleMetadataV4 ctx reqCtx reqV4
+
+handleMetadataV4
+  :: ServerContext -> K.RequestContext -> K.MetadataRequestV4 -> IO K.MetadataResponseV4
+handleMetadataV4 ctx@ServerContext{..} _ req = do
   respBrokers <- getBrokers
   -- FIXME: `serverID` is a `Word32` but kafka expects an `Int32`,
   -- causing a potential overflow.
   let ctlId = fromIntegral serverID
-  let (K.MetadataRequestV0 reqTopics) = req
+  let reqTopics = req.topics
   case reqTopics of
     K.KaArray Nothing -> returnAllTopics respBrokers ctlId
     K.KaArray (Just v)
@@ -94,17 +125,32 @@ handleMetadataV1 ctx@ServerContext{..} _ req = do
       | otherwise -> do
           let topicNames = V.map (\K.MetadataRequestTopicV0{..} -> name) v
           respTopics <- forM topicNames getRespTopic
-          return $ K.MetadataResponseV1 (K.KaArray $ Just respBrokers) ctlId (K.KaArray $ Just respTopics)
+          -- return $ K.MetadataResponseV4 (K.KaArray $ Just respBrokers) ctlId (K.KaArray $ Just respTopics)
+          -- TODO: implement read cluster id
+          return $ K.MetadataResponseV3 {
+              clusterId=Nothing
+            , controllerId=ctlId
+            , throttleTimeMs=0
+            , topics=K.NonNullKaArray respTopics
+            , brokers=K.NonNullKaArray respBrokers
+            }
   where
     returnAllTopics :: V.Vector K.MetadataResponseBrokerV1
                     -> Int32
-                    -> IO K.MetadataResponseV1
+                    -> IO K.MetadataResponseV3
     returnAllTopics respBrokers_ ctlId_ = do
       -- FIXME: `serverID` is a `Word32` but kafka expects an `Int32`,
       -- causing a potential overflow.
       allStreamNames <- S.findStreams scLDClient S.StreamTypeTopic <&> (fmap (Utils.cBytesToText . S.streamName))
       respTopics <- forM allStreamNames getRespTopic <&> V.fromList
-      return $ K.MetadataResponseV1 (K.KaArray $ Just respBrokers_) ctlId_ (K.KaArray $ Just respTopics)
+      -- return $ K.MetadataResponseV1 (K.KaArray $ Just respBrokers_) ctlId_ (K.KaArray $ Just respTopics)
+      return $ K.MetadataResponseV3 {
+          clusterId=Nothing
+        , controllerId=ctlId_
+        , throttleTimeMs=0
+        , topics=K.NonNullKaArray respTopics
+        , brokers=K.NonNullKaArray respBrokers_
+        }
 
     getBrokers :: IO (V.Vector K.MetadataResponseBrokerV1)
     getBrokers = do
