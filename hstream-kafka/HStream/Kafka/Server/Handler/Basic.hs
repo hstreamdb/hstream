@@ -72,7 +72,13 @@ handleApiversionsV3 _ req = do
 handleMetadataV0
   :: ServerContext -> K.RequestContext -> K.MetadataRequestV0 -> IO K.MetadataResponseV0
 handleMetadataV0 ctx reqCtx req = do
-  (K.MetadataResponseV1 (K.KaArray brokers) _ (K.KaArray topics)) <- handleMetadataV1 ctx reqCtx req
+  -- In version 0, an empty array indicates "request metadata for all topics."  In version 1 and
+  -- higher, an empty array indicates "request metadata for no topics," and a null array is used to
+  -- indiate "request metadata for all topics."
+  let K.NonNullKaArray topicVec = req.topics
+      v1Topics = if (V.null topicVec) then K.KaArray Nothing else K.NonNullKaArray topicVec
+      v1Req = K.MetadataRequestV0 {topics=v1Topics}
+  (K.MetadataResponseV1 (K.KaArray brokers) _ (K.KaArray topics)) <- handleMetadataV1 ctx reqCtx v1Req
   return $ K.MetadataResponseV0 (K.KaArray $ V.map respBrokerV1toV0 <$> brokers)
                                 (K.KaArray $ V.map respTopicV1toV0  <$> topics)
 
@@ -121,7 +127,13 @@ handleMetadataV4 ctx@ServerContext{..} _ req = do
   case reqTopics of
     K.KaArray Nothing -> returnAllTopics respBrokers ctlId
     K.KaArray (Just v)
-      | V.null v  -> returnAllTopics respBrokers ctlId
+      | V.null v  -> return $ K.MetadataResponseV3 {
+          throttleTimeMs=0
+          , clusterId=Nothing
+          , controllerId=ctlId
+          , topics=K.NonNullKaArray V.empty
+          , brokers=K.NonNullKaArray respBrokers
+          }
       | otherwise -> do
           let topicNames = V.map (\K.MetadataRequestTopicV0{..} -> name) v
           respTopics <- forM topicNames getRespTopic

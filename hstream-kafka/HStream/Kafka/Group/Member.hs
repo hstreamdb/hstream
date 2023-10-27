@@ -1,13 +1,16 @@
 {-# LANGUAGE CPP                   #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE OverloadedRecordDot   #-}
+{-# LANGUAGE OverloadedStrings     #-}
 
 module HStream.Kafka.Group.Member where
 
 import qualified Control.Concurrent     as C
+import           Control.Monad          (join)
 import qualified Data.ByteString        as BS
 import           Data.Int               (Int32, Int64)
 import qualified Data.IORef             as IO
+import           Data.Maybe             (fromMaybe)
 import qualified Data.Text              as T
 import qualified Kafka.Protocol.Service as K
 
@@ -35,8 +38,8 @@ newMember reqCtx memberId sessionTimeoutMs protocolType supportedProtcols = do
   heartbeatThread <- IO.newIORef Nothing
 
   -- TODO: read from request context
-  let clientId = ""
-      clientHost = ""
+  let clientId = fromMaybe "" (join reqCtx.clientId)
+      clientHost = T.pack reqCtx.clientHost
 
   -- TODO: check request
   return $ Member {..}
