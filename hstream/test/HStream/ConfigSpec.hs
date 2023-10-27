@@ -109,6 +109,7 @@ defaultConfig = ServerOpts
   , _ioOptions                 = defaultIOOptions
   , _querySnapshotPath         = "/data/query_snapshots"
   , experimentalFeatures       = []
+  , grpcChannelArgs            = []
   }
 
 defaultIOOptions :: IOOptions
@@ -271,6 +272,7 @@ instance Arbitrary ServerOpts where
     _listenersSecurityProtocolMap <- M.fromList . zip listenersKeys . repeat <$> elements ["plaintext", "tls"]
     let _securityProtocolMap = M.fromList [("plaintext", Nothing), ("tls", _tlsConfig)]
     let experimentalFeatures = []
+    let grpcChannelArgs = []
     pure ServerOpts{..}
 
 instance Arbitrary CliOptions where

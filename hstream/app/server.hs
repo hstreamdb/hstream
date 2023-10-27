@@ -27,6 +27,7 @@ import qualified Data.Text                        as T
 import           Data.Text.Encoding               (encodeUtf8)
 import           Data.Word                        (Word16)
 import qualified HsGrpc.Server                    as HsGrpc
+import qualified HsGrpc.Server.Types                    as HsGrpc
 import           Network.HTTP.Client              (defaultManagerSettings,
                                                    newManager)
 import           System.Environment               (getArgs)
@@ -141,7 +142,14 @@ app config@ServerOpts{..} = do
 
       void . forkIO $ updateHashRing gossipContext (loadBalanceHashRing serverContext)
 
+#ifdef HStreamUseGrpcHaskell
       grpcOpts <- defGrpcOpts _serverHost _serverPort _tlsConfig
+#else
+      when (not . null $ grpcChannelArgs) $
+        Log.debug $ "Set grpcChannelArgs: " <> Log.buildString' grpcChannelArgs
+      grpcOpts <- defGrpcOpts _serverHost _serverPort _tlsConfig grpcChannelArgs
+#endif
+
       -- Experimental features
       let enableStreamV2 = ExperimentalStreamV2 `elem` experimentalFeatures
       Async.withAsync (serve serverContext grpcOpts enableStreamV2) $ \a -> do
@@ -289,11 +297,7 @@ defGrpcOpts
   -> Maybe TlsConfig
 #ifdef HStreamUseGrpcHaskell
   -> IO GRPC.ServiceOptions
-#else
-  -> IO HsGrpc.ServerOptions
-#endif
 defGrpcOpts host port tlsConfig = do
-#ifdef HStreamUseGrpcHaskell
   let sslOpts = initializeTlsConfig <$> tlsConfig
   pure $
     GRPC.defaultServiceOptions
@@ -302,6 +306,9 @@ defGrpcOpts host port tlsConfig = do
       , GRPC.sslConfig = sslOpts
       }
 #else
+  -> [HsGrpc.ChannelArg]
+  -> IO HsGrpc.ServerOptions
+defGrpcOpts host port tlsConfig chanArgs = do
   sslOpts <- mapM readTlsPemFile $ tlsConfig
   pure $
     HsGrpc.defaultServerOpts
@@ -310,6 +317,7 @@ defGrpcOpts host port tlsConfig = do
       , HsGrpc.serverParallelism = 0
       , HsGrpc.serverSslOptions = sslOpts
       , HsGrpc.serverInternalChannelSize = 64
+      , HsGrpc.serverChannelArgs = chanArgs
       }
 #endif
 
