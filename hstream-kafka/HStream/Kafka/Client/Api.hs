@@ -7,7 +7,8 @@ module HStream.Kafka.Client.Api
   , metadata
   , createTopics
   , deleteTopics
-  , produce
+  , listGroups
+  , describeGroups
   ) where
 
 import           Data.Int
@@ -48,10 +49,19 @@ deleteTopics correlationId req h = snd <$> do
   sendAndRecv (K.RPC :: K.RPC K.HStreamKafkaV0 "deleteTopics")
               correlationId (Just clientId) Nothing req h
 
-produce
+listGroups
   :: Int32
-  -> K.ProduceRequestV2
-  -> ClientHandler -> IO K.ProduceResponseV2
-produce correlationId req h = snd <$> do
-  sendAndRecv (K.RPC :: K.RPC K.HStreamKafkaV2 "produce")
+  -> K.ListGroupsRequestV0
+  -> ClientHandler
+  -> IO K.ListGroupsResponseV0
+listGroups correlationId req h = snd <$> do
+  sendAndRecv (K.RPC :: K.RPC K.HStreamKafkaV0 "listGroups")
+              correlationId (Just clientId) Nothing req h
+
+describeGroups
+  :: Int32
+  -> K.DescribeGroupsRequestV0
+  -> ClientHandler -> IO K.DescribeGroupsResponseV0
+describeGroups correlationId req h = snd <$> do
+  sendAndRecv (K.RPC :: K.RPC K.HStreamKafkaV0 "describeGroups")
               correlationId (Just clientId) Nothing req h

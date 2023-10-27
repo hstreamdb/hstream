@@ -9,11 +9,13 @@ module HStream.Kafka.Client.Cli
   ( Command (..)
   , runCliParser
   , handleTopicCommand
+  , handleGroupCommand
   , handleNodeCommand
   , handleProduceCommand
   , handleConsumeCommand
   ) where
 
+import           Colourista               (formatWith, yellow)
 import           Control.Exception        (finally)
 import           Control.Monad
 import           Control.Monad.IO.Class   (liftIO)
@@ -44,6 +46,8 @@ import qualified Kafka.Protocol.Message   as K
 
 -------------------------------------------------------------------------------
 
+-- TODO: move to HStream.Kafka.Client.Api
+--
 -- For cli usage, there should not be only multi thread running at the same time.
 gloCorrelationId :: IORef Int32
 gloCorrelationId = unsafePerformIO $ newIORef 1
@@ -62,6 +66,7 @@ data Options = Options
 
 data Command
   = TopicCommand TopicCommand
+  | GroupCommand GroupCommand
   | NodeCommand NodeCommand
   | ProduceCommand ProduceCommandOpts
   | ConsumeCommand ConsumeCommandOpts
@@ -77,6 +82,8 @@ commandParser :: Parser Command
 commandParser = hsubparser
     ( command "topic"
         (info (TopicCommand <$> topicCommandParser) (progDesc "topic command"))
+   <> command "group"
+        (info (GroupCommand <$> groupCommandParser) (progDesc "group command"))
    <> command "node"
         (info (NodeCommand <$> nodeCommandParser) (progDesc "node command"))
    <> command "produce"
@@ -152,7 +159,7 @@ handleTopicList Options{..} = do
   resp <- KA.withSendAndRecv host port (KA.metadata correlationId req)
   let titles = ["Name", "ErrorCode", "IsInternal"]
       K.NonNullKaArray topics = resp.topics
-      lenses = [ show . (.name)
+      lenses = [ Text.unpack . (.name)
                , show . (.errorCode)
                , show . (.isInternal)
                ]
@@ -211,6 +218,69 @@ handleTopicDelete Options{..} cmdopts = do
         when (ret.errorCode /= K.NONE) $
           putStrLn $ "Delete topic " <> show ret.name <> " failed: " <> show ret.errorCode
       putStrLn "DONE"
+
+-------------------------------------------------------------------------------
+
+data GroupCommand
+  = GroupCommandList
+  | GroupCommandInfo Text
+  deriving (Show)
+
+groupIdParser :: Parser Text
+groupIdParser =
+  O.strOption (O.long "id" <> O.metavar "Text" <> O.help "Group id")
+
+groupCommandParser :: Parser GroupCommand
+groupCommandParser = hsubparser
+  ( O.command "list" (O.info (pure GroupCommandList) (O.progDesc "Get all consumer groups"))
+ <> O.command "info" (O.info (GroupCommandInfo <$> groupIdParser) (O.progDesc "topic info"))
+  )
+
+handleGroupCommand :: Options -> GroupCommand -> IO ()
+handleGroupCommand opts GroupCommandList     = handleGroupList opts
+handleGroupCommand opts (GroupCommandInfo n) = handleGroupInfo opts n
+
+handleGroupList :: Options -> IO ()
+handleGroupList Options{..} = do
+  let req = K.ListGroupsRequestV0
+  correlationId <- getCorrelationId
+  resp <- KA.withSendAndRecv host port (KA.listGroups correlationId req)
+  when (resp.errorCode /= K.NONE) $
+    errorWithoutStackTrace $ "List groups failed: " <> show resp.errorCode
+  let titles = ["ID", "ProtocolType"]
+      K.NonNullKaArray groups = resp.groups
+      lenses = [ Text.unpack . (.groupId)
+               , Text.unpack . (.protocolType)
+               ]
+      stats = (\s -> ($ s) <$> lenses) <$> (V.toList groups)
+  putStrLn $ simpleShowTable (map (, 30, Table.left) titles) stats
+
+handleGroupInfo :: Options -> Text -> IO ()
+handleGroupInfo Options{..} name = do
+  let req = K.DescribeGroupsRequestV0 (K.KaArray $ Just $ V.singleton name)
+  correlationId <- getCorrelationId
+  resp <- KA.withSendAndRecv host port (KA.describeGroups correlationId req)
+  let K.NonNullKaArray groups = resp.groups
+      group = V.head groups  -- We only send one group id in the request, so
+                             -- there should be only one group in the response
+  when (group.errorCode /= K.NONE) $
+    errorWithoutStackTrace $ "Describe group failed: " <> show group.errorCode
+  let emit idt s = putStrLn $ replicate idt ' ' <> s
+      members = K.unNonNullKaArray $ group.members
+  emit 0 . formatWith [yellow] $ "\9678 " <> Text.unpack group.groupId
+  -- Use show here because all the following can be an empty text, which will
+  -- be printed as `""` by show
+  emit 2 $ "GroupState: " <> show group.groupState
+  emit 2 $ "ProtocolType: " <> show group.protocolType
+  emit 2 $ "ProtocolData: " <> show group.protocolData
+  if V.null members
+     then emit 2 $ "Members: None"
+     else do
+       emit 2 $ "Members:"
+       V.forM_ members $ \m -> do
+         emit 4 . formatWith [yellow] $ "\9678 " <> Text.unpack m.memberId
+         emit 6 $ "ClientId: " <> Text.unpack m.clientId
+         emit 6 $ "ClientHost: " <> Text.unpack m.clientHost
 
 -------------------------------------------------------------------------------
 

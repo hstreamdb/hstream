@@ -137,8 +137,9 @@ library
   hs-source-dirs:     .
   build-depends:
     , attoparsec
-    , base                          >=4.11 && <5
+    , base                          >=4.11     && <5
     , bytestring
+    , colourista                    ^>=0.1.0.1
     , containers
     , directory
     , foreign
