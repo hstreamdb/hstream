@@ -231,6 +231,22 @@ data ListOffsetsTopicV0 = ListOffsetsTopicV0
   } deriving (Show, Eq, Generic)
 instance Serializable ListOffsetsTopicV0
 
+data ListOffsetsPartitionV1 = ListOffsetsPartitionV1
+  { partitionIndex :: {-# UNPACK #-} !Int32
+    -- ^ The partition index.
+  , timestamp      :: {-# UNPACK #-} !Int64
+    -- ^ The current timestamp.
+  } deriving (Show, Eq, Generic)
+instance Serializable ListOffsetsPartitionV1
+
+data ListOffsetsTopicV1 = ListOffsetsTopicV1
+  { name       :: !Text
+    -- ^ The topic name.
+  , partitions :: !(KaArray ListOffsetsPartitionV1)
+    -- ^ Each partition in the request.
+  } deriving (Show, Eq, Generic)
+instance Serializable ListOffsetsTopicV1
+
 data ListOffsetsPartitionResponseV0 = ListOffsetsPartitionResponseV0
   { partitionIndex  :: {-# UNPACK #-} !Int32
     -- ^ The partition index.
@@ -249,12 +265,38 @@ data ListOffsetsTopicResponseV0 = ListOffsetsTopicResponseV0
   } deriving (Show, Eq, Generic)
 instance Serializable ListOffsetsTopicResponseV0
 
+data ListOffsetsPartitionResponseV1 = ListOffsetsPartitionResponseV1
+  { partitionIndex :: {-# UNPACK #-} !Int32
+    -- ^ The partition index.
+  , errorCode      :: {-# UNPACK #-} !ErrorCode
+    -- ^ The partition error code, or 0 if there was no error.
+  , timestamp      :: {-# UNPACK #-} !Int64
+    -- ^ The timestamp associated with the returned offset.
+  , offset         :: {-# UNPACK #-} !Int64
+    -- ^ The returned offset.
+  } deriving (Show, Eq, Generic)
+instance Serializable ListOffsetsPartitionResponseV1
+
+data ListOffsetsTopicResponseV1 = ListOffsetsTopicResponseV1
+  { name       :: !Text
+    -- ^ The topic name
+  , partitions :: !(KaArray ListOffsetsPartitionResponseV1)
+    -- ^ Each partition in the response.
+  } deriving (Show, Eq, Generic)
+instance Serializable ListOffsetsTopicResponseV1
+
 newtype MetadataRequestTopicV0 = MetadataRequestTopicV0
   { name :: Text
   } deriving (Show, Eq, Generic)
 instance Serializable MetadataRequestTopicV0
 
 type MetadataRequestTopicV1 = MetadataRequestTopicV0
+
+type MetadataRequestTopicV2 = MetadataRequestTopicV0
+
+type MetadataRequestTopicV3 = MetadataRequestTopicV0
+
+type MetadataRequestTopicV4 = MetadataRequestTopicV0
 
 data MetadataResponseBrokerV0 = MetadataResponseBrokerV0
   { nodeId :: {-# UNPACK #-} !Int32
@@ -315,6 +357,24 @@ data MetadataResponseTopicV1 = MetadataResponseTopicV1
     -- ^ Each partition in the topic.
   } deriving (Show, Eq, Generic)
 instance Serializable MetadataResponseTopicV1
+
+type MetadataResponseBrokerV2 = MetadataResponseBrokerV1
+
+type MetadataResponsePartitionV2 = MetadataResponsePartitionV0
+
+type MetadataResponseTopicV2 = MetadataResponseTopicV1
+
+type MetadataResponseBrokerV3 = MetadataResponseBrokerV1
+
+type MetadataResponsePartitionV3 = MetadataResponsePartitionV0
+
+type MetadataResponseTopicV3 = MetadataResponseTopicV1
+
+type MetadataResponseBrokerV4 = MetadataResponseBrokerV1
+
+type MetadataResponsePartitionV4 = MetadataResponsePartitionV0
+
+type MetadataResponseTopicV4 = MetadataResponseTopicV1
 
 data OffsetCommitRequestPartitionV0 = OffsetCommitRequestPartitionV0
   { partitionIndex    :: {-# UNPACK #-} !Int32
@@ -677,10 +737,24 @@ data ListOffsetsRequestV0 = ListOffsetsRequestV0
   } deriving (Show, Eq, Generic)
 instance Serializable ListOffsetsRequestV0
 
+data ListOffsetsRequestV1 = ListOffsetsRequestV1
+  { replicaId :: {-# UNPACK #-} !Int32
+    -- ^ The broker ID of the requestor, or -1 if this request is being made by
+    -- a normal consumer.
+  , topics    :: !(KaArray ListOffsetsTopicV1)
+    -- ^ Each topic in the request.
+  } deriving (Show, Eq, Generic)
+instance Serializable ListOffsetsRequestV1
+
 newtype ListOffsetsResponseV0 = ListOffsetsResponseV0
   { topics :: (KaArray ListOffsetsTopicResponseV0)
   } deriving (Show, Eq, Generic)
 instance Serializable ListOffsetsResponseV0
+
+newtype ListOffsetsResponseV1 = ListOffsetsResponseV1
+  { topics :: (KaArray ListOffsetsTopicResponseV1)
+  } deriving (Show, Eq, Generic)
+instance Serializable ListOffsetsResponseV1
 
 newtype MetadataRequestV0 = MetadataRequestV0
   { topics :: (KaArray MetadataRequestTopicV0)
@@ -688,6 +762,19 @@ newtype MetadataRequestV0 = MetadataRequestV0
 instance Serializable MetadataRequestV0
 
 type MetadataRequestV1 = MetadataRequestV0
+
+type MetadataRequestV2 = MetadataRequestV0
+
+type MetadataRequestV3 = MetadataRequestV0
+
+data MetadataRequestV4 = MetadataRequestV4
+  { topics                 :: !(KaArray MetadataRequestTopicV0)
+    -- ^ The topics to fetch metadata for.
+  , allowAutoTopicCreation :: Bool
+    -- ^ If this is true, the broker may auto-create topics that we requested
+    -- which do not already exist, if it is configured to do so.
+  } deriving (Show, Eq, Generic)
+instance Serializable MetadataRequestV4
 
 data MetadataResponseV0 = MetadataResponseV0
   { brokers :: !(KaArray MetadataResponseBrokerV0)
@@ -706,6 +793,35 @@ data MetadataResponseV1 = MetadataResponseV1
     -- ^ Each topic in the response.
   } deriving (Show, Eq, Generic)
 instance Serializable MetadataResponseV1
+
+data MetadataResponseV2 = MetadataResponseV2
+  { brokers      :: !(KaArray MetadataResponseBrokerV1)
+    -- ^ Each broker in the response.
+  , clusterId    :: !NullableString
+    -- ^ The cluster ID that responding broker belongs to.
+  , controllerId :: {-# UNPACK #-} !Int32
+    -- ^ The ID of the controller broker.
+  , topics       :: !(KaArray MetadataResponseTopicV1)
+    -- ^ Each topic in the response.
+  } deriving (Show, Eq, Generic)
+instance Serializable MetadataResponseV2
+
+data MetadataResponseV3 = MetadataResponseV3
+  { throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
+  , brokers        :: !(KaArray MetadataResponseBrokerV1)
+    -- ^ Each broker in the response.
+  , clusterId      :: !NullableString
+    -- ^ The cluster ID that responding broker belongs to.
+  , controllerId   :: {-# UNPACK #-} !Int32
+    -- ^ The ID of the controller broker.
+  , topics         :: !(KaArray MetadataResponseTopicV1)
+    -- ^ Each topic in the response.
+  } deriving (Show, Eq, Generic)
+instance Serializable MetadataResponseV3
+
+type MetadataResponseV4 = MetadataResponseV3
 
 data OffsetCommitRequestV0 = OffsetCommitRequestV0
   { groupId :: !Text
@@ -945,11 +1061,19 @@ data HStreamKafkaV1
 instance Service HStreamKafkaV1 where
   type ServiceName HStreamKafkaV1 = "HStreamKafkaV1"
   type ServiceMethods HStreamKafkaV1 =
-    '[ "metadata"
+    '[ "listOffsets"
+     , "metadata"
      , "offsetCommit"
      , "offsetFetch"
      , "apiVersions"
      ]
+
+instance HasMethodImpl HStreamKafkaV1 "listOffsets" where
+  type MethodName HStreamKafkaV1 "listOffsets" = "listOffsets"
+  type MethodKey HStreamKafkaV1 "listOffsets" = 2
+  type MethodVersion HStreamKafkaV1 "listOffsets" = 1
+  type MethodInput HStreamKafkaV1 "listOffsets" = ListOffsetsRequestV1
+  type MethodOutput HStreamKafkaV1 "listOffsets" = ListOffsetsResponseV1
 
 instance HasMethodImpl HStreamKafkaV1 "metadata" where
   type MethodName HStreamKafkaV1 "metadata" = "metadata"
@@ -986,6 +1110,7 @@ instance Service HStreamKafkaV2 where
   type ServiceMethods HStreamKafkaV2 =
     '[ "produce"
      , "fetch"
+     , "metadata"
      , "offsetCommit"
      , "offsetFetch"
      , "apiVersions"
@@ -1004,6 +1129,13 @@ instance HasMethodImpl HStreamKafkaV2 "fetch" where
   type MethodVersion HStreamKafkaV2 "fetch" = 2
   type MethodInput HStreamKafkaV2 "fetch" = FetchRequestV2
   type MethodOutput HStreamKafkaV2 "fetch" = FetchResponseV2
+
+instance HasMethodImpl HStreamKafkaV2 "metadata" where
+  type MethodName HStreamKafkaV2 "metadata" = "metadata"
+  type MethodKey HStreamKafkaV2 "metadata" = 3
+  type MethodVersion HStreamKafkaV2 "metadata" = 2
+  type MethodInput HStreamKafkaV2 "metadata" = MetadataRequestV2
+  type MethodOutput HStreamKafkaV2 "metadata" = MetadataResponseV2
 
 instance HasMethodImpl HStreamKafkaV2 "offsetCommit" where
   type MethodName HStreamKafkaV2 "offsetCommit" = "offsetCommit"
@@ -1031,8 +1163,16 @@ data HStreamKafkaV3
 instance Service HStreamKafkaV3 where
   type ServiceName HStreamKafkaV3 = "HStreamKafkaV3"
   type ServiceMethods HStreamKafkaV3 =
-    '[ "apiVersions"
+    '[ "metadata"
+     , "apiVersions"
      ]
+
+instance HasMethodImpl HStreamKafkaV3 "metadata" where
+  type MethodName HStreamKafkaV3 "metadata" = "metadata"
+  type MethodKey HStreamKafkaV3 "metadata" = 3
+  type MethodVersion HStreamKafkaV3 "metadata" = 3
+  type MethodInput HStreamKafkaV3 "metadata" = MetadataRequestV3
+  type MethodOutput HStreamKafkaV3 "metadata" = MetadataResponseV3
 
 instance HasMethodImpl HStreamKafkaV3 "apiVersions" where
   type MethodName HStreamKafkaV3 "apiVersions" = "apiVersions"
@@ -1040,6 +1180,21 @@ instance HasMethodImpl HStreamKafkaV3 "apiVersions" where
   type MethodVersion HStreamKafkaV3 "apiVersions" = 3
   type MethodInput HStreamKafkaV3 "apiVersions" = ApiVersionsRequestV3
   type MethodOutput HStreamKafkaV3 "apiVersions" = ApiVersionsResponseV3
+
+data HStreamKafkaV4
+
+instance Service HStreamKafkaV4 where
+  type ServiceName HStreamKafkaV4 = "HStreamKafkaV4"
+  type ServiceMethods HStreamKafkaV4 =
+    '[ "metadata"
+     ]
+
+instance HasMethodImpl HStreamKafkaV4 "metadata" where
+  type MethodName HStreamKafkaV4 "metadata" = "metadata"
+  type MethodKey HStreamKafkaV4 "metadata" = 3
+  type MethodVersion HStreamKafkaV4 "metadata" = 4
+  type MethodInput HStreamKafkaV4 "metadata" = MetadataRequestV4
+  type MethodOutput HStreamKafkaV4 "metadata" = MetadataResponseV4
 
 -------------------------------------------------------------------------------
 
@@ -1069,8 +1224,8 @@ supportedApiVersions :: [ApiVersionV0]
 supportedApiVersions =
   [ ApiVersionV0 (ApiKey 0) 2 2
   , ApiVersionV0 (ApiKey 1) 2 2
-  , ApiVersionV0 (ApiKey 2) 0 0
-  , ApiVersionV0 (ApiKey 3) 0 1
+  , ApiVersionV0 (ApiKey 2) 0 1
+  , ApiVersionV0 (ApiKey 3) 0 4
   , ApiVersionV0 (ApiKey 8) 0 2
   , ApiVersionV0 (ApiKey 9) 0 2
   , ApiVersionV0 (ApiKey 10) 0 0
@@ -1089,8 +1244,12 @@ getHeaderVersion :: ApiKey -> Int16 -> (Int16, Int16)
 getHeaderVersion (ApiKey 0) 2  = (1, 0)
 getHeaderVersion (ApiKey 1) 2  = (1, 0)
 getHeaderVersion (ApiKey 2) 0  = (1, 0)
+getHeaderVersion (ApiKey 2) 1  = (1, 0)
 getHeaderVersion (ApiKey 3) 0  = (1, 0)
 getHeaderVersion (ApiKey 3) 1  = (1, 0)
+getHeaderVersion (ApiKey 3) 2  = (1, 0)
+getHeaderVersion (ApiKey 3) 3  = (1, 0)
+getHeaderVersion (ApiKey 3) 4  = (1, 0)
 getHeaderVersion (ApiKey 8) 0  = (1, 0)
 getHeaderVersion (ApiKey 8) 1  = (1, 0)
 getHeaderVersion (ApiKey 8) 2  = (1, 0)
