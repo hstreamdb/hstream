@@ -3,6 +3,7 @@
 {-# LANGUAGE CPP               #-}
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# OPTIONS_GHC -pgmP "hpp --cpp -P" #-}
 
 module HStream.Server.Config
   ( ServerOpts (..)
@@ -30,6 +31,8 @@ module HStream.Server.Config
 
 import           Control.Exception                (throwIO)
 import           Control.Monad                    (when)
+import qualified Data.Aeson                       as Aeson
+import qualified Data.Aeson.Types                 as Aeson
 import qualified Data.Attoparsec.Text             as AP
 import           Data.Bifunctor                   (second)
 import           Data.ByteString                  (ByteString)
@@ -38,7 +41,8 @@ import           Data.Foldable                    (foldrM)
 import qualified Data.HashMap.Strict              as HM
 import           Data.Map.Strict                  (Map)
 import qualified Data.Map.Strict                  as Map
-import           Data.Maybe                       (fromMaybe, isNothing)
+import           Data.Maybe                       (fromJust, fromMaybe,
+                                                   isNothing)
 import           Data.String                      (IsString (..))
 import           Data.Text                        (Text)
 import qualified Data.Text                        as T
@@ -71,6 +75,10 @@ import           HStream.Server.Configuration.Cli
 import qualified HStream.Server.HStreamInternal   as SAI
 import           HStream.Store                    (Compression (..))
 import qualified HStream.Store.Logger             as Log
+
+#ifndef HStreamUseGrpcHaskell
+import qualified HsGrpc.Server.Types              as HsGrpc
+#endif
 
 -- FIXME: hsthrift only support ghc < 9.x
 #if __GLASGOW_HASKELL__ < 902
@@ -115,6 +123,10 @@ data ServerOpts = ServerOpts
 
   , _querySnapshotPath            :: !FilePath
   , experimentalFeatures          :: ![ExperimentalFeature]
+
+#ifndef HStreamUseGrpcHaskell
+  , grpcChannelArgs               :: ![HsGrpc.ChannelArg]
+#endif
   } deriving (Show, Eq)
 
 getConfig :: CliOptions -> IO ServerOpts
@@ -245,7 +257,41 @@ parseJSONToOptions CliOptions{..} obj = do
 
   let experimentalFeatures = cliExperimentalFeatures
 
+#ifndef HStreamUseGrpcHaskell
+  grpcCfg <- nodeCfgObj .:? "grpc" .!= mempty
+  grpcChanArgsCfg <- grpcCfg .:? "channel-args" .!= mempty
+  let grpcChannelArgs = getGrpcChannelArgs grpcChanArgsCfg
+#endif
+
   return ServerOpts {..}
+
+-------------------------------------------------------------------------------
+
+#ifndef HStreamUseGrpcHaskell
+
+#define MkIntArg(x) \
+  (fmap . fmap $ HsGrpc.mk_##x . fromIntegral @Int) . (.:? #x)
+
+getGrpcChannelArgs :: Aeson.Object -> [HsGrpc.ChannelArg]
+getGrpcChannelArgs obj = parse id args obj
+  where
+    -- FIXME: ChanArgValueInt requires a CInt, so there is a potential overflow
+    -- :: Aeson.Object -> Aeson.Parser (Maybe Int)
+    args :: [Aeson.Object -> Aeson.Parser (Maybe HsGrpc.ChannelArg)]
+    args =
+      [ MkIntArg(GRPC_ARG_KEEPALIVE_TIME_MS)
+      , MkIntArg(GRPC_ARG_KEEPALIVE_TIMEOUT_MS)
+      , MkIntArg(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS)
+      , MkIntArg(GRPC_ARG_HTTP2_MAX_PINGS_WITHOUT_DATA)
+      , MkIntArg(GRPC_ARG_HTTP2_MIN_RECV_PING_INTERVAL_WITHOUT_DATA_MS)
+      , MkIntArg(GRPC_ARG_HTTP2_MAX_PING_STRIKES)
+      ]
+    parse f parsers o =
+        map (f . fromJust . fromJust)
+      . filter (\case Just (Just _) -> True; otherwise -> False)
+      . map (flip Aeson.parseMaybe o)
+      $ parsers
+#endif
 
 -------------------------------------------------------------------------------
 
