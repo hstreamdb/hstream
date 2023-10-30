@@ -19,8 +19,8 @@ import qualified HStream.Base.Growing               as GV
 import qualified HStream.Kafka.Common.OffsetManager as K
 import qualified HStream.Kafka.Common.RecordFormat  as K
 import           HStream.Kafka.Metrics.ConsumeStats (readLatencySnd,
-                                                     streamTotalSendBytes,
-                                                     streamTotalSendMessages,
+                                                     topicTotalSendBytes,
+                                                     topicTotalSendMessages,
                                                      totalConsumeRequest)
 import           HStream.Kafka.Server.Types         (ServerContext (..))
 import qualified HStream.Logger                     as Log
@@ -139,8 +139,8 @@ handleFetch ServerContext{..} _ r = K.catchFetchResponseEx $ do
                                    (V.map (BB.byteString . K.unCompactBytes . (.recordBytes)) vs)
                   bs = BS.toStrict $ BB.toLazyByteString b
                   totalRecords = V.sum $ V.map (\K.RecordFormat{..} -> batchLength) v
-              P.withLabel streamTotalSendBytes (topic, T.pack . show $ p.partition) $ \counter -> void $ P.addCounter counter (fromIntegral $ BS.length bs)
-              P.withLabel streamTotalSendMessages (topic, T.pack . show $ p.partition) $ \counter -> void $ P.addCounter counter (fromIntegral totalRecords)
+              P.withLabel topicTotalSendBytes (topic, T.pack . show $ p.partition) $ \counter -> void $ P.addCounter counter (fromIntegral $ BS.length bs)
+              P.withLabel topicTotalSendMessages (topic, T.pack . show $ p.partition) $ \counter -> void $ P.addCounter counter (fromIntegral totalRecords)
               pure $ K.PartitionData p.partition K.NONE hioffset (Just bs)
     pure $ K.FetchableTopicResponse topic (K.NonNullKaArray respPartitionDatas)
   pure $ K.FetchResponse (K.NonNullKaArray respTopics) 0{- TODO: throttleTimeMs -}

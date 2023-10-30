@@ -25,23 +25,23 @@ import           Data.ByteString                     (ByteString)
 import qualified Data.ByteString                     as BS
 import qualified Data.ByteString.Lazy                as BSL
 import           Data.Int
-import           Data.List                          (find, intersperse)
-import           Data.Maybe                         (fromMaybe, isJust,
-                                                     isNothing)
-import qualified Data.Text                          as T
-import qualified Network.Socket                     as N
-import qualified Network.Socket.ByteString          as N
-import qualified Network.Socket.ByteString.Lazy     as NL
-import           Numeric                            (showHex, showInt)
-import qualified Prometheus                         as P
+import           Data.List                           (find, intersperse)
+import           Data.Maybe                          (fromMaybe, isJust,
+                                                      isNothing)
+import qualified Data.Text                           as T
+import qualified Network.Socket                      as N
+import qualified Network.Socket.ByteString           as N
+import qualified Network.Socket.ByteString.Lazy      as NL
+import           Numeric                             (showHex, showInt)
+import qualified Prometheus                          as P
 
 import           HStream.Kafka.Common.KafkaException (ErrorCodeException (..))
-import           HStream.Kafka.Common.OffsetManager (initOffsetReader)
-import           HStream.Kafka.Common.Utils         (observeWithLabel)
-import           HStream.Kafka.Metrics.ServerStats  (handlerLatencies,
-                                                     totalRequests)
-import           HStream.Kafka.Server.Types         (ServerContext (..))
-import qualified HStream.Logger                     as Log
+import           HStream.Kafka.Common.OffsetManager  (initOffsetReader)
+import           HStream.Kafka.Common.Utils          (observeWithLabel)
+import           HStream.Kafka.Metrics.ServerStats   (handlerLatencies,
+                                                      totalRequests)
+import           HStream.Kafka.Server.Types          (ServerContext (..))
+import qualified HStream.Logger                      as Log
 import           Kafka.Protocol.Encoding
 import qualified Kafka.Protocol.Error                as K
 import           Kafka.Protocol.Message

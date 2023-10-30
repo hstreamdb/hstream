@@ -16,8 +16,8 @@ import qualified HStream.Kafka.Common.OffsetManager as K
 import qualified HStream.Kafka.Common.RecordFormat  as K
 import           HStream.Kafka.Common.Utils         (observeWithLabel)
 import           HStream.Kafka.Metrics.ProduceStats (appendLatencySnd,
-                                                     streamTotalAppendBytes,
-                                                     streamTotalAppendMessages,
+                                                     topicTotalAppendBytes,
+                                                     topicTotalAppendMessages,
                                                      totalProduceRequest)
 import           HStream.Kafka.Server.Types         (ServerContext (..))
 import qualified HStream.Logger                     as Log
@@ -127,6 +127,6 @@ appendRecords shouldValidateCrc ldclient om (streamName, partition) logid bs = d
         storedRecord = K.RecordFormat o (fromIntegral batchLength) (K.CompactBytes storedBs)
     r <- observeWithLabel appendLatencySnd streamName $
            S.appendCompressedBS ldclient logid (K.runPut storedRecord) S.CompressionNone appendAttrs
-    P.withLabel streamTotalAppendBytes (streamName, T.pack . show $ partition) $ \counter -> void $ P.addCounter counter (fromIntegral $ BS.length storedRecord)
-    P.withLabel streamTotalAppendMessages (streamName, T.pack . show $ partition) $ \counter -> void $ P.addCounter counter (fromIntegral batchLength)
+    P.withLabel topicTotalAppendBytes (streamName, T.pack . show $ partition) $ \counter -> void $ P.addCounter counter (fromIntegral $ BS.length storedRecord)
+    P.withLabel topicTotalAppendMessages (streamName, T.pack . show $ partition) $ \counter -> void $ P.addCounter counter (fromIntegral batchLength)
     pure (r, startOffset)
