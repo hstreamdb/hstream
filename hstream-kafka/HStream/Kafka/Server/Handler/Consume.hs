@@ -15,9 +15,14 @@ import qualified Data.Vector                        as V
 import qualified Data.Vector.Hashtables             as HT
 import qualified Data.Vector.Storable               as VS
 
+import qualified Data.Text                          as T
 import qualified HStream.Base.Growing               as GV
 import qualified HStream.Kafka.Common.OffsetManager as K
 import qualified HStream.Kafka.Common.RecordFormat  as K
+import           HStream.Kafka.Metrics.ConsumeStats (readLatencySnd,
+                                                     streamTotalSendBytes,
+                                                     streamTotalSendMessages,
+                                                     totalConsumeRequest)
 import           HStream.Kafka.Server.Types         (ServerContext (..))
 import qualified HStream.Logger                     as Log
 import qualified HStream.Store                      as S
@@ -26,6 +31,7 @@ import qualified Kafka.Protocol.Encoding            as K
 import qualified Kafka.Protocol.Error               as K
 import qualified Kafka.Protocol.Message             as K
 import qualified Kafka.Protocol.Service             as K
+import qualified Prometheus                         as P
 
 -------------------------------------------------------------------------------
 
@@ -46,9 +52,11 @@ handleFetch ServerContext{..} _ r = K.catchFetchResponseEx $ do
   let K.NonNullKaArray topicReqs = r.topics
   topics <- V.forM topicReqs $ \K.FetchTopic{..} -> do
     orderedParts <- S.listStreamPartitionsOrdered scLDClient (S.transToTopicStreamName topic)
+
     let K.NonNullKaArray partitionReqs = partitions
     ps <- V.forM partitionReqs $ \p -> do
       let (_, logid) = orderedParts V.! fromIntegral p.partition
+      P.withLabel totalConsumeRequest (topic, T.pack . show $ p.partition) $ \counter -> void $ P.addCounter counter 1
       elsn <- getPartitionLsn scLDClient scOffsetManager logid p.partition p.fetchOffset
       pure (logid, elsn, p)
     pure (topic, ps)
@@ -84,7 +92,9 @@ handleFetch ServerContext{..} _ r = K.catchFetchResponseEx $ do
      else S.readerSetTimeout reader r.maxWaitMs
   S.readerSetWaitOnlyWhenNoData reader
   (_, records) <- foldWhileM (0, []) $ \(size, acc) -> do
-    rs <- S.readerRead reader 100
+    -- TODO: If we can record latency at a more granular level, such as for
+    -- a consumer group, or a stream?
+    rs <- P.observeDuration readLatencySnd $ S.readerRead reader 100
     if null rs
        then pure ((size, acc), False)
        else do let size' = size + (sum $ map (K.recordBytesSize . (.recordPayload)) rs)
@@ -129,6 +139,9 @@ handleFetch ServerContext{..} _ r = K.catchFetchResponseEx $ do
               let b = V.foldl (<>) (BB.byteString fstRecordBytes)
                                    (V.map (BB.byteString . K.unCompactBytes . (.recordBytes)) vs)
                   bs = BS.toStrict $ BB.toLazyByteString b
+                  totalRecords = V.sum $ V.map (\K.RecordFormat{..} -> batchLength) v
+              P.withLabel streamTotalSendBytes (topic, T.pack . show $ p.partition) $ \counter -> void $ P.addCounter counter (fromIntegral $ BS.length bs)
+              P.withLabel streamTotalSendMessages (topic, T.pack . show $ p.partition) $ \counter -> void $ P.addCounter counter (fromIntegral totalRecords)
               pure $ K.PartitionData p.partition K.NONE hioffset (Just bs)
     pure $ K.FetchableTopicResponse topic (K.NonNullKaArray respPartitionDatas)
   pure $ K.FetchResponse (K.NonNullKaArray respTopics) 0{- TODO: throttleTimeMs -}

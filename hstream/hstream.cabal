@@ -335,6 +335,9 @@ executable hstream-kafka-server
     , vector
     , Z-Data
     , zoovisitor
+    , warp
+    , wai-middleware-prometheus
+    , prometheus-client
 
   if flag(hstream_use_grpc_haskell)
     cpp-options: -DHStreamUseGrpcHaskell

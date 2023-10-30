@@ -58,6 +58,8 @@ import qualified HStream.Server.HStreamInternal    as I
 import qualified HStream.Store.Logger              as S
 import qualified HStream.ThirdParty.Protobuf       as Proto
 import           HStream.Utils                     (getProtoTimestamp)
+import qualified Network.Wai.Handler.Warp          as Warp
+import qualified Network.Wai.Middleware.Prometheus as P
 
 #ifndef HSTREAM_ENABLE_ASAN
 import           Text.RawString.QQ                 (r)
@@ -126,8 +128,11 @@ app config@ServerOpts{..} = do
                              _serverAdvertisedListeners
                              _listenersSecurityProtocolMap
         forM_ as (Async.link2Only (const True) a)
-        -- wati the default server
+        -- wait the default server
         waitGossipBoot gossipContext
+        -- start prometheus app to export metrics
+        a2 <- Async.async $ Warp.run 9260 $ P.prometheus P.def {P.prometheusInstrumentPrometheus = False} P.metricsApp
+        Async.link2Only (const True) a a2
         Async.wait a
 
 -- TODO: This server primarily serves as a demonstration, and there

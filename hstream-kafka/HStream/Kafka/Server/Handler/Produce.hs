@@ -5,13 +5,21 @@ module HStream.Kafka.Server.Handler.Produce
 import qualified Control.Concurrent.Async           as Async
 import           Control.Monad
 import           Data.ByteString                    (ByteString)
+import qualified Data.ByteString                    as BS
 import           Data.Int
 import           Data.Maybe                         (fromMaybe)
+import           Data.Text                          (Text)
 import qualified Data.Vector                        as V
 import           Data.Word
 
+import qualified Data.Text                          as T
 import qualified HStream.Kafka.Common.OffsetManager as K
 import qualified HStream.Kafka.Common.RecordFormat  as K
+import           HStream.Kafka.Common.Utils         (observeWithLabel)
+import           HStream.Kafka.Metrics.ProduceStats (appendLatencySnd,
+                                                     streamTotalAppendBytes,
+                                                     streamTotalAppendMessages,
+                                                     totalProduceRequest)
 import           HStream.Kafka.Server.Types         (ServerContext (..))
 import qualified HStream.Logger                     as Log
 import qualified HStream.Store                      as S
@@ -20,6 +28,7 @@ import qualified Kafka.Protocol.Encoding            as K
 import qualified Kafka.Protocol.Error               as K
 import qualified Kafka.Protocol.Message             as K
 import qualified Kafka.Protocol.Service             as K
+import qualified Prometheus                         as P
 
 -- acks: (FIXME: Currently we only support -1)
 --   0: The server will not send any response(this is the only case where the
@@ -56,13 +65,14 @@ handleProduce ServerContext{..} _ req = do
                       else V.forM
     partitionResponses <- loopPart partitionData $ \partition -> do
       let Just (_, logid) = partitions V.!? (fromIntegral partition.index) -- TODO: handle Nothing
+      P.withLabel totalProduceRequest (name, T.pack . show $ index) $ \counter -> void $ P.addCounter counter 1
       let Just recordBytes = partition.recordBytes -- TODO: handle Nothing
       Log.debug1 $ "Append to logid " <> Log.build logid
                 <> "(" <> Log.build partition.index <> ")"
 
       -- Wirte appends
       (S.AppendCompletion{..}, offset) <-
-        appendRecords True scLDClient scOffsetManager logid recordBytes
+        appendRecords True scLDClient scOffsetManager (name, index) logid recordBytes
 
       Log.debug1 $ "Append done " <> Log.build appendCompLogID
                 <> ", lsn: " <> Log.build appendCompLSN
@@ -80,10 +90,11 @@ appendRecords
   :: Bool
   -> S.LDClient
   -> K.OffsetManager
+  -> (Text, Int32)
   -> Word64
   -> ByteString
   -> IO (S.AppendCompletion, Int64)
-appendRecords shouldValidateCrc ldclient om logid bs = do
+appendRecords shouldValidateCrc ldclient om (streamName, partition) logid bs = do
   records <- K.decodeBatchRecords shouldValidateCrc bs
   let batchLength = V.length records
   when (batchLength < 1) $ error "Invalid batch length"
@@ -115,7 +126,8 @@ appendRecords shouldValidateCrc ldclient om logid bs = do
         storedBs = K.encodeBatchRecords records'
         -- FIXME unlikely overflow: convert batchLength from Int to Int32
         storedRecord = K.RecordFormat o (fromIntegral batchLength) (K.CompactBytes storedBs)
-    r <- S.appendCompressedBS ldclient
-                              logid (K.runPut storedRecord)
-                              S.CompressionNone appendAttrs
+    r <- observeWithLabel appendLatencySnd streamName $
+           S.appendCompressedBS ldclient logid (K.runPut storedRecord) S.CompressionNone appendAttrs
+    P.withLabel streamTotalAppendBytes (streamName, T.pack . show $ partition) $ \counter -> void $ P.addCounter counter (fromIntegral $ BS.length storedRecord)
+    P.withLabel streamTotalAppendMessages (streamName, T.pack . show $ partition) $ \counter -> void $ P.addCounter counter (fromIntegral batchLength)
     pure (r, startOffset)
