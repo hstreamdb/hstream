@@ -77,7 +77,9 @@ handleFetchV2 ServerContext{..} _ r = catchFetchV2 $ do
           S.readerStartReading reader logid startlsn S.LSN_MAX
 
   -- Read records from storage
-  S.readerSetTimeout reader r.maxWaitMs
+  if r.minBytes <= 0 || r.maxWaitMs <= 0
+     then S.readerSetTimeout reader 0  -- nonblocking
+     else S.readerSetTimeout reader r.maxWaitMs
   S.readerSetWaitOnlyWhenNoData reader
   (_, records) <- foldWhileM (0, []) $ \(size, acc) -> do
     rs <- S.readerRead reader 100

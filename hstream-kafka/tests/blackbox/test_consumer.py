@@ -1,4 +1,5 @@
 import pytest
+import timeit
 
 import kafka
 from kafka import KafkaConsumer
@@ -35,12 +36,39 @@ def test_fetch_empty_topics(kafka_port, hstream_kafka_port):
     req = FetchRequest[2](
         -1,  # replica_id
         2000,  # fetch_max_wait_ms
-        0,  # fetch_min_bytes
+        1,  # fetch_min_bytes
         [],
     )
     kafka_resp = send_req(kafka_port, req)
     hstream_kafka_resp = send_req(hstream_kafka_port, req)
     assert kafka_resp == hstream_kafka_resp
+
+
+def test_fetch_zero_min_bytes_should_return_immediately(
+    new_topic, kafka_port, hstream_kafka_port
+):
+    req = FetchRequest[2](
+        -1,  # replica_id
+        2000,  # fetch_max_wait_ms
+        1,  # fetch_min_bytes
+        [(topic_name, [(0, 0, 200)])],
+    )
+    req0 = FetchRequest[2](
+        -1,  # replica_id
+        4000,  # fetch_max_wait_ms
+        0,  # fetch_min_bytes
+        [(topic_name, [(0, 0, 200)])],
+    )
+
+    t = timeit.timeit(lambda: send_req(kafka_port, req), number=1)
+    assert t > 2  # should be more than 2s
+    t = timeit.timeit(lambda: send_req(kafka_port, req0), number=1)
+    assert t < 1  # should be less than 1s
+
+    t = timeit.timeit(lambda: send_req(hstream_kafka_port, req), number=1)
+    assert t > 2  # should be more than 2s
+    t = timeit.timeit(lambda: send_req(hstream_kafka_port, req0), number=1)
+    assert t < 1  # should be less than 1s
 
 
 def test_offsets_of_empty_topic(new_topic, kafka_port, hstream_kafka_port):
