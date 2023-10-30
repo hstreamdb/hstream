@@ -98,12 +98,3 @@ observeWithLabel metric labels action = do
   let duration = toNanoSecs (end `diffTimeSpec` start) % 1000000000
   P.withLabel metric labels $ flip P.observe (fromRational duration)
   return result
-
--- timeAction :: IO BSL.ByteString -> IO (BSL.ByteString, Double)
--- timeAction io = do
---   start <- getTime Monotonic
---   result <- io
---   end <- getTime Monotonic
---   let duration = toNanoSecs (end `diffTimeSpec` start) % 1000000000
---   return (result, fromRational duration)
-

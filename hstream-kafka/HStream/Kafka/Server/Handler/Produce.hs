@@ -9,10 +9,9 @@ import qualified Data.ByteString                    as BS
 import           Data.Int
 import           Data.Maybe                         (fromMaybe)
 import           Data.Text                          (Text)
+import qualified Data.Text                          as T
 import qualified Data.Vector                        as V
 import           Data.Word
-
-import qualified Data.Text                          as T
 import qualified HStream.Kafka.Common.OffsetManager as K
 import qualified HStream.Kafka.Common.RecordFormat  as K
 import           HStream.Kafka.Common.Utils         (observeWithLabel)

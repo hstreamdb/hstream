@@ -14,12 +14,6 @@ streamTotalAppendMessages =
     P.Info "stream_messages_in" "Successfully appended messages for a stream"
 {-# NOINLINE streamTotalAppendMessages #-}
 
--- appendLatencySnd :: P.Histogram
--- appendLatencySnd =
---   P.unsafeRegister . P.histogram (P.Info "stream_append_latency" "Stream append latency in second") $
---       [0.0005, 0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10]
--- {-# NOINLINE appendLatencySnd #-}
-
 appendLatencySnd :: P.Vector P.Label1 P.Histogram
 appendLatencySnd =
   P.unsafeRegister . P.vector "streamName" . P.histogram (P.Info "stream_append_latency" "Stream append latency in second") $

@@ -11,11 +11,10 @@ import qualified Data.ByteString.Builder            as BB
 import           Data.Either                        (isRight)
 import           Data.Int
 import           Data.Maybe
+import qualified Data.Text                          as T
 import qualified Data.Vector                        as V
 import qualified Data.Vector.Hashtables             as HT
 import qualified Data.Vector.Storable               as VS
-
-import qualified Data.Text                          as T
 import qualified HStream.Base.Growing               as GV
 import qualified HStream.Kafka.Common.OffsetManager as K
 import qualified HStream.Kafka.Common.RecordFormat  as K
