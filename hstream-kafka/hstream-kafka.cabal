@@ -62,7 +62,6 @@ library kafka-protocol
     , bytestring
     , digest
     , hstream-common-base
-    , network
     , text
     , vector
 
@@ -132,17 +131,21 @@ library
     HStream.Kafka.Server.Handler.Produce
     HStream.Kafka.Server.Handler.Topic
 
+  cxx-sources:        cbits/hs_kafka_client.cpp
+  cxx-options:        -std=c++17
+  extra-libraries:    rdkafka++
   hs-source-dirs:     .
   build-depends:
-    , aeson
     , attoparsec
-    , base                          >=4.11 && <5
+    , base                          >=4.11     && <5
     , bytestring
+    , colourista                    ^>=0.1.0.1
     , containers
-    , digest
     , directory
+    , foreign
     , hashable
     , hashtables
+    , haskeline
     , hstream-api-hs
     , hstream-common
     , hstream-common-base
@@ -153,9 +156,7 @@ library
     , hstream-store
     , network
     , optparse-applicative
-    , stm
     , text
-    , time
     , unordered-containers
     , uuid
     , vector

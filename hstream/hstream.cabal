@@ -346,7 +346,7 @@ executable hstream-kafka-server
   ghc-options:
     -threaded -rtsopts "-with-rtsopts=-N -A64m -n4m -qg -qn1"
 
-executable hstream-kafka-client
+executable hstream-kafka-cli
   if flag(hstream_enable_asan)
     import: shared-properties, link-asan
 

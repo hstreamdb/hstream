@@ -143,13 +143,12 @@ COPY --from=builder /root/.cabal/bin/hstream-server \
                     /root/.cabal/bin/hstream-server-old \
                     /root/.cabal/bin/hstream-kafka-server \
                     /root/.cabal/bin/hstream-kafka-server-old \
+                    /root/.cabal/bin/hstream-kafka-cli \
                     /root/.cabal/bin/hstream \
                     /root/.cabal/bin/hadmin \
                     /root/.cabal/bin/hstore-bench-writter \
+                    /usr/local/bin/hadmin-store \
                     /usr/local/bin/
-COPY --from=ghcr.io/hstreamdb/hadmin-store:latest \
-  /usr/local/bin/hadmin-store \
-  /usr/local/bin/
 
 COPY ./script/wait-for-storage.sh /usr/local/script/wait-for-storage.sh
 COPY ./conf/hstream.yaml /etc/hstream/config.yaml
