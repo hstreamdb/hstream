@@ -87,42 +87,43 @@ FROM ${LD_IMAGE} as ld_image
 
 # ------------------------------------------------------------------------------
 
-FROM ubuntu:focal
+FROM ubuntu:jammy
 
 ENV LANG C.UTF-8
 ENV LD_LIBRARY_PATH /usr/local/lib:$LD_LIBRARY_PATH
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      libunwind8                     \
+      bash-completion                \
       libatomic1                     \
-      libdwarf1                      \
-      libboost-dev                   \
+      libboost-atomic1.74.0          \
+      libboost-chrono1.74.0          \
       libboost-context-dev           \
-      libboost-atomic1.71.0          \
-      libboost-chrono1.71.0          \
-      libboost-date-time1.71.0       \
-      libboost-filesystem1.71.0      \
-      libboost-program-options1.71.0 \
-      libboost-system1.71.0          \
-      libboost-regex1.71.0           \
-      libboost-thread1.71.0          \
-      libboost-python1.71.0          \
+      libboost-date-time1.74.0       \
+      libboost-dev                   \
+      libboost-filesystem1.74.0      \
+      libboost-program-options1.74.0 \
+      libboost-python1.74.0          \
+      libboost-regex1.74.0           \
+      libboost-system1.74.0          \
+      libboost-thread1.74.0          \
       libcurl4                       \
-      libssl-dev                     \
+      libdouble-conversion-dev       \
+      libdwarf1                      \
       libevent-dev                   \
       libevent-openssl-2.1-7         \
-      libdouble-conversion-dev       \
-      libzookeeper-mt2               \
       libgoogle-glog-dev             \
+      libmysqlclient-dev             \
+      libpython3.10                  \
+      librdkafka++1                  \
       libsnappy1v5                   \
       libsodium-dev                  \
-      libzstd-dev                    \
-      libmysqlclient-dev             \
+      libssl-dev                     \
       libstatgrab10                  \
+      libunwind8                     \
+      libzookeeper-mt2               \
+      libzstd-dev                    \
       python3                        \
-      libpython3.8                   \
       python3-pip                    \
-      bash-completion                \
       vim                            \
     && rm -rf /var/lib/apt/lists/* && apt-get clean
 
