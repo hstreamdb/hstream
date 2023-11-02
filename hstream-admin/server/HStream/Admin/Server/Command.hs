@@ -2,7 +2,9 @@ module HStream.Admin.Server.Command
   ( withAdminClient
   , withAdminClient'
   , sendAdminCommand
+  , sendAdminCommandWithMetadata
   , sendAdminCommand'
+  , sendAdminCommandWithMetadata'
   , sendLookupCommand
   , formatCommandResponse
   , getResourceType
@@ -88,14 +90,23 @@ showTableValue (Aeson.Object x) = show x
 
 sendAdminCommand :: Text -> U.HStreamClientApi -> IO Text
 sendAdminCommand = sendAdminCommand' 10
-{-# INLINABLE sendAdminCommand #-}
+
+sendAdminCommandWithMetadata
+  :: GRPC.MetadataMap -> Text -> U.HStreamClientApi -> IO Text
+sendAdminCommandWithMetadata = sendAdminCommandWithMetadata' 10
 
 sendAdminCommand' :: GRPC.TimeoutSeconds -> Text -> U.HStreamClientApi -> IO Text
-sendAdminCommand' timeout command api = do
+sendAdminCommand' timeout =
+  sendAdminCommandWithMetadata' timeout (GRPC.MetadataMap Map.empty)
+
+sendAdminCommandWithMetadata'
+  :: GRPC.TimeoutSeconds -> GRPC.MetadataMap
+  -> Text -> U.HStreamClientApi
+  -> IO Text
+sendAdminCommandWithMetadata' timeout mm command api = do
   let comReq = API.AdminCommandRequest command
-      req = GRPC.ClientNormalRequest comReq timeout $ GRPC.MetadataMap Map.empty
+      req = GRPC.ClientNormalRequest comReq timeout mm
   fmap API.adminCommandResponseResult . U.getServerResp =<< API.hstreamApiSendAdminCommand api req
-{-# INLINABLE sendAdminCommand' #-}
 
 sendLookupCommand :: API.ResourceType -> Text -> U.HStreamClientApi -> IO (Text, Word32)
 sendLookupCommand = sendLookupCommand' 10

@@ -24,6 +24,7 @@ import qualified Data.Text.Encoding               as T
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated (ClientError (..),
                                                    ClientResult (..),
+                                                   MetadataMap (..),
                                                    withGRPCClient)
 import qualified Options.Applicative              as O
 import           Proto3.Suite                     (def)
@@ -66,7 +67,9 @@ import           HStream.Client.Types             (AppendContext (..),
                                                    SubscriptionCommand (..),
                                                    cliCmdParser, mkShardMap,
                                                    refineCliConnOpts)
-import           HStream.Client.Utils             (mkClientNormalRequest',
+import           HStream.Client.Utils             (gloCliMetadata,
+                                                   initGloCliMetadata,
+                                                   mkClientNormalRequest',
                                                    printResult)
 import           HStream.Common.Types             (getHStreamVersion)
 import           HStream.Server.HStreamApi        (DescribeClusterResponse (..),
@@ -96,6 +99,7 @@ runCommand GetVersionCmd = do
   putStrLn $ "version: " <> T.unpack hstreamVersionVersion <> " (" <> T.unpack hstreamVersionCommit <> ")"
 runCommand (CliCmd HStreamCommand{..}) = do
   rConnOpts <- refineCliConnOpts cliConnOpts
+  initGloCliMetadata (rpcMetadata rConnOpts)
   case cliCommand of
     HStreamNodes  opts       -> hstreamNodes  rConnOpts opts
     HStreamInit   opts       -> hstreamInit   rConnOpts opts
@@ -154,7 +158,9 @@ hstreamInit RefinedCliConnOpts{..} HStreamInitOpts{..} = do
   ready <- timeout (_timeoutSec * 1000000) $
     withGRPCClient clientConfig $ \client -> do
       api <- hstreamApiClient client
-      Admin.sendAdminCommand "server init" api >>= Admin.formatCommandResponse >>= putStrLn
+      Admin.sendAdminCommandWithMetadata gloCliMetadata "server init" api
+        >>= Admin.formatCommandResponse
+        >>= putStrLn
       loop api
   case ready of
     Just s  -> putStrLn s
@@ -162,7 +168,7 @@ hstreamInit RefinedCliConnOpts{..} HStreamInitOpts{..} = do
   where
     loop api = do
       threadDelay 1000000
-      resp <- Admin.sendAdminCommand "server ready" api
+      resp <- Admin.sendAdminCommandWithMetadata gloCliMetadata "server ready" api
       case Aeson.eitherDecodeStrict (T.encodeUtf8 resp) of
         Left errmsg              -> pure $ "Decode json error: " <> errmsg
         Right (Aeson.Object obj) -> do

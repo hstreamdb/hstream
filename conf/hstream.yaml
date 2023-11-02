@@ -107,6 +107,10 @@ hserver:
   #  probe-interval: 2000000    # 2 sec
   #  roundtrip-timeout: 500000  # 0.5 sec
 
+  # TODO: Auth tokens
+  #   - store tokens safely
+  #tokens: []
+
   # HStream IO Options
   hstream-io:
     # the io tasks work directory

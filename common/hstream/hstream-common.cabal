@@ -96,6 +96,7 @@ library
   build-depends:
     , aeson                 >=1.5   && <2.0 || ^>=2.0
     , ansi-terminal
+    , async
     , attoparsec
     , base                  >=4.11  && <5
     , bytestring
@@ -134,7 +135,6 @@ library
     , zlib
     , zoovisitor
     , zstd
-    , async
 
   cxx-options:        -std=c++17
   cpp-options:        -std=c++17

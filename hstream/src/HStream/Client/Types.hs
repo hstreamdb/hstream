@@ -7,10 +7,11 @@ import           Control.Concurrent            (MVar)
 import qualified Data.Attoparsec.Text          as AP
 import           Data.ByteString               (ByteString)
 import qualified Data.ByteString               as BS
+import           Data.ByteString.Internal      (c2w)
 import           Data.Foldable                 (foldl')
 import           Data.Functor                  (($>))
 import           Data.Int                      (Int64)
-import qualified Data.Map                      as M
+import qualified Data.Map.Strict               as M
 import           Data.Maybe                    (isNothing)
 import           Data.Text                     (Text)
 import qualified Data.Text                     as T
@@ -331,6 +332,7 @@ data CliConnOpts = CliConnOpts
   , _tlsCa        :: Maybe FilePath
   , _tlsKey       :: Maybe FilePath
   , _tlsCert      :: Maybe FilePath
+  , _rpcAuthToken :: Maybe ByteString
   , _retryTimeout :: Int
   , _serviceUri   :: Maybe URI
   } deriving (Show, Eq)
@@ -356,13 +358,15 @@ connOptsParser = CliConnOpts
   <*> (O.optional . O.option O.str) (O.long "tls-ca"   <> O.metavar "STRING" <> O.help "path name of the file that contains list of trusted TLS Certificate Authorities")
   <*> (O.optional . O.option O.str) (O.long "tls-key"  <> O.metavar "STRING" <> O.help "path name of the client TLS private key file")
   <*> (O.optional . O.option O.str) (O.long "tls-cert" <> O.metavar "STRING" <> O.help "path name of the client TLS public key certificate file")
+  <*> (O.optional . O.option O.str) (O.long "token" <> O.metavar "STRING" <> O.help "token send to grpc")
   <*> O.option O.auto (O.long "retry-timeout" <> O.metavar "INT" <> O.showDefault <> O.value 60 <> O.help "timeout to retry connecting to a server in seconds")
   <*> (O.optional . O.option (O.maybeReader parseURI)) (O.long "service-url" <> O.help "The endpoint to connect to")
 
-data RefinedCliConnOpts = RefinedCliConnOpts {
-    addr         :: SocketAddr
+data RefinedCliConnOpts = RefinedCliConnOpts
+  { addr         :: SocketAddr
   , clientConfig :: ClientConfig
   , retryTimeout :: Int
+  , rpcMetadata  :: M.Map ByteString [ByteString]
   }
 
 refineCliConnOpts :: CliConnOpts -> IO RefinedCliConnOpts
@@ -394,7 +398,10 @@ refineCliConnOpts CliConnOpts {..} = do
           | uriScheme == "hstream:"  -> uriAuthToSocketAddress uriAuthority
           | otherwise -> errorWithoutStackTrace "Unsupported URI scheme"
   let clientConfig = mkGRPCClientConfWithSSL addr sslConfig
-  pure $ RefinedCliConnOpts addr clientConfig _retryTimeout
+      rpcMetadata = case _rpcAuthToken of
+                      Nothing -> M.empty
+                      Just tk -> M.singleton "authorization" [("Basic " <> tk)]
+  pure $ RefinedCliConnOpts addr clientConfig _retryTimeout rpcMetadata
   where
     uriAuthToSocketAddress (Just URIAuth{..}) =
       let host = T.encodeUtf8 . T.pack $ uriUserInfo <> uriRegName in
