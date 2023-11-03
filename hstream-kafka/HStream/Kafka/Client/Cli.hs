@@ -157,14 +157,18 @@ handleTopicList Options{..} = do
   let req = K.MetadataRequestV0 (K.KaArray Nothing)
   correlationId <- getCorrelationId
   resp <- KA.withSendAndRecv host port (KA.metadata correlationId req)
-  let titles = ["Name", "ErrorCode", "IsInternal"]
-      K.NonNullKaArray topics = resp.topics
-      lenses = [ Text.unpack . (.name)
-               , show . (.errorCode)
-               , show . (.isInternal)
-               ]
-      stats = (\s -> ($ s) <$> lenses) <$> (V.toList topics)
-  putStrLn $ simpleShowTable (map (, 30, Table.left) titles) stats
+  let K.NonNullKaArray topics = resp.topics
+      failed = V.filter (\t -> t.errorCode /= K.NONE) topics
+  if V.null failed
+    then do
+      let titles = ["Name", "IsInternal"]
+          lenses = [ Text.unpack . (.name)
+                   , show . (.isInternal)
+                   ]
+          stats = (\s -> ($ s) <$> lenses) <$> (V.toList topics)
+      putStrLn $ simpleShowTable (map (, 30, Table.left) titles) stats
+    else do
+      putStrLn $ "List topic error: " <> show ((.errorCode) . V.head $ failed)
 
 handleTopicInfo :: Options -> Text -> IO ()
 handleTopicInfo Options{..} name = do
