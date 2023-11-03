@@ -57,28 +57,26 @@ readOneRecord_ bypassGap store reader logid getLsn = do
     acquire start end = do
       -- the log is not empty
       S.readerStartReading reader logid start end
+      let exitErr r = do
+            Log.fatal $ "readOneRecord read " <> Log.build logid
+                     <> " with lsn (" <> Log.build start <> ", "
+                     <> Log.build end <> ") "
+                     <> "get unexpected result "
+                     <> Log.buildString' r
+            ioError $ userError $ "Invalid read result"
       if bypassGap
          then do
-           [S.DataRecord{..}] <- S.readerRead @ByteString reader 1
-           (Just . (start, end, )) <$> K.runGet recordPayload
+           dataRecords <- S.readerRead @ByteString reader 1
+           case dataRecords of
+             [S.DataRecord{..}] ->
+               (Just . (start, end, )) <$> K.runGet recordPayload
+             ds -> exitErr ds
          else do
           dataRecords <- S.readerReadAllowGap @ByteString reader 1
           case dataRecords of
             Right [S.DataRecord{..}] ->
               (Just . (start, end, )) <$> K.runGet recordPayload
-            Right [] -> do
-              Log.fatal "readOneRecord got an empty results!"
-              error "Invalid reader result"
-            Right da -> do
-              Log.fatal $ "readOneRecord: unexpected happened, "
-                       <> "got " <> Log.build (length da) <> " records"
-              error "Invalid reader result"
-            _ -> do Log.fatal $ "readOneRecord read " <> Log.build logid
-                             <> " with lsn (" <> Log.build start <> ", "
-                             <> Log.build end <> ") "
-                             <> "get unexpected result "
-                             <> Log.buildString' dataRecords
-                    ioError $ userError $ "Invalid reader result"
+            ds -> exitErr ds
     release = do
       isReading <- S.readerIsReading reader logid
       when isReading $ S.readerStopReading reader logid
