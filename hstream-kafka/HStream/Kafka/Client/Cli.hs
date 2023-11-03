@@ -179,14 +179,24 @@ handleTopicInfo Options{..} name = do
   putStrLn $ simpleShowTable (map (, 30, Table.left) titles) stats
 
 handleTopicCreate :: Options -> K.CreateTopicsRequestV0 -> IO ()
-handleTopicCreate Options{..} req = do
+handleTopicCreate Options{..} req@K.CreateTopicsRequestV0{..} = do
   correlationId <- getCorrelationId
   K.CreateTopicsResponseV0 (K.KaArray (Just rets)) <-
     KA.withSendAndRecv host port (KA.createTopics correlationId req)
-  V.forM_ rets $ \ret -> do
-    when (ret.errorCode /= K.NONE) $
-      putStrLn $ "Create topic " <> show ret.name <> " failed: " <> show ret.errorCode
-  putStrLn "DONE"
+  case V.toList rets of
+    [K.CreatableTopicResultV0{..}]
+      | errorCode /= K.NONE -> putStrLn $ "Create topic " <> show name <> " failed: " <> show errorCode
+      | otherwise -> showTopic topics
+    _ -> putStrLn $ "UnexpectedError: create topic " <> " receive " <> show rets
+ where
+   showTopic topic = do
+     let titles = ["Name", "Partitions", "Replication-factor"]
+         lenses = [ Text.unpack . (.name)
+                  , show . (K.numPartitions)
+                  , show . (K.replicationFactor)
+                  ]
+         stats = (\s -> ($ s) <$> lenses) <$> V.toList (K.unNonNullKaArray topic)
+     putStrLn $ simpleShowTable (map (, 30, Table.left) titles) stats
 
 handleTopicDelete :: Options -> TopicCommandDeleteOpts -> IO ()
 handleTopicDelete Options{..} cmdopts = do
@@ -485,16 +495,16 @@ foreign import ccall interruptible "hs_consumer_consume"
 
 creatableTopicParserV0 :: Parser K.CreatableTopicV0
 creatableTopicParserV0 = K.CreatableTopicV0
-  <$> option str (O.long "name" <> metavar "Text")
-  <*> option auto (O.long "num-partitions" <> metavar "Int32")
-  <*> option auto (O.long "replication-factor" <> metavar "Int16")
+  <$> strArgument (metavar "TopicName")
+  <*> option auto (O.long "num-partitions" <> O.short 'p' <> O.value 1 <> O.showDefault <> metavar "Int32")
+  <*> option auto (O.long "replication-factor" <> O.short 'r' <> O.value 1 <> O.showDefault <> metavar "Int16")
   <*> pure (K.KaArray $ Just V.empty)
   <*> pure (K.KaArray $ Just V.empty)
 
 createTopicsRequestParserV0 :: Parser K.CreateTopicsRequestV0
 createTopicsRequestParserV0 = K.CreateTopicsRequestV0
-  <$> (K.KaArray . Just . V.fromList <$> some creatableTopicParserV0)
-  <*> pure 5000
+  <$> (K.KaArray . Just . V.singleton <$> creatableTopicParserV0)
+  <*> option auto (O.long "timeout" <> O.short 't' <> O.value 5000 <> O.showDefault <> metavar "Int32")
 
 -------------------------------------------------------------------------------
 
