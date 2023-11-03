@@ -127,6 +127,7 @@ data ServerOpts = ServerOpts
 #ifndef HStreamUseGrpcHaskell
   , grpcChannelArgs               :: ![HsGrpc.ChannelArg]
 #endif
+  , serverTokens                  :: ![ByteString]
   } deriving (Show, Eq)
 
 getConfig :: CliOptions -> IO ServerOpts
@@ -262,6 +263,9 @@ parseJSONToOptions CliOptions{..} obj = do
   grpcChanArgsCfg <- grpcCfg .:? "channel-args" .!= mempty
   let grpcChannelArgs = getGrpcChannelArgs grpcChanArgsCfg
 #endif
+
+  tokensCfg <- nodeCfgObj .:? "tokens" .!= mempty
+  let serverTokens = map encodeUtf8 tokensCfg
 
   return ServerOpts {..}
 
