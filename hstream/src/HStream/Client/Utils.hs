@@ -17,13 +17,19 @@ module HStream.Client.Utils
   , terminateMsg
   , waitForServerToStart
   , withInterrupt
-  , removeEmitChanges) where
+  , removeEmitChanges
+  , initGloCliMetadata
+  , gloCliMetadata
+  ) where
 
 import           Control.Concurrent               (threadDelay)
 import           Control.Exception                (finally)
+import           Data.ByteString                  (ByteString)
 import           Data.Char                        (toUpper)
 import           Data.Functor                     ((<&>))
 import           Data.Int                         (Int32)
+import           Data.IORef
+import           Data.Map                         (Map)
 import           Data.String                      (IsString)
 import qualified Data.Text                        as T
 import           Data.Word                        (Word64)
@@ -31,10 +37,10 @@ import           Network.GRPC.HighLevel.Client
 import           Network.GRPC.HighLevel.Generated (withGRPCClient)
 import           Proto3.Suite                     (Enumerated (..))
 import           Proto3.Suite.Class               (HasDefault, def)
+import           System.IO.Unsafe                 (unsafePerformIO)
 import           System.Posix                     (Handler (Catch),
                                                    installHandler,
                                                    keyboardSignal)
-
 
 import           HStream.Base                     (genUnique)
 import           HStream.Client.Types             (Resource (..))
@@ -48,14 +54,36 @@ import           HStream.Utils                    (Format (formatResult),
                                                    mkGRPCClientConfWithSSL,
                                                    textToCBytes)
 
-terminateMsg :: IsString a => a
-terminateMsg = "\x1b[32mTerminated\x1b[0m"
+-------------------------------------------------------------------------------
+-- Connection
+
+_gloCliMetadata :: IORef MetadataMap
+_gloCliMetadata = unsafePerformIO $ newIORef (MetadataMap mempty)
+{-# NOINLINE _gloCliMetadata #-}
+
+-- [?] This function should only be called once
+initGloCliMetadata :: Map ByteString [ByteString] -> IO ()
+initGloCliMetadata m = writeIORef _gloCliMetadata (MetadataMap m)
+
+-- FIXME: there is no easy way to pass metadata for each request in our current
+-- codebase. So we use a global variable to store the metadata for now.
+gloCliMetadata :: MetadataMap
+gloCliMetadata = unsafePerformIO $ readIORef _gloCliMetadata
+{-# NOINLINE gloCliMetadata #-}
+
+requestTimeout :: Int
+requestTimeout = 1000
+
+mkClientNormalRequest' :: a -> ClientRequest 'Normal a b
+mkClientNormalRequest' x = ClientNormalRequest x requestTimeout gloCliMetadata
 
 clientDefaultRequest :: HasDefault a => ClientRequest 'Normal a b
 clientDefaultRequest = mkClientNormalRequest' def
 
-requestTimeout :: Int
-requestTimeout = 1000
+-------------------------------------------------------------------------------
+
+terminateMsg :: IsString a => a
+terminateMsg = "\x1b[32mTerminated\x1b[0m"
 
 subAckTimeout :: Int32
 subAckTimeout = 1
@@ -70,9 +98,6 @@ subscriptionWithDefaultSetting subscriptionSubscriptionId subscriptionStreamName
                    , subscriptionOffset = Enumerated (Right API.SpecialOffsetEARLIEST)
                    , subscriptionCreationTime = Nothing
                    , ..}
-
-mkClientNormalRequest' :: a -> ClientRequest 'Normal a b
-mkClientNormalRequest' = mkClientNormalRequest requestTimeout
 
 extractSelect :: [String] -> T.Text
 extractSelect = T.pack .

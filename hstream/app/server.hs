@@ -27,7 +27,7 @@ import qualified Data.Text                        as T
 import           Data.Text.Encoding               (encodeUtf8)
 import           Data.Word                        (Word16)
 import qualified HsGrpc.Server                    as HsGrpc
-import qualified HsGrpc.Server.Types                    as HsGrpc
+import qualified HsGrpc.Server.Types              as HsGrpc
 import           Network.HTTP.Client              (defaultManagerSettings,
                                                    newManager)
 import           System.Environment               (getArgs)
@@ -148,11 +148,13 @@ app config@ServerOpts{..} = do
       when (not . null $ grpcChannelArgs) $
         Log.debug $ "Set grpcChannelArgs: " <> Log.buildString' grpcChannelArgs
       grpcOpts <- defGrpcOpts _serverHost _serverPort _tlsConfig grpcChannelArgs
+      -- TODO: auth tokens
+      let mainGrpcOpts = grpcOpts{ HsGrpc.serverAuthTokens = serverTokens }
 #endif
 
       -- Experimental features
       let enableStreamV2 = ExperimentalStreamV2 `elem` experimentalFeatures
-      Async.withAsync (serve serverContext grpcOpts enableStreamV2) $ \a -> do
+      Async.withAsync (serve serverContext mainGrpcOpts enableStreamV2) $ \a -> do
         -- start gossip
         a1 <- startGossip _serverHost gossipContext
         Async.link2Only (const True) a a1
@@ -291,11 +293,11 @@ serveListeners sc grpcOpts
 -------------------------------------------------------------------------------
 
 -- default grpc options
+#ifdef HStreamUseGrpcHaskell
 defGrpcOpts
   :: ByteString
   -> Word16
   -> Maybe TlsConfig
-#ifdef HStreamUseGrpcHaskell
   -> IO GRPC.ServiceOptions
 defGrpcOpts host port tlsConfig = do
   let sslOpts = initializeTlsConfig <$> tlsConfig
@@ -306,6 +308,10 @@ defGrpcOpts host port tlsConfig = do
       , GRPC.sslConfig = sslOpts
       }
 #else
+defGrpcOpts
+  :: ByteString
+  -> Word16
+  -> Maybe TlsConfig
   -> [HsGrpc.ChannelArg]
   -> IO HsGrpc.ServerOptions
 defGrpcOpts host port tlsConfig chanArgs = do
