@@ -127,18 +127,18 @@ data TopicCommandDeleteOpts = TopicCommandDeleteOpts
 topicCommandParser :: Parser TopicCommand
 topicCommandParser = hsubparser
   ( O.command "list" (O.info (pure TopicCommandList) (O.progDesc "Get all topics"))
- <> O.command "info" (O.info (TopicCommandInfo <$> topicNameParser) (O.progDesc "topic info"))
+ <> O.command "describe" (O.info (TopicCommandInfo <$> topicNameParser) (O.progDesc "List details of given topic"))
  <> O.command "create" (O.info (TopicCommandCreate <$> createTopicsRequestParserV0) (O.progDesc "Create a topic"))
- <> O.command "delete" (O.info (TopicCommandDelete <$> topicDeleteOptsParser) (O.progDesc "delete a topic"))
+ <> O.command "delete" (O.info (TopicCommandDelete <$> topicDeleteOptsParser) (O.progDesc "Delete a topic"))
   )
 
 topicNameParser :: Parser Text
 topicNameParser =
-  O.strOption (O.long "name" <> O.metavar "Text" <> O.help "Topic name")
+  O.strArgument (O.metavar "TopicName" <> O.help "Topic name")
 
 topicNameParser' :: Parser (Either () Text)
 topicNameParser' =
-      Right <$> O.strOption (O.long "name" <> O.metavar "Text" <> O.help "Topic name")
+      Right <$> O.strArgument (O.metavar "TopicName" <> O.help "Topic name")
   <|> flag' (Left ()) (O.long "all" <> O.help "All topics")
 
 topicDeleteOptsParser :: Parser TopicCommandDeleteOpts
@@ -148,7 +148,7 @@ topicDeleteOptsParser = TopicCommandDeleteOpts
 
 handleTopicCommand :: Options -> TopicCommand -> IO ()
 handleTopicCommand opts TopicCommandList       = handleTopicList opts
-handleTopicCommand opts (TopicCommandInfo n)   = handleTopicInfo opts n
+handleTopicCommand opts (TopicCommandInfo n)   = handleTopicDescribe opts n
 handleTopicCommand opts (TopicCommandCreate n) = handleTopicCreate opts n
 handleTopicCommand opts (TopicCommandDelete o) = handleTopicDelete opts o
 
@@ -170,8 +170,8 @@ handleTopicList Options{..} = do
     else do
       putStrLn $ "List topic error: " <> show ((.errorCode) . V.head $ failed)
 
-handleTopicInfo :: Options -> Text -> IO ()
-handleTopicInfo Options{..} name = do
+handleTopicDescribe :: Options -> Text -> IO ()
+handleTopicDescribe Options{..} name = do
   tp <- describeTopic host port name
   let titles = ["Name", "IsInternal", "Partition", "LeaderId"]
       lenses = [ const (Text.unpack tp.name)
