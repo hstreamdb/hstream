@@ -251,7 +251,7 @@ doNewMemberJoinGoup group reqCtx req delayedResponse = do
 
 generateMemberId :: K.RequestContext -> IO T.Text
 generateMemberId reqCtx = do
-  (fromMaybe "" (M.join reqCtx.clientId) <>) . UUID.toText <$> UUID.nextRandom
+  (fromMaybe "" (M.join reqCtx.clientId) <>) . ("-" <>) . UUID.toText <$> UUID.nextRandom
 
 doCurrentMemeberJoinGroup :: Group -> K.JoinGroupRequestV0 -> C.MVar K.JoinGroupResponseV0 -> IO ()
 doCurrentMemeberJoinGroup group req delayedResponse = do
