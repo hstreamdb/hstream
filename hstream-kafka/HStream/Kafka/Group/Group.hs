@@ -434,22 +434,27 @@ chooseProtocolName Group {..} = do
   Log.debug $ "protocols:" <> Log.buildString' ps
   return . head $ Set.toList ps
 
+updateSupportedProtocols :: Group -> [(T.Text, BS.ByteString)] -> IO ()
+updateSupportedProtocols Group{..} protocols = do
+  IO.atomicModifyIORef' supportedProtocols $ \ps -> (Set.intersection (plainProtocols protocols) ps, ())
+
 addMember :: Group -> Member -> C.MVar K.JoinGroupResponseV0 -> IO ()
-addMember Group{..} member delayedResponse = do
+addMember group@Group{..} member delayedResponse = do
+  memberProtocols <- IO.readIORef member.supportedProtocols
   Utils.whenIORefEq leader Nothing $ do
     IO.atomicWriteIORef leader (Just member.memberId)
     IO.atomicWriteIORef protocolType (Just member.protocolType)
-    memberProtocols <- IO.readIORef member.supportedProtocols
     Log.debug $ "plain supportedProtocols:" <> Log.buildString' (plainProtocols memberProtocols)
     IO.atomicWriteIORef supportedProtocols (plainProtocols memberProtocols)
   H.insert members member.memberId member
+  updateSupportedProtocols group memberProtocols
   Log.debug $ "add delayed response into response list for member:" <> Log.buildString' member.memberId
   H.insert delayedJoinResponses member.memberId delayedResponse
 
 updateMember :: Group -> Member -> K.JoinGroupRequestV0 -> C.MVar K.JoinGroupResponseV0 -> IO ()
-updateMember Group{..} member req delayedResponse = do
-  -- TODO: compute supportedProtocols
+updateMember group@Group{..} member req delayedResponse = do
   IO.atomicWriteIORef member.supportedProtocols (refineProtocols req.protocols)
+  updateSupportedProtocols group (refineProtocols req.protocols)
 
   -- TODO: V1Request will include rebalanceTimeoutMs
   IO.atomicWriteIORef member.rebalanceTimeoutMs req.sessionTimeoutMs
