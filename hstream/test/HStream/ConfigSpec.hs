@@ -3,48 +3,65 @@
 
 module HStream.ConfigSpec where
 
-import           Control.Applicative            ((<|>))
-import           Control.Exception              (SomeException, evaluate, try)
-import           Data.Bifunctor                 (second)
-import           Data.ByteString                (ByteString)
-import qualified Data.HashMap.Strict            as HM
-import qualified Data.Map.Strict                as M
-import qualified Data.Map.Strict                as Map
-import           Data.Maybe                     (fromMaybe, isJust)
-import           Data.Text                      (Text)
-import qualified Data.Text                      as T
-import           Data.Text.Encoding             (decodeUtf8, encodeUtf8)
-import           Data.Yaml                      (ToJSON (..), Value (..),
-                                                 decodeThrow, encode, object,
-                                                 parseEither, (.=))
+import           Control.Applicative              ((<|>))
+import           Control.Exception                (SomeException, evaluate, try)
+import           Data.Bifunctor                   (second)
+import           Data.ByteString                  (ByteString)
+import qualified Data.HashMap.Strict              as HM
+import qualified Data.Map.Strict                  as M
+import qualified Data.Map.Strict                  as Map
+import           Data.Maybe                       (fromMaybe, isJust)
+import qualified Data.Set                         as Set
+import           Data.Text                        (Text)
+import qualified Data.Text                        as T
+import           Data.Text.Encoding               (decodeUtf8, encodeUtf8)
+import           Data.Yaml                        (ToJSON (..), Value (..),
+                                                   decodeThrow, encode, object,
+                                                   parseEither, (.=))
 import           Test.Hspec
-import           Test.Hspec.QuickCheck          (prop)
-import           Test.QuickCheck                (Arbitrary, Gen, choose,
-                                                 elements, listOf, listOf1)
-import           Test.QuickCheck.Arbitrary      (Arbitrary (arbitrary))
-import           Test.QuickCheck.Gen            (oneof, resize)
-import qualified Z.Data.CBytes                  as CB
+import           Test.Hspec.QuickCheck            (prop)
+import           Test.QuickCheck                  (Arbitrary, Gen, choose,
+                                                   elements, listOf, listOf1)
+import           Test.QuickCheck.Arbitrary        (Arbitrary (arbitrary))
+import           Test.QuickCheck.Gen              (oneof, resize)
+import qualified Z.Data.CBytes                    as CB
 
-import           HStream.Gossip                 (GossipOpts (..),
-                                                 defaultGossipOpts)
-import           HStream.IO.Types               (IOOptions (..))
-import           HStream.Server.Config          (CliOptions (..),
-                                                 MetaStoreAddr (..),
-                                                 ServerOpts (..),
-                                                 TlsConfig (..), parseHostPorts,
-                                                 parseJSONToOptions)
+import           HStream.Gossip                   (GossipOpts (..),
+                                                   defaultGossipOpts)
+import           HStream.IO.Types                 (IOOptions (..))
+import           HStream.Server.Config            (CliOptions (..),
+                                                   MetaStoreAddr (..),
+                                                   ServerOpts (..),
+                                                   TlsConfig (..),
+                                                   parseHostPorts,
+                                                   parseJSONToOptions)
+import           HStream.Server.Configuration.Cli
 import           HStream.Server.HStreamInternal
-import           HStream.Store                  (Compression (..))
+import qualified HStream.Server.HStreamInternal   as SAI
+import           HStream.Store                    (Compression (..))
 
 #if __GLASGOW_HASKELL__ < 902
-import           HStream.Admin.Store.API        (ProtocolId, binaryProtocolId,
-                                                 compactProtocolId)
-import           HStream.Server.Config          (readProtocol)
+import           HStream.Admin.Store.API          (ProtocolId, binaryProtocolId,
+                                                   compactProtocolId)
+import           HStream.Server.Config            (readProtocol)
 #endif
 
 spec :: Spec
-spec = xdescribe "TODO: HStream.ConfigSpec" $ do
-  describe "parseConfig" $ do
+spec = describe "HStream.ConfigSpec" $ do
+  it "parseAdvertisedListeners" $ do
+    let addr1 = "hstream://127.0.0.1:6570"
+        listener1 = SAI.Listener{listenerAddress = "127.0.0.1", listenerPort = 6570}
+        addr2 = "hstream://127.0.0.1:6571"
+        listener2 = SAI.Listener{listenerAddress = "127.0.0.1", listenerPort = 6571}
+
+    either error Map.toList (parseAdvertisedListeners ("l1:" <> addr1))
+      `shouldBe` Map.toList (M.singleton "l1" (Set.singleton listener1))
+    either error Map.toList (parseAdvertisedListeners ("l1:" <> addr1 <> ",l2:" <> addr2))
+      `shouldBe` Map.toList (M.fromList [ ("l1", Set.singleton listener1)
+                                        , ("l2", Set.singleton listener2)
+                                        ])
+
+  xdescribe "TODO: parseConfig" $ do
     it "basic config test" $ do
       let yaml = encode $ toJSON defaultConfig
       -- putStrLn $ T.unpack $ decodeUtf8 yaml

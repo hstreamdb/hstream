@@ -85,6 +85,7 @@ library
     HStream.Client.Types
     HStream.Client.Utils
     HStream.Server.Config
+    HStream.Server.Configuration.Cli
     HStream.Server.ConnectorTypes
     HStream.Server.Core.Cluster
     HStream.Server.Core.Common
@@ -101,7 +102,6 @@ library
     HStream.Server.Validation
 
   other-modules:
-    HStream.Server.Configuration.Cli
     HStream.Server.Core.Query
     HStream.Server.Core.QueryNew
     HStream.Server.Core.ShardReader
