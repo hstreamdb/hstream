@@ -1,7 +1,5 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE InterruptibleFFI      #-}
-{-# LANGUAGE LambdaCase            #-}
-{-# LANGUAGE MagicHash             #-}
 {-# LANGUAGE OverloadedRecordDot   #-}
 {-# LANGUAGE UnliftedFFITypes      #-}
 
@@ -38,8 +36,11 @@ import qualified System.Console.Haskeline as HL
 import           System.IO                (hFlush, stdout)
 import           System.IO.Unsafe         (unsafePerformIO)
 
+import qualified Data.ByteString          as BS
+import qualified Data.ByteString.Char8    as BC
 import           HStream.Base.Table       as Table
 import qualified HStream.Kafka.Client.Api as KA
+import           HStream.Utils            (splitOn)
 import qualified Kafka.Protocol.Encoding  as K
 import qualified Kafka.Protocol.Error     as K
 import qualified Kafka.Protocol.Message   as K
@@ -328,21 +329,23 @@ handleNodeList Options{..} = do
 
 -------------------------------------------------------------------------------
 
-data ProduceData = ProduceInteractive | ProduceData Text
+data ProduceData = ProduceInteractive | ProduceData BS.ByteString
   deriving (Show, Eq)
 
 data ProduceCommandOpts = ProduceCommandOpts
-  { topic       :: Text
-  , partition   :: Maybe Int32
-  , timeoutMs   :: Int32
-  , produceData :: ProduceData
+  { topic        :: Text
+  , partition    :: Maybe Int32
+  , timeoutMs    :: Int32
+  , keySeparator :: BS.ByteString
+  , produceData  :: ProduceData
   } deriving (Show, Eq)
 
 produceCommandParser :: Parser ProduceCommandOpts
 produceCommandParser = ProduceCommandOpts
-  <$> strOption (long "topic" <> metavar "Text" <> help "Topic name")
+  <$> strArgument (metavar "TopicName" <> help "Topic name")
   <*> O.optional (option auto (long "partition" <> short 'p' <> metavar "Int32" <> help "Partition index"))
   <*> option auto (long "timeout" <> metavar "Int32" <> value 5000 <> help "Timeout in milliseconds")
+  <*> O.option O.str (O.long "separator" <> short 's' <> O.metavar "String" <> O.showDefault <> O.value "@" <> O.help "Separator of key. e.g. key1@value")
   <*> ( ProduceData <$> strOption (long "data" <> short 'd' <> metavar "Text" <> help "Data")
     <|> flag' ProduceInteractive (long "interactive" <> short 'i' <> help "Interactive mode")
       )
@@ -361,30 +364,40 @@ handleProduceCommand Options{..} cmdopts = do
     pure p
   case cmdopts.produceData of
     ProduceData d -> flip finally (hs_delete_producer producer) $ do
-      doProduce producer cmdopts.topic (fromMaybe (-1) cmdopts.partition) d
-      hs_producer_flush producer
+      let (k, v) = splitKeyValue cmdopts.keySeparator d
+      doProduce producer cmdopts.topic (fromMaybe (-1) cmdopts.partition) k v
     ProduceInteractive -> flip finally (hs_delete_producer producer) $ do
       putStrLn $ "Type message value and hit enter "
               <> "to produce message. Use Ctrl-c to exit."
       HL.runInputT HL.defaultSettings
         (loopReadLine producer cmdopts.topic (fromMaybe (-1) cmdopts.partition))
   where
-    doProduce p topic partition payload = do
+    splitKeyValue sep input =
+      let items = splitOn sep input
+       in case items of
+            [payload] -> (BS.empty, payload)
+            [key,payload] -> (key, payload)
+            _ -> errorWithoutStackTrace $ "invalid input: "  <> show input <> " with separator " <> show sep
+
+    doProduce p topic partition key payload = do
       (errmsg, ret) <-
         HsForeign.withByteString (encodeUtf8 topic) $ \topic' topic_size ->
-          HsForeign.withByteString (encodeUtf8 payload) $ \payload'' payload_size ->
-            unsafeWithStdString $
-              hs_producer_produce p topic' topic_size partition
-                                  payload'' payload_size
+          HsForeign.withByteString payload $ \payload'' payload_size ->
+            HsForeign.withByteString key $ \key' key_size ->
+              unsafeWithStdString $
+                hs_producer_produce p topic' topic_size partition
+                                    payload'' payload_size key' key_size
       when (ret /= 0) $ errorWithoutStackTrace $
         "Produce failed: " <> (Text.unpack $ decodeUtf8 errmsg)
+      hs_producer_flush p
 
     loopReadLine p topic partition = do
       minput <- HL.getInputLine "> "
       case minput of
         Nothing -> return ()
         Just payload -> do
-          liftIO $ doProduce p topic partition (Text.pack payload)
+          let (k, v) = splitKeyValue cmdopts.keySeparator (BC.pack payload)
+          liftIO $ doProduce p topic partition k v
           loopReadLine p topic partition
 
 data HsProducer
@@ -399,6 +412,7 @@ foreign import ccall interruptible "hs_producer_produce"
     -> Ptr Word8 -> Int             -- Topic
     -> Int32                        -- Partition
     -> Ptr Word8 -> Int             -- Payload
+    -> Ptr Word8 -> Int             -- Key
     -> (Ptr HsForeign.StdString)    -- errmsg
     -> IO Int
 

@@ -43,7 +43,7 @@ import           HStream.Utils                    (ResourceType (..),
                                                    decompressBatchedRecord,
                                                    formatResult, getServerResp,
                                                    jsonObjectToStruct,
-                                                   newRandomText)
+                                                   newRandomText, splitOn)
 
 streamingFetch :: HStreamCliContext -> T.Text -> API.HStreamApi ClientRequest response -> IO ()
 streamingFetch = streamingFetch' (putStr . formatResult @PB.Struct) False
@@ -145,10 +145,3 @@ interactiveAppend AppendContext{..} = do
     Left _  -> (False, payload)
     Right p -> (True, BSL.toStrict . PB.toLazyByteString . jsonObjectToStruct $ p)
 
-  -- Break a ByteString into pieces separated by the first ByteString argument, consuming the delimiter
-  splitOn :: BS.ByteString -> BS.ByteString -> [BS.ByteString]
-  splitOn ""        = error "delimiter shouldn't be empty."
-  splitOn delimiter = go
-    where
-      go s = let (pre, post) = BS.breakSubstring delimiter s
-              in pre : if BS.null post then [] else go (BS.drop (BS.length delimiter) post)
