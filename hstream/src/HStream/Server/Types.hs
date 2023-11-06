@@ -333,5 +333,12 @@ getLogLSN scLDClient logId isEndOffset offset =
       return (recordIdBatchId, Nothing)
     OffsetTimestamp API.TimestampOffset{..} -> do
       let accuracy = if timestampOffsetStrictAccuracy then S.FindKeyStrict else S.FindKeyApproximate
-      startLSN <- S.findTime scLDClient logId timestampOffsetTimestampInMs accuracy
-      return (startLSN, Just timestampOffsetTimestampInMs)
+      if isEndOffset
+        then do
+          lsnTime <- S.findTime scLDClient logId timestampOffsetTimestampInMs accuracy
+          lsnTail <- S.getTailLSN scLDClient logId
+          -- make sure the until time lsn is not greater than current tail lsn
+          if lsnTime <= lsnTail then return (lsnTime, Just timestampOffsetTimestampInMs) else return (lsnTail, Nothing)
+        else do
+          lsn <- S.findTime scLDClient logId timestampOffsetTimestampInMs accuracy
+          return (lsn, Just timestampOffsetTimestampInMs)

@@ -144,6 +144,7 @@ app config@ServerOpts{..} = do
 
 #ifdef HStreamUseGrpcHaskell
       grpcOpts <- defGrpcOpts _serverHost _serverPort _tlsConfig
+      let mainGrpcOpts = grpcOpts
 #else
       when (not . null $ grpcChannelArgs) $
         Log.debug $ "Set grpcChannelArgs: " <> Log.buildString' grpcChannelArgs
