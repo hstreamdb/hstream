@@ -22,6 +22,7 @@ module HStream.Server.Configuration.Cli
   , advertisedListenersToPB
   , defaultProtocolMap
   , parseMetaStoreAddr
+  , parseAdvertisedListeners
   ) where
 
 import qualified Data.Attoparsec.Text           as AP
@@ -182,7 +183,6 @@ parseAdvertisedListeners =
                   address <- AP.takeTill (== ':')
                   AP.char ':'
                   port <- AP.decimal
-                  AP.endOfInput
                   return (key, Set.singleton SAI.Listener{ listenerAddress = address, listenerPort = port})
    in (Map.fromListWith Set.union <$>) . AP.parseOnly (parser `AP.sepBy` AP.char ',')
 
