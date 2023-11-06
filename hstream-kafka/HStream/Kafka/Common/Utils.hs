@@ -5,7 +5,10 @@ module HStream.Kafka.Common.Utils where
 
 import           Control.Exception                   (throw)
 import qualified Control.Monad                       as M
+import qualified Control.Monad.ST                    as ST
 import qualified Data.HashTable.IO                   as H
+import qualified Data.HashTable.ST.Basic             as HB
+import qualified Data.IORef                          as IO
 import           Data.Maybe                          (fromMaybe)
 import qualified Data.Vector                         as V
 import           HStream.Kafka.Common.KafkaException (ErrorCodeException (ErrorCodeException))
@@ -20,6 +23,14 @@ hashtableGet hashTable key errorCode = H.lookup hashTable key >>= \case
 hashtableDeleteAll hashTable = do
   lst <- H.toList hashTable
   M.forM_ lst $ \(key, _) -> H.delete hashTable key
+
+-- O(1)
+hashtableSize :: HB.HashTable ST.RealWorld k v -> IO Int
+hashtableSize hashTable = ST.stToIO (HB.size hashTable)
+
+-- O(1)
+hashtableNull :: HB.HashTable ST.RealWorld k v -> IO Bool
+hashtableNull hashTable = (== 0) <$> ST.stToIO (HB.size hashTable)
 
 kaArrayToList :: K.KaArray a -> [a]
 kaArrayToList = V.toList . fromMaybe V.empty . K.unKaArray
@@ -46,3 +57,16 @@ forKaArrayM = flip mapKaArrayM
 
 emptyKaArray :: K.KaArray a
 emptyKaArray = K.KaArray (Just V.empty)
+
+whenEqM :: (Eq a, Monad m) => m a -> a -> m () -> m ()
+whenEqM valM expected action = do
+  valM >>= \val -> do
+    M.when (expected == val) $ action
+
+whenIORefEq :: (Eq a) => IO.IORef a -> a -> IO () -> IO ()
+whenIORefEq ioRefVal = whenEqM (IO.readIORef ioRefVal)
+
+unlessIORefEq :: (Eq a) => IO.IORef a -> a -> (a -> IO ()) -> IO ()
+unlessIORefEq ioRefVal expected action = do
+  IO.readIORef ioRefVal >>= \val -> do
+    M.unless (expected == val) $ action val
