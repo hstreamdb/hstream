@@ -8,6 +8,7 @@ module Kafka.Protocol.Message
   , getResponseHeader
 
   , module Kafka.Protocol.Message.Struct
+  , module Kafka.Protocol.Message.Total
   ) where
 
 import qualified Data.ByteString.Lazy          as BL
@@ -15,6 +16,7 @@ import           Data.Int
 
 import           Kafka.Protocol.Encoding
 import           Kafka.Protocol.Message.Struct
+import           Kafka.Protocol.Message.Total
 
 data RequestHeader = RequestHeader
   { requestApiKey        :: {-# UNPACK #-} !ApiKey

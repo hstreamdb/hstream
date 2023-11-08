@@ -50,6 +50,8 @@ module Kafka.Protocol.Encoding
     -- ** Misc
   , pattern NonNullKaArray
   , unNonNullKaArray
+  , kaArrayToCompact
+  , kaArrayFromCompact
     -- * Internals
   , Parser
   , runParser
@@ -222,9 +224,15 @@ newtype KaArray a = KaArray
   { unKaArray :: Maybe (Vector a) }
   deriving newtype (Show, Eq, Ord)
 
+instance Functor KaArray where
+  fmap f (KaArray xs) = KaArray $ fmap f <$> xs
+
 newtype CompactKaArray a = CompactKaArray
   { unCompactKaArray :: Maybe (Vector a) }
   deriving newtype (Show, Eq, Ord)
+
+instance Functor CompactKaArray where
+  fmap f (CompactKaArray xs) = CompactKaArray $ fmap f <$> xs
 
 newtype RecordKey = RecordKey { unRecordKey :: Maybe ByteString }
   deriving newtype (Show, Eq, Ord)
@@ -584,6 +592,14 @@ pattern NonNullKaArray vec <- (unNonNullKaArray -> vec) where
 unNonNullKaArray :: KaArray a -> Vector a
 unNonNullKaArray =
   fromMaybe (error "non-nullable field was serialized as null") . unKaArray
+
+kaArrayToCompact :: KaArray a -> CompactKaArray a
+kaArrayToCompact = CompactKaArray . unKaArray
+{-# INLINE kaArrayToCompact #-}
+
+kaArrayFromCompact :: CompactKaArray a -> KaArray a
+kaArrayFromCompact = KaArray . unCompactKaArray
+{-# INLINE kaArrayFromCompact #-}
 
 -------------------------------------------------------------------------------
 -- Internals
