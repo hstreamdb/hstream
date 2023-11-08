@@ -39,6 +39,7 @@ tables :: [Text]
 tables = [
     myRootPath @TaskMeta         @RHandle
   , myRootPath @TaskIdMeta       @RHandle
+  , myRootPath @TaskKvMeta       @RHandle
   , myRootPath @QueryInfo        @RHandle
   , myRootPath @QueryStatus      @RHandle
   , myRootPath @ViewInfo         @RHandle
