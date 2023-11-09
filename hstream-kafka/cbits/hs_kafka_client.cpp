@@ -253,14 +253,12 @@ HsInt hs_producer_produce(HsProducer* p, const char* topic_, HsInt topic_size_,
                           int32_t partition_, const char* payload_,
                           HsInt payload_size_, const char* key_, 
                           HsInt key_size_, std::string* errstr) {
-  if (!payload_) {
-    p->producer->poll(0);
-    return 0;
-  }
 
   std::string topic(topic_, topic_size_);
   std::string payload(payload_, payload_size_);
   auto partition = partition_ < 0 ? RdKafka::Topic::PARTITION_UA : partition_;
+  auto key = key_size_ == 0 ? NULL : const_cast<char*>(key_);
+  auto value = payload_size_ == 0 ? NULL : const_cast<char*>(payload_);
 
 retry:
   RdKafka::ErrorCode err =
@@ -268,9 +266,9 @@ retry:
                            /* Copy payload */
                            RdKafka::Producer::RK_MSG_COPY,
                            /* Value */
-                           const_cast<char*>(payload_), payload_size_,
+                           value, payload_size_,
                            /* Key */
-                           const_cast<char*>(key_), key_size_,
+                           key, key_size_,
                            /* Timestamp (defaults to current time) */
                            0,
                            /* Message headers, if any */

@@ -18,6 +18,7 @@ import           Control.Exception        (finally)
 import           Control.Monad
 import           Control.Monad.IO.Class   (liftIO)
 import           Data.ByteString          (ByteString)
+import qualified Data.ByteString          as BS
 import           Data.Char                (toUpper)
 import           Data.Int
 import           Data.IORef
@@ -36,8 +37,6 @@ import qualified System.Console.Haskeline as HL
 import           System.IO                (hFlush, stdout)
 import           System.IO.Unsafe         (unsafePerformIO)
 
-import qualified Data.ByteString          as BS
-import qualified Data.ByteString.Char8    as BC
 import           HStream.Base.Table       as Table
 import qualified HStream.Kafka.Client.Api as KA
 import           HStream.Utils            (newRandomText, splitOn)
@@ -197,8 +196,8 @@ handleTopicCreate Options{..} req@K.CreateTopicsRequestV0{..} = do
    showTopic topic = do
      let titles = ["Name", "Partitions", "Replication-factor"]
          lenses = [ Text.unpack . (.name)
-                  , show . (K.numPartitions)
-                  , show . (K.replicationFactor)
+                  , show . (.numPartitions)
+                  , show . (.replicationFactor)
                   ]
          stats = (\s -> ($ s) <$> lenses) <$> V.toList (K.unNonNullKaArray topic)
      putStrLn $ simpleShowTable (map (, 30, Table.left) titles) stats
@@ -327,7 +326,7 @@ handleNodeList Options{..} = do
 
 -------------------------------------------------------------------------------
 
-data ProduceData = ProduceInteractive | ProduceData BS.ByteString
+data ProduceData = ProduceInteractive | ProduceData Text
   deriving (Show, Eq)
 
 data ProduceCommandOpts = ProduceCommandOpts
@@ -362,7 +361,7 @@ handleProduceCommand Options{..} cmdopts = do
     pure p
   case cmdopts.produceData of
     ProduceData d -> flip finally (hs_delete_producer producer) $ do
-      let (k, v) = splitKeyValue cmdopts.keySeparator d
+      let (k, v) = splitKeyValue cmdopts.keySeparator (encodeUtf8 d)
       doProduce producer cmdopts.topic (fromMaybe (-1) cmdopts.partition) k v
     ProduceInteractive -> flip finally (hs_delete_producer producer) $ do
       putStrLn $ "Type message value and hit enter "
@@ -394,7 +393,7 @@ handleProduceCommand Options{..} cmdopts = do
       case minput of
         Nothing -> return ()
         Just payload -> do
-          let (k, v) = splitKeyValue cmdopts.keySeparator (BC.pack payload)
+          let (k, v) = splitKeyValue cmdopts.keySeparator (encodeUtf8 . Text.pack $ payload)
           liftIO $ doProduce p topic partition k v
           loopReadLine p topic partition
 
