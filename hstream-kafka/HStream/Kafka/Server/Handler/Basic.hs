@@ -3,10 +3,7 @@
 
 module HStream.Kafka.Server.Handler.Basic
   ( -- 18: ApiVersions
-    handleApiversionsV0
-  , handleApiversionsV1
-  , handleApiversionsV2
-  , handleApiversionsV3
+    handleApiVersions
     -- 3: Metadata
   , handleMetadataV0
   , handleMetadataV1
@@ -39,32 +36,17 @@ import qualified Kafka.Protocol.Service       as K
 --------------------
 -- 18: ApiVersions
 --------------------
-handleApiversionsV0
-  :: K.RequestContext -> K.ApiVersionsRequestV0 -> IO K.ApiVersionsResponseV0
-handleApiversionsV0 _ _ = do
-  let apiKeys = K.KaArray $ Just $ V.fromList K.supportedApiVersions
-  pure $ K.ApiVersionsResponseV0 K.NONE apiKeys
 
-handleApiversionsV1
-  :: K.RequestContext -> K.ApiVersionsRequestV1 -> IO K.ApiVersionsResponseV1
-handleApiversionsV1 _ _ = do
-  let apiKeys = K.KaArray $ Just $ V.fromList K.supportedApiVersions
-  pure $ K.ApiVersionsResponseV1 K.NONE apiKeys 0{- throttle_time_ms -}
-
-handleApiversionsV2
-  :: K.RequestContext -> K.ApiVersionsRequestV2 -> IO K.ApiVersionsResponseV2
-handleApiversionsV2 = handleApiversionsV1
-
-handleApiversionsV3
-  :: K.RequestContext -> K.ApiVersionsRequestV3 -> IO K.ApiVersionsResponseV3
-handleApiversionsV3 _ req = do
-  let apiKeys = K.CompactKaArray
+handleApiVersions
+  :: K.RequestContext -> K.ApiVersionsRequest -> IO K.ApiVersionsResponse
+handleApiVersions _ _ = do
+  let apiKeys = K.KaArray
               . Just
-              . (V.map apiVersionV0ToV3)
+              . (V.map apiVersionV0To)
               . V.fromList
               $ K.supportedApiVersions
-  pure $ K.ApiVersionsResponseV3 K.NONE apiKeys 0{- throttle_time_ms -}
-                                 K.EmptyTaggedFields
+  pure $ K.ApiVersionsResponse K.NONE apiKeys 0{- throttle_time_ms -}
+                               K.EmptyTaggedFields
 
 --------------------
 --  3: Metadata
@@ -216,6 +198,6 @@ handleMetadataV4 ctx@ServerContext{..} _ req = do
 
 -------------------------------------------------------------------------------
 
-apiVersionV0ToV3 :: K.ApiVersionV0 -> K.ApiVersionV3
-apiVersionV0ToV3 K.ApiVersionV0{..} =
-  let taggedFields = K.EmptyTaggedFields in K.ApiVersionV3{..}
+apiVersionV0To :: K.ApiVersionV0 -> K.ApiVersion
+apiVersionV0To K.ApiVersionV0{..} =
+  let taggedFields = K.EmptyTaggedFields in K.ApiVersion{..}
