@@ -13,12 +13,48 @@ import           HStream.Kafka.Server.Types           (ServerContext (..))
 import qualified Kafka.Protocol.Message               as K
 import qualified Kafka.Protocol.Service               as K
 
+-------------------------------------------------------------------------------
+
+#define hsc_lowerfirst(x)                                                      \
+  {                                                                            \
+    const char* s = (x);                                                       \
+    hsc_putchar(hsc_tolower(*s));                                              \
+    hsc_printf("%s", ++s);                                                     \
+  }
+
+#define hsc_cv_handler(key, start, end)                                        \
+  {                                                                            \
+    for (int i = start; i <= end; i++) {                                       \
+      hsc_printf("handle%sV%d :: K.RequestContext -> K.%sRequestV%d -> IO "    \
+                 "K.%sResponseV%d \n",                                         \
+                 #key, i, #key, i, #key, i);                                   \
+      hsc_printf("handle%sV%d ctx req = K.", #key, i);                         \
+      hsc_lowerfirst(#key);                                                    \
+      hsc_printf("ResponseToV%d <$> handle%s ctx (K.", i, #key);               \
+      hsc_lowerfirst(#key);                                                    \
+      hsc_printf("RequestFromV%d req)\n", i);                                  \
+    }                                                                          \
+  }
+
+#define hsc_mk_handler(key, start, end)                                        \
+  {                                                                            \
+    for (int i = start; i <= end; i++) {                                       \
+      if (i != start) {                                                        \
+        hsc_printf("  , ");                                                    \
+      }                                                                        \
+      hsc_printf("K.hd (K.RPC :: K.RPC K.HStreamKafkaV%d \"", i);              \
+      hsc_lowerfirst(#key);                                                    \
+      hsc_printf("\") handle%sV%d\n", #key, i);                                \
+    }                                                                          \
+  }
+
+-------------------------------------------------------------------------------
+
+#cv_handler ApiVersions, 0, 3
+
 handlers :: ServerContext -> [K.ServiceHandler]
 handlers sc =
-  [ K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "apiVersions") handleApiversionsV0
-  , K.hd (K.RPC :: K.RPC K.HStreamKafkaV1 "apiVersions") handleApiversionsV1
-  , K.hd (K.RPC :: K.RPC K.HStreamKafkaV2 "apiVersions") handleApiversionsV2
-  , K.hd (K.RPC :: K.RPC K.HStreamKafkaV3 "apiVersions") handleApiversionsV3
+  [ #mk_handler ApiVersions, 0, 3
 
   , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "metadata") (handleMetadataV0 sc)
   , K.hd (K.RPC :: K.RPC K.HStreamKafkaV1 "metadata") (handleMetadataV1 sc)

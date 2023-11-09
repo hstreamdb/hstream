@@ -136,6 +136,7 @@ library
   cxx-options:        -std=c++17
   extra-libraries:    rdkafka++
   hs-source-dirs:     .
+  build-tool-depends: hsc2hs:hsc2hs
   build-depends:
     , attoparsec
     , base                          >=4.11     && <5
