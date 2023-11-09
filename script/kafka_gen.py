@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
 
+# Requires Python >= 3.9
+#
 # Parse Apache Kafka Message Definitions
 #
 # See: https://github.com/apache/kafka/tree/3.5/clients/src/main/resources/common/message
@@ -10,14 +12,16 @@
 # - handle ignorable
 # - handle entityType
 
-import argparse
 from dataclasses import dataclass
-import os
-import json
 from glob import glob
-import subprocess
-import re
 from typing import List, Optional
+import argparse
+import itertools
+import json
+import os
+import pathlib
+import re
+import subprocess
 import textwrap
 
 # If you want to enable tab completion of this script, you must install
@@ -69,6 +73,34 @@ COMPACT_NULLABLE_TYPE_MAPS = {
     "records": "!CompactNullableBytes",
     "array": "!(CompactKaArray {})",
 }
+
+
+def get_field_default(field_type, default=None):
+    if default is not None:
+        if default == "null":
+            return "Nothing"
+        if field_type.startswith("int") and int(default) < 0:
+            return f"({default})"
+        if default == "false":
+            return "False"
+        if default == "true":
+            return "True"
+        return default
+    if field_type.startswith("int"):
+        return 0
+    if field_type == "float":
+        return 0
+    if field_type == "string":
+        return '""'
+    if field_type == "bool":
+        return "False"
+    if field_type == "bytes":
+        return '""'
+    if field_type == "records":
+        return "Nothing"
+    if field_type == "array":
+        return "KaArray (Just V.empty)"
+
 
 GLOBAL_API_VERSION_PATCH = (0, 0)
 API_VERSION_PATCHES = {
@@ -130,22 +162,38 @@ def format_field_doc(doc=None, indent=4):
     )
 
 
-def format_hs_list(xs, indent=0, prefix=""):
+def format_hs_block(xs, indent=0, prefix="", start="[", end="]"):
     indents = " " * indent
     indents_with_prefix = indents + (" " * len(prefix))
-    result = indents + prefix + "[ "
+    result = indents + prefix + start + " "
     result += ("\n" + indents_with_prefix + ", ").join(xs)
     result += "\n"
-    result += indents_with_prefix + "]"
+    result += indents_with_prefix + end
     return result
+
+
+def format_hs_list(xs, indent=0, prefix=""):
+    return format_hs_block(xs, indent=indent, prefix=prefix)
+
+
+def format_hs_data_cons(xs, indent=0, prefix=""):
+    return format_hs_block(xs, indent=indent, prefix=prefix, start="{", end="}")
 
 
 @dataclass
 class HsDataField:
     name: str
-    ty: str
+    ty: str  # haskell type
+    ver_ty: str  # haskell type with version
+    ka_type: Optional[str] = None
+    ka_type_arr_of: Optional[str] = None  # for ka_type is array
+    ka_type_nullable: Optional[bool] = None
     doc: Optional[str] = None
     is_tagged: bool = False
+    default: Optional = None
+
+    def format(self):
+        pass
 
 
 class HsData:
@@ -163,8 +211,12 @@ class HsData:
         self._init_fields(fields)
         self.version = version
         self.doc = doc
-        self._name = name + f"V{version}"
-        self._cons = cons + f"V{version} " if cons else self._name
+        if self.version is None:
+            self._name = name
+            self._cons = cons if cons else self._name
+        else:
+            self._name = name + f"V{version}"
+            self._cons = cons + f"V{version} " if cons else self._name
 
     def _init_fields(self, fields):
         self.fields = []
@@ -192,7 +244,13 @@ class HsData:
         # 2. We assume that flexible message always has tagged_fields
         if self.tagged_fields or self.is_flexible:
             self.fields.append(
-                HsDataField("taggedFields", "!TaggedFields", is_tagged=True)
+                HsDataField(
+                    "taggedFields",
+                    "!TaggedFields",
+                    "!TaggedFields",
+                    ka_type="TaggedFields",
+                    is_tagged=True,
+                )
             )
 
         if len(self.fields) == 0:
@@ -201,15 +259,15 @@ class HsData:
         elif len(self.fields) == 1:
             data_type = f"newtype {self._name} = {self._cons}"
             data_fields = "\n  , ".join(
-                f"{f.name} :: {remove_strict(f.ty)}" for f in self.fields
+                f"{f.name} :: {remove_strict(f.ver_ty)}" for f in self.fields
             )
             data_fields = "  { " + data_fields + "\n  }"
         else:
             data_type = f"data {self._name} = {self._cons}"
             data_fields = "\n  , ".join(
-                f"{f.name} :: {f.ty}\n{format_field_doc(f.doc)}"
+                f"{f.name} :: {f.ver_ty}\n{format_field_doc(f.doc)}"
                 if f.doc
-                else f"{f.name} :: {f.ty}"
+                else f"{f.name} :: {f.ver_ty}"
                 for f in self.fields
             )
             data_fields = "  { " + data_fields + "\n  }"
@@ -342,13 +400,14 @@ def parse_version(spec):
 
 
 def parse_field(field, api_version=0, flexible=False):
-    about = field.get("about")  # TODO
+    about = field.get("about")
     name = RENAMES.get(field["name"], field["name"])
     type_type = field["type"]
     type_name = None
     type_maps = TYPE_MAPS
     with_extra_version_suffix = False
     is_tagged = False
+    default = field.get("default")
 
     # Versions
     min_field_version, max_field_version = parse_version(
@@ -409,6 +468,7 @@ def parse_field(field, api_version=0, flexible=False):
 
     # Array type
     match_array = re.match(r"^\[\](?P<type>.+)$", type_type)
+    match_name = None
     if match_array:
         type_type = "array"
         match_name = match_array.group("type")
@@ -435,23 +495,41 @@ def parse_field(field, api_version=0, flexible=False):
                 ),
             )
         )
-        hs_data = HsData(
-            type_name, data_sub_fields, api_version, is_flexible=flexible
+        append_hs_datas(
+            SUB_DATA_TYPES,
+            HsData(
+                type_name,
+                data_sub_fields,
+                api_version,
+                is_flexible=flexible,
+            ),
         )
-        append_hs_datas(SUB_DATA_TYPES, hs_data)
 
     data_name = lower_fst(name)
 
+    ver_type_name = type_name
     if with_extra_version_suffix:
-        _type_name = f"{type_name}V{api_version}"
-        type_name = DATA_TYPE_RENAMES.get(_type_name, _type_name)
+        ver_type_name = f"{ver_type_name}V{api_version}"
+        ver_type_name = DATA_TYPE_RENAMES.get(ver_type_name, ver_type_name)
     data_type = type_maps[type_type].format(type_name)
+    ver_data_type = type_maps[type_type].format(ver_type_name)
     data_field = HsDataField(
         data_name,
         data_type,
+        ver_data_type,
+        ka_type=type_type,
+        ka_type_arr_of=match_name,
+        # Here we ignore the nullableVersions for array type because we
+        # always use KaArray(nullable) in haskell
+        #
+        # e.g. MetadataRequestV0.topics is a non-null array, but in haskell
+        # we use KaArray instead
+        ka_type_nullable=True if type_type == "array" else in_null_version,
         doc=about,
         is_tagged=is_tagged,
+        default=default,
     )
+
     return data_field
 
 
@@ -510,12 +588,141 @@ def parse(msg):
 # -----------------------------------------------------------------------------
 
 
-def gen_haskell_header():
+def convert_field_type(f, is_nullable=False, is_flexible=False):
+    if f.ka_type == "string" and is_nullable:
+        return "!NullableString"
+    return f.ty
+
+
+def _convert_field_array(f, ver, label, direction, is_flexible=False):
+    convertCompact = (
+        "kaArrayToCompact" if direction == "To" else "kaArrayFromCompact"
+    )
+    if f.ka_type_arr_of in {*TYPE_MAPS.keys(), "TaggedFields"}:
+        if is_flexible:
+            return f"{convertCompact} {label}.{f.name}"
+        return label + "." + f.name
+    else:
+        converter = lower_fst(f.ka_type_arr_of) + direction + "V" + str(ver)
+        if is_flexible:
+            return f"fmap {converter} ({convertCompact} {label}.{f.name})"
+        return f"fmap {converter} {label}.{f.name}"
+
+
+def convert_field_to(f, ver, is_flexible, label):
+    if f.ka_type == "array":
+        return _convert_field_array(
+            f, ver, label, "To", is_flexible=is_flexible
+        )
+
+    if f.ka_type in {*TYPE_MAPS.keys(), "TaggedFields"}:
+        return label + "." + f.name
+
+    return label + "." + f.name
+
+
+def convert_field_from(src_fields, ver, dest, is_flexible, label):
+    src = next((i for i in src_fields if i.name == dest.name), None)
+
+    if src is not None:
+        if src.ka_type == "array":
+            return _convert_field_array(
+                src, ver, label, "From", is_flexible=is_flexible
+            )
+        return label + "." + src.name
+
+    if dest.ka_type == "TaggedFields":  # TODO
+        return "EmptyTaggedFields"
+
+    return get_field_default(dest.ka_type, dest.default)
+
+
+def format_total_data_types(ds):
+    totals = []
+    sub_data_types = sorted(ds, key=lambda k: k.name)
+    for k, data_group in itertools.groupby(
+        sub_data_types, key=lambda k: k.name
+    ):
+        data_group = list(data_group)
+        fs = []
+        # preprocess
+        is_flexible = False
+        is_nullable = set()
+        for d in data_group:
+            if isinstance(d.fields, int):
+                continue
+            if d.is_flexible:
+                is_flexible = True
+            for field in d.fields:
+                if field.ka_type_nullable:
+                    is_nullable.add(field.name)
+        # process
+        for d in data_group:
+            if isinstance(d.fields, int):
+                continue
+            for field in d.fields:
+                if field.name not in map(lambda x: x.name, fs):
+                    field.ver_ty = convert_field_type(
+                        field,
+                        is_nullable=(field.name in is_nullable),
+                        is_flexible=is_flexible,
+                    )
+                    fs.append(field)
+        totals.append(HsData(k, fs, None, is_flexible=is_flexible).format())
+        # ---
+        convert_to_results = []
+        for d in data_group:
+            result = f"{lower_fst(d.name)}ToV{d.version} :: {d.name} -> {k}V{d.version}"
+            result += "\n"
+            if isinstance(d.fields, int):
+                result += f"{lower_fst(d.name)}ToV{d.version} = {lower_fst(d.name)}ToV{d.fields}"
+            else:
+                cs = [
+                    f"{f.name} = {convert_field_to(f, d.version, d.is_flexible, 'x')}"
+                    for f in d.fields
+                ]
+                var = "x" if len(cs) != 0 else "_"
+                result += (
+                    f"{lower_fst(d.name)}ToV{d.version} {var} = {k}V{d.version}"
+                )
+                if len(cs) != 0:
+                    result += "\n"
+                    result += format_hs_data_cons(cs, indent=2)
+            convert_to_results.append(result)
+        totals.append("\n".join(convert_to_results))
+        # ---
+        convert_from_results = []
+        for d in data_group:
+            result = f"{lower_fst(d.name)}FromV{d.version} :: {k}V{d.version} -> {d.name}"
+            result += "\n"
+            if isinstance(d.fields, int):
+                result += f"{lower_fst(d.name)}FromV{d.version} = {lower_fst(d.name)}FromV{d.fields}"
+            else:
+                var = "x" if len(d.fields) != 0 else "_"
+                result += (
+                    f"{lower_fst(d.name)}FromV{d.version} {var} = {d.name}"
+                )
+                result += "\n"
+                cs = [
+                    f"{f.name} = {convert_field_from(d.fields, d.version, f, d.is_flexible, 'x')}"
+                    for f in fs
+                ]
+                result += format_hs_data_cons(cs, indent=2)
+            convert_from_results.append(result)
+        totals.append("\n".join(convert_from_results))
+
+    return "\n\n".join(s for s in totals)
+
+
+# -----------------------------------------------------------------------------
+
+
+def gen_struct_haskell_header():
     return """
 -------------------------------------------------------------------------------
 -- Autogenerated by kafka message json schema
 --
--- $ ./script/kafka_gen.py run > hstream-kafka/protocol/Kafka/Protocol/Message/Struct.hs
+-- $ ./script/kafka_gen.py run
 --
 -- DO NOT EDIT UNLESS YOU ARE SURE THAT YOU KNOW WHAT YOU ARE DOING
 
@@ -525,9 +732,9 @@ def gen_haskell_header():
 
 module Kafka.Protocol.Message.Struct where
 
-import           Data.ByteString               (ByteString)
+import           Data.ByteString         (ByteString)
 import           Data.Int
-import           Data.Text                     (Text)
+import           Data.Text               (Text)
 import           GHC.Generics
 
 import           Kafka.Protocol.Encoding
@@ -536,8 +743,33 @@ import           Kafka.Protocol.Service
 """.strip()
 
 
-def gen_splitter():
-    return "\n-------------------------------------------------------------------------------\n"
+def gen_total_haskell_header():
+    return """
+-------------------------------------------------------------------------------
+-- Autogenerated by kafka message json schema
+--
+-- $ ./script/kafka_gen.py run
+--
+-- DO NOT EDIT UNLESS YOU ARE SURE THAT YOU KNOW WHAT YOU ARE DOING
+
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE OverloadedRecordDot   #-}
+{-# LANGUAGE TypeFamilies          #-}
+
+module Kafka.Protocol.Message.Total where
+
+import           Control.Exception
+import           Data.ByteString               (ByteString)
+import           Data.Int
+import           Data.Text                     (Text)
+import qualified Data.Vector                   as V
+import           GHC.Generics
+
+import           Kafka.Protocol.Encoding
+import           Kafka.Protocol.Error
+import           Kafka.Protocol.Message.Struct
+""".strip()
 
 
 def gen_sub_data_types():
@@ -635,30 +867,89 @@ def gen_api_header_version():
     return f"{hs_type}\n{hs_impl}\n{hs_math_other}\n{hs_inline}"
 
 
+def gen_total_sub_data_types():
+    return format_total_data_types(SUB_DATA_TYPES)
+
+
+def gen_total_data_types():
+    return format_total_data_types(DATA_TYPES)
+
+
+def gen_total_response_exception():
+    def gen(n, resp):
+        return f"""
+newtype {n}Ex = {n}Ex {resp}
+  deriving (Show, Eq)
+instance Exception {n}Ex
+
+catch{n}Ex :: IO {resp} -> IO {resp}
+catch{n}Ex act = act `catch` \\({n}Ex resp) -> pure resp
+""".strip()
+
+    results = {}
+    for d in DATA_TYPES:
+        if d.name.endswith("Response"):
+            if d.name not in results:
+                results[d.name] = gen(d.name, d.name)
+
+    return "\n\n".join(results.values())
+
+
 def gen_struct():
     return f"""
-{gen_haskell_header()}
-\
-{gen_splitter()}
-\
+{gen_struct_haskell_header()}
+
+-------------------------------------------------------------------------------
+
 {gen_sub_data_types()}
-\
-{gen_splitter()}
-\
+
+-------------------------------------------------------------------------------
+
 {gen_data_types()}
-\
-{gen_splitter()}
-\
+
+-------------------------------------------------------------------------------
+
 {gen_services()}
-\
-{gen_splitter()}
-\
+
+-------------------------------------------------------------------------------
+
 {gen_api_keys()}
 
 {gen_supported_api_versions()}
 
 {gen_api_header_version()}
 """.strip()
+
+
+def gen_total():
+    return f"""
+{gen_total_haskell_header()}
+
+-------------------------------------------------------------------------------
+
+{gen_total_sub_data_types()}
+
+{gen_total_data_types()}
+
+-------------------------------------------------------------------------------
+
+{gen_total_response_exception()}
+"""
+
+
+def write_generates(outputs, filepath, stylish=True):
+    if stylish:
+        result = subprocess.run(
+            "stylish-haskell",
+            input=outputs.encode(),
+            stdout=subprocess.PIPE,
+        )
+        if result and result.stdout:
+            with open(filepath, "w") as f:
+                print(result.stdout.decode().strip(), file=f)
+    else:
+        with open(filepath, "w") as f:
+            print(outputs.strip(), file=f)
 
 
 # -----------------------------------------------------------------------------
@@ -704,11 +995,19 @@ if __name__ == "__main__":
         default="./hstream-kafka/message",
         dest="files",
     )
-    # TODO: since python3.9 there is BooleanOptionalAction available in argparse
     parser_run.add_argument(
-        "--no-format",
-        action="store_true",
-        help="Don't run stylish-haskell to format the result",
+        "--gen-dir",
+        type=pathlib.Path,
+        help="Directory to generate haskell files. (Default: %(default)s)",
+        default="./hstream-kafka/protocol/Kafka/Protocol/Message",
+        dest="gen_dir",
+    )
+
+    parser_run.add_argument(
+        "--stylish",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Run stylish-haskell to format the result",
     )
     parser_run.add_argument(
         "--dry-run",
@@ -721,15 +1020,19 @@ if __name__ == "__main__":
 
     if args.sub_command == "run":
         run_parse(args.files)
-        outputs = gen_struct()
+        struct_outputs = gen_struct()
+        total_outputs = gen_total()
+
         if not args.dry_run:
-            if not args.no_format:
-                result = subprocess.run(
-                    "stylish-haskell",
-                    input=outputs.encode(),
-                    stdout=subprocess.PIPE,
-                )
-                if result and result.stdout:
-                    print(result.stdout.decode().strip())
-            else:
-                print(outputs)
+            write_generates(
+                struct_outputs,
+                os.path.join(args.gen_dir, "Struct.hs"),
+                stylish=args.stylish,
+            )
+            write_generates(
+                total_outputs,
+                os.path.join(args.gen_dir, "Total.hs"),
+                stylish=args.stylish,
+            )
+    else:
+        parser.print_help()

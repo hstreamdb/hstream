@@ -54,6 +54,7 @@ library kafka-protocol
     Kafka.Protocol.Encoding.Internal
     Kafka.Protocol.Encoding.Parser
     Kafka.Protocol.Message.Struct
+    Kafka.Protocol.Message.Total
 
   hs-source-dirs:     protocol
   build-tool-depends: hpp:hpp >=0.6 && <0.7
