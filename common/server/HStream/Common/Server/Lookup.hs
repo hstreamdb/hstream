@@ -68,7 +68,7 @@ lookupNodePersist metaHandle gossipContext loadBalanceHashRing
               (epoch', hashRing) <- readTVar loadBalanceHashRing
               if epoch' > epoch
                 then pure (epoch', hashRing)
-                else retry 
+                else retry
           theNode' <- getResNode hashRing key advertisedListenersKey
           try (M.updateMeta @TaskAllocation metaId
                  (TaskAllocation epoch' (A.serverNodeId theNode'))
