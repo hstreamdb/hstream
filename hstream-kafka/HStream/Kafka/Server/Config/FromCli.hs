@@ -94,6 +94,8 @@ cliOptionsParser = do
 
   cliStoreCompression <- optional storeCompressionParser
 
+  cliEnableSaslAuth <- enableSaslAuthParser
+
   return CliOptions{..}
 
 -------------------------------------------------------------------------------
@@ -249,6 +251,10 @@ storeConfigPathParser = strOption
   <> metavar "PATH" <> value "/data/store/logdevice.conf"
   <> help "Storage config path"
 
+enableSaslAuthParser :: O.Parser Bool
+enableSaslAuthParser = flag False True
+  $  long "enable-sasl"
+  <> help "Enable SASL authentication"
 -------------------------------------------------------------------------------
 
 parserOpt :: (Text -> Either String a) -> O.Mod O.OptionFields a -> O.Parser a
