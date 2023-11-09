@@ -23,18 +23,27 @@ import           HStream.Store                     (Compression (..))
 
 parseJSONToOptions :: CliOptions -> Y.Object -> Y.Parser ServerOpts
 parseJSONToOptions CliOptions{..} obj = do
-  nodeCfgObj  <- obj .: "kafka"
+  nodeCfgObj          <- obj .: "kafka"
   nodeId              <- nodeCfgObj .:  "id"
   nodeHost            <- fromString <$> nodeCfgObj .:? "bind-address" .!= "0.0.0.0"
   nodePort            <- nodeCfgObj .:? "port" .!= 6570
   nodeGossipAddress   <- nodeCfgObj .:?  "gossip-address"
-  nodeGossipPort    <- nodeCfgObj .:? "gossip-port" .!= 6571
+  nodeGossipPort      <- nodeCfgObj .:? "gossip-port" .!= 6571
   nodeAdvertisedListeners <- nodeCfgObj .:? "advertised-listeners" .!= mempty
   nodeAdvertisedAddress   <- nodeCfgObj .:  "advertised-address"
   nodeListenersSecurityProtocolMap <- nodeCfgObj .:? "listeners-security-protocol-map" .!= mempty
   nodeMetaStore     <- parseMetaStoreAddr <$> nodeCfgObj .:  "metastore-uri" :: Y.Parser MetaStoreAddr
   nodeLogLevel      <- nodeCfgObj .:? "log-level" .!= "info"
   nodeLogWithColor  <- nodeCfgObj .:? "log-with-color" .!= True
+
+  -- Kafka config
+  let !_disableAutoCreateTopic = cliDisableAutoCreateTopic
+  kafkaCfgObj     <- nodeCfgObj .:? "kafka" .!= mempty
+  numPartitions   <- kafkaCfgObj .:? "num-partitions" .!= 1
+  defaultReplica  <- kafkaCfgObj .:? "default-replication-factor" .!= 1
+  let !_topicRepFactor = numPartitions
+  let !_partitionNums  = defaultReplica
+
   -- TODO: For the max_record_size to work properly, we should also tell user
   -- to set payload size for gRPC and LD.
   _maxRecordSize    <- nodeCfgObj .:? "max-record-size" .!= 1048576
@@ -62,7 +71,7 @@ parseJSONToOptions CliOptions{..} obj = do
         Left err -> errorWithoutStackTrace err
         Right hps -> map (second . fromMaybe $ fromIntegral _serverGossipPort) hps
 
-  clusterCfgObj <- nodeCfgObj .:? "gossip" .!= mempty
+  clusterCfgObj    <- nodeCfgObj .:? "gossip" .!= mempty
   gossipFanout     <- clusterCfgObj .:? "gossip-fanout"     .!= gossipFanout defaultGossipOpts
   retransmitMult   <- clusterCfgObj .:? "retransmit-mult"   .!= retransmitMult defaultGossipOpts
   gossipInterval   <- clusterCfgObj .:? "gossip-interval"   .!= gossipInterval defaultGossipOpts
@@ -77,7 +86,6 @@ parseJSONToOptions CliOptions{..} obj = do
 
   let !_ldConfigPath   = cliStoreConfigPath
   let !_ldLogLevel     = fromMaybe storeLogLevel  cliLdLogLevel
-  let !_topicRepFactor = 1
 
   -- TLS config
   nodeEnableTls   <- nodeCfgObj .:? "enable-tls" .!= False
