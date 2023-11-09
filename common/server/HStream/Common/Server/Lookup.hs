@@ -64,24 +64,22 @@ lookupNodePersist metaHandle gossipContext loadBalanceHashRing
       case find ((nodeId == ) . A.serverNodeId) serverList of
         Just theNode -> return theNode
         Nothing -> do
-          (epoch', hashRing) <- readTVarIO loadBalanceHashRing
-          if epoch' > epoch
-            then do
-              theNode' <- getResNode hashRing key advertisedListenersKey
-              try (M.updateMeta @TaskAllocation metaId
-                     (TaskAllocation epoch' (A.serverNodeId theNode'))
-                     (Just version) metaHandle) >>= \case
-                Left (e :: SomeException) -> do
-                  -- TODO: add a retry limit here
-                  Log.warning $ "lookupNodePersist exception: " <> Log.buildString' e
-                             <> ", retry..."
-                  lookupNodePersist metaHandle gossipContext loadBalanceHashRing
-                                    key metaId advertisedListenersKey
-                Right () -> return theNode'
-            else do
-              let errmsg = "the server has not yet synced with the latest member list"
-              Log.warning $ "lookupNodePersist: " <> Log.buildString errmsg
-              throwIO $ HE.ResourceAllocationException errmsg
+          (epoch', hashRing) <- atomically $ do
+              (epoch', hashRing) <- readTVar loadBalanceHashRing
+              if epoch' > epoch
+                then pure (epoch', hashRing)
+                else retry 
+          theNode' <- getResNode hashRing key advertisedListenersKey
+          try (M.updateMeta @TaskAllocation metaId
+                 (TaskAllocation epoch' (A.serverNodeId theNode'))
+                 (Just version) metaHandle) >>= \case
+            Left (e :: SomeException) -> do
+              -- TODO: add a retry limit here
+              Log.warning $ "lookupNodePersist exception: " <> Log.buildString' e
+                         <> ", retry..."
+              lookupNodePersist metaHandle gossipContext loadBalanceHashRing
+                                key metaId advertisedListenersKey
+            Right () -> return theNode'
 
 data KafkaResource
   = KafkaResTopic Text
