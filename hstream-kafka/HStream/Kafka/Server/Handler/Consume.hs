@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedRecordDot #-}
 
 module HStream.Kafka.Server.Handler.Consume
-  ( handleFetchV2
+  ( handleFetch
   ) where
 
 import           Control.Exception
@@ -37,14 +37,14 @@ type RecordTable =
                 (GV.Growing V.Vector GV.RealWorld K.RecordFormat)
 
 -- NOTE: this behaviour is not the same as kafka broker
-handleFetchV2
+handleFetch
   :: ServerContext -> K.RequestContext
-  -> K.FetchRequestV2 -> IO K.FetchResponseV2
-handleFetchV2 ServerContext{..} _ r = catchFetchV2 $ do
+  -> K.FetchRequest -> IO K.FetchResponse
+handleFetch ServerContext{..} _ r = K.catchFetchResponseEx $ do
   -- kafka broker just throw java.lang.RuntimeException if topics is null, here
   -- we do the same.
   let K.NonNullKaArray topicReqs = r.topics
-  topics <- V.forM topicReqs $ \K.FetchTopicV2{..} -> do
+  topics <- V.forM topicReqs $ \K.FetchTopic{..} -> do
     orderedParts <- S.listStreamPartitionsOrdered scLDClient (S.transToTopicStreamName topic)
     let K.NonNullKaArray partitionReqs = partitions
     ps <- V.forM partitionReqs $ \p -> do
@@ -61,9 +61,9 @@ handleFetchV2 ServerContext{..} _ r = catchFetchV2 $ do
         case elsn of
           Left pd -> pure pd
           Right _ -> error "LogicError: this should not be right"
-      pure $ K.FetchableTopicResponseV2 topic (K.NonNullKaArray respPartitionDatas)
-    let resp = K.FetchResponseV2 0{- TODO: throttleTimeMs -} (K.NonNullKaArray respTopics)
-    throwIO $ RetFetchRespV2 resp
+      pure $ K.FetchableTopicResponse topic (K.NonNullKaArray respPartitionDatas)
+    let resp = K.FetchResponse (K.NonNullKaArray respTopics) 0{- TODO: throttleTimeMs -}
+    throwIO $ K.FetchResponseEx resp
 
   -- New reader
   reader <- S.newLDReader scLDClient (fromIntegral numOfReads) Nothing
@@ -109,7 +109,7 @@ handleFetchV2 ServerContext{..} _ r = catchFetchV2 $ do
         Right (_startlsn, _endlsn, hioffset) -> do
           mgv <- HT.lookup readRecords logid
           case mgv of
-            Nothing -> pure $ K.PartitionDataV2 p.partition K.NONE hioffset (Just "")
+            Nothing -> pure $ K.PartitionData p.partition K.NONE hioffset (Just "")
             Just gv -> do
               v <- GV.unsafeFreeze gv
               -- This should not be Nothing, because if we found the key in
@@ -127,20 +127,9 @@ handleFetchV2 ServerContext{..} _ r = catchFetchV2 $ do
               let b = V.foldl (<>) (BB.byteString fstRecordBytes)
                                    (V.map (BB.byteString . K.unCompactBytes . (.recordBytes)) vs)
                   bs = BS.toStrict $ BB.toLazyByteString b
-              pure $ K.PartitionDataV2 p.partition K.NONE hioffset (Just bs)
-    pure $ K.FetchableTopicResponseV2 topic (K.NonNullKaArray respPartitionDatas)
-  pure $ K.FetchResponseV2 0{- TODO: throttleTimeMs -} (K.NonNullKaArray respTopics)
-
--------------------------------------------------------------------------------
-
--- TODO: move to Kafka.Protocol.Message.Struct
-newtype RetFetchRespV2 = RetFetchRespV2 K.FetchResponseV2
-  deriving (Show, Eq)
-
-instance Exception RetFetchRespV2
-
-catchFetchV2 :: IO K.FetchResponseV2 -> IO K.FetchResponseV2
-catchFetchV2 act = act `catch` \(RetFetchRespV2 resp) -> pure resp
+              pure $ K.PartitionData p.partition K.NONE hioffset (Just bs)
+    pure $ K.FetchableTopicResponse topic (K.NonNullKaArray respPartitionDatas)
+  pure $ K.FetchResponse (K.NonNullKaArray respTopics) 0{- TODO: throttleTimeMs -}
 
 -------------------------------------------------------------------------------
 
@@ -152,7 +141,7 @@ getPartitionLsn
   -> K.OffsetManager
   -> S.C_LogID -> Int32
   -> Int64        -- ^ kafka start offset
-  -> IO (Either K.PartitionDataV2 (S.LSN, S.LSN, Int64))
+  -> IO (Either K.PartitionData (S.LSN, S.LSN, Int64))
 getPartitionLsn ldclient om logid partition offset = do
   m <- K.getLatestOffsetWithLsn om logid
   case m of
@@ -167,19 +156,19 @@ getPartitionLsn ldclient om logid partition offset = do
          | offset == highwaterOffset ->
              pure $ Right (tailLsn + 1, tailLsn, highwaterOffset)
          | offset > highwaterOffset ->
-             pure $ Left $ errorPartitionResponseV2 partition K.OFFSET_OUT_OF_RANGE
+             pure $ Left $ errorPartitionResponse partition K.OFFSET_OUT_OF_RANGE
          -- ghc is not smart enough to detact my partten matching is complete
          | otherwise -> error "This should not be reached (getPartitionLsn)"
     Nothing -> do
       Log.debug $ "Partition " <> Log.build logid <> " is empty"
       if offset == 0
          then pure $ Right (S.LSN_MIN, S.LSN_INVALID, 0)
-         else pure $ Left $ errorPartitionResponseV2 partition K.OFFSET_OUT_OF_RANGE
+         else pure $ Left $ errorPartitionResponse partition K.OFFSET_OUT_OF_RANGE
 
-errorPartitionResponseV2 :: Int32 -> K.ErrorCode -> K.PartitionDataV2
-errorPartitionResponseV2 partitionIndex ec =
-  K.PartitionDataV2 partitionIndex ec (-1) (Just "")
-{-# INLINE errorPartitionResponseV2 #-}
+errorPartitionResponse :: Int32 -> K.ErrorCode -> K.PartitionData
+errorPartitionResponse partitionIndex ec =
+  K.PartitionData partitionIndex ec (-1) (Just "")
+{-# INLINE errorPartitionResponse #-}
 
 foldWhileM :: Monad m => a -> (a -> m (a, Bool)) -> m a
 foldWhileM !a f = do

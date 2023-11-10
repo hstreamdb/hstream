@@ -150,7 +150,7 @@ data DescribedGroupV0 = DescribedGroupV0
   } deriving (Show, Eq, Generic)
 instance Serializable DescribedGroupV0
 
-data FetchPartitionV2 = FetchPartitionV2
+data FetchPartitionV0 = FetchPartitionV0
   { partition         :: {-# UNPACK #-} !Int32
     -- ^ The partition index.
   , fetchOffset       :: {-# UNPACK #-} !Int64
@@ -159,17 +159,25 @@ data FetchPartitionV2 = FetchPartitionV2
     -- ^ The maximum bytes to fetch from this partition.  See KIP-74 for cases
     -- where this limit may not be honored.
   } deriving (Show, Eq, Generic)
-instance Serializable FetchPartitionV2
+instance Serializable FetchPartitionV0
 
-data FetchTopicV2 = FetchTopicV2
+data FetchTopicV0 = FetchTopicV0
   { topic      :: !Text
     -- ^ The name of the topic to fetch.
-  , partitions :: !(KaArray FetchPartitionV2)
+  , partitions :: !(KaArray FetchPartitionV0)
     -- ^ The partitions to fetch.
   } deriving (Show, Eq, Generic)
-instance Serializable FetchTopicV2
+instance Serializable FetchTopicV0
 
-data PartitionDataV2 = PartitionDataV2
+type FetchPartitionV1 = FetchPartitionV0
+
+type FetchTopicV1 = FetchTopicV0
+
+type FetchPartitionV2 = FetchPartitionV0
+
+type FetchTopicV2 = FetchTopicV0
+
+data PartitionDataV0 = PartitionDataV0
   { partitionIndex :: {-# UNPACK #-} !Int32
     -- ^ The partition index.
   , errorCode      :: {-# UNPACK #-} !ErrorCode
@@ -179,15 +187,23 @@ data PartitionDataV2 = PartitionDataV2
   , recordBytes    :: !NullableBytes
     -- ^ The record data.
   } deriving (Show, Eq, Generic)
-instance Serializable PartitionDataV2
+instance Serializable PartitionDataV0
 
-data FetchableTopicResponseV2 = FetchableTopicResponseV2
+data FetchableTopicResponseV0 = FetchableTopicResponseV0
   { topic      :: !Text
     -- ^ The topic name.
-  , partitions :: !(KaArray PartitionDataV2)
+  , partitions :: !(KaArray PartitionDataV0)
     -- ^ The topic partitions.
   } deriving (Show, Eq, Generic)
-instance Serializable FetchableTopicResponseV2
+instance Serializable FetchableTopicResponseV0
+
+type PartitionDataV1 = PartitionDataV0
+
+type FetchableTopicResponseV1 = FetchableTopicResponseV0
+
+type PartitionDataV2 = PartitionDataV0
+
+type FetchableTopicResponseV2 = FetchableTopicResponseV0
 
 data JoinGroupRequestProtocolV0 = JoinGroupRequestProtocolV0
   { name     :: !Text
@@ -618,7 +634,7 @@ newtype DescribeGroupsResponseV0 = DescribeGroupsResponseV0
   } deriving (Show, Eq, Generic)
 instance Serializable DescribeGroupsResponseV0
 
-data FetchRequestV2 = FetchRequestV2
+data FetchRequestV0 = FetchRequestV0
   { replicaId :: {-# UNPACK #-} !Int32
     -- ^ The broker ID of the follower, of -1 if this request is from a
     -- consumer.
@@ -626,19 +642,30 @@ data FetchRequestV2 = FetchRequestV2
     -- ^ The maximum time in milliseconds to wait for the response.
   , minBytes  :: {-# UNPACK #-} !Int32
     -- ^ The minimum bytes to accumulate in the response.
-  , topics    :: !(KaArray FetchTopicV2)
+  , topics    :: !(KaArray FetchTopicV0)
     -- ^ The topics to fetch.
   } deriving (Show, Eq, Generic)
-instance Serializable FetchRequestV2
+instance Serializable FetchRequestV0
 
-data FetchResponseV2 = FetchResponseV2
+type FetchRequestV1 = FetchRequestV0
+
+type FetchRequestV2 = FetchRequestV0
+
+newtype FetchResponseV0 = FetchResponseV0
+  { responses :: (KaArray FetchableTopicResponseV0)
+  } deriving (Show, Eq, Generic)
+instance Serializable FetchResponseV0
+
+data FetchResponseV1 = FetchResponseV1
   { throttleTimeMs :: {-# UNPACK #-} !Int32
     -- ^ The duration in milliseconds for which the request was throttled due
     -- to a quota violation, or zero if the request did not violate any quota.
-  , responses      :: !(KaArray FetchableTopicResponseV2)
+  , responses      :: !(KaArray FetchableTopicResponseV0)
     -- ^ The response topics.
   } deriving (Show, Eq, Generic)
-instance Serializable FetchResponseV2
+instance Serializable FetchResponseV1
+
+type FetchResponseV2 = FetchResponseV1
 
 newtype FindCoordinatorRequestV0 = FindCoordinatorRequestV0
   { key :: Text
@@ -942,7 +969,8 @@ data HStreamKafkaV0
 instance Service HStreamKafkaV0 where
   type ServiceName HStreamKafkaV0 = "HStreamKafkaV0"
   type ServiceMethods HStreamKafkaV0 =
-    '[ "listOffsets"
+    '[ "fetch"
+     , "listOffsets"
      , "metadata"
      , "offsetCommit"
      , "offsetFetch"
@@ -957,6 +985,13 @@ instance Service HStreamKafkaV0 where
      , "createTopics"
      , "deleteTopics"
      ]
+
+instance HasMethodImpl HStreamKafkaV0 "fetch" where
+  type MethodName HStreamKafkaV0 "fetch" = "fetch"
+  type MethodKey HStreamKafkaV0 "fetch" = 1
+  type MethodVersion HStreamKafkaV0 "fetch" = 0
+  type MethodInput HStreamKafkaV0 "fetch" = FetchRequestV0
+  type MethodOutput HStreamKafkaV0 "fetch" = FetchResponseV0
 
 instance HasMethodImpl HStreamKafkaV0 "listOffsets" where
   type MethodName HStreamKafkaV0 "listOffsets" = "listOffsets"
@@ -1061,12 +1096,20 @@ data HStreamKafkaV1
 instance Service HStreamKafkaV1 where
   type ServiceName HStreamKafkaV1 = "HStreamKafkaV1"
   type ServiceMethods HStreamKafkaV1 =
-    '[ "listOffsets"
+    '[ "fetch"
+     , "listOffsets"
      , "metadata"
      , "offsetCommit"
      , "offsetFetch"
      , "apiVersions"
      ]
+
+instance HasMethodImpl HStreamKafkaV1 "fetch" where
+  type MethodName HStreamKafkaV1 "fetch" = "fetch"
+  type MethodKey HStreamKafkaV1 "fetch" = 1
+  type MethodVersion HStreamKafkaV1 "fetch" = 1
+  type MethodInput HStreamKafkaV1 "fetch" = FetchRequestV1
+  type MethodOutput HStreamKafkaV1 "fetch" = FetchResponseV1
 
 instance HasMethodImpl HStreamKafkaV1 "listOffsets" where
   type MethodName HStreamKafkaV1 "listOffsets" = "listOffsets"
@@ -1223,7 +1266,7 @@ instance Show ApiKey where
 supportedApiVersions :: [ApiVersionV0]
 supportedApiVersions =
   [ ApiVersionV0 (ApiKey 0) 2 2
-  , ApiVersionV0 (ApiKey 1) 2 2
+  , ApiVersionV0 (ApiKey 1) 0 2
   , ApiVersionV0 (ApiKey 2) 0 1
   , ApiVersionV0 (ApiKey 3) 0 4
   , ApiVersionV0 (ApiKey 8) 0 2
@@ -1242,6 +1285,8 @@ supportedApiVersions =
 
 getHeaderVersion :: ApiKey -> Int16 -> (Int16, Int16)
 getHeaderVersion (ApiKey 0) 2  = (1, 0)
+getHeaderVersion (ApiKey 1) 0  = (1, 0)
+getHeaderVersion (ApiKey 1) 1  = (1, 0)
 getHeaderVersion (ApiKey 1) 2  = (1, 0)
 getHeaderVersion (ApiKey 2) 0  = (1, 0)
 getHeaderVersion (ApiKey 2) 1  = (1, 0)

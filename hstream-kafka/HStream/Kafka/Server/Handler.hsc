@@ -25,12 +25,13 @@ import qualified Kafka.Protocol.Service               as K
 #define hsc_cv_handler(key, start, end)                                        \
   {                                                                            \
     for (int i = start; i <= end; i++) {                                       \
-      hsc_printf("handle%sV%d :: K.RequestContext -> K.%sRequestV%d -> IO "    \
+      hsc_printf("handle%sV%d :: ServerContext -> K.RequestContext -> "        \
+                 "K.%sRequestV%d -> IO "                                       \
                  "K.%sResponseV%d \n",                                         \
                  #key, i, #key, i, #key, i);                                   \
-      hsc_printf("handle%sV%d ctx req = K.", #key, i);                         \
+      hsc_printf("handle%sV%d sc ctx req = K.", #key, i);                      \
       hsc_lowerfirst(#key);                                                    \
-      hsc_printf("ResponseToV%d <$> handle%s ctx (K.", i, #key);               \
+      hsc_printf("ResponseToV%d <$> handle%s sc ctx (K.", i, #key);            \
       hsc_lowerfirst(#key);                                                    \
       hsc_printf("RequestFromV%d req)\n", i);                                  \
     }                                                                          \
@@ -44,17 +45,19 @@ import qualified Kafka.Protocol.Service               as K
       }                                                                        \
       hsc_printf("K.hd (K.RPC :: K.RPC K.HStreamKafkaV%d \"", i);              \
       hsc_lowerfirst(#key);                                                    \
-      hsc_printf("\") handle%sV%d\n", #key, i);                                \
+      hsc_printf("\") (handle%sV%d sc)\n", #key, i);                           \
     }                                                                          \
   }
 
 -------------------------------------------------------------------------------
 
 #cv_handler ApiVersions, 0, 3
+#cv_handler Fetch, 0, 2
 
 handlers :: ServerContext -> [K.ServiceHandler]
 handlers sc =
   [ #mk_handler ApiVersions, 0, 3
+  , #mk_handler Fetch, 0, 2
 
   , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "metadata") (handleMetadataV0 sc)
   , K.hd (K.RPC :: K.RPC K.HStreamKafkaV1 "metadata") (handleMetadataV1 sc)
@@ -67,8 +70,6 @@ handlers sc =
   , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "deleteTopics") (handleDeleteTopicsV0 sc)
 
   , K.hd (K.RPC :: K.RPC K.HStreamKafkaV2 "produce") (handleProduceV2 sc)
-
-  , K.hd (K.RPC :: K.RPC K.HStreamKafkaV2 "fetch") (handleFetchV2 sc)
 
   -- Offsets
   , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "listOffsets") (handleListOffsetsV0 sc)

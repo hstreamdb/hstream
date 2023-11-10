@@ -269,19 +269,27 @@ data FetchPartition = FetchPartition
   } deriving (Show, Eq, Generic)
 instance Serializable FetchPartition
 
+fetchPartitionToV0 :: FetchPartition -> FetchPartitionV0
+fetchPartitionToV0 x = FetchPartitionV0
+  { partition = x.partition
+  , fetchOffset = x.fetchOffset
+  , partitionMaxBytes = x.partitionMaxBytes
+  }
+fetchPartitionToV1 :: FetchPartition -> FetchPartitionV1
+fetchPartitionToV1 = fetchPartitionToV0
 fetchPartitionToV2 :: FetchPartition -> FetchPartitionV2
-fetchPartitionToV2 x = FetchPartitionV2
-  { partition = x.partition
-  , fetchOffset = x.fetchOffset
-  , partitionMaxBytes = x.partitionMaxBytes
-  }
+fetchPartitionToV2 = fetchPartitionToV0
 
-fetchPartitionFromV2 :: FetchPartitionV2 -> FetchPartition
-fetchPartitionFromV2 x = FetchPartition
+fetchPartitionFromV0 :: FetchPartitionV0 -> FetchPartition
+fetchPartitionFromV0 x = FetchPartition
   { partition = x.partition
   , fetchOffset = x.fetchOffset
   , partitionMaxBytes = x.partitionMaxBytes
   }
+fetchPartitionFromV1 :: FetchPartitionV1 -> FetchPartition
+fetchPartitionFromV1 = fetchPartitionFromV0
+fetchPartitionFromV2 :: FetchPartitionV2 -> FetchPartition
+fetchPartitionFromV2 = fetchPartitionFromV0
 
 data FetchTopic = FetchTopic
   { topic      :: !Text
@@ -291,17 +299,25 @@ data FetchTopic = FetchTopic
   } deriving (Show, Eq, Generic)
 instance Serializable FetchTopic
 
+fetchTopicToV0 :: FetchTopic -> FetchTopicV0
+fetchTopicToV0 x = FetchTopicV0
+  { topic = x.topic
+  , partitions = fmap fetchPartitionToV0 x.partitions
+  }
+fetchTopicToV1 :: FetchTopic -> FetchTopicV1
+fetchTopicToV1 = fetchTopicToV0
 fetchTopicToV2 :: FetchTopic -> FetchTopicV2
-fetchTopicToV2 x = FetchTopicV2
-  { topic = x.topic
-  , partitions = fmap fetchPartitionToV2 x.partitions
-  }
+fetchTopicToV2 = fetchTopicToV0
 
-fetchTopicFromV2 :: FetchTopicV2 -> FetchTopic
-fetchTopicFromV2 x = FetchTopic
+fetchTopicFromV0 :: FetchTopicV0 -> FetchTopic
+fetchTopicFromV0 x = FetchTopic
   { topic = x.topic
-  , partitions = fmap fetchPartitionFromV2 x.partitions
+  , partitions = fmap fetchPartitionFromV0 x.partitions
   }
+fetchTopicFromV1 :: FetchTopicV1 -> FetchTopic
+fetchTopicFromV1 = fetchTopicFromV0
+fetchTopicFromV2 :: FetchTopicV2 -> FetchTopic
+fetchTopicFromV2 = fetchTopicFromV0
 
 data FetchableTopicResponse = FetchableTopicResponse
   { topic      :: !Text
@@ -311,17 +327,25 @@ data FetchableTopicResponse = FetchableTopicResponse
   } deriving (Show, Eq, Generic)
 instance Serializable FetchableTopicResponse
 
+fetchableTopicResponseToV0 :: FetchableTopicResponse -> FetchableTopicResponseV0
+fetchableTopicResponseToV0 x = FetchableTopicResponseV0
+  { topic = x.topic
+  , partitions = fmap partitionDataToV0 x.partitions
+  }
+fetchableTopicResponseToV1 :: FetchableTopicResponse -> FetchableTopicResponseV1
+fetchableTopicResponseToV1 = fetchableTopicResponseToV0
 fetchableTopicResponseToV2 :: FetchableTopicResponse -> FetchableTopicResponseV2
-fetchableTopicResponseToV2 x = FetchableTopicResponseV2
-  { topic = x.topic
-  , partitions = fmap partitionDataToV2 x.partitions
-  }
+fetchableTopicResponseToV2 = fetchableTopicResponseToV0
 
-fetchableTopicResponseFromV2 :: FetchableTopicResponseV2 -> FetchableTopicResponse
-fetchableTopicResponseFromV2 x = FetchableTopicResponse
+fetchableTopicResponseFromV0 :: FetchableTopicResponseV0 -> FetchableTopicResponse
+fetchableTopicResponseFromV0 x = FetchableTopicResponse
   { topic = x.topic
-  , partitions = fmap partitionDataFromV2 x.partitions
+  , partitions = fmap partitionDataFromV0 x.partitions
   }
+fetchableTopicResponseFromV1 :: FetchableTopicResponseV1 -> FetchableTopicResponse
+fetchableTopicResponseFromV1 = fetchableTopicResponseFromV0
+fetchableTopicResponseFromV2 :: FetchableTopicResponseV2 -> FetchableTopicResponse
+fetchableTopicResponseFromV2 = fetchableTopicResponseFromV0
 
 data FinalizedFeatureKey = FinalizedFeatureKey
   { name            :: !CompactString
@@ -974,21 +998,29 @@ data PartitionData = PartitionData
   } deriving (Show, Eq, Generic)
 instance Serializable PartitionData
 
+partitionDataToV0 :: PartitionData -> PartitionDataV0
+partitionDataToV0 x = PartitionDataV0
+  { partitionIndex = x.partitionIndex
+  , errorCode = x.errorCode
+  , highWatermark = x.highWatermark
+  , recordBytes = x.recordBytes
+  }
+partitionDataToV1 :: PartitionData -> PartitionDataV1
+partitionDataToV1 = partitionDataToV0
 partitionDataToV2 :: PartitionData -> PartitionDataV2
-partitionDataToV2 x = PartitionDataV2
-  { partitionIndex = x.partitionIndex
-  , errorCode = x.errorCode
-  , highWatermark = x.highWatermark
-  , recordBytes = x.recordBytes
-  }
+partitionDataToV2 = partitionDataToV0
 
-partitionDataFromV2 :: PartitionDataV2 -> PartitionData
-partitionDataFromV2 x = PartitionData
+partitionDataFromV0 :: PartitionDataV0 -> PartitionData
+partitionDataFromV0 x = PartitionData
   { partitionIndex = x.partitionIndex
   , errorCode = x.errorCode
   , highWatermark = x.highWatermark
   , recordBytes = x.recordBytes
   }
+partitionDataFromV1 :: PartitionDataV1 -> PartitionData
+partitionDataFromV1 = partitionDataFromV0
+partitionDataFromV2 :: PartitionDataV2 -> PartitionData
+partitionDataFromV2 = partitionDataFromV0
 
 data PartitionProduceData = PartitionProduceData
   { index       :: {-# UNPACK #-} !Int32
@@ -1338,42 +1370,63 @@ data FetchRequest = FetchRequest
   } deriving (Show, Eq, Generic)
 instance Serializable FetchRequest
 
+fetchRequestToV0 :: FetchRequest -> FetchRequestV0
+fetchRequestToV0 x = FetchRequestV0
+  { replicaId = x.replicaId
+  , maxWaitMs = x.maxWaitMs
+  , minBytes = x.minBytes
+  , topics = fmap fetchTopicToV0 x.topics
+  }
+fetchRequestToV1 :: FetchRequest -> FetchRequestV1
+fetchRequestToV1 = fetchRequestToV0
 fetchRequestToV2 :: FetchRequest -> FetchRequestV2
-fetchRequestToV2 x = FetchRequestV2
-  { replicaId = x.replicaId
-  , maxWaitMs = x.maxWaitMs
-  , minBytes = x.minBytes
-  , topics = fmap fetchTopicToV2 x.topics
-  }
+fetchRequestToV2 = fetchRequestToV0
 
-fetchRequestFromV2 :: FetchRequestV2 -> FetchRequest
-fetchRequestFromV2 x = FetchRequest
+fetchRequestFromV0 :: FetchRequestV0 -> FetchRequest
+fetchRequestFromV0 x = FetchRequest
   { replicaId = x.replicaId
   , maxWaitMs = x.maxWaitMs
   , minBytes = x.minBytes
-  , topics = fmap fetchTopicFromV2 x.topics
+  , topics = fmap fetchTopicFromV0 x.topics
   }
+fetchRequestFromV1 :: FetchRequestV1 -> FetchRequest
+fetchRequestFromV1 = fetchRequestFromV0
+fetchRequestFromV2 :: FetchRequestV2 -> FetchRequest
+fetchRequestFromV2 = fetchRequestFromV0
 
 data FetchResponse = FetchResponse
-  { throttleTimeMs :: {-# UNPACK #-} !Int32
+  { responses      :: !(KaArray FetchableTopicResponse)
+    -- ^ The response topics.
+  , throttleTimeMs :: {-# UNPACK #-} !Int32
     -- ^ The duration in milliseconds for which the request was throttled due
     -- to a quota violation, or zero if the request did not violate any quota.
-  , responses      :: !(KaArray FetchableTopicResponse)
-    -- ^ The response topics.
   } deriving (Show, Eq, Generic)
 instance Serializable FetchResponse
 
+fetchResponseToV0 :: FetchResponse -> FetchResponseV0
+fetchResponseToV0 x = FetchResponseV0
+  { responses = fmap fetchableTopicResponseToV0 x.responses
+  }
+fetchResponseToV1 :: FetchResponse -> FetchResponseV1
+fetchResponseToV1 x = FetchResponseV1
+  { throttleTimeMs = x.throttleTimeMs
+  , responses = fmap fetchableTopicResponseToV1 x.responses
+  }
 fetchResponseToV2 :: FetchResponse -> FetchResponseV2
-fetchResponseToV2 x = FetchResponseV2
-  { throttleTimeMs = x.throttleTimeMs
-  , responses = fmap fetchableTopicResponseToV2 x.responses
-  }
+fetchResponseToV2 = fetchResponseToV1
 
-fetchResponseFromV2 :: FetchResponseV2 -> FetchResponse
-fetchResponseFromV2 x = FetchResponse
-  { throttleTimeMs = x.throttleTimeMs
-  , responses = fmap fetchableTopicResponseFromV2 x.responses
+fetchResponseFromV0 :: FetchResponseV0 -> FetchResponse
+fetchResponseFromV0 x = FetchResponse
+  { responses = fmap fetchableTopicResponseFromV0 x.responses
+  , throttleTimeMs = 0
   }
+fetchResponseFromV1 :: FetchResponseV1 -> FetchResponse
+fetchResponseFromV1 x = FetchResponse
+  { responses = fmap fetchableTopicResponseFromV1 x.responses
+  , throttleTimeMs = x.throttleTimeMs
+  }
+fetchResponseFromV2 :: FetchResponseV2 -> FetchResponse
+fetchResponseFromV2 = fetchResponseFromV1
 
 newtype FindCoordinatorRequest = FindCoordinatorRequest
   { key :: Text
