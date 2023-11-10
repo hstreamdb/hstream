@@ -53,9 +53,6 @@ import           Kafka.Protocol.Service
 -- TODO
 data SslOptions
 
--- TODO
-data SaslOptions = SaslOptions
-
 data ServerOptions = ServerOptions
   { serverHost        :: !String
   , serverPort        :: !Int

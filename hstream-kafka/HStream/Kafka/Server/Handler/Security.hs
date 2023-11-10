@@ -8,42 +8,65 @@ module HStream.Kafka.Server.Handler.Security
   ) where
 
 import           Control.Concurrent.MVar
-import           Control.Monad.IO.Class     (liftIO)
-import           Data.ByteString            (ByteString)
-import qualified Data.Text                  as T
-import qualified Data.Text.Encoding         as T
-import qualified Data.Vector                as V
+import           Control.Monad                     (join)
+import           Control.Monad.IO.Class            (liftIO)
+import           Data.ByteString                   (ByteString)
+import qualified Data.ByteString.Char8             as BSC
+import qualified Data.List                         as L
+import qualified Data.Map.Strict                   as Map
+import qualified Data.Text                         as T
+import qualified Data.Text.Encoding                as T
+import qualified Data.Vector                       as V
 import           Network.Protocol.SASL.GNU
 
-import           HStream.Kafka.Server.Types (ServerContext (..))
-import qualified HStream.Logger             as Log
-import qualified Kafka.Protocol.Encoding    as K
-import qualified Kafka.Protocol.Error       as K
-import qualified Kafka.Protocol.Message     as K
-import qualified Kafka.Protocol.Service     as K
+import           HStream.Kafka.Server.Config.Types (SaslMechanismOption (..),
+                                                    SaslOptions (..),
+                                                    ServerOpts (..))
+import           HStream.Kafka.Server.Types        (ServerContext (..))
+import qualified HStream.Logger                    as Log
+import qualified Kafka.Protocol.Encoding           as K
+import qualified Kafka.Protocol.Error              as K
+import qualified Kafka.Protocol.Message            as K
+import qualified Kafka.Protocol.Service            as K
 
 -------------------------------------------------------------------------------
-saslPlainCallback :: Property -> Session Progress
-saslPlainCallback PropertyAuthID = do
+saslPlainCallback :: ServerContext -> Property -> Session Progress
+saslPlainCallback sc PropertyAuthID = do
   authID <- getProperty PropertyAuthID
   liftIO . Log.debug $ "SASL PLAIN invoke callback with PropertyAuthID. I got " <> Log.buildString' authID
   return Complete
-saslPlainCallback PropertyPassword = do
+saslPlainCallback sc PropertyPassword = do
   password <- getProperty PropertyPassword
   liftIO . Log.debug $ "SASL PLAIN invoke callback with PropertyPassword. I got" <> Log.buildString' password
   return Complete
-saslPlainCallback PropertyAuthzID = do
+saslPlainCallback sc PropertyAuthzID = do
   authzID <- getProperty PropertyAuthzID
   liftIO . Log.debug $ "SASL PLAIN invoke callback with PropertyAuthzID. I got" <> Log.buildString' authzID
   return Complete
-saslPlainCallback ValidateSimple = do
+saslPlainCallback sc ValidateSimple = do
   liftIO . Log.debug $ "SASL PLAIN invoke callback with ValidateSimple..."
   authID   <- getProperty PropertyAuthID
   password <- getProperty PropertyPassword
-  if authID == Just "admin" && password == Just "passwd" -- FIXME: do actual check
-    then return Complete
-    else throw AuthenticationError
-saslPlainCallback prop = do
+  let ServerOpts{..} = serverOpts sc
+  let m = do
+        -- FIXME: capital insensitive
+       SaslOptions{..} <- join (snd <$> Map.lookup "sasl_plaintext" _securityProtocolMap)
+       -- FIXME: more SASL mechanisms
+       let findPlainMechanism = L.find (\mech -> case mech of
+                                           SaslPlainOption _ -> True
+                                           _                 -> False
+                                       )
+       (SaslPlainOption tups) <- findPlainMechanism saslMechanisms
+       authID'   <- authID
+       password' <- password
+       (_, realPassword) <- L.find (\(a, _) -> BSC.pack a == authID') tups
+       if password' == BSC.pack realPassword
+         then Just ()
+         else Nothing
+  case m of
+    Just _  -> return Complete
+    Nothing -> throw AuthenticationError
+saslPlainCallback sc prop = do
   liftIO . Log.warning $ "SASL PLAIN invoke callback with " <> Log.buildString' prop <> ". But I do not know how to handle it..."
   return Complete
 
@@ -61,9 +84,9 @@ saslPlainSession input = do
       liftIO . Log.warning $ "SASL PLAIN: I need more... But why? S: " <> Log.build serverMsg
       throw AuthenticationError
 
-saslPlain :: ByteString -> SASL (Either Error ByteString)
-saslPlain input = do
-  setCallback saslPlainCallback
+saslPlain :: ServerContext -> ByteString -> SASL (Either Error ByteString)
+saslPlain sc input = do
+  setCallback (saslPlainCallback sc)
   runServer (Mechanism "PLAIN") (saslPlainSession input)
 
 -------------------------------------------------------------------------------
@@ -79,8 +102,8 @@ handleSaslHandshake _ _ K.SaslHandshakeRequest{..} = do
     return $ K.SaslHandshakeResponse K.UNSUPPORTED_SASL_MECHANISM (K.KaArray $ Just (V.singleton "PLAIN"))
 
 handleSaslAuthenticate :: ServerContext -> K.RequestContext -> K.SaslAuthenticateRequest -> IO K.SaslAuthenticateResponse
-handleSaslAuthenticate _ reqCtx K.SaslAuthenticateRequest{..} = do
-  respBytes_e <- runSASL (saslPlain authBytes)
+handleSaslAuthenticate sc reqCtx K.SaslAuthenticateRequest{..} = do
+  respBytes_e <- runSASL (saslPlain sc authBytes)
   case respBytes_e of
     Left err -> do
       Log.warning $ "SASL: auth failed, " <> Log.buildString' err
@@ -92,13 +115,16 @@ handleSaslAuthenticate _ reqCtx K.SaslAuthenticateRequest{..} = do
 
 -------------------------------------------------------------------------------
 handleAfterAuthSaslHandshakeV0 :: ServerContext -> K.RequestContext -> K.SaslHandshakeRequestV0 -> IO K.SaslHandshakeResponseV0
-handleAfterAuthSaslHandshakeV0 _ _ _ = return $ K.SaslHandshakeResponseV0 K.ILLEGAL_SASL_STATE (K.KaArray Nothing)
+handleAfterAuthSaslHandshakeV0 _ _ _ = do
+  Log.warning $ "SASL: client requests handshake after successful authentication."
+  return $ K.SaslHandshakeResponseV0 K.ILLEGAL_SASL_STATE (K.KaArray $ Just (V.singleton "PLAIN"))
 
 handleAfterAuthSaslHandshakeV1 :: ServerContext -> K.RequestContext -> K.SaslHandshakeRequestV1 -> IO K.SaslHandshakeResponseV1
 handleAfterAuthSaslHandshakeV1 = handleAfterAuthSaslHandshakeV0
 
 handleAfterAuthSaslAuthenticateV0 :: ServerContext -> K.RequestContext -> K.SaslAuthenticateRequestV0 -> IO K.SaslAuthenticateResponseV0
-handleAfterAuthSaslAuthenticateV0 _ _ _ =
+handleAfterAuthSaslAuthenticateV0 _ _ _ = do
+  Log.warning $ "SASL: client requests authenticate after successful authentication."
   return $ K.SaslAuthenticateResponseV0 K.ILLEGAL_SASL_STATE
                                         (Just "SaslAuthenticate request received after successful authentication")
                                         mempty
