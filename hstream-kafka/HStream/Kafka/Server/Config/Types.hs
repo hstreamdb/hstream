@@ -8,6 +8,8 @@ module HStream.Kafka.Server.Config.Types
   , AdvertisedListeners
   , ListenersSecurityProtocolMap
   , TlsConfig (..)
+  , SaslMechanismOption (..)
+  , SaslOptions (..)
   , SecurityProtocolMap, defaultProtocolMap
   , StorageOptions (..)
 
@@ -155,11 +157,24 @@ data TlsConfig = TlsConfig
   , caPath   :: Maybe String
   } deriving (Show, Eq)
 
-type SecurityProtocolMap = Map Text (Maybe TlsConfig)
+-- TODO: More SASL mechanisms
+data SaslMechanismOption
+  = SaslPlainOption [(String, String)] -- [(user, password)]
+  deriving (Show, Eq)
 
-defaultProtocolMap :: Maybe TlsConfig -> SecurityProtocolMap
-defaultProtocolMap tlsConfig =
-  Map.fromList [("plaintext", Nothing), ("tls", tlsConfig)]
+data SaslOptions = SaslOptions
+  { saslMechanisms :: [SaslMechanismOption]
+  } deriving (Show, Eq)
+
+type SecurityProtocolMap = Map Text (Maybe TlsConfig, Maybe SaslOptions)
+
+defaultProtocolMap :: Maybe TlsConfig -> Maybe SaslOptions -> SecurityProtocolMap
+defaultProtocolMap tlsConfig saslOptions =
+  Map.fromList [ ("plaintext"     , (Nothing  , Nothing))
+               , ("tls"           , (tlsConfig, saslOptions))
+               , ("sasl_plaintext", (Nothing  , saslOptions))
+               , ("sasl_tls"      , (tlsConfig, saslOptions))
+               ]
 
 advertisedListenersToPB :: AdvertisedListeners -> Map Text (Maybe SAI.ListOfListener)
 advertisedListenersToPB =
