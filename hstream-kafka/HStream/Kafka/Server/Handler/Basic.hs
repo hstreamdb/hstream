@@ -38,8 +38,11 @@ import qualified Kafka.Protocol.Service       as K
 --------------------
 
 handleApiVersions
-  :: K.RequestContext -> K.ApiVersionsRequest -> IO K.ApiVersionsResponse
-handleApiVersions _ _ = do
+  :: ServerContext
+  -> K.RequestContext
+  -> K.ApiVersionsRequest
+  -> IO K.ApiVersionsResponse
+handleApiVersions _ _ _ = do
   let apiKeys = K.KaArray
               . Just
               . (V.map apiVersionV0To)

@@ -79,8 +79,11 @@ def get_field_default(field_type, default=None):
     if default is not None:
         if default == "null":
             return "Nothing"
-        if field_type.startswith("int") and int(default) < 0:
-            return f"({default})"
+        if field_type.startswith("int"):
+            if default.startswith("0x"):
+                return f"{int(default, 16)}"
+            if int(default) < 0:
+                return f"({default})"
         if default == "false":
             return "False"
         if default == "true":
@@ -107,7 +110,7 @@ API_VERSION_PATCHES = {
     "ApiVersions": (0, 3),
     "Metadata": (0, 4),
     "Produce": (2, 2),
-    "Fetch": (2, 2),
+    "Fetch": (0, 2),
     "OffsetFetch": (0, 2),
     "OffsetCommit": (0, 2),
     "ListOffsets": (0, 1),
