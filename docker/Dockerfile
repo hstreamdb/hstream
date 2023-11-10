@@ -112,6 +112,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libevent-dev                   \
       libevent-openssl-2.1-7         \
       libgoogle-glog-dev             \
+      libgsasl7                      \
       libmysqlclient-dev             \
       libpython3.10                  \
       librdkafka++1                  \
@@ -166,6 +167,7 @@ RUN mkdir -p /etc/bash_completion.d && \
     grep -wq '^source /etc/profile.d/bash_completion.sh' /etc/bash.bashrc || echo 'source /etc/profile.d/bash_completion.sh' >> /etc/bash.bashrc && \
     /usr/local/bin/hadmin --bash-completion-script /usr/local/bin/hadmin > /etc/bash_completion.d/hadmin && \
     /usr/local/bin/hadmin-store --bash-completion-script /usr/local/bin/hadmin-store > /etc/bash_completion.d/hadmin-store && \
+    /usr/local/bin/hstream-kafka-cli --bash-completion-script /usr/local/bin/hstream-kafka-cli > /etc/bash_completion.d/hstream-kafka-cli && \
     /usr/local/bin/hstream --bash-completion-script /usr/local/bin/hstream > /etc/bash_completion.d/hstream
 
 EXPOSE 6560 6570
