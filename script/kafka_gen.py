@@ -114,6 +114,7 @@ API_VERSION_PATCHES = {
     "OffsetFetch": (0, 2),
     "OffsetCommit": (0, 2),
     "ListOffsets": (0, 1),
+    "SaslHandshake": (0, 1),
 }
 
 # -----------------------------------------------------------------------------

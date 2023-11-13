@@ -130,6 +130,7 @@ library
     HStream.Kafka.Server.Handler.Group
     HStream.Kafka.Server.Handler.Offset
     HStream.Kafka.Server.Handler.Produce
+    HStream.Kafka.Server.Handler.Security
     HStream.Kafka.Server.Handler.Topic
 
   cxx-sources:        cbits/hs_kafka_client.cpp
@@ -145,6 +146,7 @@ library
     , containers
     , directory
     , foreign
+    , gsasl                         >=0.3.0
     , hashable
     , hashtables
     , haskeline

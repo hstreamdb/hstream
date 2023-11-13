@@ -21,6 +21,7 @@ module Kafka.Protocol.Service
 import           Data.Int
 import           Data.Kind               (Constraint, Type)
 import           Data.Proxy              (Proxy (..))
+import           GHC.MVar                (MVar)
 import           GHC.TypeLits
 
 import           Kafka.Protocol.Encoding (NullableString, Serializable)
@@ -28,9 +29,13 @@ import           Kafka.Protocol.Encoding (NullableString, Serializable)
 -------------------------------------------------------------------------------
 
 data RequestContext = RequestContext
-  { clientId   :: !(Maybe NullableString)
-  , clientHost :: !String
-  } deriving (Show, Eq)
+  { clientId       :: !(Maybe NullableString)
+  , clientHost     :: !String
+  , clientAuthDone :: MVar Bool
+  -- Only used during SASL authentication.
+  -- Init with Empty. Then True: success, False: fail.
+  -- FIXME: better mechanism to notify auth result?
+  } deriving (Eq)
 
 type UnaryHandler i o = RequestContext -> i -> IO o
 

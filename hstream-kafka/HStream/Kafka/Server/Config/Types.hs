@@ -71,6 +71,8 @@ data ServerOpts = ServerOpts
   , _ldConfigPath                 :: !CBytes
 
   , _compression                  :: !Compression
+
+  , _enableSaslAuth               :: !Bool
   } deriving (Show, Eq)
 
 -------------------------------------------------------------------------------
@@ -117,6 +119,9 @@ data CliOptions = CliOptions
 
     -- Internal options
   , cliStoreCompression             :: !(Maybe Compression)
+
+    -- SASL Authentication
+  , cliEnableSaslAuth               :: !Bool
   } deriving Show
 
 -------------------------------------------------------------------------------

@@ -2013,6 +2013,89 @@ produceResponseFromV2 x = ProduceResponse
   , throttleTimeMs = x.throttleTimeMs
   }
 
+newtype SaslAuthenticateRequest = SaslAuthenticateRequest
+  { authBytes :: ByteString
+  } deriving (Show, Eq, Generic)
+instance Serializable SaslAuthenticateRequest
+
+saslAuthenticateRequestToV0 :: SaslAuthenticateRequest -> SaslAuthenticateRequestV0
+saslAuthenticateRequestToV0 x = SaslAuthenticateRequestV0
+  { authBytes = x.authBytes
+  }
+
+saslAuthenticateRequestFromV0 :: SaslAuthenticateRequestV0 -> SaslAuthenticateRequest
+saslAuthenticateRequestFromV0 x = SaslAuthenticateRequest
+  { authBytes = x.authBytes
+  }
+
+data SaslAuthenticateResponse = SaslAuthenticateResponse
+  { errorCode    :: {-# UNPACK #-} !ErrorCode
+    -- ^ The error code, or 0 if there was no error.
+  , errorMessage :: !NullableString
+    -- ^ The error message, or null if there was no error.
+  , authBytes    :: !ByteString
+    -- ^ The SASL authentication bytes from the server, as defined by the SASL
+    -- mechanism.
+  } deriving (Show, Eq, Generic)
+instance Serializable SaslAuthenticateResponse
+
+saslAuthenticateResponseToV0 :: SaslAuthenticateResponse -> SaslAuthenticateResponseV0
+saslAuthenticateResponseToV0 x = SaslAuthenticateResponseV0
+  { errorCode = x.errorCode
+  , errorMessage = x.errorMessage
+  , authBytes = x.authBytes
+  }
+
+saslAuthenticateResponseFromV0 :: SaslAuthenticateResponseV0 -> SaslAuthenticateResponse
+saslAuthenticateResponseFromV0 x = SaslAuthenticateResponse
+  { errorCode = x.errorCode
+  , errorMessage = x.errorMessage
+  , authBytes = x.authBytes
+  }
+
+newtype SaslHandshakeRequest = SaslHandshakeRequest
+  { mechanism :: Text
+  } deriving (Show, Eq, Generic)
+instance Serializable SaslHandshakeRequest
+
+saslHandshakeRequestToV0 :: SaslHandshakeRequest -> SaslHandshakeRequestV0
+saslHandshakeRequestToV0 x = SaslHandshakeRequestV0
+  { mechanism = x.mechanism
+  }
+saslHandshakeRequestToV1 :: SaslHandshakeRequest -> SaslHandshakeRequestV1
+saslHandshakeRequestToV1 = saslHandshakeRequestToV0
+
+saslHandshakeRequestFromV0 :: SaslHandshakeRequestV0 -> SaslHandshakeRequest
+saslHandshakeRequestFromV0 x = SaslHandshakeRequest
+  { mechanism = x.mechanism
+  }
+saslHandshakeRequestFromV1 :: SaslHandshakeRequestV1 -> SaslHandshakeRequest
+saslHandshakeRequestFromV1 = saslHandshakeRequestFromV0
+
+data SaslHandshakeResponse = SaslHandshakeResponse
+  { errorCode  :: {-# UNPACK #-} !ErrorCode
+    -- ^ The error code, or 0 if there was no error.
+  , mechanisms :: !(KaArray Text)
+    -- ^ The mechanisms enabled in the server.
+  } deriving (Show, Eq, Generic)
+instance Serializable SaslHandshakeResponse
+
+saslHandshakeResponseToV0 :: SaslHandshakeResponse -> SaslHandshakeResponseV0
+saslHandshakeResponseToV0 x = SaslHandshakeResponseV0
+  { errorCode = x.errorCode
+  , mechanisms = x.mechanisms
+  }
+saslHandshakeResponseToV1 :: SaslHandshakeResponse -> SaslHandshakeResponseV1
+saslHandshakeResponseToV1 = saslHandshakeResponseToV0
+
+saslHandshakeResponseFromV0 :: SaslHandshakeResponseV0 -> SaslHandshakeResponse
+saslHandshakeResponseFromV0 x = SaslHandshakeResponse
+  { errorCode = x.errorCode
+  , mechanisms = x.mechanisms
+  }
+saslHandshakeResponseFromV1 :: SaslHandshakeResponseV1 -> SaslHandshakeResponse
+saslHandshakeResponseFromV1 = saslHandshakeResponseFromV0
+
 data SyncGroupRequest = SyncGroupRequest
   { groupId      :: !Text
     -- ^ The unique group identifier.
@@ -2167,6 +2250,20 @@ instance Exception ProduceResponseEx
 
 catchProduceResponseEx :: IO ProduceResponse -> IO ProduceResponse
 catchProduceResponseEx act = act `catch` \(ProduceResponseEx resp) -> pure resp
+
+newtype SaslAuthenticateResponseEx = SaslAuthenticateResponseEx SaslAuthenticateResponse
+  deriving (Show, Eq)
+instance Exception SaslAuthenticateResponseEx
+
+catchSaslAuthenticateResponseEx :: IO SaslAuthenticateResponse -> IO SaslAuthenticateResponse
+catchSaslAuthenticateResponseEx act = act `catch` \(SaslAuthenticateResponseEx resp) -> pure resp
+
+newtype SaslHandshakeResponseEx = SaslHandshakeResponseEx SaslHandshakeResponse
+  deriving (Show, Eq)
+instance Exception SaslHandshakeResponseEx
+
+catchSaslHandshakeResponseEx :: IO SaslHandshakeResponse -> IO SaslHandshakeResponse
+catchSaslHandshakeResponseEx act = act `catch` \(SaslHandshakeResponseEx resp) -> pure resp
 
 newtype SyncGroupResponseEx = SyncGroupResponseEx SyncGroupResponse
   deriving (Show, Eq)

@@ -96,6 +96,10 @@ parseJSONToOptions CliOptions{..} obj = do
   let !_securityProtocolMap = defaultProtocolMap tlsConfig
   let !_listenersSecurityProtocolMap = Map.union cliListenersSecurityProtocolMap nodeListenersSecurityProtocolMap
 
+  -- SASL config
+  nodeEnableSaslAuth <- nodeCfgObj .:? "enable-sasl" .!= False
+  let !_enableSaslAuth = cliEnableSaslAuth || nodeEnableSaslAuth
+
   return ServerOpts {..}
 
 -------------------------------------------------------------------------------

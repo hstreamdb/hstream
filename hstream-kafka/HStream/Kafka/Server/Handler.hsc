@@ -1,17 +1,21 @@
 {-# LANGUAGE CPP       #-}
 {-# LANGUAGE DataKinds #-}
 
-module HStream.Kafka.Server.Handler (handlers) where
+module HStream.Kafka.Server.Handler
+  ( handlers
+  , unAuthedHandlers
+  ) where
 
 import           HStream.Kafka.Server.Handler.Basic
 import           HStream.Kafka.Server.Handler.Consume
 import           HStream.Kafka.Server.Handler.Group
 import           HStream.Kafka.Server.Handler.Offset
 import           HStream.Kafka.Server.Handler.Produce
+import           HStream.Kafka.Server.Handler.Security
 import           HStream.Kafka.Server.Handler.Topic
-import           HStream.Kafka.Server.Types           (ServerContext (..))
-import qualified Kafka.Protocol.Message               as K
-import qualified Kafka.Protocol.Service               as K
+import           HStream.Kafka.Server.Types            (ServerContext (..))
+import qualified Kafka.Protocol.Message                as K
+import qualified Kafka.Protocol.Service                as K
 
 -------------------------------------------------------------------------------
 
@@ -54,6 +58,9 @@ import qualified Kafka.Protocol.Service               as K
 #cv_handler ApiVersions, 0, 3
 #cv_handler Fetch, 0, 2
 
+#cv_handler SaslHandshake, 0, 1
+#cv_handler SaslAuthenticate, 0, 0
+
 handlers :: ServerContext -> [K.ServiceHandler]
 handlers sc =
   [ #mk_handler ApiVersions, 0, 3
@@ -91,4 +98,17 @@ handlers sc =
   , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "heartbeat") (handleHeartbeatV0 sc)
   , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "listGroups") (handleListGroupsV0 sc)
   , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "describeGroups") (handleDescribeGroupsV0 sc)
+
+  , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "saslHandshake") (handleAfterAuthSaslHandshakeV0 sc)
+  , K.hd (K.RPC :: K.RPC K.HStreamKafkaV1 "saslHandshake") (handleAfterAuthSaslHandshakeV1 sc)
+
+  , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "saslAuthenticate") (handleAfterAuthSaslAuthenticateV0 sc)
+  ]
+
+unAuthedHandlers :: ServerContext -> [K.ServiceHandler]
+unAuthedHandlers sc =
+  [ #mk_handler ApiVersions, 0, 3
+
+  , #mk_handler SaslHandshake, 0, 1
+  , #mk_handler SaslAuthenticate, 0, 0
   ]

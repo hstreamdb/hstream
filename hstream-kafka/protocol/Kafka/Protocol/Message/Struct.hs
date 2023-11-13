@@ -942,6 +942,39 @@ data ProduceResponseV2 = ProduceResponseV2
   } deriving (Show, Eq, Generic)
 instance Serializable ProduceResponseV2
 
+newtype SaslAuthenticateRequestV0 = SaslAuthenticateRequestV0
+  { authBytes :: ByteString
+  } deriving (Show, Eq, Generic)
+instance Serializable SaslAuthenticateRequestV0
+
+data SaslAuthenticateResponseV0 = SaslAuthenticateResponseV0
+  { errorCode    :: {-# UNPACK #-} !ErrorCode
+    -- ^ The error code, or 0 if there was no error.
+  , errorMessage :: !NullableString
+    -- ^ The error message, or null if there was no error.
+  , authBytes    :: !ByteString
+    -- ^ The SASL authentication bytes from the server, as defined by the SASL
+    -- mechanism.
+  } deriving (Show, Eq, Generic)
+instance Serializable SaslAuthenticateResponseV0
+
+newtype SaslHandshakeRequestV0 = SaslHandshakeRequestV0
+  { mechanism :: Text
+  } deriving (Show, Eq, Generic)
+instance Serializable SaslHandshakeRequestV0
+
+type SaslHandshakeRequestV1 = SaslHandshakeRequestV0
+
+data SaslHandshakeResponseV0 = SaslHandshakeResponseV0
+  { errorCode  :: {-# UNPACK #-} !ErrorCode
+    -- ^ The error code, or 0 if there was no error.
+  , mechanisms :: !(KaArray Text)
+    -- ^ The mechanisms enabled in the server.
+  } deriving (Show, Eq, Generic)
+instance Serializable SaslHandshakeResponseV0
+
+type SaslHandshakeResponseV1 = SaslHandshakeResponseV0
+
 data SyncGroupRequestV0 = SyncGroupRequestV0
   { groupId      :: !Text
     -- ^ The unique group identifier.
@@ -981,9 +1014,11 @@ instance Service HStreamKafkaV0 where
      , "syncGroup"
      , "describeGroups"
      , "listGroups"
+     , "saslHandshake"
      , "apiVersions"
      , "createTopics"
      , "deleteTopics"
+     , "saslAuthenticate"
      ]
 
 instance HasMethodImpl HStreamKafkaV0 "fetch" where
@@ -1070,6 +1105,13 @@ instance HasMethodImpl HStreamKafkaV0 "listGroups" where
   type MethodInput HStreamKafkaV0 "listGroups" = ListGroupsRequestV0
   type MethodOutput HStreamKafkaV0 "listGroups" = ListGroupsResponseV0
 
+instance HasMethodImpl HStreamKafkaV0 "saslHandshake" where
+  type MethodName HStreamKafkaV0 "saslHandshake" = "saslHandshake"
+  type MethodKey HStreamKafkaV0 "saslHandshake" = 17
+  type MethodVersion HStreamKafkaV0 "saslHandshake" = 0
+  type MethodInput HStreamKafkaV0 "saslHandshake" = SaslHandshakeRequestV0
+  type MethodOutput HStreamKafkaV0 "saslHandshake" = SaslHandshakeResponseV0
+
 instance HasMethodImpl HStreamKafkaV0 "apiVersions" where
   type MethodName HStreamKafkaV0 "apiVersions" = "apiVersions"
   type MethodKey HStreamKafkaV0 "apiVersions" = 18
@@ -1091,6 +1133,13 @@ instance HasMethodImpl HStreamKafkaV0 "deleteTopics" where
   type MethodInput HStreamKafkaV0 "deleteTopics" = DeleteTopicsRequestV0
   type MethodOutput HStreamKafkaV0 "deleteTopics" = DeleteTopicsResponseV0
 
+instance HasMethodImpl HStreamKafkaV0 "saslAuthenticate" where
+  type MethodName HStreamKafkaV0 "saslAuthenticate" = "saslAuthenticate"
+  type MethodKey HStreamKafkaV0 "saslAuthenticate" = 36
+  type MethodVersion HStreamKafkaV0 "saslAuthenticate" = 0
+  type MethodInput HStreamKafkaV0 "saslAuthenticate" = SaslAuthenticateRequestV0
+  type MethodOutput HStreamKafkaV0 "saslAuthenticate" = SaslAuthenticateResponseV0
+
 data HStreamKafkaV1
 
 instance Service HStreamKafkaV1 where
@@ -1101,6 +1150,7 @@ instance Service HStreamKafkaV1 where
      , "metadata"
      , "offsetCommit"
      , "offsetFetch"
+     , "saslHandshake"
      , "apiVersions"
      ]
 
@@ -1138,6 +1188,13 @@ instance HasMethodImpl HStreamKafkaV1 "offsetFetch" where
   type MethodVersion HStreamKafkaV1 "offsetFetch" = 1
   type MethodInput HStreamKafkaV1 "offsetFetch" = OffsetFetchRequestV1
   type MethodOutput HStreamKafkaV1 "offsetFetch" = OffsetFetchResponseV1
+
+instance HasMethodImpl HStreamKafkaV1 "saslHandshake" where
+  type MethodName HStreamKafkaV1 "saslHandshake" = "saslHandshake"
+  type MethodKey HStreamKafkaV1 "saslHandshake" = 17
+  type MethodVersion HStreamKafkaV1 "saslHandshake" = 1
+  type MethodInput HStreamKafkaV1 "saslHandshake" = SaslHandshakeRequestV1
+  type MethodOutput HStreamKafkaV1 "saslHandshake" = SaslHandshakeResponseV1
 
 instance HasMethodImpl HStreamKafkaV1 "apiVersions" where
   type MethodName HStreamKafkaV1 "apiVersions" = "apiVersions"
@@ -1258,9 +1315,11 @@ instance Show ApiKey where
   show (ApiKey 14) = "SyncGroup(14)"
   show (ApiKey 15) = "DescribeGroups(15)"
   show (ApiKey 16) = "ListGroups(16)"
+  show (ApiKey 17) = "SaslHandshake(17)"
   show (ApiKey 18) = "ApiVersions(18)"
   show (ApiKey 19) = "CreateTopics(19)"
   show (ApiKey 20) = "DeleteTopics(20)"
+  show (ApiKey 36) = "SaslAuthenticate(36)"
   show (ApiKey n)  = "Unknown " <> show n
 
 supportedApiVersions :: [ApiVersionV0]
@@ -1278,9 +1337,11 @@ supportedApiVersions =
   , ApiVersionV0 (ApiKey 14) 0 0
   , ApiVersionV0 (ApiKey 15) 0 0
   , ApiVersionV0 (ApiKey 16) 0 0
+  , ApiVersionV0 (ApiKey 17) 0 1
   , ApiVersionV0 (ApiKey 18) 0 3
   , ApiVersionV0 (ApiKey 19) 0 0
   , ApiVersionV0 (ApiKey 20) 0 0
+  , ApiVersionV0 (ApiKey 36) 0 0
   ]
 
 getHeaderVersion :: ApiKey -> Int16 -> (Int16, Int16)
@@ -1308,11 +1369,14 @@ getHeaderVersion (ApiKey 13) 0 = (1, 0)
 getHeaderVersion (ApiKey 14) 0 = (1, 0)
 getHeaderVersion (ApiKey 15) 0 = (1, 0)
 getHeaderVersion (ApiKey 16) 0 = (1, 0)
+getHeaderVersion (ApiKey 17) 0 = (1, 0)
+getHeaderVersion (ApiKey 17) 1 = (1, 0)
 getHeaderVersion (ApiKey 18) 0 = (1, 0)
 getHeaderVersion (ApiKey 18) 1 = (1, 0)
 getHeaderVersion (ApiKey 18) 2 = (1, 0)
 getHeaderVersion (ApiKey 18) 3 = (2, 0)
 getHeaderVersion (ApiKey 19) 0 = (1, 0)
 getHeaderVersion (ApiKey 20) 0 = (1, 0)
+getHeaderVersion (ApiKey 36) 0 = (1, 0)
 getHeaderVersion k v           = error $ "Unknown " <> show k <> " v" <> show v
 {-# INLINE getHeaderVersion #-}
