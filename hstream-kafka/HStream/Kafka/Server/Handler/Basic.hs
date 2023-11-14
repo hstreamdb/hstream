@@ -14,24 +14,29 @@ module HStream.Kafka.Server.Handler.Basic
 
 import           Control.Exception
 import           Control.Monad
-import           Data.Functor                 ((<&>))
-import           Data.Int                     (Int32)
-import           Data.Text                    (Text)
-import qualified Data.Text                    as Text
-import qualified Data.Vector                  as V
+import qualified Data.Foldable                   as FD
+import           Data.Functor                    ((<&>))
+import           Data.Int                        (Int32)
+import qualified Data.List                       as L
+import qualified Data.Set                        as S
+import           Data.Text                       (Text)
+import qualified Data.Text                       as Text
+import qualified Data.Vector                     as V
 
-import           HStream.Common.Server.Lookup (KafkaResource (..),
-                                               lookupKafkaPersist)
-import qualified HStream.Gossip               as Gossip
-import           HStream.Kafka.Server.Types   (ServerContext (..))
-import qualified HStream.Logger               as Log
-import qualified HStream.Server.HStreamApi    as A
-import qualified HStream.Store                as S
-import qualified HStream.Utils                as Utils
-import qualified Kafka.Protocol.Encoding      as K
-import qualified Kafka.Protocol.Error         as K
-import qualified Kafka.Protocol.Message       as K
-import qualified Kafka.Protocol.Service       as K
+import           HStream.Common.Server.Lookup    (KafkaResource (..),
+                                                  lookupKafkaPersist)
+import qualified HStream.Gossip                  as Gossip
+import qualified HStream.Kafka.Common.Utils      as K
+import           HStream.Kafka.Server.Core.Topic (createTopic)
+import           HStream.Kafka.Server.Types      (ServerContext (..))
+import qualified HStream.Logger                  as Log
+import qualified HStream.Server.HStreamApi       as A
+import qualified HStream.Store                   as S
+import qualified HStream.Utils                   as Utils
+import qualified Kafka.Protocol.Encoding         as K
+import qualified Kafka.Protocol.Error            as K
+import qualified Kafka.Protocol.Message          as K
+import qualified Kafka.Protocol.Service          as K
 
 --------------------
 -- 18: ApiVersions
@@ -103,7 +108,7 @@ handleMetadataV3 ctx reqCtx req = do
 
 handleMetadataV4
   :: ServerContext -> K.RequestContext -> K.MetadataRequestV4 -> IO K.MetadataResponseV4
-handleMetadataV4 ctx@ServerContext{..} _ req = do
+handleMetadataV4 ctx@ServerContext{..} _ req@K.MetadataRequestV4{..} = do
   respBrokers <- getBrokers
   -- FIXME: `serverID` is a `Word32` but kafka expects an `Int32`,
   -- causing a potential overflow.
@@ -120,15 +125,36 @@ handleMetadataV4 ctx@ServerContext{..} _ req = do
           , brokers=K.NonNullKaArray respBrokers
           }
       | otherwise -> do
-          let topicNames = V.map (\K.MetadataRequestTopicV0{..} -> name) v
-          respTopics <- forM topicNames getRespTopic
+          let topicNames = S.fromList . V.toList $ V.map (\K.MetadataRequestTopicV0{..} -> name) v
+          allStreamNames <- S.findStreams scLDClient S.StreamTypeTopic <&> S.fromList . L.map (Utils.cBytesToText . S.streamName)
+          let needCreate = S.toList $ topicNames S.\\ allStreamNames
+          let alreadyExist = V.fromList . S.toList $ topicNames `S.intersection` allStreamNames
+          Log.info $ "enableAutoCreateTopic: " <> Log.build (show enableAutoCreateTopic)
+
+          createResp <-
+            if enableAutoCreateTopic && allowAutoTopicCreation
+              then do
+                resp <- forM needCreate $ \topic -> do
+                  (code, shards) <- createTopic ctx topic (fromIntegral scDefaultTopicRepFactor) (fromIntegral scDefaultPartitionNum)
+                  if code /= K.NONE
+                    then do
+                      return $ K.MetadataResponseTopicV1 code topic False K.emptyKaArray
+                    else mkResponse topic (V.fromList shards)
+                return $ V.fromList resp
+              else do
+                let f topic acc = K.MetadataResponseTopicV1 K.UNKNOWN_TOPIC_OR_PARTITION topic False K.emptyKaArray : acc
+                return . V.fromList $ FD.foldr' f [] needCreate
+          unless (V.null createResp) $ Log.info $ "auto create topic response: " <> Log.build (show createResp)
+
+          respTopics <- forM alreadyExist getRespTopic
+          let respTopics' = respTopics <> createResp
           -- return $ K.MetadataResponseV4 (K.KaArray $ Just respBrokers) ctlId (K.KaArray $ Just respTopics)
           -- TODO: implement read cluster id
           return $ K.MetadataResponseV3 {
               clusterId=Nothing
             , controllerId=ctlId
             , throttleTimeMs=0
-            , topics=K.NonNullKaArray respTopics
+            , topics=K.NonNullKaArray respTopics'
             , brokers=K.NonNullKaArray respBrokers
             }
   where
@@ -151,7 +177,7 @@ handleMetadataV4 ctx@ServerContext{..} _ req = do
 
     getBrokers :: IO (V.Vector K.MetadataResponseBrokerV1)
     getBrokers = do
-      (nodes, nodesStatus) <- Gossip.describeCluster gossipContext scAdvertisedListenersKey
+      (nodes, _) <- Gossip.describeCluster gossipContext scAdvertisedListenersKey
       let brokers = V.map (\A.ServerNode{..} ->
                               K.MetadataResponseBrokerV1
                               { nodeId   = fromIntegral serverNodeId
@@ -167,38 +193,41 @@ handleMetadataV4 ctx@ServerContext{..} _ req = do
       let streamId = S.transToTopicStreamName topicName
       shards_e <- try ((V.map snd) <$> S.listStreamPartitionsOrdered scLDClient streamId)
       case shards_e of
-        -- FIXME: We catch all exceptions here. Is this proper?
         -- FIXME: Are the following error codes proper?
         -- FIXME: We passed `Nothing` as partitions when an error occurs. Is this proper?
-        Left (_ :: SomeException) ->
-          return $ K.MetadataResponseTopicV1 K.UNKNOWN_TOPIC_OR_PARTITION topicName False (K.KaArray Nothing)
+        Left (e :: SomeException)
+          | Just (_ :: S.NOTFOUND) <- fromException e ->
+              return $ K.MetadataResponseTopicV1 K.UNKNOWN_TOPIC_OR_PARTITION topicName False K.emptyKaArray
+          | otherwise ->
+              return $ K.MetadataResponseTopicV1 K.UNKNOWN_SERVER_ERROR topicName False K.emptyKaArray
         Right shards
           | V.null shards ->
-              return $ K.MetadataResponseTopicV1 K.INVALID_TOPIC_EXCEPTION topicName False (K.KaArray Nothing)
+              return $ K.MetadataResponseTopicV1 K.INVALID_TOPIC_EXCEPTION topicName False K.emptyKaArray
           | V.length shards > fromIntegral (maxBound :: Int32) ->
-              return $ K.MetadataResponseTopicV1 K.INVALID_PARTITIONS topicName False (K.KaArray Nothing)
-          | otherwise -> do
-              respPartitions <-
-                V.iforM shards $ \idx shardId -> do
-                  theNode <- lookupKafkaPersist metaHandle gossipContext
-                               loadBalanceHashRing scAdvertisedListenersKey
-                               (KafkaResTopic $ Text.pack $ show shardId)
-                  -- FIXME: Convert from `Word32` to `Int32`, possible overflow!
-                  when ((A.serverNodeId theNode) > fromIntegral (maxBound :: Int32)) $
-                    Log.warning $ "ServerID " <> Log.build (A.serverNodeId theNode)
-                               <> " is too large, it should be less than "
-                               <> Log.build (maxBound :: Int32)
-                  let (theNodeId :: Int32) = fromIntegral (A.serverNodeId theNode)
-                  pure $ K.MetadataResponsePartitionV0
-                           { errorCode      = K.NONE
-                           , partitionIndex = (fromIntegral idx)
-                           , leaderId       = theNodeId
-                           , replicaNodes   = K.KaArray $ Just (V.singleton theNodeId) -- FIXME: what should it be?
-                           , isrNodes       = K.KaArray $ Just (V.singleton theNodeId) -- FIXME: what should it be?
-                           }
-              return $
-                K.MetadataResponseTopicV1 K.NONE topicName False (K.KaArray $ Just respPartitions)
+              return $ K.MetadataResponseTopicV1 K.INVALID_PARTITIONS topicName False K.emptyKaArray
+          | otherwise -> mkResponse topicName shards
 
+    mkResponse topicName shards = do
+      respPartitions <-
+        V.iforM shards $ \idx shardId -> do
+          theNode <- lookupKafkaPersist metaHandle gossipContext
+                       loadBalanceHashRing scAdvertisedListenersKey
+                       (KafkaResTopic $ Text.pack $ show shardId)
+          -- FIXME: Convert from `Word32` to `Int32`, possible overflow!
+          when ((A.serverNodeId theNode) > fromIntegral (maxBound :: Int32)) $
+            Log.warning $ "ServerID " <> Log.build (A.serverNodeId theNode)
+                       <> " is too large, it should be less than "
+                       <> Log.build (maxBound :: Int32)
+          let (theNodeId :: Int32) = fromIntegral (A.serverNodeId theNode)
+          pure $ K.MetadataResponsePartitionV0
+                   { errorCode      = K.NONE
+                   , partitionIndex = (fromIntegral idx)
+                   , leaderId       = theNodeId
+                   , replicaNodes   = K.KaArray $ Just (V.singleton theNodeId) -- FIXME: what should it be?
+                   , isrNodes       = K.KaArray $ Just (V.singleton theNodeId) -- FIXME: what should it be?
+                   }
+      return $
+        K.MetadataResponseTopicV1 K.NONE topicName False (K.KaArray $ Just respPartitions)
 -------------------------------------------------------------------------------
 
 apiVersionV0To :: K.ApiVersionV0 -> K.ApiVersion
