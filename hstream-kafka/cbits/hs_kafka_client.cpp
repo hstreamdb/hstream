@@ -21,12 +21,11 @@ public:
     /* If message.err() is non-zero the message delivery failed permanently
      * for the message. */
     if (message.err())
-      std::cerr << "Message delivery failed: " << message.errstr()
-                << std::endl;
+      std::cerr << "Message delivery failed: " << message.errstr() << std::endl;
     else
-      std::cerr << "Message delivered to topic " << message.topic_name()
-                << " [" << message.partition() << "] at offset "
-                << message.offset() << std::endl;
+      std::cerr << "Message delivered to topic " << message.topic_name() << " ["
+                << message.partition() << "] at offset " << message.offset()
+                << std::endl;
   }
 };
 
@@ -251,7 +250,7 @@ void hs_delete_producer(HsProducer* p) { delete p; }
 
 HsInt hs_producer_produce(HsProducer* p, const char* topic_, HsInt topic_size_,
                           int32_t partition_, const char* payload_,
-                          HsInt payload_size_, const char* key_, 
+                          HsInt payload_size_, const char* key_,
                           HsInt key_size_, std::string* errstr) {
 
   std::string topic(topic_, topic_size_);
@@ -308,8 +307,8 @@ void hs_producer_flush(HsProducer* p) {
   p->producer->flush(10 * 1000 /* wait for max 10 seconds */);
 
   if (p->producer->outq_len() > 0) {
-    std::cerr << p->producer->outq_len()
-              << " message(s) were not delivered" << std::endl;
+    std::cerr << p->producer->outq_len() << " message(s) were not delivered"
+              << std::endl;
   }
 }
 

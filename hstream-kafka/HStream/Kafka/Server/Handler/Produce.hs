@@ -1,7 +1,8 @@
 module HStream.Kafka.Server.Handler.Produce
-  ( handleProduceV2
+  ( handleProduce
   ) where
 
+import qualified Control.Concurrent.Async           as Async
 import           Control.Monad
 import           Data.ByteString                    (ByteString)
 import           Data.Int
@@ -34,39 +35,44 @@ import qualified Kafka.Protocol.Service             as K
 --       guarantees that the record will not be lost as long as at least one
 --       in-sync replica remains alive. This is the strongest available
 --       guarantee.
-handleProduceV2
+handleProduce
   :: ServerContext
   -> K.RequestContext
-  -> K.ProduceRequestV2
-  -> IO K.ProduceResponseV2
-handleProduceV2 ServerContext{..} _ K.ProduceRequestV2{..} = do
+  -> K.ProduceRequest
+  -> IO K.ProduceResponse
+handleProduce ServerContext{..} _ req = do
   -- TODO: handle request args: acks, timeoutMs
+  let topicData = fromMaybe V.empty (K.unKaArray req.topicData)
 
-  let topicData' = fromMaybe V.empty (K.unKaArray topicData)
-  responses <- V.forM topicData' $ \K.TopicProduceDataV2{..} -> do
+  responses <- V.forM topicData $ \topic{- TopicProduceData -} -> do
     -- A topic is a stream. Here we donot need to check the topic existence,
     -- because the metadata api does(?)
-    let topic = S.transToTopicStreamName name
-    partitions <- S.listStreamPartitionsOrdered scLDClient topic
-    let partitionData' = fromMaybe V.empty (K.unKaArray partitionData)
-    partitionResponses <- V.forM partitionData' $ \K.PartitionProduceDataV2{..} -> do
-      let Just (_, logid) = partitions V.!? (fromIntegral index) -- TODO: handle Nothing
-      let Just recordBytes' = recordBytes -- TODO: handle Nothing
+    partitions <- S.listStreamPartitionsOrdered
+                    scLDClient (S.transToTopicStreamName topic.name)
+    let partitionData = fromMaybe V.empty (K.unKaArray topic.partitionData)
+    -- TODO: limit total concurrencies ?
+    let loopPart = if V.length partitionData > 1
+                      then Async.forConcurrently
+                      else V.forM
+    partitionResponses <- loopPart partitionData $ \partition -> do
+      let Just (_, logid) = partitions V.!? (fromIntegral partition.index) -- TODO: handle Nothing
+      let Just recordBytes = partition.recordBytes -- TODO: handle Nothing
       Log.debug1 $ "Append to logid " <> Log.build logid
-                <> "(" <> Log.build index <> ")"
+                <> "(" <> Log.build partition.index <> ")"
+
       -- Wirte appends
       (S.AppendCompletion{..}, offset) <-
-        appendRecords True scLDClient scOffsetManager logid recordBytes'
+        appendRecords True scLDClient scOffsetManager logid recordBytes
 
       Log.debug1 $ "Append done " <> Log.build appendCompLogID
                 <> ", lsn: " <> Log.build appendCompLSN
 
       -- TODO: logAppendTimeMs, only support LogAppendTime now
-      pure $ K.PartitionProduceResponseV2 index K.NONE offset appendCompTimestamp
+      pure $ K.PartitionProduceResponse partition.index K.NONE offset appendCompTimestamp
 
-    pure $ K.TopicProduceResponseV2 name (K.KaArray $ Just partitionResponses)
+    pure $ K.TopicProduceResponse topic.name (K.KaArray $ Just partitionResponses)
 
-  pure $ K.ProduceResponseV2 (K.KaArray $ Just responses) 0{- TODO: throttleTimeMs -}
+  pure $ K.ProduceResponse (K.KaArray $ Just responses) 0{- TODO: throttleTimeMs -}
 
 -------------------------------------------------------------------------------
 
