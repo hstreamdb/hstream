@@ -147,11 +147,11 @@ runServer opts sc mkPreAuthedHandlers mkAuthedHandlers =
           let ServiceHandler{..} = findHandler handlers requestApiKey requestApiVersion
           case rpcHandler of
             UnaryHandler rpcHandler' -> do
-              observeWithLabel handlerLatencies (T.pack $ show requestApiKey) $ doUnaryHandler l r rpcHandler' peer
+              observeWithLabel handlerLatencies (T.pack $ show requestApiKey) $ doUnaryHandler l r rpcHandler' peer authed
         Fail _ err -> E.throwIO $ DecodeError $ "Fail, " <> err
         More _ -> E.throwIO $ DecodeError $ "More"
 
-    doUnaryHandler l RequestHeader{..} rpcHandler' peer = do
+    doUnaryHandler l RequestHeader{..} rpcHandler' peer authed = do
       (req, left) <- runGet' l
       when (not . BS.null $ left) $
         Log.warning $ "Leftover bytes: " <> Log.buildString' left
