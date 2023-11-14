@@ -674,12 +674,17 @@ getStreamIdFromLogId
 getStreamIdFromLogId client logid = do
   -- e.g. /hstream/stream/some_stream/some_key
   logpath <- fmap thawToPosixPath . LD.logGroupGetFullName =<< LD.getLogGroupByID client logid
-  let (logdir, key) = second thawFromPosixPath $ P.splitFileName logpath
-  let (dir, name) = bimap (fromPosixPath . P.normalise) thawFromPosixPath $ P.splitFileName logdir
+  -- e.g. /hstream/stream/some_stream, some_key
+  let (logdir, key) = bimap P.dropTrailingPathSeparator thawFromPosixPath $
+                        P.splitFileName logpath
+  -- e.g. /hstream/stream, some_stream
+  let (dir, name) = bimap (fromPosixPath . P.dropTrailingPathSeparator) thawFromPosixPath $
+                      P.splitFileName logdir
   s <- readIORef gloStreamSettings
   streamid <- if | dir == streamNameLogDir s -> pure $ mkStreamId StreamTypeStream name
                  | dir == streamViewLogDir s -> pure $ mkStreamId StreamTypeView name
                  | dir == streamTempLogDir s -> pure $ mkStreamId StreamTypeTemp name
+                 | dir == streamTopicLogDir s -> pure $ mkStreamId StreamTypeTopic name
                  | otherwise -> E.throwStoreError (ZB.buildText $ "Unknown logid " <> ZB.int logid) callStack
   let key_ = if key == streamDefaultKey s then Nothing else Just key
   pure (streamid, key_)
