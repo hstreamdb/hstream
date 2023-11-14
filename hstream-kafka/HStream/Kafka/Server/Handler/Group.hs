@@ -30,7 +30,7 @@ handleFindCoordinatorV0 ServerContext{..} _ req = do
   return $ K.FindCoordinatorResponseV0 0 (fromIntegral serverNodeId) serverNodeHost (fromIntegral serverNodePort)
 
 handleJoinGroupV0 :: ServerContext -> K.RequestContext -> K.JoinGroupRequestV0 -> IO K.JoinGroupResponseV0
-handleJoinGroupV0 ServerContext{..} reqCtx = GC.joinGroup scGroupCoordinator reqCtx scLDClient (fromIntegral serverID)
+handleJoinGroupV0 ServerContext{..} = GC.joinGroup scGroupCoordinator
 
 handleSyncGroupV0 :: ServerContext -> K.RequestContext -> K.SyncGroupRequestV0 -> IO K.SyncGroupResponseV0
 handleSyncGroupV0 ServerContext{..} _ = GC.syncGroup scGroupCoordinator

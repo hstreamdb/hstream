@@ -1,8 +1,8 @@
 {-# LANGUAGE OverloadedRecordDot #-}
 
-module HStream.Kafka.Group.GroupMetadataManager
-  ( GroupMetadataManager
-  , mkGroupMetadataManager
+module HStream.Kafka.Group.GroupOffsetManager
+  ( GroupOffsetManager
+  , mkGroupOffsetManager
   , storeOffsets
   , fetchOffsets
   , fetchAllOffsets
@@ -36,7 +36,7 @@ import           Kafka.Protocol.Message              (OffsetCommitRequestPartiti
                                                       OffsetCommitResponsePartitionV0 (..),
                                                       OffsetFetchResponsePartitionV0 (..))
 
-data GroupMetadataManager = forall os. OffsetStorage os => GroupMetadataManager
+data GroupOffsetManager = forall os. OffsetStorage os => GroupOffsetManager
   { serverId      :: Int32
   , ldClient      :: S.LDClient
   , groupName     :: T.Text
@@ -47,15 +47,15 @@ data GroupMetadataManager = forall os. OffsetStorage os => GroupMetadataManager
 
 -- FIXME: if we create a consumer group with groupName haven been used, call
 -- mkCkpOffsetStorage with groupName may lead us to a un-clean ckp-store
-mkGroupMetadataManager :: S.LDClient -> Int32 -> T.Text -> IO GroupMetadataManager
-mkGroupMetadataManager ldClient serverId groupName = do
+mkGroupOffsetManager :: S.LDClient -> Int32 -> T.Text -> IO GroupOffsetManager
+mkGroupOffsetManager ldClient serverId groupName = do
   offsetsCache  <- newMVar Map.empty
   partitionsMap <- newMVar HM.empty
   offsetStorage <- mkCkpOffsetStorage ldClient groupName
-  return GroupMetadataManager{..}
+  return GroupOffsetManager{..}
 
-loadOffsetsFromStorage :: GroupMetadataManager -> V.Vector T.Text -> IO ()
-loadOffsetsFromStorage GroupMetadataManager{..} topicNames = do
+loadOffsetsFromStorage :: GroupOffsetManager -> V.Vector T.Text -> IO ()
+loadOffsetsFromStorage GroupOffsetManager{..} topicNames = do
   concurrentCap <- getNumCapabilities
   void $ limitedMapConcurrently (min 8 concurrentCap) load $ V.toList topicNames
  where
@@ -83,11 +83,11 @@ loadOffsetsFromStorage GroupMetadataManager{..} topicNames = do
      modifyMVar_ partitionsMap $ return . HM.union partitionMap
 
 storeOffsets
-  :: GroupMetadataManager
+  :: GroupOffsetManager
   -> T.Text
   -> KaArray OffsetCommitRequestPartitionV0
   -> IO (KaArray OffsetCommitResponsePartitionV0)
-storeOffsets gmm@GroupMetadataManager{..} topicName arrayOffsets = do
+storeOffsets gmm@GroupOffsetManager{..} topicName arrayOffsets = do
   let offsets = fromMaybe V.empty (unKaArray arrayOffsets)
 
   -- check if a TopicPartition that has an offset to be committed is contained in current
@@ -112,11 +112,11 @@ storeOffsets gmm@GroupMetadataManager{..} topicName arrayOffsets = do
   return KaArray {unKaArray = Just res}
 
 getOffsetsInfo
-  :: GroupMetadataManager
+  :: GroupOffsetManager
   -> T.Text
   -> V.Vector K.OffsetCommitRequestPartitionV0
   -> IO (V.Vector (TopicPartition, Word64, Word64)) -- return [(topic-partition, logid, offset)]
-getOffsetsInfo GroupMetadataManager{..} topicName requestOffsets = do
+getOffsetsInfo GroupOffsetManager{..} topicName requestOffsets = do
   V.forM requestOffsets $ \OffsetCommitRequestPartitionV0{..} -> do
     let tp = mkTopicPartition topicName partitionIndex
     modifyMVar partitionsMap $ \mp -> do
@@ -140,11 +140,11 @@ getOffsetsInfo GroupMetadataManager{..} topicName requestOffsets = do
         Just logId -> return (mp, (tp, logId, fromIntegral committedOffset))
 
 fetchOffsets
-  :: GroupMetadataManager
+  :: GroupOffsetManager
   -> T.Text
   -> KaArray Int32
   -> IO (KaArray OffsetFetchResponsePartitionV0)
-fetchOffsets GroupMetadataManager{..} topicName partitions = do
+fetchOffsets GroupOffsetManager{..} topicName partitions = do
   let partitions' = fromMaybe V.empty (unKaArray partitions)
   res <- withMVar offsetsCache $ \cache -> do
     traverse
@@ -169,8 +169,8 @@ fetchOffsets GroupMetadataManager{..} topicName partitions = do
 
   return $ KaArray {unKaArray = Just res}
 
-fetchAllOffsets :: GroupMetadataManager -> IO (KaArray K.OffsetFetchResponseTopicV0)
-fetchAllOffsets GroupMetadataManager{..} = do
+fetchAllOffsets :: GroupOffsetManager -> IO (KaArray K.OffsetFetchResponseTopicV0)
+fetchAllOffsets GroupOffsetManager{..} = do
   -- group offsets by TopicName
   cachedOffset <- Map.foldrWithKey foldF Map.empty <$> readMVar offsetsCache
   return . KaArray . Just . V.map makeTopic . V.fromList . Map.toList $ cachedOffset

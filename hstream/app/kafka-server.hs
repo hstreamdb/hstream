@@ -9,54 +9,58 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
 
-import           Control.Concurrent             (forkIO)
-import qualified Control.Concurrent.Async       as Async
-import           Control.Concurrent.MVar        (MVar, newEmptyMVar, putMVar,
-                                                 readMVar)
-import           Control.Exception              (handle)
-import           Control.Monad                  (forM, forM_, void)
-import qualified Data.Map                       as Map
-import           Data.Maybe                     (isJust)
-import qualified Data.Set                       as Set
-import qualified Data.Text                      as T
-import           Data.Text.Encoding             (decodeUtf8, encodeUtf8)
-import           Network.HTTP.Client            (defaultManagerSettings,
-                                                 newManager)
-import           System.Environment             (getArgs)
-import           System.IO                      (hPutStrLn, stderr)
-import           ZooKeeper                      (withResource, zookeeperResInit)
+import           Control.Concurrent                (forkIO)
+import qualified Control.Concurrent.Async          as Async
+import           Control.Concurrent.MVar           (MVar, newEmptyMVar, putMVar,
+                                                    readMVar)
+import           Control.Exception                 (handle)
+import           Control.Monad                     (forM, forM_, void)
+import qualified Data.Map                          as Map
+import           Data.Maybe                        (isJust)
+import qualified Data.Set                          as Set
+import qualified Data.Text                         as T
+import           Data.Text.Encoding                (decodeUtf8, encodeUtf8)
+import           Network.HTTP.Client               (defaultManagerSettings,
+                                                    newManager)
+import           System.Environment                (getArgs)
+import           System.IO                         (hPutStrLn, stderr)
+import           ZooKeeper                         (withResource,
+                                                    zookeeperResInit)
 
-import           HStream.Base                   (setupFatalSignalHandler)
-import           HStream.Common.Server.HashRing (updateHashRing)
-import qualified HStream.Common.Server.MetaData as M
-import           HStream.Common.Types           (getHStreamVersion)
-import qualified HStream.Exception              as HE
-import           HStream.Gossip                 (GossipContext (..),
-                                                 defaultGossipOpts,
-                                                 initGossipContext, startGossip,
-                                                 waitGossipBoot)
-import qualified HStream.Gossip.Types           as Gossip
-import qualified HStream.Kafka.Network          as K
-import           HStream.Kafka.Server.Config    (AdvertisedListeners,
-                                                 ListenersSecurityProtocolMap,
-                                                 MetaStoreAddr (..),
-                                                 SecurityProtocolMap,
-                                                 ServerOpts (..),
-                                                 advertisedListenersToPB,
-                                                 runServerConfig)
-import qualified HStream.Kafka.Server.Handler   as K
-import           HStream.Kafka.Server.Types     (ServerContext (..),
-                                                 initServerContext)
-import qualified HStream.Logger                 as Log
-import           HStream.MetaStore.Types        (MetaHandle (..),
-                                                 MetaStore (..), RHandle (..))
-import qualified HStream.Server.HStreamInternal as I
-import qualified HStream.Store.Logger           as S
-import qualified HStream.ThirdParty.Protobuf    as Proto
-import           HStream.Utils                  (getProtoTimestamp)
+import qualified Data.Vector                       as V
+import           HStream.Base                      (setupFatalSignalHandler)
+import           HStream.Common.Server.HashRing    (updateHashRing)
+import qualified HStream.Common.Server.MetaData    as M
+import qualified HStream.Common.Server.TaskManager as TM
+import           HStream.Common.Types              (getHStreamVersion)
+import qualified HStream.Exception                 as HE
+import           HStream.Gossip                    (GossipContext (..),
+                                                    defaultGossipOpts,
+                                                    initGossipContext,
+                                                    startGossip, waitGossipBoot)
+import qualified HStream.Gossip.Types              as Gossip
+import qualified HStream.Kafka.Network             as K
+import           HStream.Kafka.Server.Config       (AdvertisedListeners,
+                                                    ListenersSecurityProtocolMap,
+                                                    MetaStoreAddr (..),
+                                                    SecurityProtocolMap,
+                                                    ServerOpts (..),
+                                                    advertisedListenersToPB,
+                                                    runServerConfig)
+import qualified HStream.Kafka.Server.Handler      as K
+import           HStream.Kafka.Server.Types        (ServerContext (..),
+                                                    initServerContext)
+import qualified HStream.Logger                    as Log
+import           HStream.MetaStore.Types           (MetaHandle (..),
+                                                    MetaStore (..),
+                                                    RHandle (..))
+import qualified HStream.Server.HStreamInternal    as I
+import qualified HStream.Store.Logger              as S
+import qualified HStream.ThirdParty.Protobuf       as Proto
+import           HStream.Utils                     (getProtoTimestamp)
 
 #ifndef HSTREAM_ENABLE_ASAN
-import           Text.RawString.QQ              (r)
+import           Text.RawString.QQ                 (r)
 #endif
 
 -------------------------------------------------------------------------------
@@ -153,6 +157,17 @@ serve sc@ServerContext{..} netOpts = do
             _ -> do
               getProtoTimestamp >>= \x -> upsertMeta @Proto.Timestamp M.clusterStartTimeId x metaHandle
               handle (\(_ :: HE.RQLiteRowNotFound) -> return ()) $ deleteAllMeta @M.TaskAllocation metaHandle
+
+          Log.info "starting task detector"
+          TM.runTaskDetector $ TM.TaskDetector {
+            advertisedListenersKey=scAdvertisedListenersKey
+            , managers=V.fromList [scGroupCoordinator]
+            , config=TM.TaskDetectorConfig { intervalMs = 30000 }
+            , serverID=serverID
+            , metaHandle=metaHandle
+            , loadBalanceHashRing=loadBalanceHashRing
+            , gossipContext=gossipContext
+            }
 
   let netOpts' = netOpts{ K.serverOnStarted = Just serverOnStarted}
   Log.info $ "Starting"

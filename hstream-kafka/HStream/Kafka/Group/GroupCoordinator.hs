@@ -4,39 +4,65 @@
 
 module HStream.Kafka.Group.GroupCoordinator where
 
-import qualified Control.Concurrent                       as C
-import           Control.Exception                        (handle, throw)
-import qualified Control.Monad                            as M
-import qualified Data.HashTable.IO                        as H
-import           Data.Int                                 (Int32)
-import qualified Data.Text                                as T
-import           HStream.Kafka.Common.KafkaException      (ErrorCodeException (ErrorCodeException))
-import qualified HStream.Kafka.Common.Utils               as Utils
-import           HStream.Kafka.Group.Group                (Group)
-import qualified HStream.Kafka.Group.Group                as G
-import           HStream.Kafka.Group.GroupMetadataManager (mkGroupMetadataManager)
-import qualified HStream.Logger                           as Log
-import           HStream.Store                            (LDClient)
-import qualified Kafka.Protocol.Encoding                  as K
-import qualified Kafka.Protocol.Error                     as K
-import qualified Kafka.Protocol.Message                   as K
-import qualified Kafka.Protocol.Service                   as K
+import qualified Control.Concurrent                     as C
+import           Control.Exception                      (handle, throw)
+import qualified Control.Monad                          as M
+import qualified Data.HashTable.IO                      as H
+import qualified Data.Set                               as Set
+import qualified Data.Text                              as T
+import qualified Data.Vector                            as V
+import           Data.Word                              (Word32)
+import qualified HStream.Common.Server.Lookup           as Lookup
+import qualified HStream.Common.Server.MetaData         as CM
+import qualified HStream.Common.Server.TaskManager      as TM
+import           HStream.Kafka.Common.KafkaException    (ErrorCodeException (ErrorCodeException))
+import qualified HStream.Kafka.Common.Utils             as Utils
+import           HStream.Kafka.Group.Group              (Group)
+import qualified HStream.Kafka.Group.Group              as G
+import           HStream.Kafka.Group.GroupOffsetManager (mkGroupOffsetManager)
+import qualified HStream.Logger                         as Log
+import qualified HStream.MetaStore.Types                as Meta
+import           HStream.Store                          (LDClient)
+import qualified Kafka.Protocol.Encoding                as K
+import qualified Kafka.Protocol.Error                   as K
+import qualified Kafka.Protocol.Message                 as K
+import qualified Kafka.Protocol.Service                 as K
 
-newtype GroupCoordinator = GroupCoordinator
-  { groups :: C.MVar (Utils.HashTable T.Text Group)
+data GroupCoordinator = GroupCoordinator
+  { groups     :: C.MVar (Utils.HashTable T.Text Group)
+
+  , metaHandle :: Meta.MetaHandle
+  , serverId   :: Word32
+  , ldClient   :: LDClient
   }
 
--- TODO: setup from metadata
-mkGroupCoordinator :: IO GroupCoordinator
-mkGroupCoordinator = do
+mkGroupCoordinator :: Meta.MetaHandle -> LDClient -> Word32 -> IO GroupCoordinator
+mkGroupCoordinator metaHandle ldClient serverId = do
   groups <- H.new >>= C.newMVar
   return $ GroupCoordinator {..}
 
-joinGroup :: GroupCoordinator -> K.RequestContext -> LDClient -> Int32 -> K.JoinGroupRequestV0 -> IO K.JoinGroupResponseV0
-joinGroup coordinator reqCtx ldClient serverId req = do
+instance TM.TaskManager GroupCoordinator where
+  resourceName _ = "Group"
+  mkMetaId _ task = Lookup.kafkaResourceMetaId (Lookup.KafkaResGroup task)
+
+  listLocalTasks gc = do
+    C.withMVar gc.groups $ \gs -> do
+      Set.fromList . map fst <$> H.toList gs
+
+  listAllTasks gc = do
+    V.fromList . map CM.groupId <$> Meta.listMeta @CM.GroupMetadataValue gc.metaHandle
+
+  loadTaskAsync = loadGroup
+
+  unloadTaskAsync = unloadGroup
+
+------------------- Join Group -------------------------
+
+joinGroup :: GroupCoordinator -> K.RequestContext -> K.JoinGroupRequestV0 -> IO K.JoinGroupResponseV0
+joinGroup coordinator reqCtx req = do
   handle (\((ErrorCodeException code)) -> makeErrorResponse code) $ do
     -- get or create group
-    group <- getOrMaybeCreateGroup coordinator ldClient serverId req.groupId req.memberId
+    group <- getOrMaybeCreateGroup coordinator req.groupId req.memberId
 
     -- join group
     G.joinGroup group reqCtx req
@@ -47,17 +73,17 @@ joinGroup coordinator reqCtx ldClient serverId req = do
       , protocolName = ""
       , leader = ""
       , memberId = req.memberId
-      , members = K.KaArray Nothing
+      , members = K.NonNullKaArray V.empty
       }
 
-getOrMaybeCreateGroup :: GroupCoordinator -> LDClient -> Int32 -> T.Text -> T.Text -> IO Group
-getOrMaybeCreateGroup GroupCoordinator{..} ldClient serverId groupId memberId = do
+getOrMaybeCreateGroup :: GroupCoordinator -> T.Text -> T.Text -> IO Group
+getOrMaybeCreateGroup GroupCoordinator{..} groupId memberId = do
   C.withMVar groups $ \gs -> do
     H.lookup gs groupId >>= \case
       Nothing -> if T.null memberId
         then do
-          metadataManager <- mkGroupMetadataManager ldClient serverId groupId
-          ng <- G.newGroup groupId metadataManager
+          metadataManager <- mkGroupOffsetManager ldClient (fromIntegral serverId) groupId
+          ng <- G.newGroup groupId metadataManager metaHandle
           H.insert gs groupId ng
           return ng
         else throw (ErrorCodeException K.UNKNOWN_MEMBER_ID)
@@ -109,11 +135,11 @@ heartbeat coordinator req = do
 
 ------------------- Commit Offsets -------------------------
 -- newest API version by default
-commitOffsetsV2 :: GroupCoordinator -> LDClient -> Int32 -> K.OffsetCommitRequestV2 -> IO K.OffsetCommitResponseV2
-commitOffsetsV2 coordinator ldClient serverId req = do
+commitOffsetsV2 :: GroupCoordinator -> K.OffsetCommitRequestV2 -> IO K.OffsetCommitResponseV2
+commitOffsetsV2 coordinator req = do
   handle (\(ErrorCodeException code) -> makeErrorResponse code) $ do
     group <- if req.generationId < 0 then do
-      getOrMaybeCreateGroup coordinator ldClient serverId req.groupId ""
+      getOrMaybeCreateGroup coordinator req.groupId ""
     else do
       getGroup coordinator req.groupId
     G.commitOffsets group req
@@ -126,9 +152,9 @@ commitOffsetsV2 coordinator ldClient serverId req = do
         mapTopic code topic = K.OffsetCommitResponseTopicV0 {partitions=Utils.mapKaArray (mapPartition code) topic.partitions, name=topic.name}
         mapPartition code partition = K.OffsetCommitResponsePartitionV0 {errorCode=code, partitionIndex=partition.partitionIndex}
 
-commitOffsetsV1 :: GroupCoordinator -> LDClient -> Int32 -> K.OffsetCommitRequestV1 -> IO K.OffsetCommitResponseV0
-commitOffsetsV1 coordinator ldClient serverId req = do
-  commitOffsetsV2 coordinator ldClient serverId defaultReq
+commitOffsetsV1 :: GroupCoordinator -> K.OffsetCommitRequestV1 -> IO K.OffsetCommitResponseV0
+commitOffsetsV1 coordinator req = do
+  commitOffsetsV2 coordinator defaultReq
   where defaultReq = K.OffsetCommitRequestV2 {
             retentionTimeMs=0
           , topics=Utils.mapKaArray topicV1toV2 req.topics
@@ -146,9 +172,9 @@ commitOffsetsV1 coordinator ldClient serverId req = do
           , partitionIndex=p.partitionIndex
           }
 
-commitOffsetsV0 :: GroupCoordinator -> LDClient -> Int32 -> K.OffsetCommitRequestV0 -> IO K.OffsetCommitResponseV0
-commitOffsetsV0 coordinator ldClient serverId req = do
-  commitOffsetsV2 coordinator ldClient serverId defaultReq
+commitOffsetsV0 :: GroupCoordinator -> K.OffsetCommitRequestV0 -> IO K.OffsetCommitResponseV0
+commitOffsetsV0 coordinator req = do
+  commitOffsetsV2 coordinator defaultReq
   where defaultReq = K.OffsetCommitRequestV2 {
         retentionTimeMs=0
       , topics=req.topics
@@ -207,3 +233,30 @@ describeGroups gc req = do
       (_, Just g) -> G.describe g
     return $ K.DescribeGroupsResponseV0 {groups=Utils.listToKaArray listedGroups}
 
+------------------- Load/Unload Group -------------------------
+-- load group from meta store
+loadGroup :: GroupCoordinator -> T.Text -> IO ()
+loadGroup gc groupId = do
+  Meta.getMeta @CM.GroupMetadataValue groupId gc.metaHandle >>= \case
+    Nothing -> do
+      Log.warning $ "load group failed, group:" <> Log.build groupId <> " not found in metastore"
+    Just value -> do
+      Log.info $ "loading group from metastore, groupId:" <> Log.build groupId
+        <> ", generationId:" <> Log.build value.generationId
+      addGroupByValue gc value
+
+addGroupByValue :: GroupCoordinator -> CM.GroupMetadataValue -> IO ()
+addGroupByValue gc value = do
+  C.withMVar gc.groups $ \gs -> do
+    H.lookup gs value.groupId >>= \case
+      Nothing -> do
+        metadataManager <- mkGroupOffsetManager gc.ldClient (fromIntegral gc.serverId) value.groupId
+        ng <- G.newGroupFromValue value metadataManager gc.metaHandle
+        H.insert gs value.groupId ng
+      Just _ -> do
+        Log.warning $ "load group failed, group:" <> Log.build value.groupId <> " is loaded"
+
+unloadGroup :: GroupCoordinator -> T.Text -> IO ()
+unloadGroup gc groupId = do
+  C.withMVar gc.groups $ \gs -> do
+    H.delete gs groupId

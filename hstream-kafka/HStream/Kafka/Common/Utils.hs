@@ -6,10 +6,14 @@ module HStream.Kafka.Common.Utils where
 import           Control.Exception                   (throw)
 import qualified Control.Monad                       as M
 import qualified Control.Monad.ST                    as ST
+import qualified Data.ByteString                     as BS
+import qualified Data.ByteString.Base64              as Base64
 import qualified Data.HashTable.IO                   as H
 import qualified Data.HashTable.ST.Basic             as HB
 import qualified Data.IORef                          as IO
 import           Data.Maybe                          (fromMaybe)
+import qualified Data.Text                           as T
+import qualified Data.Text.Encoding                  as T
 import qualified Data.Vector                         as V
 import           HStream.Kafka.Common.KafkaException (ErrorCodeException (ErrorCodeException))
 import qualified Kafka.Protocol.Encoding             as K
@@ -70,3 +74,9 @@ unlessIORefEq :: (Eq a) => IO.IORef a -> a -> (a -> IO ()) -> IO ()
 unlessIORefEq ioRefVal expected action = do
   IO.readIORef ioRefVal >>= \val -> do
     M.unless (expected == val) $ action val
+
+encodeBase64 :: BS.ByteString -> T.Text
+encodeBase64 = Base64.encodeBase64
+
+decodeBase64 :: T.Text -> BS.ByteString
+decodeBase64 = Base64.decodeBase64Lenient . T.encodeUtf8

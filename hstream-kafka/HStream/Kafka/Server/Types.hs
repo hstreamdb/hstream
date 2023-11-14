@@ -46,7 +46,7 @@ initServerContext opts@ServerOpts{..} gossipContext mh = do
   statsHolder <- newServerStatsHolder
   epochHashRing <- initializeHashRing gossipContext
   offsetManager <- newOffsetManager ldclient
-  scGroupCoordinator <- mkGroupCoordinator
+  scGroupCoordinator <- mkGroupCoordinator mh ldclient _serverID
 
   return
     ServerContext
