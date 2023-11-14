@@ -350,10 +350,6 @@ produceCommandParser = ProduceCommandOpts
 handleProduceCommand :: Options -> ProduceCommandOpts -> IO ()
 handleProduceCommand Options{..} cmdopts = do
   let brokers = encodeUtf8 $ Text.pack (host <> ":" <> show port)
-  -- First check topic exists because we do not support auto topic creation yet.
-  -- Or you will get a coredump.
-  void $ describeTopic host port cmdopts.topic
-
   producer <- HsForeign.withByteString brokers $ \brokers' size -> do
     (errmsg, p) <- unsafeWithStdString $ hs_new_producer brokers' size
     when (p == nullPtr) $ errorWithoutStackTrace $
@@ -435,6 +431,8 @@ data ConsumeCommandOpts = ConsumeCommandOpts
   , autoCommit  :: Bool
   } deriving (Show, Eq)
 
+-- librdkafka doesn't support set `allow.auto.create.topics` any more for consumer since v1.6
+-- see: https://github.com/confluentinc/confluent-kafka-go/issues/615
 consumeCommandParser :: Parser ConsumeCommandOpts
 consumeCommandParser = ConsumeCommandOpts
   <$> strOption (long "group-id" <> short 'g' <> metavar "Text" <> value Text.empty <> help "Group id")
@@ -453,9 +451,6 @@ handleConsumeCommand Options{..} cmdopts = do
   when (null topics) $
     errorWithoutStackTrace "Topic name is required"
   groupId <- if Text.null cmdopts.groupId then newRandomText 10  else return cmdopts.groupId
-  -- First check topic exists because we do not support auto topic creation yet.
-  -- Or you will get a coredump.
-  forM_ topics $ describeTopic host port
 
   let brokers = encodeUtf8 $ Text.pack (host <> ":" <> show port)
       groupIdBs = encodeUtf8 groupId :: ByteString
