@@ -109,9 +109,11 @@ app config@ServerOpts{..} = do
       void . forkIO $ updateHashRing gossipContext (loadBalanceHashRing serverContext)
 
       -- TODO: support tls (_tlsConfig)
+      -- TODO: support SASL options
       let netOpts = K.defaultServerOpts
                       { K.serverHost = T.unpack $ decodeUtf8 _serverHost
                       , K.serverPort = fromIntegral _serverPort
+                      , K.serverSaslOptions = if _enableSaslAuth then Just K.SaslOptions else Nothing
                       }
       Async.withAsync (serve serverContext netOpts) $ \a -> do
         -- start gossip
@@ -172,8 +174,9 @@ serve sc@ServerContext{..} netOpts = do
   let netOpts' = netOpts{ K.serverOnStarted = Just serverOnStarted}
   Log.info $ "Starting"
         <> if isJust (K.serverSslOptions netOpts') then " secure " else " insecure "
+        <> (if isJust (K.serverSaslOptions netOpts') then "SASL " else "")
         <> "kafka server..."
-  K.runServer netOpts' sc K.handlers
+  K.runServer netOpts' sc K.unAuthedHandlers K.handlers
 
 serveListeners
   :: ServerContext
@@ -194,17 +197,22 @@ serveListeners sc netOpts
     -- newSslOpts <- mapM readTlsPemFile $
     --   join ((`Map.lookup` securityMap) =<< Map.lookup key listenerSecurityMap)
     let newSslOpts = Nothing
+
+    -- TODO: sasl
+    let newSaslOpts = Nothing
     let netOpts' = netOpts{ K.serverPort = fromIntegral listenerPort
                           , K.serverOnStarted = Just listenerOnStarted
                           , K.serverSslOptions = newSslOpts
+                          , K.serverSaslOptions = newSaslOpts
                           }
     Log.info $ "Starting"
             <> (if isJust (K.serverSslOptions netOpts') then " secure " else " insecure ")
+            <> (if isJust (K.serverSaslOptions netOpts') then "SASL " else "")
             <> "advertised listener: "
             <> Log.build key <> ":"
             <> Log.build listenerAddress <> ":"
             <> Log.build listenerPort
-    K.runServer netOpts' sc' K.handlers
+    K.runServer netOpts' sc' K.unAuthedHandlers K.handlers
 
 -------------------------------------------------------------------------------
 

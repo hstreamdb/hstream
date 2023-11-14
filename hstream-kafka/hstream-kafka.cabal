@@ -54,6 +54,7 @@ library kafka-protocol
     Kafka.Protocol.Encoding.Internal
     Kafka.Protocol.Encoding.Parser
     Kafka.Protocol.Message.Struct
+    Kafka.Protocol.Message.Total
 
   hs-source-dirs:     protocol
   build-tool-depends: hpp:hpp >=0.6 && <0.7
@@ -129,12 +130,14 @@ library
     HStream.Kafka.Server.Handler.Group
     HStream.Kafka.Server.Handler.Offset
     HStream.Kafka.Server.Handler.Produce
+    HStream.Kafka.Server.Handler.Security
     HStream.Kafka.Server.Handler.Topic
 
   cxx-sources:        cbits/hs_kafka_client.cpp
   cxx-options:        -std=c++17
   extra-libraries:    rdkafka++
   hs-source-dirs:     .
+  build-tool-depends: hsc2hs:hsc2hs
   build-depends:
     , aeson
     , attoparsec
@@ -145,6 +148,7 @@ library
     , containers
     , directory
     , foreign
+    , gsasl                         >=0.3.0
     , hashable
     , hashtables
     , haskeline

@@ -7,6 +7,7 @@
 module HStream.Kafka.Network
   ( -- * Server
     ServerOptions (..)
+  , SaslOptions (..)
   , defaultServerOpts
   , runServer
     -- * Client
@@ -18,24 +19,26 @@ module HStream.Kafka.Network
   ) where
 
 import           Control.Concurrent
-import qualified Control.Exception                  as E
+import qualified Control.Exception                   as E
 import           Control.Monad
-import           Data.ByteString                    (ByteString)
-import qualified Data.ByteString                    as BS
-import qualified Data.ByteString.Lazy               as BSL
+import           Data.ByteString                     (ByteString)
+import qualified Data.ByteString                     as BS
+import qualified Data.ByteString.Lazy                as BSL
 import           Data.Int
-import           Data.List                          (find, intersperse)
-import           Data.Maybe                         (fromMaybe, isJust,
-                                                     isNothing)
-import qualified Network.Socket                     as N
-import qualified Network.Socket.ByteString          as N
-import qualified Network.Socket.ByteString.Lazy     as NL
-import           Numeric                            (showHex, showInt)
+import           Data.List                           (find, intersperse)
+import           Data.Maybe                          (fromMaybe, isJust,
+                                                      isNothing)
+import qualified Network.Socket                      as N
+import qualified Network.Socket.ByteString           as N
+import qualified Network.Socket.ByteString.Lazy      as NL
+import           Numeric                             (showHex, showInt)
 
-import           HStream.Kafka.Common.OffsetManager (initOffsetReader)
-import           HStream.Kafka.Server.Types         (ServerContext (..))
-import qualified HStream.Logger                     as Log
+import           HStream.Kafka.Common.KafkaException (ErrorCodeException (..))
+import           HStream.Kafka.Common.OffsetManager  (initOffsetReader)
+import           HStream.Kafka.Server.Types          (ServerContext (..))
+import qualified HStream.Logger                      as Log
 import           Kafka.Protocol.Encoding
+import qualified Kafka.Protocol.Error                as K
 import           Kafka.Protocol.Message
 import           Kafka.Protocol.Service
 
@@ -45,11 +48,15 @@ import           Kafka.Protocol.Service
 -- TODO
 data SslOptions
 
+-- TODO
+data SaslOptions = SaslOptions
+
 data ServerOptions = ServerOptions
-  { serverHost       :: !String
-  , serverPort       :: !Int
-  , serverSslOptions :: !(Maybe SslOptions)
-  , serverOnStarted  :: !(Maybe (IO ()))
+  { serverHost        :: !String
+  , serverPort        :: !Int
+  , serverSslOptions  :: !(Maybe SslOptions)
+  , serverSaslOptions :: !(Maybe SaslOptions)
+  , serverOnStarted   :: !(Maybe (IO ()))
   }
 
 defaultServerOpts :: ServerOptions
@@ -57,6 +64,7 @@ defaultServerOpts = ServerOptions
   { serverHost           = "0.0.0.0"
   , serverPort           = 9092
   , serverSslOptions     = Nothing
+  , serverSaslOptions    = Nothing
   , serverOnStarted      = Nothing
   }
 
@@ -66,34 +74,66 @@ runServer
   :: ServerOptions
   -> ServerContext
   -> (ServerContext -> [ServiceHandler])
+  -> (ServerContext -> [ServiceHandler])
   -> IO ()
-runServer opts sc mkHandlers =
+runServer opts sc mkPreAuthedHandlers mkAuthedHandlers =
   startTCPServer opts $ \(s, peer) -> do
     -- Since the Reader is thread-unsafe, for each connection we create a new
     -- Reader.
     om <- initOffsetReader $ scOffsetManager sc
     let sc' = sc{scOffsetManager = om}
     i <- N.recv s 1024
-    talk (peer, (mkHandlers sc')) i Nothing s
+    -- Decide if we require SASL authentication
+    case (serverSaslOptions opts) of
+      Nothing -> talk (peer, mkAuthedHandlers sc') i Nothing s
+      _       -> do i' <- authTalk (peer, (mkPreAuthedHandlers sc')) i Nothing s
+                    talk (peer, mkAuthedHandlers sc') i' Nothing s
   where
+    authTalk _ "" _ _ = pure mempty  -- client exit
+    authTalk !(peer, hds) i m_more s = do
+      reqBsResult <- case m_more of
+                       Nothing -> runParser @ByteString get i
+                       Just mf -> mf i
+      case reqBsResult of
+        Done "" reqBs -> do authed <- newEmptyMVar
+                            respBs <- runHandler peer hds reqBs authed
+                            NL.sendAll s respBs
+                            tryTakeMVar authed >>= \case
+                              Just True  -> N.recv s 1024
+                              Just False -> E.throwIO $ ErrorCodeException K.SASL_AUTHENTICATION_FAILED
+                              Nothing    -> do msg <- N.recv s 1024
+                                               authTalk (peer, hds) msg Nothing s
+        Done l reqBs -> do authed <- newEmptyMVar
+                           respBs <- runHandler peer hds reqBs authed
+                           NL.sendAll s respBs
+                           tryTakeMVar authed >>= \case
+                              Just True  -> return l
+                              Just False -> E.throwIO $ ErrorCodeException K.SASL_AUTHENTICATION_FAILED
+                              Nothing    -> authTalk (peer, hds) l Nothing s
+        More f -> do msg <- N.recv s 1024
+                     authTalk (peer, hds) msg (Just f) s
+        Fail _ err -> E.throwIO $ DecodeError $ "Fail, " <> err
+
     talk _ "" _ _ = pure ()  -- client exit
     talk !(peer, hds) i m_more s = do
       reqBsResult <- case m_more of
                        Nothing -> runParser @ByteString get i
                        Just mf -> mf i
       case reqBsResult of
-        Done "" reqBs -> do respBs <- runHandler peer hds reqBs
+        Done "" reqBs -> do respBs <- runHandler peer hds reqBs undefined -- FIXME: unused 'authed' as 'undefined'. Better way?
                             NL.sendAll s respBs
                             msg <- N.recv s 1024
                             talk (peer, hds) msg Nothing s
-        Done l reqBs -> do respBs <- runHandler peer hds reqBs
+        Done l reqBs -> do respBs <- runHandler peer hds reqBs undefined -- FIXME: unused 'authed' as 'undefined'. Better way?
                            NL.sendAll s respBs
                            talk (peer, hds) l Nothing s
         More f -> do msg <- N.recv s 1024
                      talk (peer, hds) msg (Just f) s
         Fail _ err -> E.throwIO $ DecodeError $ "Fail, " <> err
 
-    runHandler peer handlers reqBs = do
+    -- 'authed :: MVar Bool'. Empty at the beginning and is only used by SASL auth.
+    -- FIXME: better way?
+    runHandler peer handlers reqBs authed = do
       headerResult <- runParser @RequestHeader get reqBs
       case headerResult of
         Done l RequestHeader{..} -> do
@@ -112,6 +152,7 @@ runServer opts sc mkHandlers =
                     RequestContext
                       { clientId = requestClientId
                       , clientHost = showSockAddrHost peer
+                      , clientAuthDone = authed
                       }
               resp <- rpcHandler' reqContext req
               Log.debug $ "Server response: " <> Log.buildString' resp

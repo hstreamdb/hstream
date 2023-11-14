@@ -21,10 +21,10 @@ public:
     /* If message.err() is non-zero the message delivery failed permanently
      * for the message. */
     if (message.err())
-      std::cerr << "% Message delivery failed: " << message.errstr()
+      std::cerr << "Message delivery failed: " << message.errstr()
                 << std::endl;
     else
-      std::cerr << "% Message delivered to topic " << message.topic_name()
+      std::cerr << "Message delivered to topic " << message.topic_name()
                 << " [" << message.partition() << "] at offset "
                 << message.offset() << std::endl;
   }
@@ -178,7 +178,7 @@ void msg_consume(RdKafka::Message* message, void* opaque) {
     case RdKafka::ERR__PARTITION_EOF:
       /* Last message */
       if (consumer_exit_eof && ++consumer_eof_cnt == consumer_partition_cnt) {
-        std::cerr << "%% EOF reached for all " << consumer_partition_cnt
+        std::cerr << "EOF reached for all " << consumer_partition_cnt
                   << " partition(s)" << std::endl;
         run = 0;
       }
@@ -251,15 +251,14 @@ void hs_delete_producer(HsProducer* p) { delete p; }
 
 HsInt hs_producer_produce(HsProducer* p, const char* topic_, HsInt topic_size_,
                           int32_t partition_, const char* payload_,
-                          HsInt payload_size_, std::string* errstr) {
-  if (!payload_) {
-    p->producer->poll(0);
-    return 0;
-  }
+                          HsInt payload_size_, const char* key_, 
+                          HsInt key_size_, std::string* errstr) {
 
   std::string topic(topic_, topic_size_);
   std::string payload(payload_, payload_size_);
   auto partition = partition_ < 0 ? RdKafka::Topic::PARTITION_UA : partition_;
+  auto key = key_size_ == 0 ? NULL : const_cast<char*>(key_);
+  auto value = payload_size_ == 0 ? NULL : const_cast<char*>(payload_);
 
 retry:
   RdKafka::ErrorCode err =
@@ -267,9 +266,9 @@ retry:
                            /* Copy payload */
                            RdKafka::Producer::RK_MSG_COPY,
                            /* Value */
-                           const_cast<char*>(payload_), payload_size_,
+                           value, payload_size_,
                            /* Key */
-                           NULL, 0,
+                           key, key_size_,
                            /* Timestamp (defaults to current time) */
                            0,
                            /* Message headers, if any */
@@ -309,7 +308,7 @@ void hs_producer_flush(HsProducer* p) {
   p->producer->flush(10 * 1000 /* wait for max 10 seconds */);
 
   if (p->producer->outq_len() > 0) {
-    std::cerr << "% " << p->producer->outq_len()
+    std::cerr << p->producer->outq_len()
               << " message(s) were not delivered" << std::endl;
   }
 }
