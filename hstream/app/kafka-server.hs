@@ -153,7 +153,7 @@ serve sc@ServerContext{..} netOpts = do
                <> Log.build (K.serverPort netOpts)
                <> ", waiting for cluster to get ready"
         void $ forkIO $ do
-          void (readMVar (clusterReady gossipContext)) >> Log.info "Cluster is ready!"
+          void (readMVar (clusterReady gossipContext)) >> Log.info "Gossip is ready!"
           readMVar (clusterInited gossipContext) >>= \case
             Gossip.Gossip -> return ()
             _ -> do
@@ -170,6 +170,7 @@ serve sc@ServerContext{..} netOpts = do
             , loadBalanceHashRing=loadBalanceHashRing
             , gossipContext=gossipContext
             }
+          Log.info "Cluster is ready!"
 
   let netOpts' = netOpts{ K.serverOnStarted = Just serverOnStarted}
   Log.info $ "Starting"
