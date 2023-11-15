@@ -38,9 +38,8 @@ parseJSONToOptions CliOptions{..} obj = do
 
   -- Kafka config
   let !_disableAutoCreateTopic = cliDisableAutoCreateTopic
-  kafkaCfgObj     <- nodeCfgObj .:? "kafka" .!= mempty
-  numPartitions   <- kafkaCfgObj .:? "num-partitions" .!= 1
-  defaultReplica  <- kafkaCfgObj .:? "default-replication-factor" .!= 1
+  numPartitions   <- nodeCfgObj .:? "num-partitions" .!= 1
+  defaultReplica  <- nodeCfgObj .:? "default-replication-factor" .!= 1
   let !_topicRepFactor = numPartitions
   let !_partitionNums  = defaultReplica
 

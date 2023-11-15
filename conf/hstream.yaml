@@ -251,9 +251,8 @@ kafka:
   #
   #Kafka options
   #
-  #kafka:
-  #  num-partitions: 1
-  #  default-replication-factor: 1
+  #num-partitions: 1
+  #default-replication-factor: 1
 
 # Configuration for HStream Store
 # The configuration for hstore is **Optional**. When the values are not provided,
