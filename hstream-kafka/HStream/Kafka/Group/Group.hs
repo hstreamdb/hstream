@@ -290,7 +290,7 @@ checkSupportedProtocols Group{..} req = do
       M.when (V.null (Utils.kaArrayToVector req.protocols)) $ do
         throw (ErrorCodeException K.INCONSISTENT_GROUP_PROTOCOL)
     _ -> do
-      Utils.whenIORefEq protocolType (Just req.protocolType) $ do
+      Utils.unlessIORefEq protocolType (Just req.protocolType) $ do
         throw (ErrorCodeException K.INCONSISTENT_GROUP_PROTOCOL)
       ps <- IO.readIORef supportedProtocols
       let refinedRequestProtocols = (plainProtocols (refineProtocols req.protocols))
