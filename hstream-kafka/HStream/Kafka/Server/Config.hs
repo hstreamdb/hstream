@@ -12,6 +12,7 @@ module HStream.Kafka.Server.Config
   , TlsConfig (..)
   , SecurityProtocolMap, defaultProtocolMap
   , advertisedListenersToPB
+  , StorageOptions (..)
   ) where
 
 import           Control.Exception                    (throwIO)

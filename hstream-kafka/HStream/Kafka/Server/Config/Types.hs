@@ -9,6 +9,7 @@ module HStream.Kafka.Server.Config.Types
   , ListenersSecurityProtocolMap
   , TlsConfig (..)
   , SecurityProtocolMap, defaultProtocolMap
+  , StorageOptions (..)
 
     -- * Helpers
   , advertisedListenersToPB
@@ -66,15 +67,17 @@ data ServerOpts = ServerOpts
 
   , _maxRecordSize                :: !Int
   , _seedNodes                    :: ![(ByteString, Int)]
-
-  , _ldLogLevel                   :: !LDLogLevel
-  , _ldConfigPath                 :: !CBytes
-
-  , _compression                  :: !Compression
+  , _disableAutoCreateTopic       :: !Bool
 
   , _enableSaslAuth               :: !Bool
 
   , _kafkaBrokerConfigs           :: !KC.KafkaBrokerConfigs
+
+    -- Store Options
+  , _storage                      :: !StorageOptions
+  , _compression                  :: !Compression
+  , _ldLogLevel                   :: !LDLogLevel
+  , _ldConfigPath                 :: !CBytes
   } deriving (Show, Eq)
 
 -------------------------------------------------------------------------------
@@ -184,3 +187,8 @@ parseMetaStoreAddr t =
           | s == "file" -> FileAddr . Text.unpack $ ip
           | otherwise -> errorWithoutStackTrace $ "Invalid meta store address, unsupported scheme: " <> show s
         Left eMsg -> errorWithoutStackTrace eMsg
+
+data StorageOptions = StorageOptions
+  { fetchReaderTimeout :: Int
+  , fetchMaxLen        :: Int
+  } deriving (Show, Eq)
