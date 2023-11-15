@@ -44,6 +44,18 @@ base = describe "BaseSpec" $ do
     ss <- S.findStreams client S.StreamTypeStream
     ss `shouldContain` [streamId]
 
+  it "getStreamIdFromLogId" $ do
+    name <- newRandomName 5
+    let stream = S.mkStreamId S.StreamTypeStream name
+        topic = S.mkStreamId S.StreamTypeTopic name
+    let attrs = S.def { S.logReplicationFactor = S.defAttr1 1 }
+    S.createStream client stream attrs
+    streamLogid <- S.createStreamPartition client stream (Just "key1") Map.empty
+    S.createStream client topic attrs
+    topicLogid <- S.createStreamPartition client topic (Just "key1") Map.empty
+    S.getStreamIdFromLogId client streamLogid `shouldReturn` (stream, Just "key1")
+    S.getStreamIdFromLogId client topicLogid `shouldReturn` (topic, Just "key1")
+
   it "stream partition" $ do
     let keyString = "some_key"
         key = Just keyString
