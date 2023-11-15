@@ -64,6 +64,7 @@ data ServerOpts = ServerOpts
   , _gossipOpts                   :: !GossipOpts
 
   , _topicRepFactor               :: !Int
+  , _partitionNums                :: !Int
   , _maxRecordSize                :: !Int
   , _seedNodes                    :: ![(ByteString, Int)]
 
@@ -73,6 +74,8 @@ data ServerOpts = ServerOpts
   , _compression                  :: !Compression
 
   , _enableSaslAuth               :: !Bool
+
+  , _disableAutoCreateTopic       :: !Bool
   } deriving (Show, Eq)
 
 -------------------------------------------------------------------------------
@@ -122,6 +125,9 @@ data CliOptions = CliOptions
 
     -- SASL Authentication
   , cliEnableSaslAuth               :: !Bool
+
+    -- Kafka config
+  , cliDisableAutoCreateTopic       :: !Bool
   } deriving Show
 
 -------------------------------------------------------------------------------

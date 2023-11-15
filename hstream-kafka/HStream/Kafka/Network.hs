@@ -136,12 +136,13 @@ runServer opts sc mkPreAuthedHandlers mkAuthedHandlers =
     runHandler peer handlers reqBs authed = do
       headerResult <- runParser @RequestHeader get reqBs
       case headerResult of
-        Done l RequestHeader{..} -> do
+        Done l r@RequestHeader{..} -> do
+          Log.debug $ "receive requestHeader: " <> Log.build (show r)
           let ServiceHandler{..} = findHandler handlers requestApiKey requestApiVersion
           case rpcHandler of
             UnaryHandler rpcHandler' -> do
               (req, left) <- runGet' l
-              when (not . BS.null $ left) $
+              unless (BS.null $ left) $
                 Log.warning $ "Leftover bytes: " <> Log.buildString' left
               Log.debug $ "Received request "
                        <> Log.buildString' requestApiKey

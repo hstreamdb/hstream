@@ -96,6 +96,8 @@ cliOptionsParser = do
 
   cliEnableSaslAuth <- enableSaslAuthParser
 
+  cliDisableAutoCreateTopic <- disableAutoCreateTopicParser
+
   return CliOptions{..}
 
 -------------------------------------------------------------------------------
@@ -255,6 +257,12 @@ enableSaslAuthParser :: O.Parser Bool
 enableSaslAuthParser = flag False True
   $  long "enable-sasl"
   <> help "Enable SASL authentication"
+
+disableAutoCreateTopicParser :: O.Parser Bool
+disableAutoCreateTopicParser = flag False True
+  $  long "disable-auto-create-topic"
+  <> help "Disable auto create topic"
+
 -------------------------------------------------------------------------------
 
 parserOpt :: (Text -> Either String a) -> O.Mod O.OptionFields a -> O.Parser a

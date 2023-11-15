@@ -23,7 +23,8 @@ data ServerContext = ServerContext
   { serverID                 :: !Word32
   , serverOpts               :: !ServerOpts
   , scAdvertisedListenersKey :: !(Maybe Text)
-  , scDefaultStreamRepFactor :: !Int
+  , scDefaultTopicRepFactor  :: !Int
+  , scDefaultPartitionNum    :: !Int
   , scMaxRecordSize          :: !Int
   , metaHandle               :: !MetaHandle
   , scStatsHolder            :: !Stats.StatsHolder
@@ -33,6 +34,7 @@ data ServerContext = ServerContext
   , gossipContext            :: !GossipContext
   , scOffsetManager          :: !OffsetManager
   , scGroupCoordinator       :: GroupCoordinator
+  , enableAutoCreateTopic    :: !Bool
 }
 
 initServerContext
@@ -53,7 +55,8 @@ initServerContext opts@ServerOpts{..} gossipContext mh = do
       { serverID                 = _serverID
       , serverOpts               = opts
       , scAdvertisedListenersKey = Nothing
-      , scDefaultStreamRepFactor = _topicRepFactor
+      , scDefaultTopicRepFactor  = _topicRepFactor
+      , scDefaultPartitionNum    = _partitionNums
       , scMaxRecordSize          = _maxRecordSize
       , metaHandle               = mh
       , scStatsHolder            = statsHolder
@@ -63,4 +66,5 @@ initServerContext opts@ServerOpts{..} gossipContext mh = do
       , gossipContext            = gossipContext
       , scOffsetManager          = offsetManager
       , scGroupCoordinator       = scGroupCoordinator
+      , enableAutoCreateTopic    = not _disableAutoCreateTopic
       }
