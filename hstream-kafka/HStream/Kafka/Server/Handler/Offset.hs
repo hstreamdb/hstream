@@ -107,17 +107,17 @@ listOffsetTopicPartitions ServerContext{..} topicName (Just offsetsPartitions) =
 handleOffsetCommitV0
   :: ServerContext -> K.RequestContext -> K.OffsetCommitRequestV0 -> IO K.OffsetCommitResponseV0
 handleOffsetCommitV0 ServerContext{..} _ req = do
-  GC.commitOffsetsV0 scGroupCoordinator scLDClient (fromIntegral serverID) req
+  GC.commitOffsetsV0 scGroupCoordinator req
 
 handleOffsetCommitV1
   :: ServerContext -> K.RequestContext -> K.OffsetCommitRequestV1 -> IO K.OffsetCommitResponseV1
 handleOffsetCommitV1 ServerContext{..} _ req = do
-  GC.commitOffsetsV1 scGroupCoordinator scLDClient (fromIntegral serverID) req
+  GC.commitOffsetsV1 scGroupCoordinator req
 
 handleOffsetCommitV2
   :: ServerContext -> K.RequestContext -> K.OffsetCommitRequestV2 -> IO K.OffsetCommitResponseV2
 handleOffsetCommitV2 ServerContext{..} _ req = do
-  GC.commitOffsetsV2 scGroupCoordinator scLDClient (fromIntegral serverID) req
+  GC.commitOffsetsV2 scGroupCoordinator req
 
 --------------------
 -- 9: OffsetFetch

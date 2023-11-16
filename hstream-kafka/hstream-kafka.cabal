@@ -113,7 +113,7 @@ library
     HStream.Kafka.Common.Utils
     HStream.Kafka.Group.Group
     HStream.Kafka.Group.GroupCoordinator
-    HStream.Kafka.Group.GroupMetadataManager
+    HStream.Kafka.Group.GroupOffsetManager
     HStream.Kafka.Group.Member
     HStream.Kafka.Group.OffsetsStore
     HStream.Kafka.Network
@@ -140,8 +140,10 @@ library
   hs-source-dirs:     .
   build-tool-depends: hsc2hs:hsc2hs
   build-depends:
+    , aeson
     , attoparsec
     , base                          >=4.11     && <5
+    , base64
     , bytestring
     , colourista                    ^>=0.1.0.1
     , containers
@@ -168,6 +170,7 @@ library
     , vector-hashtables
     , yaml
     , Z-Data
+    , zoovisitor
 
   default-language:   GHC2021
   default-extensions:

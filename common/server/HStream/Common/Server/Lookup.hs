@@ -6,6 +6,8 @@ module HStream.Common.Server.Lookup
     -- * Internals
   , lookupNode
   , lookupNodePersist
+
+  , kafkaResourceMetaId
   ) where
 
 import           Control.Concurrent.STM

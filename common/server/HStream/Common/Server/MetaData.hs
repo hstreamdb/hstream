@@ -6,6 +6,9 @@ module HStream.Common.Server.MetaData
   , clusterStartTimeId
   , TaskAllocation (..), renderTaskAllocationsToTable
 
+  , GroupMetadataValue(..)
+  , MemberMetadataValue(..)
+
   , initKafkaZkPaths
   , initKafkaRqTables
   , initKafkaFileTables
@@ -27,6 +30,9 @@ import           System.FileLock                       (SharedExclusive (Exclusi
 import           Z.Data.CBytes                         (CBytes)
 import           ZooKeeper.Types                       (ZHandle)
 
+import           Data.Int                              (Int32)
+import qualified Data.Text                             as T
+import qualified Data.Vector                           as V
 import           HStream.Common.Server.MetaData.Values
 import           HStream.Exception                     (RQLiteTableAlreadyExists)
 import           HStream.MetaStore.FileUtils           (Contents, createTables)
@@ -63,6 +69,49 @@ renderTaskAllocationsToTable relations =
       rows = map (\TaskAllocation{..} -> [taskAllocationServerId]) relations
    in Aeson.object ["headers" Aeson..= headers, "rows" Aeson..= rows]
 
+-------------------- Group Metadata Value -------------------------
+data GroupMetadataValue
+  = GroupMetadataValue
+  { groupId       :: T.Text
+  , generationId  :: Int32
+
+  -- protocol
+  , protocolType  :: T.Text
+  , prototcolName :: Maybe T.Text
+
+  , leader        :: Maybe T.Text
+  , members       :: V.Vector MemberMetadataValue
+  } deriving (Show, Eq, Generic)
+
+instance FromJSON GroupMetadataValue
+instance ToJSON GroupMetadataValue
+
+instance HasPath GroupMetadataValue ZHandle where
+  myRootPath = rootPath <> "/groups"
+
+instance HasPath GroupMetadataValue RHandle where
+  myRootPath = "groups"
+
+instance HasPath GroupMetadataValue FHandle where
+  myRootPath = "groups"
+
+
+data MemberMetadataValue
+  = MemberMetadataValue
+  { memberId         :: T.Text
+  , clientId         :: T.Text
+  , clientHost       :: T.Text
+  , sessionTimeout   :: Int32
+  , rebalanceTimeout :: Int32
+
+  -- base64
+  , subscription     :: T.Text
+  , assignment       :: T.Text
+  } deriving (Show, Eq, Generic)
+
+instance FromJSON MemberMetadataValue
+instance ToJSON MemberMetadataValue
+
 -------------------------------------------------------------------------------
 
 initializeZkPaths :: HasCallStack => ZHandle -> [CBytes] -> IO ()
@@ -89,16 +138,19 @@ kafkaZkPaths =
   , textToCBytes kafkaRootPath
   , textToCBytes $ myRootPath @Proto.Timestamp @ZHandle
   , textToCBytes $ myRootPath @TaskAllocation @ZHandle
+  , textToCBytes $ myRootPath @GroupMetadataValue @ZHandle
   ]
 
 kafkaRqTables :: [Text]
 kafkaRqTables =
   [ myRootPath @TaskAllocation @RHandle
+  , myRootPath @GroupMetadataValue @RHandle
   ]
 
 kafkaFileTables :: [Text]
 kafkaFileTables =
   [ myRootPath @TaskAllocation @FHandle
+  , myRootPath @GroupMetadataValue @FHandle
   ]
 
 initKafkaZkPaths :: HasCallStack => ZHandle -> IO ()

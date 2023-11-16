@@ -62,6 +62,7 @@ library
     HStream.Common.Server.Lookup
     HStream.Common.Server.MetaData
     HStream.Common.Server.Shard
+    HStream.Common.Server.TaskManager
     HStream.Common.Server.Types
 
   other-modules:      HStream.Common.Server.MetaData.Values
