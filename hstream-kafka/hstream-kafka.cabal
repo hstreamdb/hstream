@@ -171,6 +171,7 @@ library
     , yaml
     , Z-Data
     , zoovisitor
+    , clock
 
   default-language:   GHC2021
   default-extensions:

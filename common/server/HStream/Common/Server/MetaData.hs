@@ -145,12 +145,14 @@ kafkaRqTables :: [Text]
 kafkaRqTables =
   [ myRootPath @TaskAllocation @RHandle
   , myRootPath @GroupMetadataValue @RHandle
+  , myRootPath @Proto.Timestamp @RHandle
   ]
 
 kafkaFileTables :: [Text]
 kafkaFileTables =
   [ myRootPath @TaskAllocation @FHandle
   , myRootPath @GroupMetadataValue @FHandle
+  , myRootPath @Proto.Timestamp @RHandle
   ]
 
 initKafkaZkPaths :: HasCallStack => ZHandle -> IO ()
