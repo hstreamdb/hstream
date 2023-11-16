@@ -6,7 +6,7 @@ module HStream.Kafka.Group.GroupOffsetManager
   , storeOffsets
   , fetchOffsets
   , fetchAllOffsets
-  , loadOffsets
+  , loadOffsetsFromStorage
   ) where
 
 import           Control.Exception                   (throw)
