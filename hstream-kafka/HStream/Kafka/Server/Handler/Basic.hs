@@ -37,6 +37,7 @@ import qualified Kafka.Protocol.Encoding         as K
 import qualified Kafka.Protocol.Error            as K
 import qualified Kafka.Protocol.Message          as K
 import qualified Kafka.Protocol.Service          as K
+import qualified HStream.Kafka.Common.Utils as Utils
 
 --------------------
 -- 18: ApiVersions
@@ -233,3 +234,26 @@ handleMetadataV4 ctx@ServerContext{..} _ req@K.MetadataRequestV4{..} = do
 apiVersionV0To :: K.ApiVersionV0 -> K.ApiVersion
 apiVersionV0To K.ApiVersionV0{..} =
   let taggedFields = K.EmptyTaggedFields in K.ApiVersion{..}
+
+---------------------------------------------------------------------------
+--  32: DescribeConfigs
+---------------------------------------------------------------------------
+handleDescribeConfigs
+  :: ServerContext
+  -> K.RequestContext
+  -> K.DescribeConfigsRequest
+  -> IO K.DescribeConfigsResponse
+handleDescribeConfigs serverCtx reqCtx req = do
+  results <- V.forM (Utils.kaArrayToVector req.resources) $ \resource -> do
+    -- case resource.resourceType of
+    configs <- undefined
+    undefined
+    -- return $ K.DescribeConfigsResult {
+    --   errorMessage=_errorMessage
+    --   , resourceName=_resourceName
+    --   , configs=configs
+    --   , errorCode=_errorCode
+    --   , resourceType=_resourceType
+    --   }
+  return $ K.DescribeConfigsResponse {results=K.NonNullKaArray results, throttleTimeMs=0}
+

@@ -190,6 +190,97 @@ deletableTopicResultFromV0 x = DeletableTopicResult
   , errorCode = x.errorCode
   }
 
+data DescribeConfigsResource = DescribeConfigsResource
+  { resourceType      :: {-# UNPACK #-} !Int8
+    -- ^ The resource type.
+  , resourceName      :: !Text
+    -- ^ The resource name.
+  , configurationKeys :: !(KaArray Text)
+    -- ^ The configuration keys to list, or null to list all configuration
+    -- keys.
+  } deriving (Show, Eq, Generic)
+instance Serializable DescribeConfigsResource
+
+describeConfigsResourceToV0 :: DescribeConfigsResource -> DescribeConfigsResourceV0
+describeConfigsResourceToV0 x = DescribeConfigsResourceV0
+  { resourceType = x.resourceType
+  , resourceName = x.resourceName
+  , configurationKeys = x.configurationKeys
+  }
+
+describeConfigsResourceFromV0 :: DescribeConfigsResourceV0 -> DescribeConfigsResource
+describeConfigsResourceFromV0 x = DescribeConfigsResource
+  { resourceType = x.resourceType
+  , resourceName = x.resourceName
+  , configurationKeys = x.configurationKeys
+  }
+
+data DescribeConfigsResourceResult = DescribeConfigsResourceResult
+  { name        :: !Text
+    -- ^ The configuration name.
+  , value       :: !NullableString
+    -- ^ The configuration value.
+  , readOnly    :: Bool
+    -- ^ True if the configuration is read-only.
+  , isDefault   :: Bool
+    -- ^ True if the configuration is not set.
+  , isSensitive :: Bool
+    -- ^ True if this configuration is sensitive.
+  } deriving (Show, Eq, Generic)
+instance Serializable DescribeConfigsResourceResult
+
+describeConfigsResourceResultToV0 :: DescribeConfigsResourceResult -> DescribeConfigsResourceResultV0
+describeConfigsResourceResultToV0 x = DescribeConfigsResourceResultV0
+  { name = x.name
+  , value = x.value
+  , readOnly = x.readOnly
+  , isDefault = x.isDefault
+  , isSensitive = x.isSensitive
+  }
+
+describeConfigsResourceResultFromV0 :: DescribeConfigsResourceResultV0 -> DescribeConfigsResourceResult
+describeConfigsResourceResultFromV0 x = DescribeConfigsResourceResult
+  { name = x.name
+  , value = x.value
+  , readOnly = x.readOnly
+  , isDefault = x.isDefault
+  , isSensitive = x.isSensitive
+  }
+
+data DescribeConfigsResult = DescribeConfigsResult
+  { errorCode    :: {-# UNPACK #-} !ErrorCode
+    -- ^ The error code, or 0 if we were able to successfully describe the
+    -- configurations.
+  , errorMessage :: !NullableString
+    -- ^ The error message, or null if we were able to successfully describe
+    -- the configurations.
+  , resourceType :: {-# UNPACK #-} !Int8
+    -- ^ The resource type.
+  , resourceName :: !Text
+    -- ^ The resource name.
+  , configs      :: !(KaArray DescribeConfigsResourceResult)
+    -- ^ Each listed configuration.
+  } deriving (Show, Eq, Generic)
+instance Serializable DescribeConfigsResult
+
+describeConfigsResultToV0 :: DescribeConfigsResult -> DescribeConfigsResultV0
+describeConfigsResultToV0 x = DescribeConfigsResultV0
+  { errorCode = x.errorCode
+  , errorMessage = x.errorMessage
+  , resourceType = x.resourceType
+  , resourceName = x.resourceName
+  , configs = fmap describeConfigsResourceResultToV0 x.configs
+  }
+
+describeConfigsResultFromV0 :: DescribeConfigsResultV0 -> DescribeConfigsResult
+describeConfigsResultFromV0 x = DescribeConfigsResult
+  { errorCode = x.errorCode
+  , errorMessage = x.errorMessage
+  , resourceType = x.resourceType
+  , resourceName = x.resourceName
+  , configs = fmap describeConfigsResourceResultFromV0 x.configs
+  }
+
 data DescribedGroup = DescribedGroup
   { errorCode    :: {-# UNPACK #-} !ErrorCode
     -- ^ The describe error, or 0 if there was no error.
@@ -1327,6 +1418,42 @@ deleteTopicsResponseFromV0 x = DeleteTopicsResponse
   { responses = fmap deletableTopicResultFromV0 x.responses
   }
 
+newtype DescribeConfigsRequest = DescribeConfigsRequest
+  { resources :: (KaArray DescribeConfigsResource)
+  } deriving (Show, Eq, Generic)
+instance Serializable DescribeConfigsRequest
+
+describeConfigsRequestToV0 :: DescribeConfigsRequest -> DescribeConfigsRequestV0
+describeConfigsRequestToV0 x = DescribeConfigsRequestV0
+  { resources = fmap describeConfigsResourceToV0 x.resources
+  }
+
+describeConfigsRequestFromV0 :: DescribeConfigsRequestV0 -> DescribeConfigsRequest
+describeConfigsRequestFromV0 x = DescribeConfigsRequest
+  { resources = fmap describeConfigsResourceFromV0 x.resources
+  }
+
+data DescribeConfigsResponse = DescribeConfigsResponse
+  { throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
+  , results        :: !(KaArray DescribeConfigsResult)
+    -- ^ The results for each resource.
+  } deriving (Show, Eq, Generic)
+instance Serializable DescribeConfigsResponse
+
+describeConfigsResponseToV0 :: DescribeConfigsResponse -> DescribeConfigsResponseV0
+describeConfigsResponseToV0 x = DescribeConfigsResponseV0
+  { throttleTimeMs = x.throttleTimeMs
+  , results = fmap describeConfigsResultToV0 x.results
+  }
+
+describeConfigsResponseFromV0 :: DescribeConfigsResponseV0 -> DescribeConfigsResponse
+describeConfigsResponseFromV0 x = DescribeConfigsResponse
+  { throttleTimeMs = x.throttleTimeMs
+  , results = fmap describeConfigsResultFromV0 x.results
+  }
+
 newtype DescribeGroupsRequest = DescribeGroupsRequest
   { groups :: (KaArray Text)
   } deriving (Show, Eq, Generic)
@@ -2166,6 +2293,13 @@ instance Exception DeleteTopicsResponseEx
 
 catchDeleteTopicsResponseEx :: IO DeleteTopicsResponse -> IO DeleteTopicsResponse
 catchDeleteTopicsResponseEx act = act `catch` \(DeleteTopicsResponseEx resp) -> pure resp
+
+newtype DescribeConfigsResponseEx = DescribeConfigsResponseEx DescribeConfigsResponse
+  deriving (Show, Eq)
+instance Exception DescribeConfigsResponseEx
+
+catchDescribeConfigsResponseEx :: IO DescribeConfigsResponse -> IO DescribeConfigsResponse
+catchDescribeConfigsResponseEx act = act `catch` \(DescribeConfigsResponseEx resp) -> pure resp
 
 newtype DescribeGroupsResponseEx = DescribeGroupsResponseEx DescribeGroupsResponse
   deriving (Show, Eq)
