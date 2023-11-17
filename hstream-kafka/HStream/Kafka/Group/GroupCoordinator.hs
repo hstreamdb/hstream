@@ -242,7 +242,6 @@ loadGroupAndOffsets gc groupId = do
   GOM.loadOffsetsFromStorage offsetManager
   Meta.getMeta @CM.GroupMetadataValue groupId gc.metaHandle >>= \case
     Nothing -> do
-      -- Load Empty Group
       Log.warning $ "load group failed, group:" <> Log.build groupId <> " not found in metastore"
     Just value -> do
       Log.info $ "loading group from metastore, groupId:" <> Log.build groupId
