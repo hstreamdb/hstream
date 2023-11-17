@@ -143,13 +143,15 @@ data Group
 
   -- metastore
   , metaHandle           :: Meta.MetaHandle
+
+  --
+  , storedMetadata       :: IO.IORef Bool
   }
 
 newGroup :: T.Text -> GroupOffsetManager -> Meta.MetaHandle -> IO Group
 newGroup group metadataManager metaHandle = do
   lock <- C.newMVar ()
   state <- IO.newIORef Empty
-  -- TODO: -1 by default ?
   groupGenerationId <- IO.newIORef 0
   leader <- IO.newIORef Nothing
   members <- H.new
@@ -165,6 +167,8 @@ newGroup group metadataManager metaHandle = do
   protocolType <- IO.newIORef Nothing
   protocolName <- IO.newIORef Nothing
   supportedProtocols <- IO.newIORef Set.empty
+
+  storedMetadata <- IO.newIORef False
 
   return $ Group
     { lock = lock
@@ -191,6 +195,8 @@ newGroup group metadataManager metaHandle = do
     , supportedProtocols = supportedProtocols
 
     , metaHandle = metaHandle
+
+    , storedMetadata = storedMetadata
     }
 
 newGroupFromValue :: CM.GroupMetadataValue -> GroupOffsetManager -> Meta.MetaHandle -> IO Group
@@ -199,7 +205,6 @@ newGroupFromValue value metadataManager metaHandle = do
 
   state <- IO.newIORef (if V.null value.members then Empty else Stable)
 
-  -- TODO: -1 by default ?
   groupGenerationId <- IO.newIORef value.generationId
   leader <- IO.newIORef value.leader
 
@@ -214,6 +219,8 @@ newGroupFromValue value metadataManager metaHandle = do
   protocolName <- IO.newIORef value.prototcolName
 
   supportedProtocols <- IO.newIORef Set.empty
+
+  storedMetadata <- IO.newIORef True
 
   let group = Group
         { lock = lock
@@ -240,6 +247,8 @@ newGroupFromValue value metadataManager metaHandle = do
         , supportedProtocols = supportedProtocols
 
         , metaHandle = metaHandle
+
+        , storedMetadata = storedMetadata
         }
 
   -- add members
@@ -785,10 +794,14 @@ commitOffsets group@Group{..} req = do
       CompletingRebalance -> throw (ErrorCodeException K.REBALANCE_IN_PROGRESS)
       Dead -> throw (ErrorCodeException K.UNKNOWN_MEMBER_ID)
       _ -> do
+        -- updateLatestHeartbeat
         -- TODO: udpate heartbeat
         topics <- Utils.forKaArrayM req.topics $ \K.OffsetCommitRequestTopicV0{..} -> do
           res <- GOM.storeOffsets metadataManager name partitions
           return $ K.OffsetCommitResponseTopicV0 {partitions = res, name = name}
+        Utils.whenIORefEq storedMetadata False $ do
+          Log.info $ "commited offsets on Empty Group, storing Empty Group:" <> Log.build group.groupId
+          storeGroup group Map.empty
         return K.OffsetCommitResponseV0 {topics=topics}
 
 validateOffsetcommit :: Group -> K.OffsetCommitRequestV2 -> IO ()
@@ -863,6 +876,7 @@ storeGroup :: Group -> Map.Map T.Text BS.ByteString -> IO ()
 storeGroup group assignments = do
   value <- getGroupValue group assignments
   Meta.upsertMeta @CM.GroupMetadataValue group.groupId value group.metaHandle
+  IO.atomicWriteIORef group.storedMetadata True
 
 getGroupValue :: Group -> Map.Map T.Text BS.ByteString -> IO CM.GroupMetadataValue
 getGroupValue group assignments = do
