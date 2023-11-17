@@ -14,6 +14,7 @@ module HStream.Utils.Converter
   , bs2str
   , lbs2text
   , int2cbytes
+  , intToCBytesWithPadding
   , cBytesToText
   , cbytes2bs
   , cBytesToLazyText
@@ -48,6 +49,7 @@ import qualified Data.Aeson                  as Aeson
 import           Data.Bifunctor              (bimap)
 import qualified Data.ByteString             as BS
 import qualified Data.ByteString.Lazy        as BL
+import           Data.Int
 import qualified Data.Map                    as M
 import qualified Data.Map.Strict             as Map
 import           Data.Scientific             (toRealFloat)
@@ -143,6 +145,12 @@ valueToZJsonValue (PB.Value (Just _)) = error "impossible happened"
 int2cbytes :: (Integral a, Bounded a) => a -> ZCB.CBytes
 int2cbytes = ZCB.buildCBytes . Build.int
 {-# INLINE int2cbytes #-}
+
+intToCBytesWithPadding :: Int64 -> ZCB.CBytes
+intToCBytesWithPadding =
+  -- The max length of Word64 is 20: length $ show (maxBound :: Word64)
+  ZCB.buildCBytes . Build.intWith (Build.IFormat 20 Build.ZeroPadding False)
+{-# INLINE intToCBytesWithPadding #-}
 
 cBytesToText :: ZCB.CBytes -> Text
 cBytesToText = Text.pack . ZCB.unpack

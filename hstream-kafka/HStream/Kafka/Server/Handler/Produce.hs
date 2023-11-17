@@ -12,6 +12,7 @@ import           Data.Word
 import qualified HStream.Kafka.Common.OffsetManager as K
 import qualified HStream.Kafka.Common.RecordFormat  as K
 import           HStream.Kafka.Server.Types         (ServerContext (..))
+import qualified HStream.Logger                     as Log
 import qualified HStream.Store                      as S
 import qualified HStream.Utils                      as U
 import qualified Kafka.Protocol.Encoding            as K
@@ -51,10 +52,14 @@ handleProduceV2 ServerContext{..} _ K.ProduceRequestV2{..} = do
     partitionResponses <- V.forM partitionData' $ \K.PartitionProduceDataV2{..} -> do
       let Just (_, logid) = partitions V.!? (fromIntegral index) -- TODO: handle Nothing
       let Just recordBytes' = recordBytes -- TODO: handle Nothing
-
+      Log.debug1 $ "Append to logid " <> Log.build logid
+                <> "(" <> Log.build index <> ")"
       -- Wirte appends
       (S.AppendCompletion{..}, offset) <-
         appendRecords True scLDClient scOffsetManager logid recordBytes'
+
+      Log.debug1 $ "Append done " <> Log.build appendCompLogID
+                <> ", lsn: " <> Log.build appendCompLSN
 
       -- TODO: logAppendTimeMs, only support LogAppendTime now
       pure $ K.PartitionProduceResponseV2 index K.NONE offset appendCompTimestamp
@@ -99,7 +104,7 @@ appendRecords shouldValidateCrc ldclient om logid bs = do
   K.withOffsetN om logid (fromIntegral batchLength) $ \o -> do
     let startOffset = o + 1 - fromIntegral batchLength
         records' = K.modifyBatchRecordsOffset (+ startOffset) records
-    let appendKey = U.int2cbytes o
+    let appendKey = U.intToCBytesWithPadding o
         appendAttrs = Just [(S.KeyTypeFindKey, appendKey)]
         storedBs = K.encodeBatchRecords records'
         -- FIXME unlikely overflow: convert batchLength from Int to Int32

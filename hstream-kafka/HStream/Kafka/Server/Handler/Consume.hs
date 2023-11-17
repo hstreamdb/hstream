@@ -74,6 +74,8 @@ handleFetch ServerContext{..} _ r = K.catchFetchResponseEx $ do
       case elsn of
         Left _ -> pure ()
         Right (startlsn, _, _) -> do
+          Log.debug1 $ "start reading log "
+                    <> Log.build logid <> " from " <> Log.build startlsn
           S.readerStartReading reader logid startlsn S.LSN_MAX
 
   -- Read records from storage
@@ -148,8 +150,12 @@ getPartitionLsn ldclient om logid partition offset = do
     Just (latestOffset, tailLsn) -> do
       let highwaterOffset = latestOffset + 1
       if | offset < latestOffset -> do
-             let key = U.int2cbytes offset
+             let key = U.intToCBytesWithPadding offset
+             Log.debug1 $ "Try findKey " <> Log.buildString' key <> " in logid "
+                       <> Log.build logid
              (_, startLsn) <- S.findKey ldclient logid key S.FindKeyStrict
+             Log.debug1 $ "FindKey result " <> Log.build logid <> ": "
+                       <> Log.build startLsn
              pure $ Right (startLsn, tailLsn, highwaterOffset)
          | offset == latestOffset ->
              pure $ Right (tailLsn, tailLsn, highwaterOffset)

@@ -77,22 +77,22 @@ base = describe "Base" $ do
       void $ S.appendCompressedBS client randlogid "p" S.CompressionNone (Just [])
       sn0 <- S.appendCompLSN <$>
         S.appendCompressedBS client randlogid "p0" S.CompressionNone
-                             (Just [(S.KeyTypeFindKey, "0")])
+                             (Just [(S.KeyTypeFindKey, "00")])
       sn1 <- S.appendCompLSN <$>
         S.appendCompressedBS client randlogid "p1" S.CompressionNone
-                             (Just [(S.KeyTypeFindKey, "1")])
+                             (Just [(S.KeyTypeFindKey, "01")])
       sn2 <- S.appendCompLSN <$>
         S.appendCompressedBS client randlogid "p2" S.CompressionNone
-                             (Just [(S.KeyTypeFindKey, "2")])
+                             (Just [(S.KeyTypeFindKey, "02")])
       void $ S.appendCompressedBS client randlogid "p" S.CompressionNone Nothing
 
-      (lo0, hi0) <- S.findKey client randlogid "0" S.FindKeyStrict
+      (lo0, hi0) <- S.findKey client randlogid "00" S.FindKeyStrict
       lo0 `shouldBe` S.LSN_INVALID
       hi0 `shouldBe` sn0
-      (lo1, hi1) <- S.findKey client randlogid "1" S.FindKeyStrict
+      (lo1, hi1) <- S.findKey client randlogid "01" S.FindKeyStrict
       lo1 `shouldBe` sn0
       hi1 `shouldBe` sn1
-      (lo2, hi2) <- S.findKey client randlogid "2" S.FindKeyStrict
+      (lo2, hi2) <- S.findKey client randlogid "02" S.FindKeyStrict
       lo2 `shouldBe` sn1
       hi2 `shouldBe` sn2
 
