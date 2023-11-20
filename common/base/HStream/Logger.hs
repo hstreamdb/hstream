@@ -23,6 +23,7 @@ module HStream.Logger
   -- * Log function
   , trace
   , debug
+  , debug1
   , info
   , warning
   , fatal
@@ -120,6 +121,9 @@ pattern WARNING = Level 30
 pattern INFO :: Level
 pattern INFO = Level 20
 
+pattern DEBUG1 :: Level
+pattern DEBUG1 = Level 11
+
 pattern DEBUG :: Level
 pattern DEBUG = Level 10
 
@@ -134,6 +138,7 @@ instance Show Level where
   show FATAL    = "fatal"
   show WARNING  = "warning"
   show INFO     = "info"
+  show DEBUG1   = "debug1"
   show DEBUG    = "debug"
   show TRACE    = "trace"
   show NOTSET   = "notset"
@@ -148,6 +153,7 @@ instance Read Level where
         Read.Ident "fatal"    -> FATAL
         Read.Ident "warning"  -> WARNING
         Read.Ident "info"     -> INFO
+        Read.Ident "debug1"   -> DEBUG1
         Read.Ident "debug"    -> DEBUG
         Read.Ident "trace"    -> TRACE
         x -> errorWithoutStackTrace $ "cannot parse log level" <> show x
@@ -200,6 +206,7 @@ defaultColoredFmt time level content cstack (ThreadId tid#) =
         case level of
           -- TODO: color for trace
           DEBUG    -> color Cyan b
+          DEBUG1   -> color Cyan b
           INFO     -> color Magenta b
           WARNING  -> color Yellow b
           FATAL    -> color Red b
@@ -222,6 +229,7 @@ defaultFmtLevel level = case level of
   WARNING  -> "WARNING"
   INFO     -> "INFO"
   DEBUG    -> "DEBUG"
+  DEBUG1   -> "DEBUG1"
   TRACE    -> "TRACE"
   NOTSET   -> "NOTSET"
   level'   -> "LEVEL" <> Log.toLogStr (unLevel level')
@@ -368,6 +376,9 @@ trace = logBylevel False TRACE callStack
 
 debug :: HasCallStack => Log.LogStr -> IO ()
 debug = logBylevel False DEBUG callStack
+
+debug1 :: HasCallStack => Log.LogStr -> IO ()
+debug1 = logBylevel False DEBUG1 callStack
 
 info :: HasCallStack => Log.LogStr -> IO ()
 info = logBylevel False INFO callStack

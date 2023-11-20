@@ -13,7 +13,7 @@ import           Control.Concurrent                (forkIO)
 import qualified Control.Concurrent.Async          as Async
 import           Control.Concurrent.MVar           (MVar, newEmptyMVar, putMVar,
                                                     readMVar)
-import           Control.Exception                 (handle)
+import           Control.Exception                 (Handler (Handler), catches)
 import           Control.Monad                     (forM, forM_, void)
 import qualified Data.Map                          as Map
 import           Data.Maybe                        (isJust)
@@ -158,7 +158,10 @@ serve sc@ServerContext{..} netOpts = do
             Gossip.Gossip -> return ()
             _ -> do
               getProtoTimestamp >>= \x -> upsertMeta @Proto.Timestamp M.clusterStartTimeId x metaHandle
-              handle (\(_ :: HE.RQLiteRowNotFound) -> return ()) $ deleteAllMeta @M.TaskAllocation metaHandle
+              -- FIXME: Why need to call deleteAll here?
+              -- Also in CI, getRqResult(common/hstream/HStream/MetaStore/RqliteUtils.hs) may throw a RQLiteUnspecifiedErr
+              -- because the affected rows are more than 1, why that's invalid ?
+              deleteAllMeta @M.TaskAllocation metaHandle `catches` exceptionHandlers
 
           Log.info "starting task detector"
           TM.runTaskDetector $ TM.TaskDetector {
@@ -178,6 +181,11 @@ serve sc@ServerContext{..} netOpts = do
         <> (if isJust (K.serverSaslOptions netOpts') then "SASL " else "")
         <> "kafka server..."
   K.runServer netOpts' sc K.unAuthedHandlers K.handlers
+  where
+   exceptionHandlers =
+     [ Handler $ \(_ :: HE.RQLiteRowNotFound)    -> return ()
+     , Handler $ \(_ :: HE.RQLiteUnspecifiedErr) -> return ()
+     ]
 
 serveListeners
   :: ServerContext
