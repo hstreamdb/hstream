@@ -498,21 +498,51 @@ type OffsetFetchResponsePartitionV2 = OffsetFetchResponsePartitionV0
 
 type OffsetFetchResponseTopicV2 = OffsetFetchResponseTopicV0
 
-data PartitionProduceDataV2 = PartitionProduceDataV2
+data PartitionProduceDataV0 = PartitionProduceDataV0
   { index       :: {-# UNPACK #-} !Int32
     -- ^ The partition index.
   , recordBytes :: !NullableBytes
     -- ^ The record data to be produced.
   } deriving (Show, Eq, Generic)
-instance Serializable PartitionProduceDataV2
+instance Serializable PartitionProduceDataV0
 
-data TopicProduceDataV2 = TopicProduceDataV2
+data TopicProduceDataV0 = TopicProduceDataV0
   { name          :: !Text
     -- ^ The topic name.
-  , partitionData :: !(KaArray PartitionProduceDataV2)
+  , partitionData :: !(KaArray PartitionProduceDataV0)
     -- ^ Each partition to produce to.
   } deriving (Show, Eq, Generic)
-instance Serializable TopicProduceDataV2
+instance Serializable TopicProduceDataV0
+
+type PartitionProduceDataV1 = PartitionProduceDataV0
+
+type TopicProduceDataV1 = TopicProduceDataV0
+
+type PartitionProduceDataV2 = PartitionProduceDataV0
+
+type TopicProduceDataV2 = TopicProduceDataV0
+
+data PartitionProduceResponseV0 = PartitionProduceResponseV0
+  { index      :: {-# UNPACK #-} !Int32
+    -- ^ The partition index.
+  , errorCode  :: {-# UNPACK #-} !ErrorCode
+    -- ^ The error code, or 0 if there was no error.
+  , baseOffset :: {-# UNPACK #-} !Int64
+    -- ^ The base offset.
+  } deriving (Show, Eq, Generic)
+instance Serializable PartitionProduceResponseV0
+
+data TopicProduceResponseV0 = TopicProduceResponseV0
+  { name               :: !Text
+    -- ^ The topic name
+  , partitionResponses :: !(KaArray PartitionProduceResponseV0)
+    -- ^ Each partition that we produced to within the topic.
+  } deriving (Show, Eq, Generic)
+instance Serializable TopicProduceResponseV0
+
+type PartitionProduceResponseV1 = PartitionProduceResponseV0
+
+type TopicProduceResponseV1 = TopicProduceResponseV0
 
 data PartitionProduceResponseV2 = PartitionProduceResponseV2
   { index           :: {-# UNPACK #-} !Int32
@@ -921,17 +951,35 @@ data OffsetFetchResponseV2 = OffsetFetchResponseV2
   } deriving (Show, Eq, Generic)
 instance Serializable OffsetFetchResponseV2
 
-data ProduceRequestV2 = ProduceRequestV2
+data ProduceRequestV0 = ProduceRequestV0
   { acks      :: {-# UNPACK #-} !Int16
     -- ^ The number of acknowledgments the producer requires the leader to have
     -- received before considering a request complete. Allowed values: 0 for no
     -- acknowledgments, 1 for only the leader and -1 for the full ISR.
   , timeoutMs :: {-# UNPACK #-} !Int32
     -- ^ The timeout to await a response in milliseconds.
-  , topicData :: !(KaArray TopicProduceDataV2)
+  , topicData :: !(KaArray TopicProduceDataV0)
     -- ^ Each topic to produce to.
   } deriving (Show, Eq, Generic)
-instance Serializable ProduceRequestV2
+instance Serializable ProduceRequestV0
+
+type ProduceRequestV1 = ProduceRequestV0
+
+type ProduceRequestV2 = ProduceRequestV0
+
+newtype ProduceResponseV0 = ProduceResponseV0
+  { responses :: (KaArray TopicProduceResponseV0)
+  } deriving (Show, Eq, Generic)
+instance Serializable ProduceResponseV0
+
+data ProduceResponseV1 = ProduceResponseV1
+  { responses      :: !(KaArray TopicProduceResponseV0)
+    -- ^ Each produce response
+  , throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
+  } deriving (Show, Eq, Generic)
+instance Serializable ProduceResponseV1
 
 data ProduceResponseV2 = ProduceResponseV2
   { responses      :: !(KaArray TopicProduceResponseV2)
@@ -1002,7 +1050,8 @@ data HStreamKafkaV0
 instance Service HStreamKafkaV0 where
   type ServiceName HStreamKafkaV0 = "HStreamKafkaV0"
   type ServiceMethods HStreamKafkaV0 =
-    '[ "fetch"
+    '[ "produce"
+     , "fetch"
      , "listOffsets"
      , "metadata"
      , "offsetCommit"
@@ -1020,6 +1069,13 @@ instance Service HStreamKafkaV0 where
      , "deleteTopics"
      , "saslAuthenticate"
      ]
+
+instance HasMethodImpl HStreamKafkaV0 "produce" where
+  type MethodName HStreamKafkaV0 "produce" = "produce"
+  type MethodKey HStreamKafkaV0 "produce" = 0
+  type MethodVersion HStreamKafkaV0 "produce" = 0
+  type MethodInput HStreamKafkaV0 "produce" = ProduceRequestV0
+  type MethodOutput HStreamKafkaV0 "produce" = ProduceResponseV0
 
 instance HasMethodImpl HStreamKafkaV0 "fetch" where
   type MethodName HStreamKafkaV0 "fetch" = "fetch"
@@ -1145,7 +1201,8 @@ data HStreamKafkaV1
 instance Service HStreamKafkaV1 where
   type ServiceName HStreamKafkaV1 = "HStreamKafkaV1"
   type ServiceMethods HStreamKafkaV1 =
-    '[ "fetch"
+    '[ "produce"
+     , "fetch"
      , "listOffsets"
      , "metadata"
      , "offsetCommit"
@@ -1153,6 +1210,13 @@ instance Service HStreamKafkaV1 where
      , "saslHandshake"
      , "apiVersions"
      ]
+
+instance HasMethodImpl HStreamKafkaV1 "produce" where
+  type MethodName HStreamKafkaV1 "produce" = "produce"
+  type MethodKey HStreamKafkaV1 "produce" = 0
+  type MethodVersion HStreamKafkaV1 "produce" = 1
+  type MethodInput HStreamKafkaV1 "produce" = ProduceRequestV1
+  type MethodOutput HStreamKafkaV1 "produce" = ProduceResponseV1
 
 instance HasMethodImpl HStreamKafkaV1 "fetch" where
   type MethodName HStreamKafkaV1 "fetch" = "fetch"
@@ -1324,7 +1388,7 @@ instance Show ApiKey where
 
 supportedApiVersions :: [ApiVersionV0]
 supportedApiVersions =
-  [ ApiVersionV0 (ApiKey 0) 2 2
+  [ ApiVersionV0 (ApiKey 0) 0 2
   , ApiVersionV0 (ApiKey 1) 0 2
   , ApiVersionV0 (ApiKey 2) 0 1
   , ApiVersionV0 (ApiKey 3) 0 4
@@ -1345,6 +1409,8 @@ supportedApiVersions =
   ]
 
 getHeaderVersion :: ApiKey -> Int16 -> (Int16, Int16)
+getHeaderVersion (ApiKey 0) 0  = (1, 0)
+getHeaderVersion (ApiKey 0) 1  = (1, 0)
 getHeaderVersion (ApiKey 0) 2  = (1, 0)
 getHeaderVersion (ApiKey 1) 0  = (1, 0)
 getHeaderVersion (ApiKey 1) 1  = (1, 0)

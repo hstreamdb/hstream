@@ -56,6 +56,7 @@ import qualified Kafka.Protocol.Service                as K
 -------------------------------------------------------------------------------
 
 #cv_handler ApiVersions, 0, 3
+#cv_handler Produce, 0, 2
 #cv_handler Fetch, 0, 2
 
 #cv_handler SaslHandshake, 0, 1
@@ -64,6 +65,9 @@ import qualified Kafka.Protocol.Service                as K
 handlers :: ServerContext -> [K.ServiceHandler]
 handlers sc =
   [ #mk_handler ApiVersions, 0, 3
+    -- Write
+  , #mk_handler Produce, 0, 2
+    -- Read
   , #mk_handler Fetch, 0, 2
 
   , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "metadata") (handleMetadataV0 sc)
@@ -73,10 +77,7 @@ handlers sc =
   , K.hd (K.RPC :: K.RPC K.HStreamKafkaV4 "metadata") (handleMetadataV4 sc)
 
   , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "createTopics") (handleCreateTopicsV0 sc)
-
   , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "deleteTopics") (handleDeleteTopicsV0 sc)
-
-  , K.hd (K.RPC :: K.RPC K.HStreamKafkaV2 "produce") (handleProduceV2 sc)
 
   -- Offsets
   , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "listOffsets") (handleListOffsetsV0 sc)
