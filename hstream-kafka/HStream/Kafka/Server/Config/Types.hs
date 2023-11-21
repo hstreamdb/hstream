@@ -160,6 +160,7 @@ data TlsConfig = TlsConfig
 -- TODO: More SASL mechanisms
 data SaslMechanismOption
   = SaslPlainOption [(String, String)] -- [(user, password)]
+  | SaslScramSha256Option [(String, String)] -- [(user, password)] TODO: salted pw?
   deriving (Show, Eq)
 
 data SaslOptions = SaslOptions

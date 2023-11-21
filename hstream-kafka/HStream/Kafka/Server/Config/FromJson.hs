@@ -2,21 +2,21 @@ module HStream.Kafka.Server.Config.FromJson
   ( parseJSONToOptions
   ) where
 
-import           Control.Applicative               (optional, (<|>))
-import           Control.Exception                 (throw)
-import           Control.Monad                     (when)
-import qualified Data.Attoparsec.Text              as AP
-import           Data.Bifunctor                    (second)
-import           Data.ByteString                   (ByteString)
-import qualified Data.Map.Strict                   as Map
-import           Data.Maybe                        (fromMaybe, isNothing)
-import           Data.String                       (IsString (..))
-import           Data.Text                         (Text, toUpper)
-import           Data.Text.Encoding                (encodeUtf8)
-import qualified Data.Vector                       as V
-import           Data.Yaml                         ((.!=), (.:), (.:?))
-import qualified Data.Yaml                         as Y
-import           Text.Read                         (readEither)
+import           Control.Applicative                     (optional, (<|>))
+import           Control.Exception                       (throw)
+import           Control.Monad                           (when)
+import qualified Data.Attoparsec.Text                    as AP
+import           Data.Bifunctor                          (second)
+import           Data.ByteString                         (ByteString)
+import qualified Data.Map.Strict                         as Map
+import           Data.Maybe                              (fromMaybe, isNothing)
+import           Data.String                             (IsString (..))
+import           Data.Text                               (Text, toUpper)
+import           Data.Text.Encoding                      (encodeUtf8)
+import qualified Data.Vector                             as V
+import           Data.Yaml                               ((.!=), (.:), (.:?))
+import qualified Data.Yaml                               as Y
+import           Text.Read                               (readEither)
 
 import qualified HStream.Kafka.Server.Config.KafkaConfig as KC
 import           HStream.Kafka.Server.Config.Types
@@ -124,6 +124,11 @@ parseJSONToOptions CliOptions{..} obj = do
             traverse (Y.withObject "username and password" parsePlainTuple)
             ) auth_list
           return $ SaslPlainOption (V.toList tups)
+          else if (toUpper mech) == "SCRAM-SHA-256" then do
+            tups <- Y.withArray "auth-list" (
+              traverse (Y.withObject "username and password" parsePlainTuple)
+              ) auth_list
+            return $ SaslScramSha256Option (V.toList tups)
           else throw (Y.AesonException "Invalid SASL mechanism")
   nodeSaslValue <- nodeCfgObj .:? "sasl" .!= Y.Array mempty
   mechOptions <- Y.withArray "sasl config" (traverse (Y.withObject "mechanism list" parseMechanisms)) nodeSaslValue

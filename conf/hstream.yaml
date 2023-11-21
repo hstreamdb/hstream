@@ -266,6 +266,12 @@ kafka:
   #        password: "password"
   #      - username: "user_a"
   #        password: "password_a"
+  #  - mechanism: "SCRAM-SHA-256"
+  #    auth-list:
+  #      - username: "admin"
+  #        password: "password"
+  #      - username: "user_a"
+  #        password: "password_a"
 
   # Cluster Gossip Options
   #
