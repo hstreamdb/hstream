@@ -20,6 +20,7 @@ import qualified HStream.Kafka.Common.Utils             as Utils
 import           HStream.Kafka.Group.Group              (Group)
 import qualified HStream.Kafka.Group.Group              as G
 import           HStream.Kafka.Group.GroupOffsetManager (mkGroupOffsetManager)
+import qualified HStream.Kafka.Group.GroupOffsetManager as GOM
 import qualified HStream.Logger                         as Log
 import qualified HStream.MetaStore.Types                as Meta
 import           HStream.Store                          (LDClient)
@@ -52,7 +53,7 @@ instance TM.TaskManager GroupCoordinator where
   listAllTasks gc = do
     V.fromList . map CM.groupId <$> Meta.listMeta @CM.GroupMetadataValue gc.metaHandle
 
-  loadTaskAsync = loadGroup
+  loadTaskAsync = loadGroupAndOffsets
 
   unloadTaskAsync = unloadGroup
 
@@ -235,23 +236,24 @@ describeGroups gc req = do
 
 ------------------- Load/Unload Group -------------------------
 -- load group from meta store
-loadGroup :: GroupCoordinator -> T.Text -> IO ()
-loadGroup gc groupId = do
+loadGroupAndOffsets :: GroupCoordinator -> T.Text -> IO ()
+loadGroupAndOffsets gc groupId = do
+  offsetManager <- mkGroupOffsetManager gc.ldClient (fromIntegral gc.serverId) groupId
+  GOM.loadOffsetsFromStorage offsetManager
   Meta.getMeta @CM.GroupMetadataValue groupId gc.metaHandle >>= \case
     Nothing -> do
       Log.warning $ "load group failed, group:" <> Log.build groupId <> " not found in metastore"
     Just value -> do
       Log.info $ "loading group from metastore, groupId:" <> Log.build groupId
         <> ", generationId:" <> Log.build value.generationId
-      addGroupByValue gc value
+      addGroupByValue gc value offsetManager
 
-addGroupByValue :: GroupCoordinator -> CM.GroupMetadataValue -> IO ()
-addGroupByValue gc value = do
+addGroupByValue :: GroupCoordinator -> CM.GroupMetadataValue -> GOM.GroupOffsetManager -> IO ()
+addGroupByValue gc value offsetManager = do
   C.withMVar gc.groups $ \gs -> do
     H.lookup gs value.groupId >>= \case
       Nothing -> do
-        metadataManager <- mkGroupOffsetManager gc.ldClient (fromIntegral gc.serverId) value.groupId
-        ng <- G.newGroupFromValue value metadataManager gc.metaHandle
+        ng <- G.newGroupFromValue value offsetManager gc.metaHandle
         H.insert gs value.groupId ng
       Just _ -> do
         Log.warning $ "load group failed, group:" <> Log.build value.groupId <> " is loaded"

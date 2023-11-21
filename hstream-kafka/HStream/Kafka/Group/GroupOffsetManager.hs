@@ -6,6 +6,7 @@ module HStream.Kafka.Group.GroupOffsetManager
   , storeOffsets
   , fetchOffsets
   , fetchAllOffsets
+  , nullOffsets
   , loadOffsetsFromStorage
   ) where
 
@@ -197,6 +198,10 @@ fetchAllOffsets GroupOffsetManager{..} = do
                    }
         foldF tp offset = Map.insertWith (V.++) tp.topicName (V.singleton (makePartition tp.topicPartitionIdx offset))
         makeTopic (name, partitions) = K.OffsetFetchResponseTopicV0 {partitions=KaArray (Just partitions), name=name}
+
+nullOffsets :: GroupOffsetManager -> IO Bool
+nullOffsets GroupOffsetManager{..} = do
+  Map.null <$> readIORef offsetsCache
 
 -------------------------------------------------------------------------------------------------
 -- helper
