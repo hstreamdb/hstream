@@ -127,6 +127,7 @@ library
     HStream.Kafka.Server.Config.Types
     HStream.Kafka.Server.Config.KafkaConfig
     HStream.Kafka.Server.Config.KafkaConfigManager
+    HStream.Kafka.Server.Core.Topic
     HStream.Kafka.Server.Handler.Basic
     HStream.Kafka.Server.Handler.Consume
     HStream.Kafka.Server.Handler.Group
@@ -134,7 +135,9 @@ library
     HStream.Kafka.Server.Handler.Produce
     HStream.Kafka.Server.Handler.Security
     HStream.Kafka.Server.Handler.Topic
-    HStream.Kafka.Server.Core.Topic
+    HStream.Kafka.Metrics.ProduceStats
+    HStream.Kafka.Metrics.ConsumeStats
+    HStream.Kafka.Metrics.ServerStats
 
   cxx-sources:        cbits/hs_kafka_client.cpp
   cxx-options:        -std=c++17
@@ -143,10 +146,12 @@ library
   build-tool-depends: hsc2hs:hsc2hs
   build-depends:
     , aeson
+    , async                         ^>=2.2
     , attoparsec
     , base                          >=4.11     && <5
     , base64
     , bytestring
+    , clock
     , colourista                    ^>=0.1.0.1
     , containers
     , directory
@@ -173,12 +178,14 @@ library
     , yaml
     , Z-Data
     , zoovisitor
-    , clock
+    , prometheus-client
+    , warp
 
   default-language:   GHC2021
   default-extensions:
     DerivingStrategies
     LambdaCase
     MultiWayIf
+    OverloadedRecordDot
     OverloadedStrings
     RecordWildCards

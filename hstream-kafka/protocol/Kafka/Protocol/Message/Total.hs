@@ -1121,17 +1121,25 @@ data PartitionProduceData = PartitionProduceData
   } deriving (Show, Eq, Generic)
 instance Serializable PartitionProduceData
 
+partitionProduceDataToV0 :: PartitionProduceData -> PartitionProduceDataV0
+partitionProduceDataToV0 x = PartitionProduceDataV0
+  { index = x.index
+  , recordBytes = x.recordBytes
+  }
+partitionProduceDataToV1 :: PartitionProduceData -> PartitionProduceDataV1
+partitionProduceDataToV1 = partitionProduceDataToV0
 partitionProduceDataToV2 :: PartitionProduceData -> PartitionProduceDataV2
-partitionProduceDataToV2 x = PartitionProduceDataV2
-  { index = x.index
-  , recordBytes = x.recordBytes
-  }
+partitionProduceDataToV2 = partitionProduceDataToV0
 
-partitionProduceDataFromV2 :: PartitionProduceDataV2 -> PartitionProduceData
-partitionProduceDataFromV2 x = PartitionProduceData
+partitionProduceDataFromV0 :: PartitionProduceDataV0 -> PartitionProduceData
+partitionProduceDataFromV0 x = PartitionProduceData
   { index = x.index
   , recordBytes = x.recordBytes
   }
+partitionProduceDataFromV1 :: PartitionProduceDataV1 -> PartitionProduceData
+partitionProduceDataFromV1 = partitionProduceDataFromV0
+partitionProduceDataFromV2 :: PartitionProduceDataV2 -> PartitionProduceData
+partitionProduceDataFromV2 = partitionProduceDataFromV0
 
 data PartitionProduceResponse = PartitionProduceResponse
   { index           :: {-# UNPACK #-} !Int32
@@ -1148,6 +1156,14 @@ data PartitionProduceResponse = PartitionProduceResponse
   } deriving (Show, Eq, Generic)
 instance Serializable PartitionProduceResponse
 
+partitionProduceResponseToV0 :: PartitionProduceResponse -> PartitionProduceResponseV0
+partitionProduceResponseToV0 x = PartitionProduceResponseV0
+  { index = x.index
+  , errorCode = x.errorCode
+  , baseOffset = x.baseOffset
+  }
+partitionProduceResponseToV1 :: PartitionProduceResponse -> PartitionProduceResponseV1
+partitionProduceResponseToV1 = partitionProduceResponseToV0
 partitionProduceResponseToV2 :: PartitionProduceResponse -> PartitionProduceResponseV2
 partitionProduceResponseToV2 x = PartitionProduceResponseV2
   { index = x.index
@@ -1156,6 +1172,15 @@ partitionProduceResponseToV2 x = PartitionProduceResponseV2
   , logAppendTimeMs = x.logAppendTimeMs
   }
 
+partitionProduceResponseFromV0 :: PartitionProduceResponseV0 -> PartitionProduceResponse
+partitionProduceResponseFromV0 x = PartitionProduceResponse
+  { index = x.index
+  , errorCode = x.errorCode
+  , baseOffset = x.baseOffset
+  , logAppendTimeMs = (-1)
+  }
+partitionProduceResponseFromV1 :: PartitionProduceResponseV1 -> PartitionProduceResponse
+partitionProduceResponseFromV1 = partitionProduceResponseFromV0
 partitionProduceResponseFromV2 :: PartitionProduceResponseV2 -> PartitionProduceResponse
 partitionProduceResponseFromV2 x = PartitionProduceResponse
   { index = x.index
@@ -1219,17 +1244,25 @@ data TopicProduceData = TopicProduceData
   } deriving (Show, Eq, Generic)
 instance Serializable TopicProduceData
 
+topicProduceDataToV0 :: TopicProduceData -> TopicProduceDataV0
+topicProduceDataToV0 x = TopicProduceDataV0
+  { name = x.name
+  , partitionData = fmap partitionProduceDataToV0 x.partitionData
+  }
+topicProduceDataToV1 :: TopicProduceData -> TopicProduceDataV1
+topicProduceDataToV1 = topicProduceDataToV0
 topicProduceDataToV2 :: TopicProduceData -> TopicProduceDataV2
-topicProduceDataToV2 x = TopicProduceDataV2
-  { name = x.name
-  , partitionData = fmap partitionProduceDataToV2 x.partitionData
-  }
+topicProduceDataToV2 = topicProduceDataToV0
 
-topicProduceDataFromV2 :: TopicProduceDataV2 -> TopicProduceData
-topicProduceDataFromV2 x = TopicProduceData
+topicProduceDataFromV0 :: TopicProduceDataV0 -> TopicProduceData
+topicProduceDataFromV0 x = TopicProduceData
   { name = x.name
-  , partitionData = fmap partitionProduceDataFromV2 x.partitionData
+  , partitionData = fmap partitionProduceDataFromV0 x.partitionData
   }
+topicProduceDataFromV1 :: TopicProduceDataV1 -> TopicProduceData
+topicProduceDataFromV1 = topicProduceDataFromV0
+topicProduceDataFromV2 :: TopicProduceDataV2 -> TopicProduceData
+topicProduceDataFromV2 = topicProduceDataFromV0
 
 data TopicProduceResponse = TopicProduceResponse
   { name               :: !Text
@@ -1239,12 +1272,26 @@ data TopicProduceResponse = TopicProduceResponse
   } deriving (Show, Eq, Generic)
 instance Serializable TopicProduceResponse
 
+topicProduceResponseToV0 :: TopicProduceResponse -> TopicProduceResponseV0
+topicProduceResponseToV0 x = TopicProduceResponseV0
+  { name = x.name
+  , partitionResponses = fmap partitionProduceResponseToV0 x.partitionResponses
+  }
+topicProduceResponseToV1 :: TopicProduceResponse -> TopicProduceResponseV1
+topicProduceResponseToV1 = topicProduceResponseToV0
 topicProduceResponseToV2 :: TopicProduceResponse -> TopicProduceResponseV2
 topicProduceResponseToV2 x = TopicProduceResponseV2
   { name = x.name
   , partitionResponses = fmap partitionProduceResponseToV2 x.partitionResponses
   }
 
+topicProduceResponseFromV0 :: TopicProduceResponseV0 -> TopicProduceResponse
+topicProduceResponseFromV0 x = TopicProduceResponse
+  { name = x.name
+  , partitionResponses = fmap partitionProduceResponseFromV0 x.partitionResponses
+  }
+topicProduceResponseFromV1 :: TopicProduceResponseV1 -> TopicProduceResponse
+topicProduceResponseFromV1 = topicProduceResponseFromV0
 topicProduceResponseFromV2 :: TopicProduceResponseV2 -> TopicProduceResponse
 topicProduceResponseFromV2 x = TopicProduceResponse
   { name = x.name
@@ -2105,19 +2152,27 @@ data ProduceRequest = ProduceRequest
   } deriving (Show, Eq, Generic)
 instance Serializable ProduceRequest
 
+produceRequestToV0 :: ProduceRequest -> ProduceRequestV0
+produceRequestToV0 x = ProduceRequestV0
+  { acks = x.acks
+  , timeoutMs = x.timeoutMs
+  , topicData = fmap topicProduceDataToV0 x.topicData
+  }
+produceRequestToV1 :: ProduceRequest -> ProduceRequestV1
+produceRequestToV1 = produceRequestToV0
 produceRequestToV2 :: ProduceRequest -> ProduceRequestV2
-produceRequestToV2 x = ProduceRequestV2
-  { acks = x.acks
-  , timeoutMs = x.timeoutMs
-  , topicData = fmap topicProduceDataToV2 x.topicData
-  }
+produceRequestToV2 = produceRequestToV0
 
-produceRequestFromV2 :: ProduceRequestV2 -> ProduceRequest
-produceRequestFromV2 x = ProduceRequest
+produceRequestFromV0 :: ProduceRequestV0 -> ProduceRequest
+produceRequestFromV0 x = ProduceRequest
   { acks = x.acks
   , timeoutMs = x.timeoutMs
-  , topicData = fmap topicProduceDataFromV2 x.topicData
+  , topicData = fmap topicProduceDataFromV0 x.topicData
   }
+produceRequestFromV1 :: ProduceRequestV1 -> ProduceRequest
+produceRequestFromV1 = produceRequestFromV0
+produceRequestFromV2 :: ProduceRequestV2 -> ProduceRequest
+produceRequestFromV2 = produceRequestFromV0
 
 data ProduceResponse = ProduceResponse
   { responses      :: !(KaArray TopicProduceResponse)
@@ -2128,12 +2183,31 @@ data ProduceResponse = ProduceResponse
   } deriving (Show, Eq, Generic)
 instance Serializable ProduceResponse
 
+produceResponseToV0 :: ProduceResponse -> ProduceResponseV0
+produceResponseToV0 x = ProduceResponseV0
+  { responses = fmap topicProduceResponseToV0 x.responses
+  }
+produceResponseToV1 :: ProduceResponse -> ProduceResponseV1
+produceResponseToV1 x = ProduceResponseV1
+  { responses = fmap topicProduceResponseToV1 x.responses
+  , throttleTimeMs = x.throttleTimeMs
+  }
 produceResponseToV2 :: ProduceResponse -> ProduceResponseV2
 produceResponseToV2 x = ProduceResponseV2
   { responses = fmap topicProduceResponseToV2 x.responses
   , throttleTimeMs = x.throttleTimeMs
   }
 
+produceResponseFromV0 :: ProduceResponseV0 -> ProduceResponse
+produceResponseFromV0 x = ProduceResponse
+  { responses = fmap topicProduceResponseFromV0 x.responses
+  , throttleTimeMs = 0
+  }
+produceResponseFromV1 :: ProduceResponseV1 -> ProduceResponse
+produceResponseFromV1 x = ProduceResponse
+  { responses = fmap topicProduceResponseFromV1 x.responses
+  , throttleTimeMs = x.throttleTimeMs
+  }
 produceResponseFromV2 :: ProduceResponseV2 -> ProduceResponse
 produceResponseFromV2 x = ProduceResponse
   { responses = fmap topicProduceResponseFromV2 x.responses

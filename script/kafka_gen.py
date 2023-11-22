@@ -109,7 +109,7 @@ GLOBAL_API_VERSION_PATCH = (0, 0)
 API_VERSION_PATCHES = {
     "ApiVersions": (0, 3),
     "Metadata": (0, 4),
-    "Produce": (2, 2),
+    "Produce": (0, 2),
     "Fetch": (0, 2),
     "OffsetFetch": (0, 2),
     "OffsetCommit": (0, 2),
