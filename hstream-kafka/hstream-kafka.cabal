@@ -125,6 +125,8 @@ library
     HStream.Kafka.Server.Config.FromCli
     HStream.Kafka.Server.Config.FromJson
     HStream.Kafka.Server.Config.Types
+    HStream.Kafka.Server.Config.KafkaConfig
+    HStream.Kafka.Server.Config.KafkaConfigManager
     HStream.Kafka.Server.Handler.Basic
     HStream.Kafka.Server.Handler.Consume
     HStream.Kafka.Server.Handler.Group

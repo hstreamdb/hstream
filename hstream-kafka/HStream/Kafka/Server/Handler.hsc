@@ -57,6 +57,7 @@ import qualified Kafka.Protocol.Service                as K
 
 #cv_handler ApiVersions, 0, 3
 #cv_handler Fetch, 0, 2
+#cv_handler DescribeConfigs, 0, 0
 
 #cv_handler SaslHandshake, 0, 1
 #cv_handler SaslAuthenticate, 0, 0
@@ -103,6 +104,9 @@ handlers sc =
   , K.hd (K.RPC :: K.RPC K.HStreamKafkaV1 "saslHandshake") (handleAfterAuthSaslHandshakeV1 sc)
 
   , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "saslAuthenticate") (handleAfterAuthSaslAuthenticateV0 sc)
+
+  -- configs
+  , #mk_handler DescribeConfigs, 0, 0
   ]
 
 unAuthedHandlers :: ServerContext -> [K.ServiceHandler]

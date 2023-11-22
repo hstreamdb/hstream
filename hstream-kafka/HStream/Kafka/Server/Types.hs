@@ -3,21 +3,22 @@ module HStream.Kafka.Server.Types
   , initServerContext
   ) where
 
-import           Data.Text                            (Text)
+import           Data.Text                               (Text)
 import           Data.Word
 
-import           HStream.Common.Server.HashRing       (LoadBalanceHashRing,
-                                                       initializeHashRing)
-import           HStream.Gossip.Types                 (GossipContext)
-import           HStream.Kafka.Common.OffsetManager   (OffsetManager,
-                                                       newOffsetManager)
-import           HStream.Kafka.Group.GroupCoordinator (GroupCoordinator,
-                                                       mkGroupCoordinator)
-import           HStream.Kafka.Server.Config          (ServerOpts (..))
-import           HStream.MetaStore.Types              (MetaHandle)
-import           HStream.Stats                        (newServerStatsHolder)
-import qualified HStream.Stats                        as Stats
-import qualified HStream.Store                        as S
+import           HStream.Common.Server.HashRing          (LoadBalanceHashRing,
+                                                          initializeHashRing)
+import           HStream.Gossip.Types                    (GossipContext)
+import           HStream.Kafka.Common.OffsetManager      (OffsetManager,
+                                                          newOffsetManager)
+import           HStream.Kafka.Group.GroupCoordinator    (GroupCoordinator,
+                                                          mkGroupCoordinator)
+import           HStream.Kafka.Server.Config             (ServerOpts (..))
+import qualified HStream.Kafka.Server.Config.KafkaConfig as KC
+import           HStream.MetaStore.Types                 (MetaHandle)
+import           HStream.Stats                           (newServerStatsHolder)
+import qualified HStream.Stats                           as Stats
+import qualified HStream.Store                           as S
 
 data ServerContext = ServerContext
   { serverID                 :: !Word32
@@ -34,7 +35,7 @@ data ServerContext = ServerContext
   , gossipContext            :: !GossipContext
   , scOffsetManager          :: !OffsetManager
   , scGroupCoordinator       :: GroupCoordinator
-  , enableAutoCreateTopic    :: !Bool
+  , kafkaBrokerConfigs       :: !KC.KafkaBrokerConfigs
 }
 
 initServerContext
@@ -66,5 +67,5 @@ initServerContext opts@ServerOpts{..} gossipContext mh = do
       , gossipContext            = gossipContext
       , scOffsetManager          = offsetManager
       , scGroupCoordinator       = scGroupCoordinator
-      , enableAutoCreateTopic    = not _disableAutoCreateTopic
+      , kafkaBrokerConfigs = _kafkaBrokerConfigs
       }
