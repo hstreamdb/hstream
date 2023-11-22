@@ -1,5 +1,6 @@
-{-# LANGUAGE CPP               #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE CPP                 #-}
+{-# LANGUAGE OverloadedRecordDot #-}
+{-# LANGUAGE OverloadedStrings   #-}
 
 module HStream.Kafka.Server.Handler.Topic
   ( -- 19: CreateTopics
@@ -14,7 +15,9 @@ import           Control.Monad
 import qualified Data.Text                          as T
 import qualified Data.Vector                        as V
 
+import qualified Data.Map                           as Map
 import           HStream.Kafka.Common.OffsetManager (cleanOffsetCache)
+import qualified HStream.Kafka.Common.Utils         as Utils
 import qualified HStream.Kafka.Server.Core.Topic    as Core
 import           HStream.Kafka.Server.Types         (ServerContext (..))
 import qualified HStream.Logger                     as Log
@@ -53,7 +56,8 @@ handleCreateTopicsV0 ctx _ K.CreateTopicsRequestV0{..} =
           Log.warning $ "Expect a positive numPartitions but got " <> Log.build numPartitions
           return $ K.CreatableTopicResultV0 name K.INVALID_PARTITIONS
       | otherwise = do
-          (errorCode, _) <- Core.createTopic ctx name replicationFactor numPartitions
+          let configMap = Map.fromList . map (\c -> (c.name, c.value)) . Utils.kaArrayToList $ configs
+          (errorCode, _) <- Core.createTopic ctx name replicationFactor numPartitions configMap
           return $ K.CreatableTopicResultV0 name errorCode
 
 --------------------

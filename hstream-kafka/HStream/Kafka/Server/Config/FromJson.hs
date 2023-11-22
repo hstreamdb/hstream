@@ -2,22 +2,23 @@ module HStream.Kafka.Server.Config.FromJson
   ( parseJSONToOptions
   ) where
 
-import           Control.Applicative               (optional, (<|>))
-import           Control.Monad                     (when)
-import qualified Data.Attoparsec.Text              as AP
-import           Data.Bifunctor                    (second)
-import           Data.ByteString                   (ByteString)
-import qualified Data.Map.Strict                   as Map
-import           Data.Maybe                        (fromMaybe, isNothing)
-import           Data.String                       (IsString (..))
-import           Data.Text                         (Text)
-import           Data.Text.Encoding                (encodeUtf8)
-import           Data.Yaml                         ((.!=), (.:), (.:?))
-import qualified Data.Yaml                         as Y
-import           Text.Read                         (readEither)
+import           Control.Applicative                     (optional, (<|>))
+import           Control.Monad                           (when)
+import qualified Data.Attoparsec.Text                    as AP
+import           Data.Bifunctor                          (second)
+import           Data.ByteString                         (ByteString)
+import qualified Data.Map.Strict                         as Map
+import           Data.Maybe                              (fromMaybe, isNothing)
+import           Data.String                             (IsString (..))
+import           Data.Text                               (Text)
+import           Data.Text.Encoding                      (encodeUtf8)
+import           Data.Yaml                               ((.!=), (.:), (.:?))
+import qualified Data.Yaml                               as Y
+import           Text.Read                               (readEither)
 
+import qualified HStream.Kafka.Server.Config.KafkaConfig as KC
 import           HStream.Kafka.Server.Config.Types
-import           HStream.Store                     (Compression (..))
+import           HStream.Store                           (Compression (..))
 
 -------------------------------------------------------------------------------
 
@@ -37,11 +38,14 @@ parseJSONToOptions CliOptions{..} obj = do
   nodeLogWithColor  <- nodeCfgObj .:? "log-with-color" .!= True
 
   -- Kafka config
+  -- TODO: generate Parser from KafkaBrokerConfigs
   let !_disableAutoCreateTopic = cliDisableAutoCreateTopic
   numPartitions   <- nodeCfgObj .:? "num-partitions" .!= 1
   defaultReplica  <- nodeCfgObj .:? "default-replication-factor" .!= 1
   let !_topicRepFactor = numPartitions
   let !_partitionNums  = defaultReplica
+  let autoCreateTopicsEnable = KC.AutoCreateTopicsEnable (not _disableAutoCreateTopic)
+      !_kafkaBrokerConfigs = KC.KafkaBrokerConfigs {..}
 
   -- TODO: For the max_record_size to work properly, we should also tell user
   -- to set payload size for gRPC and LD.

@@ -10,33 +10,41 @@ module HStream.Kafka.Server.Handler.Basic
   , handleMetadataV2
   , handleMetadataV3
   , handleMetadataV4
+
+    --
+  , handleDescribeConfigs
   ) where
 
 import           Control.Exception
 import           Control.Monad
-import qualified Data.Foldable                   as FD
-import           Data.Functor                    ((<&>))
-import           Data.Int                        (Int32)
-import qualified Data.List                       as L
-import qualified Data.Set                        as S
-import           Data.Text                       (Text)
-import qualified Data.Text                       as Text
-import qualified Data.Vector                     as V
+import qualified Data.Foldable                                  as FD
+import           Data.Functor                                   ((<&>))
+import           Data.Int                                       (Int32)
+import qualified Data.List                                      as L
+import qualified Data.Map                                       as Map
+import qualified Data.Set                                       as S
+import           Data.Text                                      (Text)
+import qualified Data.Text                                      as Text
+import qualified Data.Vector                                    as V
 
-import           HStream.Common.Server.Lookup    (KafkaResource (..),
-                                                  lookupKafkaPersist)
-import qualified HStream.Gossip                  as Gossip
-import qualified HStream.Kafka.Common.Utils      as K
-import           HStream.Kafka.Server.Core.Topic (createTopic)
-import           HStream.Kafka.Server.Types      (ServerContext (..))
-import qualified HStream.Logger                  as Log
-import qualified HStream.Server.HStreamApi       as A
-import qualified HStream.Store                   as S
-import qualified HStream.Utils                   as Utils
-import qualified Kafka.Protocol.Encoding         as K
-import qualified Kafka.Protocol.Error            as K
-import qualified Kafka.Protocol.Message          as K
-import qualified Kafka.Protocol.Service          as K
+import qualified Data.Text                                      as T
+import           HStream.Common.Server.Lookup                   (KafkaResource (..),
+                                                                 lookupKafkaPersist)
+import qualified HStream.Gossip                                 as Gossip
+import qualified HStream.Kafka.Common.Utils                     as K
+import qualified HStream.Kafka.Common.Utils                     as Utils
+import qualified HStream.Kafka.Server.Config.KafkaConfig        as KC
+import qualified HStream.Kafka.Server.Config.KafkaConfigManager as KCM
+import           HStream.Kafka.Server.Core.Topic                (createTopic)
+import           HStream.Kafka.Server.Types                     (ServerContext (..))
+import qualified HStream.Logger                                 as Log
+import qualified HStream.Server.HStreamApi                      as A
+import qualified HStream.Store                                  as S
+import qualified HStream.Utils                                  as Utils
+import qualified Kafka.Protocol.Encoding                        as K
+import qualified Kafka.Protocol.Error                           as K
+import qualified Kafka.Protocol.Message                         as K
+import qualified Kafka.Protocol.Service                         as K
 
 --------------------
 -- 18: ApiVersions
@@ -129,13 +137,13 @@ handleMetadataV4 ctx@ServerContext{..} _ req@K.MetadataRequestV4{..} = do
           allStreamNames <- S.findStreams scLDClient S.StreamTypeTopic <&> S.fromList . L.map (Utils.cBytesToText . S.streamName)
           let needCreate = S.toList $ topicNames S.\\ allStreamNames
           let alreadyExist = V.fromList . S.toList $ topicNames `S.intersection` allStreamNames
-          Log.info $ "enableAutoCreateTopic: " <> Log.build (show enableAutoCreateTopic)
+          Log.debug $ "enableAutoCreateTopic: " <> Log.build (show kafkaBrokerConfigs.autoCreateTopicsEnable._value)
 
           createResp <-
-            if enableAutoCreateTopic && allowAutoTopicCreation
+            if kafkaBrokerConfigs.autoCreateTopicsEnable._value && allowAutoTopicCreation
               then do
                 resp <- forM needCreate $ \topic -> do
-                  (code, shards) <- createTopic ctx topic (fromIntegral scDefaultTopicRepFactor) (fromIntegral scDefaultPartitionNum)
+                  (code, shards) <- createTopic ctx topic (fromIntegral scDefaultTopicRepFactor) (fromIntegral scDefaultPartitionNum) Map.empty
                   if code /= K.NONE
                     then do
                       return $ K.MetadataResponseTopicV1 code topic False K.emptyKaArray
@@ -233,3 +241,24 @@ handleMetadataV4 ctx@ServerContext{..} _ req@K.MetadataRequestV4{..} = do
 apiVersionV0To :: K.ApiVersionV0 -> K.ApiVersion
 apiVersionV0To K.ApiVersionV0{..} =
   let taggedFields = K.EmptyTaggedFields in K.ApiVersion{..}
+
+---------------------------------------------------------------------------
+--  32: DescribeConfigs
+---------------------------------------------------------------------------
+handleDescribeConfigs
+  :: ServerContext
+  -> K.RequestContext
+  -> K.DescribeConfigsRequest
+  -> IO K.DescribeConfigsResponse
+handleDescribeConfigs serverCtx _ req = do
+  manager <- KCM.mkKafkaConfigManager serverCtx.scLDClient serverCtx.kafkaBrokerConfigs
+  results <- V.forM (Utils.kaArrayToVector req.resources) $ \resource -> do
+    case toEnum (fromIntegral resource.resourceType) of
+      KC.TOPIC -> KCM.listTopicConfigs manager resource.resourceName resource.configurationKeys
+      KC.BROKER -> do
+        if T.pack (show serverCtx.serverID) == resource.resourceName
+        then KCM.listBrokerConfigs manager resource.resourceName resource.configurationKeys
+        else return $ KCM.getErrorResponse KC.BROKER resource.resourceName ("invalid broker id:" <> resource.resourceName)
+      rt -> return $ KCM.getErrorResponse rt resource.resourceName ("unsupported resource type:" <> T.pack (show rt))
+  return $ K.DescribeConfigsResponse {results=K.NonNullKaArray results, throttleTimeMs=0}
+

@@ -120,6 +120,47 @@ data DeletableTopicResultV0 = DeletableTopicResultV0
   } deriving (Show, Eq, Generic)
 instance Serializable DeletableTopicResultV0
 
+data DescribeConfigsResourceV0 = DescribeConfigsResourceV0
+  { resourceType      :: {-# UNPACK #-} !Int8
+    -- ^ The resource type.
+  , resourceName      :: !Text
+    -- ^ The resource name.
+  , configurationKeys :: !(KaArray Text)
+    -- ^ The configuration keys to list, or null to list all configuration
+    -- keys.
+  } deriving (Show, Eq, Generic)
+instance Serializable DescribeConfigsResourceV0
+
+data DescribeConfigsResourceResultV0 = DescribeConfigsResourceResultV0
+  { name        :: !Text
+    -- ^ The configuration name.
+  , value       :: !NullableString
+    -- ^ The configuration value.
+  , readOnly    :: Bool
+    -- ^ True if the configuration is read-only.
+  , isDefault   :: Bool
+    -- ^ True if the configuration is not set.
+  , isSensitive :: Bool
+    -- ^ True if this configuration is sensitive.
+  } deriving (Show, Eq, Generic)
+instance Serializable DescribeConfigsResourceResultV0
+
+data DescribeConfigsResultV0 = DescribeConfigsResultV0
+  { errorCode    :: {-# UNPACK #-} !ErrorCode
+    -- ^ The error code, or 0 if we were able to successfully describe the
+    -- configurations.
+  , errorMessage :: !NullableString
+    -- ^ The error message, or null if we were able to successfully describe
+    -- the configurations.
+  , resourceType :: {-# UNPACK #-} !Int8
+    -- ^ The resource type.
+  , resourceName :: !Text
+    -- ^ The resource name.
+  , configs      :: !(KaArray DescribeConfigsResourceResultV0)
+    -- ^ Each listed configuration.
+  } deriving (Show, Eq, Generic)
+instance Serializable DescribeConfigsResultV0
+
 data DescribedGroupMemberV0 = DescribedGroupMemberV0
   { memberId         :: !Text
     -- ^ The member ID assigned by the group coordinator.
@@ -654,6 +695,20 @@ newtype DeleteTopicsResponseV0 = DeleteTopicsResponseV0
   } deriving (Show, Eq, Generic)
 instance Serializable DeleteTopicsResponseV0
 
+newtype DescribeConfigsRequestV0 = DescribeConfigsRequestV0
+  { resources :: (KaArray DescribeConfigsResourceV0)
+  } deriving (Show, Eq, Generic)
+instance Serializable DescribeConfigsRequestV0
+
+data DescribeConfigsResponseV0 = DescribeConfigsResponseV0
+  { throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
+  , results        :: !(KaArray DescribeConfigsResultV0)
+    -- ^ The results for each resource.
+  } deriving (Show, Eq, Generic)
+instance Serializable DescribeConfigsResponseV0
+
 newtype DescribeGroupsRequestV0 = DescribeGroupsRequestV0
   { groups :: (KaArray Text)
   } deriving (Show, Eq, Generic)
@@ -1067,6 +1122,7 @@ instance Service HStreamKafkaV0 where
      , "apiVersions"
      , "createTopics"
      , "deleteTopics"
+     , "describeConfigs"
      , "saslAuthenticate"
      ]
 
@@ -1188,6 +1244,13 @@ instance HasMethodImpl HStreamKafkaV0 "deleteTopics" where
   type MethodVersion HStreamKafkaV0 "deleteTopics" = 0
   type MethodInput HStreamKafkaV0 "deleteTopics" = DeleteTopicsRequestV0
   type MethodOutput HStreamKafkaV0 "deleteTopics" = DeleteTopicsResponseV0
+
+instance HasMethodImpl HStreamKafkaV0 "describeConfigs" where
+  type MethodName HStreamKafkaV0 "describeConfigs" = "describeConfigs"
+  type MethodKey HStreamKafkaV0 "describeConfigs" = 32
+  type MethodVersion HStreamKafkaV0 "describeConfigs" = 0
+  type MethodInput HStreamKafkaV0 "describeConfigs" = DescribeConfigsRequestV0
+  type MethodOutput HStreamKafkaV0 "describeConfigs" = DescribeConfigsResponseV0
 
 instance HasMethodImpl HStreamKafkaV0 "saslAuthenticate" where
   type MethodName HStreamKafkaV0 "saslAuthenticate" = "saslAuthenticate"
@@ -1383,6 +1446,7 @@ instance Show ApiKey where
   show (ApiKey 18) = "ApiVersions(18)"
   show (ApiKey 19) = "CreateTopics(19)"
   show (ApiKey 20) = "DeleteTopics(20)"
+  show (ApiKey 32) = "DescribeConfigs(32)"
   show (ApiKey 36) = "SaslAuthenticate(36)"
   show (ApiKey n)  = "Unknown " <> show n
 
@@ -1405,6 +1469,7 @@ supportedApiVersions =
   , ApiVersionV0 (ApiKey 18) 0 3
   , ApiVersionV0 (ApiKey 19) 0 0
   , ApiVersionV0 (ApiKey 20) 0 0
+  , ApiVersionV0 (ApiKey 32) 0 0
   , ApiVersionV0 (ApiKey 36) 0 0
   ]
 
@@ -1443,6 +1508,7 @@ getHeaderVersion (ApiKey 18) 2 = (1, 0)
 getHeaderVersion (ApiKey 18) 3 = (2, 0)
 getHeaderVersion (ApiKey 19) 0 = (1, 0)
 getHeaderVersion (ApiKey 20) 0 = (1, 0)
+getHeaderVersion (ApiKey 32) 0 = (1, 0)
 getHeaderVersion (ApiKey 36) 0 = (1, 0)
 getHeaderVersion k v           = error $ "Unknown " <> show k <> " v" <> show v
 {-# INLINE getHeaderVersion #-}

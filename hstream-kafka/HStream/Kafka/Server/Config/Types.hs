@@ -20,25 +20,26 @@ module HStream.Kafka.Server.Config.Types
   , SAI.ListOfListener (..)
   ) where
 
-import qualified Data.Attoparsec.Text           as AP
-import           Data.ByteString                (ByteString)
-import           Data.Map.Strict                (Map)
-import qualified Data.Map.Strict                as Map
-import           Data.Set                       (Set)
-import qualified Data.Set                       as Set
-import           Data.Text                      (Text)
-import qualified Data.Text                      as Text
-import qualified Data.Vector                    as V
+import qualified Data.Attoparsec.Text                    as AP
+import           Data.ByteString                         (ByteString)
+import           Data.Map.Strict                         (Map)
+import qualified Data.Map.Strict                         as Map
+import           Data.Set                                (Set)
+import qualified Data.Set                                as Set
+import           Data.Text                               (Text)
+import qualified Data.Text                               as Text
+import qualified Data.Vector                             as V
 import           Data.Word
-import           HStream.Gossip                 (GossipOpts (..),
-                                                 defaultGossipOpts)
-import qualified Z.Data.CBytes                  as CBytes
-import           Z.Data.CBytes                  (CBytes)
+import           HStream.Gossip                          (GossipOpts (..),
+                                                          defaultGossipOpts)
+import qualified Z.Data.CBytes                           as CBytes
+import           Z.Data.CBytes                           (CBytes)
 
-import qualified HStream.Logger                 as Log
-import qualified HStream.Server.HStreamInternal as SAI
-import           HStream.Store                  (Compression (..))
-import           HStream.Store.Logger           (LDLogLevel)
+import qualified HStream.Kafka.Server.Config.KafkaConfig as KC
+import qualified HStream.Logger                          as Log
+import qualified HStream.Server.HStreamInternal          as SAI
+import           HStream.Store                           (Compression (..))
+import           HStream.Store.Logger                    (LDLogLevel)
 
 -------------------------------------------------------------------------------
 
@@ -75,7 +76,7 @@ data ServerOpts = ServerOpts
 
   , _enableSaslAuth               :: !Bool
 
-  , _disableAutoCreateTopic       :: !Bool
+  , _kafkaBrokerConfigs           :: !KC.KafkaBrokerConfigs
   } deriving (Show, Eq)
 
 -------------------------------------------------------------------------------

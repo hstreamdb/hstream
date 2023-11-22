@@ -35,12 +35,6 @@ import qualified Kafka.Protocol.Error                   as K
 import qualified Kafka.Protocol.Message                 as K
 import qualified Kafka.Protocol.Service                 as K
 
--- TODO:
--- * kafka/group config
---  * configurable
--- * group metadata manager
---  * store group information
-
 type HashTable k v = H.BasicHashTable k v
 
 data GroupState
