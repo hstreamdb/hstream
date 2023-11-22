@@ -160,6 +160,9 @@ kafka:
   # and can be overwritten by cli option `--gossip-port`
   gossip-port: 6571
 
+  # Server port value for export metrics and can be overwritten by cli option `--metrics-port`
+  metrics-port: 9700
+
   bind-address: 0.0.0.0
 
   # Server listener address value, the value must be given.
