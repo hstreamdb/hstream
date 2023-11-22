@@ -23,7 +23,7 @@ import           Foreign.ForeignPtr                (newForeignPtr_)
 import           Foreign.Ptr                       (nullPtr)
 import           GHC.Stack                         (HasCallStack)
 
-import           HStream.Kafka.Common.Read         (readOneRecordBypassGap)
+import           HStream.Kafka.Common.Read
 import           HStream.Kafka.Common.RecordFormat
 import qualified HStream.Store                     as S
 
@@ -101,12 +101,10 @@ getLatestOffset o logid = (fmap fst) <$> getLatestOffsetWithLsn o logid
 getLatestOffsetWithLsn
   :: HasCallStack
   => OffsetManager -> Word64 -> IO (Maybe (Int64, S.LSN))
-getLatestOffsetWithLsn OffsetManager{..} logid =
-  let getLsn = do tailLsn <- S.getTailLSN store logid
-                  pure (tailLsn, tailLsn)
-   in do m <- readOneRecordBypassGap store reader logid getLsn
-         pure $ do (lsn, _, record) <- m
-                   pure (offset record, lsn)
+getLatestOffsetWithLsn OffsetManager{..} logid = do
+  m <- readLastOneRecord store reader logid
+  pure $ do (lsn, record) <- m
+            pure (offset record, lsn)
 
 -- 1. Timestamp less than the first record's timestamp will return the first offset
 -- 2. Timestamp greater than the last record's timestamp will retuen Nothing

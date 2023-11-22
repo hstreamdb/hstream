@@ -325,6 +325,7 @@ executable hstream-kafka-server
     , http-client
     , memory
     , optparse-applicative
+    , prometheus-client
     , proto3-suite
     , proto3-wire
     , raw-strings-qq
@@ -333,11 +334,10 @@ executable hstream-kafka-server
     , text
     , timers
     , vector
+    , wai-middleware-prometheus
+    , warp
     , Z-Data
     , zoovisitor
-    , warp
-    , wai-middleware-prometheus
-    , prometheus-client
 
   if flag(hstream_use_grpc_haskell)
     cpp-options: -DHStreamUseGrpcHaskell
