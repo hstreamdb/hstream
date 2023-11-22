@@ -29,6 +29,7 @@ import           System.Clock
 import           HStream.Kafka.Common.KafkaException (ErrorCodeException (ErrorCodeException))
 import           HStream.Kafka.Group.OffsetsStore    (OffsetStorage (..),
                                                       mkCkpOffsetStorage)
+import           HStream.Kafka.Metrics.ConsumeStats  (consumerGroupCommittedOffsets)
 import qualified HStream.Logger                      as Log
 import qualified HStream.Store                       as S
 import qualified Kafka.Protocol                      as K
@@ -37,6 +38,7 @@ import qualified Kafka.Protocol.Error                as K
 import           Kafka.Protocol.Message              (OffsetCommitRequestPartitionV0 (..),
                                                       OffsetCommitResponsePartitionV0 (..),
                                                       OffsetFetchResponsePartitionV0 (..))
+import qualified Prometheus                          as P
 
 -- NOTE: All operations on the GroupMetadataManager are not concurrency-safe,
 -- and the caller needs to ensure concurrency-safety on its own.
@@ -118,6 +120,10 @@ storeOffsets gmm@GroupOffsetManager{..} topicName arrayOffsets = do
   commitOffsets offsetStorage groupName checkPoints
   Log.debug $ "consumer group " <> Log.build groupName <> " commit offsets {" <> Log.build (show checkPoints)
            <> "} to topic " <> Log.build topicName
+
+  V.forM_ offsetsInfo $ \(TopicPartition{..}, _, offset) -> do
+    P.withLabel consumerGroupCommittedOffsets (groupName, topicName, T.pack . show $ topicPartitionIdx) $
+      flip P.setGauge (fromIntegral offset)
 
   -- update cache
   modifyIORef' offsetsCache $ \cache -> do

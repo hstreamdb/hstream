@@ -28,13 +28,18 @@ import           Data.Int
 import           Data.List                           (find, intersperse)
 import           Data.Maybe                          (fromMaybe, isJust,
                                                       isNothing)
+import qualified Data.Text                           as T
 import qualified Network.Socket                      as N
 import qualified Network.Socket.ByteString           as N
 import qualified Network.Socket.ByteString.Lazy      as NL
 import           Numeric                             (showHex, showInt)
+import qualified Prometheus                          as P
 
 import           HStream.Kafka.Common.KafkaException (ErrorCodeException (..))
 import           HStream.Kafka.Common.OffsetManager  (initOffsetReader)
+import           HStream.Kafka.Common.Utils          (observeWithLabel)
+import           HStream.Kafka.Metrics.ServerStats   (handlerLatencies,
+                                                      totalRequests)
 import           HStream.Kafka.Server.Types          (ServerContext (..))
 import qualified HStream.Logger                      as Log
 import           Kafka.Protocol.Encoding
@@ -134,6 +139,7 @@ runServer opts sc mkPreAuthedHandlers mkAuthedHandlers =
     -- 'authed :: MVar Bool'. Empty at the beginning and is only used by SASL auth.
     -- FIXME: better way?
     runHandler peer handlers reqBs authed = do
+      P.incCounter totalRequests
       headerResult <- runParser @RequestHeader get reqBs
       case headerResult of
         Done l r@RequestHeader{..} -> do
@@ -141,34 +147,37 @@ runServer opts sc mkPreAuthedHandlers mkAuthedHandlers =
           let ServiceHandler{..} = findHandler handlers requestApiKey requestApiVersion
           case rpcHandler of
             UnaryHandler rpcHandler' -> do
-              (req, left) <- runGet' l
-              unless (BS.null $ left) $
-                Log.warning $ "Leftover bytes: " <> Log.buildString' left
-              Log.debug $ "Received request "
-                       <> Log.buildString' requestApiKey
-                       <> ":v" <> Log.build requestApiVersion
-                       <> " from " <> Log.buildString' peer
-                       <> ", payload: " <> Log.buildString' req
-              let reqContext =
-                    RequestContext
-                      { clientId = requestClientId
-                      , clientHost = showSockAddrHost peer
-                      , clientAuthDone = authed
-                      }
-              resp <- rpcHandler' reqContext req
-              Log.debug $ "Server response: " <> Log.buildString' resp
-              let respBs = runPutLazy resp
-                  (_, respHeaderVer) = getHeaderVersion requestApiKey requestApiVersion
-                  respHeaderBs =
-                    case respHeaderVer of
-                      0 -> runPutResponseHeaderLazy $ ResponseHeader requestCorrelationId Nothing
-                      1 -> runPutResponseHeaderLazy $ ResponseHeader requestCorrelationId (Just EmptyTaggedFields)
-                      _ -> error $ "Unknown response header version " <> show respHeaderVer
-              let len = BSL.length (respHeaderBs <> respBs)
-                  lenBs = runPutLazy @Int32 (fromIntegral len)
-              pure $ lenBs <> respHeaderBs <> respBs
+              observeWithLabel handlerLatencies (T.pack $ show requestApiKey) $ doUnaryHandler l r rpcHandler' peer authed
         Fail _ err -> E.throwIO $ DecodeError $ "Fail, " <> err
         More _ -> E.throwIO $ DecodeError $ "More"
+
+    doUnaryHandler l RequestHeader{..} rpcHandler' peer authed = do
+      (req, left) <- runGet' l
+      when (not . BS.null $ left) $
+        Log.warning $ "Leftover bytes: " <> Log.buildString' left
+      Log.debug $ "Received request "
+               <> Log.buildString' requestApiKey
+               <> ":v" <> Log.build requestApiVersion
+               <> " from " <> Log.buildString' peer
+               <> ", payload: " <> Log.buildString' req
+      let reqContext =
+            RequestContext
+              { clientId = requestClientId
+              , clientHost = showSockAddrHost peer
+              , clientAuthDone = authed
+              }
+      resp <- rpcHandler' reqContext req
+      Log.debug $ "Server response: " <> Log.buildString' resp
+      let respBs = runPutLazy resp
+          (_, respHeaderVer) = getHeaderVersion requestApiKey requestApiVersion
+          respHeaderBs =
+            case respHeaderVer of
+              0 -> runPutResponseHeaderLazy $ ResponseHeader requestCorrelationId Nothing
+              1 -> runPutResponseHeaderLazy $ ResponseHeader requestCorrelationId (Just EmptyTaggedFields)
+              _ -> error $ "Unknown response header version " <> show respHeaderVer
+      let len = BSL.length (respHeaderBs <> respBs)
+          lenBs = runPutLazy @Int32 (fromIntegral len)
+      pure $ lenBs <> respHeaderBs <> respBs
 
     findHandler handlers apikey@(ApiKey key) version = do
       let m_handler = find (\ServiceHandler{..} ->
