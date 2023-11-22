@@ -46,6 +46,7 @@ import           System.Exit                    (exitSuccess)
 import qualified Z.Data.CBytes                  as CB
 import           Z.Data.CBytes                  (CBytes)
 
+import qualified HStream.Kafka.Server.Config    as Ka
 import qualified HStream.Logger                 as Log
 import qualified HStream.Server.HStreamInternal as SAI
 import           HStream.Store                  (Compression (..))
@@ -55,11 +56,15 @@ import qualified HStream.Store.Logger           as Log
 
 data ServerCli
   = Cli CliOptions
+  | KafkaCli Ka.CliOptions
   | ShowVersion
   deriving (Show)
 
 serverCliParser :: O.Parser ServerCli
-serverCliParser = (Cli <$> cliOptionsParser) <|> showVersionParser
+serverCliParser =
+      (Cli <$> cliOptionsParser)
+  <|> kafkaCliParser
+  <|> showVersionParser
 
 runServerCli :: [String] -> IO ServerCli
 runServerCli args =
@@ -80,6 +85,11 @@ runServerCli args =
      msg <- O.execCompletion compl progn
      putStr msg
      exitSuccess
+
+kafkaCliParser :: O.Parser ServerCli
+kafkaCliParser = O.hsubparser
+  (O.command "kafka" (O.info (KafkaCli <$> Ka.cliOptionsParser)
+                             (O.progDesc "Run as kafka broker")))
 
 showVersionParser :: O.Parser ServerCli
 showVersionParser = O.flag' ShowVersion

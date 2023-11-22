@@ -9,6 +9,12 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
 
+-- FIXME: How about merging this module into hstream/app/server.hs?
+module KafkaServer
+  ( app
+  , runApp
+  ) where
+
 import           Control.Concurrent                (forkIO)
 import qualified Control.Concurrent.Async          as Async
 import           Control.Concurrent.MVar           (MVar, newEmptyMVar, putMVar,
@@ -67,8 +73,8 @@ import           Text.RawString.QQ                 (r)
 
 -------------------------------------------------------------------------------
 
-main :: IO ()
-main = do
+runApp :: IO ()
+runApp = do
   args <- getArgs
   runServerConfig args app
 

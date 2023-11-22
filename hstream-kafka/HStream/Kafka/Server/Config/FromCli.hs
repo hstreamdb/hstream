@@ -6,6 +6,8 @@
 module HStream.Kafka.Server.Config.FromCli
   ( serverCliParser
   , runServerCli
+
+  , CliOptions (..)
   , cliOptionsParser
 
     -- * Helpers

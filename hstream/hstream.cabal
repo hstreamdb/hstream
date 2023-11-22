@@ -156,6 +156,7 @@ library
     , hstream-common-stats
     , hstream-gossip
     , hstream-io
+    , hstream-kafka
     , hstream-processing
     , hstream-sql
     , hstream-store
@@ -209,6 +210,55 @@ library
     TypeApplications
     UnliftedFFITypes
 
+-- Local app library
+library hstream-app
+  import:           shared-properties
+  hs-source-dirs:   app/lib
+  exposed-modules:  KafkaServer
+  build-depends:
+    , async
+    , base
+    , bytestring
+    , containers
+    , cryptonite
+    , deepseq
+    , grpc-haskell
+    , grpc-haskell-core
+    , hs-grpc-server
+    , hstream-admin-server
+    , hstream-api-hs
+    , hstream-common
+    , hstream-common-base
+    , hstream-common-server
+    , hstream-common-stats
+    , hstream-gossip
+    , hstream-kafka
+    , hstream-store
+    , http-client
+    , memory
+    , optparse-applicative
+    , prometheus-client
+    , proto3-suite
+    , proto3-wire
+    , raw-strings-qq
+    , stm
+    , suspend
+    , text
+    , timers
+    , vector
+    , wai-middleware-prometheus
+    , warp
+    , Z-Data
+    , zoovisitor
+
+  if flag(hstream_use_grpc_haskell)
+    cpp-options: -DHStreamUseGrpcHaskell
+
+  if flag(hstream_enable_asan)
+    cpp-options: -DHSTREAM_ENABLE_ASAN
+
+  default-language: Haskell2010
+
 executable hstream-server
   if flag(hstream_enable_asan)
     import: shared-properties, link-asan
@@ -227,7 +277,6 @@ executable hstream-server
     , grpc-haskell
     , grpc-haskell-core
     , hs-grpc-server
-    , hstream
     , hstream-admin-server
     , hstream-api-hs
     , hstream-common
@@ -235,7 +284,9 @@ executable hstream-server
     , hstream-common-server
     , hstream-common-stats
     , hstream-gossip
+    , hstream-kafka
     , hstream-store
+    , hstream:{hstream, hstream-app}
     , http-client
     , memory
     , optparse-applicative
@@ -294,60 +345,6 @@ executable hstream
 
   default-language: Haskell2010
   ghc-options:      -threaded -rtsopts -with-rtsopts=-N
-
-executable hstream-kafka-server
-  if flag(hstream_enable_asan)
-    import: shared-properties, link-asan
-
-  if !flag(hstream_enable_asan)
-    import: shared-properties
-
-  main-is:          app/kafka-server.hs
-  build-depends:
-    , async
-    , base
-    , bytestring
-    , containers
-    , cryptonite
-    , deepseq
-    , grpc-haskell
-    , grpc-haskell-core
-    , hs-grpc-server
-    , hstream-admin-server
-    , hstream-api-hs
-    , hstream-common
-    , hstream-common-base
-    , hstream-common-server
-    , hstream-common-stats
-    , hstream-gossip
-    , hstream-kafka
-    , hstream-store
-    , http-client
-    , memory
-    , optparse-applicative
-    , prometheus-client
-    , proto3-suite
-    , proto3-wire
-    , raw-strings-qq
-    , stm
-    , suspend
-    , text
-    , timers
-    , vector
-    , wai-middleware-prometheus
-    , warp
-    , Z-Data
-    , zoovisitor
-
-  if flag(hstream_use_grpc_haskell)
-    cpp-options: -DHStreamUseGrpcHaskell
-
-  if flag(hstream_enable_asan)
-    cpp-options: -DHSTREAM_ENABLE_ASAN
-
-  default-language: Haskell2010
-  ghc-options:
-    -threaded -rtsopts "-with-rtsopts=-N -A64m -n4m -qg -qn1"
 
 executable hstream-kafka-cli
   if flag(hstream_enable_asan)
