@@ -15,6 +15,8 @@ import qualified Data.Text                          as T
 import qualified Data.Vector                        as V
 import qualified Data.Vector.Hashtables             as HT
 import qualified Data.Vector.Storable               as VS
+import qualified Prometheus                         as P
+
 import qualified HStream.Base.Growing               as GV
 import qualified HStream.Kafka.Common.OffsetManager as K
 import qualified HStream.Kafka.Common.RecordFormat  as K
@@ -30,7 +32,6 @@ import qualified Kafka.Protocol.Encoding            as K
 import qualified Kafka.Protocol.Error               as K
 import qualified Kafka.Protocol.Message             as K
 import qualified Kafka.Protocol.Service             as K
-import qualified Prometheus                         as P
 
 -------------------------------------------------------------------------------
 

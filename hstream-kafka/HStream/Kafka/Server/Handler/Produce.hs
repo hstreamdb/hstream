@@ -12,6 +12,7 @@ import           Data.Text                          (Text)
 import qualified Data.Text                          as T
 import qualified Data.Vector                        as V
 import           Data.Word
+
 import qualified HStream.Kafka.Common.OffsetManager as K
 import qualified HStream.Kafka.Common.RecordFormat  as K
 import           HStream.Kafka.Common.Utils         (observeWithLabel)
@@ -64,14 +65,14 @@ handleProduce ServerContext{..} _ req = do
                       else V.forM
     partitionResponses <- loopPart partitionData $ \partition -> do
       let Just (_, logid) = partitions V.!? (fromIntegral partition.index) -- TODO: handle Nothing
-      P.withLabel totalProduceRequest (name, T.pack . show $ index) $ \counter -> void $ P.addCounter counter 1
+      P.withLabel totalProduceRequest (topic.name, T.pack . show $ partition.index) $ \counter -> void $ P.addCounter counter 1
       let Just recordBytes = partition.recordBytes -- TODO: handle Nothing
       Log.debug1 $ "Append to logid " <> Log.build logid
                 <> "(" <> Log.build partition.index <> ")"
 
       -- Wirte appends
       (S.AppendCompletion{..}, offset) <-
-        appendRecords True scLDClient scOffsetManager (name, index) logid recordBytes
+        appendRecords True scLDClient scOffsetManager (topic.name, partition.index) logid recordBytes
 
       Log.debug1 $ "Append done " <> Log.build appendCompLogID
                 <> ", lsn: " <> Log.build appendCompLSN
@@ -124,9 +125,9 @@ appendRecords shouldValidateCrc ldclient om (streamName, partition) logid bs = d
         appendAttrs = Just [(S.KeyTypeFindKey, appendKey)]
         storedBs = K.encodeBatchRecords records'
         -- FIXME unlikely overflow: convert batchLength from Int to Int32
-        storedRecord = K.RecordFormat o (fromIntegral batchLength) (K.CompactBytes storedBs)
+        storedRecord = K.runPut $ K.RecordFormat o (fromIntegral batchLength) (K.CompactBytes storedBs)
     r <- observeWithLabel appendLatencySnd streamName $
-           S.appendCompressedBS ldclient logid (K.runPut storedRecord) S.CompressionNone appendAttrs
+           S.appendCompressedBS ldclient logid storedRecord S.CompressionNone appendAttrs
     P.withLabel topicTotalAppendBytes (streamName, T.pack . show $ partition) $ \counter -> void $ P.addCounter counter (fromIntegral $ BS.length storedRecord)
     P.withLabel topicTotalAppendMessages (streamName, T.pack . show $ partition) $ \counter -> void $ P.addCounter counter (fromIntegral batchLength)
     pure (r, startOffset)
