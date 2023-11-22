@@ -4,6 +4,7 @@ module Main where
 
 import           Control.Monad
 import           Criterion.Main
+import           Data.Atomics   (atomicModifyIORefCAS)
 import           Data.IORef
 
 import           HStream.Base   (runConc)
@@ -16,6 +17,7 @@ main :: IO ()
 main =
   defaultMain
     [ bgroup "counter" [ bench "IORef" $ nfIO (runIORef 100000)
+                       , bench "IORefCAS" $ nfIO (runIORef 100000)
                        , bench "StatsHolder" $ nfIO (runStatsHolder 100000)
                        ]
     ]
@@ -24,6 +26,13 @@ runIORef :: Int -> IO ()
 runIORef n = do
   ref <- newIORef 0
   runConc n $ atomicModifyIORef' ref (\x -> (x+1, ()))
+  r <- readIORef ref
+  when (r /= n) $ error "Error: wrong result!"
+
+runIORefCAS :: Int -> IO ()
+runIORefCAS n = do
+  ref <- newIORef 0
+  runConc n $ atomicModifyIORefCAS ref (\x -> (x+1, ()))
   r <- readIORef ref
   when (r /= n) $ error "Error: wrong result!"
 

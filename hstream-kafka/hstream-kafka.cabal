@@ -122,6 +122,9 @@ library
     HStream.Kafka.Server.Types
 
   other-modules:
+    HStream.Kafka.Metrics.ConsumeStats
+    HStream.Kafka.Metrics.ProduceStats
+    HStream.Kafka.Metrics.ServerStats
     HStream.Kafka.Server.Config.FromCli
     HStream.Kafka.Server.Config.FromJson
     HStream.Kafka.Server.Config.Types
@@ -135,9 +138,6 @@ library
     HStream.Kafka.Server.Handler.Produce
     HStream.Kafka.Server.Handler.Security
     HStream.Kafka.Server.Handler.Topic
-    HStream.Kafka.Metrics.ProduceStats
-    HStream.Kafka.Metrics.ConsumeStats
-    HStream.Kafka.Metrics.ServerStats
 
   cxx-sources:        cbits/hs_kafka_client.cpp
   cxx-options:        -std=c++17
@@ -170,16 +170,16 @@ library
     , hstream-store
     , network
     , optparse-applicative
+    , prometheus-client
     , text
     , unordered-containers
     , uuid
     , vector
     , vector-hashtables
+    , warp
     , yaml
     , Z-Data
     , zoovisitor
-    , prometheus-client
-    , warp
 
   default-language:   GHC2021
   default-extensions:

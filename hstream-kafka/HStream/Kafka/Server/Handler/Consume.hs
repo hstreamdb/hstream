@@ -15,6 +15,7 @@ import qualified Data.Text                          as T
 import qualified Data.Vector                        as V
 import qualified Data.Vector.Hashtables             as HT
 import qualified Data.Vector.Storable               as VS
+import           GHC.Stack                          (HasCallStack)
 import qualified Prometheus                         as P
 
 import qualified HStream.Base.Growing               as GV
@@ -44,21 +45,30 @@ type RecordTable =
 
 -- NOTE: this behaviour is not the same as kafka broker
 handleFetch
-  :: ServerContext -> K.RequestContext
-  -> K.FetchRequest -> IO K.FetchResponse
+  :: HasCallStack
+  => ServerContext
+  -> K.RequestContext -> K.FetchRequest -> IO K.FetchResponse
 handleFetch ServerContext{..} _ r = K.catchFetchResponseEx $ do
   -- kafka broker just throw java.lang.RuntimeException if topics is null, here
   -- we do the same.
   let K.NonNullKaArray topicReqs = r.topics
   topics <- V.forM topicReqs $ \K.FetchTopic{..} -> do
     orderedParts <- S.listStreamPartitionsOrdered scLDClient (S.transToTopicStreamName topic)
-
     let K.NonNullKaArray partitionReqs = partitions
     ps <- V.forM partitionReqs $ \p -> do
-      let (_, logid) = orderedParts V.! fromIntegral p.partition
-      P.withLabel totalConsumeRequest (topic, T.pack . show $ p.partition) $ \counter -> void $ P.addCounter counter 1
-      elsn <- getPartitionLsn scLDClient scOffsetManager logid p.partition p.fetchOffset
-      pure (logid, elsn, p)
+      P.withLabel totalConsumeRequest (topic, T.pack . show $ p.partition) $
+        \counter -> void $ P.addCounter counter 1
+      let m_logid = orderedParts V.!? fromIntegral p.partition
+      case m_logid of
+        Nothing -> do
+          let elsn = errorPartitionResponse p.partition K.UNKNOWN_TOPIC_OR_PARTITION
+          -- Actually, the logid should be Nothing but 0, however, we won't
+          -- use it, so just set it to 0
+          pure (0, Left elsn, p)
+        Just (_, logid) -> do
+          elsn <- getPartitionLsn scLDClient scOffsetManager logid p.partition
+                                  p.fetchOffset
+          pure (logid, elsn, p)
     pure (topic, ps)
 
   let numOfReads = V.sum $
