@@ -137,6 +137,7 @@ benchmark common-bench-stats
   main-is:            stats.hs
   hs-source-dirs:     bench
   build-depends:
+    , atomic-primops
     , base                  >=4.11 && <5
     , bytestring
     , criterion
