@@ -1,6 +1,7 @@
 module HStream.Kafka.Common.Read
   ( readOneRecord
   , readOneRecordBypassGap
+  , readLastOneRecord
   ) where
 
 import           Control.Exception
@@ -77,6 +78,52 @@ readOneRecord_ bypassGap store reader logid getLsn = do
             Right [S.DataRecord{..}] ->
               (Just . (start, end, )) <$> K.runGet recordPayload
             ds -> exitErr ds
+    release = do
+      isReading <- S.readerIsReading reader logid
+      when isReading $ S.readerStopReading reader logid
+
+readLastOneRecord
+  :: HasCallStack
+  => S.LDClient -> S.LDReader -> Word64 -> IO (Maybe (S.LSN, RecordFormat))
+readLastOneRecord store reader logid = do
+  isEmpty <- S.isLogEmpty store logid
+  if isEmpty
+     then pure Nothing
+     else do tailLsn <- S.getTailLSN store logid
+             finally (acquire tailLsn) release
+  where
+    acquire lsn = do
+      -- the log is not empty
+      S.readerStartReading reader logid lsn lsn
+      dataRecords <- S.readerReadAllowGap @ByteString reader 1
+      case dataRecords of
+        Right [S.DataRecord{..}] -> (Just . (lsn, )) <$> K.runGet recordPayload
+        -- tailsn is a gap
+        Left S.GapRecord{..} -> do
+          -- FIXME: should we continue if the gap is a dataloss?
+          when (gapType == S.GapTypeDataloss) $ do
+            Log.fatal $ "readLastOneRecord read " <> Log.build logid
+                     <> " with lsn (" <> Log.build lsn <> ", "
+                     <> Log.build lsn <> ") "
+                     <> "got a dataloss!"
+            ioError $ userError $ "Invalid read result"
+          Log.info $ "readLastOneRecord read " <> Log.build logid
+                  <> " with lsn (" <> Log.build lsn <> ", "
+                  <> Log.build lsn <> ") "
+                  <> "got a gap " <> Log.buildString' gapType
+                  <> ", use last released lsn instead."
+          -- This should not be gap, so there won't be a forever loop
+          tailAttrLsn <- S.getLogTailAttrsLSN =<< S.getLogTailAttrs store logid
+          Log.debug1 $ "Got last released lsn " <> Log.build tailAttrLsn
+          acquire tailAttrLsn
+        -- should not reach here
+        ds -> do
+          Log.fatal $ "readLastOneRecord read " <> Log.build logid
+                   <> " with lsn (" <> Log.build lsn <> ", "
+                   <> Log.build lsn <> ") "
+                   <> "got unexpected result "
+                   <> Log.buildString' ds
+          ioError $ userError $ "Invalid read result"
     release = do
       isReading <- S.readerIsReading reader logid
       when isReading $ S.readerStopReading reader logid
