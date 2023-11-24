@@ -4,15 +4,17 @@
 {-# LANGUAGE OverloadedStrings     #-}
 
 module HStream.Kafka.Server.Config.KafkaConfig where
-import qualified Control.Monad  as M
-import qualified Data.Aeson.Key as Y
-import           Data.Int       (Int32)
-import qualified Data.Map       as Map
-import qualified Data.Text      as T
-import qualified Data.Text.Read as T
-import qualified Data.Vector    as V
-import qualified Data.Yaml      as Y
-import qualified GHC.Generics   as G
+import qualified Control.Monad   as M
+import qualified Data.Aeson.Key  as Y
+import qualified Data.Aeson.Text as Y
+import           Data.Int        (Int32)
+import qualified Data.Map        as Map
+import qualified Data.Text       as T
+import qualified Data.Text.Lazy  as TL
+import qualified Data.Text.Read  as T
+import qualified Data.Vector     as V
+import qualified Data.Yaml       as Y
+import qualified GHC.Generics    as G
 
 data KafkaConfigResource
   = UNKNOWN
@@ -137,7 +139,7 @@ parseBrokerConfigs obj =
     lk :: Lookup
     lk configName = Y.parseMaybe (obj Y..:) (Y.fromText configName) >>= \case
         Y.String v -> Just v
-        x -> Just . T.pack $ show x
+        x -> Just . TL.toStrict . Y.encodeToLazyText $ x
 
 allBrokerConfigs :: KafkaBrokerConfigs -> V.Vector KafkaConfigInstance
 allBrokerConfigs = V.fromList . Map.elems . dumpConfigs
