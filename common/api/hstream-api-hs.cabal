@@ -83,7 +83,7 @@ library
     , deepseq
     , grpc-haskell
     , microlens
-    , proto-lens-protobuf-types  ^>=0.7.1.2
+    , proto-lens-protobuf-types  ^>=0.7.1.3
     , proto-lens-runtime
     , proto3-suite
     , proto3-wire
