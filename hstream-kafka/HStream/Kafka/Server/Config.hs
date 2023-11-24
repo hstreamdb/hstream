@@ -1,6 +1,10 @@
 module HStream.Kafka.Server.Config
   ( ServerOpts (..)
+  , CliOptions (..)
+  , cliOptionsParser
+
   , runServerConfig
+  , runServerFromCliOpts
 
   , MetaStoreAddr (..)
   , AdvertisedListeners
@@ -30,6 +34,9 @@ runServerConfig args f = do
   case serverCli of
     ShowVersion -> showVersion
     Cli cliOpts -> getConfig cliOpts >>= f
+
+runServerFromCliOpts :: CliOptions -> (ServerOpts -> IO ()) -> IO ()
+runServerFromCliOpts cliOpts f = getConfig cliOpts >>= f
 
 getConfig :: CliOptions -> IO ServerOpts
 getConfig opts@CliOptions{..} = do
