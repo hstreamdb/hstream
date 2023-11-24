@@ -142,8 +142,10 @@ handleMetadataV4 ctx@ServerContext{..} _ req@K.MetadataRequestV4{..} = do
           createResp <-
             if kafkaBrokerConfigs.autoCreateTopicsEnable._value && allowAutoTopicCreation
               then do
+                let defaultReplicas = kafkaBrokerConfigs.defaultReplicationFactor._value
+                    defaultNumPartitions = kafkaBrokerConfigs.numPartitions._value
                 resp <- forM needCreate $ \topic -> do
-                  (code, shards) <- createTopic ctx topic (fromIntegral scDefaultTopicRepFactor) (fromIntegral scDefaultPartitionNum) Map.empty
+                  (code, shards) <- createTopic ctx topic (fromIntegral defaultReplicas) (fromIntegral defaultNumPartitions) Map.empty
                   if code /= K.NONE
                     then do
                       return $ K.MetadataResponseTopicV1 code topic False K.emptyKaArray

@@ -40,12 +40,8 @@ parseJSONToOptions CliOptions{..} obj = do
   -- Kafka config
   -- TODO: generate Parser from KafkaBrokerConfigs
   let !_disableAutoCreateTopic = cliDisableAutoCreateTopic
-  numPartitions   <- nodeCfgObj .:? "num-partitions" .!= 1
-  defaultReplica  <- nodeCfgObj .:? "default-replication-factor" .!= 1
-  let !_topicRepFactor = numPartitions
-  let !_partitionNums  = defaultReplica
-  let autoCreateTopicsEnable = KC.AutoCreateTopicsEnable (not _disableAutoCreateTopic)
-      !_kafkaBrokerConfigs = KC.KafkaBrokerConfigs {..}
+  let updateBrokerConfigs cfg = cfg {KC.autoCreateTopicsEnable=KC.AutoCreateTopicsEnable $ not _disableAutoCreateTopic}
+  !_kafkaBrokerConfigs <- updateBrokerConfigs <$> KC.parseBrokerConfigs nodeCfgObj
 
   -- TODO: For the max_record_size to work properly, we should also tell user
   -- to set payload size for gRPC and LD.

@@ -64,8 +64,6 @@ data ServerOpts = ServerOpts
   , _serverGossipPort             :: !Word16
   , _gossipOpts                   :: !GossipOpts
 
-  , _topicRepFactor               :: !Int
-  , _partitionNums                :: !Int
   , _maxRecordSize                :: !Int
   , _seedNodes                    :: ![(ByteString, Int)]
 

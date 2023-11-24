@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedRecordDot #-}
+
 module HStream.Kafka.Server.Core.Topic
  ( createTopic
  )
@@ -29,7 +31,9 @@ createTopic :: ServerContext -> Text -> Int16 -> Int32 -> Map.Map T.Text (Maybe 
 createTopic ServerContext{..} name replicationFactor numPartitions configs = do
   let streamId = S.transToTopicStreamName name
   timeStamp <- BaseTime.getSystemNsTimestamp
-  let replica = if replicationFactor == -1 then scDefaultTopicRepFactor else fromIntegral replicationFactor
+  let replica = if replicationFactor == -1
+                  then kafkaBrokerConfigs.defaultReplicationFactor._value
+                  else fromIntegral replicationFactor
   case KC.mkKafkaTopicConfigs configs of
     Left msg -> do
       Log.info $ "create topic failed, invaid config:" <> Log.build msg
@@ -52,7 +56,9 @@ createTopic ServerContext{..} name replicationFactor numPartitions configs = do
               Log.warning $ "Exception occurs when creating stream " <> Log.build (show streamId) <> ": " <> Log.build (show e)
               return (K.UNKNOWN_SERVER_ERROR, [])
         Right _ -> do
-          let partitions = if numPartitions == -1 then scDefaultPartitionNum else fromIntegral numPartitions
+          let partitions = if numPartitions == -1
+                              then kafkaBrokerConfigs.numPartitions._value
+                              else fromIntegral numPartitions
           let keyTups = CommonTypes.devideKeySpace partitions
           shards_e <-
             try $ forM (keyTups `zip` [0..]) $ \((startKey, endKey), i) -> do
