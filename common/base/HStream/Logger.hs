@@ -1,4 +1,5 @@
 {-# LANGUAGE BangPatterns         #-}
+{-# LANGUAGE CPP                  #-}
 {-# LANGUAGE GADTs                #-}
 {-# LANGUAGE MagicHash            #-}
 {-# LANGUAGE PatternSynonyms      #-}
@@ -60,7 +61,7 @@ import           Control.Exception              (finally)
 import           Control.Monad                  (forever, when)
 import           Data.IORef                     (IORef, atomicWriteIORef,
                                                  newIORef, readIORef)
-import           Foreign.C.Types                (CInt (..))
+import           Foreign.C.Types
 import           GHC.Conc.Sync                  (ThreadId (..), myThreadId)
 import           GHC.Exts                       (ThreadId#)
 import           GHC.Stack
@@ -409,4 +410,13 @@ logBylevel flushLevel level cstack s = do
 
 -------------------------------------------------------------------------------
 
+-- this cannot be capi, as GHC panics.
+#if __GLASGOW_HASKELL__ >= 904
+-- https://gitlab.haskell.org/ghc/ghc/-/merge_requests/6163
+foreign import ccall unsafe "rts_getThreadId" getThreadId :: ThreadId# -> CULLong
+#elif __GLASGOW_HASKELL__ >= 900
+-- https://gitlab.haskell.org/ghc/ghc/-/merge_requests/1254
+foreign import ccall unsafe "rts_getThreadId" getThreadId :: ThreadId# -> CLong
+#else
 foreign import ccall unsafe "rts_getThreadId" getThreadId :: ThreadId# -> CInt
+#endif

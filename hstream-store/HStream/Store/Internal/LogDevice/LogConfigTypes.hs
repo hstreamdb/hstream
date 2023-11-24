@@ -29,6 +29,9 @@ import           GHC.Stack                                      (HasCallStack,
 import qualified Z.Data.CBytes                                  as CBytes
 import           Z.Data.CBytes                                  (CBytes)
 import qualified Z.Foreign                                      as Z
+#if __GLASGOW_HASKELL__ >= 904
+import           GHC.Exts                                       (ArrayArray# (ArrayArray#))
+#endif
 
 import           HStream.Foreign
 import qualified HStream.Store.Exception                        as E

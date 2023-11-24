@@ -135,7 +135,7 @@ library
     , rio
     , scientific
     , string-random
-    , text                  ^>=1.2
+    , text
     , time                  >=1.9.1 && <2
     , time-compat
     , unordered-containers
