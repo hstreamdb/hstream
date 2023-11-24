@@ -48,6 +48,7 @@ import           HStream.Gossip                   (GossipContext (..),
                                                    startGossip, waitGossipBoot)
 import           HStream.Gossip.Types             (Epoch, InitType (Gossip))
 import           HStream.Gossip.Utils             (getMemberListWithEpochSTM)
+import qualified HStream.Kafka.Server.Config      as Ka
 import qualified HStream.Logger                   as Log
 import           HStream.MetaStore.Types          as M (MetaHandle (..),
                                                         MetaStore (..),
@@ -78,6 +79,7 @@ import           HStream.Server.Types             (ServerContext (..))
 import qualified HStream.Store.Logger             as Log
 import qualified HStream.ThirdParty.Protobuf      as Proto
 import           HStream.Utils                    (getProtoTimestamp)
+import qualified KafkaServer                      as Ka
 
 #ifdef HStreamUseGrpcHaskell
 import           HStream.Server.Handler           (handlers)
@@ -98,8 +100,12 @@ main = do
   args <- getArgs
   serverCli <- runServerCli args
   case serverCli of
-    ShowVersion -> showVersion
-    Cli cliOpts -> getConfig cliOpts >>= app
+    ShowVersion      -> showVersion
+    Cli cliOpts      -> getConfig cliOpts >>= app
+    KafkaCli cliOpts -> Ka.runServerFromCliOpts cliOpts Ka.app
+
+-------------------------------------------------------------------------------
+-- HStream Server
 
 app :: ServerOpts -> IO ()
 app config@ServerOpts{..} = do
@@ -291,8 +297,6 @@ serveListeners sc grpcOpts
        else HsGrpc.runServer grpcOpts' (HsGrpcHandler.handlers sc')
 #endif
 
--------------------------------------------------------------------------------
-
 -- default grpc options
 #ifdef HStreamUseGrpcHaskell
 defGrpcOpts
@@ -327,6 +331,9 @@ defGrpcOpts host port tlsConfig chanArgs = do
       , HsGrpc.serverChannelArgs = chanArgs
       }
 #endif
+
+-------------------------------------------------------------------------------
+-- Misc
 
 showVersion :: IO ()
 showVersion = do
