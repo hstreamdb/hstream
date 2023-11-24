@@ -206,8 +206,7 @@ jobs:
           rm -f ~/data/hstream_tests.tar
           find dist-newstyle/build -type f \( \
             -name "*-test" -o \
-            -name "hstream-server" -o \
-            -name "hstream-kafka-server" \) \
+            -name "hstream-server" \) \
             -exec tar -rvf ~/data/hstream_tests.tar {} \;
 
       - uses: actions/upload-artifact@v3
@@ -364,7 +363,6 @@ jobs:
         run: |
           docker load -i ~/data/new_hstream_image.tar
           docker run -t --rm $NEW_HSTREAM_IMAGE /usr/local/bin/hstream-server +RTS --info
-          docker run -t --rm $NEW_HSTREAM_IMAGE /usr/local/bin/hstream-kafka-server +RTS --info
 
       - name: fetch tests source code
         uses: actions/checkout@v3
