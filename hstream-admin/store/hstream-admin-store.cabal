@@ -104,7 +104,7 @@ library
     , hstream-store
     , optparse-applicative  ^>=0.16
     , STMonadTrans
-    , table-layout          ^>=0.9.1
+    , table-layout          ^>=1.0
     , text                  ^>=1.2.3.0
     , thrift-cpp-channel
     , thrift-lib
