@@ -2,8 +2,6 @@ packages:
   -- * External
   external/proto3-wire/proto3-wire.cabal
   external/proto3-suite/proto3-suite.cabal
-  -- We need to add this table-layout since the hackage version is too old.
-  external/table-layout/table-layout.cabal
   external/hs-grpc/hs-grpc-server/hs-grpc-server.cabal
   external/gRPC-haskell/grpc-haskell.cabal
   external/gRPC-haskell/core/grpc-haskell-core.cabal
@@ -37,9 +35,6 @@ package proto3-wire
 package proto3-suite
   tests: false
 
-package table-layout
-  tests: false
-
 package hs-grpc-server
   flags: +hsgrpc_use_protosuite
   tests: false
@@ -61,7 +56,7 @@ constraints:
     Z-Data      == 2.0.0.2
   , zoovisitor  == 0.2.6.1
   , criterion  ^>= 1.6
-  , aeson      ^>= 2.0
+  , aeson      ^>= 2.1
   , filepath    >= 1.4.100
 
   -- The following is needed to avoid breaking the build.

@@ -1,8 +1,6 @@
 with-compiler: ghc-8.10.7
 
 packages:
-  -- We need to add this table-layout since the hackage version is too old.
-  external/table-layout/table-layout.cabal
   external/hsthrift/common/util/fb-util.cabal
   external/hsthrift/common/github/fb-stubs.cabal
   external/hsthrift/common/mangle/mangle.cabal

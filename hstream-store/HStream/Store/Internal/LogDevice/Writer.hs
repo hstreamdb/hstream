@@ -33,6 +33,9 @@ import           Z.Data.CBytes                  (CBytes)
 import qualified Z.Data.Vector                  as V
 import           Z.Data.Vector                  (Bytes)
 import qualified Z.Foreign                      as Z
+#if __GLASGOW_HASKELL__ >= 904
+import           GHC.Exts                       (ArrayArray# (ArrayArray#))
+#endif
 
 import qualified HStream.Store.Exception        as E
 import           HStream.Store.Internal.Foreign
