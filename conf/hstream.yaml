@@ -249,10 +249,10 @@ kafka:
   #  probe-interval: 2000000    # 2 sec
   #  roundtrip-timeout: 500000  # 0.5 sec
   #
-  #Kafka options
+  # Broker options (compatible with Kafka)
   #
-  #num-partitions: 1
-  #default-replication-factor: 1
+  #num.partitions: 1
+  #default.replication.factor: 1
 
 # Configuration for HStream Store
 # The configuration for hstore is **Optional**. When the values are not provided,

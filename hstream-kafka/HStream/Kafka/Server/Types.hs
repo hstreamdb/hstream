@@ -24,8 +24,6 @@ data ServerContext = ServerContext
   { serverID                 :: !Word32
   , serverOpts               :: !ServerOpts
   , scAdvertisedListenersKey :: !(Maybe Text)
-  , scDefaultTopicRepFactor  :: !Int
-  , scDefaultPartitionNum    :: !Int
   , scMaxRecordSize          :: !Int
   , metaHandle               :: !MetaHandle
   , scStatsHolder            :: !Stats.StatsHolder
@@ -56,8 +54,6 @@ initServerContext opts@ServerOpts{..} gossipContext mh = do
       { serverID                 = _serverID
       , serverOpts               = opts
       , scAdvertisedListenersKey = Nothing
-      , scDefaultTopicRepFactor  = _topicRepFactor
-      , scDefaultPartitionNum    = _partitionNums
       , scMaxRecordSize          = _maxRecordSize
       , metaHandle               = mh
       , scStatsHolder            = statsHolder

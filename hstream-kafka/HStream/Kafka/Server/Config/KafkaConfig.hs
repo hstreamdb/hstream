@@ -1,15 +1,20 @@
-{-# LANGUAGE AllowAmbiguousTypes   #-}
 {-# LANGUAGE CPP                   #-}
+{-# LANGUAGE DefaultSignatures     #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE OverloadedStrings     #-}
 
 module HStream.Kafka.Server.Config.KafkaConfig where
-import qualified Control.Monad  as M
-import           Data.Int       (Int32)
-import qualified Data.Map       as Map
-import qualified Data.Text      as T
-import qualified Data.Text.Read as T
-import qualified Data.Vector    as V
+import qualified Control.Monad   as M
+import qualified Data.Aeson.Key  as Y
+import qualified Data.Aeson.Text as Y
+import           Data.Int        (Int32)
+import qualified Data.Map        as Map
+import qualified Data.Text       as T
+import qualified Data.Text.Lazy  as TL
+import qualified Data.Text.Read  as T
+import qualified Data.Vector     as V
+import qualified Data.Yaml       as Y
+import qualified GHC.Generics    as G
 
 data KafkaConfigResource
   = UNKNOWN
@@ -43,6 +48,14 @@ class Eq kc => KafkaConfig kc where
   isDefaultValue = (defaultConfig == )
 
 data KafkaConfigInstance = forall kc. KafkaConfig kc => KafkaConfigInstance kc
+instance Eq KafkaConfigInstance where
+  (==) (KafkaConfigInstance x) (KafkaConfigInstance y) = value x == value y
+instance KafkaConfig KafkaConfigInstance where
+  name (KafkaConfigInstance x) = name x
+  value (KafkaConfigInstance x) = value x
+  isSentitive (KafkaConfigInstance x) = isSentitive x
+  fromText = fromText
+  defaultConfig = defaultConfig
 
 ---------------------------------------------------------------------------
 -- Kafka Topic Config
@@ -72,14 +85,12 @@ data KafkaTopicConfigs
   = KafkaTopicConfigs
   { cleanupPolicy :: CleanupPolicy
   , retentionMs   :: RetentionMs
-  }
+  } deriving (G.Generic)
+instance KafkaConfigs KafkaTopicConfigs
 
--- TODO: build from KafkaTopicConfigs
 mkKafkaTopicConfigs :: Map.Map T.Text (Maybe T.Text) -> Either T.Text KafkaTopicConfigs
-mkKafkaTopicConfigs configs =
-  KafkaTopicConfigs
-    <$> lookupConfig (defaultConfig @CleanupPolicy) configs
-    <*> lookupConfig (defaultConfig @RetentionMs) configs
+mkKafkaTopicConfigs configs = mkConfigs @KafkaTopicConfigs lk
+  where lk x = M.join (Map.lookup x configs)
 
 ---------------------------------------------------------------------------
 -- Kafka Broker Config
@@ -95,41 +106,108 @@ instance KafkaConfig AutoCreateTopicsEnable where
   fromText v       = Left $ "invalid bool value:" <> v
   defaultConfig = AutoCreateTopicsEnable True
 
-newtype KafkaBrokerConfigs
-  = KafkaBrokerConfigs
-  { autoCreateTopicsEnable :: AutoCreateTopicsEnable
-  } deriving (Show, Eq)
+newtype NumPartitions = NumPartitions { _value :: Int } deriving (Eq, Show)
+instance KafkaConfig NumPartitions where
+  name = const "num.partitions"
+  value (NumPartitions v)  = Just . T.pack $ show v
+  isSentitive = const False
+  fromText t = NumPartitions <$> textToIntE t
+  defaultConfig = NumPartitions 1
 
--- TODO: generate from KafkaBrokerConfigs
+newtype DefaultReplicationFactor = DefaultReplicationFactor { _value :: Int } deriving (Eq, Show)
+instance KafkaConfig DefaultReplicationFactor where
+  name = const "default.replication.factor"
+  value (DefaultReplicationFactor v)  = Just . T.pack $ show v
+  isSentitive = const False
+  fromText t = DefaultReplicationFactor <$> textToIntE t
+  defaultConfig = DefaultReplicationFactor 1
+
+data KafkaBrokerConfigs
+  = KafkaBrokerConfigs
+  { autoCreateTopicsEnable   :: AutoCreateTopicsEnable
+  , numPartitions            :: NumPartitions
+  , defaultReplicationFactor :: DefaultReplicationFactor
+  } deriving (Show, Eq, G.Generic)
+instance KafkaConfigs KafkaBrokerConfigs
+
+parseBrokerConfigs :: Y.Object -> Y.Parser KafkaBrokerConfigs
+parseBrokerConfigs obj =
+  case mkConfigs @KafkaBrokerConfigs lk of
+    Left msg -> error (T.unpack msg)
+    Right v  -> pure v
+  where
+    lk :: Lookup
+    lk configName = Y.parseMaybe (obj Y..:) (Y.fromText configName) >>= \case
+        Y.String v -> Just v
+        x -> Just . TL.toStrict . Y.encodeToLazyText $ x
+
 allBrokerConfigs :: KafkaBrokerConfigs -> V.Vector KafkaConfigInstance
-allBrokerConfigs KafkaBrokerConfigs{..} = V.fromList
-  [ KafkaConfigInstance $ autoCreateTopicsEnable
-  ]
+allBrokerConfigs = V.fromList . Map.elems . dumpConfigs
 
 ---------------------------------------------------------------------------
 -- Config Helpers
 ---------------------------------------------------------------------------
+type Lookup = T.Text -> Maybe T.Text
+type ConfigMap = Map.Map T.Text KafkaConfigInstance
+
+class KafkaConfigs a where
+  mkConfigs :: Lookup -> Either T.Text a
+  dumpConfigs :: a -> ConfigMap
+  defaultConfigs :: a
+
+  default mkConfigs :: (G.Generic a, GKafkaConfigs (G.Rep a)) => Lookup -> Either T.Text a
+  mkConfigs lk = G.to <$> gmkConfigs lk
+
+  default dumpConfigs :: (G.Generic a, GKafkaConfigs (G.Rep a)) => a -> ConfigMap
+  dumpConfigs = gdumpConfigs . G.from
+
+  default defaultConfigs :: (G.Generic a, GKafkaConfigs (G.Rep a)) => a
+  defaultConfigs = G.to gdefaultConfigs
+
+class GKafkaConfigs f where
+  gmkConfigs :: Lookup -> Either T.Text (f p)
+  gdumpConfigs :: (f p) -> ConfigMap
+  gdefaultConfigs :: f p
+
+instance KafkaConfig c => GKafkaConfigs (G.K1 i c) where
+  gmkConfigs lk = G.K1 <$> case lk (name @c defaultConfig) of
+    Nothing        -> Right (defaultConfig @c)
+    Just textValue -> fromText @c textValue
+  gdumpConfigs (G.K1 x) = (Map.singleton (name x) (KafkaConfigInstance x))
+  gdefaultConfigs = G.K1 (defaultConfig @c)
+
+instance GKafkaConfigs f => GKafkaConfigs (G.M1 i c f) where
+  gmkConfigs lk = G.M1 <$> (gmkConfigs lk)
+  gdumpConfigs (G.M1 x) = gdumpConfigs x
+  gdefaultConfigs = G.M1 gdefaultConfigs
+
+instance (GKafkaConfigs a, GKafkaConfigs b) => GKafkaConfigs (a G.:*: b) where
+  gmkConfigs lk = (G.:*:) <$> (gmkConfigs lk) <*> (gmkConfigs lk)
+  gdumpConfigs (x G.:*: y) = Map.union (gdumpConfigs x) (gdumpConfigs y)
+  gdefaultConfigs = gdefaultConfigs G.:*: gdefaultConfigs
+
 #define MK_CONFIG_PAIR(configType) \
   let dc = defaultConfig @configType in (name dc, (KafkaConfigInstance dc, fmap KafkaConfigInstance . fromText @configType))
 
-lookupConfig :: KafkaConfig kc => kc -> Map.Map T.Text (Maybe T.Text) -> Either T.Text kc
-lookupConfig dc configs =
-  case M.join . Map.lookup (name dc) $ configs of
-    Nothing        -> Right dc
-    Just textValue -> fromText textValue
+allTopicConfigs :: ConfigMap
+allTopicConfigs = dumpConfigs (defaultConfigs @KafkaTopicConfigs)
 
--- TODO: build from KafkaTopicConfigs
-allTopicConfigs :: Map.Map T.Text (KafkaConfigInstance, T.Text -> Either T.Text KafkaConfigInstance)
-allTopicConfigs = Map.fromList
-  [ MK_CONFIG_PAIR(CleanupPolicy)
-  , MK_CONFIG_PAIR(RetentionMs)
-  ]
+getTopicConfig :: T.Text -> Map.Map T.Text (Maybe T.Text) -> Either T.Text KafkaConfigInstance
+getTopicConfig configName configValues = do
+  let lk x = M.join (Map.lookup x configValues)
+  computedMap <- dumpConfigs <$> mkConfigs @KafkaTopicConfigs lk
+  case Map.lookup configName computedMap of
+    Nothing  -> Left $ "unsupported config name:" <> configName
+    Just cfg -> Right cfg
 
-getTopicConfig :: T.Text -> Maybe T.Text -> Either T.Text KafkaConfigInstance
-getTopicConfig configName configValue =
-  case Map.lookup configName allTopicConfigs of
-    Nothing -> Left $ "unsupported config name:" <> configName
-    Just (dc, fromText') ->
-      case configValue of
-        Nothing        -> Right dc
-        Just textValue -> fromText' textValue
+---------------------------------------------------------------------------
+-- Utils
+---------------------------------------------------------------------------
+textToIntE :: T.Text -> Either T.Text Int
+textToIntE v =
+  case (T.signed T.decimal) v of
+    Left msg          -> Left (T.pack msg)
+    Right (intVal, _) -> Right intVal
+
+intToText :: Show a => a -> T.Text
+intToText v = T.pack (show v)

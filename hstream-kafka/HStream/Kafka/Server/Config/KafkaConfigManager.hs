@@ -2,7 +2,6 @@
 {-# LANGUAGE OverloadedStrings     #-}
 
 module HStream.Kafka.Server.Config.KafkaConfigManager where
-import qualified Control.Monad                           as M
 import qualified Data.Aeson                              as J
 import           Data.Bifunctor                          (Bifunctor (bimap))
 import qualified Data.Map                                as Map
@@ -63,7 +62,7 @@ listTopicConfigs KafkaConfigManager{..} topic keys = do
         , value=KC.value cfg
         }
     getConfig :: Map.Map T.Text (Maybe T.Text) -> T.Text -> Either T.Text K.DescribeConfigsResourceResult
-    getConfig configs configName = getConfigByInstance <$> KC.getTopicConfig configName (M.join (Map.lookup configName configs))
+    getConfig configs configName = getConfigByInstance <$> KC.getTopicConfig configName configs
 
 getErrorResponse :: KC.KafkaConfigResource -> T.Text -> T.Text -> K.DescribeConfigsResult
 getErrorResponse rt rn msg = K.DescribeConfigsResult
