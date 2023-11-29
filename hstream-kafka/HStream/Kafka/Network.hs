@@ -212,7 +212,8 @@ startTCPServer ServerOptions{..} server = do
         -- @conn@) before proper cleanup of @conn@ is your case
         forkFinally (server (conn, peer)) $ \e -> do
           case e of
-            Left err -> print err >> N.gracefulClose conn 5000
+            Left err -> do Log.fatal (Log.buildString' err)
+                           N.gracefulClose conn 5000
             Right _  -> pure ()
 
 -------------------------------------------------------------------------------
