@@ -272,10 +272,10 @@ data LoggerConfig = LoggerConfig
     -- ^ Buffer size of each core
   , loggerLevel            :: {-# UNPACK #-} !Level
     -- ^ Config log's filter level
-  , loggerFormatter        :: LogFormatter
+  , loggerFormatter        :: !LogFormatter
     -- ^ Log formatter
-  , loggerType             :: LogType
-  , loggerFlushImmediately :: Bool
+  , loggerType             :: !LogType
+  , loggerFlushImmediately :: {-# UNPACK #-} !Bool
     -- ^ Flush immediately after logging
   }
 
@@ -294,32 +294,31 @@ defaultTimeCache = unsafePerformIO $ Log.newTimeCache iso8061DateFormat
 -------------------------------------------------------------------------------
 
 data Logger = Logger
-  (Level -> CallStack -> Log.LogStr -> IO ())  -- ^ logging function
+  (Level -> Bool -> CallStack -> Log.LogStr -> IO ())   -- ^ logging function
   (IO ()) -- ^ clean up action
   (IO ()) -- ^ manually flush function
-  Bool    -- ^ flush immediately?
 
 -- 'Log.newTimedFastLogger' doesn't export the flush function
 newLogger :: LoggerConfig -> IO Logger
-newLogger LoggerConfig{..} =
+newLogger !LoggerConfig{..} =
   case loggerType of
-    LogNone    -> return $ Logger (\_ _ _ -> pure ()) (pure ()) (pure ())
-                                  loggerFlushImmediately
+    LogNone    -> return $ Logger (\_ _ _ _ -> pure ()) (pure ()) (pure ())
     LogStdout  -> Log.newStdoutLoggerSet loggerBufSize >>= loggerInit
     LogStderr  -> Log.newStderrLoggerSet loggerBufSize >>= loggerInit
     LogFile fp -> Log.newFileLoggerSet loggerBufSize fp >>= loggerInit
   where
     loggerInit lgrset = return $ Logger
-      (\level cstack s ->
+      (\level shouldFlush cstack s ->
         when (level >= loggerLevel) $ do
           tid <- myThreadId
           time <- defaultTimeCache
           Log.pushLogStr lgrset $
             loggerFormatter (Log.toLogStr time) level s cstack tid
+          when (loggerFlushImmediately || shouldFlush) $ loggerFlush lgrset
       )
       (Log.rmLoggerSet lgrset)
-      (Log.flushLogStr lgrset)
-      loggerFlushImmediately
+      (loggerFlush lgrset)
+    loggerFlush lgrset = Log.flushLogStr lgrset
 
 globalLogger :: IORef Logger
 globalLogger = unsafePerformIO $ do
@@ -367,7 +366,7 @@ setDefaultLoggerLevel lvl =
 withDefaultLogger :: IO () -> IO ()
 withDefaultLogger = (`finally` clean)
   where
-    clean = getGlobalLogger >>= \(Logger _ c _ _) -> c
+    clean = getGlobalLogger >>= \(Logger _ c _) -> c
 {-# INLINABLE withDefaultLogger #-}
 
 -------------------------------------------------------------------------------
@@ -402,10 +401,9 @@ warnSlow starter duration msg f = Async.withAsync f $ \a1 ->
                         threadDelay duration
 
 logBylevel :: Bool -> Level -> CallStack -> Log.LogStr -> IO ()
-logBylevel flushLevel level cstack s = do
-  Logger f _ flush_ flushNow <- getGlobalLogger
-  f level cstack s
-  when (flushNow || flushLevel) flush_
+logBylevel shouldFlush level cstack s = do
+  Logger f _cleanFun _flushFun <- getGlobalLogger
+  f level shouldFlush cstack s
 {-# INLINABLE logBylevel #-}
 
 -------------------------------------------------------------------------------
