@@ -59,6 +59,9 @@ constraints:
   , aeson      ^>= 2.1
   , filepath    >= 1.4.100
 
+  -- rocksdb-haskell-bindings cant be built with streamly-0.10
+  , streamly   ^>= 0.9
+
   -- The following is needed to avoid breaking the build.
   , blaze-textual == 0.2.1.0 || > 0.2.2.0
   , entropy == 0.4.1.7 || > 0.4.1.9
