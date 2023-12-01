@@ -7,7 +7,7 @@ import           Control.Monad
 import           Data.ByteString                     (ByteString)
 import qualified Data.ByteString                     as BS
 import           Data.Int
-import           Data.Maybe                          (fromMaybe, isNothing)
+import           Data.Maybe                          (fromMaybe, isJust)
 import           Data.Text                           (Text)
 import qualified Data.Text                           as T
 import qualified Data.Vector                         as V
@@ -52,7 +52,7 @@ handleProduce
   -> K.ProduceRequest
   -> IO K.ProduceResponse
 handleProduce ServerContext{..} _ req = do
-  when (isNothing req.transactionalId) $ do
+  when (isJust req.transactionalId) $ do
     Log.warning $ "received a produce request with non-null transaction id, "
       <> "request:" <> Log.buildString' req
     E.throwIO $ KE.ErrorCodeException K.UNSUPPORTED_VERSION
