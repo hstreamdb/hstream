@@ -563,6 +563,10 @@ type PartitionProduceDataV2 = PartitionProduceDataV0
 
 type TopicProduceDataV2 = TopicProduceDataV0
 
+type PartitionProduceDataV3 = PartitionProduceDataV0
+
+type TopicProduceDataV3 = TopicProduceDataV0
+
 data PartitionProduceResponseV0 = PartitionProduceResponseV0
   { index      :: {-# UNPACK #-} !Int32
     -- ^ The partition index.
@@ -607,6 +611,10 @@ data TopicProduceResponseV2 = TopicProduceResponseV2
     -- ^ Each partition that we produced to within the topic.
   } deriving (Show, Eq, Generic)
 instance Serializable TopicProduceResponseV2
+
+type PartitionProduceResponseV3 = PartitionProduceResponseV2
+
+type TopicProduceResponseV3 = TopicProduceResponseV2
 
 data SyncGroupRequestAssignmentV0 = SyncGroupRequestAssignmentV0
   { memberId   :: !Text
@@ -1022,6 +1030,20 @@ type ProduceRequestV1 = ProduceRequestV0
 
 type ProduceRequestV2 = ProduceRequestV0
 
+data ProduceRequestV3 = ProduceRequestV3
+  { transactionalId :: !NullableString
+    -- ^ The transactional ID, or null if the producer is not transactional.
+  , acks            :: {-# UNPACK #-} !Int16
+    -- ^ The number of acknowledgments the producer requires the leader to have
+    -- received before considering a request complete. Allowed values: 0 for no
+    -- acknowledgments, 1 for only the leader and -1 for the full ISR.
+  , timeoutMs       :: {-# UNPACK #-} !Int32
+    -- ^ The timeout to await a response in milliseconds.
+  , topicData       :: !(KaArray TopicProduceDataV0)
+    -- ^ Each topic to produce to.
+  } deriving (Show, Eq, Generic)
+instance Serializable ProduceRequestV3
+
 newtype ProduceResponseV0 = ProduceResponseV0
   { responses :: (KaArray TopicProduceResponseV0)
   } deriving (Show, Eq, Generic)
@@ -1044,6 +1066,8 @@ data ProduceResponseV2 = ProduceResponseV2
     -- to a quota violation, or zero if the request did not violate any quota.
   } deriving (Show, Eq, Generic)
 instance Serializable ProduceResponseV2
+
+type ProduceResponseV3 = ProduceResponseV2
 
 newtype SaslAuthenticateRequestV0 = SaslAuthenticateRequestV0
   { authBytes :: ByteString
@@ -1390,9 +1414,17 @@ data HStreamKafkaV3
 instance Service HStreamKafkaV3 where
   type ServiceName HStreamKafkaV3 = "HStreamKafkaV3"
   type ServiceMethods HStreamKafkaV3 =
-    '[ "metadata"
+    '[ "produce"
+     , "metadata"
      , "apiVersions"
      ]
+
+instance HasMethodImpl HStreamKafkaV3 "produce" where
+  type MethodName HStreamKafkaV3 "produce" = "produce"
+  type MethodKey HStreamKafkaV3 "produce" = 0
+  type MethodVersion HStreamKafkaV3 "produce" = 3
+  type MethodInput HStreamKafkaV3 "produce" = ProduceRequestV3
+  type MethodOutput HStreamKafkaV3 "produce" = ProduceResponseV3
 
 instance HasMethodImpl HStreamKafkaV3 "metadata" where
   type MethodName HStreamKafkaV3 "metadata" = "metadata"
@@ -1452,7 +1484,7 @@ instance Show ApiKey where
 
 supportedApiVersions :: [ApiVersionV0]
 supportedApiVersions =
-  [ ApiVersionV0 (ApiKey 0) 0 2
+  [ ApiVersionV0 (ApiKey 0) 0 3
   , ApiVersionV0 (ApiKey 1) 0 2
   , ApiVersionV0 (ApiKey 2) 0 1
   , ApiVersionV0 (ApiKey 3) 0 4
@@ -1477,6 +1509,7 @@ getHeaderVersion :: ApiKey -> Int16 -> (Int16, Int16)
 getHeaderVersion (ApiKey 0) 0  = (1, 0)
 getHeaderVersion (ApiKey 0) 1  = (1, 0)
 getHeaderVersion (ApiKey 0) 2  = (1, 0)
+getHeaderVersion (ApiKey 0) 3  = (1, 0)
 getHeaderVersion (ApiKey 1) 0  = (1, 0)
 getHeaderVersion (ApiKey 1) 1  = (1, 0)
 getHeaderVersion (ApiKey 1) 2  = (1, 0)

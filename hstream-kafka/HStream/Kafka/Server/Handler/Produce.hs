@@ -2,33 +2,35 @@ module HStream.Kafka.Server.Handler.Produce
   ( handleProduce
   ) where
 
-import qualified Control.Concurrent.Async           as Async
+import qualified Control.Concurrent.Async            as Async
 import           Control.Monad
-import           Data.ByteString                    (ByteString)
-import qualified Data.ByteString                    as BS
+import           Data.ByteString                     (ByteString)
+import qualified Data.ByteString                     as BS
 import           Data.Int
-import           Data.Maybe                         (fromMaybe)
-import           Data.Text                          (Text)
-import qualified Data.Text                          as T
-import qualified Data.Vector                        as V
+import           Data.Maybe                          (fromMaybe, isNothing)
+import           Data.Text                           (Text)
+import qualified Data.Text                           as T
+import qualified Data.Vector                         as V
 import           Data.Word
 
-import qualified HStream.Kafka.Common.OffsetManager as K
-import qualified HStream.Kafka.Common.RecordFormat  as K
-import           HStream.Kafka.Common.Utils         (observeWithLabel)
-import           HStream.Kafka.Metrics.ProduceStats (appendLatencySnd,
-                                                     topicTotalAppendBytes,
-                                                     topicTotalAppendMessages,
-                                                     totalProduceRequest)
-import           HStream.Kafka.Server.Types         (ServerContext (..))
-import qualified HStream.Logger                     as Log
-import qualified HStream.Store                      as S
-import qualified HStream.Utils                      as U
-import qualified Kafka.Protocol.Encoding            as K
-import qualified Kafka.Protocol.Error               as K
-import qualified Kafka.Protocol.Message             as K
-import qualified Kafka.Protocol.Service             as K
-import qualified Prometheus                         as P
+import qualified Control.Exception                   as E
+import qualified HStream.Kafka.Common.KafkaException as KE
+import qualified HStream.Kafka.Common.OffsetManager  as K
+import qualified HStream.Kafka.Common.RecordFormat   as K
+import           HStream.Kafka.Common.Utils          (observeWithLabel)
+import           HStream.Kafka.Metrics.ProduceStats  (appendLatencySnd,
+                                                      topicTotalAppendBytes,
+                                                      topicTotalAppendMessages,
+                                                      totalProduceRequest)
+import           HStream.Kafka.Server.Types          (ServerContext (..))
+import qualified HStream.Logger                      as Log
+import qualified HStream.Store                       as S
+import qualified HStream.Utils                       as U
+import qualified Kafka.Protocol.Encoding             as K
+import qualified Kafka.Protocol.Error                as K
+import qualified Kafka.Protocol.Message              as K
+import qualified Kafka.Protocol.Service              as K
+import qualified Prometheus                          as P
 
 -- acks: (FIXME: Currently we only support -1)
 --   0: The server will not send any response(this is the only case where the
@@ -50,6 +52,11 @@ handleProduce
   -> K.ProduceRequest
   -> IO K.ProduceResponse
 handleProduce ServerContext{..} _ req = do
+  when (isNothing req.transactionalId) $ do
+    Log.warning $ "received a produce request with non-null transaction id, "
+      <> "request:" <> Log.buildString' req
+    E.throwIO $ KE.ErrorCodeException K.UNSUPPORTED_VERSION
+
   -- TODO: handle request args: acks, timeoutMs
   let topicData = fromMaybe V.empty (K.unKaArray req.topicData)
 
