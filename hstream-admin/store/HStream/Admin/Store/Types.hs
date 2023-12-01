@@ -836,13 +836,13 @@ maintenanceApplyOptsParser = MaintenanceApplyOpts
                <> metavar "STRING"
                <> help "Reason for logging and auditing")
   <*> many (option auto ( long "node-indexes"
-                       <> metavar "INT"
+                       <> metavar "INT..."
                        <> help "Apply maintenance to specified nodes"))
   <*> many (strOption ( long "node-names"
-                     <> metavar "STRING"
+                     <> metavar "STRING..."
                      <> help "Apply maintenance to specified nodes"))
   <*> many (option parseShard ( long "shards"
-                             <> metavar "NX:SY"
+                             <> metavar "NX:SY..."
                              <> help ("Apply maintenance to specified shards "
                                      <> "in notation like \"N1:S2\", \"N3:S4\", \"N165:S14\"")))
   <*> option auto ( long "shard_target_state"
@@ -851,10 +851,10 @@ maintenanceApplyOptsParser = MaintenanceApplyOpts
                  <> showDefault
                  <> help "Shard Target State, either \"may-disappear\" or \"drained\"")
   <*> many (option auto ( long "sequencer-node-indexes"
-                       <> metavar "INT"
+                       <> metavar "INT..."
                        <> help "Apply maintenance to specified sequencers"))
   <*> many (strOption ( long "sequencer-node-names"
-                     <> metavar "STRING"
+                     <> metavar "STRING..."
                      <> help "Apply maintenance to specified sequencers"))
   <*> optional (strOption ( long "user"
                          <> help "User for logging and auditing, by default taken from environment"))
