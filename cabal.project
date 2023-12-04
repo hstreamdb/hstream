@@ -6,6 +6,7 @@ packages:
   external/gRPC-haskell/grpc-haskell.cabal
   external/gRPC-haskell/core/grpc-haskell-core.cabal
   external/haskell-rocksdb-bindings
+  external/digest/digest.cabal
 
   -- * Cpp library
   common/api/cpp/hstream-api-cpp.cabal
@@ -51,6 +52,13 @@ package rocksdb-haskell-bindings
   extra-include-dirs: /usr/local/include
   extra-lib-dirs:     /usr/local/lib
   tests: false
+
+-- TODO: More safe way to detect cpu features
+package digest
+if (arch(x86_64) && os(linux))
+  flags: +have_builtin_prefetch +have_sse42 +have_strong_getauxval +have_weak_getauxval
+else
+  flags: +have_builtin_prefetch +have_weak_getauxval
 
 constraints:
     Z-Data      == 2.0.0.2
