@@ -69,6 +69,7 @@ import qualified Data.ByteString                as BS
 import           Data.ByteString.Internal       (w2c)
 import qualified Data.ByteString.Lazy           as BL
 import           Data.Digest.CRC32              (crc32)
+import           Data.Digest.CRC32C             (crc32c)
 import           Data.Int
 import           Data.Maybe
 import           Data.String                    (IsString)
@@ -350,7 +351,7 @@ data BatchRecord
   = BatchRecordV0 RecordV0
   | BatchRecordV1 RecordV1
   | BatchRecordV2 RecordBatch
-  deriving (Show)
+  deriving (Show, Eq)
 
 decodeBatchRecords :: Bool -> ByteString -> IO (Vector BatchRecord)
 decodeBatchRecords shouldValidateCrc batchBs = Growing.new >>= decode batchBs
@@ -365,6 +366,9 @@ decodeBatchRecords shouldValidateCrc batchBs = Growing.new >>= decode batchBs
                   throwIO $ DecodeError $ "Invalid messageSize"
                 when shouldValidateCrc $ do
                   -- NOTE: pass the origin inputs to validLegacyCrc, not the bs'
+                  --
+                  -- The crc field contains the CRC32 (and not CRC-32C) of the
+                  -- subsequent message bytes (i.e. from magic byte to the value).
                   validLegacyCrc (fromIntegral batchLength) crc bs
                 (RecordBodyV0{..}, remainder) <- runGet' @RecordBodyV0 bs'
                 !v' <- Growing.append v (BatchRecordV0 RecordV0{..})
@@ -375,15 +379,23 @@ decodeBatchRecords shouldValidateCrc batchBs = Growing.new >>= decode batchBs
                   throwIO $ DecodeError $ "Invalid messageSize"
                 when shouldValidateCrc $ do
                   -- NOTE: pass the origin inputs to validLegacyCrc, not the bs'
+                  --
+                  -- The crc field contains the CRC32 (and not CRC-32C) of the
+                  -- subsequent message bytes (i.e. from magic byte to the value).
                   validLegacyCrc (fromIntegral batchLength) crc bs
                 (RecordBodyV1{..}, remainder) <- runGet' @RecordBodyV1 bs'
                 !v' <- Growing.append v (BatchRecordV1 RecordV1{..})
                 decode remainder v'
         2 -> do let partitionLeaderEpoch = partitionLeaderEpochOrCrc
+                -- The CRC covers the data from the attributes to the end of
+                -- the batch (i.e. all the bytes that follow the CRC).
+                --
+                -- The CRC-32C (Castagnoli) polynomial is used for the
+                -- computation.
                 (crc, bs'') <- runGet' @Int32 bs'
-                when (shouldValidateCrc && fromIntegral (crc32 bs'') /= crc) $
+                when (shouldValidateCrc && fromIntegral (crc32c bs'') /= crc) $
                   throwIO $ DecodeError "Invalid CRC32"
-                (RecordBodyV2{..}, remainder) <- runGet' @RecordBodyV2 bs'
+                (RecordBodyV2{..}, remainder) <- runGet' @RecordBodyV2 bs''
                 !v' <- Growing.append v (BatchRecordV2 RecordBatch{..})
                 decode remainder v'
         _ -> throwIO $ DecodeError $ "Invalid magic " <> show magic
@@ -425,7 +437,7 @@ data RecordBase = RecordBase
     -- ^ For version 0-1, this is the CRC32 of the remainder of the record.
     -- For version 2, this is the partition leader epoch.
   , magic                     :: {-# UNPACK #-} !Int8
-  } deriving (Generic, Show)
+  } deriving (Generic, Show, Eq)
 
 instance Serializable RecordBase
 
@@ -436,7 +448,7 @@ data RecordBodyV0 = RecordBodyV0
   { attributes :: {-# UNPACK #-} !Int8
   , key        :: !NullableBytes
   , value      :: !NullableBytes
-  } deriving (Generic, Show)
+  } deriving (Generic, Show, Eq)
 
 instance Serializable RecordBodyV0
 
@@ -448,7 +460,7 @@ data RecordBodyV1 = RecordBodyV1
   , timestamp  :: {-# UNPACK #-} !Int64
   , key        :: !NullableBytes
   , value      :: !NullableBytes
-  } deriving (Generic, Show)
+  } deriving (Generic, Show, Eq)
 
 instance Serializable RecordBodyV1
 
@@ -464,7 +476,7 @@ data RecordBodyV2 = RecordBodyV2
   , producerEpoch   :: {-# UNPACK #-} !Int16
   , baseSequence    :: {-# UNPACK #-} !Int32
   , records         :: !(KaArray RecordV2)
-  } deriving (Generic, Show)
+  } deriving (Generic, Show, Eq)
 
 instance Serializable RecordBodyV2
 
@@ -499,7 +511,7 @@ data RecordV0 = RecordV0
   , attributes  :: {-# UNPACK #-} !Int8
   , key         :: !NullableBytes
   , value       :: !NullableBytes
-  } deriving (Generic, Show)
+  } deriving (Generic, Show, Eq)
 
 instance Serializable RecordV0
 
@@ -516,7 +528,7 @@ data RecordV1 = RecordV1
   , timestamp   :: {-# UNPACK #-} !Int64
   , key         :: !NullableBytes
   , value       :: !NullableBytes
-  } deriving (Generic, Show)
+  } deriving (Generic, Show, Eq)
 
 instance Serializable RecordV1
 
@@ -558,7 +570,7 @@ data RecordV2 = RecordV2
   , key            :: !RecordKey
   , value          :: !RecordValue
   , headers        :: !(RecordArray RecordHeader)
-  } deriving (Generic, Show)
+  } deriving (Generic, Show, Eq)
 
 instance Serializable RecordV2
 
@@ -576,7 +588,7 @@ data RecordBatch = RecordBatch
   , producerEpoch        :: {-# UNPACK #-} !Int16
   , baseSequence         :: {-# UNPACK #-} !Int32
   , records              :: !(KaArray RecordV2)
-  } deriving (Generic, Show)
+  } deriving (Generic, Show, Eq)
 
 instance Serializable RecordBatch
 
