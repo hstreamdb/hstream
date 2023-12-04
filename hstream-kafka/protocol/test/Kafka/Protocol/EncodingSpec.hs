@@ -149,3 +149,54 @@ realSpec = describe "Kafka.Protocol.Encoding" $ do
 
     (runPut reqLen <> reqBs) `shouldBe` clientReqBs
     runGet clientReqBs `shouldReturn` (reqLen, reqHeader, reqBody)
+
+  it "Message Format V2 (Record Batch)" $ do
+    let clientReqBs =
+            "\NUL\NUL\NUL\NUL\NUL\NUL\NUL\NUL\NUL\NUL\NUL\139\NUL\NUL\NUL\NUL"
+         <> "\STX\164\239\196*\NUL\NUL\NUL\NUL\NUL\SOH\NUL\NUL\SOH\140\&3~\176"
+         <> "\DLE\NUL\NUL\SOH\140\&3~\176\DLE\255\255\255\255\255\255\255\255"
+         <> "\255\255\255\255\255\255\NUL\NUL\NUL\STXX\NUL\NUL\NUL\SOH\FS"
+         <> "some_message_0\EOT\SOheader1\ACKfoo\SOheader2\ACKbarX\NUL\NUL\STX"
+         <> "\SOH\FSsome_message_1\EOT\SOheader1\ACKfoo\SOheader2\ACKbar"
+        reqRecords = KaArray $ Just $
+          [RecordV2{ length = 44
+                   , attributes = 0
+                   , timestampDelta = 0
+                   , offsetDelta = 0
+                   , key = RecordKey Nothing
+                   , value = RecordValue $ Just "some_message_0"
+                   , headers = RecordArray $
+                       [ ("header1", RecordHeaderValue $ Just "foo")
+                       , ("header2", RecordHeaderValue $ Just "bar")
+                       ]
+                   }
+          , RecordV2{ length = 44
+                    , attributes = 0
+                    , timestampDelta = 0
+                    , offsetDelta = 1
+                    , key = RecordKey Nothing
+                    , value = RecordValue $ Just "some_message_1"
+                    , headers = RecordArray $
+                        [ ("header1", RecordHeaderValue $ Just "foo")
+                        , ("header2", RecordHeaderValue $ Just "bar")
+                        ]
+                    }
+          ]
+        reqRecordBatch = RecordBatch
+          { baseOffset = 0
+          , batchLength = 139
+          , partitionLeaderEpoch = 0
+          , magic = 2
+          , crc = -1527790550
+          , attributes = 0
+          , lastOffsetDelta = 1
+          , baseTimestamp = 1701670989840
+          , maxTimestamp = 1701670989840
+          , producerId = -1
+          , producerEpoch = -1
+          , baseSequence = -1
+          , records = reqRecords
+          }
+        clientReq = [BatchRecordV2 reqRecordBatch]
+    decodeBatchRecords True clientReqBs `shouldReturn` clientReq
+    encodeBatchRecords clientReq `shouldBe` clientReqBs
