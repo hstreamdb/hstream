@@ -248,11 +248,18 @@ kafka:
   #  gossip-interval: 1000000   # 1 sec
   #  probe-interval: 2000000    # 2 sec
   #  roundtrip-timeout: 500000  # 0.5 sec
-  #
+
   # Broker options (compatible with Kafka)
   #
   #num.partitions: 1
   #default.replication.factor: 1
+
+  # Internal storage options
+  #
+  #storage:
+  #  fetch-mode: 1  # TODO: Currently, only mode 1 is supported
+  #  fetch-reader-timeout: 50  # 50ms, default timeout of each read, 0 means nonblocking
+  #  fetch-maxlen: 1000  # default max size of each read
 
 # Configuration for HStream Store
 # The configuration for hstore is **Optional**. When the values are not provided,

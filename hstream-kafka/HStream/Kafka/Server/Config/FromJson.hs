@@ -79,13 +79,6 @@ parseJSONToOptions CliOptions{..} obj = do
   joinWorkerConcurrency <- clusterCfgObj .:? "join-worker-concurrency" .!= joinWorkerConcurrency defaultGossipOpts
   let _gossipOpts = GossipOpts {..}
 
-  -- Store Config
-  storeCfgObj         <- obj .:? "hstore" .!= mempty
-  storeLogLevel       <- readWithErrLog "store log-level" <$> storeCfgObj .:? "log-level" .!= "info"
-
-  let !_ldConfigPath   = cliStoreConfigPath
-  let !_ldLogLevel     = fromMaybe storeLogLevel  cliLdLogLevel
-
   -- TLS config
   nodeEnableTls   <- nodeCfgObj .:? "enable-tls" .!= False
   nodeTlsKeyPath  <- nodeCfgObj .:? "tls-key-path"
@@ -107,7 +100,19 @@ parseJSONToOptions CliOptions{..} obj = do
   nodeEnableSaslAuth <- nodeCfgObj .:? "enable-sasl" .!= False
   let !_enableSaslAuth = cliEnableSaslAuth || nodeEnableSaslAuth
 
-  return ServerOpts {..}
+  -- Store Config
+  storeCfgObj         <- obj .:? "hstore" .!= mempty
+  storeLogLevel       <- readWithErrLog "store log-level" <$> storeCfgObj .:? "log-level" .!= "info"
+  let !_ldConfigPath   = cliStoreConfigPath
+  let !_ldLogLevel     = fromMaybe storeLogLevel  cliLdLogLevel
+
+  -- Storage config
+  storageCfg <- nodeCfgObj .:? "storage" .!= mempty
+  fetchReaderTimeout <- storageCfg .:? "fetch-reader-timeout" .!= 50
+  fetchMaxLen <- storageCfg .:? "fetch-maxlen" .!= 1000
+  let _storage = StorageOptions{..}
+
+  return ServerOpts{..}
 
 -------------------------------------------------------------------------------
 

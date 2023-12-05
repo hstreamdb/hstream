@@ -6,6 +6,7 @@ module HStream.Kafka.Server.Handler.Consume
 
 import           Control.Exception
 import           Control.Monad
+import           Data.ByteString                    (ByteString)
 import qualified Data.ByteString                    as BS
 import qualified Data.ByteString.Builder            as BB
 import           Data.Either                        (isRight)
@@ -25,6 +26,8 @@ import           HStream.Kafka.Metrics.ConsumeStats (readLatencySnd,
                                                      topicTotalSendBytes,
                                                      topicTotalSendMessages,
                                                      totalConsumeRequest)
+import           HStream.Kafka.Server.Config        (ServerOpts (..),
+                                                     StorageOptions (..))
 import           HStream.Kafka.Server.Types         (ServerContext (..))
 import qualified HStream.Logger                     as Log
 import qualified HStream.Store                      as S
@@ -52,11 +55,12 @@ handleFetch ServerContext{..} _ r = K.catchFetchResponseEx $ do
   -- kafka broker just throw java.lang.RuntimeException if topics is null, here
   -- we do the same.
   let K.NonNullKaArray topicReqs = r.topics
-  topics <- V.forM topicReqs $ \K.FetchTopic{..} -> do
-    orderedParts <- S.listStreamPartitionsOrdered scLDClient (S.transToTopicStreamName topic)
-    let K.NonNullKaArray partitionReqs = partitions
-    ps <- V.forM partitionReqs $ \p -> do
-      P.withLabel totalConsumeRequest (topic, T.pack . show $ p.partition) $
+  topics <- V.forM topicReqs $ \topic{- K.FetchTopic -} -> do
+    orderedParts <- S.listStreamPartitionsOrdered scLDClient
+                      (S.transToTopicStreamName topic.topic)
+    let K.NonNullKaArray partitionReqs = topic.partitions
+    ps <- V.forM partitionReqs $ \p{- K.FetchPartition -} -> do
+      P.withLabel totalConsumeRequest (topic.topic, T.pack . show $ p.partition) $
         \counter -> void $ P.addCounter counter 1
       let m_logid = orderedParts V.!? fromIntegral p.partition
       case m_logid of
@@ -69,10 +73,10 @@ handleFetch ServerContext{..} _ r = K.catchFetchResponseEx $ do
           elsn <- getPartitionLsn scLDClient scOffsetManager logid p.partition
                                   p.fetchOffset
           pure (logid, elsn, p)
-    pure (topic, ps)
+    pure (topic.topic, ps)
 
   let numOfReads = V.sum $
-        V.map (V.length . (V.filter $ \(_, x, _) -> isRight x) . snd) topics
+        V.map (V.length . V.filter (\(_, x, _) -> isRight x) . snd) topics
   when (numOfReads < 1) $ do
     respTopics <- V.forM topics $ \(topic, partitions) -> do
       respPartitionDatas <- V.forM partitions $ \(_, elsn, _) -> do
@@ -97,24 +101,22 @@ handleFetch ServerContext{..} _ r = K.catchFetchResponseEx $ do
           S.readerStartReading reader logid startlsn S.LSN_MAX
 
   -- Read records from storage
-  if r.minBytes <= 0 || r.maxWaitMs <= 0
-     then S.readerSetTimeout reader 0  -- nonblocking
-     else S.readerSetTimeout reader r.maxWaitMs
-  S.readerSetWaitOnlyWhenNoData reader
-  (_, records) <- foldWhileM (0, []) $ \(size, acc) -> do
-    -- TODO: If we can record latency at a more granular level, such as for
-    -- a consumer group, or a stream?
-    rs <- P.observeDuration readLatencySnd $ S.readerRead reader 100
-    if null rs
-       then pure ((size, acc), False)
-       else do let size' = size + (sum $ map (K.recordBytesSize . (.recordPayload)) rs)
-                   acc' = acc <> rs
-               if size' >= fromIntegral r.minBytes
-                  then pure ((size', acc'), False)
-                  else pure ((size', acc'), True)
+  --
+  -- TODO:
+  -- - dynamically change reader settings according to the client request
+  -- (e.g. maxWaitMs, minBytes...)
+  -- - handle maxBytes
+  --
+  -- FIXME: Do not setWaitOnlyWhenNoData if you are mostly focusing on
+  -- throughput
+  --
+  -- Mode1
+  records <- readMode1 reader
 
   -- Process read records
   -- TODO: what if client send two same topic but with different partitions?
+  --
+  -- {logid: [RecordFormat]}
   readRecords <- HT.initialize numOfReads :: IO RecordTable
   forM_ records $ \record -> do
     recordFormat <- K.runGet @K.RecordFormat record.recordPayload
@@ -155,6 +157,47 @@ handleFetch ServerContext{..} _ r = K.catchFetchResponseEx $ do
               pure $ K.PartitionData p.partition K.NONE hioffset (Just bs)
     pure $ K.FetchableTopicResponse topic (K.NonNullKaArray respPartitionDatas)
   pure $ K.FetchResponse (K.NonNullKaArray respTopics) 0{- TODO: throttleTimeMs -}
+
+  where
+    readMode0 :: S.LDReader -> IO [S.DataRecord ByteString]
+    readMode0 reader = do
+      if r.minBytes <= 0 || r.maxWaitMs <= 0
+         then S.readerSetTimeout reader 0  -- nonblocking
+         else S.readerSetTimeout reader r.maxWaitMs
+      S.readerSetWaitOnlyWhenNoData reader
+      (_, records) <- foldWhileM (0, []) $ \(size, acc) -> do
+        rs <- P.observeDuration readLatencySnd $ S.readerRead reader 100
+        if null rs
+           then pure ((size, acc), False)
+           else do let size' = size + sum (map (K.recordBytesSize . (.recordPayload)) rs)
+                       acc' = acc <> rs
+                   if size' >= fromIntegral r.minBytes
+                      then pure ((size', acc'), False)
+                      else pure ((size', acc'), True)
+      pure records
+
+    readMode1 :: S.LDReader -> IO [S.DataRecord ByteString]
+    readMode1 reader = do
+      let storageOpts = serverOpts._storage
+          defTimeout = fromIntegral storageOpts.fetchReaderTimeout
+
+      if r.minBytes <= 0 || r.maxWaitMs <= 0 -- respond immediately
+         then do S.readerSetTimeout reader 0  -- nonblocking
+                 S.readerRead reader storageOpts.fetchMaxLen
+         else
+           if r.maxWaitMs > defTimeout
+              then do
+                S.readerSetTimeout reader defTimeout
+                rs1 <- S.readerRead reader storageOpts.fetchMaxLen
+                let size = sum (map (K.recordBytesSize . (.recordPayload)) rs1)
+                if size >= fromIntegral r.minBytes
+                   then pure rs1
+                   else do S.readerSetTimeout reader (r.maxWaitMs - defTimeout)
+                           rs2 <- S.readerRead reader storageOpts.fetchMaxLen
+                           pure $ rs1 <> rs2
+              else do
+                S.readerSetTimeout reader r.maxWaitMs
+                S.readerRead reader storageOpts.fetchMaxLen
 
 -------------------------------------------------------------------------------
 
