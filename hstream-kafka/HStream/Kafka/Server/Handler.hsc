@@ -63,6 +63,18 @@ import qualified Kafka.Protocol.Service                as K
 #cv_handler SaslHandshake, 0, 1
 #cv_handler SaslAuthenticate, 0, 0
 
+#cv_handler FindCoordinator, 0, 0
+
+#cv_handler JoinGroup, 0, 2
+#cv_handler SyncGroup, 0, 1
+#cv_handler LeaveGroup, 0, 1
+#cv_handler Heartbeat, 0, 1
+#cv_handler ListGroups, 0, 1
+#cv_handler DescribeGroups, 0, 1
+
+#cv_handler OffsetCommit, 0, 3
+#cv_handler OffsetFetch, 0, 3
+
 handlers :: ServerContext -> [K.ServiceHandler]
 handlers sc =
   [ #mk_handler ApiVersions, 0, 3
@@ -70,6 +82,19 @@ handlers sc =
   , #mk_handler Produce, 0, 2
     -- Read
   , #mk_handler Fetch, 0, 2
+
+  , #mk_handler FindCoordinator, 0, 0
+
+    -- Group
+  , #mk_handler JoinGroup, 0, 2
+  , #mk_handler SyncGroup, 0, 1
+  , #mk_handler LeaveGroup, 0, 1
+  , #mk_handler Heartbeat, 0, 1
+  , #mk_handler ListGroups, 0, 1
+  , #mk_handler DescribeGroups, 0, 1
+
+  , #mk_handler OffsetCommit, 0, 3
+  , #mk_handler OffsetFetch, 0, 3
 
   , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "metadata") (handleMetadataV0 sc)
   , K.hd (K.RPC :: K.RPC K.HStreamKafkaV1 "metadata") (handleMetadataV1 sc)
@@ -80,26 +105,8 @@ handlers sc =
   , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "createTopics") (handleCreateTopicsV0 sc)
   , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "deleteTopics") (handleDeleteTopicsV0 sc)
 
-  -- Offsets
   , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "listOffsets") (handleListOffsetsV0 sc)
   , K.hd (K.RPC :: K.RPC K.HStreamKafkaV1 "listOffsets") (handleListOffsetsV1 sc)
-
-  , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "offsetCommit") (handleOffsetCommitV0 sc)
-  , K.hd (K.RPC :: K.RPC K.HStreamKafkaV1 "offsetCommit") (handleOffsetCommitV1 sc)
-  , K.hd (K.RPC :: K.RPC K.HStreamKafkaV2 "offsetCommit") (handleOffsetCommitV2 sc)
-
-  , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "offsetFetch") (handleOffsetFetchV0 sc)
-  , K.hd (K.RPC :: K.RPC K.HStreamKafkaV1 "offsetFetch") (handleOffsetFetchV1 sc)
-  , K.hd (K.RPC :: K.RPC K.HStreamKafkaV2 "offsetFetch") (handleOffsetFetchV2 sc)
-
-  , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "findCoordinator") (handleFindCoordinatorV0 sc)
-
-  , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "joinGroup") (handleJoinGroupV0 sc)
-  , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "syncGroup") (handleSyncGroupV0 sc)
-  , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "leaveGroup") (handleLeaveGroupV0 sc)
-  , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "heartbeat") (handleHeartbeatV0 sc)
-  , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "listGroups") (handleListGroupsV0 sc)
-  , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "describeGroups") (handleDescribeGroupsV0 sc)
 
   , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "saslHandshake") (handleAfterAuthSaslHandshakeV0 sc)
   , K.hd (K.RPC :: K.RPC K.HStreamKafkaV1 "saslHandshake") (handleAfterAuthSaslHandshakeV1 sc)

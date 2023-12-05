@@ -35,7 +35,7 @@ data Member
   , clientHost         :: T.Text
   }
 
-newMemberFromReq :: K.RequestContext -> K.JoinGroupRequestV0 -> T.Text -> [(T.Text, BS.ByteString)] -> IO Member
+newMemberFromReq :: K.RequestContext -> K.JoinGroupRequest -> T.Text -> [(T.Text, BS.ByteString)] -> IO Member
 newMemberFromReq reqCtx req memberId supportedProtocols = do
   sessionTimeoutMs <- IO.newIORef req.sessionTimeoutMs
   rebalanceTimeoutMs <- IO.newIORef req.sessionTimeoutMs

@@ -59,7 +59,7 @@ instance TM.TaskManager GroupCoordinator where
 
 ------------------- Join Group -------------------------
 
-joinGroup :: GroupCoordinator -> K.RequestContext -> K.JoinGroupRequestV0 -> IO K.JoinGroupResponseV0
+joinGroup :: GroupCoordinator -> K.RequestContext -> K.JoinGroupRequest -> IO K.JoinGroupResponse
 joinGroup coordinator reqCtx req = do
   handle (\((ErrorCodeException code)) -> makeErrorResponse code) $ do
     -- get or create group
@@ -68,13 +68,14 @@ joinGroup coordinator reqCtx req = do
     -- join group
     G.joinGroup group reqCtx req
   where
-    makeErrorResponse code = return $ K.JoinGroupResponseV0 {
+    makeErrorResponse code = return $ K.JoinGroupResponse {
         errorCode = code
       , generationId = -1
       , protocolName = ""
       , leader = ""
       , memberId = req.memberId
       , members = K.NonNullKaArray V.empty
+      , throttleTimeMs = 0
       }
 
 getOrMaybeCreateGroup :: GroupCoordinator -> T.Text -> T.Text -> IO Group
@@ -110,34 +111,34 @@ getGroupM :: GroupCoordinator -> T.Text -> IO (Maybe Group)
 getGroupM GroupCoordinator{..} groupId = do
   C.withMVar groups $ \gs -> H.lookup gs groupId
 
-syncGroup :: GroupCoordinator -> K.SyncGroupRequestV0 -> IO K.SyncGroupResponseV0
-syncGroup coordinator req@K.SyncGroupRequestV0{..} = do
+syncGroup :: GroupCoordinator -> K.SyncGroupRequest -> IO K.SyncGroupResponse
+syncGroup coordinator req@K.SyncGroupRequest{..} = do
   handle (\(ErrorCodeException code) -> makeErrorResponse code) $ do
     group <- getGroup coordinator groupId
     G.syncGroup group req
-  where makeErrorResponse code = return $ K.SyncGroupResponseV0 {
-      errorCode = code,
-      assignment = ""
+  where makeErrorResponse code = return $ K.SyncGroupResponse {
+      errorCode = code
+    , assignment = ""
+    , throttleTimeMs = 0
     }
 
-leaveGroup :: GroupCoordinator -> K.LeaveGroupRequestV0 -> IO K.LeaveGroupResponseV0
+leaveGroup :: GroupCoordinator -> K.LeaveGroupRequest -> IO K.LeaveGroupResponse
 leaveGroup coordinator req = do
   handle (\(ErrorCodeException code) -> makeErrorResponse code) $ do
     group <- getGroup coordinator req.groupId
     G.leaveGroup group req
-  where makeErrorResponse code = return $ K.LeaveGroupResponseV0 {errorCode=code}
+  where makeErrorResponse code = return $ K.LeaveGroupResponse {errorCode=code, throttleTimeMs=0}
 
-heartbeat :: GroupCoordinator -> K.HeartbeatRequestV0 -> IO K.HeartbeatResponseV0
+heartbeat :: GroupCoordinator -> K.HeartbeatRequest -> IO K.HeartbeatResponse
 heartbeat coordinator req = do
   handle (\(ErrorCodeException code) -> makeErrorResponse code) $ do
     group <- getGroup coordinator req.groupId
     G.heartbeat group req
-  where makeErrorResponse code = return $ K.HeartbeatResponseV0 {errorCode=code}
+  where makeErrorResponse code = return $ K.HeartbeatResponse {errorCode=code, throttleTimeMs=0}
 
 ------------------- Commit Offsets -------------------------
--- newest API version by default
-commitOffsetsV2 :: GroupCoordinator -> K.OffsetCommitRequestV2 -> IO K.OffsetCommitResponseV2
-commitOffsetsV2 coordinator req = do
+commitOffsets :: GroupCoordinator -> K.OffsetCommitRequest -> IO K.OffsetCommitResponse
+commitOffsets coordinator req = do
   handle (\(ErrorCodeException code) -> makeErrorResponse code) $ do
     group <- if req.generationId < 0 then do
       getOrMaybeCreateGroup coordinator req.groupId ""
@@ -145,85 +146,47 @@ commitOffsetsV2 coordinator req = do
       getGroup coordinator req.groupId
     G.commitOffsets group req
   where makeErrorResponse code = do
-          let resp = K.OffsetCommitResponseV0 {topics = Utils.mapKaArray (mapTopic code) req.topics}
+          let resp = K.OffsetCommitResponse {topics = Utils.mapKaArray (mapTopic code) req.topics, throttleTimeMs=0}
           Log.fatal $ "commitOffsets error with code: " <> Log.build (show code)
                    <> "\n\trequest: " <> Log.build (show req)
                    <> "\n\tresponse: " <> Log.build (show resp)
           return resp
-        mapTopic code topic = K.OffsetCommitResponseTopicV0 {partitions=Utils.mapKaArray (mapPartition code) topic.partitions, name=topic.name}
-        mapPartition code partition = K.OffsetCommitResponsePartitionV0 {errorCode=code, partitionIndex=partition.partitionIndex}
-
-commitOffsetsV1 :: GroupCoordinator -> K.OffsetCommitRequestV1 -> IO K.OffsetCommitResponseV0
-commitOffsetsV1 coordinator req = do
-  commitOffsetsV2 coordinator defaultReq
-  where defaultReq = K.OffsetCommitRequestV2 {
-            retentionTimeMs=0
-          , topics=Utils.mapKaArray topicV1toV2 req.topics
-          , generationId= -1
-          , groupId= req.groupId
-          , memberId= ""
-          }
-        topicV1toV2 topic = K.OffsetCommitRequestTopicV0 {
-          partitions=Utils.mapKaArray partitionV1toV2 topic.partitions
-          , name=topic.name
-          }
-        partitionV1toV2 p = K.OffsetCommitRequestPartitionV0 {
-          committedOffset=p.committedOffset
-          , committedMetadata=p.committedMetadata
-          , partitionIndex=p.partitionIndex
-          }
-
-commitOffsetsV0 :: GroupCoordinator -> K.OffsetCommitRequestV0 -> IO K.OffsetCommitResponseV0
-commitOffsetsV0 coordinator req = do
-  commitOffsetsV2 coordinator defaultReq
-  where defaultReq = K.OffsetCommitRequestV2 {
-        retentionTimeMs=0
-      , topics=req.topics
-      , generationId= -1
-      , groupId= req.groupId
-      , memberId= ""
-    }
+        mapTopic code topic = K.OffsetCommitResponseTopic {partitions=Utils.mapKaArray (mapPartition code) topic.partitions, name=topic.name}
+        mapPartition code partition = K.OffsetCommitResponsePartition {errorCode=code, partitionIndex=partition.partitionIndex}
 
 ------------------- Fetch Offsets -------------------------
 -- TODO: improve error report
-fetchOffsetsV2 :: GroupCoordinator -> K.OffsetFetchRequestV2 -> IO K.OffsetFetchResponseV2
-fetchOffsetsV2 coordinator req = do
+fetchOffsets :: GroupCoordinator -> K.OffsetFetchRequest -> IO K.OffsetFetchResponse
+fetchOffsets coordinator req = do
   handle (\(ErrorCodeException _) -> makeErrorResponse) $ do
     group <- getGroup coordinator req.groupId
-    respV2 <- G.fetchOffsets group req
-    return K.OffsetFetchResponseV2 {topics = respV2.topics, errorCode = 0}
-  where makeErrorResponse = return $ K.OffsetFetchResponseV2 {topics = Utils.mapKaArray mapTopic req.topics, errorCode=0}
-        mapTopic topic = K.OffsetFetchResponseTopicV0 {partitions=Utils.mapKaArray mapPartition topic.partitionIndexes, name=topic.name}
-        mapPartition partition = K.OffsetFetchResponsePartitionV0 {
+    resp <- G.fetchOffsets group req
+    return K.OffsetFetchResponse {topics = resp.topics, errorCode = 0, throttleTimeMs=0}
+  where makeErrorResponse = return $ K.OffsetFetchResponse {
+            topics = Utils.mapKaArray mapTopic req.topics
+          , errorCode=0
+          , throttleTimeMs=0}
+        mapTopic topic = K.OffsetFetchResponseTopic {partitions=Utils.mapKaArray mapPartition topic.partitionIndexes, name=topic.name}
+        mapPartition partition = K.OffsetFetchResponsePartition {
           errorCode=0
           , partitionIndex=partition
           , metadata = Nothing
           , committedOffset = -1
         }
 
-fetchOffsetsV1 :: GroupCoordinator -> K.OffsetFetchRequestV1 -> IO K.OffsetFetchResponseV1
-fetchOffsetsV1 coordinator req = do
-  respV2 <- fetchOffsetsV2 coordinator req
-  return K.OffsetFetchResponseV0 {topics = respV2.topics}
-
-fetchOffsetsV0 :: GroupCoordinator -> K.OffsetFetchRequestV0 -> IO K.OffsetFetchResponseV0
-fetchOffsetsV0 coordinator req = do
-  fetchOffsetsV1 coordinator req
-
-
 ------------------- List Groups -------------------------
-listGroups :: GroupCoordinator -> K.ListGroupsRequestV0 -> IO K.ListGroupsResponseV0
+listGroups :: GroupCoordinator -> K.ListGroupsRequest -> IO K.ListGroupsResponse
 listGroups gc _ = do
   gs <- getAllGroups gc
   listedGroups <-  M.mapM G.overview gs
-  return $ K.ListGroupsResponseV0 {errorCode=0, groups=Utils.listToKaArray listedGroups}
+  return $ K.ListGroupsResponse {errorCode=0, groups=Utils.listToKaArray listedGroups, throttleTimeMs=0}
 
 ------------------- Describe Groups -------------------------
-describeGroups :: GroupCoordinator -> K.DescribeGroupsRequestV0 -> IO K.DescribeGroupsResponseV0
+describeGroups :: GroupCoordinator -> K.DescribeGroupsRequest -> IO K.DescribeGroupsResponse
 describeGroups gc req = do
   getGroups gc (Utils.kaArrayToList req.groups) >>= \gs -> do
     listedGroups <- M.forM gs $ \case
-      (gid, Nothing) -> return $ K.DescribedGroupV0 {
+      (gid, Nothing) -> return $ K.DescribedGroup {
         protocolData=""
       , groupState=""
       , errorCode=K.GROUP_ID_NOT_FOUND
@@ -232,7 +195,7 @@ describeGroups gc req = do
       , protocolType=""
       }
       (_, Just g) -> G.describe g
-    return $ K.DescribeGroupsResponseV0 {groups=Utils.listToKaArray listedGroups}
+    return $ K.DescribeGroupsResponse {groups=Utils.listToKaArray listedGroups, throttleTimeMs=0}
 
 ------------------- Load/Unload Group -------------------------
 -- load group from meta store

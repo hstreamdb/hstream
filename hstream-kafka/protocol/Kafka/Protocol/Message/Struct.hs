@@ -191,6 +191,10 @@ data DescribedGroupV0 = DescribedGroupV0
   } deriving (Show, Eq, Generic)
 instance Serializable DescribedGroupV0
 
+type DescribedGroupMemberV1 = DescribedGroupMemberV0
+
+type DescribedGroupV1 = DescribedGroupV0
+
 data FetchPartitionV0 = FetchPartitionV0
   { partition         :: {-# UNPACK #-} !Int32
     -- ^ The partition index.
@@ -254,6 +258,10 @@ data JoinGroupRequestProtocolV0 = JoinGroupRequestProtocolV0
   } deriving (Show, Eq, Generic)
 instance Serializable JoinGroupRequestProtocolV0
 
+type JoinGroupRequestProtocolV1 = JoinGroupRequestProtocolV0
+
+type JoinGroupRequestProtocolV2 = JoinGroupRequestProtocolV0
+
 data JoinGroupResponseMemberV0 = JoinGroupResponseMemberV0
   { memberId :: !Text
     -- ^ The group member ID.
@@ -262,6 +270,10 @@ data JoinGroupResponseMemberV0 = JoinGroupResponseMemberV0
   } deriving (Show, Eq, Generic)
 instance Serializable JoinGroupResponseMemberV0
 
+type JoinGroupResponseMemberV1 = JoinGroupResponseMemberV0
+
+type JoinGroupResponseMemberV2 = JoinGroupResponseMemberV0
+
 data ListedGroupV0 = ListedGroupV0
   { groupId      :: !Text
     -- ^ The group ID.
@@ -269,6 +281,8 @@ data ListedGroupV0 = ListedGroupV0
     -- ^ The group protocol type.
   } deriving (Show, Eq, Generic)
 instance Serializable ListedGroupV0
+
+type ListedGroupV1 = ListedGroupV0
 
 data ListOffsetsPartitionV0 = ListOffsetsPartitionV0
   { partitionIndex :: {-# UNPACK #-} !Int32
@@ -475,6 +489,10 @@ type OffsetCommitRequestPartitionV2 = OffsetCommitRequestPartitionV0
 
 type OffsetCommitRequestTopicV2 = OffsetCommitRequestTopicV0
 
+type OffsetCommitRequestPartitionV3 = OffsetCommitRequestPartitionV0
+
+type OffsetCommitRequestTopicV3 = OffsetCommitRequestTopicV0
+
 data OffsetCommitResponsePartitionV0 = OffsetCommitResponsePartitionV0
   { partitionIndex :: {-# UNPACK #-} !Int32
     -- ^ The partition index.
@@ -499,6 +517,10 @@ type OffsetCommitResponsePartitionV2 = OffsetCommitResponsePartitionV0
 
 type OffsetCommitResponseTopicV2 = OffsetCommitResponseTopicV0
 
+type OffsetCommitResponsePartitionV3 = OffsetCommitResponsePartitionV0
+
+type OffsetCommitResponseTopicV3 = OffsetCommitResponseTopicV0
+
 data OffsetFetchRequestTopicV0 = OffsetFetchRequestTopicV0
   { name             :: !Text
     -- ^ The topic name.
@@ -510,6 +532,8 @@ instance Serializable OffsetFetchRequestTopicV0
 type OffsetFetchRequestTopicV1 = OffsetFetchRequestTopicV0
 
 type OffsetFetchRequestTopicV2 = OffsetFetchRequestTopicV0
+
+type OffsetFetchRequestTopicV3 = OffsetFetchRequestTopicV0
 
 data OffsetFetchResponsePartitionV0 = OffsetFetchResponsePartitionV0
   { partitionIndex  :: {-# UNPACK #-} !Int32
@@ -538,6 +562,10 @@ type OffsetFetchResponseTopicV1 = OffsetFetchResponseTopicV0
 type OffsetFetchResponsePartitionV2 = OffsetFetchResponsePartitionV0
 
 type OffsetFetchResponseTopicV2 = OffsetFetchResponseTopicV0
+
+type OffsetFetchResponsePartitionV3 = OffsetFetchResponsePartitionV0
+
+type OffsetFetchResponseTopicV3 = OffsetFetchResponseTopicV0
 
 data PartitionProduceDataV0 = PartitionProduceDataV0
   { index       :: {-# UNPACK #-} !Int32
@@ -615,6 +643,8 @@ data SyncGroupRequestAssignmentV0 = SyncGroupRequestAssignmentV0
     -- ^ The member assignment.
   } deriving (Show, Eq, Generic)
 instance Serializable SyncGroupRequestAssignmentV0
+
+type SyncGroupRequestAssignmentV1 = SyncGroupRequestAssignmentV0
 
 -------------------------------------------------------------------------------
 
@@ -714,10 +744,21 @@ newtype DescribeGroupsRequestV0 = DescribeGroupsRequestV0
   } deriving (Show, Eq, Generic)
 instance Serializable DescribeGroupsRequestV0
 
+type DescribeGroupsRequestV1 = DescribeGroupsRequestV0
+
 newtype DescribeGroupsResponseV0 = DescribeGroupsResponseV0
   { groups :: (KaArray DescribedGroupV0)
   } deriving (Show, Eq, Generic)
 instance Serializable DescribeGroupsResponseV0
+
+data DescribeGroupsResponseV1 = DescribeGroupsResponseV1
+  { throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
+  , groups         :: !(KaArray DescribedGroupV0)
+    -- ^ Each described group.
+  } deriving (Show, Eq, Generic)
+instance Serializable DescribeGroupsResponseV1
 
 data FetchRequestV0 = FetchRequestV0
   { replicaId :: {-# UNPACK #-} !Int32
@@ -779,10 +820,21 @@ data HeartbeatRequestV0 = HeartbeatRequestV0
   } deriving (Show, Eq, Generic)
 instance Serializable HeartbeatRequestV0
 
+type HeartbeatRequestV1 = HeartbeatRequestV0
+
 newtype HeartbeatResponseV0 = HeartbeatResponseV0
   { errorCode :: ErrorCode
   } deriving (Show, Eq, Generic)
 instance Serializable HeartbeatResponseV0
+
+data HeartbeatResponseV1 = HeartbeatResponseV1
+  { throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
+  , errorCode      :: {-# UNPACK #-} !ErrorCode
+    -- ^ The error code, or 0 if there was no error.
+  } deriving (Show, Eq, Generic)
+instance Serializable HeartbeatResponseV1
 
 data JoinGroupRequestV0 = JoinGroupRequestV0
   { groupId          :: !Text
@@ -800,6 +852,27 @@ data JoinGroupRequestV0 = JoinGroupRequestV0
   } deriving (Show, Eq, Generic)
 instance Serializable JoinGroupRequestV0
 
+data JoinGroupRequestV1 = JoinGroupRequestV1
+  { groupId            :: !Text
+    -- ^ The group identifier.
+  , sessionTimeoutMs   :: {-# UNPACK #-} !Int32
+    -- ^ The coordinator considers the consumer dead if it receives no
+    -- heartbeat after this timeout in milliseconds.
+  , rebalanceTimeoutMs :: {-# UNPACK #-} !Int32
+    -- ^ The maximum time in milliseconds that the coordinator will wait for
+    -- each member to rejoin when rebalancing the group.
+  , memberId           :: !Text
+    -- ^ The member id assigned by the group coordinator.
+  , protocolType       :: !Text
+    -- ^ The unique name the for class of protocols implemented by the group we
+    -- want to join.
+  , protocols          :: !(KaArray JoinGroupRequestProtocolV0)
+    -- ^ The list of protocols that the member supports.
+  } deriving (Show, Eq, Generic)
+instance Serializable JoinGroupRequestV1
+
+type JoinGroupRequestV2 = JoinGroupRequestV1
+
 data JoinGroupResponseV0 = JoinGroupResponseV0
   { errorCode    :: {-# UNPACK #-} !ErrorCode
     -- ^ The error code, or 0 if there was no error.
@@ -815,6 +888,26 @@ data JoinGroupResponseV0 = JoinGroupResponseV0
   } deriving (Show, Eq, Generic)
 instance Serializable JoinGroupResponseV0
 
+type JoinGroupResponseV1 = JoinGroupResponseV0
+
+data JoinGroupResponseV2 = JoinGroupResponseV2
+  { throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
+  , errorCode      :: {-# UNPACK #-} !ErrorCode
+    -- ^ The error code, or 0 if there was no error.
+  , generationId   :: {-# UNPACK #-} !Int32
+    -- ^ The generation ID of the group.
+  , protocolName   :: !Text
+    -- ^ The group protocol selected by the coordinator.
+  , leader         :: !Text
+    -- ^ The leader of the group.
+  , memberId       :: !Text
+    -- ^ The member ID assigned by the group coordinator.
+  , members        :: !(KaArray JoinGroupResponseMemberV0)
+  } deriving (Show, Eq, Generic)
+instance Serializable JoinGroupResponseV2
+
 data LeaveGroupRequestV0 = LeaveGroupRequestV0
   { groupId  :: !Text
     -- ^ The ID of the group to leave.
@@ -823,14 +916,27 @@ data LeaveGroupRequestV0 = LeaveGroupRequestV0
   } deriving (Show, Eq, Generic)
 instance Serializable LeaveGroupRequestV0
 
+type LeaveGroupRequestV1 = LeaveGroupRequestV0
+
 newtype LeaveGroupResponseV0 = LeaveGroupResponseV0
   { errorCode :: ErrorCode
   } deriving (Show, Eq, Generic)
 instance Serializable LeaveGroupResponseV0
 
+data LeaveGroupResponseV1 = LeaveGroupResponseV1
+  { throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
+  , errorCode      :: {-# UNPACK #-} !ErrorCode
+    -- ^ The error code, or 0 if there was no error.
+  } deriving (Show, Eq, Generic)
+instance Serializable LeaveGroupResponseV1
+
 data ListGroupsRequestV0 = ListGroupsRequestV0
   deriving (Show, Eq, Generic)
 instance Serializable ListGroupsRequestV0
+
+type ListGroupsRequestV1 = ListGroupsRequestV0
 
 data ListGroupsResponseV0 = ListGroupsResponseV0
   { errorCode :: {-# UNPACK #-} !ErrorCode
@@ -839,6 +945,17 @@ data ListGroupsResponseV0 = ListGroupsResponseV0
     -- ^ Each group in the response.
   } deriving (Show, Eq, Generic)
 instance Serializable ListGroupsResponseV0
+
+data ListGroupsResponseV1 = ListGroupsResponseV1
+  { throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
+  , errorCode      :: {-# UNPACK #-} !ErrorCode
+    -- ^ The error code, or 0 if there was no error.
+  , groups         :: !(KaArray ListedGroupV0)
+    -- ^ Each group in the response.
+  } deriving (Show, Eq, Generic)
+instance Serializable ListGroupsResponseV1
 
 data ListOffsetsRequestV0 = ListOffsetsRequestV0
   { replicaId :: {-# UNPACK #-} !Int32
@@ -969,6 +1086,8 @@ data OffsetCommitRequestV2 = OffsetCommitRequestV2
   } deriving (Show, Eq, Generic)
 instance Serializable OffsetCommitRequestV2
 
+type OffsetCommitRequestV3 = OffsetCommitRequestV2
+
 newtype OffsetCommitResponseV0 = OffsetCommitResponseV0
   { topics :: (KaArray OffsetCommitResponseTopicV0)
   } deriving (Show, Eq, Generic)
@@ -977,6 +1096,15 @@ instance Serializable OffsetCommitResponseV0
 type OffsetCommitResponseV1 = OffsetCommitResponseV0
 
 type OffsetCommitResponseV2 = OffsetCommitResponseV0
+
+data OffsetCommitResponseV3 = OffsetCommitResponseV3
+  { throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
+  , topics         :: !(KaArray OffsetCommitResponseTopicV0)
+    -- ^ The responses for each topic.
+  } deriving (Show, Eq, Generic)
+instance Serializable OffsetCommitResponseV3
 
 data OffsetFetchRequestV0 = OffsetFetchRequestV0
   { groupId :: !Text
@@ -990,6 +1118,8 @@ instance Serializable OffsetFetchRequestV0
 type OffsetFetchRequestV1 = OffsetFetchRequestV0
 
 type OffsetFetchRequestV2 = OffsetFetchRequestV0
+
+type OffsetFetchRequestV3 = OffsetFetchRequestV0
 
 newtype OffsetFetchResponseV0 = OffsetFetchResponseV0
   { topics :: (KaArray OffsetFetchResponseTopicV0)
@@ -1005,6 +1135,17 @@ data OffsetFetchResponseV2 = OffsetFetchResponseV2
     -- ^ The top-level error code, or 0 if there was no error.
   } deriving (Show, Eq, Generic)
 instance Serializable OffsetFetchResponseV2
+
+data OffsetFetchResponseV3 = OffsetFetchResponseV3
+  { throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
+  , topics         :: !(KaArray OffsetFetchResponseTopicV0)
+    -- ^ The responses per topic.
+  , errorCode      :: {-# UNPACK #-} !ErrorCode
+    -- ^ The top-level error code, or 0 if there was no error.
+  } deriving (Show, Eq, Generic)
+instance Serializable OffsetFetchResponseV3
 
 data ProduceRequestV0 = ProduceRequestV0
   { acks      :: {-# UNPACK #-} !Int16
@@ -1090,6 +1231,8 @@ data SyncGroupRequestV0 = SyncGroupRequestV0
   } deriving (Show, Eq, Generic)
 instance Serializable SyncGroupRequestV0
 
+type SyncGroupRequestV1 = SyncGroupRequestV0
+
 data SyncGroupResponseV0 = SyncGroupResponseV0
   { errorCode  :: {-# UNPACK #-} !ErrorCode
     -- ^ The error code, or 0 if there was no error.
@@ -1097,6 +1240,17 @@ data SyncGroupResponseV0 = SyncGroupResponseV0
     -- ^ The member assignment.
   } deriving (Show, Eq, Generic)
 instance Serializable SyncGroupResponseV0
+
+data SyncGroupResponseV1 = SyncGroupResponseV1
+  { throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
+  , errorCode      :: {-# UNPACK #-} !ErrorCode
+    -- ^ The error code, or 0 if there was no error.
+  , assignment     :: !ByteString
+    -- ^ The member assignment.
+  } deriving (Show, Eq, Generic)
+instance Serializable SyncGroupResponseV1
 
 -------------------------------------------------------------------------------
 
@@ -1270,6 +1424,12 @@ instance Service HStreamKafkaV1 where
      , "metadata"
      , "offsetCommit"
      , "offsetFetch"
+     , "joinGroup"
+     , "heartbeat"
+     , "leaveGroup"
+     , "syncGroup"
+     , "describeGroups"
+     , "listGroups"
      , "saslHandshake"
      , "apiVersions"
      ]
@@ -1316,6 +1476,48 @@ instance HasMethodImpl HStreamKafkaV1 "offsetFetch" where
   type MethodInput HStreamKafkaV1 "offsetFetch" = OffsetFetchRequestV1
   type MethodOutput HStreamKafkaV1 "offsetFetch" = OffsetFetchResponseV1
 
+instance HasMethodImpl HStreamKafkaV1 "joinGroup" where
+  type MethodName HStreamKafkaV1 "joinGroup" = "joinGroup"
+  type MethodKey HStreamKafkaV1 "joinGroup" = 11
+  type MethodVersion HStreamKafkaV1 "joinGroup" = 1
+  type MethodInput HStreamKafkaV1 "joinGroup" = JoinGroupRequestV1
+  type MethodOutput HStreamKafkaV1 "joinGroup" = JoinGroupResponseV1
+
+instance HasMethodImpl HStreamKafkaV1 "heartbeat" where
+  type MethodName HStreamKafkaV1 "heartbeat" = "heartbeat"
+  type MethodKey HStreamKafkaV1 "heartbeat" = 12
+  type MethodVersion HStreamKafkaV1 "heartbeat" = 1
+  type MethodInput HStreamKafkaV1 "heartbeat" = HeartbeatRequestV1
+  type MethodOutput HStreamKafkaV1 "heartbeat" = HeartbeatResponseV1
+
+instance HasMethodImpl HStreamKafkaV1 "leaveGroup" where
+  type MethodName HStreamKafkaV1 "leaveGroup" = "leaveGroup"
+  type MethodKey HStreamKafkaV1 "leaveGroup" = 13
+  type MethodVersion HStreamKafkaV1 "leaveGroup" = 1
+  type MethodInput HStreamKafkaV1 "leaveGroup" = LeaveGroupRequestV1
+  type MethodOutput HStreamKafkaV1 "leaveGroup" = LeaveGroupResponseV1
+
+instance HasMethodImpl HStreamKafkaV1 "syncGroup" where
+  type MethodName HStreamKafkaV1 "syncGroup" = "syncGroup"
+  type MethodKey HStreamKafkaV1 "syncGroup" = 14
+  type MethodVersion HStreamKafkaV1 "syncGroup" = 1
+  type MethodInput HStreamKafkaV1 "syncGroup" = SyncGroupRequestV1
+  type MethodOutput HStreamKafkaV1 "syncGroup" = SyncGroupResponseV1
+
+instance HasMethodImpl HStreamKafkaV1 "describeGroups" where
+  type MethodName HStreamKafkaV1 "describeGroups" = "describeGroups"
+  type MethodKey HStreamKafkaV1 "describeGroups" = 15
+  type MethodVersion HStreamKafkaV1 "describeGroups" = 1
+  type MethodInput HStreamKafkaV1 "describeGroups" = DescribeGroupsRequestV1
+  type MethodOutput HStreamKafkaV1 "describeGroups" = DescribeGroupsResponseV1
+
+instance HasMethodImpl HStreamKafkaV1 "listGroups" where
+  type MethodName HStreamKafkaV1 "listGroups" = "listGroups"
+  type MethodKey HStreamKafkaV1 "listGroups" = 16
+  type MethodVersion HStreamKafkaV1 "listGroups" = 1
+  type MethodInput HStreamKafkaV1 "listGroups" = ListGroupsRequestV1
+  type MethodOutput HStreamKafkaV1 "listGroups" = ListGroupsResponseV1
+
 instance HasMethodImpl HStreamKafkaV1 "saslHandshake" where
   type MethodName HStreamKafkaV1 "saslHandshake" = "saslHandshake"
   type MethodKey HStreamKafkaV1 "saslHandshake" = 17
@@ -1340,6 +1542,7 @@ instance Service HStreamKafkaV2 where
      , "metadata"
      , "offsetCommit"
      , "offsetFetch"
+     , "joinGroup"
      , "apiVersions"
      ]
 
@@ -1378,6 +1581,13 @@ instance HasMethodImpl HStreamKafkaV2 "offsetFetch" where
   type MethodInput HStreamKafkaV2 "offsetFetch" = OffsetFetchRequestV2
   type MethodOutput HStreamKafkaV2 "offsetFetch" = OffsetFetchResponseV2
 
+instance HasMethodImpl HStreamKafkaV2 "joinGroup" where
+  type MethodName HStreamKafkaV2 "joinGroup" = "joinGroup"
+  type MethodKey HStreamKafkaV2 "joinGroup" = 11
+  type MethodVersion HStreamKafkaV2 "joinGroup" = 2
+  type MethodInput HStreamKafkaV2 "joinGroup" = JoinGroupRequestV2
+  type MethodOutput HStreamKafkaV2 "joinGroup" = JoinGroupResponseV2
+
 instance HasMethodImpl HStreamKafkaV2 "apiVersions" where
   type MethodName HStreamKafkaV2 "apiVersions" = "apiVersions"
   type MethodKey HStreamKafkaV2 "apiVersions" = 18
@@ -1391,6 +1601,8 @@ instance Service HStreamKafkaV3 where
   type ServiceName HStreamKafkaV3 = "HStreamKafkaV3"
   type ServiceMethods HStreamKafkaV3 =
     '[ "metadata"
+     , "offsetCommit"
+     , "offsetFetch"
      , "apiVersions"
      ]
 
@@ -1400,6 +1612,20 @@ instance HasMethodImpl HStreamKafkaV3 "metadata" where
   type MethodVersion HStreamKafkaV3 "metadata" = 3
   type MethodInput HStreamKafkaV3 "metadata" = MetadataRequestV3
   type MethodOutput HStreamKafkaV3 "metadata" = MetadataResponseV3
+
+instance HasMethodImpl HStreamKafkaV3 "offsetCommit" where
+  type MethodName HStreamKafkaV3 "offsetCommit" = "offsetCommit"
+  type MethodKey HStreamKafkaV3 "offsetCommit" = 8
+  type MethodVersion HStreamKafkaV3 "offsetCommit" = 3
+  type MethodInput HStreamKafkaV3 "offsetCommit" = OffsetCommitRequestV3
+  type MethodOutput HStreamKafkaV3 "offsetCommit" = OffsetCommitResponseV3
+
+instance HasMethodImpl HStreamKafkaV3 "offsetFetch" where
+  type MethodName HStreamKafkaV3 "offsetFetch" = "offsetFetch"
+  type MethodKey HStreamKafkaV3 "offsetFetch" = 9
+  type MethodVersion HStreamKafkaV3 "offsetFetch" = 3
+  type MethodInput HStreamKafkaV3 "offsetFetch" = OffsetFetchRequestV3
+  type MethodOutput HStreamKafkaV3 "offsetFetch" = OffsetFetchResponseV3
 
 instance HasMethodImpl HStreamKafkaV3 "apiVersions" where
   type MethodName HStreamKafkaV3 "apiVersions" = "apiVersions"
@@ -1456,15 +1682,15 @@ supportedApiVersions =
   , ApiVersionV0 (ApiKey 1) 0 2
   , ApiVersionV0 (ApiKey 2) 0 1
   , ApiVersionV0 (ApiKey 3) 0 4
-  , ApiVersionV0 (ApiKey 8) 0 2
-  , ApiVersionV0 (ApiKey 9) 0 2
+  , ApiVersionV0 (ApiKey 8) 0 3
+  , ApiVersionV0 (ApiKey 9) 0 3
   , ApiVersionV0 (ApiKey 10) 0 0
-  , ApiVersionV0 (ApiKey 11) 0 0
-  , ApiVersionV0 (ApiKey 12) 0 0
-  , ApiVersionV0 (ApiKey 13) 0 0
-  , ApiVersionV0 (ApiKey 14) 0 0
-  , ApiVersionV0 (ApiKey 15) 0 0
-  , ApiVersionV0 (ApiKey 16) 0 0
+  , ApiVersionV0 (ApiKey 11) 0 2
+  , ApiVersionV0 (ApiKey 12) 0 1
+  , ApiVersionV0 (ApiKey 13) 0 1
+  , ApiVersionV0 (ApiKey 14) 0 1
+  , ApiVersionV0 (ApiKey 15) 0 1
+  , ApiVersionV0 (ApiKey 16) 0 1
   , ApiVersionV0 (ApiKey 17) 0 1
   , ApiVersionV0 (ApiKey 18) 0 3
   , ApiVersionV0 (ApiKey 19) 0 0
@@ -1490,16 +1716,25 @@ getHeaderVersion (ApiKey 3) 4  = (1, 0)
 getHeaderVersion (ApiKey 8) 0  = (1, 0)
 getHeaderVersion (ApiKey 8) 1  = (1, 0)
 getHeaderVersion (ApiKey 8) 2  = (1, 0)
+getHeaderVersion (ApiKey 8) 3  = (1, 0)
 getHeaderVersion (ApiKey 9) 0  = (1, 0)
 getHeaderVersion (ApiKey 9) 1  = (1, 0)
 getHeaderVersion (ApiKey 9) 2  = (1, 0)
+getHeaderVersion (ApiKey 9) 3  = (1, 0)
 getHeaderVersion (ApiKey 10) 0 = (1, 0)
 getHeaderVersion (ApiKey 11) 0 = (1, 0)
+getHeaderVersion (ApiKey 11) 1 = (1, 0)
+getHeaderVersion (ApiKey 11) 2 = (1, 0)
 getHeaderVersion (ApiKey 12) 0 = (1, 0)
+getHeaderVersion (ApiKey 12) 1 = (1, 0)
 getHeaderVersion (ApiKey 13) 0 = (1, 0)
+getHeaderVersion (ApiKey 13) 1 = (1, 0)
 getHeaderVersion (ApiKey 14) 0 = (1, 0)
+getHeaderVersion (ApiKey 14) 1 = (1, 0)
 getHeaderVersion (ApiKey 15) 0 = (1, 0)
+getHeaderVersion (ApiKey 15) 1 = (1, 0)
 getHeaderVersion (ApiKey 16) 0 = (1, 0)
+getHeaderVersion (ApiKey 16) 1 = (1, 0)
 getHeaderVersion (ApiKey 17) 0 = (1, 0)
 getHeaderVersion (ApiKey 17) 1 = (1, 0)
 getHeaderVersion (ApiKey 18) 0 = (1, 0)
