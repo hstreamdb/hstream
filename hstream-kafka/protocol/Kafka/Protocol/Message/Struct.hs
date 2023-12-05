@@ -222,6 +222,10 @@ type FetchPartitionV2 = FetchPartitionV0
 
 type FetchTopicV2 = FetchTopicV0
 
+type FetchPartitionV3 = FetchPartitionV0
+
+type FetchTopicV3 = FetchTopicV0
+
 data PartitionDataV0 = PartitionDataV0
   { partitionIndex :: {-# UNPACK #-} !Int32
     -- ^ The partition index.
@@ -249,6 +253,10 @@ type FetchableTopicResponseV1 = FetchableTopicResponseV0
 type PartitionDataV2 = PartitionDataV0
 
 type FetchableTopicResponseV2 = FetchableTopicResponseV0
+
+type PartitionDataV3 = PartitionDataV0
+
+type FetchableTopicResponseV3 = FetchableTopicResponseV0
 
 data JoinGroupRequestProtocolV0 = JoinGroupRequestProtocolV0
   { name     :: !Text
@@ -777,6 +785,22 @@ type FetchRequestV1 = FetchRequestV0
 
 type FetchRequestV2 = FetchRequestV0
 
+data FetchRequestV3 = FetchRequestV3
+  { replicaId :: {-# UNPACK #-} !Int32
+    -- ^ The broker ID of the follower, of -1 if this request is from a
+    -- consumer.
+  , maxWaitMs :: {-# UNPACK #-} !Int32
+    -- ^ The maximum time in milliseconds to wait for the response.
+  , minBytes  :: {-# UNPACK #-} !Int32
+    -- ^ The minimum bytes to accumulate in the response.
+  , maxBytes  :: {-# UNPACK #-} !Int32
+    -- ^ The maximum bytes to fetch.  See KIP-74 for cases where this limit may
+    -- not be honored.
+  , topics    :: !(KaArray FetchTopicV0)
+    -- ^ The topics to fetch.
+  } deriving (Show, Eq, Generic)
+instance Serializable FetchRequestV3
+
 newtype FetchResponseV0 = FetchResponseV0
   { responses :: (KaArray FetchableTopicResponseV0)
   } deriving (Show, Eq, Generic)
@@ -792,6 +816,8 @@ data FetchResponseV1 = FetchResponseV1
 instance Serializable FetchResponseV1
 
 type FetchResponseV2 = FetchResponseV1
+
+type FetchResponseV3 = FetchResponseV1
 
 newtype FindCoordinatorRequestV0 = FindCoordinatorRequestV0
   { key :: Text
@@ -1600,11 +1626,19 @@ data HStreamKafkaV3
 instance Service HStreamKafkaV3 where
   type ServiceName HStreamKafkaV3 = "HStreamKafkaV3"
   type ServiceMethods HStreamKafkaV3 =
-    '[ "metadata"
+    '[ "fetch"
+     , "metadata"
      , "offsetCommit"
      , "offsetFetch"
      , "apiVersions"
      ]
+
+instance HasMethodImpl HStreamKafkaV3 "fetch" where
+  type MethodName HStreamKafkaV3 "fetch" = "fetch"
+  type MethodKey HStreamKafkaV3 "fetch" = 1
+  type MethodVersion HStreamKafkaV3 "fetch" = 3
+  type MethodInput HStreamKafkaV3 "fetch" = FetchRequestV3
+  type MethodOutput HStreamKafkaV3 "fetch" = FetchResponseV3
 
 instance HasMethodImpl HStreamKafkaV3 "metadata" where
   type MethodName HStreamKafkaV3 "metadata" = "metadata"
@@ -1679,7 +1713,7 @@ instance Show ApiKey where
 supportedApiVersions :: [ApiVersionV0]
 supportedApiVersions =
   [ ApiVersionV0 (ApiKey 0) 0 2
-  , ApiVersionV0 (ApiKey 1) 0 2
+  , ApiVersionV0 (ApiKey 1) 0 3
   , ApiVersionV0 (ApiKey 2) 0 1
   , ApiVersionV0 (ApiKey 3) 0 4
   , ApiVersionV0 (ApiKey 8) 0 3
@@ -1706,6 +1740,7 @@ getHeaderVersion (ApiKey 0) 2  = (1, 0)
 getHeaderVersion (ApiKey 1) 0  = (1, 0)
 getHeaderVersion (ApiKey 1) 1  = (1, 0)
 getHeaderVersion (ApiKey 1) 2  = (1, 0)
+getHeaderVersion (ApiKey 1) 3  = (1, 0)
 getHeaderVersion (ApiKey 2) 0  = (1, 0)
 getHeaderVersion (ApiKey 2) 1  = (1, 0)
 getHeaderVersion (ApiKey 3) 0  = (1, 0)

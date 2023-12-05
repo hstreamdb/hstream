@@ -57,7 +57,7 @@ import qualified Kafka.Protocol.Service                as K
 
 #cv_handler ApiVersions, 0, 3
 #cv_handler Produce, 0, 2
-#cv_handler Fetch, 0, 2
+#cv_handler Fetch, 0, 3
 #cv_handler DescribeConfigs, 0, 0
 
 #cv_handler SaslHandshake, 0, 1
@@ -81,7 +81,7 @@ handlers sc =
     -- Write
   , #mk_handler Produce, 0, 2
     -- Read
-  , #mk_handler Fetch, 0, 2
+  , #mk_handler Fetch, 0, 3
 
   , #mk_handler FindCoordinator, 0, 0
 

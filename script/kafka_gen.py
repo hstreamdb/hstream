@@ -110,7 +110,7 @@ API_VERSION_PATCHES = {
     "ApiVersions": (0, 3),
     "Metadata": (0, 4),
     "Produce": (0, 2),
-    "Fetch": (0, 2),
+    "Fetch": (0, 3),
     "OffsetFetch": (0, 3),
     "OffsetCommit": (0, 3),
     "ListOffsets": (0, 1),

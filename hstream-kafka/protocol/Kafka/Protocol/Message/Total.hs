@@ -378,6 +378,8 @@ fetchPartitionToV1 :: FetchPartition -> FetchPartitionV1
 fetchPartitionToV1 = fetchPartitionToV0
 fetchPartitionToV2 :: FetchPartition -> FetchPartitionV2
 fetchPartitionToV2 = fetchPartitionToV0
+fetchPartitionToV3 :: FetchPartition -> FetchPartitionV3
+fetchPartitionToV3 = fetchPartitionToV0
 
 fetchPartitionFromV0 :: FetchPartitionV0 -> FetchPartition
 fetchPartitionFromV0 x = FetchPartition
@@ -389,6 +391,8 @@ fetchPartitionFromV1 :: FetchPartitionV1 -> FetchPartition
 fetchPartitionFromV1 = fetchPartitionFromV0
 fetchPartitionFromV2 :: FetchPartitionV2 -> FetchPartition
 fetchPartitionFromV2 = fetchPartitionFromV0
+fetchPartitionFromV3 :: FetchPartitionV3 -> FetchPartition
+fetchPartitionFromV3 = fetchPartitionFromV0
 
 data FetchTopic = FetchTopic
   { topic      :: !Text
@@ -407,6 +411,8 @@ fetchTopicToV1 :: FetchTopic -> FetchTopicV1
 fetchTopicToV1 = fetchTopicToV0
 fetchTopicToV2 :: FetchTopic -> FetchTopicV2
 fetchTopicToV2 = fetchTopicToV0
+fetchTopicToV3 :: FetchTopic -> FetchTopicV3
+fetchTopicToV3 = fetchTopicToV0
 
 fetchTopicFromV0 :: FetchTopicV0 -> FetchTopic
 fetchTopicFromV0 x = FetchTopic
@@ -417,6 +423,8 @@ fetchTopicFromV1 :: FetchTopicV1 -> FetchTopic
 fetchTopicFromV1 = fetchTopicFromV0
 fetchTopicFromV2 :: FetchTopicV2 -> FetchTopic
 fetchTopicFromV2 = fetchTopicFromV0
+fetchTopicFromV3 :: FetchTopicV3 -> FetchTopic
+fetchTopicFromV3 = fetchTopicFromV0
 
 data FetchableTopicResponse = FetchableTopicResponse
   { topic      :: !Text
@@ -435,6 +443,8 @@ fetchableTopicResponseToV1 :: FetchableTopicResponse -> FetchableTopicResponseV1
 fetchableTopicResponseToV1 = fetchableTopicResponseToV0
 fetchableTopicResponseToV2 :: FetchableTopicResponse -> FetchableTopicResponseV2
 fetchableTopicResponseToV2 = fetchableTopicResponseToV0
+fetchableTopicResponseToV3 :: FetchableTopicResponse -> FetchableTopicResponseV3
+fetchableTopicResponseToV3 = fetchableTopicResponseToV0
 
 fetchableTopicResponseFromV0 :: FetchableTopicResponseV0 -> FetchableTopicResponse
 fetchableTopicResponseFromV0 x = FetchableTopicResponse
@@ -445,6 +455,8 @@ fetchableTopicResponseFromV1 :: FetchableTopicResponseV1 -> FetchableTopicRespon
 fetchableTopicResponseFromV1 = fetchableTopicResponseFromV0
 fetchableTopicResponseFromV2 :: FetchableTopicResponseV2 -> FetchableTopicResponse
 fetchableTopicResponseFromV2 = fetchableTopicResponseFromV0
+fetchableTopicResponseFromV3 :: FetchableTopicResponseV3 -> FetchableTopicResponse
+fetchableTopicResponseFromV3 = fetchableTopicResponseFromV0
 
 data FinalizedFeatureKey = FinalizedFeatureKey
   { name            :: !CompactString
@@ -1156,6 +1168,8 @@ partitionDataToV1 :: PartitionData -> PartitionDataV1
 partitionDataToV1 = partitionDataToV0
 partitionDataToV2 :: PartitionData -> PartitionDataV2
 partitionDataToV2 = partitionDataToV0
+partitionDataToV3 :: PartitionData -> PartitionDataV3
+partitionDataToV3 = partitionDataToV0
 
 partitionDataFromV0 :: PartitionDataV0 -> PartitionData
 partitionDataFromV0 x = PartitionData
@@ -1168,6 +1182,8 @@ partitionDataFromV1 :: PartitionDataV1 -> PartitionData
 partitionDataFromV1 = partitionDataFromV0
 partitionDataFromV2 :: PartitionDataV2 -> PartitionData
 partitionDataFromV2 = partitionDataFromV0
+partitionDataFromV3 :: PartitionDataV3 -> PartitionData
+partitionDataFromV3 = partitionDataFromV0
 
 data PartitionProduceData = PartitionProduceData
   { index       :: {-# UNPACK #-} !Int32
@@ -1620,6 +1636,9 @@ data FetchRequest = FetchRequest
     -- ^ The minimum bytes to accumulate in the response.
   , topics    :: !(KaArray FetchTopic)
     -- ^ The topics to fetch.
+  , maxBytes  :: {-# UNPACK #-} !Int32
+    -- ^ The maximum bytes to fetch.  See KIP-74 for cases where this limit may
+    -- not be honored.
   } deriving (Show, Eq, Generic)
 instance Serializable FetchRequest
 
@@ -1634,6 +1653,14 @@ fetchRequestToV1 :: FetchRequest -> FetchRequestV1
 fetchRequestToV1 = fetchRequestToV0
 fetchRequestToV2 :: FetchRequest -> FetchRequestV2
 fetchRequestToV2 = fetchRequestToV0
+fetchRequestToV3 :: FetchRequest -> FetchRequestV3
+fetchRequestToV3 x = FetchRequestV3
+  { replicaId = x.replicaId
+  , maxWaitMs = x.maxWaitMs
+  , minBytes = x.minBytes
+  , maxBytes = x.maxBytes
+  , topics = fmap fetchTopicToV3 x.topics
+  }
 
 fetchRequestFromV0 :: FetchRequestV0 -> FetchRequest
 fetchRequestFromV0 x = FetchRequest
@@ -1641,11 +1668,20 @@ fetchRequestFromV0 x = FetchRequest
   , maxWaitMs = x.maxWaitMs
   , minBytes = x.minBytes
   , topics = fmap fetchTopicFromV0 x.topics
+  , maxBytes = 2147483647
   }
 fetchRequestFromV1 :: FetchRequestV1 -> FetchRequest
 fetchRequestFromV1 = fetchRequestFromV0
 fetchRequestFromV2 :: FetchRequestV2 -> FetchRequest
 fetchRequestFromV2 = fetchRequestFromV0
+fetchRequestFromV3 :: FetchRequestV3 -> FetchRequest
+fetchRequestFromV3 x = FetchRequest
+  { replicaId = x.replicaId
+  , maxWaitMs = x.maxWaitMs
+  , minBytes = x.minBytes
+  , topics = fmap fetchTopicFromV3 x.topics
+  , maxBytes = x.maxBytes
+  }
 
 data FetchResponse = FetchResponse
   { responses      :: !(KaArray FetchableTopicResponse)
@@ -1667,6 +1703,8 @@ fetchResponseToV1 x = FetchResponseV1
   }
 fetchResponseToV2 :: FetchResponse -> FetchResponseV2
 fetchResponseToV2 = fetchResponseToV1
+fetchResponseToV3 :: FetchResponse -> FetchResponseV3
+fetchResponseToV3 = fetchResponseToV1
 
 fetchResponseFromV0 :: FetchResponseV0 -> FetchResponse
 fetchResponseFromV0 x = FetchResponse
@@ -1680,6 +1718,8 @@ fetchResponseFromV1 x = FetchResponse
   }
 fetchResponseFromV2 :: FetchResponseV2 -> FetchResponse
 fetchResponseFromV2 = fetchResponseFromV1
+fetchResponseFromV3 :: FetchResponseV3 -> FetchResponse
+fetchResponseFromV3 = fetchResponseFromV1
 
 newtype FindCoordinatorRequest = FindCoordinatorRequest
   { key :: Text
