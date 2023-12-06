@@ -21,9 +21,10 @@ module HStream.Kafka.Network
 import           Control.Concurrent
 import qualified Control.Exception                   as E
 import           Control.Monad
+import           Control.Monad.IO.Class              (liftIO)
+import qualified Control.Monad.State                 as State
 import           Data.ByteString                     (ByteString)
 import qualified Data.ByteString                     as BS
-import qualified Data.ByteString.Lazy                as BSL
 import           Data.Int
 import           Data.List                           (find, intersperse)
 import           Data.Maybe                          (fromMaybe, isJust,
@@ -40,10 +41,12 @@ import           HStream.Kafka.Common.OffsetManager  (initOffsetReader)
 import           HStream.Kafka.Common.Utils          (observeWithLabel)
 import           HStream.Kafka.Metrics.ServerStats   (handlerLatencies,
                                                       totalRequests)
+import qualified HStream.Kafka.Network.IO            as KIO
+import qualified HStream.Kafka.Network.Security      as Security
+import           HStream.Kafka.Server.Config.Types   (SaslOptions (..))
 import           HStream.Kafka.Server.Types          (ServerContext (..))
 import qualified HStream.Logger                      as Log
 import           Kafka.Protocol.Encoding
-import qualified Kafka.Protocol.Error                as K
 import           Kafka.Protocol.Message
 import           Kafka.Protocol.Service
 
@@ -52,9 +55,6 @@ import           Kafka.Protocol.Service
 
 -- TODO
 data SslOptions
-
--- TODO
-data SaslOptions = SaslOptions
 
 data ServerOptions = ServerOptions
   { serverHost        :: !String
@@ -87,71 +87,46 @@ runServer opts sc mkPreAuthedHandlers mkAuthedHandlers =
     -- Reader.
     om <- initOffsetReader $ scOffsetManager sc
     let sc' = sc{scOffsetManager = om}
-    i <- N.recv s 1024
+
     -- Decide if we require SASL authentication
     case (serverSaslOptions opts) of
-      Nothing -> talk (peer, mkAuthedHandlers sc') i Nothing s
-      _       -> do i' <- authTalk (peer, (mkPreAuthedHandlers sc')) i Nothing s
-                    talk (peer, mkAuthedHandlers sc') i' Nothing s
+      Nothing -> do
+        void $ State.execStateT (talk (peer, mkAuthedHandlers sc') s) ""
+      Just _  -> do
+        void $ (`State.execStateT` "") $ do
+          doAuth sc' peer s >>= \case
+            Security.SaslStateComplete ->
+              talk (peer, mkAuthedHandlers sc') s
+            ss -> do
+              liftIO $ Log.fatal $ "[SASL] authenticate failed with state " <> Log.buildString' ss
   where
-    authTalk _ "" _ _ = pure mempty  -- client exit
-    authTalk !(peer, hds) i m_more s = do
-      reqBsResult <- case m_more of
-                       Nothing -> runParser @ByteString get i
-                       Just mf -> mf i
-      case reqBsResult of
-        Done "" reqBs -> do authed <- newEmptyMVar
-                            respBs <- runHandler peer hds reqBs authed
-                            NL.sendAll s respBs
-                            tryTakeMVar authed >>= \case
-                              Just True  -> N.recv s 1024
-                              Just False -> E.throwIO $ ErrorCodeException K.SASL_AUTHENTICATION_FAILED
-                              Nothing    -> do msg <- N.recv s 1024
-                                               authTalk (peer, hds) msg Nothing s
-        Done l reqBs -> do authed <- newEmptyMVar
-                           respBs <- runHandler peer hds reqBs authed
-                           NL.sendAll s respBs
-                           tryTakeMVar authed >>= \case
-                              Just True  -> return l
-                              Just False -> E.throwIO $ ErrorCodeException K.SASL_AUTHENTICATION_FAILED
-                              Nothing    -> authTalk (peer, hds) l Nothing s
-        More f -> do msg <- N.recv s 1024
-                     authTalk (peer, hds) msg (Just f) s
-        Fail _ err -> E.throwIO $ DecodeError $ "Fail, " <> err
+    doAuth sc_ peer s = do
+      let recv = KIO.recvKafkaMsgBS peer Nothing s
+          send = KIO.sendKafkaMsgBS s
+      Security.authenticate sc_
+                            (runHandler peer (mkPreAuthedHandlers sc_))
+                            recv
+                            send
+                            Security.SaslStateHandshakeOrVersions
+                            Nothing
 
-    talk _ "" _ _ = pure ()  -- client exit
-    talk !(peer, hds) i m_more s = do
-      reqBsResult <- case m_more of
-                       Nothing -> runParser @ByteString get i
-                       Just mf -> mf i
-      case reqBsResult of
-        Done "" reqBs -> do respBs <- runHandler peer hds reqBs undefined -- FIXME: unused 'authed' as 'undefined'. Better way?
-                            NL.sendAll s respBs
-                            msg <- N.recv s 1024
-                            talk (peer, hds) msg Nothing s
-        Done l reqBs -> do respBs <- runHandler peer hds reqBs undefined -- FIXME: unused 'authed' as 'undefined'. Better way?
-                           NL.sendAll s respBs
-                           talk (peer, hds) l Nothing s
-        More f -> do msg <- N.recv s 1024
-                     talk (peer, hds) msg (Just f) s
-        Fail _ err -> E.throwIO $ DecodeError $ "Fail, " <> err
+    talk (peer, hds) s = do
+      KIO.recvKafkaMsgBS peer Nothing s >>= \case
+        Nothing -> return ()
+        Just (reqHeader, reqBs) -> do
+          respBs <- liftIO $ runHandler peer hds reqHeader reqBs
+          liftIO $ KIO.sendKafkaMsgBS s respBs
+          talk (peer, hds) s
 
-    -- 'authed :: MVar Bool'. Empty at the beginning and is only used by SASL auth.
-    -- FIXME: better way?
-    runHandler peer handlers reqBs authed = do
+    runHandler peer handlers reqHeader@RequestHeader{..} reqBs = do
       P.incCounter totalRequests
-      headerResult <- runParser @RequestHeader get reqBs
-      case headerResult of
-        Done l r@RequestHeader{..} -> do
-          Log.debug $ "receive requestHeader: " <> Log.build (show r)
-          let ServiceHandler{..} = findHandler handlers requestApiKey requestApiVersion
-          case rpcHandler of
-            UnaryHandler rpcHandler' -> do
-              observeWithLabel handlerLatencies (T.pack $ show requestApiKey) $ doUnaryHandler l r rpcHandler' peer authed
-        Fail _ err -> E.throwIO $ DecodeError $ "Fail, " <> err
-        More _ -> E.throwIO $ DecodeError $ "More"
+      Log.debug $ "receive requestHeader: " <> Log.build (show reqHeader)
+      let ServiceHandler{..} = findHandler handlers requestApiKey requestApiVersion
+      case rpcHandler of
+        UnaryHandler rpcHandler' -> do
+          observeWithLabel handlerLatencies (T.pack $ show requestApiKey) $ doUnaryHandler reqBs reqHeader rpcHandler' peer
 
-    doUnaryHandler l RequestHeader{..} rpcHandler' peer authed = do
+    doUnaryHandler l reqHeader@RequestHeader{..} rpcHandler' peer = do
       (req, left) <- runGet' l
       when (not . BS.null $ left) $
         Log.warning $ "Leftover bytes: " <> Log.buildString' left
@@ -164,20 +139,10 @@ runServer opts sc mkPreAuthedHandlers mkAuthedHandlers =
             RequestContext
               { clientId = requestClientId
               , clientHost = showSockAddrHost peer
-              , clientAuthDone = authed
               }
       resp <- rpcHandler' reqContext req
       Log.debug $ "Server response: " <> Log.buildString' resp
-      let respBs = runPutLazy resp
-          (_, respHeaderVer) = getHeaderVersion requestApiKey requestApiVersion
-          respHeaderBs =
-            case respHeaderVer of
-              0 -> runPutResponseHeaderLazy $ ResponseHeader requestCorrelationId Nothing
-              1 -> runPutResponseHeaderLazy $ ResponseHeader requestCorrelationId (Just EmptyTaggedFields)
-              _ -> error $ "Unknown response header version " <> show respHeaderVer
-      let len = BSL.length (respHeaderBs <> respBs)
-          lenBs = runPutLazy @Int32 (fromIntegral len)
-      pure $ lenBs <> respHeaderBs <> respBs
+      return $ KIO.packKafkaMsgBs reqHeader resp
 
     findHandler handlers apikey@(ApiKey key) version = do
       let m_handler = find (\ServiceHandler{..} ->

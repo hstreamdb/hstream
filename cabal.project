@@ -7,6 +7,7 @@ packages:
   external/gRPC-haskell/core/grpc-haskell-core.cabal
   external/haskell-rocksdb-bindings
   external/digest/digest.cabal
+  external/gsasl-hs/gsasl-hs.cabal
 
   -- * Cpp library
   common/api/cpp/hstream-api-cpp.cabal

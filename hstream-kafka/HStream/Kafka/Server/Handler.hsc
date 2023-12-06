@@ -61,7 +61,6 @@ import qualified Kafka.Protocol.Service                as K
 #cv_handler DescribeConfigs, 0, 0
 
 #cv_handler SaslHandshake, 0, 1
-#cv_handler SaslAuthenticate, 0, 0
 
 handlers :: ServerContext -> [K.ServiceHandler]
 handlers sc =
@@ -113,7 +112,5 @@ handlers sc =
 unAuthedHandlers :: ServerContext -> [K.ServiceHandler]
 unAuthedHandlers sc =
   [ #mk_handler ApiVersions, 0, 3
-
   , #mk_handler SaslHandshake, 0, 1
-  , #mk_handler SaslAuthenticate, 0, 0
   ]

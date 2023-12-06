@@ -117,8 +117,11 @@ library
     HStream.Kafka.Group.Member
     HStream.Kafka.Group.OffsetsStore
     HStream.Kafka.Network
+    HStream.Kafka.Network.IO
+    HStream.Kafka.Network.Security
     HStream.Kafka.Server.Config
     HStream.Kafka.Server.Handler
+    HStream.Kafka.Server.Handler.Security
     HStream.Kafka.Server.Types
 
   other-modules:
@@ -136,8 +139,8 @@ library
     HStream.Kafka.Server.Handler.Group
     HStream.Kafka.Server.Handler.Offset
     HStream.Kafka.Server.Handler.Produce
-    HStream.Kafka.Server.Handler.Security
     HStream.Kafka.Server.Handler.Topic
+    HStream.Kafka.Server.Security.SASL
 
   cxx-sources:        cbits/hs_kafka_client.cpp
   cxx-options:        -std=c++17
@@ -156,7 +159,7 @@ library
     , containers
     , directory
     , foreign
-    , gsasl                         >=0.3.0
+    , gsasl-hs
     , hashable
     , hashtables
     , haskeline
@@ -168,11 +171,14 @@ library
     , hstream-gossip
     , hstream-kafka:kafka-protocol
     , hstream-store
+    , mtl
     , network
     , optparse-applicative
     , prometheus-client
+    , stm
     , text
     , unordered-containers
+    , utf8-string
     , uuid
     , vector
     , vector-hashtables
