@@ -20,7 +20,7 @@ import qualified Control.Concurrent.Async          as Async
 import           Control.Concurrent.MVar           (MVar, newEmptyMVar, putMVar,
                                                     readMVar)
 import           Control.Exception                 (Handler (Handler), catches)
-import           Control.Monad                     (forM, forM_, void)
+import           Control.Monad                     (forM, forM_, join, void)
 import qualified Data.Map                          as Map
 import           Data.Maybe                        (isJust)
 import qualified Data.Set                          as Set
@@ -118,10 +118,11 @@ app config@ServerOpts{..} = do
 
       -- TODO: support tls (_tlsConfig)
       -- TODO: support SASL options
+      -- FIXME: currently only listeners support SASL authentication
       let netOpts = K.defaultServerOpts
                       { K.serverHost = T.unpack $ decodeUtf8 _serverHost
                       , K.serverPort = fromIntegral _serverPort
-                      , K.serverSaslOptions = if _enableSaslAuth then Just K.SaslOptions else Nothing
+                      , K.serverSaslOptions = Nothing
                       }
       Async.withAsync (serve serverContext netOpts) $ \a -> do
         -- start gossip
@@ -189,7 +190,6 @@ serve sc@ServerContext{..} netOpts = do
   let netOpts' = netOpts{ K.serverOnStarted = Just serverOnStarted}
   Log.info $ "Starting"
         <> if isJust (K.serverSslOptions netOpts') then " secure " else " insecure "
-        <> (if isJust (K.serverSaslOptions netOpts') then "SASL " else "")
         <> "kafka server..."
   K.runServer netOpts' sc K.unAuthedHandlers K.handlers
   where
@@ -206,7 +206,7 @@ serveListeners
   -> ListenersSecurityProtocolMap
   -> IO [Async.Async ()]
 serveListeners sc netOpts
-               _securityMap listeners _listenerSecurityMap
+               securityMap listeners listenerSecurityMap
                = do
   let listeners' = [(k, v) | (k, vs) <- Map.toList listeners, v <- Set.toList vs]
   forM listeners' $ \(key, I.Listener{..}) -> Async.async $ do
@@ -218,8 +218,11 @@ serveListeners sc netOpts
     --   join ((`Map.lookup` securityMap) =<< Map.lookup key listenerSecurityMap)
     let newSslOpts = Nothing
 
-    -- TODO: sasl
-    let newSaslOpts = Nothing
+    -- sasl
+    let newSaslOpts =
+          if _enableSaslAuth (serverOpts sc)
+          then join (snd <$> ((`Map.lookup` securityMap) =<< Map.lookup key listenerSecurityMap))
+          else Nothing
     let netOpts' = netOpts{ K.serverPort = fromIntegral listenerPort
                           , K.serverOnStarted = Just listenerOnStarted
                           , K.serverSslOptions = newSslOpts

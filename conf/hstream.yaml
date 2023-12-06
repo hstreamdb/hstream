@@ -177,6 +177,14 @@ kafka:
   #    - address: "127.0.0.1"
   #      port: 9192
   #
+
+  # Listener security in format <listener_key>:<security_key>[, ...]
+  # <security_key> can be one of the following:
+  # "plaintext": no authentication and no encryption
+  # "tls": tls encryption but no authentication
+  # "sasl_plaintext": sasl authentication but no encryption
+  # "sasl_tls": sasl authentication and tls encryption
+  # For example, "public:tls,private:plaintext"
   #listeners-security-protocol-map: private:plaintext
 
   # The address used for internal communications between server nodes,
@@ -242,6 +250,31 @@ kafka:
   # in handshake phase, server will request and verify client's certificate.
   #
   #tls-ca-path: /path/to/the/ca.cert.pem
+
+  # SASL options
+  # Enable SASL authentication. This requires `--enable-sasl` option.
+  #enable-sasl: False
+
+  # SASL config should be placed under `sasl:`
+  # <SASL> ::= [<mechs>]
+  # <mech> ::= { mechanism: <string>, auth-list: [<auth>] }
+  # <auth> ::= { username: <string>, password: <string> } (PLAIN mechanism)
+
+  # To start a server with SASL authentication, use `advertised-listeners:`
+  # and `listeners-security-protocol-map:` options above.
+  #sasl:
+  #  - mechanism: "PLAIN"
+  #    auth-list:
+  #      - username: "admin"
+  #        password: "password"
+  #      - username: "user_a"
+  #        password: "password_a"
+  #  - mechanism: "SCRAM-SHA-256"
+  #    auth-list:
+  #      - username: "admin"
+  #        password: "password"
+  #      - username: "user_a"
+  #        password: "password_a"
 
   # Cluster Gossip Options
   #

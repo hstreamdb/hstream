@@ -35,9 +35,9 @@ import qualified HStream.Store                       as S
 import qualified Kafka.Protocol                      as K
 import           Kafka.Protocol.Encoding             (KaArray (KaArray, unKaArray))
 import qualified Kafka.Protocol.Error                as K
-import           Kafka.Protocol.Message              (OffsetCommitRequestPartitionV0 (..),
-                                                      OffsetCommitResponsePartitionV0 (..),
-                                                      OffsetFetchResponsePartitionV0 (..))
+import           Kafka.Protocol.Message              (OffsetCommitRequestPartition (..),
+                                                      OffsetCommitResponsePartition (..),
+                                                      OffsetFetchResponsePartition (..))
 import qualified Prometheus                          as P
 
 -- NOTE: All operations on the GroupMetadataManager are not concurrency-safe,
@@ -104,8 +104,8 @@ loadOffsetsFromStorage GroupOffsetManager{..} = do
 storeOffsets
   :: GroupOffsetManager
   -> T.Text
-  -> KaArray OffsetCommitRequestPartitionV0
-  -> IO (KaArray OffsetCommitResponsePartitionV0)
+  -> KaArray OffsetCommitRequestPartition
+  -> IO (KaArray OffsetCommitResponsePartition)
 storeOffsets gmm@GroupOffsetManager{..} topicName arrayOffsets = do
   let offsets = fromMaybe V.empty (unKaArray arrayOffsets)
 
@@ -121,8 +121,8 @@ storeOffsets gmm@GroupOffsetManager{..} topicName arrayOffsets = do
   Log.debug $ "consumer group " <> Log.build groupName <> " commit offsets {" <> Log.build (show checkPoints)
            <> "} to topic " <> Log.build topicName
 
-  V.forM_ offsetsInfo $ \(TopicPartition{..}, _, offset) -> do
-    P.withLabel consumerGroupCommittedOffsets (groupName, topicName, T.pack . show $ topicPartitionIdx) $
+  V.forM_ offsetsInfo $ \(tp, _, offset) -> do
+    P.withLabel consumerGroupCommittedOffsets (groupName, topicName, T.pack . show $ tp.topicPartitionIdx) $
       flip P.setGauge (fromIntegral offset)
 
   -- update cache
@@ -131,16 +131,16 @@ storeOffsets gmm@GroupOffsetManager{..} topicName arrayOffsets = do
     Map.union updates cache
 
   let suc = V.map (\(TopicPartition{topicPartitionIdx}, _, _) -> (topicPartitionIdx, K.NONE)) offsetsInfo
-      res = V.map (\(partitionIndex, errorCode) -> OffsetCommitResponsePartitionV0{..}) suc
+      res = V.map (\(partitionIndex, errorCode) -> OffsetCommitResponsePartition{..}) suc
   return KaArray {unKaArray = Just res}
 
 getOffsetsInfo
   :: GroupOffsetManager
   -> T.Text
-  -> V.Vector K.OffsetCommitRequestPartitionV0
+  -> V.Vector K.OffsetCommitRequestPartition
   -> IO (V.Vector (TopicPartition, Word64, Word64)) -- return [(topic-partition, logid, offset)]
 getOffsetsInfo GroupOffsetManager{..} topicName requestOffsets = do
-  V.forM requestOffsets $ \OffsetCommitRequestPartitionV0{..} -> do
+  V.forM requestOffsets $ \OffsetCommitRequestPartition{..} -> do
     let tp = mkTopicPartition topicName partitionIndex
     mp <- readIORef partitionsMap
     case Map.lookup tp mp of
@@ -167,7 +167,7 @@ fetchOffsets
   :: GroupOffsetManager
   -> T.Text
   -> KaArray Int32
-  -> IO (KaArray OffsetFetchResponsePartitionV0)
+  -> IO (KaArray OffsetFetchResponsePartition)
 fetchOffsets GroupOffsetManager{..} topicName partitions = do
   let partitions' = fromMaybe V.empty (unKaArray partitions)
   cache <- readIORef offsetsCache
@@ -177,13 +177,13 @@ fetchOffsets GroupOffsetManager{..} topicName partitions = do
    getOffset cache partitionIdx = do
      let key = mkTopicPartition topicName partitionIdx
       in case Map.lookup key cache of
-           Just offset -> return $ OffsetFetchResponsePartitionV0
+           Just offset -> return $ OffsetFetchResponsePartition
              { committedOffset = offset
              , metadata = Nothing
              , partitionIndex= partitionIdx
              , errorCode = K.NONE
              }
-           Nothing -> return $ OffsetFetchResponsePartitionV0
+           Nothing -> return $ OffsetFetchResponsePartition
              { committedOffset = -1
              , metadata = Nothing
              , partitionIndex= partitionIdx
@@ -191,19 +191,19 @@ fetchOffsets GroupOffsetManager{..} topicName partitions = do
              , errorCode = K.NONE
              }
 
-fetchAllOffsets :: GroupOffsetManager -> IO (KaArray K.OffsetFetchResponseTopicV0)
+fetchAllOffsets :: GroupOffsetManager -> IO (KaArray K.OffsetFetchResponseTopic)
 fetchAllOffsets GroupOffsetManager{..} = do
   -- group offsets by TopicName
   cachedOffset <- Map.foldrWithKey foldF Map.empty <$> readIORef offsetsCache
   return . KaArray . Just . V.map makeTopic . V.fromList . Map.toList $ cachedOffset
-  where makePartition partition offset = OffsetFetchResponsePartitionV0
+  where makePartition partition offset = OffsetFetchResponsePartition
                    { committedOffset = offset
                    , metadata = Nothing
                    , partitionIndex=partition
                    , errorCode = K.NONE
                    }
         foldF tp offset = Map.insertWith (V.++) tp.topicName (V.singleton (makePartition tp.topicPartitionIdx offset))
-        makeTopic (name, partitions) = K.OffsetFetchResponseTopicV0 {partitions=KaArray (Just partitions), name=name}
+        makeTopic (name, partitions) = K.OffsetFetchResponseTopic {partitions=KaArray (Just partitions), name=name}
 
 nullOffsets :: GroupOffsetManager -> IO Bool
 nullOffsets GroupOffsetManager{..} = do

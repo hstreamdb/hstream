@@ -22,3 +22,6 @@
 [submodule "external/digest"]
 	path = external/digest
 	url = https://github.com/4eUeP/digest.git
+[submodule "external/gsasl-hs"]
+	path = external/gsasl-hs
+	url = https://github.com/Commelina/gsasl-hs.git
