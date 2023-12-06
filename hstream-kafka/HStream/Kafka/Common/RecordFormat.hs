@@ -14,9 +14,10 @@ import qualified Kafka.Protocol.Encoding as K
 
 -- on-disk format
 data RecordFormat = RecordFormat
-  { offset      :: Int64
-  , batchLength :: Int32
-  , recordBytes :: K.CompactBytes
+  { version     :: {-# UNPACK #-} !Int8
+  , offset      :: {-# UNPACK #-} !Int64
+  , batchLength :: {-# UNPACK #-} !Int32
+  , recordBytes :: !K.CompactBytes
   } deriving (Generic, Show)
 
 instance K.Serializable RecordFormat
@@ -24,7 +25,7 @@ instance K.Serializable RecordFormat
 seekBatch :: Int32 -> ByteString -> IO ByteString
 seekBatch i bs =
   let parser = replicateM_ (fromIntegral i) $ do
-                 void $ K.takeBytes 8{- baseOffset: Int64 -}
+                 void $ K.takeBytes 9{- version(1) + offset(8) -}
                  len <- K.get @Int32
                  void $ K.takeBytes (fromIntegral len)
    in snd <$> K.runParser' parser bs
