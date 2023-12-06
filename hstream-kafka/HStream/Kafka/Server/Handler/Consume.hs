@@ -133,28 +133,24 @@ handleFetch ServerContext{..} _ r = K.catchFetchResponseEx $ do
         Right (_startlsn, _endlsn, hioffset) -> do
           mgv <- HT.lookup readRecords logid
           case mgv of
-            Nothing -> pure $ K.PartitionData p.partition K.NONE hioffset (Just "")
+            Nothing ->
+              pure $ K.PartitionData p.partition K.NONE hioffset (Just "")
+                                     (-1){- TODO: lastStableOffset -}
+                                     (K.NonNullKaArray V.empty){- TODO: abortedTransactions -}
             Just gv -> do
               v <- GV.unsafeFreeze gv
-              -- This should not be Nothing, because if we found the key in
-              -- `readRecords`, it means we have at least one record in this
-              let (rf :: K.RecordFormat, vs) =
-                    fromMaybe (error "LogicError: got empty vector value")
-                    (V.uncons v)
-              let absStartOffset = rf.offset + 1 - fromIntegral rf.batchLength
-                  bytesOnDisk = K.unCompactBytes rf.recordBytes
-              fstRecordBytes <-
-                if (absStartOffset < p.fetchOffset)
-                   -- only the first bathch need to to this seek
-                   then K.seekBatch (fromIntegral $ p.fetchOffset - absStartOffset) bytesOnDisk
-                   else pure bytesOnDisk
-              let b = V.foldl (<>) (BB.byteString fstRecordBytes)
-                                   (V.map (BB.byteString . K.unCompactBytes . (.recordBytes)) vs)
-                  bs = BS.toStrict $ BB.toLazyByteString b
-                  totalRecords = V.sum $ V.map (\K.RecordFormat{..} -> batchLength) v
-              P.withLabel topicTotalSendBytes (topic, T.pack . show $ p.partition) $ \counter -> void $ P.addCounter counter (fromIntegral $ BS.length bs)
-              P.withLabel topicTotalSendMessages (topic, T.pack . show $ p.partition) $ \counter -> void $ P.addCounter counter (fromIntegral totalRecords)
+              bs <- encodePartition p v
+
+              let partLabel = (topic, T.pack . show $ p.partition)
+              P.withLabel topicTotalSendBytes partLabel $ \counter -> void $
+                P.addCounter counter (fromIntegral $ BS.length bs)
+              P.withLabel topicTotalSendMessages partLabel $ \counter -> void $ do
+                let totalRecords = V.sum $ V.map (\K.RecordFormat{..} -> batchLength) v
+                P.addCounter counter (fromIntegral totalRecords)
+
               pure $ K.PartitionData p.partition K.NONE hioffset (Just bs)
+                                     (-1){- TODO: lastStableOffset -}
+                                     (K.NonNullKaArray V.empty){- TODO: abortedTransactions -}
     pure $ K.FetchableTopicResponse topic (K.NonNullKaArray respPartitionDatas)
   pure $ K.FetchResponse (K.NonNullKaArray respTopics) 0{- TODO: throttleTimeMs -}
 
@@ -199,6 +195,46 @@ handleFetch ServerContext{..} _ r = K.catchFetchResponseEx $ do
                 S.readerSetTimeout reader r.maxWaitMs
                 S.readerRead reader storageOpts.fetchMaxLen
 
+    -- Note this function's behaviour is not the same as kafka broker
+    --
+    -- In kafka broker, regarding the format on disk, the broker will return
+    -- the message format according to the fetch api version. Which means
+    --
+    --   * if the fetch api version is less than 4, the broker will always
+    --     return MessageSet even the message format on disk is RecordBatch.
+    --   * if the fetch api version is 4+, the broker will always return
+    --     RecordBath.
+    --
+    -- Here, we donot handle the fetch api version, we just return the message
+    -- format according to the message format on disk.
+    --
+    -- However, if you always use RecordBath for appending and reading, it
+    -- won't be a problem.
+    encodePartition
+      :: K.FetchPartition -> V.Vector K.RecordFormat -> IO ByteString
+    encodePartition p v = do
+      let (rf :: K.RecordFormat, vs) =
+            -- This should not be Nothing, because if we found the key
+            -- in `readRecords`, it means we have at least one record
+            -- in this
+            fromMaybe (error "LogicError: got empty vector value")
+            (V.uncons v)
+          bytesOnDisk = K.unCompactBytes rf.recordBytes
+      -- only the first MessageSet need to to this seeking
+      magic <- K.decodeRecordMagic bytesOnDisk
+      fstRecordBytes <-
+        if | magic >= 2 -> pure bytesOnDisk
+           | otherwise -> do
+             let absStartOffset = rf.offset + 1 - fromIntegral rf.batchLength
+                 offset = p.fetchOffset - absStartOffset
+             if offset > 0
+                then K.seekBatch (fromIntegral offset) bytesOnDisk
+                else pure bytesOnDisk
+
+      let v' = V.map (BB.byteString . K.unCompactBytes . (.recordBytes)) vs
+          b = V.foldl (<>) (BB.byteString fstRecordBytes) v'
+      pure $ BS.toStrict $ BB.toLazyByteString b
+
 -------------------------------------------------------------------------------
 
 -- Return tuple of (startLsn, tailLsn, highwaterOffset)
@@ -240,6 +276,8 @@ getPartitionLsn ldclient om logid partition offset = do
 errorPartitionResponse :: Int32 -> K.ErrorCode -> K.PartitionData
 errorPartitionResponse partitionIndex ec =
   K.PartitionData partitionIndex ec (-1) (Just "")
+                  (-1){- TODO: lastStableOffset -}
+                  (K.NonNullKaArray V.empty){- TODO: abortedTransactions -}
 {-# INLINE errorPartitionResponse #-}
 
 foldWhileM :: Monad m => a -> (a -> m (a, Bool)) -> m a

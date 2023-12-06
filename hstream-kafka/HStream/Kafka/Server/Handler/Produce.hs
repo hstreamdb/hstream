@@ -67,7 +67,7 @@ handleProduce ServerContext{..} _ req = do
       let Just (_, logid) = partitions V.!? (fromIntegral partition.index) -- TODO: handle Nothing
       P.withLabel totalProduceRequest (topic.name, T.pack . show $ partition.index) $ \counter -> void $ P.addCounter counter 1
       let Just recordBytes = partition.recordBytes -- TODO: handle Nothing
-      Log.debug1 $ "Append to logid " <> Log.build logid
+      Log.debug1 $ "Try to append to logid " <> Log.build logid
                 <> "(" <> Log.build partition.index <> ")"
 
       -- Wirte appends
@@ -76,6 +76,7 @@ handleProduce ServerContext{..} _ req = do
 
       Log.debug1 $ "Append done " <> Log.build appendCompLogID
                 <> ", lsn: " <> Log.build appendCompLSN
+                <> ", start offset: " <> Log.build offset
 
       -- TODO: logAppendTimeMs, only support LogAppendTime now
       pure $ K.PartitionProduceResponse partition.index K.NONE offset appendCompTimestamp
@@ -95,8 +96,7 @@ appendRecords
   -> ByteString
   -> IO (S.AppendCompletion, Int64)
 appendRecords shouldValidateCrc ldclient om (streamName, partition) logid bs = do
-  records <- K.decodeBatchRecords shouldValidateCrc bs
-  let batchLength = V.length records
+  (records, batchLength) <- K.decodeBatchRecords' shouldValidateCrc bs
   when (batchLength < 1) $ error "Invalid batch length"
 
   -- Offset wroten into storage is the max key in the batch, but return the min
@@ -125,9 +125,16 @@ appendRecords shouldValidateCrc ldclient om (streamName, partition) logid bs = d
         appendAttrs = Just [(S.KeyTypeFindKey, appendKey)]
         storedBs = K.encodeBatchRecords records'
         -- FIXME unlikely overflow: convert batchLength from Int to Int32
-        storedRecord = K.runPut $ K.RecordFormat o (fromIntegral batchLength) (K.CompactBytes storedBs)
+        storedRecord = K.runPut $ K.RecordFormat 0{- version -}
+                                                 o (fromIntegral batchLength)
+                                                 (K.CompactBytes storedBs)
+    Log.debug1 $ "Append key " <> Log.buildString' appendKey
     r <- observeWithLabel appendLatencySnd streamName $
-           S.appendCompressedBS ldclient logid storedRecord S.CompressionNone appendAttrs
-    P.withLabel topicTotalAppendBytes (streamName, T.pack . show $ partition) $ \counter -> void $ P.addCounter counter (fromIntegral $ BS.length storedRecord)
-    P.withLabel topicTotalAppendMessages (streamName, T.pack . show $ partition) $ \counter -> void $ P.addCounter counter (fromIntegral batchLength)
+           S.appendCompressedBS ldclient logid storedRecord S.CompressionNone
+                                appendAttrs
+    let !partLabel = (streamName, T.pack . show $ partition)
+    P.withLabel topicTotalAppendBytes partLabel $ \counter ->
+      void $ P.addCounter counter (fromIntegral $ BS.length storedRecord)
+    P.withLabel topicTotalAppendMessages partLabel $ \counter ->
+      void $ P.addCounter counter (fromIntegral batchLength)
     pure (r, startOffset)

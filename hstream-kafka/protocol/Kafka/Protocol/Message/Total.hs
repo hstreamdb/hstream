@@ -25,6 +25,26 @@ import           Kafka.Protocol.Message.Struct
 
 -------------------------------------------------------------------------------
 
+data AbortedTransaction = AbortedTransaction
+  { producerId  :: {-# UNPACK #-} !Int64
+    -- ^ The producer id associated with the aborted transaction.
+  , firstOffset :: {-# UNPACK #-} !Int64
+    -- ^ The first offset in the aborted transaction.
+  } deriving (Show, Eq, Generic)
+instance Serializable AbortedTransaction
+
+abortedTransactionToV4 :: AbortedTransaction -> AbortedTransactionV4
+abortedTransactionToV4 x = AbortedTransactionV4
+  { producerId = x.producerId
+  , firstOffset = x.firstOffset
+  }
+
+abortedTransactionFromV4 :: AbortedTransactionV4 -> AbortedTransaction
+abortedTransactionFromV4 x = AbortedTransaction
+  { producerId = x.producerId
+  , firstOffset = x.firstOffset
+  }
+
 data ApiVersion = ApiVersion
   { apiKey       :: {-# UNPACK #-} !ApiKey
     -- ^ The API index.
@@ -380,6 +400,8 @@ fetchPartitionToV2 :: FetchPartition -> FetchPartitionV2
 fetchPartitionToV2 = fetchPartitionToV0
 fetchPartitionToV3 :: FetchPartition -> FetchPartitionV3
 fetchPartitionToV3 = fetchPartitionToV0
+fetchPartitionToV4 :: FetchPartition -> FetchPartitionV4
+fetchPartitionToV4 = fetchPartitionToV0
 
 fetchPartitionFromV0 :: FetchPartitionV0 -> FetchPartition
 fetchPartitionFromV0 x = FetchPartition
@@ -393,6 +415,8 @@ fetchPartitionFromV2 :: FetchPartitionV2 -> FetchPartition
 fetchPartitionFromV2 = fetchPartitionFromV0
 fetchPartitionFromV3 :: FetchPartitionV3 -> FetchPartition
 fetchPartitionFromV3 = fetchPartitionFromV0
+fetchPartitionFromV4 :: FetchPartitionV4 -> FetchPartition
+fetchPartitionFromV4 = fetchPartitionFromV0
 
 data FetchTopic = FetchTopic
   { topic      :: !Text
@@ -413,6 +437,8 @@ fetchTopicToV2 :: FetchTopic -> FetchTopicV2
 fetchTopicToV2 = fetchTopicToV0
 fetchTopicToV3 :: FetchTopic -> FetchTopicV3
 fetchTopicToV3 = fetchTopicToV0
+fetchTopicToV4 :: FetchTopic -> FetchTopicV4
+fetchTopicToV4 = fetchTopicToV0
 
 fetchTopicFromV0 :: FetchTopicV0 -> FetchTopic
 fetchTopicFromV0 x = FetchTopic
@@ -425,6 +451,8 @@ fetchTopicFromV2 :: FetchTopicV2 -> FetchTopic
 fetchTopicFromV2 = fetchTopicFromV0
 fetchTopicFromV3 :: FetchTopicV3 -> FetchTopic
 fetchTopicFromV3 = fetchTopicFromV0
+fetchTopicFromV4 :: FetchTopicV4 -> FetchTopic
+fetchTopicFromV4 = fetchTopicFromV0
 
 data FetchableTopicResponse = FetchableTopicResponse
   { topic      :: !Text
@@ -445,6 +473,11 @@ fetchableTopicResponseToV2 :: FetchableTopicResponse -> FetchableTopicResponseV2
 fetchableTopicResponseToV2 = fetchableTopicResponseToV0
 fetchableTopicResponseToV3 :: FetchableTopicResponse -> FetchableTopicResponseV3
 fetchableTopicResponseToV3 = fetchableTopicResponseToV0
+fetchableTopicResponseToV4 :: FetchableTopicResponse -> FetchableTopicResponseV4
+fetchableTopicResponseToV4 x = FetchableTopicResponseV4
+  { topic = x.topic
+  , partitions = fmap partitionDataToV4 x.partitions
+  }
 
 fetchableTopicResponseFromV0 :: FetchableTopicResponseV0 -> FetchableTopicResponse
 fetchableTopicResponseFromV0 x = FetchableTopicResponse
@@ -457,6 +490,11 @@ fetchableTopicResponseFromV2 :: FetchableTopicResponseV2 -> FetchableTopicRespon
 fetchableTopicResponseFromV2 = fetchableTopicResponseFromV0
 fetchableTopicResponseFromV3 :: FetchableTopicResponseV3 -> FetchableTopicResponse
 fetchableTopicResponseFromV3 = fetchableTopicResponseFromV0
+fetchableTopicResponseFromV4 :: FetchableTopicResponseV4 -> FetchableTopicResponse
+fetchableTopicResponseFromV4 x = FetchableTopicResponse
+  { topic = x.topic
+  , partitions = fmap partitionDataFromV4 x.partitions
+  }
 
 data FinalizedFeatureKey = FinalizedFeatureKey
   { name            :: !CompactString
@@ -1146,14 +1184,20 @@ offsetFetchResponseTopicFromV3 :: OffsetFetchResponseTopicV3 -> OffsetFetchRespo
 offsetFetchResponseTopicFromV3 = offsetFetchResponseTopicFromV0
 
 data PartitionData = PartitionData
-  { partitionIndex :: {-# UNPACK #-} !Int32
+  { partitionIndex      :: {-# UNPACK #-} !Int32
     -- ^ The partition index.
-  , errorCode      :: {-# UNPACK #-} !ErrorCode
+  , errorCode           :: {-# UNPACK #-} !ErrorCode
     -- ^ The error code, or 0 if there was no fetch error.
-  , highWatermark  :: {-# UNPACK #-} !Int64
+  , highWatermark       :: {-# UNPACK #-} !Int64
     -- ^ The current high water mark.
-  , recordBytes    :: !NullableBytes
+  , recordBytes         :: !NullableBytes
     -- ^ The record data.
+  , lastStableOffset    :: {-# UNPACK #-} !Int64
+    -- ^ The last stable offset (or LSO) of the partition. This is the last
+    -- offset such that the state of all transactional records prior to this
+    -- offset have been decided (ABORTED or COMMITTED)
+  , abortedTransactions :: !(KaArray AbortedTransaction)
+    -- ^ The aborted transactions.
   } deriving (Show, Eq, Generic)
 instance Serializable PartitionData
 
@@ -1170,6 +1214,15 @@ partitionDataToV2 :: PartitionData -> PartitionDataV2
 partitionDataToV2 = partitionDataToV0
 partitionDataToV3 :: PartitionData -> PartitionDataV3
 partitionDataToV3 = partitionDataToV0
+partitionDataToV4 :: PartitionData -> PartitionDataV4
+partitionDataToV4 x = PartitionDataV4
+  { partitionIndex = x.partitionIndex
+  , errorCode = x.errorCode
+  , highWatermark = x.highWatermark
+  , lastStableOffset = x.lastStableOffset
+  , abortedTransactions = fmap abortedTransactionToV4 x.abortedTransactions
+  , recordBytes = x.recordBytes
+  }
 
 partitionDataFromV0 :: PartitionDataV0 -> PartitionData
 partitionDataFromV0 x = PartitionData
@@ -1177,6 +1230,8 @@ partitionDataFromV0 x = PartitionData
   , errorCode = x.errorCode
   , highWatermark = x.highWatermark
   , recordBytes = x.recordBytes
+  , lastStableOffset = (-1)
+  , abortedTransactions = KaArray (Just V.empty)
   }
 partitionDataFromV1 :: PartitionDataV1 -> PartitionData
 partitionDataFromV1 = partitionDataFromV0
@@ -1184,6 +1239,15 @@ partitionDataFromV2 :: PartitionDataV2 -> PartitionData
 partitionDataFromV2 = partitionDataFromV0
 partitionDataFromV3 :: PartitionDataV3 -> PartitionData
 partitionDataFromV3 = partitionDataFromV0
+partitionDataFromV4 :: PartitionDataV4 -> PartitionData
+partitionDataFromV4 x = PartitionData
+  { partitionIndex = x.partitionIndex
+  , errorCode = x.errorCode
+  , highWatermark = x.highWatermark
+  , recordBytes = x.recordBytes
+  , lastStableOffset = x.lastStableOffset
+  , abortedTransactions = fmap abortedTransactionFromV4 x.abortedTransactions
+  }
 
 data PartitionProduceData = PartitionProduceData
   { index       :: {-# UNPACK #-} !Int32
@@ -1202,6 +1266,8 @@ partitionProduceDataToV1 :: PartitionProduceData -> PartitionProduceDataV1
 partitionProduceDataToV1 = partitionProduceDataToV0
 partitionProduceDataToV2 :: PartitionProduceData -> PartitionProduceDataV2
 partitionProduceDataToV2 = partitionProduceDataToV0
+partitionProduceDataToV3 :: PartitionProduceData -> PartitionProduceDataV3
+partitionProduceDataToV3 = partitionProduceDataToV0
 
 partitionProduceDataFromV0 :: PartitionProduceDataV0 -> PartitionProduceData
 partitionProduceDataFromV0 x = PartitionProduceData
@@ -1212,6 +1278,8 @@ partitionProduceDataFromV1 :: PartitionProduceDataV1 -> PartitionProduceData
 partitionProduceDataFromV1 = partitionProduceDataFromV0
 partitionProduceDataFromV2 :: PartitionProduceDataV2 -> PartitionProduceData
 partitionProduceDataFromV2 = partitionProduceDataFromV0
+partitionProduceDataFromV3 :: PartitionProduceDataV3 -> PartitionProduceData
+partitionProduceDataFromV3 = partitionProduceDataFromV0
 
 data PartitionProduceResponse = PartitionProduceResponse
   { index           :: {-# UNPACK #-} !Int32
@@ -1243,6 +1311,8 @@ partitionProduceResponseToV2 x = PartitionProduceResponseV2
   , baseOffset = x.baseOffset
   , logAppendTimeMs = x.logAppendTimeMs
   }
+partitionProduceResponseToV3 :: PartitionProduceResponse -> PartitionProduceResponseV3
+partitionProduceResponseToV3 = partitionProduceResponseToV2
 
 partitionProduceResponseFromV0 :: PartitionProduceResponseV0 -> PartitionProduceResponse
 partitionProduceResponseFromV0 x = PartitionProduceResponse
@@ -1260,6 +1330,8 @@ partitionProduceResponseFromV2 x = PartitionProduceResponse
   , baseOffset = x.baseOffset
   , logAppendTimeMs = x.logAppendTimeMs
   }
+partitionProduceResponseFromV3 :: PartitionProduceResponseV3 -> PartitionProduceResponse
+partitionProduceResponseFromV3 = partitionProduceResponseFromV2
 
 data SupportedFeatureKey = SupportedFeatureKey
   { name         :: !CompactString
@@ -1329,6 +1401,8 @@ topicProduceDataToV1 :: TopicProduceData -> TopicProduceDataV1
 topicProduceDataToV1 = topicProduceDataToV0
 topicProduceDataToV2 :: TopicProduceData -> TopicProduceDataV2
 topicProduceDataToV2 = topicProduceDataToV0
+topicProduceDataToV3 :: TopicProduceData -> TopicProduceDataV3
+topicProduceDataToV3 = topicProduceDataToV0
 
 topicProduceDataFromV0 :: TopicProduceDataV0 -> TopicProduceData
 topicProduceDataFromV0 x = TopicProduceData
@@ -1339,6 +1413,8 @@ topicProduceDataFromV1 :: TopicProduceDataV1 -> TopicProduceData
 topicProduceDataFromV1 = topicProduceDataFromV0
 topicProduceDataFromV2 :: TopicProduceDataV2 -> TopicProduceData
 topicProduceDataFromV2 = topicProduceDataFromV0
+topicProduceDataFromV3 :: TopicProduceDataV3 -> TopicProduceData
+topicProduceDataFromV3 = topicProduceDataFromV0
 
 data TopicProduceResponse = TopicProduceResponse
   { name               :: !Text
@@ -1360,6 +1436,8 @@ topicProduceResponseToV2 x = TopicProduceResponseV2
   { name = x.name
   , partitionResponses = fmap partitionProduceResponseToV2 x.partitionResponses
   }
+topicProduceResponseToV3 :: TopicProduceResponse -> TopicProduceResponseV3
+topicProduceResponseToV3 = topicProduceResponseToV2
 
 topicProduceResponseFromV0 :: TopicProduceResponseV0 -> TopicProduceResponse
 topicProduceResponseFromV0 x = TopicProduceResponse
@@ -1373,6 +1451,8 @@ topicProduceResponseFromV2 x = TopicProduceResponse
   { name = x.name
   , partitionResponses = fmap partitionProduceResponseFromV2 x.partitionResponses
   }
+topicProduceResponseFromV3 :: TopicProduceResponseV3 -> TopicProduceResponse
+topicProduceResponseFromV3 = topicProduceResponseFromV2
 
 data ApiVersionsRequest = ApiVersionsRequest
   { clientSoftwareName    :: !CompactString
@@ -1627,18 +1707,27 @@ describeGroupsResponseFromV1 x = DescribeGroupsResponse
   }
 
 data FetchRequest = FetchRequest
-  { replicaId :: {-# UNPACK #-} !Int32
+  { replicaId      :: {-# UNPACK #-} !Int32
     -- ^ The broker ID of the follower, of -1 if this request is from a
     -- consumer.
-  , maxWaitMs :: {-# UNPACK #-} !Int32
+  , maxWaitMs      :: {-# UNPACK #-} !Int32
     -- ^ The maximum time in milliseconds to wait for the response.
-  , minBytes  :: {-# UNPACK #-} !Int32
+  , minBytes       :: {-# UNPACK #-} !Int32
     -- ^ The minimum bytes to accumulate in the response.
-  , topics    :: !(KaArray FetchTopic)
+  , topics         :: !(KaArray FetchTopic)
     -- ^ The topics to fetch.
-  , maxBytes  :: {-# UNPACK #-} !Int32
+  , maxBytes       :: {-# UNPACK #-} !Int32
     -- ^ The maximum bytes to fetch.  See KIP-74 for cases where this limit may
     -- not be honored.
+  , isolationLevel :: {-# UNPACK #-} !Int8
+    -- ^ This setting controls the visibility of transactional records. Using
+    -- READ_UNCOMMITTED (isolation_level = 0) makes all records visible. With
+    -- READ_COMMITTED (isolation_level = 1), non-transactional and COMMITTED
+    -- transactional records are visible. To be more concrete, READ_COMMITTED
+    -- returns all data from offsets smaller than the current LSO (last stable
+    -- offset), and enables the inclusion of the list of aborted transactions
+    -- in the result, which allows consumers to discard ABORTED transactional
+    -- records
   } deriving (Show, Eq, Generic)
 instance Serializable FetchRequest
 
@@ -1661,6 +1750,15 @@ fetchRequestToV3 x = FetchRequestV3
   , maxBytes = x.maxBytes
   , topics = fmap fetchTopicToV3 x.topics
   }
+fetchRequestToV4 :: FetchRequest -> FetchRequestV4
+fetchRequestToV4 x = FetchRequestV4
+  { replicaId = x.replicaId
+  , maxWaitMs = x.maxWaitMs
+  , minBytes = x.minBytes
+  , maxBytes = x.maxBytes
+  , isolationLevel = x.isolationLevel
+  , topics = fmap fetchTopicToV4 x.topics
+  }
 
 fetchRequestFromV0 :: FetchRequestV0 -> FetchRequest
 fetchRequestFromV0 x = FetchRequest
@@ -1669,6 +1767,7 @@ fetchRequestFromV0 x = FetchRequest
   , minBytes = x.minBytes
   , topics = fmap fetchTopicFromV0 x.topics
   , maxBytes = 2147483647
+  , isolationLevel = 0
   }
 fetchRequestFromV1 :: FetchRequestV1 -> FetchRequest
 fetchRequestFromV1 = fetchRequestFromV0
@@ -1681,6 +1780,16 @@ fetchRequestFromV3 x = FetchRequest
   , minBytes = x.minBytes
   , topics = fmap fetchTopicFromV3 x.topics
   , maxBytes = x.maxBytes
+  , isolationLevel = 0
+  }
+fetchRequestFromV4 :: FetchRequestV4 -> FetchRequest
+fetchRequestFromV4 x = FetchRequest
+  { replicaId = x.replicaId
+  , maxWaitMs = x.maxWaitMs
+  , minBytes = x.minBytes
+  , topics = fmap fetchTopicFromV4 x.topics
+  , maxBytes = x.maxBytes
+  , isolationLevel = x.isolationLevel
   }
 
 data FetchResponse = FetchResponse
@@ -1705,6 +1814,11 @@ fetchResponseToV2 :: FetchResponse -> FetchResponseV2
 fetchResponseToV2 = fetchResponseToV1
 fetchResponseToV3 :: FetchResponse -> FetchResponseV3
 fetchResponseToV3 = fetchResponseToV1
+fetchResponseToV4 :: FetchResponse -> FetchResponseV4
+fetchResponseToV4 x = FetchResponseV4
+  { throttleTimeMs = x.throttleTimeMs
+  , responses = fmap fetchableTopicResponseToV4 x.responses
+  }
 
 fetchResponseFromV0 :: FetchResponseV0 -> FetchResponse
 fetchResponseFromV0 x = FetchResponse
@@ -1720,6 +1834,11 @@ fetchResponseFromV2 :: FetchResponseV2 -> FetchResponse
 fetchResponseFromV2 = fetchResponseFromV1
 fetchResponseFromV3 :: FetchResponseV3 -> FetchResponse
 fetchResponseFromV3 = fetchResponseFromV1
+fetchResponseFromV4 :: FetchResponseV4 -> FetchResponse
+fetchResponseFromV4 x = FetchResponse
+  { responses = fmap fetchableTopicResponseFromV4 x.responses
+  , throttleTimeMs = x.throttleTimeMs
+  }
 
 newtype FindCoordinatorRequest = FindCoordinatorRequest
   { key :: Text
@@ -2412,14 +2531,16 @@ offsetFetchResponseFromV3 x = OffsetFetchResponse
   }
 
 data ProduceRequest = ProduceRequest
-  { acks      :: {-# UNPACK #-} !Int16
+  { acks            :: {-# UNPACK #-} !Int16
     -- ^ The number of acknowledgments the producer requires the leader to have
     -- received before considering a request complete. Allowed values: 0 for no
     -- acknowledgments, 1 for only the leader and -1 for the full ISR.
-  , timeoutMs :: {-# UNPACK #-} !Int32
+  , timeoutMs       :: {-# UNPACK #-} !Int32
     -- ^ The timeout to await a response in milliseconds.
-  , topicData :: !(KaArray TopicProduceData)
+  , topicData       :: !(KaArray TopicProduceData)
     -- ^ Each topic to produce to.
+  , transactionalId :: !NullableString
+    -- ^ The transactional ID, or null if the producer is not transactional.
   } deriving (Show, Eq, Generic)
 instance Serializable ProduceRequest
 
@@ -2433,17 +2554,32 @@ produceRequestToV1 :: ProduceRequest -> ProduceRequestV1
 produceRequestToV1 = produceRequestToV0
 produceRequestToV2 :: ProduceRequest -> ProduceRequestV2
 produceRequestToV2 = produceRequestToV0
+produceRequestToV3 :: ProduceRequest -> ProduceRequestV3
+produceRequestToV3 x = ProduceRequestV3
+  { transactionalId = x.transactionalId
+  , acks = x.acks
+  , timeoutMs = x.timeoutMs
+  , topicData = fmap topicProduceDataToV3 x.topicData
+  }
 
 produceRequestFromV0 :: ProduceRequestV0 -> ProduceRequest
 produceRequestFromV0 x = ProduceRequest
   { acks = x.acks
   , timeoutMs = x.timeoutMs
   , topicData = fmap topicProduceDataFromV0 x.topicData
+  , transactionalId = Nothing
   }
 produceRequestFromV1 :: ProduceRequestV1 -> ProduceRequest
 produceRequestFromV1 = produceRequestFromV0
 produceRequestFromV2 :: ProduceRequestV2 -> ProduceRequest
 produceRequestFromV2 = produceRequestFromV0
+produceRequestFromV3 :: ProduceRequestV3 -> ProduceRequest
+produceRequestFromV3 x = ProduceRequest
+  { acks = x.acks
+  , timeoutMs = x.timeoutMs
+  , topicData = fmap topicProduceDataFromV3 x.topicData
+  , transactionalId = x.transactionalId
+  }
 
 data ProduceResponse = ProduceResponse
   { responses      :: !(KaArray TopicProduceResponse)
@@ -2468,6 +2604,8 @@ produceResponseToV2 x = ProduceResponseV2
   { responses = fmap topicProduceResponseToV2 x.responses
   , throttleTimeMs = x.throttleTimeMs
   }
+produceResponseToV3 :: ProduceResponse -> ProduceResponseV3
+produceResponseToV3 = produceResponseToV2
 
 produceResponseFromV0 :: ProduceResponseV0 -> ProduceResponse
 produceResponseFromV0 x = ProduceResponse
@@ -2484,6 +2622,8 @@ produceResponseFromV2 x = ProduceResponse
   { responses = fmap topicProduceResponseFromV2 x.responses
   , throttleTimeMs = x.throttleTimeMs
   }
+produceResponseFromV3 :: ProduceResponseV3 -> ProduceResponse
+produceResponseFromV3 = produceResponseFromV2
 
 newtype SaslAuthenticateRequest = SaslAuthenticateRequest
   { authBytes :: ByteString

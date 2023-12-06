@@ -32,6 +32,7 @@ module Kafka.Protocol.Encoding
     -- * Records
   , BatchRecord (..)
   , decodeBatchRecords
+  , decodeBatchRecords'
   , encodeBatchRecords
   , encodeBatchRecordsLazy
   , modifyBatchRecordsOffset
@@ -47,6 +48,7 @@ module Kafka.Protocol.Encoding
   , RecordHeaderValue (..)
     -- ** Helpers
   , decodeLegacyRecordBatch
+  , decodeRecordMagic
     -- ** Misc
   , pattern NonNullKaArray
   , unNonNullKaArray
@@ -354,10 +356,19 @@ data BatchRecord
   deriving (Show, Eq)
 
 decodeBatchRecords :: Bool -> ByteString -> IO (Vector BatchRecord)
-decodeBatchRecords shouldValidateCrc batchBs = Growing.new >>= decode batchBs
+decodeBatchRecords shouldValidateCrc batchBs =
+  fst <$> decodeBatchRecords' shouldValidateCrc batchBs
+{-# INLINABLE decodeBatchRecords #-}
+
+-- | The same as 'decodeBatchRecords', but with some extra information for
+-- convenience.
+--
+-- Currently, only the real total number of records is returned.
+decodeBatchRecords' :: Bool -> ByteString -> IO (Vector BatchRecord, Int)
+decodeBatchRecords' shouldValidateCrc batchBs = Growing.new >>= decode 0 batchBs
   where
-    decode "" !v = Growing.unsafeFreeze v
-    decode !bs !v = do
+    decode len "" !v = (, len) <$> Growing.unsafeFreeze v
+    decode !len !bs !v = do
       (RecordBase{..}, bs') <- runGet' @RecordBase bs
       case magic of
         0 -> do let crc = partitionLeaderEpochOrCrc
@@ -372,7 +383,7 @@ decodeBatchRecords shouldValidateCrc batchBs = Growing.new >>= decode batchBs
                   validLegacyCrc (fromIntegral batchLength) crc bs
                 (RecordBodyV0{..}, remainder) <- runGet' @RecordBodyV0 bs'
                 !v' <- Growing.append v (BatchRecordV0 RecordV0{..})
-                decode remainder v'
+                decode (len + 1) remainder v'
         1 -> do let crc = partitionLeaderEpochOrCrc
                     messageSize = batchLength
                 when (messageSize < fromIntegral minRecordSizeV1) $
@@ -385,7 +396,7 @@ decodeBatchRecords shouldValidateCrc batchBs = Growing.new >>= decode batchBs
                   validLegacyCrc (fromIntegral batchLength) crc bs
                 (RecordBodyV1{..}, remainder) <- runGet' @RecordBodyV1 bs'
                 !v' <- Growing.append v (BatchRecordV1 RecordV1{..})
-                decode remainder v'
+                decode (len + 1) remainder v'
         2 -> do let partitionLeaderEpoch = partitionLeaderEpochOrCrc
                 -- The CRC covers the data from the attributes to the end of
                 -- the batch (i.e. all the bytes that follow the CRC).
@@ -397,9 +408,10 @@ decodeBatchRecords shouldValidateCrc batchBs = Growing.new >>= decode batchBs
                   throwIO $ DecodeError "Invalid CRC32"
                 (RecordBodyV2{..}, remainder) <- runGet' @RecordBodyV2 bs''
                 !v' <- Growing.append v (BatchRecordV2 RecordBatch{..})
-                decode remainder v'
+                let !batchLen = maybe 0 V.length (unKaArray records)
+                decode (len + batchLen) remainder v'
         _ -> throwIO $ DecodeError $ "Invalid magic " <> show magic
-{-# INLINABLE decodeBatchRecords #-}
+{-# INLINABLE decodeBatchRecords' #-}
 
 encodeBatchRecordsLazy :: Vector BatchRecord -> BL.ByteString
 encodeBatchRecordsLazy rs =
@@ -426,6 +438,15 @@ putBatchRecord :: BatchRecord -> Builder
 putBatchRecord (BatchRecordV0 r) = put r
 putBatchRecord (BatchRecordV1 r) = put r
 putBatchRecord (BatchRecordV2 r) = put r
+
+decodeRecordMagic :: ByteString -> IO Int8
+decodeRecordMagic bs =
+  let parser = do
+        -- baseOffset(8) + batchLength(4) + partitionLeaderEpochOrCrc(4)
+        void $ takeBytes (8 + 4 + 4)
+        get @Int8
+   in fst <$> runParser' parser bs
+{-# INLINE decodeRecordMagic #-}
 
 -- Internal type to help parse all Record version.
 --
