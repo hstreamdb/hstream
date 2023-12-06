@@ -44,6 +44,8 @@ parseJSONToOptions CliOptions{..} obj = do
   let !_disableAutoCreateTopic = cliDisableAutoCreateTopic
   let updateBrokerConfigs cfg = cfg {KC.autoCreateTopicsEnable=KC.AutoCreateTopicsEnable $ not _disableAutoCreateTopic}
   !_kafkaBrokerConfigs <- updateBrokerConfigs <$> KC.parseBrokerConfigs nodeCfgObj
+  metricsPort   <- nodeCfgObj .:? "metrics-port" .!= 9700
+  let !_metricsPort = fromMaybe metricsPort cliMetricsPort
 
   -- TODO: For the max_record_size to work properly, we should also tell user
   -- to set payload size for gRPC and LD.

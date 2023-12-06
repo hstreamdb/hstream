@@ -137,7 +137,6 @@ handleMetadataV4 ctx@ServerContext{..} _ req@K.MetadataRequestV4{..} = do
           allStreamNames <- S.findStreams scLDClient S.StreamTypeTopic <&> S.fromList . L.map (Utils.cBytesToText . S.streamName)
           let needCreate = S.toList $ topicNames S.\\ allStreamNames
           let alreadyExist = V.fromList . S.toList $ topicNames `S.intersection` allStreamNames
-          Log.debug $ "enableAutoCreateTopic: " <> Log.build (show kafkaBrokerConfigs.autoCreateTopicsEnable._value)
 
           createResp <-
             if kafkaBrokerConfigs.autoCreateTopicsEnable._value && allowAutoTopicCreation

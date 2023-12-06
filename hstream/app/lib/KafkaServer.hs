@@ -138,7 +138,7 @@ app config@ServerOpts{..} = do
         -- wait the default server
         waitGossipBoot gossipContext
         -- start prometheus app to export metrics
-        a2 <- Async.async $ Warp.run 9260 $ P.prometheus P.def {P.prometheusInstrumentPrometheus = False} P.metricsApp
+        a2 <- Async.async $ Warp.run (fromIntegral _metricsPort) $ P.prometheus P.def {P.prometheusInstrumentPrometheus = False} P.metricsApp
         Async.link2Only (const True) a a2
         Async.wait a
 

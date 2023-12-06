@@ -49,6 +49,7 @@ import           HStream.Store.Logger                    (LDLogLevel)
 data ServerOpts = ServerOpts
   { _serverHost                   :: !ByteString
   , _serverPort                   :: !Word16
+  , _metricsPort                  :: !Word16
 
   , _advertisedAddress            :: !String
   , _serverAdvertisedListeners    :: !AdvertisedListeners
@@ -95,6 +96,7 @@ data CliOptions = CliOptions
 
   , cliServerPort                   :: !(Maybe Word16)
   , cliServerBindAddress            :: !(Maybe ByteString)
+  , cliMetricsPort                  :: !(Maybe Word16)
 
   , cliServerID                     :: !(Maybe Word32)
   , cliMetaStore                    :: !(Maybe MetaStoreAddr)

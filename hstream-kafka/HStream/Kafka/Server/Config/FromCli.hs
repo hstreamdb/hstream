@@ -71,6 +71,7 @@ cliOptionsParser = do
 
   cliServerBindAddress   <- optional bindAddressParser
   cliServerPort          <- optional serverPortParser
+  cliMetricsPort         <- optional metricsPortParser
 
   cliServerID           <- optional serverIDParser
   cliMetaStore          <- optional metaStoreAddrParser
@@ -190,6 +191,12 @@ serverPortParser = option auto
   $  long "port" <> short 'p'
   <> metavar "INT"
   <> help "server port value"
+
+metricsPortParser :: O.Parser Word16
+metricsPortParser = option auto
+  $  long "metrics-port"
+  <> metavar "INT"
+  <> help "metrics port value"
 
 serverGossipAddressParser :: O.Parser String
 serverGossipAddressParser = strOption
