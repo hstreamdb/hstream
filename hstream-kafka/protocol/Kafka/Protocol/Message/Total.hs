@@ -306,6 +306,8 @@ describedGroupToV0 x = DescribedGroupV0
   , protocolData = x.protocolData
   , members = fmap describedGroupMemberToV0 x.members
   }
+describedGroupToV1 :: DescribedGroup -> DescribedGroupV1
+describedGroupToV1 = describedGroupToV0
 
 describedGroupFromV0 :: DescribedGroupV0 -> DescribedGroup
 describedGroupFromV0 x = DescribedGroup
@@ -316,6 +318,8 @@ describedGroupFromV0 x = DescribedGroup
   , protocolData = x.protocolData
   , members = fmap describedGroupMemberFromV0 x.members
   }
+describedGroupFromV1 :: DescribedGroupV1 -> DescribedGroup
+describedGroupFromV1 = describedGroupFromV0
 
 data DescribedGroupMember = DescribedGroupMember
   { memberId         :: !Text
@@ -339,6 +343,8 @@ describedGroupMemberToV0 x = DescribedGroupMemberV0
   , memberMetadata = x.memberMetadata
   , memberAssignment = x.memberAssignment
   }
+describedGroupMemberToV1 :: DescribedGroupMember -> DescribedGroupMemberV1
+describedGroupMemberToV1 = describedGroupMemberToV0
 
 describedGroupMemberFromV0 :: DescribedGroupMemberV0 -> DescribedGroupMember
 describedGroupMemberFromV0 x = DescribedGroupMember
@@ -348,6 +354,8 @@ describedGroupMemberFromV0 x = DescribedGroupMember
   , memberMetadata = x.memberMetadata
   , memberAssignment = x.memberAssignment
   }
+describedGroupMemberFromV1 :: DescribedGroupMemberV1 -> DescribedGroupMember
+describedGroupMemberFromV1 = describedGroupMemberFromV0
 
 data FetchPartition = FetchPartition
   { partition         :: {-# UNPACK #-} !Int32
@@ -490,12 +498,20 @@ joinGroupRequestProtocolToV0 x = JoinGroupRequestProtocolV0
   { name = x.name
   , metadata = x.metadata
   }
+joinGroupRequestProtocolToV1 :: JoinGroupRequestProtocol -> JoinGroupRequestProtocolV1
+joinGroupRequestProtocolToV1 = joinGroupRequestProtocolToV0
+joinGroupRequestProtocolToV2 :: JoinGroupRequestProtocol -> JoinGroupRequestProtocolV2
+joinGroupRequestProtocolToV2 = joinGroupRequestProtocolToV0
 
 joinGroupRequestProtocolFromV0 :: JoinGroupRequestProtocolV0 -> JoinGroupRequestProtocol
 joinGroupRequestProtocolFromV0 x = JoinGroupRequestProtocol
   { name = x.name
   , metadata = x.metadata
   }
+joinGroupRequestProtocolFromV1 :: JoinGroupRequestProtocolV1 -> JoinGroupRequestProtocol
+joinGroupRequestProtocolFromV1 = joinGroupRequestProtocolFromV0
+joinGroupRequestProtocolFromV2 :: JoinGroupRequestProtocolV2 -> JoinGroupRequestProtocol
+joinGroupRequestProtocolFromV2 = joinGroupRequestProtocolFromV0
 
 data JoinGroupResponseMember = JoinGroupResponseMember
   { memberId :: !Text
@@ -510,12 +526,20 @@ joinGroupResponseMemberToV0 x = JoinGroupResponseMemberV0
   { memberId = x.memberId
   , metadata = x.metadata
   }
+joinGroupResponseMemberToV1 :: JoinGroupResponseMember -> JoinGroupResponseMemberV1
+joinGroupResponseMemberToV1 = joinGroupResponseMemberToV0
+joinGroupResponseMemberToV2 :: JoinGroupResponseMember -> JoinGroupResponseMemberV2
+joinGroupResponseMemberToV2 = joinGroupResponseMemberToV0
 
 joinGroupResponseMemberFromV0 :: JoinGroupResponseMemberV0 -> JoinGroupResponseMember
 joinGroupResponseMemberFromV0 x = JoinGroupResponseMember
   { memberId = x.memberId
   , metadata = x.metadata
   }
+joinGroupResponseMemberFromV1 :: JoinGroupResponseMemberV1 -> JoinGroupResponseMember
+joinGroupResponseMemberFromV1 = joinGroupResponseMemberFromV0
+joinGroupResponseMemberFromV2 :: JoinGroupResponseMemberV2 -> JoinGroupResponseMember
+joinGroupResponseMemberFromV2 = joinGroupResponseMemberFromV0
 
 data ListOffsetsPartition = ListOffsetsPartition
   { partitionIndex :: {-# UNPACK #-} !Int32
@@ -670,12 +694,16 @@ listedGroupToV0 x = ListedGroupV0
   { groupId = x.groupId
   , protocolType = x.protocolType
   }
+listedGroupToV1 :: ListedGroup -> ListedGroupV1
+listedGroupToV1 = listedGroupToV0
 
 listedGroupFromV0 :: ListedGroupV0 -> ListedGroup
 listedGroupFromV0 x = ListedGroup
   { groupId = x.groupId
   , protocolType = x.protocolType
   }
+listedGroupFromV1 :: ListedGroupV1 -> ListedGroup
+listedGroupFromV1 = listedGroupFromV0
 
 newtype MetadataRequestTopic = MetadataRequestTopic
   { name :: Text
@@ -889,6 +917,8 @@ offsetCommitRequestPartitionToV1 x = OffsetCommitRequestPartitionV1
   }
 offsetCommitRequestPartitionToV2 :: OffsetCommitRequestPartition -> OffsetCommitRequestPartitionV2
 offsetCommitRequestPartitionToV2 = offsetCommitRequestPartitionToV0
+offsetCommitRequestPartitionToV3 :: OffsetCommitRequestPartition -> OffsetCommitRequestPartitionV3
+offsetCommitRequestPartitionToV3 = offsetCommitRequestPartitionToV0
 
 offsetCommitRequestPartitionFromV0 :: OffsetCommitRequestPartitionV0 -> OffsetCommitRequestPartition
 offsetCommitRequestPartitionFromV0 x = OffsetCommitRequestPartition
@@ -906,6 +936,8 @@ offsetCommitRequestPartitionFromV1 x = OffsetCommitRequestPartition
   }
 offsetCommitRequestPartitionFromV2 :: OffsetCommitRequestPartitionV2 -> OffsetCommitRequestPartition
 offsetCommitRequestPartitionFromV2 = offsetCommitRequestPartitionFromV0
+offsetCommitRequestPartitionFromV3 :: OffsetCommitRequestPartitionV3 -> OffsetCommitRequestPartition
+offsetCommitRequestPartitionFromV3 = offsetCommitRequestPartitionFromV0
 
 data OffsetCommitRequestTopic = OffsetCommitRequestTopic
   { name       :: !Text
@@ -927,6 +959,8 @@ offsetCommitRequestTopicToV1 x = OffsetCommitRequestTopicV1
   }
 offsetCommitRequestTopicToV2 :: OffsetCommitRequestTopic -> OffsetCommitRequestTopicV2
 offsetCommitRequestTopicToV2 = offsetCommitRequestTopicToV0
+offsetCommitRequestTopicToV3 :: OffsetCommitRequestTopic -> OffsetCommitRequestTopicV3
+offsetCommitRequestTopicToV3 = offsetCommitRequestTopicToV0
 
 offsetCommitRequestTopicFromV0 :: OffsetCommitRequestTopicV0 -> OffsetCommitRequestTopic
 offsetCommitRequestTopicFromV0 x = OffsetCommitRequestTopic
@@ -940,6 +974,8 @@ offsetCommitRequestTopicFromV1 x = OffsetCommitRequestTopic
   }
 offsetCommitRequestTopicFromV2 :: OffsetCommitRequestTopicV2 -> OffsetCommitRequestTopic
 offsetCommitRequestTopicFromV2 = offsetCommitRequestTopicFromV0
+offsetCommitRequestTopicFromV3 :: OffsetCommitRequestTopicV3 -> OffsetCommitRequestTopic
+offsetCommitRequestTopicFromV3 = offsetCommitRequestTopicFromV0
 
 data OffsetCommitResponsePartition = OffsetCommitResponsePartition
   { partitionIndex :: {-# UNPACK #-} !Int32
@@ -958,6 +994,8 @@ offsetCommitResponsePartitionToV1 :: OffsetCommitResponsePartition -> OffsetComm
 offsetCommitResponsePartitionToV1 = offsetCommitResponsePartitionToV0
 offsetCommitResponsePartitionToV2 :: OffsetCommitResponsePartition -> OffsetCommitResponsePartitionV2
 offsetCommitResponsePartitionToV2 = offsetCommitResponsePartitionToV0
+offsetCommitResponsePartitionToV3 :: OffsetCommitResponsePartition -> OffsetCommitResponsePartitionV3
+offsetCommitResponsePartitionToV3 = offsetCommitResponsePartitionToV0
 
 offsetCommitResponsePartitionFromV0 :: OffsetCommitResponsePartitionV0 -> OffsetCommitResponsePartition
 offsetCommitResponsePartitionFromV0 x = OffsetCommitResponsePartition
@@ -968,6 +1006,8 @@ offsetCommitResponsePartitionFromV1 :: OffsetCommitResponsePartitionV1 -> Offset
 offsetCommitResponsePartitionFromV1 = offsetCommitResponsePartitionFromV0
 offsetCommitResponsePartitionFromV2 :: OffsetCommitResponsePartitionV2 -> OffsetCommitResponsePartition
 offsetCommitResponsePartitionFromV2 = offsetCommitResponsePartitionFromV0
+offsetCommitResponsePartitionFromV3 :: OffsetCommitResponsePartitionV3 -> OffsetCommitResponsePartition
+offsetCommitResponsePartitionFromV3 = offsetCommitResponsePartitionFromV0
 
 data OffsetCommitResponseTopic = OffsetCommitResponseTopic
   { name       :: !Text
@@ -986,6 +1026,8 @@ offsetCommitResponseTopicToV1 :: OffsetCommitResponseTopic -> OffsetCommitRespon
 offsetCommitResponseTopicToV1 = offsetCommitResponseTopicToV0
 offsetCommitResponseTopicToV2 :: OffsetCommitResponseTopic -> OffsetCommitResponseTopicV2
 offsetCommitResponseTopicToV2 = offsetCommitResponseTopicToV0
+offsetCommitResponseTopicToV3 :: OffsetCommitResponseTopic -> OffsetCommitResponseTopicV3
+offsetCommitResponseTopicToV3 = offsetCommitResponseTopicToV0
 
 offsetCommitResponseTopicFromV0 :: OffsetCommitResponseTopicV0 -> OffsetCommitResponseTopic
 offsetCommitResponseTopicFromV0 x = OffsetCommitResponseTopic
@@ -996,6 +1038,8 @@ offsetCommitResponseTopicFromV1 :: OffsetCommitResponseTopicV1 -> OffsetCommitRe
 offsetCommitResponseTopicFromV1 = offsetCommitResponseTopicFromV0
 offsetCommitResponseTopicFromV2 :: OffsetCommitResponseTopicV2 -> OffsetCommitResponseTopic
 offsetCommitResponseTopicFromV2 = offsetCommitResponseTopicFromV0
+offsetCommitResponseTopicFromV3 :: OffsetCommitResponseTopicV3 -> OffsetCommitResponseTopic
+offsetCommitResponseTopicFromV3 = offsetCommitResponseTopicFromV0
 
 data OffsetFetchRequestTopic = OffsetFetchRequestTopic
   { name             :: !Text
@@ -1014,6 +1058,8 @@ offsetFetchRequestTopicToV1 :: OffsetFetchRequestTopic -> OffsetFetchRequestTopi
 offsetFetchRequestTopicToV1 = offsetFetchRequestTopicToV0
 offsetFetchRequestTopicToV2 :: OffsetFetchRequestTopic -> OffsetFetchRequestTopicV2
 offsetFetchRequestTopicToV2 = offsetFetchRequestTopicToV0
+offsetFetchRequestTopicToV3 :: OffsetFetchRequestTopic -> OffsetFetchRequestTopicV3
+offsetFetchRequestTopicToV3 = offsetFetchRequestTopicToV0
 
 offsetFetchRequestTopicFromV0 :: OffsetFetchRequestTopicV0 -> OffsetFetchRequestTopic
 offsetFetchRequestTopicFromV0 x = OffsetFetchRequestTopic
@@ -1024,6 +1070,8 @@ offsetFetchRequestTopicFromV1 :: OffsetFetchRequestTopicV1 -> OffsetFetchRequest
 offsetFetchRequestTopicFromV1 = offsetFetchRequestTopicFromV0
 offsetFetchRequestTopicFromV2 :: OffsetFetchRequestTopicV2 -> OffsetFetchRequestTopic
 offsetFetchRequestTopicFromV2 = offsetFetchRequestTopicFromV0
+offsetFetchRequestTopicFromV3 :: OffsetFetchRequestTopicV3 -> OffsetFetchRequestTopic
+offsetFetchRequestTopicFromV3 = offsetFetchRequestTopicFromV0
 
 data OffsetFetchResponsePartition = OffsetFetchResponsePartition
   { partitionIndex  :: {-# UNPACK #-} !Int32
@@ -1048,6 +1096,8 @@ offsetFetchResponsePartitionToV1 :: OffsetFetchResponsePartition -> OffsetFetchR
 offsetFetchResponsePartitionToV1 = offsetFetchResponsePartitionToV0
 offsetFetchResponsePartitionToV2 :: OffsetFetchResponsePartition -> OffsetFetchResponsePartitionV2
 offsetFetchResponsePartitionToV2 = offsetFetchResponsePartitionToV0
+offsetFetchResponsePartitionToV3 :: OffsetFetchResponsePartition -> OffsetFetchResponsePartitionV3
+offsetFetchResponsePartitionToV3 = offsetFetchResponsePartitionToV0
 
 offsetFetchResponsePartitionFromV0 :: OffsetFetchResponsePartitionV0 -> OffsetFetchResponsePartition
 offsetFetchResponsePartitionFromV0 x = OffsetFetchResponsePartition
@@ -1060,6 +1110,8 @@ offsetFetchResponsePartitionFromV1 :: OffsetFetchResponsePartitionV1 -> OffsetFe
 offsetFetchResponsePartitionFromV1 = offsetFetchResponsePartitionFromV0
 offsetFetchResponsePartitionFromV2 :: OffsetFetchResponsePartitionV2 -> OffsetFetchResponsePartition
 offsetFetchResponsePartitionFromV2 = offsetFetchResponsePartitionFromV0
+offsetFetchResponsePartitionFromV3 :: OffsetFetchResponsePartitionV3 -> OffsetFetchResponsePartition
+offsetFetchResponsePartitionFromV3 = offsetFetchResponsePartitionFromV0
 
 data OffsetFetchResponseTopic = OffsetFetchResponseTopic
   { name       :: !Text
@@ -1078,6 +1130,8 @@ offsetFetchResponseTopicToV1 :: OffsetFetchResponseTopic -> OffsetFetchResponseT
 offsetFetchResponseTopicToV1 = offsetFetchResponseTopicToV0
 offsetFetchResponseTopicToV2 :: OffsetFetchResponseTopic -> OffsetFetchResponseTopicV2
 offsetFetchResponseTopicToV2 = offsetFetchResponseTopicToV0
+offsetFetchResponseTopicToV3 :: OffsetFetchResponseTopic -> OffsetFetchResponseTopicV3
+offsetFetchResponseTopicToV3 = offsetFetchResponseTopicToV0
 
 offsetFetchResponseTopicFromV0 :: OffsetFetchResponseTopicV0 -> OffsetFetchResponseTopic
 offsetFetchResponseTopicFromV0 x = OffsetFetchResponseTopic
@@ -1088,6 +1142,8 @@ offsetFetchResponseTopicFromV1 :: OffsetFetchResponseTopicV1 -> OffsetFetchRespo
 offsetFetchResponseTopicFromV1 = offsetFetchResponseTopicFromV0
 offsetFetchResponseTopicFromV2 :: OffsetFetchResponseTopicV2 -> OffsetFetchResponseTopic
 offsetFetchResponseTopicFromV2 = offsetFetchResponseTopicFromV0
+offsetFetchResponseTopicFromV3 :: OffsetFetchResponseTopicV3 -> OffsetFetchResponseTopic
+offsetFetchResponseTopicFromV3 = offsetFetchResponseTopicFromV0
 
 data PartitionData = PartitionData
   { partitionIndex :: {-# UNPACK #-} !Int32
@@ -1245,12 +1301,16 @@ syncGroupRequestAssignmentToV0 x = SyncGroupRequestAssignmentV0
   { memberId = x.memberId
   , assignment = x.assignment
   }
+syncGroupRequestAssignmentToV1 :: SyncGroupRequestAssignment -> SyncGroupRequestAssignmentV1
+syncGroupRequestAssignmentToV1 = syncGroupRequestAssignmentToV0
 
 syncGroupRequestAssignmentFromV0 :: SyncGroupRequestAssignmentV0 -> SyncGroupRequestAssignment
 syncGroupRequestAssignmentFromV0 x = SyncGroupRequestAssignment
   { memberId = x.memberId
   , assignment = x.assignment
   }
+syncGroupRequestAssignmentFromV1 :: SyncGroupRequestAssignmentV1 -> SyncGroupRequestAssignment
+syncGroupRequestAssignmentFromV1 = syncGroupRequestAssignmentFromV0
 
 data TopicProduceData = TopicProduceData
   { name          :: !Text
@@ -1526,14 +1586,22 @@ describeGroupsRequestToV0 :: DescribeGroupsRequest -> DescribeGroupsRequestV0
 describeGroupsRequestToV0 x = DescribeGroupsRequestV0
   { groups = x.groups
   }
+describeGroupsRequestToV1 :: DescribeGroupsRequest -> DescribeGroupsRequestV1
+describeGroupsRequestToV1 = describeGroupsRequestToV0
 
 describeGroupsRequestFromV0 :: DescribeGroupsRequestV0 -> DescribeGroupsRequest
 describeGroupsRequestFromV0 x = DescribeGroupsRequest
   { groups = x.groups
   }
+describeGroupsRequestFromV1 :: DescribeGroupsRequestV1 -> DescribeGroupsRequest
+describeGroupsRequestFromV1 = describeGroupsRequestFromV0
 
-newtype DescribeGroupsResponse = DescribeGroupsResponse
-  { groups :: (KaArray DescribedGroup)
+data DescribeGroupsResponse = DescribeGroupsResponse
+  { groups         :: !(KaArray DescribedGroup)
+    -- ^ Each described group.
+  , throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
   } deriving (Show, Eq, Generic)
 instance Serializable DescribeGroupsResponse
 
@@ -1541,10 +1609,21 @@ describeGroupsResponseToV0 :: DescribeGroupsResponse -> DescribeGroupsResponseV0
 describeGroupsResponseToV0 x = DescribeGroupsResponseV0
   { groups = fmap describedGroupToV0 x.groups
   }
+describeGroupsResponseToV1 :: DescribeGroupsResponse -> DescribeGroupsResponseV1
+describeGroupsResponseToV1 x = DescribeGroupsResponseV1
+  { throttleTimeMs = x.throttleTimeMs
+  , groups = fmap describedGroupToV1 x.groups
+  }
 
 describeGroupsResponseFromV0 :: DescribeGroupsResponseV0 -> DescribeGroupsResponse
 describeGroupsResponseFromV0 x = DescribeGroupsResponse
   { groups = fmap describedGroupFromV0 x.groups
+  , throttleTimeMs = 0
+  }
+describeGroupsResponseFromV1 :: DescribeGroupsResponseV1 -> DescribeGroupsResponse
+describeGroupsResponseFromV1 x = DescribeGroupsResponse
+  { groups = fmap describedGroupFromV1 x.groups
+  , throttleTimeMs = x.throttleTimeMs
   }
 
 data FetchRequest = FetchRequest
@@ -1701,6 +1780,8 @@ heartbeatRequestToV0 x = HeartbeatRequestV0
   , generationId = x.generationId
   , memberId = x.memberId
   }
+heartbeatRequestToV1 :: HeartbeatRequest -> HeartbeatRequestV1
+heartbeatRequestToV1 = heartbeatRequestToV0
 
 heartbeatRequestFromV0 :: HeartbeatRequestV0 -> HeartbeatRequest
 heartbeatRequestFromV0 x = HeartbeatRequest
@@ -1708,9 +1789,15 @@ heartbeatRequestFromV0 x = HeartbeatRequest
   , generationId = x.generationId
   , memberId = x.memberId
   }
+heartbeatRequestFromV1 :: HeartbeatRequestV1 -> HeartbeatRequest
+heartbeatRequestFromV1 = heartbeatRequestFromV0
 
-newtype HeartbeatResponse = HeartbeatResponse
-  { errorCode :: ErrorCode
+data HeartbeatResponse = HeartbeatResponse
+  { errorCode      :: {-# UNPACK #-} !ErrorCode
+    -- ^ The error code, or 0 if there was no error.
+  , throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
   } deriving (Show, Eq, Generic)
 instance Serializable HeartbeatResponse
 
@@ -1718,25 +1805,39 @@ heartbeatResponseToV0 :: HeartbeatResponse -> HeartbeatResponseV0
 heartbeatResponseToV0 x = HeartbeatResponseV0
   { errorCode = x.errorCode
   }
+heartbeatResponseToV1 :: HeartbeatResponse -> HeartbeatResponseV1
+heartbeatResponseToV1 x = HeartbeatResponseV1
+  { throttleTimeMs = x.throttleTimeMs
+  , errorCode = x.errorCode
+  }
 
 heartbeatResponseFromV0 :: HeartbeatResponseV0 -> HeartbeatResponse
 heartbeatResponseFromV0 x = HeartbeatResponse
   { errorCode = x.errorCode
+  , throttleTimeMs = 0
+  }
+heartbeatResponseFromV1 :: HeartbeatResponseV1 -> HeartbeatResponse
+heartbeatResponseFromV1 x = HeartbeatResponse
+  { errorCode = x.errorCode
+  , throttleTimeMs = x.throttleTimeMs
   }
 
 data JoinGroupRequest = JoinGroupRequest
-  { groupId          :: !Text
+  { groupId            :: !Text
     -- ^ The group identifier.
-  , sessionTimeoutMs :: {-# UNPACK #-} !Int32
+  , sessionTimeoutMs   :: {-# UNPACK #-} !Int32
     -- ^ The coordinator considers the consumer dead if it receives no
     -- heartbeat after this timeout in milliseconds.
-  , memberId         :: !Text
+  , memberId           :: !Text
     -- ^ The member id assigned by the group coordinator.
-  , protocolType     :: !Text
+  , protocolType       :: !Text
     -- ^ The unique name the for class of protocols implemented by the group we
     -- want to join.
-  , protocols        :: !(KaArray JoinGroupRequestProtocol)
+  , protocols          :: !(KaArray JoinGroupRequestProtocol)
     -- ^ The list of protocols that the member supports.
+  , rebalanceTimeoutMs :: {-# UNPACK #-} !Int32
+    -- ^ The maximum time in milliseconds that the coordinator will wait for
+    -- each member to rejoin when rebalancing the group.
   } deriving (Show, Eq, Generic)
 instance Serializable JoinGroupRequest
 
@@ -1748,6 +1849,17 @@ joinGroupRequestToV0 x = JoinGroupRequestV0
   , protocolType = x.protocolType
   , protocols = fmap joinGroupRequestProtocolToV0 x.protocols
   }
+joinGroupRequestToV1 :: JoinGroupRequest -> JoinGroupRequestV1
+joinGroupRequestToV1 x = JoinGroupRequestV1
+  { groupId = x.groupId
+  , sessionTimeoutMs = x.sessionTimeoutMs
+  , rebalanceTimeoutMs = x.rebalanceTimeoutMs
+  , memberId = x.memberId
+  , protocolType = x.protocolType
+  , protocols = fmap joinGroupRequestProtocolToV1 x.protocols
+  }
+joinGroupRequestToV2 :: JoinGroupRequest -> JoinGroupRequestV2
+joinGroupRequestToV2 = joinGroupRequestToV1
 
 joinGroupRequestFromV0 :: JoinGroupRequestV0 -> JoinGroupRequest
 joinGroupRequestFromV0 x = JoinGroupRequest
@@ -1756,20 +1868,35 @@ joinGroupRequestFromV0 x = JoinGroupRequest
   , memberId = x.memberId
   , protocolType = x.protocolType
   , protocols = fmap joinGroupRequestProtocolFromV0 x.protocols
+  , rebalanceTimeoutMs = (-1)
   }
+joinGroupRequestFromV1 :: JoinGroupRequestV1 -> JoinGroupRequest
+joinGroupRequestFromV1 x = JoinGroupRequest
+  { groupId = x.groupId
+  , sessionTimeoutMs = x.sessionTimeoutMs
+  , memberId = x.memberId
+  , protocolType = x.protocolType
+  , protocols = fmap joinGroupRequestProtocolFromV1 x.protocols
+  , rebalanceTimeoutMs = x.rebalanceTimeoutMs
+  }
+joinGroupRequestFromV2 :: JoinGroupRequestV2 -> JoinGroupRequest
+joinGroupRequestFromV2 = joinGroupRequestFromV1
 
 data JoinGroupResponse = JoinGroupResponse
-  { errorCode    :: {-# UNPACK #-} !ErrorCode
+  { errorCode      :: {-# UNPACK #-} !ErrorCode
     -- ^ The error code, or 0 if there was no error.
-  , generationId :: {-# UNPACK #-} !Int32
+  , generationId   :: {-# UNPACK #-} !Int32
     -- ^ The generation ID of the group.
-  , protocolName :: !Text
+  , protocolName   :: !Text
     -- ^ The group protocol selected by the coordinator.
-  , leader       :: !Text
+  , leader         :: !Text
     -- ^ The leader of the group.
-  , memberId     :: !Text
+  , memberId       :: !Text
     -- ^ The member ID assigned by the group coordinator.
-  , members      :: !(KaArray JoinGroupResponseMember)
+  , members        :: !(KaArray JoinGroupResponseMember)
+  , throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
   } deriving (Show, Eq, Generic)
 instance Serializable JoinGroupResponse
 
@@ -1782,6 +1909,18 @@ joinGroupResponseToV0 x = JoinGroupResponseV0
   , memberId = x.memberId
   , members = fmap joinGroupResponseMemberToV0 x.members
   }
+joinGroupResponseToV1 :: JoinGroupResponse -> JoinGroupResponseV1
+joinGroupResponseToV1 = joinGroupResponseToV0
+joinGroupResponseToV2 :: JoinGroupResponse -> JoinGroupResponseV2
+joinGroupResponseToV2 x = JoinGroupResponseV2
+  { throttleTimeMs = x.throttleTimeMs
+  , errorCode = x.errorCode
+  , generationId = x.generationId
+  , protocolName = x.protocolName
+  , leader = x.leader
+  , memberId = x.memberId
+  , members = fmap joinGroupResponseMemberToV2 x.members
+  }
 
 joinGroupResponseFromV0 :: JoinGroupResponseV0 -> JoinGroupResponse
 joinGroupResponseFromV0 x = JoinGroupResponse
@@ -1791,6 +1930,19 @@ joinGroupResponseFromV0 x = JoinGroupResponse
   , leader = x.leader
   , memberId = x.memberId
   , members = fmap joinGroupResponseMemberFromV0 x.members
+  , throttleTimeMs = 0
+  }
+joinGroupResponseFromV1 :: JoinGroupResponseV1 -> JoinGroupResponse
+joinGroupResponseFromV1 = joinGroupResponseFromV0
+joinGroupResponseFromV2 :: JoinGroupResponseV2 -> JoinGroupResponse
+joinGroupResponseFromV2 x = JoinGroupResponse
+  { errorCode = x.errorCode
+  , generationId = x.generationId
+  , protocolName = x.protocolName
+  , leader = x.leader
+  , memberId = x.memberId
+  , members = fmap joinGroupResponseMemberFromV2 x.members
+  , throttleTimeMs = x.throttleTimeMs
   }
 
 data LeaveGroupRequest = LeaveGroupRequest
@@ -1806,15 +1958,23 @@ leaveGroupRequestToV0 x = LeaveGroupRequestV0
   { groupId = x.groupId
   , memberId = x.memberId
   }
+leaveGroupRequestToV1 :: LeaveGroupRequest -> LeaveGroupRequestV1
+leaveGroupRequestToV1 = leaveGroupRequestToV0
 
 leaveGroupRequestFromV0 :: LeaveGroupRequestV0 -> LeaveGroupRequest
 leaveGroupRequestFromV0 x = LeaveGroupRequest
   { groupId = x.groupId
   , memberId = x.memberId
   }
+leaveGroupRequestFromV1 :: LeaveGroupRequestV1 -> LeaveGroupRequest
+leaveGroupRequestFromV1 = leaveGroupRequestFromV0
 
-newtype LeaveGroupResponse = LeaveGroupResponse
-  { errorCode :: ErrorCode
+data LeaveGroupResponse = LeaveGroupResponse
+  { errorCode      :: {-# UNPACK #-} !ErrorCode
+    -- ^ The error code, or 0 if there was no error.
+  , throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
   } deriving (Show, Eq, Generic)
 instance Serializable LeaveGroupResponse
 
@@ -1822,10 +1982,21 @@ leaveGroupResponseToV0 :: LeaveGroupResponse -> LeaveGroupResponseV0
 leaveGroupResponseToV0 x = LeaveGroupResponseV0
   { errorCode = x.errorCode
   }
+leaveGroupResponseToV1 :: LeaveGroupResponse -> LeaveGroupResponseV1
+leaveGroupResponseToV1 x = LeaveGroupResponseV1
+  { throttleTimeMs = x.throttleTimeMs
+  , errorCode = x.errorCode
+  }
 
 leaveGroupResponseFromV0 :: LeaveGroupResponseV0 -> LeaveGroupResponse
 leaveGroupResponseFromV0 x = LeaveGroupResponse
   { errorCode = x.errorCode
+  , throttleTimeMs = 0
+  }
+leaveGroupResponseFromV1 :: LeaveGroupResponseV1 -> LeaveGroupResponse
+leaveGroupResponseFromV1 x = LeaveGroupResponse
+  { errorCode = x.errorCode
+  , throttleTimeMs = x.throttleTimeMs
   }
 
 data ListGroupsRequest = ListGroupsRequest
@@ -1834,17 +2005,24 @@ instance Serializable ListGroupsRequest
 
 listGroupsRequestToV0 :: ListGroupsRequest -> ListGroupsRequestV0
 listGroupsRequestToV0 _ = ListGroupsRequestV0
+listGroupsRequestToV1 :: ListGroupsRequest -> ListGroupsRequestV1
+listGroupsRequestToV1 = listGroupsRequestToV0
 
 listGroupsRequestFromV0 :: ListGroupsRequestV0 -> ListGroupsRequest
 listGroupsRequestFromV0 _ = ListGroupsRequest
   {
   }
+listGroupsRequestFromV1 :: ListGroupsRequestV1 -> ListGroupsRequest
+listGroupsRequestFromV1 = listGroupsRequestFromV0
 
 data ListGroupsResponse = ListGroupsResponse
-  { errorCode :: {-# UNPACK #-} !ErrorCode
+  { errorCode      :: {-# UNPACK #-} !ErrorCode
     -- ^ The error code, or 0 if there was no error.
-  , groups    :: !(KaArray ListedGroup)
+  , groups         :: !(KaArray ListedGroup)
     -- ^ Each group in the response.
+  , throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
   } deriving (Show, Eq, Generic)
 instance Serializable ListGroupsResponse
 
@@ -1853,11 +2031,24 @@ listGroupsResponseToV0 x = ListGroupsResponseV0
   { errorCode = x.errorCode
   , groups = fmap listedGroupToV0 x.groups
   }
+listGroupsResponseToV1 :: ListGroupsResponse -> ListGroupsResponseV1
+listGroupsResponseToV1 x = ListGroupsResponseV1
+  { throttleTimeMs = x.throttleTimeMs
+  , errorCode = x.errorCode
+  , groups = fmap listedGroupToV1 x.groups
+  }
 
 listGroupsResponseFromV0 :: ListGroupsResponseV0 -> ListGroupsResponse
 listGroupsResponseFromV0 x = ListGroupsResponse
   { errorCode = x.errorCode
   , groups = fmap listedGroupFromV0 x.groups
+  , throttleTimeMs = 0
+  }
+listGroupsResponseFromV1 :: ListGroupsResponseV1 -> ListGroupsResponse
+listGroupsResponseFromV1 x = ListGroupsResponse
+  { errorCode = x.errorCode
+  , groups = fmap listedGroupFromV1 x.groups
+  , throttleTimeMs = x.throttleTimeMs
   }
 
 data ListOffsetsRequest = ListOffsetsRequest
@@ -2069,6 +2260,8 @@ offsetCommitRequestToV2 x = OffsetCommitRequestV2
   , retentionTimeMs = x.retentionTimeMs
   , topics = fmap offsetCommitRequestTopicToV2 x.topics
   }
+offsetCommitRequestToV3 :: OffsetCommitRequest -> OffsetCommitRequestV3
+offsetCommitRequestToV3 = offsetCommitRequestToV2
 
 offsetCommitRequestFromV0 :: OffsetCommitRequestV0 -> OffsetCommitRequest
 offsetCommitRequestFromV0 x = OffsetCommitRequest
@@ -2094,9 +2287,15 @@ offsetCommitRequestFromV2 x = OffsetCommitRequest
   , memberId = x.memberId
   , retentionTimeMs = x.retentionTimeMs
   }
+offsetCommitRequestFromV3 :: OffsetCommitRequestV3 -> OffsetCommitRequest
+offsetCommitRequestFromV3 = offsetCommitRequestFromV2
 
-newtype OffsetCommitResponse = OffsetCommitResponse
-  { topics :: (KaArray OffsetCommitResponseTopic)
+data OffsetCommitResponse = OffsetCommitResponse
+  { topics         :: !(KaArray OffsetCommitResponseTopic)
+    -- ^ The responses for each topic.
+  , throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
   } deriving (Show, Eq, Generic)
 instance Serializable OffsetCommitResponse
 
@@ -2108,15 +2307,26 @@ offsetCommitResponseToV1 :: OffsetCommitResponse -> OffsetCommitResponseV1
 offsetCommitResponseToV1 = offsetCommitResponseToV0
 offsetCommitResponseToV2 :: OffsetCommitResponse -> OffsetCommitResponseV2
 offsetCommitResponseToV2 = offsetCommitResponseToV0
+offsetCommitResponseToV3 :: OffsetCommitResponse -> OffsetCommitResponseV3
+offsetCommitResponseToV3 x = OffsetCommitResponseV3
+  { throttleTimeMs = x.throttleTimeMs
+  , topics = fmap offsetCommitResponseTopicToV3 x.topics
+  }
 
 offsetCommitResponseFromV0 :: OffsetCommitResponseV0 -> OffsetCommitResponse
 offsetCommitResponseFromV0 x = OffsetCommitResponse
   { topics = fmap offsetCommitResponseTopicFromV0 x.topics
+  , throttleTimeMs = 0
   }
 offsetCommitResponseFromV1 :: OffsetCommitResponseV1 -> OffsetCommitResponse
 offsetCommitResponseFromV1 = offsetCommitResponseFromV0
 offsetCommitResponseFromV2 :: OffsetCommitResponseV2 -> OffsetCommitResponse
 offsetCommitResponseFromV2 = offsetCommitResponseFromV0
+offsetCommitResponseFromV3 :: OffsetCommitResponseV3 -> OffsetCommitResponse
+offsetCommitResponseFromV3 x = OffsetCommitResponse
+  { topics = fmap offsetCommitResponseTopicFromV3 x.topics
+  , throttleTimeMs = x.throttleTimeMs
+  }
 
 data OffsetFetchRequest = OffsetFetchRequest
   { groupId :: !Text
@@ -2136,6 +2346,8 @@ offsetFetchRequestToV1 :: OffsetFetchRequest -> OffsetFetchRequestV1
 offsetFetchRequestToV1 = offsetFetchRequestToV0
 offsetFetchRequestToV2 :: OffsetFetchRequest -> OffsetFetchRequestV2
 offsetFetchRequestToV2 = offsetFetchRequestToV0
+offsetFetchRequestToV3 :: OffsetFetchRequest -> OffsetFetchRequestV3
+offsetFetchRequestToV3 = offsetFetchRequestToV0
 
 offsetFetchRequestFromV0 :: OffsetFetchRequestV0 -> OffsetFetchRequest
 offsetFetchRequestFromV0 x = OffsetFetchRequest
@@ -2146,12 +2358,17 @@ offsetFetchRequestFromV1 :: OffsetFetchRequestV1 -> OffsetFetchRequest
 offsetFetchRequestFromV1 = offsetFetchRequestFromV0
 offsetFetchRequestFromV2 :: OffsetFetchRequestV2 -> OffsetFetchRequest
 offsetFetchRequestFromV2 = offsetFetchRequestFromV0
+offsetFetchRequestFromV3 :: OffsetFetchRequestV3 -> OffsetFetchRequest
+offsetFetchRequestFromV3 = offsetFetchRequestFromV0
 
 data OffsetFetchResponse = OffsetFetchResponse
-  { topics    :: !(KaArray OffsetFetchResponseTopic)
+  { topics         :: !(KaArray OffsetFetchResponseTopic)
     -- ^ The responses per topic.
-  , errorCode :: {-# UNPACK #-} !ErrorCode
+  , errorCode      :: {-# UNPACK #-} !ErrorCode
     -- ^ The top-level error code, or 0 if there was no error.
+  , throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
   } deriving (Show, Eq, Generic)
 instance Serializable OffsetFetchResponse
 
@@ -2166,11 +2383,18 @@ offsetFetchResponseToV2 x = OffsetFetchResponseV2
   { topics = fmap offsetFetchResponseTopicToV2 x.topics
   , errorCode = x.errorCode
   }
+offsetFetchResponseToV3 :: OffsetFetchResponse -> OffsetFetchResponseV3
+offsetFetchResponseToV3 x = OffsetFetchResponseV3
+  { throttleTimeMs = x.throttleTimeMs
+  , topics = fmap offsetFetchResponseTopicToV3 x.topics
+  , errorCode = x.errorCode
+  }
 
 offsetFetchResponseFromV0 :: OffsetFetchResponseV0 -> OffsetFetchResponse
 offsetFetchResponseFromV0 x = OffsetFetchResponse
   { topics = fmap offsetFetchResponseTopicFromV0 x.topics
   , errorCode = 0
+  , throttleTimeMs = 0
   }
 offsetFetchResponseFromV1 :: OffsetFetchResponseV1 -> OffsetFetchResponse
 offsetFetchResponseFromV1 = offsetFetchResponseFromV0
@@ -2178,6 +2402,13 @@ offsetFetchResponseFromV2 :: OffsetFetchResponseV2 -> OffsetFetchResponse
 offsetFetchResponseFromV2 x = OffsetFetchResponse
   { topics = fmap offsetFetchResponseTopicFromV2 x.topics
   , errorCode = x.errorCode
+  , throttleTimeMs = 0
+  }
+offsetFetchResponseFromV3 :: OffsetFetchResponseV3 -> OffsetFetchResponse
+offsetFetchResponseFromV3 x = OffsetFetchResponse
+  { topics = fmap offsetFetchResponseTopicFromV3 x.topics
+  , errorCode = x.errorCode
+  , throttleTimeMs = x.throttleTimeMs
   }
 
 data ProduceRequest = ProduceRequest
@@ -2356,6 +2587,8 @@ syncGroupRequestToV0 x = SyncGroupRequestV0
   , memberId = x.memberId
   , assignments = fmap syncGroupRequestAssignmentToV0 x.assignments
   }
+syncGroupRequestToV1 :: SyncGroupRequest -> SyncGroupRequestV1
+syncGroupRequestToV1 = syncGroupRequestToV0
 
 syncGroupRequestFromV0 :: SyncGroupRequestV0 -> SyncGroupRequest
 syncGroupRequestFromV0 x = SyncGroupRequest
@@ -2364,12 +2597,17 @@ syncGroupRequestFromV0 x = SyncGroupRequest
   , memberId = x.memberId
   , assignments = fmap syncGroupRequestAssignmentFromV0 x.assignments
   }
+syncGroupRequestFromV1 :: SyncGroupRequestV1 -> SyncGroupRequest
+syncGroupRequestFromV1 = syncGroupRequestFromV0
 
 data SyncGroupResponse = SyncGroupResponse
-  { errorCode  :: {-# UNPACK #-} !ErrorCode
+  { errorCode      :: {-# UNPACK #-} !ErrorCode
     -- ^ The error code, or 0 if there was no error.
-  , assignment :: !ByteString
+  , assignment     :: !ByteString
     -- ^ The member assignment.
+  , throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
   } deriving (Show, Eq, Generic)
 instance Serializable SyncGroupResponse
 
@@ -2378,11 +2616,24 @@ syncGroupResponseToV0 x = SyncGroupResponseV0
   { errorCode = x.errorCode
   , assignment = x.assignment
   }
+syncGroupResponseToV1 :: SyncGroupResponse -> SyncGroupResponseV1
+syncGroupResponseToV1 x = SyncGroupResponseV1
+  { throttleTimeMs = x.throttleTimeMs
+  , errorCode = x.errorCode
+  , assignment = x.assignment
+  }
 
 syncGroupResponseFromV0 :: SyncGroupResponseV0 -> SyncGroupResponse
 syncGroupResponseFromV0 x = SyncGroupResponse
   { errorCode = x.errorCode
   , assignment = x.assignment
+  , throttleTimeMs = 0
+  }
+syncGroupResponseFromV1 :: SyncGroupResponseV1 -> SyncGroupResponse
+syncGroupResponseFromV1 x = SyncGroupResponse
+  { errorCode = x.errorCode
+  , assignment = x.assignment
+  , throttleTimeMs = x.throttleTimeMs
   }
 
 -------------------------------------------------------------------------------

@@ -4,13 +4,13 @@
 
 module HStream.Kafka.Server.Handler.Group
   ( -- 19: CreateTopics
-    handleFindCoordinatorV0
-  , handleJoinGroupV0
-  , handleSyncGroupV0
-  , handleHeartbeatV0
-  , handleLeaveGroupV0
-  , handleListGroupsV0
-  , handleDescribeGroupsV0
+    handleFindCoordinator
+  , handleJoinGroup
+  , handleSyncGroup
+  , handleHeartbeat
+  , handleLeaveGroup
+  , handleListGroups
+  , handleDescribeGroups
   ) where
 
 import           HStream.Common.Server.Lookup         (KafkaResource (..),
@@ -23,26 +23,26 @@ import qualified Kafka.Protocol.Message               as K
 import qualified Kafka.Protocol.Service               as K
 
 -- FIXME: move to a separated Coordinator module
-handleFindCoordinatorV0 :: ServerContext -> K.RequestContext -> K.FindCoordinatorRequestV0 -> IO K.FindCoordinatorResponseV0
-handleFindCoordinatorV0 ServerContext{..} _ req = do
+handleFindCoordinator :: ServerContext -> K.RequestContext -> K.FindCoordinatorRequest -> IO K.FindCoordinatorResponse
+handleFindCoordinator ServerContext{..} _ req = do
   A.ServerNode{..} <- lookupKafkaPersist metaHandle gossipContext loadBalanceHashRing scAdvertisedListenersKey (KafkaResGroup req.key)
   Log.info $ "findCoordinator for group:" <> Log.buildString' req.key <> ", result:" <> Log.buildString' serverNodeId
-  return $ K.FindCoordinatorResponseV0 0 (fromIntegral serverNodeId) serverNodeHost (fromIntegral serverNodePort)
+  return $ K.FindCoordinatorResponse 0 (fromIntegral serverNodeId) serverNodeHost (fromIntegral serverNodePort)
 
-handleJoinGroupV0 :: ServerContext -> K.RequestContext -> K.JoinGroupRequestV0 -> IO K.JoinGroupResponseV0
-handleJoinGroupV0 ServerContext{..} = GC.joinGroup scGroupCoordinator
+handleJoinGroup :: ServerContext -> K.RequestContext -> K.JoinGroupRequest -> IO K.JoinGroupResponse
+handleJoinGroup ServerContext{..} = GC.joinGroup scGroupCoordinator
 
-handleSyncGroupV0 :: ServerContext -> K.RequestContext -> K.SyncGroupRequestV0 -> IO K.SyncGroupResponseV0
-handleSyncGroupV0 ServerContext{..} _ = GC.syncGroup scGroupCoordinator
+handleSyncGroup :: ServerContext -> K.RequestContext -> K.SyncGroupRequest -> IO K.SyncGroupResponse
+handleSyncGroup ServerContext{..} _ = GC.syncGroup scGroupCoordinator
 
-handleHeartbeatV0 :: ServerContext -> K.RequestContext -> K.HeartbeatRequestV0 -> IO K.HeartbeatResponseV0
-handleHeartbeatV0 ServerContext{..} _ = GC.heartbeat scGroupCoordinator
+handleHeartbeat :: ServerContext -> K.RequestContext -> K.HeartbeatRequest -> IO K.HeartbeatResponse
+handleHeartbeat ServerContext{..} _ = GC.heartbeat scGroupCoordinator
 
-handleLeaveGroupV0 :: ServerContext -> K.RequestContext -> K.LeaveGroupRequestV0 -> IO K.LeaveGroupResponseV0
-handleLeaveGroupV0 ServerContext{..} _ = GC.leaveGroup scGroupCoordinator
+handleLeaveGroup :: ServerContext -> K.RequestContext -> K.LeaveGroupRequest -> IO K.LeaveGroupResponse
+handleLeaveGroup ServerContext{..} _ = GC.leaveGroup scGroupCoordinator
 
-handleListGroupsV0 :: ServerContext -> K.RequestContext -> K.ListGroupsRequestV0 -> IO K.ListGroupsResponseV0
-handleListGroupsV0 ServerContext{..} _ = GC.listGroups scGroupCoordinator
+handleListGroups :: ServerContext -> K.RequestContext -> K.ListGroupsRequest -> IO K.ListGroupsResponse
+handleListGroups ServerContext{..} _ = GC.listGroups scGroupCoordinator
 
-handleDescribeGroupsV0 :: ServerContext -> K.RequestContext -> K.DescribeGroupsRequestV0 -> IO K.DescribeGroupsResponseV0
-handleDescribeGroupsV0 ServerContext{..} _ = GC.describeGroups scGroupCoordinator
+handleDescribeGroups :: ServerContext -> K.RequestContext -> K.DescribeGroupsRequest -> IO K.DescribeGroupsResponse
+handleDescribeGroups ServerContext{..} _ = GC.describeGroups scGroupCoordinator

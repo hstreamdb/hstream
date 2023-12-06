@@ -111,10 +111,17 @@ API_VERSION_PATCHES = {
     "Metadata": (0, 4),
     "Produce": (0, 2),
     "Fetch": (0, 3),
-    "OffsetFetch": (0, 2),
-    "OffsetCommit": (0, 2),
+    "OffsetFetch": (0, 3),
+    "OffsetCommit": (0, 3),
     "ListOffsets": (0, 1),
     "SaslHandshake": (0, 1),
+
+    "JoinGroup": (0, 2),
+    "SyncGroup": (0, 1),
+    "LeaveGroup": (0, 1),
+    "Heartbeat": (0, 1),
+    "ListGroups": (0, 1),
+    "DescribeGroups": (0, 1),
 }
 
 # -----------------------------------------------------------------------------

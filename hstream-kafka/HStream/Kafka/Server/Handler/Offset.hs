@@ -2,13 +2,9 @@
 {-# LANGUAGE PatternSynonyms     #-}
 
 module HStream.Kafka.Server.Handler.Offset
- ( handleOffsetCommitV0
- , handleOffsetCommitV1
- , handleOffsetCommitV2
+ ( handleOffsetCommit
 
- , handleOffsetFetchV0
- , handleOffsetFetchV1
- , handleOffsetFetchV2
+ , handleOffsetFetch
 
  , handleListOffsetsV0
  , handleListOffsetsV1
@@ -104,35 +100,15 @@ listOffsetTopicPartitions ServerContext{..} topicName (Just offsetsPartitions) =
 --------------------
 -- 8: OffsetCommit
 --------------------
-handleOffsetCommitV0
-  :: ServerContext -> K.RequestContext -> K.OffsetCommitRequestV0 -> IO K.OffsetCommitResponseV0
-handleOffsetCommitV0 ServerContext{..} _ req = do
-  GC.commitOffsetsV0 scGroupCoordinator req
-
-handleOffsetCommitV1
-  :: ServerContext -> K.RequestContext -> K.OffsetCommitRequestV1 -> IO K.OffsetCommitResponseV1
-handleOffsetCommitV1 ServerContext{..} _ req = do
-  GC.commitOffsetsV1 scGroupCoordinator req
-
-handleOffsetCommitV2
-  :: ServerContext -> K.RequestContext -> K.OffsetCommitRequestV2 -> IO K.OffsetCommitResponseV2
-handleOffsetCommitV2 ServerContext{..} _ req = do
-  GC.commitOffsetsV2 scGroupCoordinator req
+handleOffsetCommit
+  :: ServerContext -> K.RequestContext -> K.OffsetCommitRequest -> IO K.OffsetCommitResponse
+handleOffsetCommit ServerContext{..} _ req = do
+  GC.commitOffsets scGroupCoordinator req
 
 --------------------
 -- 9: OffsetFetch
 --------------------
-handleOffsetFetchV0
-  :: ServerContext -> K.RequestContext -> K.OffsetFetchRequestV0 -> IO K.OffsetFetchResponseV0
-handleOffsetFetchV0 ServerContext{..} _ req = do
-  GC.fetchOffsetsV0 scGroupCoordinator req
-
-handleOffsetFetchV1
-  :: ServerContext -> K.RequestContext -> K.OffsetFetchRequestV1 -> IO K.OffsetFetchResponseV1
-handleOffsetFetchV1 ServerContext{..} _ req = do
-  GC.fetchOffsetsV1 scGroupCoordinator req
-
-handleOffsetFetchV2
-  :: ServerContext -> K.RequestContext -> K.OffsetFetchRequestV2 -> IO K.OffsetFetchResponseV2
-handleOffsetFetchV2 ServerContext{..} _ req = do
-  GC.fetchOffsetsV2 scGroupCoordinator req
+handleOffsetFetch
+  :: ServerContext -> K.RequestContext -> K.OffsetFetchRequest -> IO K.OffsetFetchResponse
+handleOffsetFetch ServerContext{..} _ req = do
+  GC.fetchOffsets scGroupCoordinator req
