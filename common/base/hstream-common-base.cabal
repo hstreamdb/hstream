@@ -83,6 +83,7 @@ library
     , bytestring
     , containers
     , data-default
+    , easy-file
     , fast-logger
     , ghc-prim       >=0.5    && <1.0
     , primitive      ^>=0.7.2
@@ -126,18 +127,23 @@ test-suite hstream-common-base-test
   type:               exitcode-stdio-1.0
   main-is:            Spec.hs
   hs-source-dirs:     test
-  other-modules:      HStream.BaseSpec
+  other-modules:
+    HStream.BaseSpec
+    HStream.LoggerSpec
+
   build-depends:
     , aeson
     , base                  >=4.11 && <5
     , bytestring
     , containers            ^>=0.6
     , directory
+    , filepath
     , hspec
     , hstream-common-base
     , QuickCheck
     , quickcheck-instances
     , random                ^>=1.2
+    , temporary
     , text
     , unordered-containers
     , vector

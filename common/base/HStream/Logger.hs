@@ -1,3 +1,6 @@
+{- Mostly Copy from https://hackage.haskell.org/package/fast-logger and modified.
+   The original license is BSD-3-Clause.
+-}
 {-# LANGUAGE BangPatterns         #-}
 {-# LANGUAGE CPP                  #-}
 {-# LANGUAGE GADTs                #-}
@@ -42,6 +45,7 @@ module HStream.Logger
     -- ** LogType
   , LogType
   , LogType' (..)
+  , Log.FileLogSpec (..)
     -- ** Formatter
   , LogFormatter
     -- ** Log Level
@@ -57,14 +61,15 @@ module HStream.Logger
 
 import           Control.Concurrent             (threadDelay)
 import qualified Control.Concurrent.Async       as Async
-import           Control.Exception              (finally)
-import           Control.Monad                  (forever, when)
-import           Data.IORef                     (IORef, atomicWriteIORef,
-                                                 newIORef, readIORef)
+import           Control.Concurrent.MVar
+import           Control.Exception
+import           Control.Monad
+import           Data.IORef
 import           Foreign.C.Types
 import           GHC.Conc.Sync                  (ThreadId (..), myThreadId)
 import           GHC.Exts                       (ThreadId#)
 import           GHC.Stack
+import           System.EasyFile                (getFileSize)
 import           System.IO.Unsafe               (unsafePerformIO)
 import qualified System.Log.FastLogger          as Log
 import qualified System.Log.FastLogger.Internal as Log
@@ -265,6 +270,7 @@ data LogType' a where
   LogStdout :: LogType' Log.LogStr
   LogStderr :: LogType' Log.LogStr
   LogFile :: FilePath -> LogType' Log.LogStr
+  LogFileRotate :: Log.FileLogSpec -> LogType' Log.LogStr
 
 -- | Logger config type used in this module.
 data LoggerConfig = LoggerConfig
@@ -306,6 +312,7 @@ newLogger !LoggerConfig{..} =
     LogStdout  -> Log.newStdoutLoggerSet loggerBufSize >>= loggerInit
     LogStderr  -> Log.newStderrLoggerSet loggerBufSize >>= loggerInit
     LogFile fp -> Log.newFileLoggerSet loggerBufSize fp >>= loggerInit
+    LogFileRotate fspec -> rotateLoggerInit fspec loggerBufSize
   where
     loggerInit lgrset = return $ Logger
       (\level shouldFlush cstack s ->
@@ -318,6 +325,26 @@ newLogger !LoggerConfig{..} =
       )
       (Log.rmLoggerSet lgrset)
       (loggerFlush lgrset)
+
+    -- Rotate file logger
+    rotateLoggerInit fspec bsize = do
+      lgrset <- Log.newFileLoggerSet bsize $ Log.log_file fspec
+      ref <- newIORef (0 :: Int)
+      mvar <- newMVar ()
+      return $ Logger
+        (\level shouldFlush cstack s ->
+          when (level >= loggerLevel) $ do
+            cnt <- decrease ref
+            tid <- myThreadId
+            time <- defaultTimeCache
+            Log.pushLogStr lgrset $
+              loggerFormatter (Log.toLogStr time) level s cstack tid
+            when (loggerFlushImmediately || shouldFlush) $ loggerFlush lgrset
+            when (cnt <= 0) $ tryRotate lgrset fspec ref mvar
+        )
+        (Log.rmLoggerSet lgrset)
+        (loggerFlush lgrset)
+
     loggerFlush lgrset = Log.flushLogStr lgrset
 
 globalLogger :: IORef Logger
@@ -418,3 +445,35 @@ foreign import ccall unsafe "rts_getThreadId" getThreadId :: ThreadId# -> CLong
 #else
 foreign import ccall unsafe "rts_getThreadId" getThreadId :: ThreadId# -> CInt
 #endif
+
+decrease :: IORef Int -> IO Int
+decrease ref = atomicModifyIORef' ref (\x -> (x - 1, x - 1))
+
+tryRotate :: Log.LoggerSet -> Log.FileLogSpec -> IORef Int -> MVar () -> IO ()
+tryRotate lgrset spec ref mvar = bracket lock unlock rotateFiles
+  where
+    lock           = tryTakeMVar mvar
+    unlock Nothing = return ()
+    unlock _       = putMVar mvar ()
+    rotateFiles Nothing = return ()
+    rotateFiles _       = do
+      msiz <- getSize
+      case msiz of
+        -- A file is not available.
+        -- So, let's set a big value to the counter so that
+        -- this function is not called frequently.
+        Nothing -> writeIORef ref 1000000
+        Just siz
+          | siz > limit -> do
+              Log.rotate spec
+              Log.renewLoggerSet lgrset
+              writeIORef ref $ estimate limit
+          | otherwise -> writeIORef ref $ estimate (limit - siz)
+    file = Log.log_file spec
+    limit = Log.log_file_size spec
+    getSize = handle (\(SomeException _) -> return Nothing) $
+      -- The log file is locked by GHC.
+      -- We need to get its file size by the way not using locks.
+      Just . fromIntegral <$> getFileSize file
+    -- 200 is an ad-hoc value for the length of log line.
+    estimate x = fromInteger (x `div` 200)
