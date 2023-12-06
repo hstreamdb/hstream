@@ -30,7 +30,8 @@ import           Kafka.Protocol.Encoding (NullableString, Serializable)
 data RequestContext = RequestContext
   { clientId   :: !(Maybe NullableString)
   , clientHost :: !String
-  }
+  , apiVersion :: {-# UNPACK #-} !Int16
+  } deriving (Show, Eq)
 
 type UnaryHandler i o = RequestContext -> i -> IO o
 
