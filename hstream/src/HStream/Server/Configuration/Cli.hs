@@ -11,6 +11,7 @@ module HStream.Server.Configuration.Cli
   , CliOptions (..)
   , cliOptionsParser
 
+  , FileLoggerSettings (..)
   , AdvertisedListeners
   , ListenersSecurityProtocolMap
   , SecurityProtocolMap
@@ -111,9 +112,11 @@ data CliOptions = CliOptions
   , cliMetaStore                    :: !(Maybe MetaStoreAddr)
   , cliSeedNodes                    :: !(Maybe Text)
 
+    -- Logger settings
   , cliServerLogLevel               :: !(Maybe Log.Level)
   , cliServerLogWithColor           :: !Bool
   , cliServerLogFlushImmediately    :: !Bool
+  , cliServerFileLog                :: !(Maybe FileLoggerSettings)
 
     -- TLS config
   , cliEnableTls                    :: !Bool
@@ -157,9 +160,11 @@ cliOptionsParser = do
   cliServerID           <- optional serverIDParser
   cliMetaStore          <- optional metaStoreAddrParser
 
+  -- Logger settings
   cliServerLogLevel     <- optional logLevelParser
   cliServerLogWithColor <- logWithColorParser
   cliServerLogFlushImmediately <- logFlushImmediatelyParser
+  cliServerFileLog <- optional fileLoggerSettingsParser
 
   cliLdAdminPort     <- optional ldAdminPortParser
   cliLdAdminHost     <- optional ldAdminHostParser
@@ -373,6 +378,28 @@ logFlushImmediatelyParser :: O.Parser Bool
 logFlushImmediatelyParser = O.switch
    $ long "log-flush-immediately"
   <> help "Flush immediately after logging, this may help debugging"
+
+data FileLoggerSettings = FileLoggerSettings
+  { logpath :: !FilePath
+  , logsize :: !Integer
+  , lognum  :: !Int
+  } deriving (Show, Eq)
+
+fileLoggerSettingsParser :: O.Parser FileLoggerSettings
+fileLoggerSettingsParser = do
+  logpath <- strOption
+     $ long "file-log-path"
+    <> metavar "PATH"
+    <> help "File logger path"
+  logsize <- option auto
+     $ long "file-log-size"
+    <> metavar "INT" <> value 20971520
+    <> help "The maximum size of the log before it's rolled, in bytes. Default is 20MB"
+  lognum <- option auto
+     $ long "file-log-num"
+    <> metavar "INT" <> value 10
+    <> help "The maximum number of rolled log files to keep. Default is 10"
+  return FileLoggerSettings{..}
 
 ldAdminPortParser :: O.Parser Int
 ldAdminPortParser = option auto

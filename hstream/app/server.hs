@@ -3,6 +3,7 @@
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE NamedFieldPuns      #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE QuasiQuotes         #-}
@@ -13,8 +14,6 @@
 import           Control.Concurrent               (forkIO, newEmptyMVar,
                                                    putMVar, readMVar)
 import qualified Control.Concurrent.Async         as Async
-import           Control.Concurrent.STM           (TVar, atomically, retry,
-                                                   writeTVar)
 import           Control.Exception                (bracket, handle)
 import           Control.Monad                    (forM, forM_, join, void,
                                                    when)
@@ -36,7 +35,6 @@ import           ZooKeeper                        (withResource,
                                                    zookeeperResInit)
 
 import           HStream.Base                     (setupFatalSignalHandler)
-import           HStream.Common.ConsistentHashing (HashRing, constructServerMap)
 import           HStream.Common.Server.HashRing   (updateHashRing)
 import           HStream.Common.Server.MetaData   (TaskAllocation (..),
                                                    clusterStartTimeId)
@@ -46,8 +44,7 @@ import           HStream.Gossip                   (GossipContext (..),
                                                    defaultGossipOpts,
                                                    initGossipContext,
                                                    startGossip, waitGossipBoot)
-import           HStream.Gossip.Types             (Epoch, InitType (Gossip))
-import           HStream.Gossip.Utils             (getMemberListWithEpochSTM)
+import           HStream.Gossip.Types             (InitType (Gossip))
 import qualified HStream.Kafka.Server.Config      as Ka
 import qualified HStream.Logger                   as Log
 import           HStream.MetaStore.Types          as M (MetaHandle (..),
@@ -55,6 +52,7 @@ import           HStream.MetaStore.Types          as M (MetaHandle (..),
                                                         RHandle (..))
 import           HStream.Server.Config            (AdvertisedListeners,
                                                    ExperimentalFeature (..),
+                                                   FileLoggerSettings (..),
                                                    ListenersSecurityProtocolMap,
                                                    MetaStoreAddr (..),
                                                    SecurityProtocolMap,
@@ -110,9 +108,13 @@ main = do
 app :: ServerOpts -> IO ()
 app config@ServerOpts{..} = do
   setupFatalSignalHandler
-  Log.setDefaultLogger _serverLogLevel _serverLogWithColor
-                       Log.LogStderr _serverLogFlushImmediately
   Log.setLogDeviceDbgLevel' _ldLogLevel
+  let logType = case config.serverFileLog of
+        Nothing -> Log.LogStderr
+        Just FileLoggerSettings{..} -> Log.LogFileRotate $
+          Log.FileLogSpec logpath logsize lognum
+  Log.setDefaultLogger _serverLogLevel _serverLogWithColor
+                       logType _serverLogFlushImmediately
 
   bracket (openRocksDBHandle _querySnapshotPath) closeRocksDBHandle $ \db_m ->
    case _metaStore of

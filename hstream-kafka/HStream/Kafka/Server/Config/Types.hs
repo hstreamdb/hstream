@@ -4,6 +4,7 @@ module HStream.Kafka.Server.Config.Types
   ( ServerOpts (..)
   , ServerCli (..), CliOptions (..)
 
+  , FileLoggerSettings (..)
   , MetaStoreAddr (..)
   , AdvertisedListeners
   , ListenersSecurityProtocolMap
@@ -63,6 +64,7 @@ data ServerOpts = ServerOpts
   , _serverLogLevel               :: !Log.Level
   , _serverLogWithColor           :: !Bool
   , _serverLogFlushImmediately    :: !Bool
+  , serverFileLog                 :: !(Maybe FileLoggerSettings)
 
   , _serverGossipAddress          :: !String
   , _serverGossipPort             :: !Word16
@@ -105,6 +107,7 @@ data CliOptions = CliOptions
   , cliServerLogLevel               :: !(Maybe Log.Level)
   , cliServerLogWithColor           :: !Bool
   , cliServerLogFlushImmediately    :: !Bool
+  , cliServerFileLog                :: !(Maybe FileLoggerSettings)
 
     -- Gossip
   , cliServerGossipAddress          :: !(Maybe String)
@@ -137,6 +140,12 @@ data CliOptions = CliOptions
   } deriving Show
 
 -------------------------------------------------------------------------------
+
+data FileLoggerSettings = FileLoggerSettings
+  { logpath :: !FilePath
+  , logsize :: !Integer
+  , lognum  :: !Int
+  } deriving (Show, Eq)
 
 data MetaStoreAddr
   = ZkAddr CBytes
