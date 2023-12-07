@@ -109,13 +109,12 @@ GLOBAL_API_VERSION_PATCH = (0, 0)
 API_VERSION_PATCHES = {
     "ApiVersions": (0, 3),
     "Metadata": (0, 4),
-    "Produce": (0, 2),
-    "Fetch": (0, 3),
+    "Produce": (0, 3),
+    "Fetch": (0, 4),
     "OffsetFetch": (0, 3),
     "OffsetCommit": (0, 3),
     "ListOffsets": (0, 1),
     "SaslHandshake": (0, 1),
-
     "JoinGroup": (0, 2),
     "SyncGroup": (0, 1),
     "LeaveGroup": (0, 1),

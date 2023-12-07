@@ -119,8 +119,8 @@ runServer opts sc mkPreAuthedHandlers mkAuthedHandlers =
           talk (peer, hds) s
 
     runHandler peer handlers reqHeader@RequestHeader{..} reqBs = do
+      Log.debug $ "Received request header: " <> Log.buildString' reqHeader
       P.incCounter totalRequests
-      Log.debug $ "receive requestHeader: " <> Log.build (show reqHeader)
       let ServiceHandler{..} = findHandler handlers requestApiKey requestApiVersion
       case rpcHandler of
         UnaryHandler rpcHandler' -> do
@@ -139,6 +139,7 @@ runServer opts sc mkPreAuthedHandlers mkAuthedHandlers =
             RequestContext
               { clientId = requestClientId
               , clientHost = showSockAddrHost peer
+              , apiVersion = requestApiVersion
               }
       resp <- rpcHandler' reqContext req
       Log.debug $ "Server response: " <> Log.buildString' resp

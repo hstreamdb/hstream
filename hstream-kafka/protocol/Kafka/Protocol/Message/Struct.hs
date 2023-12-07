@@ -226,6 +226,10 @@ type FetchPartitionV3 = FetchPartitionV0
 
 type FetchTopicV3 = FetchTopicV0
 
+type FetchPartitionV4 = FetchPartitionV0
+
+type FetchTopicV4 = FetchTopicV0
+
 data PartitionDataV0 = PartitionDataV0
   { partitionIndex :: {-# UNPACK #-} !Int32
     -- ^ The partition index.
@@ -257,6 +261,40 @@ type FetchableTopicResponseV2 = FetchableTopicResponseV0
 type PartitionDataV3 = PartitionDataV0
 
 type FetchableTopicResponseV3 = FetchableTopicResponseV0
+
+data AbortedTransactionV4 = AbortedTransactionV4
+  { producerId  :: {-# UNPACK #-} !Int64
+    -- ^ The producer id associated with the aborted transaction.
+  , firstOffset :: {-# UNPACK #-} !Int64
+    -- ^ The first offset in the aborted transaction.
+  } deriving (Show, Eq, Generic)
+instance Serializable AbortedTransactionV4
+
+data PartitionDataV4 = PartitionDataV4
+  { partitionIndex      :: {-# UNPACK #-} !Int32
+    -- ^ The partition index.
+  , errorCode           :: {-# UNPACK #-} !ErrorCode
+    -- ^ The error code, or 0 if there was no fetch error.
+  , highWatermark       :: {-# UNPACK #-} !Int64
+    -- ^ The current high water mark.
+  , lastStableOffset    :: {-# UNPACK #-} !Int64
+    -- ^ The last stable offset (or LSO) of the partition. This is the last
+    -- offset such that the state of all transactional records prior to this
+    -- offset have been decided (ABORTED or COMMITTED)
+  , abortedTransactions :: !(KaArray AbortedTransactionV4)
+    -- ^ The aborted transactions.
+  , recordBytes         :: !NullableBytes
+    -- ^ The record data.
+  } deriving (Show, Eq, Generic)
+instance Serializable PartitionDataV4
+
+data FetchableTopicResponseV4 = FetchableTopicResponseV4
+  { topic      :: !Text
+    -- ^ The topic name.
+  , partitions :: !(KaArray PartitionDataV4)
+    -- ^ The topic partitions.
+  } deriving (Show, Eq, Generic)
+instance Serializable FetchableTopicResponseV4
 
 data JoinGroupRequestProtocolV0 = JoinGroupRequestProtocolV0
   { name     :: !Text
@@ -599,6 +637,10 @@ type PartitionProduceDataV2 = PartitionProduceDataV0
 
 type TopicProduceDataV2 = TopicProduceDataV0
 
+type PartitionProduceDataV3 = PartitionProduceDataV0
+
+type TopicProduceDataV3 = TopicProduceDataV0
+
 data PartitionProduceResponseV0 = PartitionProduceResponseV0
   { index      :: {-# UNPACK #-} !Int32
     -- ^ The partition index.
@@ -643,6 +685,10 @@ data TopicProduceResponseV2 = TopicProduceResponseV2
     -- ^ Each partition that we produced to within the topic.
   } deriving (Show, Eq, Generic)
 instance Serializable TopicProduceResponseV2
+
+type PartitionProduceResponseV3 = PartitionProduceResponseV2
+
+type TopicProduceResponseV3 = TopicProduceResponseV2
 
 data SyncGroupRequestAssignmentV0 = SyncGroupRequestAssignmentV0
   { memberId   :: !Text
@@ -801,6 +847,31 @@ data FetchRequestV3 = FetchRequestV3
   } deriving (Show, Eq, Generic)
 instance Serializable FetchRequestV3
 
+data FetchRequestV4 = FetchRequestV4
+  { replicaId      :: {-# UNPACK #-} !Int32
+    -- ^ The broker ID of the follower, of -1 if this request is from a
+    -- consumer.
+  , maxWaitMs      :: {-# UNPACK #-} !Int32
+    -- ^ The maximum time in milliseconds to wait for the response.
+  , minBytes       :: {-# UNPACK #-} !Int32
+    -- ^ The minimum bytes to accumulate in the response.
+  , maxBytes       :: {-# UNPACK #-} !Int32
+    -- ^ The maximum bytes to fetch.  See KIP-74 for cases where this limit may
+    -- not be honored.
+  , isolationLevel :: {-# UNPACK #-} !Int8
+    -- ^ This setting controls the visibility of transactional records. Using
+    -- READ_UNCOMMITTED (isolation_level = 0) makes all records visible. With
+    -- READ_COMMITTED (isolation_level = 1), non-transactional and COMMITTED
+    -- transactional records are visible. To be more concrete, READ_COMMITTED
+    -- returns all data from offsets smaller than the current LSO (last stable
+    -- offset), and enables the inclusion of the list of aborted transactions
+    -- in the result, which allows consumers to discard ABORTED transactional
+    -- records
+  , topics         :: !(KaArray FetchTopicV0)
+    -- ^ The topics to fetch.
+  } deriving (Show, Eq, Generic)
+instance Serializable FetchRequestV4
+
 newtype FetchResponseV0 = FetchResponseV0
   { responses :: (KaArray FetchableTopicResponseV0)
   } deriving (Show, Eq, Generic)
@@ -818,6 +889,15 @@ instance Serializable FetchResponseV1
 type FetchResponseV2 = FetchResponseV1
 
 type FetchResponseV3 = FetchResponseV1
+
+data FetchResponseV4 = FetchResponseV4
+  { throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
+  , responses      :: !(KaArray FetchableTopicResponseV4)
+    -- ^ The response topics.
+  } deriving (Show, Eq, Generic)
+instance Serializable FetchResponseV4
 
 newtype FindCoordinatorRequestV0 = FindCoordinatorRequestV0
   { key :: Text
@@ -1189,6 +1269,20 @@ type ProduceRequestV1 = ProduceRequestV0
 
 type ProduceRequestV2 = ProduceRequestV0
 
+data ProduceRequestV3 = ProduceRequestV3
+  { transactionalId :: !NullableString
+    -- ^ The transactional ID, or null if the producer is not transactional.
+  , acks            :: {-# UNPACK #-} !Int16
+    -- ^ The number of acknowledgments the producer requires the leader to have
+    -- received before considering a request complete. Allowed values: 0 for no
+    -- acknowledgments, 1 for only the leader and -1 for the full ISR.
+  , timeoutMs       :: {-# UNPACK #-} !Int32
+    -- ^ The timeout to await a response in milliseconds.
+  , topicData       :: !(KaArray TopicProduceDataV0)
+    -- ^ Each topic to produce to.
+  } deriving (Show, Eq, Generic)
+instance Serializable ProduceRequestV3
+
 newtype ProduceResponseV0 = ProduceResponseV0
   { responses :: (KaArray TopicProduceResponseV0)
   } deriving (Show, Eq, Generic)
@@ -1211,6 +1305,8 @@ data ProduceResponseV2 = ProduceResponseV2
     -- to a quota violation, or zero if the request did not violate any quota.
   } deriving (Show, Eq, Generic)
 instance Serializable ProduceResponseV2
+
+type ProduceResponseV3 = ProduceResponseV2
 
 newtype SaslAuthenticateRequestV0 = SaslAuthenticateRequestV0
   { authBytes :: ByteString
@@ -1626,12 +1722,20 @@ data HStreamKafkaV3
 instance Service HStreamKafkaV3 where
   type ServiceName HStreamKafkaV3 = "HStreamKafkaV3"
   type ServiceMethods HStreamKafkaV3 =
-    '[ "fetch"
+    '[ "produce"
+     , "fetch"
      , "metadata"
      , "offsetCommit"
      , "offsetFetch"
      , "apiVersions"
      ]
+
+instance HasMethodImpl HStreamKafkaV3 "produce" where
+  type MethodName HStreamKafkaV3 "produce" = "produce"
+  type MethodKey HStreamKafkaV3 "produce" = 0
+  type MethodVersion HStreamKafkaV3 "produce" = 3
+  type MethodInput HStreamKafkaV3 "produce" = ProduceRequestV3
+  type MethodOutput HStreamKafkaV3 "produce" = ProduceResponseV3
 
 instance HasMethodImpl HStreamKafkaV3 "fetch" where
   type MethodName HStreamKafkaV3 "fetch" = "fetch"
@@ -1673,8 +1777,16 @@ data HStreamKafkaV4
 instance Service HStreamKafkaV4 where
   type ServiceName HStreamKafkaV4 = "HStreamKafkaV4"
   type ServiceMethods HStreamKafkaV4 =
-    '[ "metadata"
+    '[ "fetch"
+     , "metadata"
      ]
+
+instance HasMethodImpl HStreamKafkaV4 "fetch" where
+  type MethodName HStreamKafkaV4 "fetch" = "fetch"
+  type MethodKey HStreamKafkaV4 "fetch" = 1
+  type MethodVersion HStreamKafkaV4 "fetch" = 4
+  type MethodInput HStreamKafkaV4 "fetch" = FetchRequestV4
+  type MethodOutput HStreamKafkaV4 "fetch" = FetchResponseV4
 
 instance HasMethodImpl HStreamKafkaV4 "metadata" where
   type MethodName HStreamKafkaV4 "metadata" = "metadata"
@@ -1712,8 +1824,8 @@ instance Show ApiKey where
 
 supportedApiVersions :: [ApiVersionV0]
 supportedApiVersions =
-  [ ApiVersionV0 (ApiKey 0) 0 2
-  , ApiVersionV0 (ApiKey 1) 0 3
+  [ ApiVersionV0 (ApiKey 0) 0 3
+  , ApiVersionV0 (ApiKey 1) 0 4
   , ApiVersionV0 (ApiKey 2) 0 1
   , ApiVersionV0 (ApiKey 3) 0 4
   , ApiVersionV0 (ApiKey 8) 0 3
@@ -1737,10 +1849,12 @@ getHeaderVersion :: ApiKey -> Int16 -> (Int16, Int16)
 getHeaderVersion (ApiKey 0) 0  = (1, 0)
 getHeaderVersion (ApiKey 0) 1  = (1, 0)
 getHeaderVersion (ApiKey 0) 2  = (1, 0)
+getHeaderVersion (ApiKey 0) 3  = (1, 0)
 getHeaderVersion (ApiKey 1) 0  = (1, 0)
 getHeaderVersion (ApiKey 1) 1  = (1, 0)
 getHeaderVersion (ApiKey 1) 2  = (1, 0)
 getHeaderVersion (ApiKey 1) 3  = (1, 0)
+getHeaderVersion (ApiKey 1) 4  = (1, 0)
 getHeaderVersion (ApiKey 2) 0  = (1, 0)
 getHeaderVersion (ApiKey 2) 1  = (1, 0)
 getHeaderVersion (ApiKey 3) 0  = (1, 0)
