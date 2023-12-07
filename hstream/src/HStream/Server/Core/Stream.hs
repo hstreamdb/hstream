@@ -1,8 +1,10 @@
 {-# LANGUAGE BangPatterns      #-}
 {-# LANGUAGE CPP               #-}
 {-# LANGUAGE DataKinds         #-}
+{-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedLists   #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternGuards     #-}
 
 module HStream.Server.Core.Stream
   ( createStream
@@ -24,7 +26,9 @@ module HStream.Server.Core.Stream
   ) where
 
 import           Control.Concurrent                (getNumCapabilities)
-import           Control.Exception                 (catch, throwIO)
+import           Control.Exception                 (Exception (displayException, fromException, toException),
+                                                    SomeException, catch,
+                                                    throwIO, try)
 import           Control.Monad                     (forM, forM_, unless, void,
                                                     when)
 import qualified Data.Attoparsec.Text              as AP
@@ -34,7 +38,7 @@ import           Data.Either                       (partitionEithers)
 import           Data.Functor                      ((<&>))
 import qualified Data.List                         as L
 import qualified Data.Map.Strict                   as M
-import           Data.Maybe                        (fromMaybe)
+import           Data.Maybe                        (fromJust, fromMaybe)
 import qualified Data.Text                         as T
 import           Data.Vector                       (Vector)
 import qualified Data.Vector                       as V
@@ -270,17 +274,31 @@ trimShards ServerContext{..} streamName recordIds = do
   let streamId = S.transToStreamName streamName
   shards <- M.elems <$> S.listStreamPartitions scLDClient streamId
   concurrentCap <- getNumCapabilities
-  res <- limitedMapConcurrently (min 8 concurrentCap) (trim shards) points
-  return $ M.fromList res
+  (errors, res) <- partitionEithers <$> limitedMapConcurrently (min 8 concurrentCap) (trim shards) points
+  if null errors
+    then return $ M.fromList res
+    else throwIO @HE.SomeHStreamException . fromJust . fromException $ head errors
  where
-   trim shards r@Rid{..} = do
-     unless (rShardId `elem` shards) $
-       throwIO . HE.ShardNotExists $ "shard " <> show rShardId <> " doesn't belong to stream " <> show streamName
-     S.trim scLDClient rShardId (rBatchId - 1)
-     Log.info $ "trim to " <> Log.build (show $ rBatchId - 1)
-             <> " for shard " <> Log.build (show rShardId)
-             <> ", stream " <> Log.build streamName
-     return (rShardId, T.pack . show $ r)
+   trim shards r@Rid{..}
+     | rShardId `elem` shards = do
+         try (S.trim scLDClient rShardId (rBatchId - 1)) >>= \case
+           Left (e:: SomeException)
+             | Just e' <- fromException @S.TOOBIG e -> do
+                 Log.warning $ "trim shard " <> Log.build rShardId <> " with stream " <> Log.build streamName
+                            <> " return error: " <> Log.build (displayException e')
+                 return . Left . toException . HE.InvalidRecordId $ "recordId " <> show r <> " is beyond the tail of log: " <> displayException e'
+             | otherwise -> do
+                 Log.warning $ "trim shard " <> Log.build rShardId <> " with stream " <> Log.build streamName
+                            <> " return error: " <> Log.build (displayException e)
+                 return . Left . toException . HE.SomeStoreInternal $ "trim shard with recordId " <> show r <> " error: " <> displayException e
+           Right _ -> do
+             Log.info $ "trim to " <> Log.build (show $ rBatchId - 1)
+                     <> " for shard " <> Log.build (show rShardId)
+                     <> ", stream " <> Log.build streamName
+             return . Right $ (rShardId, T.pack . show $ r)
+     | otherwise = do
+         Log.warning $ "trim shards error, shard " <> Log.build rShardId <> " doesn't belong to stream " <> Log.build streamName
+         return . Left . toException . HE.ShardNotExists $ "shard " <> show rShardId <> " doesn't belong to stream " <> show streamName
 
 getStreamInfo :: ServerContext -> S.StreamId -> IO API.Stream
 getStreamInfo ServerContext{..} stream = do

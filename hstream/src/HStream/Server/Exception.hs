@@ -67,12 +67,16 @@ finalExceptionHandlers = [
   ]
 
 storeExceptionHandlers :: [Handler (StatusCode, StatusDetails)]
-storeExceptionHandlers = [
-  Handler $ \(err :: Store.EXISTS) -> do
-    Log.warning $ Log.buildString' err
-    return (StatusAlreadyExists, HE.mkStatusDetails $ HE.SomeStoreInternal "Stream or view with same name already exists in store")
-  ,
-  Handler $ \(err :: Store.SomeHStoreException) -> do
+storeExceptionHandlers =
+  [ Handler $ \(err :: Store.EXISTS) -> do
+      Log.warning $ Log.buildString' err
+      return (StatusAlreadyExists, HE.mkStatusDetails $ HE.SomeStoreInternal "Stream or view with same name already exists in store")
+
+  , Handler $ \(err :: Store.TOOBIG) -> do
+      Log.warning $ Log.buildString' err
+      HsGrpc.throwGrpcError $ HE.mkGrpcStatus err HsGrpc.StatusInvalidArgument
+
+  , Handler $ \(err :: Store.SomeHStoreException) -> do
     Log.warning $ Log.buildString' err
     return (StatusInternal, HE.mkStatusDetails (HE.SomeStoreInternal (displayException err)))
   ]
@@ -108,6 +112,10 @@ hStoreExHandlers =
       Log.warning $ Log.buildString' err
       let x = Just "Stream or view with same name already exists in store"
       HsGrpc.throwGrpcError $ HsGrpc.GrpcStatus HsGrpc.StatusAlreadyExists x Nothing
+
+  , Handler $ \(err :: Store.TOOBIG) -> do
+      Log.warning $ Log.buildString' err
+      HsGrpc.throwGrpcError $ HE.mkGrpcStatus err HsGrpc.StatusInvalidArgument
 
   , Handler $ \(err :: Store.SomeHStoreException) -> do
       Log.fatal $ Log.buildString' err
