@@ -170,7 +170,7 @@ trimStreamHandler sc (ServerNormalRequest _metadata request@TrimStreamRequest{..
 
 handleTrimStream :: ServerContext -> G.UnaryHandler TrimStreamRequest Empty
 handleTrimStream sc _ request@TrimStreamRequest{..} = catchDefaultEx $ do
-  Log.info $ "Receive trim stram Request: " <> Log.buildString' request
+  Log.info $ "Receive trim stream Request: " <> Log.buildString' request
   validateNameAndThrow ResStream trimStreamRequestStreamName
   when (isNothing trimStreamRequestTrimPoint) $
     throwIO . HE.InvalidTrimPoint $ "invalid trim point: " <> show trimStreamRequestTrimPoint
@@ -188,6 +188,7 @@ trimShardsHandler sc (ServerNormalRequest _metadata request@TrimShardsRequest{..
   C.trimShards sc trimShardsRequestStreamName trimShardsRequestRecordIds
     >>= returnResp . TrimShardsResponse
 
+-- FIXME: update TrimShardsResponse to return successed and failed result
 handleTrimShards :: ServerContext -> G.UnaryHandler TrimShardsRequest TrimShardsResponse
 handleTrimShards sc _ request@TrimShardsRequest{..} = catchDefaultEx $ do
   Log.info $ "Receive trim Shards Request: " <> Log.buildString' request

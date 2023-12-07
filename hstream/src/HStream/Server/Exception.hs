@@ -109,6 +109,10 @@ hStoreExHandlers =
       let x = Just "Stream or view with same name already exists in store"
       HsGrpc.throwGrpcError $ HsGrpc.GrpcStatus HsGrpc.StatusAlreadyExists x Nothing
 
+  , Handler $ \(err :: Store.TOOBIG) -> do
+      Log.warning $ Log.buildString' err
+      HsGrpc.throwGrpcError $ HE.mkGrpcStatus err HsGrpc.StatusInvalidArgument
+
   , Handler $ \(err :: Store.SomeHStoreException) -> do
       Log.fatal $ Log.buildString' err
       HsGrpc.throwGrpcError $ HE.mkGrpcStatus err HsGrpc.StatusInternal
