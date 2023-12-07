@@ -29,5 +29,5 @@ totalProduceRequest =
 totalFailedProduceRequest :: P.Vector P.Label2 P.Counter
 totalFailedProduceRequest =
   P.unsafeRegister . P.vector ("topicName", "partition") . P.counter $
-    P.Info "total_produce_request" "Total failed produce request for a topic"
+    P.Info "total_failed_produce_request" "Total failed produce request for a topic"
 {-# NOINLINE totalFailedProduceRequest #-}

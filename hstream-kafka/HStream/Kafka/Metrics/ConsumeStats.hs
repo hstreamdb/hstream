@@ -28,6 +28,6 @@ totalConsumeRequest =
 
 consumerGroupCommittedOffsets :: P.Vector P.Label3 P.Gauge
 consumerGroupCommittedOffsets =
-  P.unsafeRegister . P.vector ("group", "topicName", "partition") . P.gauge $
+  P.unsafeRegister . P.vector ("consumer_group", "topicName", "partition") . P.gauge $
     P.Info "consumer_group_committed_offset" "Latest committed offset for a consumer group"
 {-# NOINLINE consumerGroupCommittedOffsets #-}

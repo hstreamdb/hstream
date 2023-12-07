@@ -184,7 +184,7 @@ handleFetch ServerContext{..} _ r = K.catchFetchResponseEx $ do
            if r.maxWaitMs > defTimeout
               then do
                 S.readerSetTimeout reader defTimeout
-                rs1 <- S.readerRead reader storageOpts.fetchMaxLen
+                rs1 <- P.observeDuration readLatencySnd $ S.readerRead reader storageOpts.fetchMaxLen
                 let size = sum (map (K.recordBytesSize . (.recordPayload)) rs1)
                 if size >= fromIntegral r.minBytes
                    then pure rs1
