@@ -79,6 +79,7 @@ cliOptionsParser = do
   cliServerLogLevel     <- optional logLevelParser
   cliServerLogWithColor <- logWithColorParser
   cliServerLogFlushImmediately <- logFlushImmediatelyParser
+  cliServerFileLog <- optional fileLoggerSettingsParser
 
   cliServerGossipAddress <- optional serverGossipAddressParser
   cliServerGossipPort    <- optional serverGossipPortParser
@@ -144,6 +145,22 @@ listenersSecurityProtocolMapParser = parserOpt parseListenersSecurityProtocolMap
   <> help ( "listener security, in format <listener_key>:<security_key>. "
          <> "e.g. public:tls,private:plaintext"
           )
+
+fileLoggerSettingsParser :: O.Parser FileLoggerSettings
+fileLoggerSettingsParser = do
+  logpath <- strOption
+     $ long "file-log-path"
+    <> metavar "PATH"
+    <> help "File logger path"
+  logsize <- option auto
+     $ long "file-log-size"
+    <> metavar "INT" <> value 20971520
+    <> help "The maximum size of the log before it's rolled, in bytes. Default is 20MB"
+  lognum <- option auto
+     $ long "file-log-num"
+    <> metavar "INT" <> value 10
+    <> help "The maximum number of rolled log files to keep. Default is 10"
+  return FileLoggerSettings{..}
 
 metaStoreAddrParser :: O.Parser MetaStoreAddr
 metaStoreAddrParser = option (O.maybeReader (Just . parseMetaStoreAddr . T.pack))

@@ -109,6 +109,7 @@ defaultConfig = ServerOpts
   , _serverLogLevel            = read "info"
   , _serverLogWithColor        = False
   , _serverLogFlushImmediately = False
+  , serverFileLog              = Nothing
   , _seedNodes                 = [("127.0.0.1", 6571)]
   , _ldAdminHost               = "127.0.0.1"
   , _ldAdminPort               = 6440
@@ -225,6 +226,7 @@ emptyCliOptions = CliOptions
   , cliServerLogLevel     = Nothing
   , cliServerLogWithColor = False
   , cliServerLogFlushImmediately = False
+  , cliServerFileLog      = Nothing
   , cliStoreCompression   = Nothing
   , cliMetaStore          = Nothing
   , cliSeedNodes          = Nothing
@@ -273,6 +275,7 @@ instance Arbitrary ServerOpts where
     _serverLogLevel            <- read <$> logLevelGen
     _serverLogWithColor        <- arbitrary
     _serverLogFlushImmediately <- arbitrary
+    let serverFileLog = Nothing
     _seedNodes                 <- listOf5' ((,) <$> (encodeUtf8 . T.pack <$> addressGen) <*> portGen)
     _ldAdminHost               <- encodeUtf8 . T.pack <$> addressGen
     _ldAdminPort               <- portGen
@@ -308,6 +311,7 @@ instance Arbitrary CliOptions where
     cliServerLogLevel     <- genMaybe $ read <$> logLevelGen
     cliServerLogWithColor <- arbitrary
     cliServerLogFlushImmediately <- arbitrary
+    let cliServerFileLog = Nothing
     cliStoreCompression   <- arbitrary
     cliMetaStore          <- arbitrary
     cliSeedNodes          <- genMaybe seedNodesStringGen
