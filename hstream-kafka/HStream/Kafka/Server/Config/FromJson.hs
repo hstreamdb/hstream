@@ -67,6 +67,7 @@ parseJSONToOptions CliOptions{..} obj = do
   let !_serverLogLevel     = fromMaybe (readWithErrLog "log-level" nodeLogLevel) cliServerLogLevel
   let !_serverLogWithColor = nodeLogWithColor || cliServerLogWithColor
   let !_serverLogFlushImmediately = cliServerLogFlushImmediately
+  let !serverFileLog = cliServerFileLog
 
   -- Cluster Option
   seeds <- flip fromMaybe cliSeedNodes <$> (nodeCfgObj .: "seed-nodes")

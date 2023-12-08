@@ -6,6 +6,7 @@ module HStream.Kafka.Server.Config
   , runServerConfig
   , runServerFromCliOpts
 
+  , FileLoggerSettings (..)
   , MetaStoreAddr (..)
   , AdvertisedListeners
   , ListenersSecurityProtocolMap

@@ -2,6 +2,7 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE QuasiQuotes         #-}
@@ -47,6 +48,7 @@ import           HStream.Gossip                    (GossipContext (..),
 import qualified HStream.Gossip.Types              as Gossip
 import qualified HStream.Kafka.Network             as K
 import           HStream.Kafka.Server.Config       (AdvertisedListeners,
+                                                    FileLoggerSettings (..),
                                                     ListenersSecurityProtocolMap,
                                                     MetaStoreAddr (..),
                                                     SecurityProtocolMap,
@@ -81,9 +83,13 @@ runApp = do
 app :: ServerOpts -> IO ()
 app config@ServerOpts{..} = do
   setupFatalSignalHandler
-  Log.setDefaultLogger _serverLogLevel _serverLogWithColor
-                       Log.LogStderr _serverLogFlushImmediately
   S.setLogDeviceDbgLevel' _ldLogLevel
+  let logType = case config.serverFileLog of
+        Nothing -> Log.LogStderr
+        Just FileLoggerSettings{..} -> Log.LogFileRotate $
+          Log.FileLogSpec logpath logsize lognum
+  Log.setDefaultLogger _serverLogLevel _serverLogWithColor
+                       logType _serverLogFlushImmediately
   case _metaStore of
     ZkAddr addr -> do
       let zkRes = zookeeperResInit addr Nothing 5000 Nothing 0

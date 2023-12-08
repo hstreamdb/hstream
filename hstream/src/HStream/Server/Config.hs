@@ -15,6 +15,7 @@ module HStream.Server.Config
 
     -- *
   , TlsConfig (..)
+  , FileLoggerSettings (..)
   , AdvertisedListeners
   , advertisedListenersToPB
   , ListenersSecurityProtocolMap
@@ -107,6 +108,7 @@ data ServerOpts = ServerOpts
   , _serverLogLevel               :: !Log.Level
   , _serverLogWithColor           :: !Bool
   , _serverLogFlushImmediately    :: !Bool
+  , serverFileLog                 :: !(Maybe FileLoggerSettings)
   , _seedNodes                    :: ![(ByteString, Int)]
   , _ldAdminHost                  :: !ByteString
   , _ldAdminPort                  :: !Int
@@ -170,9 +172,11 @@ parseJSONToOptions CliOptions{..} obj = do
 
   let !_metaStore          = fromMaybe nodeMetaStore cliMetaStore
   let !_compression        = fromMaybe CompressionNone cliStoreCompression
+
   let !_serverLogLevel     = fromMaybe (readWithErrLog "log-level" nodeLogLevel) cliServerLogLevel
   let !_serverLogWithColor = nodeLogWithColor || cliServerLogWithColor
   let !_serverLogFlushImmediately = cliServerLogFlushImmediately
+  let !serverFileLog = cliServerFileLog
 
   -- Cluster Option
   seeds <- flip fromMaybe cliSeedNodes <$> (nodeCfgObj .: "seed-nodes")
