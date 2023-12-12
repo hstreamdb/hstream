@@ -3,7 +3,10 @@ module HStream.Admin.Server.Types where
 import           Data.Aeson                (FromJSON (..), ToJSON (..))
 import qualified Data.Aeson                as Aeson
 import           Data.Text                 (Text)
+import qualified Data.Text.Lazy            as TL
+import qualified Data.Text.Lazy.Encoding   as TL
 import           GHC.Generics              (Generic)
+import qualified GHC.IO.Exception          as E
 import           Network.Socket            (PortNumber)
 import           Options.Applicative       ((<|>))
 import qualified Options.Applicative       as O
@@ -403,3 +406,24 @@ instance FromJSON a => FromJSON (AdminCommandResponse a) where
 
 -------------------------------------------------------------------------------
 -- Helpers
+
+tableResponse :: Aeson.Value -> Text
+tableResponse = jsonEncode' . AdminCommandResponse CommandResponseTypeTable
+
+plainResponse :: Text -> Text
+plainResponse = jsonEncode' . AdminCommandResponse CommandResponseTypePlain
+
+errorResponse :: Text -> Text
+errorResponse = jsonEncode' . AdminCommandResponse CommandResponseTypeError
+
+throwParsingErr :: String -> IO a
+throwParsingErr = err' "Parsing admin command error"
+
+err' :: String -> String -> IO a
+err' errloc errmsg = E.ioError $ E.IOError Nothing E.InvalidArgument errloc errmsg Nothing Nothing
+
+jsonEncode :: Aeson.Value -> Text
+jsonEncode = TL.toStrict . TL.decodeUtf8 . Aeson.encode
+
+jsonEncode' :: Aeson.ToJSON a => a -> Text
+jsonEncode' = jsonEncode . Aeson.toJSON
