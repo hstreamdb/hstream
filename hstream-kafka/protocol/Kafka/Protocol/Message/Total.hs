@@ -1883,6 +1883,44 @@ findCoordinatorResponseFromV0 x = FindCoordinatorResponse
   , port = x.port
   }
 
+data HadminCommandRequest = HadminCommandRequest
+  { command      :: !CompactString
+    -- ^ The admin command.
+  , taggedFields :: !TaggedFields
+  } deriving (Show, Eq, Generic)
+instance Serializable HadminCommandRequest
+
+hadminCommandRequestToV0 :: HadminCommandRequest -> HadminCommandRequestV0
+hadminCommandRequestToV0 x = HadminCommandRequestV0
+  { command = x.command
+  , taggedFields = x.taggedFields
+  }
+
+hadminCommandRequestFromV0 :: HadminCommandRequestV0 -> HadminCommandRequest
+hadminCommandRequestFromV0 x = HadminCommandRequest
+  { command = x.command
+  , taggedFields = x.taggedFields
+  }
+
+data HadminCommandResponse = HadminCommandResponse
+  { result       :: !CompactString
+    -- ^ The admin command result.
+  , taggedFields :: !TaggedFields
+  } deriving (Show, Eq, Generic)
+instance Serializable HadminCommandResponse
+
+hadminCommandResponseToV0 :: HadminCommandResponse -> HadminCommandResponseV0
+hadminCommandResponseToV0 x = HadminCommandResponseV0
+  { result = x.result
+  , taggedFields = x.taggedFields
+  }
+
+hadminCommandResponseFromV0 :: HadminCommandResponseV0 -> HadminCommandResponse
+hadminCommandResponseFromV0 x = HadminCommandResponse
+  { result = x.result
+  , taggedFields = x.taggedFields
+  }
+
 data HeartbeatRequest = HeartbeatRequest
   { groupId      :: !Text
     -- ^ The group id.
@@ -2910,3 +2948,10 @@ instance Exception SyncGroupResponseEx
 
 catchSyncGroupResponseEx :: IO SyncGroupResponse -> IO SyncGroupResponse
 catchSyncGroupResponseEx act = act `catch` \(SyncGroupResponseEx resp) -> pure resp
+
+newtype HadminCommandResponseEx = HadminCommandResponseEx HadminCommandResponse
+  deriving (Show, Eq)
+instance Exception HadminCommandResponseEx
+
+catchHadminCommandResponseEx :: IO HadminCommandResponse -> IO HadminCommandResponse
+catchHadminCommandResponseEx act = act `catch` \(HadminCommandResponseEx resp) -> pure resp
