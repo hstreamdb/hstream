@@ -1374,6 +1374,20 @@ data SyncGroupResponseV1 = SyncGroupResponseV1
   } deriving (Show, Eq, Generic)
 instance Serializable SyncGroupResponseV1
 
+data HadminCommandRequestV0 = HadminCommandRequestV0
+  { command      :: !CompactString
+    -- ^ The admin command.
+  , taggedFields :: !TaggedFields
+  } deriving (Show, Eq, Generic)
+instance Serializable HadminCommandRequestV0
+
+data HadminCommandResponseV0 = HadminCommandResponseV0
+  { result       :: !CompactString
+    -- ^ The admin command result.
+  , taggedFields :: !TaggedFields
+  } deriving (Show, Eq, Generic)
+instance Serializable HadminCommandResponseV0
+
 -------------------------------------------------------------------------------
 
 data HStreamKafkaV0
@@ -1381,7 +1395,8 @@ data HStreamKafkaV0
 instance Service HStreamKafkaV0 where
   type ServiceName HStreamKafkaV0 = "HStreamKafkaV0"
   type ServiceMethods HStreamKafkaV0 =
-    '[ "produce"
+    '[ "hadminCommand"
+     , "produce"
      , "fetch"
      , "listOffsets"
      , "metadata"
@@ -1401,6 +1416,13 @@ instance Service HStreamKafkaV0 where
      , "describeConfigs"
      , "saslAuthenticate"
      ]
+
+instance HasMethodImpl HStreamKafkaV0 "hadminCommand" where
+  type MethodName HStreamKafkaV0 "hadminCommand" = "hadminCommand"
+  type MethodKey HStreamKafkaV0 "hadminCommand" = 65526
+  type MethodVersion HStreamKafkaV0 "hadminCommand" = 0
+  type MethodInput HStreamKafkaV0 "hadminCommand" = HadminCommandRequestV0
+  type MethodOutput HStreamKafkaV0 "hadminCommand" = HadminCommandResponseV0
 
 instance HasMethodImpl HStreamKafkaV0 "produce" where
   type MethodName HStreamKafkaV0 "produce" = "produce"
@@ -1801,26 +1823,27 @@ newtype ApiKey = ApiKey Int16
   deriving newtype (Num, Integral, Real, Enum, Ord, Eq, Bounded, Serializable)
 
 instance Show ApiKey where
-  show (ApiKey 0)  = "Produce(0)"
-  show (ApiKey 1)  = "Fetch(1)"
-  show (ApiKey 2)  = "ListOffsets(2)"
-  show (ApiKey 3)  = "Metadata(3)"
-  show (ApiKey 8)  = "OffsetCommit(8)"
-  show (ApiKey 9)  = "OffsetFetch(9)"
-  show (ApiKey 10) = "FindCoordinator(10)"
-  show (ApiKey 11) = "JoinGroup(11)"
-  show (ApiKey 12) = "Heartbeat(12)"
-  show (ApiKey 13) = "LeaveGroup(13)"
-  show (ApiKey 14) = "SyncGroup(14)"
-  show (ApiKey 15) = "DescribeGroups(15)"
-  show (ApiKey 16) = "ListGroups(16)"
-  show (ApiKey 17) = "SaslHandshake(17)"
-  show (ApiKey 18) = "ApiVersions(18)"
-  show (ApiKey 19) = "CreateTopics(19)"
-  show (ApiKey 20) = "DeleteTopics(20)"
-  show (ApiKey 32) = "DescribeConfigs(32)"
-  show (ApiKey 36) = "SaslAuthenticate(36)"
-  show (ApiKey n)  = "Unknown " <> show n
+  show (ApiKey (-10)) = "HadminCommand(-10)"
+  show (ApiKey (0))   = "Produce(0)"
+  show (ApiKey (1))   = "Fetch(1)"
+  show (ApiKey (2))   = "ListOffsets(2)"
+  show (ApiKey (3))   = "Metadata(3)"
+  show (ApiKey (8))   = "OffsetCommit(8)"
+  show (ApiKey (9))   = "OffsetFetch(9)"
+  show (ApiKey (10))  = "FindCoordinator(10)"
+  show (ApiKey (11))  = "JoinGroup(11)"
+  show (ApiKey (12))  = "Heartbeat(12)"
+  show (ApiKey (13))  = "LeaveGroup(13)"
+  show (ApiKey (14))  = "SyncGroup(14)"
+  show (ApiKey (15))  = "DescribeGroups(15)"
+  show (ApiKey (16))  = "ListGroups(16)"
+  show (ApiKey (17))  = "SaslHandshake(17)"
+  show (ApiKey (18))  = "ApiVersions(18)"
+  show (ApiKey (19))  = "CreateTopics(19)"
+  show (ApiKey (20))  = "DeleteTopics(20)"
+  show (ApiKey (32))  = "DescribeConfigs(32)"
+  show (ApiKey (36))  = "SaslAuthenticate(36)"
+  show (ApiKey n)     = "Unknown " <> show n
 
 supportedApiVersions :: [ApiVersionV0]
 supportedApiVersions =
@@ -1846,53 +1869,54 @@ supportedApiVersions =
   ]
 
 getHeaderVersion :: ApiKey -> Int16 -> (Int16, Int16)
-getHeaderVersion (ApiKey 0) 0  = (1, 0)
-getHeaderVersion (ApiKey 0) 1  = (1, 0)
-getHeaderVersion (ApiKey 0) 2  = (1, 0)
-getHeaderVersion (ApiKey 0) 3  = (1, 0)
-getHeaderVersion (ApiKey 1) 0  = (1, 0)
-getHeaderVersion (ApiKey 1) 1  = (1, 0)
-getHeaderVersion (ApiKey 1) 2  = (1, 0)
-getHeaderVersion (ApiKey 1) 3  = (1, 0)
-getHeaderVersion (ApiKey 1) 4  = (1, 0)
-getHeaderVersion (ApiKey 2) 0  = (1, 0)
-getHeaderVersion (ApiKey 2) 1  = (1, 0)
-getHeaderVersion (ApiKey 3) 0  = (1, 0)
-getHeaderVersion (ApiKey 3) 1  = (1, 0)
-getHeaderVersion (ApiKey 3) 2  = (1, 0)
-getHeaderVersion (ApiKey 3) 3  = (1, 0)
-getHeaderVersion (ApiKey 3) 4  = (1, 0)
-getHeaderVersion (ApiKey 8) 0  = (1, 0)
-getHeaderVersion (ApiKey 8) 1  = (1, 0)
-getHeaderVersion (ApiKey 8) 2  = (1, 0)
-getHeaderVersion (ApiKey 8) 3  = (1, 0)
-getHeaderVersion (ApiKey 9) 0  = (1, 0)
-getHeaderVersion (ApiKey 9) 1  = (1, 0)
-getHeaderVersion (ApiKey 9) 2  = (1, 0)
-getHeaderVersion (ApiKey 9) 3  = (1, 0)
-getHeaderVersion (ApiKey 10) 0 = (1, 0)
-getHeaderVersion (ApiKey 11) 0 = (1, 0)
-getHeaderVersion (ApiKey 11) 1 = (1, 0)
-getHeaderVersion (ApiKey 11) 2 = (1, 0)
-getHeaderVersion (ApiKey 12) 0 = (1, 0)
-getHeaderVersion (ApiKey 12) 1 = (1, 0)
-getHeaderVersion (ApiKey 13) 0 = (1, 0)
-getHeaderVersion (ApiKey 13) 1 = (1, 0)
-getHeaderVersion (ApiKey 14) 0 = (1, 0)
-getHeaderVersion (ApiKey 14) 1 = (1, 0)
-getHeaderVersion (ApiKey 15) 0 = (1, 0)
-getHeaderVersion (ApiKey 15) 1 = (1, 0)
-getHeaderVersion (ApiKey 16) 0 = (1, 0)
-getHeaderVersion (ApiKey 16) 1 = (1, 0)
-getHeaderVersion (ApiKey 17) 0 = (1, 0)
-getHeaderVersion (ApiKey 17) 1 = (1, 0)
-getHeaderVersion (ApiKey 18) 0 = (1, 0)
-getHeaderVersion (ApiKey 18) 1 = (1, 0)
-getHeaderVersion (ApiKey 18) 2 = (1, 0)
-getHeaderVersion (ApiKey 18) 3 = (2, 0)
-getHeaderVersion (ApiKey 19) 0 = (1, 0)
-getHeaderVersion (ApiKey 20) 0 = (1, 0)
-getHeaderVersion (ApiKey 32) 0 = (1, 0)
-getHeaderVersion (ApiKey 36) 0 = (1, 0)
-getHeaderVersion k v           = error $ "Unknown " <> show k <> " v" <> show v
+getHeaderVersion (ApiKey (-10)) 0 = (2, 1)
+getHeaderVersion (ApiKey (0)) 0 = (1, 0)
+getHeaderVersion (ApiKey (0)) 1 = (1, 0)
+getHeaderVersion (ApiKey (0)) 2 = (1, 0)
+getHeaderVersion (ApiKey (0)) 3 = (1, 0)
+getHeaderVersion (ApiKey (1)) 0 = (1, 0)
+getHeaderVersion (ApiKey (1)) 1 = (1, 0)
+getHeaderVersion (ApiKey (1)) 2 = (1, 0)
+getHeaderVersion (ApiKey (1)) 3 = (1, 0)
+getHeaderVersion (ApiKey (1)) 4 = (1, 0)
+getHeaderVersion (ApiKey (2)) 0 = (1, 0)
+getHeaderVersion (ApiKey (2)) 1 = (1, 0)
+getHeaderVersion (ApiKey (3)) 0 = (1, 0)
+getHeaderVersion (ApiKey (3)) 1 = (1, 0)
+getHeaderVersion (ApiKey (3)) 2 = (1, 0)
+getHeaderVersion (ApiKey (3)) 3 = (1, 0)
+getHeaderVersion (ApiKey (3)) 4 = (1, 0)
+getHeaderVersion (ApiKey (8)) 0 = (1, 0)
+getHeaderVersion (ApiKey (8)) 1 = (1, 0)
+getHeaderVersion (ApiKey (8)) 2 = (1, 0)
+getHeaderVersion (ApiKey (8)) 3 = (1, 0)
+getHeaderVersion (ApiKey (9)) 0 = (1, 0)
+getHeaderVersion (ApiKey (9)) 1 = (1, 0)
+getHeaderVersion (ApiKey (9)) 2 = (1, 0)
+getHeaderVersion (ApiKey (9)) 3 = (1, 0)
+getHeaderVersion (ApiKey (10)) 0 = (1, 0)
+getHeaderVersion (ApiKey (11)) 0 = (1, 0)
+getHeaderVersion (ApiKey (11)) 1 = (1, 0)
+getHeaderVersion (ApiKey (11)) 2 = (1, 0)
+getHeaderVersion (ApiKey (12)) 0 = (1, 0)
+getHeaderVersion (ApiKey (12)) 1 = (1, 0)
+getHeaderVersion (ApiKey (13)) 0 = (1, 0)
+getHeaderVersion (ApiKey (13)) 1 = (1, 0)
+getHeaderVersion (ApiKey (14)) 0 = (1, 0)
+getHeaderVersion (ApiKey (14)) 1 = (1, 0)
+getHeaderVersion (ApiKey (15)) 0 = (1, 0)
+getHeaderVersion (ApiKey (15)) 1 = (1, 0)
+getHeaderVersion (ApiKey (16)) 0 = (1, 0)
+getHeaderVersion (ApiKey (16)) 1 = (1, 0)
+getHeaderVersion (ApiKey (17)) 0 = (1, 0)
+getHeaderVersion (ApiKey (17)) 1 = (1, 0)
+getHeaderVersion (ApiKey (18)) 0 = (1, 0)
+getHeaderVersion (ApiKey (18)) 1 = (1, 0)
+getHeaderVersion (ApiKey (18)) 2 = (1, 0)
+getHeaderVersion (ApiKey (18)) 3 = (2, 0)
+getHeaderVersion (ApiKey (19)) 0 = (1, 0)
+getHeaderVersion (ApiKey (20)) 0 = (1, 0)
+getHeaderVersion (ApiKey (32)) 0 = (1, 0)
+getHeaderVersion (ApiKey (36)) 0 = (1, 0)
+getHeaderVersion k v = error $ "Unknown " <> show k <> " v" <> show v
 {-# INLINE getHeaderVersion #-}

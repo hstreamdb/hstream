@@ -13,36 +13,37 @@ module HStream.Kafka.Client.Cli
   , handleConsumeCommand
   ) where
 
-import           Colourista               (formatWith, yellow)
-import           Control.Exception        (finally)
+import           Colourista                   (formatWith, yellow)
+import           Control.Exception            (finally)
 import           Control.Monad
-import           Control.Monad.IO.Class   (liftIO)
-import           Data.ByteString          (ByteString)
-import qualified Data.ByteString          as BS
-import           Data.Char                (toUpper)
+import           Control.Monad.IO.Class       (liftIO)
+import           Data.ByteString              (ByteString)
+import qualified Data.ByteString              as BS
+import           Data.Char                    (toUpper)
 import           Data.Int
 import           Data.IORef
 import           Data.Maybe
-import           Data.Text                (Text)
-import qualified Data.Text                as Text
-import           Data.Text.Encoding       (decodeUtf8, encodeUtf8)
-import qualified Data.Vector              as V
+import           Data.Text                    (Text)
+import qualified Data.Text                    as Text
+import           Data.Text.Encoding           (decodeUtf8, encodeUtf8)
+import qualified Data.Vector                  as V
 import           Data.Word
 import           Foreign.C.Types
 import           Foreign.Ptr
 import qualified HsForeign
 import           Options.Applicative
-import qualified Options.Applicative      as O
-import qualified System.Console.Haskeline as HL
-import           System.IO                (hFlush, stdout)
-import           System.IO.Unsafe         (unsafePerformIO)
+import qualified Options.Applicative          as O
+import qualified System.Console.Haskeline     as HL
+import           System.IO                    (hFlush, stdout)
+import           System.IO.Unsafe             (unsafePerformIO)
 
-import           HStream.Base.Table       as Table
-import qualified HStream.Kafka.Client.Api as KA
-import           HStream.Utils            (newRandomText, splitOn)
-import qualified Kafka.Protocol.Encoding  as K
-import qualified Kafka.Protocol.Error     as K
-import qualified Kafka.Protocol.Message   as K
+import           HStream.Admin.Server.Command (formatCommandResponse)
+import           HStream.Base.Table           as Table
+import qualified HStream.Kafka.Client.Api     as KA
+import           HStream.Utils                (newRandomText, splitOn)
+import qualified Kafka.Protocol.Encoding      as K
+import qualified Kafka.Protocol.Error         as K
+import qualified Kafka.Protocol.Message       as K
 
 -------------------------------------------------------------------------------
 
@@ -298,6 +299,8 @@ handleGroupShow Options{..} name = do
 
 data NodeCommand
   = NodeCommandList
+  | NodeCommandInit
+  | NodeCommandStatus
   deriving Show
 
 nodeCommandParser :: Parser NodeCommand
@@ -305,10 +308,16 @@ nodeCommandParser = hsubparser
   ( O.command "list"
               (O.info (pure NodeCommandList)
                       (O.progDesc "List all alive brokers."))
+ <> O.command "init"
+              (O.info (pure NodeCommandInit) (O.progDesc "Init cluster."))
+ <> O.command "status"
+              (O.info (pure NodeCommandStatus) (O.progDesc "Cluster status."))
   )
 
 handleNodeCommand :: Options -> NodeCommand -> IO ()
-handleNodeCommand opts NodeCommandList = handleNodeList opts
+handleNodeCommand opts NodeCommandList   = handleNodeList opts
+handleNodeCommand opts NodeCommandInit   = handleNodeInit opts
+handleNodeCommand opts NodeCommandStatus = handleNodeStatus opts
 
 handleNodeList :: Options -> IO ()
 handleNodeList Options{..} = do
@@ -323,6 +332,20 @@ handleNodeList Options{..} = do
                ]
       stats = (\s -> ($ s) <$> lenses) <$> (V.toList brokers)
   putStrLn $ simpleShowTable (map (, 30, Table.left) titles) stats
+
+handleNodeInit :: Options -> IO ()
+handleNodeInit Options{..} = do
+  let req = K.HadminCommandRequestV0 (K.CompactString "init") K.EmptyTaggedFields
+  correlationId <- getCorrelationId
+  resp <- KA.withSendAndRecv host port (KA.hadminCommand correlationId req)
+  putStrLn =<< formatCommandResponse (K.unCompactString resp.result)
+
+handleNodeStatus :: Options -> IO ()
+handleNodeStatus Options{..} = do
+  let req = K.HadminCommandRequestV0 (K.CompactString "status") K.EmptyTaggedFields
+  correlationId <- getCorrelationId
+  resp <- KA.withSendAndRecv host port (KA.hadminCommand correlationId req)
+  putStrLn =<< formatCommandResponse (K.unCompactString resp.result)
 
 -------------------------------------------------------------------------------
 

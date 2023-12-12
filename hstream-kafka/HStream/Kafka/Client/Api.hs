@@ -9,6 +9,7 @@ module HStream.Kafka.Client.Api
   , deleteTopics
   , listGroups
   , describeGroups
+  , hadminCommand
   ) where
 
 import           Data.Int
@@ -65,3 +66,11 @@ describeGroups
 describeGroups correlationId req h = snd <$> do
   sendAndRecv (K.RPC :: K.RPC K.HStreamKafkaV0 "describeGroups")
               correlationId (Just clientId) Nothing req h
+
+hadminCommand
+  :: Int32
+  -> K.HadminCommandRequestV0
+  -> ClientHandler -> IO K.HadminCommandResponseV0
+hadminCommand correlationId req h = snd <$> do
+  sendAndRecv (K.RPC :: K.RPC K.HStreamKafkaV0 "hadminCommand")
+              correlationId (Just clientId) (Just K.EmptyTaggedFields) req h

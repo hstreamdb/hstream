@@ -125,6 +125,7 @@ library
     HStream.Kafka.Server.Types
 
   other-modules:
+    HStream.Kafka.Common.AdminCli
     HStream.Kafka.Metrics.ConsumeStats
     HStream.Kafka.Metrics.ProduceStats
     HStream.Kafka.Metrics.ServerStats
@@ -134,6 +135,7 @@ library
     HStream.Kafka.Server.Config.KafkaConfigManager
     HStream.Kafka.Server.Config.Types
     HStream.Kafka.Server.Core.Topic
+    HStream.Kafka.Server.Handler.AdminCommand
     HStream.Kafka.Server.Handler.Basic
     HStream.Kafka.Server.Handler.Consume
     HStream.Kafka.Server.Handler.Group
@@ -163,6 +165,7 @@ library
     , hashable
     , hashtables
     , haskeline
+    , hstream-admin-server
     , hstream-api-hs
     , hstream-common
     , hstream-common-base

@@ -6,6 +6,7 @@ module HStream.Kafka.Server.Handler
   , unAuthedHandlers
   ) where
 
+import           HStream.Kafka.Server.Handler.AdminCommand
 import           HStream.Kafka.Server.Handler.Basic
 import           HStream.Kafka.Server.Handler.Consume
 import           HStream.Kafka.Server.Handler.Group
@@ -13,9 +14,9 @@ import           HStream.Kafka.Server.Handler.Offset
 import           HStream.Kafka.Server.Handler.Produce
 import           HStream.Kafka.Server.Handler.Security
 import           HStream.Kafka.Server.Handler.Topic
-import           HStream.Kafka.Server.Types            (ServerContext (..))
-import qualified Kafka.Protocol.Message                as K
-import qualified Kafka.Protocol.Service                as K
+import           HStream.Kafka.Server.Types                (ServerContext (..))
+import qualified Kafka.Protocol.Message                    as K
+import qualified Kafka.Protocol.Service                    as K
 
 -------------------------------------------------------------------------------
 
@@ -74,6 +75,9 @@ import qualified Kafka.Protocol.Service                as K
 #cv_handler OffsetCommit, 0, 3
 #cv_handler OffsetFetch, 0, 3
 
+-- For hstream
+#cv_handler HadminCommand, 0, 0
+
 handlers :: ServerContext -> [K.ServiceHandler]
 handlers sc =
   [ #mk_handler ApiVersions, 0, 3
@@ -114,6 +118,9 @@ handlers sc =
 
   -- configs
   , #mk_handler DescribeConfigs, 0, 0
+
+    -- For hstream
+  , #mk_handler HadminCommand, 0, 0
   ]
 
 unAuthedHandlers :: ServerContext -> [K.ServiceHandler]

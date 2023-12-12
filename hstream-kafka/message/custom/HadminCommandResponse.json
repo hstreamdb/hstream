@@ -1,0 +1,15 @@
+{
+  "apiKey": -10,
+  "type": "response",
+  "name": "HadminCommandResponse",
+  "validVersions": "0",
+  "flexibleVersions": "0+",
+  "fields": [
+    {
+      "name": "result",
+      "type": "string",
+      "versions": "0+",
+      "about": "The admin command result."
+    }
+  ]
+}

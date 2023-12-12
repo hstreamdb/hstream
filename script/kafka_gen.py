@@ -21,6 +21,7 @@ import json
 import os
 import pathlib
 import re
+import struct
 import subprocess
 import textwrap
 
@@ -143,6 +144,8 @@ SUB_DATA_TYPES = []
 
 # Set of ApiVersion
 API_VERSIONS = set()
+# For hstream
+CUSTOM_API_VERSIONS = set()
 
 DATA_TYPE_RENAMES = {}
 
@@ -352,6 +355,14 @@ def in_version_range(version, min_version, max_version):
     return True
 
 
+def int16_to_word16(num):
+    return struct.unpack('H', struct.pack('h', num))[0]
+
+
+def word16_to_int16(num):
+    return struct.unpack('h', struct.pack('H', num))[0]
+
+
 # https://github.com/apache/kafka/blob/3.5.1/generator/src/main/java/org/apache/kafka/message/ApiMessageTypeGenerator.java#L329
 def get_header_version(v, api):
     resp_version = None
@@ -543,7 +554,7 @@ def parse_field(field, api_version=0, flexible=False):
     return data_field
 
 
-def parse(msg):
+def parse(msg, custom=False):
     api_key = msg["apiKey"]
     min_api_version, max_api_version = parse_version(msg["validVersions"])
     min_flex_version, max_flex_version = parse_version(msg["flexibleVersions"])
@@ -564,21 +575,36 @@ def parse(msg):
         min_api_version = api_version_patch[0]
         max_api_version = api_version_patch[1]
 
-    for api in API_VERSIONS:
-        if api_key == api.api_key:
-            assert min_api_version == api.min_version
-            assert max_api_version == api.max_version
-
-    API_VERSIONS.add(
-        ApiVersion(
-            api_key=api_key,
-            api_name=api_name,
-            min_version=min_api_version,
-            max_version=max_api_version,
-            min_flex_version=min_flex_version,
-            max_flex_version=max_flex_version,
+    if not custom:
+        for api in API_VERSIONS:
+            if api_key == api.api_key:
+                assert min_api_version == api.min_version
+                assert max_api_version == api.max_version
+        API_VERSIONS.add(
+            ApiVersion(
+                api_key=api_key,
+                api_name=api_name,
+                min_version=min_api_version,
+                max_version=max_api_version,
+                min_flex_version=min_flex_version,
+                max_flex_version=max_flex_version,
+            )
         )
-    )
+    else:
+        for api in CUSTOM_API_VERSIONS:
+            if api_key == api.api_key:
+                assert min_api_version == api.min_version
+                assert max_api_version == api.max_version
+        CUSTOM_API_VERSIONS.add(
+            ApiVersion(
+                api_key=api_key,
+                api_name=api_name,
+                min_version=min_api_version,
+                max_version=max_api_version,
+                min_flex_version=min_flex_version,
+                max_flex_version=max_flex_version,
+            )
+        )
 
     for v in range(min_api_version, max_api_version + 1):
         flexible = in_version_range(v, min_flex_version, max_flex_version)
@@ -799,9 +825,9 @@ newtype ApiKey = ApiKey Int16
 """
     )
     api_keys.append("instance Show ApiKey where")
-    for api in sorted(API_VERSIONS):
+    for api in sorted(API_VERSIONS.union(CUSTOM_API_VERSIONS)):
         api_keys.append(
-            f'  show (ApiKey {api.api_key}) = "{api.api_name}({api.api_key})"'
+            f'  show (ApiKey ({api.api_key})) = "{api.api_name}({api.api_key})"'
         )
     api_keys.append('  show (ApiKey n) = "Unknown " <> show n')
     return "\n".join(api_keys)
@@ -821,32 +847,34 @@ def gen_supported_api_versions():
 
 
 def gen_services():
+    api_versions = sorted(API_VERSIONS.union(CUSTOM_API_VERSIONS))
     services = []
     srv_methods = lambda v: format_hs_list(
         (
             '"' + lower_fst(api.api_name) + '"'
-            for api in sorted(API_VERSIONS)
+            for api in api_versions
             if api.min_version <= v <= api.max_version
         ),
         indent=4,
         prefix="'",
     )
+    # MethodKey is a Nat, so we need to convert it to Word16
     method_impl_ins = lambda v: "\n".join(
         f"""\
 instance HasMethodImpl {srv_name} "{lower_fst(api.api_name)}" where
   type MethodName {srv_name} "{lower_fst(api.api_name)}" = "{lower_fst(api.api_name)}"
-  type MethodKey {srv_name} "{lower_fst(api.api_name)}" = {api.api_key}
+  type MethodKey {srv_name} "{lower_fst(api.api_name)}" = {int16_to_word16(api.api_key)}
   type MethodVersion {srv_name} "{lower_fst(api.api_name)}" = {v}
   type MethodInput {srv_name} "{lower_fst(api.api_name)}" = {api.api_name}RequestV{v}
   type MethodOutput {srv_name} "{lower_fst(api.api_name)}" = {api.api_name}ResponseV{v}
 """
-        for api in sorted(API_VERSIONS)
+        for api in api_versions
         if api.min_version <= v <= api.max_version
     )
 
     # for all supported api_version
-    _glo_max_version = max(x.max_version for x in API_VERSIONS)
-    _glo_min_version = min(x.min_version for x in API_VERSIONS)
+    _glo_max_version = max(x.max_version for x in api_versions)
+    _glo_min_version = min(x.min_version for x in api_versions)
     for v in range(_glo_min_version, _glo_max_version + 1):
         srv_name = f"HStreamKafkaV{v}"
         srv = f"""
@@ -864,10 +892,11 @@ instance Service {srv_name} where
 
 
 def gen_api_header_version():
+    api_versions = sorted(API_VERSIONS.union(CUSTOM_API_VERSIONS))
     hs_type = "getHeaderVersion :: ApiKey -> Int16 -> (Int16, Int16)"
     hs_impl = "\n".join(
-        f"getHeaderVersion (ApiKey {api.api_key}) {v} = {get_header_version(v, api)}"
-        for api in sorted(API_VERSIONS)
+        f"getHeaderVersion (ApiKey ({api.api_key})) {v} = {get_header_version(v, api)}"
+        for api in api_versions
         for v in range(api.min_version, api.max_version + 1)
     )
     hs_math_other = (
@@ -965,10 +994,10 @@ def write_generates(outputs, filepath, stylish=True):
 # -----------------------------------------------------------------------------
 
 
-def run_parse(files):
+def run_parse(files, custom=False):
     for f in files:
         obj = load_json_with_comments(f)
-        parse(obj)
+        parse(obj, custom=custom)
 
 
 def cli_get_json(path):
@@ -1006,6 +1035,16 @@ if __name__ == "__main__":
         dest="files",
     )
     parser_run.add_argument(
+        "--custom-path",
+        type=cli_get_json,
+        help=(
+            "Extra jsons that hstream support but kafka doesn't. "
+            "(Default: %(default)s)"
+        ),
+        default="./hstream-kafka/message/custom",
+        dest="custom_files",
+    )
+    parser_run.add_argument(
         "--gen-dir",
         type=pathlib.Path,
         help="Directory to generate haskell files. (Default: %(default)s)",
@@ -1029,7 +1068,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.sub_command == "run":
-        run_parse(args.files)
+        run_parse(args.files, custom=False)
+        run_parse(args.custom_files, custom=True)
         struct_outputs = gen_struct()
         total_outputs = gen_total()
 
