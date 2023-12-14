@@ -470,7 +470,7 @@ makeDelayedSync group@Group{..} generationId timeoutMs = do
     C.threadDelay (fromIntegral timeoutMs * 1000)
     C.withMVar lock $ \() -> do
       Utils.unlessIORefEq groupGenerationId generationId $ \currentGid -> do
-        Log.fatal $ "unexpected delaye sync with wrong generationId:" <> Log.build generationId
+        Log.fatal $ "unexpected delayed sync with wrong generationId:" <> Log.build generationId
           <> ", current group generation id:" <> Log.build currentGid
           <> ", groupId:" <> Log.build groupId
       IO.readIORef state >>= \case
@@ -480,7 +480,7 @@ makeDelayedSync group@Group{..} generationId timeoutMs = do
           IO.atomicWriteIORef delayedSync Nothing
           prepareRebalance group
         s -> do
-          Log.fatal $ "unexpected delaye sync with wrong state:" <> Log.buildString' s
+          Log.fatal $ "unexpected delayed sync with wrong state:" <> Log.buildString' s
             <> ", groupId:" <> Log.build groupId
 
 -- select max rebalanceTimeoutMs from all members
@@ -631,8 +631,11 @@ doSyncGroup group@Group{..} req@K.SyncGroupRequest{memberId=memberId} delayedRes
     -- setup delayedCheckHeart
     setupDelayedCheckHeartbeat group
 
+    -- cancel delayed sync
+    cancelDelayedSync group
+
     -- set state
-    IO.atomicWriteIORef state Stable
+    transitionTo group Stable
 
 getAssignmentMap :: K.SyncGroupRequest -> Map.Map T.Text BS.ByteString
 getAssignmentMap req =
@@ -652,9 +655,8 @@ setAndPropagateAssignment group@Group{..} assignments = do
     H.lookup delayedSyncResponses memberId >>= \case
       Nothing -> pure ()
       Just delayed -> do
-        -- M.void $ C.tryPutMVar delayed (K.SyncGroupResponse 0 assignment)
         M.void $ C.tryPutMVar delayed (K.SyncGroupResponse {throttleTimeMs=0, errorCode=0, assignment=assignment})
-        H.delete delayedJoinResponses memberId
+        H.delete delayedSyncResponses memberId
 
   -- delayedJoinResponses should have been empty,
   -- so it actually does nothing,

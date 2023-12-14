@@ -31,6 +31,7 @@ import           HStream.Kafka.Group.OffsetsStore    (OffsetStorage (..),
                                                       mkCkpOffsetStorage)
 import           HStream.Kafka.Metrics.ConsumeStats  (consumerGroupCommittedOffsets)
 import qualified HStream.Logger                      as Log
+import qualified HStream.Store                       as LD
 import qualified HStream.Store                       as S
 import qualified Kafka.Protocol                      as K
 import           Kafka.Protocol.Encoding             (KaArray (KaArray, unKaArray))
@@ -91,15 +92,20 @@ loadOffsetsFromStorage GroupOffsetManager{..} = do
      | S.null lgs = return $ concat res
      | otherwise = do
          let lgId = S.elemAt 0 lgs
-         (streamId, _) <- S.getStreamIdFromLogId ldClient lgId
-         modifyIORef' topicNum (+1)
-         partitions <- V.toList <$> S.listStreamPartitionsOrdered ldClient streamId
-         let topicName = T.pack $ S.showStreamName streamId
-             tpWithLogId = zipWith (\(_, logId) idx -> (mkTopicPartition topicName idx, logId)) partitions ([0..])
-             res' = tpWithLogId : res
-             -- remove partition ids from lgs because they all have same streamId
-             lgs' = lgs S.\\ S.fromList (map snd partitions)
-         getTopicPartitions lgs' res' topicNum
+         LD.logIdHasGroup ldClient lgId >>= \case
+          True -> do
+             (streamId, _) <- S.getStreamIdFromLogId ldClient lgId
+             modifyIORef' topicNum (+1)
+             partitions <- V.toList <$> S.listStreamPartitionsOrdered ldClient streamId
+             let topicName = T.pack $ S.showStreamName streamId
+                 tpWithLogId = zipWith (\(_, logId) idx -> (mkTopicPartition topicName idx, logId)) partitions ([0..])
+                 res' = tpWithLogId : res
+                 -- remove partition ids from lgs because they all have same streamId
+                 lgs' = lgs S.\\ S.fromList (map snd partitions)
+             getTopicPartitions lgs' res' topicNum
+          False -> do
+            Log.warning $ "get log group from log id failed, skip this log id:" <> Log.build lgId
+            getTopicPartitions (S.delete lgId lgs) res topicNum
 
 storeOffsets
   :: GroupOffsetManager
