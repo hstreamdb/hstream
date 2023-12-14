@@ -521,7 +521,7 @@ MAKE_EX_1_DEFMSG(SomeAlreadyExists, ConnectorExists, Text, API.ErrorCodeConnecto
 -- imply the request is valid or the requested entity exists or satisfies other
 -- pre-conditions.
 MAKE_SUB_EX(SomeHServerException, SomePermissionDenied)
-MAKE_EX_1_DEFMSG(SomeHServerException, AccessGapError, String, API.ErrorCodeShardReaderAccessGap)
+MAKE_EX_1_DEFMSG(SomePermissionDenied, AccessGapError, String, API.ErrorCodeShardReaderAccessGap)
 
 -------------------------------------------------------------------------------
 -- Exception: SomeResourceExhausted
@@ -651,7 +651,7 @@ MAKE_EX_1_DEFMSG(SomeUnavailable, ResourceAllocationException, String, API.Error
 --
 -- Unrecoverable data loss or corruption.
 MAKE_SUB_EX(SomeHServerException, SomeDataLoss)
-MAKE_EX_1_DEFMSG(SomeHServerException, DataLossGapError, String, API.ErrorCodeShardReaderDataLossGap)
+MAKE_EX_1_DEFMSG(SomeDataLoss, DataLossGapError, String, API.ErrorCodeShardReaderDataLossGap)
 
 -------------------------------------------------------------------------------
 -- Exception: SomeUnauthenticated
