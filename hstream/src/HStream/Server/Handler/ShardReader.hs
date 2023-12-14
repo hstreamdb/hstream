@@ -122,6 +122,7 @@ readShardStreamHandler sc (ServerWriterRequest _meta req streamSend) =
   where
     streamWrite x = first show <$> streamSend x
 
+-- TODO: update the protocol to support delivery un-recoverable gap info to the client
 handleReadShardStream
   :: ServerContext
   -> G.ServerStreamHandler ReadShardStreamRequest ReadShardStreamResponse ()
@@ -141,6 +142,7 @@ readStreamHandler sc (ServerWriterRequest _meta req streamSend) =
   where
     streamWrite x = first show <$> streamSend x
 
+-- TODO: update the protocol to support delivery un-recoverable gap info to the client
 handleReadStream
   :: ServerContext
   -> G.ServerStreamHandler ReadStreamRequest ReadStreamResponse ()
@@ -160,6 +162,7 @@ readSingleShardStreamHandler sc (ServerWriterRequest _meta req streamSend) =
   where
     streamWrite x = first show <$> streamSend x
 
+-- TODO: update the protocol to support delivery un-recoverable gap info to the client
 handleReadSingleShardStream
   :: ServerContext
   -> G.ServerStreamHandler ReadSingleShardStreamRequest ReadSingleShardStreamResponse ()
@@ -177,6 +180,7 @@ readStreamByKeyHandler ctx (ServerBiDiRequest _meta streamRecv streamSend) =
     C.readStreamByKey ctx streamSend streamRecv
     return $ ServerBiDiResponse mempty StatusOk ""
 
+-- TODO: update the protocol to support delivery un-recoverable gap info to the client
 handleReadStreamByKey
   :: ServerContext
   -> G.BidiStreamHandler ReadStreamByKeyRequest ReadStreamByKeyResponse ()

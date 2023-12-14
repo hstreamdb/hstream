@@ -143,7 +143,6 @@ readShard ServerContext{..} API.ReadShardRequest{..} = do
    readRecords r@ShardReader{..} = do
      let cStreamName = textToCBytes targetStream
      !read_start <- getPOSIXTime
-     -- records <- S.readerRead shardReader (fromIntegral readShardRequestMaxRecords)
      records <- readInternal r (fromIntegral readShardRequestMaxRecords)
      Stats.serverHistogramAdd scStatsHolder Stats.SHL_ReadLatency =<< msecSince read_start
      Stats.stream_stat_add_read_in_bytes scStatsHolder cStreamName (fromIntegral . sum $ map (BS.length . S.recordPayload) records)
@@ -194,7 +193,7 @@ readStream ServerContext{..}
   bracket createReader deleteReader readRecords
  where
    ldReaderBufferSize = 10
-   maxReadBatch = 10
+   maxReadBatch :: Int = 10
    streamId = S.transToStreamName rStreamName
 
    createReader = do
@@ -226,7 +225,19 @@ readStream ServerContext{..}
      let cStreamName = textToCBytes streamReaderTargetStream
      whileM $ do
        !read_start <- getPOSIXTime
-       records <- S.readerRead streamReader (fromIntegral maxReadBatch)
+       records <- S.readerReadAllowGap streamReader maxReadBatch >>= \case
+         Left gap@S.GapRecord{..}
+           | gapType == S.GapTypeDataloss -> do
+             Log.fatal $ "streamReader read stream " <> Log.build streamReaderTargetStream <> " meet gap " <> Log.build (show gap)
+             return []
+           | gapType == S.GapTypeUnknown -> do
+             Log.warning $ "streamReader read stream " <> Log.build streamReaderTargetStream <> " meet gap " <> Log.build (show gap)
+             return []
+           | gapType == S.GapTypeAccess || gapType == S.GapTypeNotInConfig -> do
+             Log.info $ "streamReader read stream " <> Log.build streamReaderTargetStream <> " meet gap " <> Log.build (show gap)
+             return []
+           | otherwise -> return []
+         Right records -> return records
        Stats.serverHistogramAdd scStatsHolder Stats.SHL_ReadLatency =<< msecSince read_start
        Stats.stream_stat_add_read_in_bytes scStatsHolder cStreamName (fromIntegral . sum $ map (BS.length . S.recordPayload) records)
        Stats.stream_stat_add_read_in_batches scStatsHolder cStreamName (fromIntegral $ length records)
@@ -410,7 +421,7 @@ readStreamByKey ServerContext{..} streamWriter streamReader =
      | cnt == 0 = return True
      | otherwise = do
          !read_start <- getPOSIXTime
-         records <- S.readerRead biStreamReader maxReadBatch
+         records <- readAndLogUnrecovableGap biStreamReader maxReadBatch biStreamReaderTargetStream bistreamReaderTargetShard
          Stats.serverHistogramAdd scStatsHolder Stats.SHL_ReadLatency =<< msecSince read_start
          let cStreamName = textToCBytes biStreamReaderTargetStream
          Stats.stream_stat_add_read_in_bytes scStatsHolder cStreamName (fromIntegral . sum $ map (BS.length . S.recordPayload) records)
@@ -526,7 +537,7 @@ readShardStream' ServerContext{..} rStreamName rReaderId rShardId rStart rEnd rM
   bracket createReader deleteReader readRecords
  where
    ldReaderBufferSize = 10
-   maxReadBatch = 10
+   maxReadBatch :: Int = 10
 
    createReader = do
      shardExists <- S.logIdHasGroup scLDClient rShardId
@@ -552,7 +563,7 @@ readShardStream' ServerContext{..} rStreamName rReaderId rShardId rStart rEnd rM
      let cStreamName = textToCBytes targetStream
      whileM $ do
        !read_start <- getPOSIXTime
-       records <- S.readerRead shardReader (fromIntegral maxReadBatch)
+       records <- readAndLogUnrecovableGap shardReader maxReadBatch targetStream targetShard
        Stats.serverHistogramAdd scStatsHolder Stats.SHL_ReadLatency =<< msecSince read_start
        Stats.stream_stat_add_read_in_bytes scStatsHolder cStreamName (fromIntegral . sum $ map (BS.length . S.recordPayload) records)
        Stats.stream_stat_add_read_in_batches scStatsHolder cStreamName (fromIntegral $ length records)
@@ -564,6 +575,22 @@ readShardStream' ServerContext{..} rStreamName rReaderId rShardId rStart rEnd rM
      res <- getResponseRecords shardReader targetShard records rReaderId shardReaderStartTs shardReaderEndTs
      isReading <- S.readerIsReadingAny shardReader
      streamSend streamWrite rReaderId shardReaderTotalBatches isReading res
+
+readAndLogUnrecovableGap :: forall a. S.DataRecordFormat a => S.LDReader -> Int -> T.Text -> Word64 -> IO [S.DataRecord a]
+readAndLogUnrecovableGap reader maxBatch targetStream targetShard = do
+  S.readerReadAllowGap reader maxBatch >>= \case
+    Left gap@S.GapRecord{..}
+      | gapType == S.GapTypeDataloss -> do
+        Log.fatal $ "reader read stream " <> Log.build targetStream <> ", shard " <> Log.build targetShard <> " meet gap " <> Log.build (show gap)
+        return []
+      | gapType == S.GapTypeUnknown -> do
+        Log.warning $ "reader read stream " <> Log.build targetStream <> ", shard " <> Log.build targetShard <> " meet gap " <> Log.build (show gap)
+        return []
+      | gapType == S.GapTypeAccess || gapType == S.GapTypeNotInConfig -> do
+        Log.info $ "reader read stream " <> Log.build targetStream <> ", shard " <> Log.build targetShard <> " meet gap " <> Log.build (show gap)
+        return []
+      | otherwise -> return []
+    Right records -> return records
 
 class StreamSend s where
   convert :: Vector API.ReceivedRecord -> s
