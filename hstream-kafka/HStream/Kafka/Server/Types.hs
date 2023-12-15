@@ -43,6 +43,10 @@ initServerContext
   -> IO ServerContext
 initServerContext opts@ServerOpts{..} gossipContext mh = do
   ldclient <- S.newLDClient _ldConfigPath
+  -- Disable logdeivce crc checksum for kafka server, since we have checksum
+  -- in kafka message header.
+  S.setClientSetting ldclient "checksum-bits" "0"
+
   -- XXX: Should we add a server option to toggle Stats?
   statsHolder <- newServerStatsHolder
   epochHashRing <- initializeHashRing gossipContext
