@@ -26,6 +26,7 @@ module HStream.Exception
     -- $unknown
   , SomeUnknown
   , UnknownPushQueryStatus (UnknownPushQueryStatus)
+  , UnknownGapError (UnknownGapError)
 
     -- * Exception: SomeInvalidArgument
     --
@@ -75,6 +76,7 @@ module HStream.Exception
   , RQLiteRowNotFound (RQLiteRowNotFound)
   , LocalMetaStoreTableNotFound (LocalMetaStoreTableNotFound)
   , LocalMetaStoreObjectNotFound (LocalMetaStoreObjectNotFound)
+  , NotInConfigGapError (NotInConfigGapError)
 
     -- * Exception: SomeAlreadyExists
     --
@@ -96,6 +98,7 @@ module HStream.Exception
     --
     -- $permissionDenied
   , SomePermissionDenied
+  , AccessGapError (AccessGapError)
 
     -- * Exception: SomeResourceExhausted
     --
@@ -170,6 +173,7 @@ module HStream.Exception
 
     -- * Exception: SomeDataLoss
   , SomeDataLoss
+  , DataLossGapError (DataLossGapError)
 
     -- * Exception: SomeUnauthenticated
     --
@@ -401,6 +405,7 @@ MAKE_EX_1_DEFMSG(SomeCancelled, StreamWriteError, String, API.ErrorCodeInternalE
 MAKE_SUB_EX(SomeHServerException, SomeUnknown)
 
 MAKE_EX_1_DEFMSG(SomeUnknown, UnknownPushQueryStatus, String, API.ErrorCodeInternalError)
+MAKE_EX_1_DEFMSG(SomeUnknown, UnknownGapError, String, API.ErrorCodeShardReaderUnknownGap)
 
 -------------------------------------------------------------------------------
 -- Exception: SomeInvalidArgument
@@ -481,6 +486,7 @@ MAKE_EX_1_DEFMSG(SomeNotFound, RQLiteTableNotFound, String, API.ErrorCodeInterna
 MAKE_EX_1_DEFMSG(SomeNotFound, RQLiteRowNotFound, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeNotFound, LocalMetaStoreTableNotFound, String, API.ErrorCodeInternalError)
 MAKE_EX_1_DEFMSG(SomeNotFound, LocalMetaStoreObjectNotFound, String, API.ErrorCodeInternalError)
+MAKE_EX_1_DEFMSG(SomeNotFound, NotInConfigGapError, String, API.ErrorCodeShardReaderNotInConfigGap)
 
 -------------------------------------------------------------------------------
 -- Exception: SomeAlreadyExists
@@ -515,6 +521,7 @@ MAKE_EX_1_DEFMSG(SomeAlreadyExists, ConnectorExists, Text, API.ErrorCodeConnecto
 -- imply the request is valid or the requested entity exists or satisfies other
 -- pre-conditions.
 MAKE_SUB_EX(SomeHServerException, SomePermissionDenied)
+MAKE_EX_1_DEFMSG(SomePermissionDenied, AccessGapError, String, API.ErrorCodeShardReaderAccessGap)
 
 -------------------------------------------------------------------------------
 -- Exception: SomeResourceExhausted
@@ -644,6 +651,7 @@ MAKE_EX_1_DEFMSG(SomeUnavailable, ResourceAllocationException, String, API.Error
 --
 -- Unrecoverable data loss or corruption.
 MAKE_SUB_EX(SomeHServerException, SomeDataLoss)
+MAKE_EX_1_DEFMSG(SomeDataLoss, DataLossGapError, String, API.ErrorCodeShardReaderDataLossGap)
 
 -------------------------------------------------------------------------------
 -- Exception: SomeUnauthenticated
