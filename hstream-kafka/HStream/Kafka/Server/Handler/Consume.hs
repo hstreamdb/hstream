@@ -87,10 +87,9 @@ handleFetch ServerContext{..} _ r = K.catchFetchResponseEx $ do
     let resp = K.FetchResponse (K.NonNullKaArray respTopics) 0{- TODO: throttleTimeMs -}
     throwIO $ K.FetchResponseEx resp
 
-  -- New reader
-  reader <- S.newLDReader scLDClient (fromIntegral numOfReads) Nothing
-
   -- Start reading
+  --
+  -- We use a per-connection reader(fetchReader) to read.
   V.forM_ topics $ \(_, partitions) -> do
     V.forM_ partitions $ \(logid, elsn, _) -> do
       case elsn of
@@ -98,7 +97,7 @@ handleFetch ServerContext{..} _ r = K.catchFetchResponseEx $ do
         Right (startlsn, _, _) -> do
           Log.debug1 $ "start reading log "
                     <> Log.build logid <> " from " <> Log.build startlsn
-          S.readerStartReading reader logid startlsn S.LSN_MAX
+          S.readerStartReading fetchReader logid startlsn S.LSN_MAX
 
   -- Read records from storage
   --
@@ -111,7 +110,7 @@ handleFetch ServerContext{..} _ r = K.catchFetchResponseEx $ do
   -- throughput
   --
   -- Mode1
-  records <- readMode1 reader
+  records <- readMode1 fetchReader
 
   -- Process read records
   -- TODO: what if client send two same topic but with different partitions?

@@ -44,7 +44,8 @@ import           HStream.Kafka.Metrics.ServerStats   (handlerLatencies,
 import qualified HStream.Kafka.Network.IO            as KIO
 import qualified HStream.Kafka.Network.Security      as Security
 import           HStream.Kafka.Server.Config.Types   (SaslOptions (..))
-import           HStream.Kafka.Server.Types          (ServerContext (..))
+import           HStream.Kafka.Server.Types          (ServerContext (..),
+                                                      initConnectionContext)
 import qualified HStream.Logger                      as Log
 import           Kafka.Protocol.Encoding
 import           Kafka.Protocol.Message
@@ -81,30 +82,26 @@ runServer
   -> (ServerContext -> [ServiceHandler])
   -> (ServerContext -> [ServiceHandler])
   -> IO ()
-runServer opts sc mkPreAuthedHandlers mkAuthedHandlers =
+runServer opts sc_ mkPreAuthedHandlers mkAuthedHandlers =
   startTCPServer opts $ \(s, peer) -> do
-    -- Since the Reader is thread-unsafe, for each connection we create a new
-    -- Reader.
-    om <- initOffsetReader $ scOffsetManager sc
-    let sc' = sc{scOffsetManager = om}
-
+    sc <- initConnectionContext sc_
     -- Decide if we require SASL authentication
     case (serverSaslOptions opts) of
       Nothing -> do
-        void $ State.execStateT (talk (peer, mkAuthedHandlers sc') s) ""
+        void $ State.execStateT (talk (peer, mkAuthedHandlers sc) s) ""
       Just _  -> do
         void $ (`State.execStateT` "") $ do
-          doAuth sc' peer s >>= \case
+          doAuth sc peer s >>= \case
             Security.SaslStateComplete ->
-              talk (peer, mkAuthedHandlers sc') s
+              talk (peer, mkAuthedHandlers sc) s
             ss -> do
               liftIO $ Log.fatal $ "[SASL] authenticate failed with state " <> Log.buildString' ss
   where
-    doAuth sc_ peer s = do
+    doAuth sc peer s = do
       let recv = KIO.recvKafkaMsgBS peer Nothing s
           send = KIO.sendKafkaMsgBS s
-      Security.authenticate sc_
-                            (runHandler peer (mkPreAuthedHandlers sc_))
+      Security.authenticate sc
+                            (runHandler peer (mkPreAuthedHandlers sc))
                             recv
                             send
                             Security.SaslStateHandshakeOrVersions
