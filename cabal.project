@@ -66,7 +66,6 @@ constraints:
   , zoovisitor  == 0.2.6.1
   , criterion  ^>= 1.6
   , aeson      ^>= 2.1
-  , filepath    >= 1.4.100
 
   -- rocksdb-haskell-bindings cant be built with streamly-0.10
   , streamly   ^>= 0.9

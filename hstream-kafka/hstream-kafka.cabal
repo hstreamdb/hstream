@@ -161,6 +161,7 @@ library
     , containers
     , directory
     , foreign
+    , ghc
     , gsasl-hs
     , hashable
     , hashtables
