@@ -12,15 +12,11 @@ import qualified Data.HashTable.IO                   as H
 import qualified Data.HashTable.ST.Basic             as HB
 import qualified Data.IORef                          as IO
 import           Data.Maybe                          (fromMaybe)
-import           Data.Ratio                          ((%))
 import qualified Data.Text                           as T
 import qualified Data.Text.Encoding                  as T
 import qualified Data.Vector                         as V
 import           HStream.Kafka.Common.KafkaException (ErrorCodeException (ErrorCodeException))
 import qualified Kafka.Protocol.Encoding             as K
-import qualified Prometheus                          as P
-import           System.Clock                        (Clock (..), diffTimeSpec,
-                                                      getTime, toNanoSecs)
 
 type HashTable k v = H.BasicHashTable k v
 
@@ -84,17 +80,3 @@ encodeBase64 = Base64.encodeBase64
 
 decodeBase64 :: T.Text -> BS.ByteString
 decodeBase64 = Base64.decodeBase64Lenient . T.encodeUtf8
-
-observeWithLabel
-  :: (P.Observer metric, P.Label label)
-  => P.Vector label metric
-  -> label
-  -> IO a
-  -> IO a
-observeWithLabel metric labels action = do
-  start <- getTime Monotonic
-  result <- action
-  end <- getTime Monotonic
-  let duration = toNanoSecs (end `diffTimeSpec` start) % 1000000000
-  P.withLabel metric labels $ flip P.observe (fromRational duration)
-  return result

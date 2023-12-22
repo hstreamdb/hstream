@@ -13,13 +13,9 @@ import qualified Data.Text                          as T
 import qualified Data.Vector                        as V
 import           Data.Word
 
+import qualified HStream.Kafka.Common.Metrics       as M
 import qualified HStream.Kafka.Common.OffsetManager as K
 import qualified HStream.Kafka.Common.RecordFormat  as K
-import           HStream.Kafka.Common.Utils         (observeWithLabel)
-import           HStream.Kafka.Metrics.ProduceStats (appendLatencySnd,
-                                                     topicTotalAppendBytes,
-                                                     topicTotalAppendMessages,
-                                                     totalProduceRequest)
 import           HStream.Kafka.Server.Types         (ServerContext (..))
 import qualified HStream.Logger                     as Log
 import qualified HStream.Store                      as S
@@ -28,7 +24,6 @@ import qualified Kafka.Protocol.Encoding            as K
 import qualified Kafka.Protocol.Error               as K
 import qualified Kafka.Protocol.Message             as K
 import qualified Kafka.Protocol.Service             as K
-import qualified Prometheus                         as P
 
 -- acks: (FIXME: Currently we only support -1)
 --   0: The server will not send any response(this is the only case where the
@@ -65,7 +60,10 @@ handleProduce ServerContext{..} _ req = do
                       else V.forM
     partitionResponses <- loopPart partitionData $ \partition -> do
       let Just (_, logid) = partitions V.!? (fromIntegral partition.index) -- TODO: handle Nothing
-      P.withLabel totalProduceRequest (topic.name, T.pack . show $ partition.index) $ \counter -> void $ P.addCounter counter 1
+      M.withLabel
+        M.totalProduceRequest
+        (topic.name, T.pack . show $ partition.index) $ \counter ->
+          void $ M.addCounter counter 1
       let Just recordBytes = partition.recordBytes -- TODO: handle Nothing
       Log.debug1 $ "Try to append to logid " <> Log.build logid
                 <> "(" <> Log.build partition.index <> ")"
@@ -129,12 +127,12 @@ appendRecords shouldValidateCrc ldclient om (streamName, partition) logid bs = d
                                                  o (fromIntegral batchLength)
                                                  (K.CompactBytes storedBs)
     Log.debug1 $ "Append key " <> Log.buildString' appendKey
-    r <- observeWithLabel appendLatencySnd streamName $
+    r <- M.observeWithLabel M.appendLatencySnd streamName $
            S.appendCompressedBS ldclient logid storedRecord S.CompressionNone
                                 appendAttrs
     let !partLabel = (streamName, T.pack . show $ partition)
-    P.withLabel topicTotalAppendBytes partLabel $ \counter ->
-      void $ P.addCounter counter (fromIntegral $ BS.length storedRecord)
-    P.withLabel topicTotalAppendMessages partLabel $ \counter ->
-      void $ P.addCounter counter (fromIntegral batchLength)
+    M.withLabel M.topicTotalAppendBytes partLabel $ \counter ->
+      void $ M.addCounter counter (fromIntegral $ BS.length storedRecord)
+    M.withLabel M.topicTotalAppendMessages partLabel $ \counter ->
+      void $ M.addCounter counter (fromIntegral batchLength)
     pure (r, startOffset)

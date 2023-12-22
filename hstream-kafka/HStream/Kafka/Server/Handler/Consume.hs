@@ -18,15 +18,11 @@ import qualified Data.Vector.Hashtables             as HT
 import qualified Data.Vector.Storable               as VS
 import           GHC.Data.FastMutInt
 import           GHC.Stack                          (HasCallStack)
-import qualified Prometheus                         as P
 
 import qualified HStream.Base.Growing               as GV
+import qualified HStream.Kafka.Common.Metrics       as M
 import qualified HStream.Kafka.Common.OffsetManager as K
 import qualified HStream.Kafka.Common.RecordFormat  as K
-import           HStream.Kafka.Metrics.ConsumeStats (readLatencySnd,
-                                                     topicTotalSendBytes,
-                                                     topicTotalSendMessages,
-                                                     totalConsumeRequest)
 import           HStream.Kafka.Server.Config        (ServerOpts (..),
                                                      StorageOptions (..))
 import           HStream.Kafka.Server.Types         (ServerContext (..))
@@ -75,8 +71,8 @@ handleFetch ServerContext{..} _ r = K.catchFetchResponseEx $ do
     orderedParts <- S.listStreamPartitionsOrdered scLDClient
                       (S.transToTopicStreamName t.topic)
     ps <- V.forM partitionReqs $ \p{- K.FetchPartition -} -> do
-      P.withLabel totalConsumeRequest (t.topic, T.pack . show $ p.partition) $
-        \counter -> void $ P.addCounter counter 1
+      M.withLabel M.totalConsumeRequest (t.topic, T.pack . show $ p.partition) $
+        \counter -> void $ M.addCounter counter 1
       let m_logid = orderedParts V.!? fromIntegral p.partition
       case m_logid of
         Nothing -> do
@@ -167,11 +163,11 @@ handleFetch ServerContext{..} _ r = K.catchFetchResponseEx $ do
               bs <- encodePartition mutMaxBytes mutIsFirstPartition request v
               -- Stats
               let partLabel = (topic, T.pack . show $ request.partition)
-              P.withLabel topicTotalSendBytes partLabel $ \counter -> void $
-                P.addCounter counter (fromIntegral $ BS.length bs)
-              P.withLabel topicTotalSendMessages partLabel $ \counter -> void $ do
+              M.withLabel M.topicTotalSendBytes partLabel $ \counter -> void $
+                M.addCounter counter (fromIntegral $ BS.length bs)
+              M.withLabel M.topicTotalSendMessages partLabel $ \counter -> void $ do
                 let totalRecords = V.sum $ V.map (\K.RecordFormat{..} -> batchLength) v
-                P.addCounter counter (fromIntegral totalRecords)
+                M.addCounter counter (fromIntegral totalRecords)
               -- PartitionData
               pure $ K.PartitionData request.partition K.NONE hioffset (Just bs)
                                      (-1){- TODO: lastStableOffset -}
@@ -188,7 +184,7 @@ handleFetch ServerContext{..} _ r = K.catchFetchResponseEx $ do
          else S.readerSetTimeout reader r.maxWaitMs
       S.readerSetWaitOnlyWhenNoData reader
       (_, records) <- foldWhileM (0, []) $ \(size, acc) -> do
-        rs <- P.observeDuration readLatencySnd $ S.readerRead reader 100
+        rs <- M.observeDuration M.readLatencySnd $ S.readerRead reader 100
         if null rs
            then pure ((size, acc), False)
            else do let size' = size + sum (map (K.recordBytesSize . (.recordPayload)) rs)
@@ -210,7 +206,8 @@ handleFetch ServerContext{..} _ r = K.catchFetchResponseEx $ do
            if r.maxWaitMs > defTimeout
               then do
                 S.readerSetTimeout reader defTimeout
-                rs1 <- P.observeDuration readLatencySnd $ S.readerRead reader storageOpts.fetchMaxLen
+                rs1 <- M.observeDuration M.readLatencySnd $
+                          S.readerRead reader storageOpts.fetchMaxLen
                 let size = sum (map (K.recordBytesSize . (.recordPayload)) rs1)
                 if size >= fromIntegral r.minBytes
                    then pure rs1

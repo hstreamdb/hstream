@@ -1,4 +1,4 @@
-module HStream.Kafka.Metrics.ConsumeStats where
+module HStream.Kafka.Common.Metrics.ConsumeStats where
 
 import qualified Prometheus as P
 

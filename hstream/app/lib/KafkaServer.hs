@@ -46,6 +46,7 @@ import           HStream.Gossip                    (GossipContext (..),
                                                     initGossipContext,
                                                     startGossip, waitGossipBoot)
 import qualified HStream.Gossip.Types              as Gossip
+import           HStream.Kafka.Common.Metrics      (startMetricsServer)
 import qualified HStream.Kafka.Network             as K
 import           HStream.Kafka.Server.Config       (AdvertisedListeners,
                                                     FileLoggerSettings (..),
@@ -66,8 +67,6 @@ import qualified HStream.Server.HStreamInternal    as I
 import qualified HStream.Store.Logger              as S
 import qualified HStream.ThirdParty.Protobuf       as Proto
 import           HStream.Utils                     (getProtoTimestamp)
-import qualified Network.Wai.Handler.Warp          as Warp
-import qualified Network.Wai.Middleware.Prometheus as P
 
 #ifndef HSTREAM_ENABLE_ASAN
 import           Text.RawString.QQ                 (r)
@@ -143,8 +142,8 @@ app config@ServerOpts{..} = do
         forM_ as (Async.link2Only (const True) a)
         -- wait the default server
         waitGossipBoot gossipContext
-        -- start prometheus app to export metrics
-        a2 <- Async.async $ Warp.run (fromIntegral _metricsPort) $ P.prometheus P.def {P.prometheusInstrumentPrometheus = False} P.metricsApp
+        -- start prometheus server to export metrics
+        a2 <- Async.async $ startMetricsServer "*4" (fromIntegral _metricsPort)
         Async.link2Only (const True) a a2
         Async.wait a
 
