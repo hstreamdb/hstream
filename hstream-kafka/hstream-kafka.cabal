@@ -107,6 +107,7 @@ library
     HStream.Kafka.Client.Api
     HStream.Kafka.Client.Cli
     HStream.Kafka.Common.KafkaException
+    HStream.Kafka.Common.Metrics
     HStream.Kafka.Common.OffsetManager
     HStream.Kafka.Common.Read
     HStream.Kafka.Common.RecordFormat
@@ -126,9 +127,9 @@ library
 
   other-modules:
     HStream.Kafka.Common.AdminCli
-    HStream.Kafka.Metrics.ConsumeStats
-    HStream.Kafka.Metrics.ProduceStats
-    HStream.Kafka.Metrics.ServerStats
+    HStream.Kafka.Common.Metrics.ConsumeStats
+    HStream.Kafka.Common.Metrics.ProduceStats
+    HStream.Kafka.Common.Metrics.ServerStats
     HStream.Kafka.Server.Config.FromCli
     HStream.Kafka.Server.Config.FromJson
     HStream.Kafka.Server.Config.KafkaConfig
@@ -186,6 +187,7 @@ library
     , uuid
     , vector
     , vector-hashtables
+    , wai-middleware-prometheus
     , warp
     , yaml
     , Z-Data

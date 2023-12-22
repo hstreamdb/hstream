@@ -19,34 +19,29 @@ module HStream.Kafka.Network
   ) where
 
 import           Control.Concurrent
-import qualified Control.Exception                   as E
+import qualified Control.Exception                 as E
 import           Control.Monad
-import           Control.Monad.IO.Class              (liftIO)
-import qualified Control.Monad.State                 as State
-import           Data.ByteString                     (ByteString)
-import qualified Data.ByteString                     as BS
+import           Control.Monad.IO.Class            (liftIO)
+import qualified Control.Monad.State               as State
+import           Data.ByteString                   (ByteString)
+import qualified Data.ByteString                   as BS
 import           Data.Int
-import           Data.List                           (find, intersperse)
-import           Data.Maybe                          (fromMaybe, isJust,
-                                                      isNothing)
-import qualified Data.Text                           as T
-import qualified Network.Socket                      as N
-import qualified Network.Socket.ByteString           as N
-import qualified Network.Socket.ByteString.Lazy      as NL
-import           Numeric                             (showHex, showInt)
-import qualified Prometheus                          as P
+import           Data.List                         (find, intersperse)
+import           Data.Maybe                        (fromMaybe, isJust,
+                                                    isNothing)
+import qualified Data.Text                         as T
+import qualified Network.Socket                    as N
+import qualified Network.Socket.ByteString         as N
+import qualified Network.Socket.ByteString.Lazy    as NL
+import           Numeric                           (showHex, showInt)
 
-import           HStream.Kafka.Common.KafkaException (ErrorCodeException (..))
-import           HStream.Kafka.Common.OffsetManager  (initOffsetReader)
-import           HStream.Kafka.Common.Utils          (observeWithLabel)
-import           HStream.Kafka.Metrics.ServerStats   (handlerLatencies,
-                                                      totalRequests)
-import qualified HStream.Kafka.Network.IO            as KIO
-import qualified HStream.Kafka.Network.Security      as Security
-import           HStream.Kafka.Server.Config.Types   (SaslOptions (..))
-import           HStream.Kafka.Server.Types          (ServerContext (..),
-                                                      initConnectionContext)
-import qualified HStream.Logger                      as Log
+import qualified HStream.Kafka.Common.Metrics      as M
+import qualified HStream.Kafka.Network.IO          as KIO
+import qualified HStream.Kafka.Network.Security    as Security
+import           HStream.Kafka.Server.Config.Types (SaslOptions (..))
+import           HStream.Kafka.Server.Types        (ServerContext (..),
+                                                    initConnectionContext)
+import qualified HStream.Logger                    as Log
 import           Kafka.Protocol.Encoding
 import           Kafka.Protocol.Message
 import           Kafka.Protocol.Service
@@ -117,11 +112,14 @@ runServer opts sc_ mkPreAuthedHandlers mkAuthedHandlers =
 
     runHandler peer handlers reqHeader@RequestHeader{..} reqBs = do
       Log.debug $ "Received request header: " <> Log.buildString' reqHeader
-      P.incCounter totalRequests
+      M.incCounter M.totalRequests
       let ServiceHandler{..} = findHandler handlers requestApiKey requestApiVersion
       case rpcHandler of
         UnaryHandler rpcHandler' -> do
-          observeWithLabel handlerLatencies (T.pack $ show requestApiKey) $ doUnaryHandler reqBs reqHeader rpcHandler' peer
+          M.observeWithLabel
+            M.handlerLatencies
+            (T.pack $ show requestApiKey) $
+              doUnaryHandler reqBs reqHeader rpcHandler' peer
 
     doUnaryHandler l reqHeader@RequestHeader{..} rpcHandler' peer = do
       (req, left) <- runGet' l

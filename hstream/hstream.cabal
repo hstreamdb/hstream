@@ -237,7 +237,6 @@ library hstream-app
     , http-client
     , memory
     , optparse-applicative
-    , prometheus-client
     , proto3-suite
     , proto3-wire
     , raw-strings-qq
@@ -246,8 +245,6 @@ library hstream-app
     , text
     , timers
     , vector
-    , wai-middleware-prometheus
-    , warp
     , Z-Data
     , zoovisitor
 
