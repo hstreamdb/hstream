@@ -1,6 +1,7 @@
 import socket
 import time
 from kafka.conn import BrokerConnection
+from kafka.record import MemoryRecords, MemoryRecordsBuilder
 
 
 # Also: https://kafka-python.readthedocs.io/en/master/apidoc/KafkaClient.html#kafka.KafkaClient.send
@@ -24,3 +25,24 @@ def send_req(port, req, resp_count=1):
         return resps[0]
     else:
         return resps
+
+
+# magic: [0, 1, 2]
+# compression_type: [0, 1, 2, 3]
+def encode_records(magic, key, value, n):
+    builder = MemoryRecordsBuilder(
+        magic=magic, compression_type=0, batch_size=1024 * 10
+    )
+    for offset in range(n):
+        builder.append(timestamp=10000 + offset, key=key, value=value)
+    builder.close()
+    return builder.buffer()
+
+
+def decode_records(records_bs):
+    record_batch = MemoryRecords(records_bs)
+    rets = []
+    while record_batch.has_next():
+        batch = record_batch.next_batch()
+        rets.append(list(batch))
+    return rets
