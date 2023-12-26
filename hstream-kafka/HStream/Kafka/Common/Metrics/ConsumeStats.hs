@@ -26,6 +26,18 @@ totalConsumeRequest =
     P.Info "total_consume_request" "Total consume request for a topic"
 {-# NOINLINE totalConsumeRequest #-}
 
+totalOffsetCommitRequest :: P.Vector P.Label1 P.Counter
+totalOffsetCommitRequest =
+  P.unsafeRegister . P.vector "consumer_group" . P.counter $
+    P.Info "total_offset_commit_request" "Total offset commit request for a consumer group"
+{-# NOINLINE totalOffsetCommitRequest #-}
+
+totalFailedOffsetCommitRequest :: P.Vector P.Label1 P.Counter
+totalFailedOffsetCommitRequest =
+  P.unsafeRegister . P.vector "consumer_group" . P.counter $
+    P.Info "total_failed_offset_commit_request" "Total failed offset commit request for a consumer group"
+{-# NOINLINE totalFailedOffsetCommitRequest #-}
+
 consumerGroupCommittedOffsets :: P.Vector P.Label3 P.Gauge
 consumerGroupCommittedOffsets =
   P.unsafeRegister . P.vector ("consumer_group", "topicName", "partition") . P.gauge $
