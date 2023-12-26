@@ -124,7 +124,7 @@ storeOffsets gmm@GroupOffsetManager{..} topicName arrayOffsets = do
   let checkPoints = V.foldl' (\acc (_, logId, offset) -> Map.insert logId offset acc) Map.empty offsetsInfo
   commitOffsets offsetStorage groupName checkPoints
   Log.debug $ "consumer group " <> Log.build groupName <> " commit offsets {" <> Log.build (show checkPoints)
-           <> "} to topic " <> Log.build topicName
+           <> "} for topic " <> Log.build topicName
 
   V.forM_ offsetsInfo $ \(tp, _, offset) -> do
     M.withLabel M.consumerGroupCommittedOffsets (groupName, topicName, T.pack . show $ tp.topicPartitionIdx) $
