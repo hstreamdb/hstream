@@ -32,6 +32,7 @@ module Kafka.Protocol.Encoding.Parser
   , getRecordString
     -- * Internals
   , takeBytes
+  , fromIO
   ) where
 
 import           Control.Monad
@@ -273,10 +274,11 @@ getCompactNullableBytes = do
 -- ref: https://kafka.apache.org/documentation/#record
 getRecordNullableBytes :: Parser (Maybe ByteString)
 getRecordNullableBytes = do
-  n <- fromIntegral <$> getVarInt32
+  !n <- fromIntegral <$!> getVarInt32
   if n >= 0
      then Just <$> takeBytes n
      else pure Nothing
+{-# INLINE getRecordNullableBytes #-}
 
 -- | Record header key
 --
@@ -341,7 +343,6 @@ instance (Show r) => Show (Result r) where
   show (Fail _ err) = "Fail " <> err
   show (More _)     = "More"
 
-
 instance Functor Result where
   fmap f (Done bs r) = Done bs (f r)
   fmap f (More k)    = More (fmap (fmap f) . k)
@@ -365,6 +366,7 @@ anyWord8 = Parser $ \bs next ->
 
 -- | Take the specified number of bytes
 takeBytes :: Int -> Parser ByteString
+takeBytes 0 = pure ""
 takeBytes n = Parser $ \bs next ->
   let len = BS.length bs
    in if len >= n

@@ -1,6 +1,7 @@
 {-# LANGUAGE CPP                   #-}
 {-# LANGUAGE DefaultSignatures     #-}
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE MultiWayIf            #-}
 {-# LANGUAGE OverloadedRecordDot   #-}
 {-# LANGUAGE PatternSynonyms       #-}
 {-# LANGUAGE ViewPatterns          #-}
@@ -64,6 +65,7 @@ module Kafka.Protocol.Encoding
   , takeBytes
   ) where
 
+import           Control.DeepSeq                (NFData)
 import           Control.Exception
 import           Control.Monad
 import           Data.ByteString                (ByteString)
@@ -196,10 +198,10 @@ runPut = BL.toStrict . toLazyByteString . put
 -- Extra Primitive Types
 
 newtype VarInt32 = VarInt32 { unVarInt32 :: Int32 }
-  deriving newtype (Show, Num, Integral, Real, Enum, Ord, Eq, Bounded)
+  deriving newtype (Show, Num, Integral, Real, Enum, Ord, Eq, Bounded, NFData)
 
 newtype VarInt64 = VarInt64 { unVarInt64 :: Int64 }
-  deriving newtype (Show, Num, Integral, Real, Enum, Ord, Eq, Bounded)
+  deriving newtype (Show, Num, Integral, Real, Enum, Ord, Eq, Bounded, NFData)
 
 type NullableString = Maybe Text
 
@@ -225,7 +227,7 @@ data TaggedFields = EmptyTaggedFields
 
 newtype KaArray a = KaArray
   { unKaArray :: Maybe (Vector a) }
-  deriving newtype (Show, Eq, Ord)
+  deriving newtype (Show, Eq, Ord, NFData)
 
 instance Functor KaArray where
   fmap f (KaArray xs) = KaArray $ fmap f <$> xs
@@ -238,20 +240,20 @@ instance Functor CompactKaArray where
   fmap f (CompactKaArray xs) = CompactKaArray $ fmap f <$> xs
 
 newtype RecordKey = RecordKey { unRecordKey :: Maybe ByteString }
-  deriving newtype (Show, Eq, Ord)
+  deriving newtype (Show, Eq, Ord, NFData)
 
 newtype RecordValue = RecordValue { unRecordValue :: Maybe ByteString }
-  deriving newtype (Show, Eq, Ord)
+  deriving newtype (Show, Eq, Ord, NFData)
 
 newtype RecordArray a = RecordArray { unRecordArray :: Vector a }
-  deriving newtype (Show, Eq, Ord)
+  deriving newtype (Show, Eq, Ord, NFData)
 
 newtype RecordHeaderKey = RecordHeaderKey { unRecordHeaderKey :: Text }
-  deriving newtype (Show, Eq, Ord, IsString, Monoid, Semigroup)
+  deriving newtype (Show, Eq, Ord, IsString, Monoid, Semigroup, NFData)
 
 newtype RecordHeaderValue = RecordHeaderValue
   { unRecordHeaderValue :: Maybe ByteString }
-  deriving newtype (Show, Eq, Ord)
+  deriving newtype (Show, Eq, Ord, NFData)
 
 -------------------------------------------------------------------------------
 -- Instances
@@ -353,7 +355,9 @@ data BatchRecord
   = BatchRecordV0 RecordV0
   | BatchRecordV1 RecordV1
   | BatchRecordV2 RecordBatch
-  deriving (Show, Eq)
+  deriving (Show, Eq, Generic)
+
+instance NFData BatchRecord
 
 decodeBatchRecords :: Bool -> ByteString -> IO (Vector BatchRecord)
 decodeBatchRecords shouldValidateCrc batchBs =
@@ -535,6 +539,7 @@ data RecordV0 = RecordV0
   } deriving (Generic, Show, Eq)
 
 instance Serializable RecordV0
+instance NFData RecordV0
 
 minRecordSizeV0 :: Int
 minRecordSizeV0 =
@@ -552,6 +557,7 @@ data RecordV1 = RecordV1
   } deriving (Generic, Show, Eq)
 
 instance Serializable RecordV1
+instance NFData RecordV1
 
 minRecordSizeV1 :: Int
 minRecordSizeV1 =
@@ -594,6 +600,7 @@ data RecordV2 = RecordV2
   } deriving (Generic, Show, Eq)
 
 instance Serializable RecordV2
+instance NFData RecordV2
 
 data RecordBatch = RecordBatch
   { baseOffset           :: {-# UNPACK #-} !Int64
@@ -612,6 +619,7 @@ data RecordBatch = RecordBatch
   } deriving (Generic, Show, Eq)
 
 instance Serializable RecordBatch
+instance NFData RecordBatch
 
 -------------------------------------------------------------------------------
 -- Misc
@@ -687,9 +695,9 @@ putCompactArray Nothing = putVarWord32 0
 getRecordArray :: Serializable a => Parser (Vector a)
 getRecordArray = do
   !n <- fromIntegral <$> getVarInt32
-  if n >= 0
-     then V.replicateM n get
-     else fail $! "Length of RecordArray must not be negative " <> show n
+  if | n > 0 -> V.replicateM n get
+     | n == 0 -> pure V.empty
+     | otherwise -> fail $! "Length of RecordArray must not be negative " <> show n
 
 putRecordArray :: Serializable a => Vector a -> Builder
 putRecordArray xs =
