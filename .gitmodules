@@ -19,9 +19,6 @@
 [submodule "external/haskell-rocksdb-bindings"]
 	path = external/haskell-rocksdb-bindings
 	url = https://github.com/hstreamdb/haskell-rocksdb-bindings.git
-[submodule "external/digest"]
-	path = external/digest
-	url = https://github.com/4eUeP/digest.git
 [submodule "external/gsasl-hs"]
 	path = external/gsasl-hs
 	url = https://github.com/Commelina/gsasl-hs.git
