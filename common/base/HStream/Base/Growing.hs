@@ -1,5 +1,5 @@
--- Fork from proto-lens: https://github.com/google/proto-lens with BSD-3-Clause
--- license.
+-- Copy from proto-lens: https://github.com/google/proto-lens (BSD-3-Clause)
+-- and modified by HStream contributors.
 
 -- | A mutable vector that grows in size.
 --
@@ -20,6 +20,11 @@ module HStream.Base.Growing
   , append
   , unsafeFreeze
   , RealWorld
+
+    -- If you do not know what you are doing, you should not use the following
+    -- functions.
+  , unsafeNewLen
+  , unsafeWrite
   ) where
 
 import           Control.Monad.Primitive     (PrimMonad, PrimState, RealWorld)
@@ -43,12 +48,21 @@ data Growing v s a = Growing
 new :: (PrimMonad m, V.Vector v a) => m (Growing v (PrimState m) a)
 new = Growing 0 <$> MV.new 0
 
+-- Be careful with this function.
+--
+-- You may want to use 'unsafeWrite' to initialize the vector
+unsafeNewLen
+  :: (PrimMonad m, V.Vector v a)
+  => Int -> m (Growing v (PrimState m) a)
+unsafeNewLen len = Growing len <$> MV.unsafeNew len
+{-# INLINE unsafeNewLen #-}
+
 -- | Unsafely convert a growing vector to an immutable one without
 -- copying.  After this call, you may not use the growing vector
 -- nor any other growing vectors that were used to produce this one.
 unsafeFreeze
-    :: (PrimMonad m, V.Vector v a)
-    => Growing v (PrimState m) a -> m (v a)
+  :: (PrimMonad m, V.Vector v a)
+  => Growing v (PrimState m) a -> m (v a)
 unsafeFreeze (Growing len m) = V.unsafeFreeze (MV.take len m)
 
 -- | Returns a new growing vector with a new element at the end.
@@ -56,10 +70,10 @@ unsafeFreeze (Growing len m) = V.unsafeFreeze (MV.take len m)
 -- Furthermore, calling @append@ twice on the same input may result
 -- in two vectors that share the same storage.
 append
-    :: (PrimMonad m, V.Vector v a)
-    => Growing v (PrimState m) a
-    -> a
-    -> m (Growing v (PrimState m) a)
+  :: (PrimMonad m, V.Vector v a)
+  => Growing v (PrimState m) a
+  -> a
+  -> m (Growing v (PrimState m) a)
 append (Growing len v) x
     | len < MV.length v = do
         MV.unsafeWrite v len x
@@ -70,3 +84,10 @@ append (Growing len v) x
         MV.unsafeWrite v' len x
         return $ Growing (len + 1) v'
 {-# INLINE append #-}
+
+-- | Replace the element at the given position. No bounds checks are performed.
+unsafeWrite
+  :: (PrimMonad m, V.Vector v a)
+  => Growing v (PrimState m) a -> Int -> a -> m ()
+unsafeWrite (Growing len v) idx ele = MV.unsafeWrite v idx ele
+{-# INLINE unsafeWrite #-}
