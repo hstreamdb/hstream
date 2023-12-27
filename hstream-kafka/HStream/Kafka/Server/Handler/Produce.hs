@@ -127,7 +127,7 @@ appendRecords shouldValidateCrc ldclient om (streamName, partition) logid bs = d
                                                  o (fromIntegral batchLength)
                                                  (K.CompactBytes storedBs)
     Log.debug1 $ "Append key " <> Log.buildString' appendKey
-    r <- M.observeWithLabel M.appendLatencySnd streamName $
+    r <- M.observeWithLabel M.topicWriteStoreLatency streamName $
            S.appendCompressedBS ldclient logid storedRecord S.CompressionNone
                                 appendAttrs
     let !partLabel = (streamName, T.pack . show $ partition)
