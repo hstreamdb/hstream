@@ -212,11 +212,12 @@ handleFetch ServerContext{..} _ r = K.catchFetchResponseEx $ do
                 if size >= fromIntegral r.minBytes
                    then pure rs1
                    else do S.readerSetTimeout reader (r.maxWaitMs - defTimeout)
-                           rs2 <- S.readerRead reader storageOpts.fetchMaxLen
+                           rs2 <- M.observeDuration M.readLatencySnd $
+                                    S.readerRead reader storageOpts.fetchMaxLen
                            pure $ rs1 <> rs2
               else do
                 S.readerSetTimeout reader r.maxWaitMs
-                S.readerRead reader storageOpts.fetchMaxLen
+                M.observeDuration M.readLatencySnd $ S.readerRead reader storageOpts.fetchMaxLen
 
 -------------------------------------------------------------------------------
 
