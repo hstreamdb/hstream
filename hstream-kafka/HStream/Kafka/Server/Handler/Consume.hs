@@ -184,7 +184,7 @@ handleFetch ServerContext{..} _ r = K.catchFetchResponseEx $ do
          else S.readerSetTimeout reader r.maxWaitMs
       S.readerSetWaitOnlyWhenNoData reader
       (_, records) <- foldWhileM (0, []) $ \(size, acc) -> do
-        rs <- M.observeDuration M.readLatencySnd $ S.readerRead reader 100
+        rs <- M.observeDuration M.topicReadStoreLatency $ S.readerRead reader 100
         if null rs
            then pure ((size, acc), False)
            else do let size' = size + sum (map (K.recordBytesSize . (.recordPayload)) rs)
@@ -206,17 +206,18 @@ handleFetch ServerContext{..} _ r = K.catchFetchResponseEx $ do
            if r.maxWaitMs > defTimeout
               then do
                 S.readerSetTimeout reader defTimeout
-                rs1 <- M.observeDuration M.readLatencySnd $
+                rs1 <- M.observeDuration M.topicReadStoreLatency $
                           S.readerRead reader storageOpts.fetchMaxLen
                 let size = sum (map (K.recordBytesSize . (.recordPayload)) rs1)
                 if size >= fromIntegral r.minBytes
                    then pure rs1
                    else do S.readerSetTimeout reader (r.maxWaitMs - defTimeout)
-                           rs2 <- S.readerRead reader storageOpts.fetchMaxLen
+                           rs2 <- M.observeDuration M.topicReadStoreLatency $
+                                    S.readerRead reader storageOpts.fetchMaxLen
                            pure $ rs1 <> rs2
               else do
                 S.readerSetTimeout reader r.maxWaitMs
-                S.readerRead reader storageOpts.fetchMaxLen
+                M.observeDuration M.topicReadStoreLatency $ S.readerRead reader storageOpts.fetchMaxLen
 
 -------------------------------------------------------------------------------
 

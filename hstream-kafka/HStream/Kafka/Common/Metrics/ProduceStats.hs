@@ -14,11 +14,11 @@ topicTotalAppendMessages =
     P.Info "topic_messages_in" "Successfully appended messages for a topic"
 {-# NOINLINE topicTotalAppendMessages #-}
 
-appendLatencySnd :: P.Vector P.Label1 P.Histogram
-appendLatencySnd =
-  P.unsafeRegister . P.vector "topicName" . P.histogram (P.Info "topic_append_latency" "topic append latency in second") $
+topicWriteStoreLatency :: P.Vector P.Label1 P.Histogram
+topicWriteStoreLatency =
+  P.unsafeRegister . P.vector "topicName" . P.histogram (P.Info "topic_write_store_latency" "topic write store latency in second") $
       [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10]
-{-# NOINLINE appendLatencySnd #-}
+{-# NOINLINE topicWriteStoreLatency #-}
 
 totalProduceRequest :: P.Vector P.Label2 P.Counter
 totalProduceRequest =
