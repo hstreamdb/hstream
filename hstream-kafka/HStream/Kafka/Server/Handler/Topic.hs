@@ -104,5 +104,4 @@ handleDeleteTopicsV0 ServerContext{..} _ K.DeleteTopicsRequestV0{..} =
       V.forM_ partitions $ \(_, logid) ->
         cleanOffsetCache scOffsetManager logid
       S.removeStream scLDClient streamId
-      Stats.stream_stat_erase scStatsHolder (Utils.textToCBytes topicName)
       return $ K.DeletableTopicResultV0 topicName K.NONE
