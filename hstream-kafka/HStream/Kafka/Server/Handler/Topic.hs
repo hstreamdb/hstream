@@ -74,12 +74,16 @@ handleDeleteTopicsV0 ServerContext{..} _ K.DeleteTopicsRequestV0{..} =
       return $ K.DeleteTopicsResponseV0 (K.KaArray $ Just V.empty)
     K.KaArray (Just topicNames_)
       | V.null topicNames_ -> return $ K.DeleteTopicsResponseV0 (K.KaArray $ Just V.empty)
-      | otherwise     -> do
+      | otherwise          -> do
           respTopics <- forM topicNames_ $ \topicName -> do
             try (deleteTopic topicName) >>= \case
-              Left (e :: SomeException) -> do
-                Log.warning $ "Exception occurs when deleting topic " <> Log.build topicName <> ": " <> Log.build (show e)
-                return $ K.DeletableTopicResultV0 topicName K.UNKNOWN_SERVER_ERROR
+              Left (e :: SomeException)
+                | Just _ <- fromException @S.NOTFOUND e -> do
+                   Log.warning $ "Delete topic failed, topic " <> Log.build topicName <> " does not exist"
+                   return $ K.DeletableTopicResultV0 topicName K.UNKNOWN_TOPIC_OR_PARTITION
+                | otherwise -> do
+                    Log.warning $ "Exception occurs when deleting topic " <> Log.build topicName <> ": " <> Log.build (show e)
+                    return $ K.DeletableTopicResultV0 topicName K.UNKNOWN_SERVER_ERROR
               Right res -> return res
           return $ K.DeleteTopicsResponseV0 (K.KaArray $ Just respTopics)
   where
@@ -92,18 +96,13 @@ handleDeleteTopicsV0 ServerContext{..} _ K.DeleteTopicsRequestV0{..} =
     deleteTopic :: T.Text -> IO K.DeletableTopicResultV0
     deleteTopic topicName = do
       let streamId = S.transToTopicStreamName topicName
-      S.doesStreamExist scLDClient streamId >>= \case
-        True  -> do
-          -- delete offset caches.
-          --
-          -- XXX: Normally we do not need to delete this because the logid is a
-          -- random number and will unlikely be reused.
-          partitions <- S.listStreamPartitionsOrdered scLDClient streamId
-          V.forM_ partitions $ \(_, logid) ->
-            cleanOffsetCache scOffsetManager logid
-          S.removeStream scLDClient streamId
-          Stats.stream_stat_erase scStatsHolder (Utils.textToCBytes topicName)
-          return $ K.DeletableTopicResultV0 topicName K.NONE
-        False -> do
-          Log.warning $ "Stream " <> Log.build (show streamId) <> " does not exist"
-          return $ K.DeletableTopicResultV0 topicName K.UNKNOWN_TOPIC_OR_PARTITION
+      -- delete offset caches.
+      --
+      -- XXX: Normally we do not need to delete this because the logid is a
+      -- random number and will unlikely be reused.
+      partitions <- S.listStreamPartitionsOrdered scLDClient streamId
+      V.forM_ partitions $ \(_, logid) ->
+        cleanOffsetCache scOffsetManager logid
+      S.removeStream scLDClient streamId
+      Stats.stream_stat_erase scStatsHolder (Utils.textToCBytes topicName)
+      return $ K.DeletableTopicResultV0 topicName K.NONE
