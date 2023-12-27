@@ -109,7 +109,7 @@ def get_field_default(field_type, default=None):
 GLOBAL_API_VERSION_PATCH = (0, 0)
 API_VERSION_PATCHES = {
     "ApiVersions": (0, 3),
-    "Metadata": (0, 4),
+    "Metadata": (0, 5),
     "Produce": (0, 3),
     "Fetch": (0, 4),
     "OffsetFetch": (0, 3),
