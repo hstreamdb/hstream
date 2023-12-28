@@ -415,6 +415,8 @@ type MetadataRequestTopicV3 = MetadataRequestTopicV0
 
 type MetadataRequestTopicV4 = MetadataRequestTopicV0
 
+type MetadataRequestTopicV5 = MetadataRequestTopicV0
+
 data MetadataResponseBrokerV0 = MetadataResponseBrokerV0
   { nodeId :: {-# UNPACK #-} !Int32
     -- ^ The broker ID.
@@ -492,6 +494,36 @@ type MetadataResponseBrokerV4 = MetadataResponseBrokerV1
 type MetadataResponsePartitionV4 = MetadataResponsePartitionV0
 
 type MetadataResponseTopicV4 = MetadataResponseTopicV1
+
+type MetadataResponseBrokerV5 = MetadataResponseBrokerV1
+
+data MetadataResponsePartitionV5 = MetadataResponsePartitionV5
+  { errorCode       :: {-# UNPACK #-} !ErrorCode
+    -- ^ The partition error, or 0 if there was no error.
+  , partitionIndex  :: {-# UNPACK #-} !Int32
+    -- ^ The partition index.
+  , leaderId        :: {-# UNPACK #-} !Int32
+    -- ^ The ID of the leader broker.
+  , replicaNodes    :: !(KaArray Int32)
+    -- ^ The set of all nodes that host this partition.
+  , isrNodes        :: !(KaArray Int32)
+    -- ^ The set of nodes that are in sync with the leader for this partition.
+  , offlineReplicas :: !(KaArray Int32)
+    -- ^ The set of offline replicas of this partition.
+  } deriving (Show, Eq, Generic)
+instance Serializable MetadataResponsePartitionV5
+
+data MetadataResponseTopicV5 = MetadataResponseTopicV5
+  { errorCode  :: {-# UNPACK #-} !ErrorCode
+    -- ^ The topic error, or 0 if there was no error.
+  , name       :: !Text
+    -- ^ The topic name.
+  , isInternal :: Bool
+    -- ^ True if the topic is internal.
+  , partitions :: !(KaArray MetadataResponsePartitionV5)
+    -- ^ Each partition in the topic.
+  } deriving (Show, Eq, Generic)
+instance Serializable MetadataResponseTopicV5
 
 data OffsetCommitRequestPartitionV0 = OffsetCommitRequestPartitionV0
   { partitionIndex    :: {-# UNPACK #-} !Int32
@@ -1111,6 +1143,8 @@ data MetadataRequestV4 = MetadataRequestV4
   } deriving (Show, Eq, Generic)
 instance Serializable MetadataRequestV4
 
+type MetadataRequestV5 = MetadataRequestV4
+
 data MetadataResponseV0 = MetadataResponseV0
   { brokers :: !(KaArray MetadataResponseBrokerV0)
     -- ^ Each broker in the response.
@@ -1157,6 +1191,21 @@ data MetadataResponseV3 = MetadataResponseV3
 instance Serializable MetadataResponseV3
 
 type MetadataResponseV4 = MetadataResponseV3
+
+data MetadataResponseV5 = MetadataResponseV5
+  { throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
+  , brokers        :: !(KaArray MetadataResponseBrokerV1)
+    -- ^ Each broker in the response.
+  , clusterId      :: !NullableString
+    -- ^ The cluster ID that responding broker belongs to.
+  , controllerId   :: {-# UNPACK #-} !Int32
+    -- ^ The ID of the controller broker.
+  , topics         :: !(KaArray MetadataResponseTopicV5)
+    -- ^ Each topic in the response.
+  } deriving (Show, Eq, Generic)
+instance Serializable MetadataResponseV5
 
 data OffsetCommitRequestV0 = OffsetCommitRequestV0
   { groupId :: !Text
@@ -1817,6 +1866,21 @@ instance HasMethodImpl HStreamKafkaV4 "metadata" where
   type MethodInput HStreamKafkaV4 "metadata" = MetadataRequestV4
   type MethodOutput HStreamKafkaV4 "metadata" = MetadataResponseV4
 
+data HStreamKafkaV5
+
+instance Service HStreamKafkaV5 where
+  type ServiceName HStreamKafkaV5 = "HStreamKafkaV5"
+  type ServiceMethods HStreamKafkaV5 =
+    '[ "metadata"
+     ]
+
+instance HasMethodImpl HStreamKafkaV5 "metadata" where
+  type MethodName HStreamKafkaV5 "metadata" = "metadata"
+  type MethodKey HStreamKafkaV5 "metadata" = 3
+  type MethodVersion HStreamKafkaV5 "metadata" = 5
+  type MethodInput HStreamKafkaV5 "metadata" = MetadataRequestV5
+  type MethodOutput HStreamKafkaV5 "metadata" = MetadataResponseV5
+
 -------------------------------------------------------------------------------
 
 newtype ApiKey = ApiKey Int16
@@ -1850,7 +1914,7 @@ supportedApiVersions =
   [ ApiVersionV0 (ApiKey 0) 0 3
   , ApiVersionV0 (ApiKey 1) 0 4
   , ApiVersionV0 (ApiKey 2) 0 1
-  , ApiVersionV0 (ApiKey 3) 0 4
+  , ApiVersionV0 (ApiKey 3) 0 5
   , ApiVersionV0 (ApiKey 8) 0 3
   , ApiVersionV0 (ApiKey 9) 0 3
   , ApiVersionV0 (ApiKey 10) 0 0
@@ -1886,6 +1950,7 @@ getHeaderVersion (ApiKey (3)) 1 = (1, 0)
 getHeaderVersion (ApiKey (3)) 2 = (1, 0)
 getHeaderVersion (ApiKey (3)) 3 = (1, 0)
 getHeaderVersion (ApiKey (3)) 4 = (1, 0)
+getHeaderVersion (ApiKey (3)) 5 = (1, 0)
 getHeaderVersion (ApiKey (8)) 0 = (1, 0)
 getHeaderVersion (ApiKey (8)) 1 = (1, 0)
 getHeaderVersion (ApiKey (8)) 2 = (1, 0)

@@ -760,6 +760,8 @@ metadataRequestTopicToV3 :: MetadataRequestTopic -> MetadataRequestTopicV3
 metadataRequestTopicToV3 = metadataRequestTopicToV0
 metadataRequestTopicToV4 :: MetadataRequestTopic -> MetadataRequestTopicV4
 metadataRequestTopicToV4 = metadataRequestTopicToV0
+metadataRequestTopicToV5 :: MetadataRequestTopic -> MetadataRequestTopicV5
+metadataRequestTopicToV5 = metadataRequestTopicToV0
 
 metadataRequestTopicFromV0 :: MetadataRequestTopicV0 -> MetadataRequestTopic
 metadataRequestTopicFromV0 x = MetadataRequestTopic
@@ -773,6 +775,8 @@ metadataRequestTopicFromV3 :: MetadataRequestTopicV3 -> MetadataRequestTopic
 metadataRequestTopicFromV3 = metadataRequestTopicFromV0
 metadataRequestTopicFromV4 :: MetadataRequestTopicV4 -> MetadataRequestTopic
 metadataRequestTopicFromV4 = metadataRequestTopicFromV0
+metadataRequestTopicFromV5 :: MetadataRequestTopicV5 -> MetadataRequestTopic
+metadataRequestTopicFromV5 = metadataRequestTopicFromV0
 
 data MetadataResponseBroker = MetadataResponseBroker
   { nodeId :: {-# UNPACK #-} !Int32
@@ -805,6 +809,8 @@ metadataResponseBrokerToV3 :: MetadataResponseBroker -> MetadataResponseBrokerV3
 metadataResponseBrokerToV3 = metadataResponseBrokerToV1
 metadataResponseBrokerToV4 :: MetadataResponseBroker -> MetadataResponseBrokerV4
 metadataResponseBrokerToV4 = metadataResponseBrokerToV1
+metadataResponseBrokerToV5 :: MetadataResponseBroker -> MetadataResponseBrokerV5
+metadataResponseBrokerToV5 = metadataResponseBrokerToV1
 
 metadataResponseBrokerFromV0 :: MetadataResponseBrokerV0 -> MetadataResponseBroker
 metadataResponseBrokerFromV0 x = MetadataResponseBroker
@@ -826,18 +832,22 @@ metadataResponseBrokerFromV3 :: MetadataResponseBrokerV3 -> MetadataResponseBrok
 metadataResponseBrokerFromV3 = metadataResponseBrokerFromV1
 metadataResponseBrokerFromV4 :: MetadataResponseBrokerV4 -> MetadataResponseBroker
 metadataResponseBrokerFromV4 = metadataResponseBrokerFromV1
+metadataResponseBrokerFromV5 :: MetadataResponseBrokerV5 -> MetadataResponseBroker
+metadataResponseBrokerFromV5 = metadataResponseBrokerFromV1
 
 data MetadataResponsePartition = MetadataResponsePartition
-  { errorCode      :: {-# UNPACK #-} !ErrorCode
+  { errorCode       :: {-# UNPACK #-} !ErrorCode
     -- ^ The partition error, or 0 if there was no error.
-  , partitionIndex :: {-# UNPACK #-} !Int32
+  , partitionIndex  :: {-# UNPACK #-} !Int32
     -- ^ The partition index.
-  , leaderId       :: {-# UNPACK #-} !Int32
+  , leaderId        :: {-# UNPACK #-} !Int32
     -- ^ The ID of the leader broker.
-  , replicaNodes   :: !(KaArray Int32)
+  , replicaNodes    :: !(KaArray Int32)
     -- ^ The set of all nodes that host this partition.
-  , isrNodes       :: !(KaArray Int32)
+  , isrNodes        :: !(KaArray Int32)
     -- ^ The set of nodes that are in sync with the leader for this partition.
+  , offlineReplicas :: !(KaArray Int32)
+    -- ^ The set of offline replicas of this partition.
   } deriving (Show, Eq, Generic)
 instance Serializable MetadataResponsePartition
 
@@ -857,6 +867,15 @@ metadataResponsePartitionToV3 :: MetadataResponsePartition -> MetadataResponsePa
 metadataResponsePartitionToV3 = metadataResponsePartitionToV0
 metadataResponsePartitionToV4 :: MetadataResponsePartition -> MetadataResponsePartitionV4
 metadataResponsePartitionToV4 = metadataResponsePartitionToV0
+metadataResponsePartitionToV5 :: MetadataResponsePartition -> MetadataResponsePartitionV5
+metadataResponsePartitionToV5 x = MetadataResponsePartitionV5
+  { errorCode = x.errorCode
+  , partitionIndex = x.partitionIndex
+  , leaderId = x.leaderId
+  , replicaNodes = x.replicaNodes
+  , isrNodes = x.isrNodes
+  , offlineReplicas = x.offlineReplicas
+  }
 
 metadataResponsePartitionFromV0 :: MetadataResponsePartitionV0 -> MetadataResponsePartition
 metadataResponsePartitionFromV0 x = MetadataResponsePartition
@@ -865,6 +884,7 @@ metadataResponsePartitionFromV0 x = MetadataResponsePartition
   , leaderId = x.leaderId
   , replicaNodes = x.replicaNodes
   , isrNodes = x.isrNodes
+  , offlineReplicas = KaArray (Just V.empty)
   }
 metadataResponsePartitionFromV1 :: MetadataResponsePartitionV1 -> MetadataResponsePartition
 metadataResponsePartitionFromV1 = metadataResponsePartitionFromV0
@@ -874,6 +894,15 @@ metadataResponsePartitionFromV3 :: MetadataResponsePartitionV3 -> MetadataRespon
 metadataResponsePartitionFromV3 = metadataResponsePartitionFromV0
 metadataResponsePartitionFromV4 :: MetadataResponsePartitionV4 -> MetadataResponsePartition
 metadataResponsePartitionFromV4 = metadataResponsePartitionFromV0
+metadataResponsePartitionFromV5 :: MetadataResponsePartitionV5 -> MetadataResponsePartition
+metadataResponsePartitionFromV5 x = MetadataResponsePartition
+  { errorCode = x.errorCode
+  , partitionIndex = x.partitionIndex
+  , leaderId = x.leaderId
+  , replicaNodes = x.replicaNodes
+  , isrNodes = x.isrNodes
+  , offlineReplicas = x.offlineReplicas
+  }
 
 data MetadataResponseTopic = MetadataResponseTopic
   { errorCode  :: {-# UNPACK #-} !ErrorCode
@@ -906,6 +935,13 @@ metadataResponseTopicToV3 :: MetadataResponseTopic -> MetadataResponseTopicV3
 metadataResponseTopicToV3 = metadataResponseTopicToV1
 metadataResponseTopicToV4 :: MetadataResponseTopic -> MetadataResponseTopicV4
 metadataResponseTopicToV4 = metadataResponseTopicToV1
+metadataResponseTopicToV5 :: MetadataResponseTopic -> MetadataResponseTopicV5
+metadataResponseTopicToV5 x = MetadataResponseTopicV5
+  { errorCode = x.errorCode
+  , name = x.name
+  , isInternal = x.isInternal
+  , partitions = fmap metadataResponsePartitionToV5 x.partitions
+  }
 
 metadataResponseTopicFromV0 :: MetadataResponseTopicV0 -> MetadataResponseTopic
 metadataResponseTopicFromV0 x = MetadataResponseTopic
@@ -927,6 +963,13 @@ metadataResponseTopicFromV3 :: MetadataResponseTopicV3 -> MetadataResponseTopic
 metadataResponseTopicFromV3 = metadataResponseTopicFromV1
 metadataResponseTopicFromV4 :: MetadataResponseTopicV4 -> MetadataResponseTopic
 metadataResponseTopicFromV4 = metadataResponseTopicFromV1
+metadataResponseTopicFromV5 :: MetadataResponseTopicV5 -> MetadataResponseTopic
+metadataResponseTopicFromV5 x = MetadataResponseTopic
+  { errorCode = x.errorCode
+  , name = x.name
+  , partitions = fmap metadataResponsePartitionFromV5 x.partitions
+  , isInternal = x.isInternal
+  }
 
 data OffsetCommitRequestPartition = OffsetCommitRequestPartition
   { partitionIndex    :: {-# UNPACK #-} !Int32
@@ -2286,6 +2329,8 @@ metadataRequestToV4 x = MetadataRequestV4
   { topics = fmap metadataRequestTopicToV4 x.topics
   , allowAutoTopicCreation = x.allowAutoTopicCreation
   }
+metadataRequestToV5 :: MetadataRequest -> MetadataRequestV5
+metadataRequestToV5 = metadataRequestToV4
 
 metadataRequestFromV0 :: MetadataRequestV0 -> MetadataRequest
 metadataRequestFromV0 x = MetadataRequest
@@ -2303,6 +2348,8 @@ metadataRequestFromV4 x = MetadataRequest
   { topics = fmap metadataRequestTopicFromV4 x.topics
   , allowAutoTopicCreation = x.allowAutoTopicCreation
   }
+metadataRequestFromV5 :: MetadataRequestV5 -> MetadataRequest
+metadataRequestFromV5 = metadataRequestFromV4
 
 data MetadataResponse = MetadataResponse
   { brokers        :: !(KaArray MetadataResponseBroker)
@@ -2347,6 +2394,14 @@ metadataResponseToV3 x = MetadataResponseV3
   }
 metadataResponseToV4 :: MetadataResponse -> MetadataResponseV4
 metadataResponseToV4 = metadataResponseToV3
+metadataResponseToV5 :: MetadataResponse -> MetadataResponseV5
+metadataResponseToV5 x = MetadataResponseV5
+  { throttleTimeMs = x.throttleTimeMs
+  , brokers = fmap metadataResponseBrokerToV5 x.brokers
+  , clusterId = x.clusterId
+  , controllerId = x.controllerId
+  , topics = fmap metadataResponseTopicToV5 x.topics
+  }
 
 metadataResponseFromV0 :: MetadataResponseV0 -> MetadataResponse
 metadataResponseFromV0 x = MetadataResponse
@@ -2382,6 +2437,14 @@ metadataResponseFromV3 x = MetadataResponse
   }
 metadataResponseFromV4 :: MetadataResponseV4 -> MetadataResponse
 metadataResponseFromV4 = metadataResponseFromV3
+metadataResponseFromV5 :: MetadataResponseV5 -> MetadataResponse
+metadataResponseFromV5 x = MetadataResponse
+  { brokers = fmap metadataResponseBrokerFromV5 x.brokers
+  , topics = fmap metadataResponseTopicFromV5 x.topics
+  , controllerId = x.controllerId
+  , clusterId = x.clusterId
+  , throttleTimeMs = x.throttleTimeMs
+  }
 
 data OffsetCommitRequest = OffsetCommitRequest
   { groupId         :: !Text
