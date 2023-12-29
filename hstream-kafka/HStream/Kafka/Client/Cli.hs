@@ -452,6 +452,7 @@ data ConsumeCommandOpts = ConsumeCommandOpts
   , offsetReset :: Maybe OffsetReset
   , eof         :: Bool
   , autoCommit  :: Bool
+  , verbose     :: Bool
   } deriving (Show, Eq)
 
 -- librdkafka doesn't support set `allow.auto.create.topics` any more for consumer since v1.6
@@ -467,6 +468,7 @@ consumeCommandParser = ConsumeCommandOpts
             <> help "Exit consumer when last message in partition has been received."
              )
   <*> flag True False (long "no-auto-commit" <> help "disable auto commit")
+  <*> switch (long "verbose" <> short 'v' <> help "print record key and create timestamp.")
 
 handleConsumeCommand :: Options -> ConsumeCommandOpts -> IO ()
 handleConsumeCommand Options{..} cmdopts = do
@@ -483,6 +485,7 @@ handleConsumeCommand Options{..} cmdopts = do
                         Just OffsetResetLatest   -> "latest"
       cAutoCommit = if cmdopts.autoCommit then 1 else 0
       ceof = if cmdopts.eof then 1 else 0
+      cVerbose = if cmdopts.verbose then 1 else 0
   consumer <-
     HsForeign.withByteString brokers $ \brokers' brokers_size ->
     HsForeign.withByteString groupIdBs $ \groupid' groupid_size ->
@@ -499,7 +502,7 @@ handleConsumeCommand Options{..} cmdopts = do
 
   HsForeign.withByteStringList (map encodeUtf8 topics) $ \tds' tss' tl -> do
     (errmsg, ret) <- unsafeWithStdString $
-      hs_consumer_consume consumer tds' tss' tl
+      hs_consumer_consume consumer tds' tss' tl cVerbose
     when (ret /= 0) $ errorWithoutStackTrace $
       "Consume failed: " <> (Text.unpack $ decodeUtf8 errmsg)
 
@@ -519,6 +522,7 @@ foreign import ccall interruptible "hs_consumer_consume"
   hs_consumer_consume
     :: Ptr HsConsumer
     -> Ptr (Ptr Word8) -> Ptr Int -> Int  -- topics
+    -> CBool                              -- verbose
     -> Ptr HsForeign.StdString
     -> IO Int
 

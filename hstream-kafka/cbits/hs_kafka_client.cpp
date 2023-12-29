@@ -6,12 +6,13 @@
 #include <HsFFI.h>
 #include <csignal>
 #include <iostream>
+#include <sstream>
+#include <iomanip>
 #include <librdkafka/rdkafkacpp.h>
 #include <string>
 #include <sys/time.h>
 #include <unistd.h>
 
-static int verbosity = 1;
 static volatile sig_atomic_t run = 1;
 static void sigterm(int sig) { run = 0; }
 
@@ -110,9 +111,6 @@ private:
 public:
   void rebalance_cb(RdKafka::KafkaConsumer* consumer, RdKafka::ErrorCode err,
                     std::vector<RdKafka::TopicPartition*>& partitions) {
-    std::cerr << "RebalanceCb: " << RdKafka::err2str(err) << ": ";
-    part_list_print(partitions);
-
     RdKafka::Error* error = NULL;
     RdKafka::ErrorCode ret_err = RdKafka::ERR_NO_ERROR;
 
@@ -141,36 +139,40 @@ public:
   }
 };
 
-void msg_consume(RdKafka::Message* message, void* opaque) {
+void msg_consume(RdKafka::Message* message, bool verbose, void* opaque) {
   switch (message->err()) {
     case RdKafka::ERR__TIMED_OUT:
       break;
 
-    case RdKafka::ERR_NO_ERROR:
-      /* Real message */
-      consumer_msg_cnt++;
-      consumer_msg_bytes += message->len();
-      if (verbosity >= 3)
-        std::cerr << "Read msg at offset " << message->offset() << std::endl;
-      RdKafka::MessageTimestamp ts;
-      ts = message->timestamp();
-      if (verbosity >= 2 &&
-          ts.type != RdKafka::MessageTimestamp::MSG_TIMESTAMP_NOT_AVAILABLE) {
-        std::string tsname = "?";
-        if (ts.type == RdKafka::MessageTimestamp::MSG_TIMESTAMP_CREATE_TIME)
-          tsname = "create time";
-        else if (ts.type ==
-                 RdKafka::MessageTimestamp::MSG_TIMESTAMP_LOG_APPEND_TIME)
-          tsname = "log append time";
-        std::cout << "Timestamp: " << tsname << " " << ts.timestamp
-                  << std::endl;
-      }
-      if (verbosity >= 2 && message->key()) {
-        std::cout << "Key: " << *message->key() << std::endl;
-      }
-      if (verbosity >= 1) {
-        printf("%.*s\n", static_cast<int>(message->len()),
-               static_cast<const char*>(message->payload()));
+    case RdKafka::ERR_NO_ERROR: 
+      {
+        /* Real message */
+        consumer_msg_cnt++;
+        consumer_msg_bytes += message->len();
+        RdKafka::MessageTimestamp ts;
+        ts = message->timestamp();
+        std::ostringstream ss;
+        if (verbose) {
+          ss << "CreateTimestamp: ";
+          ss << std::left << std::setw(15) << std::setfill(' ');
+          if (ts.type == RdKafka::MessageTimestamp::MSG_TIMESTAMP_CREATE_TIME) {
+             ss << ts.timestamp;
+          } else {
+             ss << "";
+          }
+          ss << " ";
+          ss << "Key: ";
+          ss << std::left << std::setw(20) << std::setfill(' ');
+          if (message->key()) {
+            ss << *message->key();
+          } else {
+            ss << "";
+          }
+          ss << " ";
+        }
+
+        ss << std::string(static_cast<const char*>(message->payload()), message->len());
+        std::cout << ss.str() << std::endl;
       }
       break;
 
@@ -353,7 +355,7 @@ HsConsumer* hs_new_consumer(const char* brokers_, HsInt brokers_size_,
 
 HsInt hs_consumer_consume(HsConsumer* c, const char** topic_datas,
                           HsInt* topic_sizes, HsInt topics_len,
-                          std::string* errstr) {
+                          bool verbose, std::string* errstr) {
   std::signal(SIGINT, sigterm);
   std::signal(SIGTERM, sigterm);
 
@@ -369,7 +371,7 @@ HsInt hs_consumer_consume(HsConsumer* c, const char** topic_datas,
 
   while (run) {
     RdKafka::Message* msg = c->consumer->consume(1000);
-    msg_consume(msg, NULL);
+    msg_consume(msg, verbose, NULL);
     delete msg;
   }
 
