@@ -259,19 +259,20 @@ handleGroupList :: Options -> IO ()
 handleGroupList Options{..} = do
   correlationId <- getCorrelationId
   brokers <- findAllBrokers host port
+  let req = K.ListGroupsRequestV0
   rows <- V.forM brokers $ \broker -> do
-    let req = K.ListGroupsRequestV0
     resp <- KA.withSendAndRecv broker.host broker.port (KA.listGroups correlationId req)
     when (resp.errorCode /= K.NONE) $
       errorWithoutStackTrace $ "List groups failed: " <> show resp.errorCode
     let K.NonNullKaArray groups = resp.groups
         lenses = [ Text.unpack . (.groupId)
+                 , const broker.host
                  , Text.unpack . (.protocolType)
                  ]
         stats = (\s -> ($ s) <$> lenses) <$> (V.toList groups)
     return stats
 
-  let titles = ["ID", "ProtocolType"]
+  let titles = ["ID", "Host", "ProtocolType"]
   putStrLn $ simpleShowTable (map (, 30, Table.left) titles) (concat rows)
 
 handleGroupShow :: Options -> Text -> IO ()
