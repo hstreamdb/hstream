@@ -5,10 +5,10 @@
  */
 #include <HsFFI.h>
 #include <csignal>
-#include <iostream>
-#include <sstream>
 #include <iomanip>
+#include <iostream>
 #include <librdkafka/rdkafkacpp.h>
+#include <sstream>
 #include <string>
 #include <sys/time.h>
 #include <unistd.h>
@@ -144,37 +144,36 @@ void msg_consume(RdKafka::Message* message, bool verbose, void* opaque) {
     case RdKafka::ERR__TIMED_OUT:
       break;
 
-    case RdKafka::ERR_NO_ERROR: 
-      {
-        /* Real message */
-        consumer_msg_cnt++;
-        consumer_msg_bytes += message->len();
-        RdKafka::MessageTimestamp ts;
-        ts = message->timestamp();
-        std::ostringstream ss;
-        if (verbose) {
-          ss << "CreateTimestamp: ";
-          ss << std::left << std::setw(15) << std::setfill(' ');
-          if (ts.type == RdKafka::MessageTimestamp::MSG_TIMESTAMP_CREATE_TIME) {
-             ss << ts.timestamp;
-          } else {
-             ss << "";
-          }
-          ss << " ";
-          ss << "Key: ";
-          ss << std::left << std::setw(20) << std::setfill(' ');
-          if (message->key()) {
-            ss << *message->key();
-          } else {
-            ss << "";
-          }
-          ss << " ";
+    case RdKafka::ERR_NO_ERROR: {
+      /* Real message */
+      consumer_msg_cnt++;
+      consumer_msg_bytes += message->len();
+      RdKafka::MessageTimestamp ts;
+      ts = message->timestamp();
+      std::ostringstream ss;
+      if (verbose) {
+        ss << "CreateTimestamp: ";
+        ss << std::left << std::setw(15) << std::setfill(' ');
+        if (ts.type == RdKafka::MessageTimestamp::MSG_TIMESTAMP_CREATE_TIME) {
+          ss << ts.timestamp;
+        } else {
+          ss << "";
         }
-
-        ss << std::string(static_cast<const char*>(message->payload()), message->len());
-        std::cout << ss.str() << std::endl;
+        ss << " ";
+        ss << "Key: ";
+        ss << std::left << std::setw(20) << std::setfill(' ');
+        if (message->key()) {
+          ss << *message->key();
+        } else {
+          ss << "";
+        }
+        ss << " ";
       }
-      break;
+
+      ss << std::string(static_cast<const char*>(message->payload()),
+                        message->len());
+      std::cout << ss.str() << std::endl;
+    } break;
 
     case RdKafka::ERR__PARTITION_EOF:
       /* Last message */
@@ -354,8 +353,8 @@ HsConsumer* hs_new_consumer(const char* brokers_, HsInt brokers_size_,
 }
 
 HsInt hs_consumer_consume(HsConsumer* c, const char** topic_datas,
-                          HsInt* topic_sizes, HsInt topics_len,
-                          bool verbose, std::string* errstr) {
+                          HsInt* topic_sizes, HsInt topics_len, bool verbose,
+                          std::string* errstr) {
   std::signal(SIGINT, sigterm);
   std::signal(SIGTERM, sigterm);
 
