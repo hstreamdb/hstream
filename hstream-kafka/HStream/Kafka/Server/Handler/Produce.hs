@@ -1,5 +1,6 @@
 module HStream.Kafka.Server.Handler.Produce
   ( handleProduce
+  , handleInitProducerId
   ) where
 
 import qualified Control.Concurrent.Async           as Async
@@ -82,6 +83,21 @@ handleProduce ServerContext{..} _ req = do
     pure $ K.TopicProduceResponse topic.name (K.KaArray $ Just partitionResponses)
 
   pure $ K.ProduceResponse (K.KaArray $ Just responses) 0{- TODO: throttleTimeMs -}
+
+-- TODO
+handleInitProducerId
+  :: ServerContext
+  -> K.RequestContext
+  -> K.InitProducerIdRequest
+  -> IO K.InitProducerIdResponse
+handleInitProducerId ServerContext{..} _ req = do
+  Log.warning "InitProducerId is not implemented"
+  pure $ K.InitProducerIdResponse
+    { throttleTimeMs = 0
+    , errorCode = K.NONE
+    , producerId = 0
+    , producerEpoch = 0
+    }
 
 -------------------------------------------------------------------------------
 
