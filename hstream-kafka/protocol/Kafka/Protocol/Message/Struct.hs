@@ -999,6 +999,28 @@ data HeartbeatResponseV1 = HeartbeatResponseV1
   } deriving (Show, Eq, Generic)
 instance Serializable HeartbeatResponseV1
 
+data InitProducerIdRequestV0 = InitProducerIdRequestV0
+  { transactionalId      :: !NullableString
+    -- ^ The transactional id, or null if the producer is not transactional.
+  , transactionTimeoutMs :: {-# UNPACK #-} !Int32
+    -- ^ The time in ms to wait before aborting idle transactions sent by this
+    -- producer. This is only relevant if a TransactionalId has been defined.
+  } deriving (Show, Eq, Generic)
+instance Serializable InitProducerIdRequestV0
+
+data InitProducerIdResponseV0 = InitProducerIdResponseV0
+  { throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
+  , errorCode      :: {-# UNPACK #-} !ErrorCode
+    -- ^ The error code, or 0 if there was no error.
+  , producerId     :: {-# UNPACK #-} !Int64
+    -- ^ The current producer id.
+  , producerEpoch  :: {-# UNPACK #-} !Int16
+    -- ^ The current epoch associated with the producer id.
+  } deriving (Show, Eq, Generic)
+instance Serializable InitProducerIdResponseV0
+
 data JoinGroupRequestV0 = JoinGroupRequestV0
   { groupId          :: !Text
     -- ^ The group identifier.
@@ -1487,6 +1509,7 @@ instance Service HStreamKafkaV0 where
      , "apiVersions"
      , "createTopics"
      , "deleteTopics"
+     , "initProducerId"
      , "describeConfigs"
      , "saslAuthenticate"
      ]
@@ -1616,6 +1639,13 @@ instance HasMethodImpl HStreamKafkaV0 "deleteTopics" where
   type MethodVersion HStreamKafkaV0 "deleteTopics" = 0
   type MethodInput HStreamKafkaV0 "deleteTopics" = DeleteTopicsRequestV0
   type MethodOutput HStreamKafkaV0 "deleteTopics" = DeleteTopicsResponseV0
+
+instance HasMethodImpl HStreamKafkaV0 "initProducerId" where
+  type MethodName HStreamKafkaV0 "initProducerId" = "initProducerId"
+  type MethodKey HStreamKafkaV0 "initProducerId" = 22
+  type MethodVersion HStreamKafkaV0 "initProducerId" = 0
+  type MethodInput HStreamKafkaV0 "initProducerId" = InitProducerIdRequestV0
+  type MethodOutput HStreamKafkaV0 "initProducerId" = InitProducerIdResponseV0
 
 instance HasMethodImpl HStreamKafkaV0 "describeConfigs" where
   type MethodName HStreamKafkaV0 "describeConfigs" = "describeConfigs"
@@ -1938,6 +1968,7 @@ instance Show ApiKey where
   show (ApiKey (18))  = "ApiVersions(18)"
   show (ApiKey (19))  = "CreateTopics(19)"
   show (ApiKey (20))  = "DeleteTopics(20)"
+  show (ApiKey (22))  = "InitProducerId(22)"
   show (ApiKey (32))  = "DescribeConfigs(32)"
   show (ApiKey (36))  = "SaslAuthenticate(36)"
   show (ApiKey n)     = "Unknown " <> show n
@@ -1961,6 +1992,7 @@ supportedApiVersions =
   , ApiVersionV0 (ApiKey 18) 0 3
   , ApiVersionV0 (ApiKey 19) 0 0
   , ApiVersionV0 (ApiKey 20) 0 0
+  , ApiVersionV0 (ApiKey 22) 0 0
   , ApiVersionV0 (ApiKey 32) 0 0
   , ApiVersionV0 (ApiKey 36) 0 0
   ]
@@ -2015,6 +2047,7 @@ getHeaderVersion (ApiKey (18)) 2 = (1, 0)
 getHeaderVersion (ApiKey (18)) 3 = (2, 0)
 getHeaderVersion (ApiKey (19)) 0 = (1, 0)
 getHeaderVersion (ApiKey (20)) 0 = (1, 0)
+getHeaderVersion (ApiKey (22)) 0 = (1, 0)
 getHeaderVersion (ApiKey (32)) 0 = (1, 0)
 getHeaderVersion (ApiKey (36)) 0 = (1, 0)
 getHeaderVersion k v = error $ "Unknown " <> show k <> " v" <> show v

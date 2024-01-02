@@ -2061,6 +2061,56 @@ heartbeatResponseFromV1 x = HeartbeatResponse
   , throttleTimeMs = x.throttleTimeMs
   }
 
+data InitProducerIdRequest = InitProducerIdRequest
+  { transactionalId      :: !NullableString
+    -- ^ The transactional id, or null if the producer is not transactional.
+  , transactionTimeoutMs :: {-# UNPACK #-} !Int32
+    -- ^ The time in ms to wait before aborting idle transactions sent by this
+    -- producer. This is only relevant if a TransactionalId has been defined.
+  } deriving (Show, Eq, Generic)
+instance Serializable InitProducerIdRequest
+
+initProducerIdRequestToV0 :: InitProducerIdRequest -> InitProducerIdRequestV0
+initProducerIdRequestToV0 x = InitProducerIdRequestV0
+  { transactionalId = x.transactionalId
+  , transactionTimeoutMs = x.transactionTimeoutMs
+  }
+
+initProducerIdRequestFromV0 :: InitProducerIdRequestV0 -> InitProducerIdRequest
+initProducerIdRequestFromV0 x = InitProducerIdRequest
+  { transactionalId = x.transactionalId
+  , transactionTimeoutMs = x.transactionTimeoutMs
+  }
+
+data InitProducerIdResponse = InitProducerIdResponse
+  { throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
+  , errorCode      :: {-# UNPACK #-} !ErrorCode
+    -- ^ The error code, or 0 if there was no error.
+  , producerId     :: {-# UNPACK #-} !Int64
+    -- ^ The current producer id.
+  , producerEpoch  :: {-# UNPACK #-} !Int16
+    -- ^ The current epoch associated with the producer id.
+  } deriving (Show, Eq, Generic)
+instance Serializable InitProducerIdResponse
+
+initProducerIdResponseToV0 :: InitProducerIdResponse -> InitProducerIdResponseV0
+initProducerIdResponseToV0 x = InitProducerIdResponseV0
+  { throttleTimeMs = x.throttleTimeMs
+  , errorCode = x.errorCode
+  , producerId = x.producerId
+  , producerEpoch = x.producerEpoch
+  }
+
+initProducerIdResponseFromV0 :: InitProducerIdResponseV0 -> InitProducerIdResponse
+initProducerIdResponseFromV0 x = InitProducerIdResponse
+  { throttleTimeMs = x.throttleTimeMs
+  , errorCode = x.errorCode
+  , producerId = x.producerId
+  , producerEpoch = x.producerEpoch
+  }
+
 data JoinGroupRequest = JoinGroupRequest
   { groupId            :: !Text
     -- ^ The group identifier.
@@ -2973,6 +3023,13 @@ instance Exception HeartbeatResponseEx
 
 catchHeartbeatResponseEx :: IO HeartbeatResponse -> IO HeartbeatResponse
 catchHeartbeatResponseEx act = act `catch` \(HeartbeatResponseEx resp) -> pure resp
+
+newtype InitProducerIdResponseEx = InitProducerIdResponseEx InitProducerIdResponse
+  deriving (Show, Eq)
+instance Exception InitProducerIdResponseEx
+
+catchInitProducerIdResponseEx :: IO InitProducerIdResponse -> IO InitProducerIdResponse
+catchInitProducerIdResponseEx act = act `catch` \(InitProducerIdResponseEx resp) -> pure resp
 
 newtype JoinGroupResponseEx = JoinGroupResponseEx JoinGroupResponse
   deriving (Show, Eq)
