@@ -122,6 +122,7 @@ API_VERSION_PATCHES = {
     "Heartbeat": (0, 1),
     "ListGroups": (0, 1),
     "DescribeGroups": (0, 1),
+    "FindCoordinator": (0, 1),
 }
 
 # -----------------------------------------------------------------------------
@@ -455,6 +456,10 @@ def parse_field(field, api_version=0, flexible=False):
     in_tagged_version = in_version_range(
         api_version, min_tagged_version, max_tagged_version
     )
+
+    # if field is NullableString, the default value should be Nothing(null)
+    if type_type == "string" and default is None and in_null_version:
+        default = "null"
 
     if (in_api_version, in_tagged_version) == (False, False):
         return

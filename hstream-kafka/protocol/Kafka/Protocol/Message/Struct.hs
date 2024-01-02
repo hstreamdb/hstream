@@ -936,6 +936,14 @@ newtype FindCoordinatorRequestV0 = FindCoordinatorRequestV0
   } deriving (Show, Eq, Generic)
 instance Serializable FindCoordinatorRequestV0
 
+data FindCoordinatorRequestV1 = FindCoordinatorRequestV1
+  { key     :: !Text
+    -- ^ The coordinator key.
+  , keyType :: {-# UNPACK #-} !Int8
+    -- ^ The coordinator key type. (Group, transaction, etc.)
+  } deriving (Show, Eq, Generic)
+instance Serializable FindCoordinatorRequestV1
+
 data FindCoordinatorResponseV0 = FindCoordinatorResponseV0
   { errorCode :: {-# UNPACK #-} !ErrorCode
     -- ^ The error code, or 0 if there was no error.
@@ -947,6 +955,23 @@ data FindCoordinatorResponseV0 = FindCoordinatorResponseV0
     -- ^ The port.
   } deriving (Show, Eq, Generic)
 instance Serializable FindCoordinatorResponseV0
+
+data FindCoordinatorResponseV1 = FindCoordinatorResponseV1
+  { throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
+  , errorCode      :: {-# UNPACK #-} !ErrorCode
+    -- ^ The error code, or 0 if there was no error.
+  , errorMessage   :: !NullableString
+    -- ^ The error message, or null if there was no error.
+  , nodeId         :: {-# UNPACK #-} !Int32
+    -- ^ The node id.
+  , host           :: !Text
+    -- ^ The host name.
+  , port           :: {-# UNPACK #-} !Int32
+    -- ^ The port.
+  } deriving (Show, Eq, Generic)
+instance Serializable FindCoordinatorResponseV1
 
 data HeartbeatRequestV0 = HeartbeatRequestV0
   { groupId      :: !Text
@@ -1617,6 +1642,7 @@ instance Service HStreamKafkaV1 where
      , "metadata"
      , "offsetCommit"
      , "offsetFetch"
+     , "findCoordinator"
      , "joinGroup"
      , "heartbeat"
      , "leaveGroup"
@@ -1668,6 +1694,13 @@ instance HasMethodImpl HStreamKafkaV1 "offsetFetch" where
   type MethodVersion HStreamKafkaV1 "offsetFetch" = 1
   type MethodInput HStreamKafkaV1 "offsetFetch" = OffsetFetchRequestV1
   type MethodOutput HStreamKafkaV1 "offsetFetch" = OffsetFetchResponseV1
+
+instance HasMethodImpl HStreamKafkaV1 "findCoordinator" where
+  type MethodName HStreamKafkaV1 "findCoordinator" = "findCoordinator"
+  type MethodKey HStreamKafkaV1 "findCoordinator" = 10
+  type MethodVersion HStreamKafkaV1 "findCoordinator" = 1
+  type MethodInput HStreamKafkaV1 "findCoordinator" = FindCoordinatorRequestV1
+  type MethodOutput HStreamKafkaV1 "findCoordinator" = FindCoordinatorResponseV1
 
 instance HasMethodImpl HStreamKafkaV1 "joinGroup" where
   type MethodName HStreamKafkaV1 "joinGroup" = "joinGroup"
@@ -1917,7 +1950,7 @@ supportedApiVersions =
   , ApiVersionV0 (ApiKey 3) 0 5
   , ApiVersionV0 (ApiKey 8) 0 3
   , ApiVersionV0 (ApiKey 9) 0 3
-  , ApiVersionV0 (ApiKey 10) 0 0
+  , ApiVersionV0 (ApiKey 10) 0 1
   , ApiVersionV0 (ApiKey 11) 0 2
   , ApiVersionV0 (ApiKey 12) 0 1
   , ApiVersionV0 (ApiKey 13) 0 1
@@ -1960,6 +1993,7 @@ getHeaderVersion (ApiKey (9)) 1 = (1, 0)
 getHeaderVersion (ApiKey (9)) 2 = (1, 0)
 getHeaderVersion (ApiKey (9)) 3 = (1, 0)
 getHeaderVersion (ApiKey (10)) 0 = (1, 0)
+getHeaderVersion (ApiKey (10)) 1 = (1, 0)
 getHeaderVersion (ApiKey (11)) 0 = (1, 0)
 getHeaderVersion (ApiKey (11)) 1 = (1, 0)
 getHeaderVersion (ApiKey (11)) 2 = (1, 0)

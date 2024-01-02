@@ -7,6 +7,8 @@ module HStream.Kafka.Server.Handler.Basic
   , handleMetadata
     -- 32: DescribeConfigs
   , handleDescribeConfigs
+
+  , handleFindCoordinator
   ) where
 
 import           Control.Exception
@@ -239,3 +241,35 @@ handleDescribeConfigs serverCtx _ req = do
         else return $ KCM.getErrorResponse KC.BROKER resource.resourceName ("invalid broker id:" <> resource.resourceName)
       rt -> return $ KCM.getErrorResponse rt resource.resourceName ("unsupported resource type:" <> T.pack (show rt))
   return $ K.DescribeConfigsResponse {results=K.NonNullKaArray results, throttleTimeMs=0}
+
+---------------------------------------------------------------------------
+--  32: FindCoordinator
+---------------------------------------------------------------------------
+data CoordinatorType
+  = GROUP
+  | TRANSACTION
+  deriving (Enum, Eq)
+
+handleFindCoordinator :: ServerContext -> K.RequestContext -> K.FindCoordinatorRequest -> IO K.FindCoordinatorResponse
+handleFindCoordinator ServerContext{..} _ req = do
+  case toEnum (fromIntegral req.keyType) of
+    GROUP -> do
+      A.ServerNode{..} <- lookupKafkaPersist metaHandle gossipContext loadBalanceHashRing scAdvertisedListenersKey (KafkaResGroup req.key)
+      Log.info $ "findCoordinator for group:" <> Log.buildString' req.key <> ", result:" <> Log.buildString' serverNodeId
+      return $ K.FindCoordinatorResponse {
+          errorMessage=Nothing
+        , nodeId=fromIntegral serverNodeId
+        , errorCode=0
+        , throttleTimeMs=0
+        , port=fromIntegral serverNodePort
+        , host=serverNodeHost
+        }
+    _ -> do
+      return $ K.FindCoordinatorResponse {
+          errorMessage=Just "KeyType Must be 0(GROUP)"
+        , nodeId=0
+        , errorCode=K.COORDINATOR_NOT_AVAILABLE
+        , throttleTimeMs=0
+        , port=0
+        , host=""
+        }
