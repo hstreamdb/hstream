@@ -110,7 +110,7 @@ GLOBAL_API_VERSION_PATCH = (0, 0)
 API_VERSION_PATCHES = {
     "ApiVersions": (0, 3),
     "Metadata": (0, 5),
-    "Produce": (0, 3),
+    "Produce": (0, 5),
     "Fetch": (0, 4),
     "OffsetFetch": (0, 3),
     "OffsetCommit": (0, 3),
@@ -359,11 +359,11 @@ def in_version_range(version, min_version, max_version):
 
 
 def int16_to_word16(num):
-    return struct.unpack('H', struct.pack('h', num))[0]
+    return struct.unpack("H", struct.pack("h", num))[0]
 
 
 def word16_to_int16(num):
-    return struct.unpack('h', struct.pack('H', num))[0]
+    return struct.unpack("h", struct.pack("H", num))[0]
 
 
 # https://github.com/apache/kafka/blob/3.5.1/generator/src/main/java/org/apache/kafka/message/ApiMessageTypeGenerator.java#L329
@@ -459,8 +459,9 @@ def parse_field(field, api_version=0, flexible=False):
         api_version, min_tagged_version, max_tagged_version
     )
 
-    # if field is NullableString, the default value should be Nothing(null)
-    if type_type == "string" and default is None and in_null_version:
+    # If the field is NullableString and there is no default value,
+    # we set the default value to "null".
+    if type_type == "string" and in_null_version and default is None:
         default = "null"
 
     if (in_api_version, in_tagged_version) == (False, False):

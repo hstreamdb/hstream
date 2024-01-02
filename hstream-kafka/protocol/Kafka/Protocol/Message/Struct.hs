@@ -707,6 +707,14 @@ type PartitionProduceDataV3 = PartitionProduceDataV0
 
 type TopicProduceDataV3 = TopicProduceDataV0
 
+type PartitionProduceDataV4 = PartitionProduceDataV0
+
+type TopicProduceDataV4 = TopicProduceDataV0
+
+type PartitionProduceDataV5 = PartitionProduceDataV0
+
+type TopicProduceDataV5 = TopicProduceDataV0
+
 data PartitionProduceResponseV0 = PartitionProduceResponseV0
   { index      :: {-# UNPACK #-} !Int32
     -- ^ The partition index.
@@ -755,6 +763,35 @@ instance Serializable TopicProduceResponseV2
 type PartitionProduceResponseV3 = PartitionProduceResponseV2
 
 type TopicProduceResponseV3 = TopicProduceResponseV2
+
+type PartitionProduceResponseV4 = PartitionProduceResponseV2
+
+type TopicProduceResponseV4 = TopicProduceResponseV2
+
+data PartitionProduceResponseV5 = PartitionProduceResponseV5
+  { index           :: {-# UNPACK #-} !Int32
+    -- ^ The partition index.
+  , errorCode       :: {-# UNPACK #-} !ErrorCode
+    -- ^ The error code, or 0 if there was no error.
+  , baseOffset      :: {-# UNPACK #-} !Int64
+    -- ^ The base offset.
+  , logAppendTimeMs :: {-# UNPACK #-} !Int64
+    -- ^ The timestamp returned by broker after appending the messages. If
+    -- CreateTime is used for the topic, the timestamp will be -1.  If
+    -- LogAppendTime is used for the topic, the timestamp will be the broker
+    -- local time when the messages are appended.
+  , logStartOffset  :: {-# UNPACK #-} !Int64
+    -- ^ The log start offset.
+  } deriving (Show, Eq, Generic)
+instance Serializable PartitionProduceResponseV5
+
+data TopicProduceResponseV5 = TopicProduceResponseV5
+  { name               :: !Text
+    -- ^ The topic name
+  , partitionResponses :: !(KaArray PartitionProduceResponseV5)
+    -- ^ Each partition that we produced to within the topic.
+  } deriving (Show, Eq, Generic)
+instance Serializable TopicProduceResponseV5
 
 data SyncGroupRequestAssignmentV0 = SyncGroupRequestAssignmentV0
   { memberId   :: !Text
@@ -1478,6 +1515,10 @@ data ProduceRequestV3 = ProduceRequestV3
   } deriving (Show, Eq, Generic)
 instance Serializable ProduceRequestV3
 
+type ProduceRequestV4 = ProduceRequestV3
+
+type ProduceRequestV5 = ProduceRequestV3
+
 newtype ProduceResponseV0 = ProduceResponseV0
   { responses :: (KaArray TopicProduceResponseV0)
   } deriving (Show, Eq, Generic)
@@ -1502,6 +1543,17 @@ data ProduceResponseV2 = ProduceResponseV2
 instance Serializable ProduceResponseV2
 
 type ProduceResponseV3 = ProduceResponseV2
+
+type ProduceResponseV4 = ProduceResponseV2
+
+data ProduceResponseV5 = ProduceResponseV5
+  { responses      :: !(KaArray TopicProduceResponseV5)
+    -- ^ Each produce response
+  , throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
+  } deriving (Show, Eq, Generic)
+instance Serializable ProduceResponseV5
 
 newtype SaslAuthenticateRequestV0 = SaslAuthenticateRequestV0
   { authBytes :: ByteString
@@ -2042,9 +2094,17 @@ data HStreamKafkaV4
 instance Service HStreamKafkaV4 where
   type ServiceName HStreamKafkaV4 = "HStreamKafkaV4"
   type ServiceMethods HStreamKafkaV4 =
-    '[ "fetch"
+    '[ "produce"
+     , "fetch"
      , "metadata"
      ]
+
+instance HasMethodImpl HStreamKafkaV4 "produce" where
+  type MethodName HStreamKafkaV4 "produce" = "produce"
+  type MethodKey HStreamKafkaV4 "produce" = 0
+  type MethodVersion HStreamKafkaV4 "produce" = 4
+  type MethodInput HStreamKafkaV4 "produce" = ProduceRequestV4
+  type MethodOutput HStreamKafkaV4 "produce" = ProduceResponseV4
 
 instance HasMethodImpl HStreamKafkaV4 "fetch" where
   type MethodName HStreamKafkaV4 "fetch" = "fetch"
@@ -2065,8 +2125,16 @@ data HStreamKafkaV5
 instance Service HStreamKafkaV5 where
   type ServiceName HStreamKafkaV5 = "HStreamKafkaV5"
   type ServiceMethods HStreamKafkaV5 =
-    '[ "metadata"
+    '[ "produce"
+     , "metadata"
      ]
+
+instance HasMethodImpl HStreamKafkaV5 "produce" where
+  type MethodName HStreamKafkaV5 "produce" = "produce"
+  type MethodKey HStreamKafkaV5 "produce" = 0
+  type MethodVersion HStreamKafkaV5 "produce" = 5
+  type MethodInput HStreamKafkaV5 "produce" = ProduceRequestV5
+  type MethodOutput HStreamKafkaV5 "produce" = ProduceResponseV5
 
 instance HasMethodImpl HStreamKafkaV5 "metadata" where
   type MethodName HStreamKafkaV5 "metadata" = "metadata"
@@ -2106,7 +2174,7 @@ instance Show ApiKey where
 
 supportedApiVersions :: [ApiVersionV0]
 supportedApiVersions =
-  [ ApiVersionV0 (ApiKey 0) 0 3
+  [ ApiVersionV0 (ApiKey 0) 0 5
   , ApiVersionV0 (ApiKey 1) 0 4
   , ApiVersionV0 (ApiKey 2) 0 2
   , ApiVersionV0 (ApiKey 3) 0 5
@@ -2134,6 +2202,8 @@ getHeaderVersion (ApiKey (0)) 0 = (1, 0)
 getHeaderVersion (ApiKey (0)) 1 = (1, 0)
 getHeaderVersion (ApiKey (0)) 2 = (1, 0)
 getHeaderVersion (ApiKey (0)) 3 = (1, 0)
+getHeaderVersion (ApiKey (0)) 4 = (1, 0)
+getHeaderVersion (ApiKey (0)) 5 = (1, 0)
 getHeaderVersion (ApiKey (1)) 0 = (1, 0)
 getHeaderVersion (ApiKey (1)) 1 = (1, 0)
 getHeaderVersion (ApiKey (1)) 2 = (1, 0)

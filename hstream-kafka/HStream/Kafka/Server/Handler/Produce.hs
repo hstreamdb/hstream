@@ -45,13 +45,13 @@ handleProduce
   -> K.RequestContext
   -> K.ProduceRequest
   -> IO K.ProduceResponse
-handleProduce ServerContext{..} _ req = do
+handleProduce ServerContext{..} reqCtx req = do
   -- TODO: handle request args: acks, timeoutMs
   let topicData = fromMaybe V.empty (K.unKaArray req.topicData)
 
   responses <- V.forM topicData $ \topic{- TopicProduceData -} -> do
     -- A topic is a stream. Here we donot need to check the topic existence,
-    -- because the metadata api does(?)
+    -- because the metadata api already does(?)
     partitions <- S.listStreamPartitionsOrdered
                     scLDClient (S.transToTopicStreamName topic.name)
     let partitionData = fromMaybe V.empty (K.unKaArray topic.partitionData)
@@ -71,14 +71,45 @@ handleProduce ServerContext{..} _ req = do
 
       -- Wirte appends
       (S.AppendCompletion{..}, offset) <-
-        appendRecords True scLDClient scOffsetManager (topic.name, partition.index) logid recordBytes
+        appendRecords True scLDClient scOffsetManager
+                      (topic.name, partition.index) logid recordBytes
 
       Log.debug1 $ "Append done " <> Log.build appendCompLogID
                 <> ", lsn: " <> Log.build appendCompLSN
                 <> ", start offset: " <> Log.build offset
 
-      -- TODO: logAppendTimeMs, only support LogAppendTime now
-      pure $ K.PartitionProduceResponse partition.index K.NONE offset appendCompTimestamp
+      -- TODO: performance improvements
+      --
+      -- For each append request after version 5, we need to read the oldest
+      -- offset of the log. This will cause critical performance problems.
+      --
+      --logStartOffset <-
+      --  if reqCtx.apiVersion >= 5
+      --     then do m_logStartOffset <- K.getOldestOffset scOffsetManager logid
+      --             case m_logStartOffset of
+      --               Just logStartOffset -> pure logStartOffset
+      --               Nothing -> do
+      --                 Log.fatal $ "Cannot get log start offset for logid "
+      --                          <> Log.build logid
+      --                 pure (-1)
+      --     else pure (-1)
+      let logStartOffset = (-1)
+
+      -- TODO: PartitionProduceResponse.logAppendTimeMs
+      --
+      -- The timestamp returned by broker after appending the messages. If
+      -- CreateTime is used for the topic, the timestamp will be -1.  If
+      -- LogAppendTime is used for the topic, the timestamp will be the broker
+      -- local time when the messages are appended.
+      --
+      -- Currently, only support LogAppendTime
+      pure $ K.PartitionProduceResponse
+        { index           = partition.index
+        , errorCode       = K.NONE
+        , baseOffset      = offset
+        , logAppendTimeMs = appendCompTimestamp
+        , logStartOffset  = logStartOffset
+        }
 
     pure $ K.TopicProduceResponse topic.name (K.KaArray $ Just partitionResponses)
 
@@ -90,7 +121,7 @@ handleInitProducerId
   -> K.RequestContext
   -> K.InitProducerIdRequest
   -> IO K.InitProducerIdResponse
-handleInitProducerId ServerContext{..} _ req = do
+handleInitProducerId _ _ _ = do
   Log.warning "InitProducerId is not implemented"
   pure $ K.InitProducerIdResponse
     { throttleTimeMs = 0
