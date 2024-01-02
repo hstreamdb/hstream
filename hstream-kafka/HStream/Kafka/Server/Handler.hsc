@@ -65,7 +65,7 @@ import qualified Kafka.Protocol.Service                    as K
 
 #cv_handler SaslHandshake, 0, 1
 
-#cv_handler FindCoordinator, 0, 0
+#cv_handler FindCoordinator, 0, 1
 
 #cv_handler JoinGroup, 0, 2
 #cv_handler SyncGroup, 0, 1
@@ -90,7 +90,7 @@ handlers sc =
     -- Read
   , #mk_handler Fetch, 0, 4
 
-  , #mk_handler FindCoordinator, 0, 0
+  , #mk_handler FindCoordinator, 0, 1
 
     -- Group
   , #mk_handler JoinGroup, 0, 2

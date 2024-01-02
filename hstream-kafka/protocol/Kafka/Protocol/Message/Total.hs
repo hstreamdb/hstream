@@ -1883,8 +1883,11 @@ fetchResponseFromV4 x = FetchResponse
   , throttleTimeMs = x.throttleTimeMs
   }
 
-newtype FindCoordinatorRequest = FindCoordinatorRequest
-  { key :: Text
+data FindCoordinatorRequest = FindCoordinatorRequest
+  { key     :: !Text
+    -- ^ The coordinator key.
+  , keyType :: {-# UNPACK #-} !Int8
+    -- ^ The coordinator key type. (Group, transaction, etc.)
   } deriving (Show, Eq, Generic)
 instance Serializable FindCoordinatorRequest
 
@@ -1892,27 +1895,52 @@ findCoordinatorRequestToV0 :: FindCoordinatorRequest -> FindCoordinatorRequestV0
 findCoordinatorRequestToV0 x = FindCoordinatorRequestV0
   { key = x.key
   }
+findCoordinatorRequestToV1 :: FindCoordinatorRequest -> FindCoordinatorRequestV1
+findCoordinatorRequestToV1 x = FindCoordinatorRequestV1
+  { key = x.key
+  , keyType = x.keyType
+  }
 
 findCoordinatorRequestFromV0 :: FindCoordinatorRequestV0 -> FindCoordinatorRequest
 findCoordinatorRequestFromV0 x = FindCoordinatorRequest
   { key = x.key
+  , keyType = 0
+  }
+findCoordinatorRequestFromV1 :: FindCoordinatorRequestV1 -> FindCoordinatorRequest
+findCoordinatorRequestFromV1 x = FindCoordinatorRequest
+  { key = x.key
+  , keyType = x.keyType
   }
 
 data FindCoordinatorResponse = FindCoordinatorResponse
-  { errorCode :: {-# UNPACK #-} !ErrorCode
+  { errorCode      :: {-# UNPACK #-} !ErrorCode
     -- ^ The error code, or 0 if there was no error.
-  , nodeId    :: {-# UNPACK #-} !Int32
+  , nodeId         :: {-# UNPACK #-} !Int32
     -- ^ The node id.
-  , host      :: !Text
+  , host           :: !Text
     -- ^ The host name.
-  , port      :: {-# UNPACK #-} !Int32
+  , port           :: {-# UNPACK #-} !Int32
     -- ^ The port.
+  , throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
+  , errorMessage   :: !NullableString
+    -- ^ The error message, or null if there was no error.
   } deriving (Show, Eq, Generic)
 instance Serializable FindCoordinatorResponse
 
 findCoordinatorResponseToV0 :: FindCoordinatorResponse -> FindCoordinatorResponseV0
 findCoordinatorResponseToV0 x = FindCoordinatorResponseV0
   { errorCode = x.errorCode
+  , nodeId = x.nodeId
+  , host = x.host
+  , port = x.port
+  }
+findCoordinatorResponseToV1 :: FindCoordinatorResponse -> FindCoordinatorResponseV1
+findCoordinatorResponseToV1 x = FindCoordinatorResponseV1
+  { throttleTimeMs = x.throttleTimeMs
+  , errorCode = x.errorCode
+  , errorMessage = x.errorMessage
   , nodeId = x.nodeId
   , host = x.host
   , port = x.port
@@ -1924,6 +1952,17 @@ findCoordinatorResponseFromV0 x = FindCoordinatorResponse
   , nodeId = x.nodeId
   , host = x.host
   , port = x.port
+  , throttleTimeMs = 0
+  , errorMessage = Nothing
+  }
+findCoordinatorResponseFromV1 :: FindCoordinatorResponseV1 -> FindCoordinatorResponse
+findCoordinatorResponseFromV1 x = FindCoordinatorResponse
+  { errorCode = x.errorCode
+  , nodeId = x.nodeId
+  , host = x.host
+  , port = x.port
+  , throttleTimeMs = x.throttleTimeMs
+  , errorMessage = x.errorMessage
   }
 
 data HadminCommandRequest = HadminCommandRequest

@@ -1,11 +1,8 @@
 {-# LANGUAGE CPP                   #-}
 {-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE OverloadedRecordDot   #-}
 
 module HStream.Kafka.Server.Handler.Group
-  ( -- 19: CreateTopics
-    handleFindCoordinator
-  , handleJoinGroup
+  ( handleJoinGroup
   , handleSyncGroup
   , handleHeartbeat
   , handleLeaveGroup
@@ -13,21 +10,10 @@ module HStream.Kafka.Server.Handler.Group
   , handleDescribeGroups
   ) where
 
-import           HStream.Common.Server.Lookup         (KafkaResource (..),
-                                                       lookupKafkaPersist)
 import qualified HStream.Kafka.Group.GroupCoordinator as GC
 import           HStream.Kafka.Server.Types           (ServerContext (..))
-import qualified HStream.Logger                       as Log
-import qualified HStream.Server.HStreamApi            as A
 import qualified Kafka.Protocol.Message               as K
 import qualified Kafka.Protocol.Service               as K
-
--- FIXME: move to a separated Coordinator module
-handleFindCoordinator :: ServerContext -> K.RequestContext -> K.FindCoordinatorRequest -> IO K.FindCoordinatorResponse
-handleFindCoordinator ServerContext{..} _ req = do
-  A.ServerNode{..} <- lookupKafkaPersist metaHandle gossipContext loadBalanceHashRing scAdvertisedListenersKey (KafkaResGroup req.key)
-  Log.info $ "findCoordinator for group:" <> Log.buildString' req.key <> ", result:" <> Log.buildString' serverNodeId
-  return $ K.FindCoordinatorResponse 0 (fromIntegral serverNodeId) serverNodeHost (fromIntegral serverNodePort)
 
 handleJoinGroup :: ServerContext -> K.RequestContext -> K.JoinGroupRequest -> IO K.JoinGroupResponse
 handleJoinGroup ServerContext{..} = GC.joinGroup scGroupCoordinator
