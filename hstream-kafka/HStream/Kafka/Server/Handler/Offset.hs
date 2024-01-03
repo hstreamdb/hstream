@@ -37,9 +37,8 @@ pattern EarliestTimestamp = (-2)
 handleListOffsets
   :: ServerContext -> K.RequestContext -> K.ListOffsetsRequest -> IO K.ListOffsetsResponse
 handleListOffsets sc reqCtx req
-  | reqCtx.apiVersion == 0 = handleListOffsetsV0 sc reqCtx req
   | reqCtx.apiVersion >= 2 && req.isolationLevel /= 0 = return $ mkErrResponse req
-  | otherwise = handleListOffsetsV1AndAbove sc reqCtx req
+  | otherwise = listOffsets sc reqCtx req
  where
    mkErrResponse K.ListOffsetsRequest{..} =
      let topicsRsp = mapKaArray (\K.ListOffsetsTopic{..} ->
@@ -56,22 +55,9 @@ handleListOffsets sc reqCtx req
           ) topics
      in K.ListOffsetsResponse {topics=topicsRsp, throttleTimeMs=0}
 
-handleListOffsetsV0
+listOffsets
   :: ServerContext -> K.RequestContext -> K.ListOffsetsRequest -> IO K.ListOffsetsResponse
-handleListOffsetsV0 sc _ K.ListOffsetsRequest{..} = do
-  case K.unKaArray topics of
-    Nothing      -> undefined
-    -- ^ check kafka
-    Just topics' -> do
-      res <- V.forM topics' $ \K.ListOffsetsTopic {..} -> do
-               listOffsetTopicPartitions sc name (K.unKaArray partitions)
-      -- return . K.listOffsetsResponseFromV0 $
-      --   K.ListOffsetsResponseV0 {topics = K.NonNullKaArray (V.map K.listOffsetsTopicResponseToV0 res)}
-      return $ K.ListOffsetsResponse {topics = K.KaArray {unKaArray = Just res}, throttleTimeMs = 0}
-
-handleListOffsetsV1AndAbove
-  :: ServerContext -> K.RequestContext -> K.ListOffsetsRequest -> IO K.ListOffsetsResponse
-handleListOffsetsV1AndAbove sc _ K.ListOffsetsRequest{..} = do
+listOffsets sc _ K.ListOffsetsRequest{..} = do
   case K.unKaArray topics of
     Nothing      -> undefined
     -- ^ check kafka
