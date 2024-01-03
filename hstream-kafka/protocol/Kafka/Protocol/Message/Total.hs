@@ -600,6 +600,8 @@ listOffsetsPartitionToV1 x = ListOffsetsPartitionV1
   { partitionIndex = x.partitionIndex
   , timestamp = x.timestamp
   }
+listOffsetsPartitionToV2 :: ListOffsetsPartition -> ListOffsetsPartitionV2
+listOffsetsPartitionToV2 = listOffsetsPartitionToV1
 
 listOffsetsPartitionFromV0 :: ListOffsetsPartitionV0 -> ListOffsetsPartition
 listOffsetsPartitionFromV0 x = ListOffsetsPartition
@@ -613,6 +615,8 @@ listOffsetsPartitionFromV1 x = ListOffsetsPartition
   , timestamp = x.timestamp
   , maxNumOffsets = 1
   }
+listOffsetsPartitionFromV2 :: ListOffsetsPartitionV2 -> ListOffsetsPartition
+listOffsetsPartitionFromV2 = listOffsetsPartitionFromV1
 
 data ListOffsetsPartitionResponse = ListOffsetsPartitionResponse
   { partitionIndex  :: {-# UNPACK #-} !Int32
@@ -641,6 +645,8 @@ listOffsetsPartitionResponseToV1 x = ListOffsetsPartitionResponseV1
   , timestamp = x.timestamp
   , offset = x.offset
   }
+listOffsetsPartitionResponseToV2 :: ListOffsetsPartitionResponse -> ListOffsetsPartitionResponseV2
+listOffsetsPartitionResponseToV2 = listOffsetsPartitionResponseToV1
 
 listOffsetsPartitionResponseFromV0 :: ListOffsetsPartitionResponseV0 -> ListOffsetsPartitionResponse
 listOffsetsPartitionResponseFromV0 x = ListOffsetsPartitionResponse
@@ -658,6 +664,8 @@ listOffsetsPartitionResponseFromV1 x = ListOffsetsPartitionResponse
   , timestamp = x.timestamp
   , offset = x.offset
   }
+listOffsetsPartitionResponseFromV2 :: ListOffsetsPartitionResponseV2 -> ListOffsetsPartitionResponse
+listOffsetsPartitionResponseFromV2 = listOffsetsPartitionResponseFromV1
 
 data ListOffsetsTopic = ListOffsetsTopic
   { name       :: !Text
@@ -677,6 +685,8 @@ listOffsetsTopicToV1 x = ListOffsetsTopicV1
   { name = x.name
   , partitions = fmap listOffsetsPartitionToV1 x.partitions
   }
+listOffsetsTopicToV2 :: ListOffsetsTopic -> ListOffsetsTopicV2
+listOffsetsTopicToV2 = listOffsetsTopicToV1
 
 listOffsetsTopicFromV0 :: ListOffsetsTopicV0 -> ListOffsetsTopic
 listOffsetsTopicFromV0 x = ListOffsetsTopic
@@ -688,6 +698,8 @@ listOffsetsTopicFromV1 x = ListOffsetsTopic
   { name = x.name
   , partitions = fmap listOffsetsPartitionFromV1 x.partitions
   }
+listOffsetsTopicFromV2 :: ListOffsetsTopicV2 -> ListOffsetsTopic
+listOffsetsTopicFromV2 = listOffsetsTopicFromV1
 
 data ListOffsetsTopicResponse = ListOffsetsTopicResponse
   { name       :: !Text
@@ -707,6 +719,8 @@ listOffsetsTopicResponseToV1 x = ListOffsetsTopicResponseV1
   { name = x.name
   , partitions = fmap listOffsetsPartitionResponseToV1 x.partitions
   }
+listOffsetsTopicResponseToV2 :: ListOffsetsTopicResponse -> ListOffsetsTopicResponseV2
+listOffsetsTopicResponseToV2 = listOffsetsTopicResponseToV1
 
 listOffsetsTopicResponseFromV0 :: ListOffsetsTopicResponseV0 -> ListOffsetsTopicResponse
 listOffsetsTopicResponseFromV0 x = ListOffsetsTopicResponse
@@ -718,6 +732,8 @@ listOffsetsTopicResponseFromV1 x = ListOffsetsTopicResponse
   { name = x.name
   , partitions = fmap listOffsetsPartitionResponseFromV1 x.partitions
   }
+listOffsetsTopicResponseFromV2 :: ListOffsetsTopicResponseV2 -> ListOffsetsTopicResponse
+listOffsetsTopicResponseFromV2 = listOffsetsTopicResponseFromV1
 
 data ListedGroup = ListedGroup
   { groupId      :: !Text
@@ -2341,11 +2357,20 @@ listGroupsResponseFromV1 x = ListGroupsResponse
   }
 
 data ListOffsetsRequest = ListOffsetsRequest
-  { replicaId :: {-# UNPACK #-} !Int32
+  { replicaId      :: {-# UNPACK #-} !Int32
     -- ^ The broker ID of the requestor, or -1 if this request is being made by
     -- a normal consumer.
-  , topics    :: !(KaArray ListOffsetsTopic)
+  , topics         :: !(KaArray ListOffsetsTopic)
     -- ^ Each topic in the request.
+  , isolationLevel :: {-# UNPACK #-} !Int8
+    -- ^ This setting controls the visibility of transactional records. Using
+    -- READ_UNCOMMITTED (isolation_level = 0) makes all records visible. With
+    -- READ_COMMITTED (isolation_level = 1), non-transactional and COMMITTED
+    -- transactional records are visible. To be more concrete, READ_COMMITTED
+    -- returns all data from offsets smaller than the current LSO (last stable
+    -- offset), and enables the inclusion of the list of aborted transactions
+    -- in the result, which allows consumers to discard ABORTED transactional
+    -- records
   } deriving (Show, Eq, Generic)
 instance Serializable ListOffsetsRequest
 
@@ -2359,20 +2384,38 @@ listOffsetsRequestToV1 x = ListOffsetsRequestV1
   { replicaId = x.replicaId
   , topics = fmap listOffsetsTopicToV1 x.topics
   }
+listOffsetsRequestToV2 :: ListOffsetsRequest -> ListOffsetsRequestV2
+listOffsetsRequestToV2 x = ListOffsetsRequestV2
+  { replicaId = x.replicaId
+  , isolationLevel = x.isolationLevel
+  , topics = fmap listOffsetsTopicToV2 x.topics
+  }
 
 listOffsetsRequestFromV0 :: ListOffsetsRequestV0 -> ListOffsetsRequest
 listOffsetsRequestFromV0 x = ListOffsetsRequest
   { replicaId = x.replicaId
   , topics = fmap listOffsetsTopicFromV0 x.topics
+  , isolationLevel = 0
   }
 listOffsetsRequestFromV1 :: ListOffsetsRequestV1 -> ListOffsetsRequest
 listOffsetsRequestFromV1 x = ListOffsetsRequest
   { replicaId = x.replicaId
   , topics = fmap listOffsetsTopicFromV1 x.topics
+  , isolationLevel = 0
+  }
+listOffsetsRequestFromV2 :: ListOffsetsRequestV2 -> ListOffsetsRequest
+listOffsetsRequestFromV2 x = ListOffsetsRequest
+  { replicaId = x.replicaId
+  , topics = fmap listOffsetsTopicFromV2 x.topics
+  , isolationLevel = x.isolationLevel
   }
 
-newtype ListOffsetsResponse = ListOffsetsResponse
-  { topics :: (KaArray ListOffsetsTopicResponse)
+data ListOffsetsResponse = ListOffsetsResponse
+  { topics         :: !(KaArray ListOffsetsTopicResponse)
+    -- ^ Each topic in the response.
+  , throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
   } deriving (Show, Eq, Generic)
 instance Serializable ListOffsetsResponse
 
@@ -2384,14 +2427,26 @@ listOffsetsResponseToV1 :: ListOffsetsResponse -> ListOffsetsResponseV1
 listOffsetsResponseToV1 x = ListOffsetsResponseV1
   { topics = fmap listOffsetsTopicResponseToV1 x.topics
   }
+listOffsetsResponseToV2 :: ListOffsetsResponse -> ListOffsetsResponseV2
+listOffsetsResponseToV2 x = ListOffsetsResponseV2
+  { throttleTimeMs = x.throttleTimeMs
+  , topics = fmap listOffsetsTopicResponseToV2 x.topics
+  }
 
 listOffsetsResponseFromV0 :: ListOffsetsResponseV0 -> ListOffsetsResponse
 listOffsetsResponseFromV0 x = ListOffsetsResponse
   { topics = fmap listOffsetsTopicResponseFromV0 x.topics
+  , throttleTimeMs = 0
   }
 listOffsetsResponseFromV1 :: ListOffsetsResponseV1 -> ListOffsetsResponse
 listOffsetsResponseFromV1 x = ListOffsetsResponse
   { topics = fmap listOffsetsTopicResponseFromV1 x.topics
+  , throttleTimeMs = 0
+  }
+listOffsetsResponseFromV2 :: ListOffsetsResponseV2 -> ListOffsetsResponse
+listOffsetsResponseFromV2 x = ListOffsetsResponse
+  { topics = fmap listOffsetsTopicResponseFromV2 x.topics
+  , throttleTimeMs = x.throttleTimeMs
   }
 
 data MetadataRequest = MetadataRequest

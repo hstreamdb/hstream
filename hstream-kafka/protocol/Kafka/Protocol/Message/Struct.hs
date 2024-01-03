@@ -364,6 +364,10 @@ data ListOffsetsTopicV1 = ListOffsetsTopicV1
   } deriving (Show, Eq, Generic)
 instance Serializable ListOffsetsTopicV1
 
+type ListOffsetsPartitionV2 = ListOffsetsPartitionV1
+
+type ListOffsetsTopicV2 = ListOffsetsTopicV1
+
 data ListOffsetsPartitionResponseV0 = ListOffsetsPartitionResponseV0
   { partitionIndex  :: {-# UNPACK #-} !Int32
     -- ^ The partition index.
@@ -401,6 +405,10 @@ data ListOffsetsTopicResponseV1 = ListOffsetsTopicResponseV1
     -- ^ Each partition in the response.
   } deriving (Show, Eq, Generic)
 instance Serializable ListOffsetsTopicResponseV1
+
+type ListOffsetsPartitionResponseV2 = ListOffsetsPartitionResponseV1
+
+type ListOffsetsTopicResponseV2 = ListOffsetsTopicResponseV1
 
 newtype MetadataRequestTopicV0 = MetadataRequestTopicV0
   { name :: Text
@@ -1160,6 +1168,24 @@ data ListOffsetsRequestV1 = ListOffsetsRequestV1
   } deriving (Show, Eq, Generic)
 instance Serializable ListOffsetsRequestV1
 
+data ListOffsetsRequestV2 = ListOffsetsRequestV2
+  { replicaId      :: {-# UNPACK #-} !Int32
+    -- ^ The broker ID of the requestor, or -1 if this request is being made by
+    -- a normal consumer.
+  , isolationLevel :: {-# UNPACK #-} !Int8
+    -- ^ This setting controls the visibility of transactional records. Using
+    -- READ_UNCOMMITTED (isolation_level = 0) makes all records visible. With
+    -- READ_COMMITTED (isolation_level = 1), non-transactional and COMMITTED
+    -- transactional records are visible. To be more concrete, READ_COMMITTED
+    -- returns all data from offsets smaller than the current LSO (last stable
+    -- offset), and enables the inclusion of the list of aborted transactions
+    -- in the result, which allows consumers to discard ABORTED transactional
+    -- records
+  , topics         :: !(KaArray ListOffsetsTopicV1)
+    -- ^ Each topic in the request.
+  } deriving (Show, Eq, Generic)
+instance Serializable ListOffsetsRequestV2
+
 newtype ListOffsetsResponseV0 = ListOffsetsResponseV0
   { topics :: (KaArray ListOffsetsTopicResponseV0)
   } deriving (Show, Eq, Generic)
@@ -1169,6 +1195,15 @@ newtype ListOffsetsResponseV1 = ListOffsetsResponseV1
   { topics :: (KaArray ListOffsetsTopicResponseV1)
   } deriving (Show, Eq, Generic)
 instance Serializable ListOffsetsResponseV1
+
+data ListOffsetsResponseV2 = ListOffsetsResponseV2
+  { throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
+  , topics         :: !(KaArray ListOffsetsTopicResponseV1)
+    -- ^ Each topic in the response.
+  } deriving (Show, Eq, Generic)
+instance Serializable ListOffsetsResponseV2
 
 newtype MetadataRequestV0 = MetadataRequestV0
   { topics :: (KaArray MetadataRequestTopicV0)
@@ -1795,6 +1830,7 @@ instance Service HStreamKafkaV2 where
   type ServiceMethods HStreamKafkaV2 =
     '[ "produce"
      , "fetch"
+     , "listOffsets"
      , "metadata"
      , "offsetCommit"
      , "offsetFetch"
@@ -1815,6 +1851,13 @@ instance HasMethodImpl HStreamKafkaV2 "fetch" where
   type MethodVersion HStreamKafkaV2 "fetch" = 2
   type MethodInput HStreamKafkaV2 "fetch" = FetchRequestV2
   type MethodOutput HStreamKafkaV2 "fetch" = FetchResponseV2
+
+instance HasMethodImpl HStreamKafkaV2 "listOffsets" where
+  type MethodName HStreamKafkaV2 "listOffsets" = "listOffsets"
+  type MethodKey HStreamKafkaV2 "listOffsets" = 2
+  type MethodVersion HStreamKafkaV2 "listOffsets" = 2
+  type MethodInput HStreamKafkaV2 "listOffsets" = ListOffsetsRequestV2
+  type MethodOutput HStreamKafkaV2 "listOffsets" = ListOffsetsResponseV2
 
 instance HasMethodImpl HStreamKafkaV2 "metadata" where
   type MethodName HStreamKafkaV2 "metadata" = "metadata"
@@ -1977,7 +2020,7 @@ supportedApiVersions :: [ApiVersionV0]
 supportedApiVersions =
   [ ApiVersionV0 (ApiKey 0) 0 3
   , ApiVersionV0 (ApiKey 1) 0 4
-  , ApiVersionV0 (ApiKey 2) 0 1
+  , ApiVersionV0 (ApiKey 2) 0 2
   , ApiVersionV0 (ApiKey 3) 0 5
   , ApiVersionV0 (ApiKey 8) 0 3
   , ApiVersionV0 (ApiKey 9) 0 3
@@ -2010,6 +2053,7 @@ getHeaderVersion (ApiKey (1)) 3 = (1, 0)
 getHeaderVersion (ApiKey (1)) 4 = (1, 0)
 getHeaderVersion (ApiKey (2)) 0 = (1, 0)
 getHeaderVersion (ApiKey (2)) 1 = (1, 0)
+getHeaderVersion (ApiKey (2)) 2 = (1, 0)
 getHeaderVersion (ApiKey (3)) 0 = (1, 0)
 getHeaderVersion (ApiKey (3)) 1 = (1, 0)
 getHeaderVersion (ApiKey (3)) 2 = (1, 0)
