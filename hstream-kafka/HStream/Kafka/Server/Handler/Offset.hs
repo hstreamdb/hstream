@@ -3,11 +3,8 @@
 
 module HStream.Kafka.Server.Handler.Offset
  ( handleOffsetCommit
-
  , handleOffsetFetch
-
- , handleListOffsetsV0
- , handleListOffsetsV1
+ , handleListOffsets
  )
 where
 
@@ -20,7 +17,7 @@ import qualified Data.Vector                          as V
 import           HStream.Kafka.Common.OffsetManager   (getLatestOffset,
                                                        getOffsetByTimestamp,
                                                        getOldestOffset)
-import qualified HStream.Kafka.Common.Utils           as Utils
+import           HStream.Kafka.Common.Utils           (mapKaArray)
 import qualified HStream.Kafka.Group.GroupCoordinator as GC
 import           HStream.Kafka.Server.Types           (ServerContext (..))
 import qualified HStream.Store                        as S
@@ -37,52 +34,74 @@ pattern LatestTimestamp = (-1)
 pattern EarliestTimestamp :: Int64
 pattern EarliestTimestamp = (-2)
 
+handleListOffsets
+  :: ServerContext -> K.RequestContext -> K.ListOffsetsRequest -> IO K.ListOffsetsResponse
+handleListOffsets sc reqCtx req
+  | reqCtx.apiVersion == 0 = handleListOffsetsV0 sc reqCtx req
+  | reqCtx.apiVersion >= 2 && req.isolationLevel /= 0 = return $ mkErrResponse req
+  | otherwise = handleListOffsetsV1AndAbove sc reqCtx req
+ where
+   mkErrResponse K.ListOffsetsRequest{..} =
+     let topicsRsp = mapKaArray (\K.ListOffsetsTopic{..} ->
+          let partitionsRsp = mapKaArray (\K.ListOffsetsPartition{..} ->
+               K.ListOffsetsPartitionResponse
+                  { offset = -1
+                  , timestamp = -1
+                  -- ^ FIXME: read record timestamp ?
+                  , partitionIndex = partitionIndex
+                  , errorCode = K.INVALID_REQUEST
+                  , oldStyleOffsets = K.KaArray Nothing
+                  }) partitions
+           in K.ListOffsetsTopicResponse {partitions=partitionsRsp, name=name}
+          ) topics
+     in K.ListOffsetsResponse {topics=topicsRsp, throttleTimeMs=0}
+
 handleListOffsetsV0
-  :: ServerContext -> K.RequestContext -> K.ListOffsetsRequestV0 -> IO K.ListOffsetsResponseV0
-handleListOffsetsV0 sc _ K.ListOffsetsRequestV0{..} = do
+  :: ServerContext -> K.RequestContext -> K.ListOffsetsRequest -> IO K.ListOffsetsResponse
+handleListOffsetsV0 sc _ K.ListOffsetsRequest{..} = do
   case K.unKaArray topics of
     Nothing      -> undefined
     -- ^ check kafka
     Just topics' -> do
-      res <- V.forM topics' $ \K.ListOffsetsTopicV0 {..} -> do
-               listOffsetTopicPartitions sc name (K.unKaArray (Utils.mapKaArray convertRequestPartition partitions))
-      return $ K.ListOffsetsResponseV0 {topics = K.NonNullKaArray (V.map convertTopic res)}
-  where convertRequestPartition p = K.ListOffsetsPartitionV1 {timestamp=p.timestamp, partitionIndex=p.partitionIndex}
-        convertTopic topic = K.ListOffsetsTopicResponseV0 {partitions=Utils.mapKaArray convertResponsePartition topic.partitions, name=topic.name}
-        convertResponsePartition p = K.ListOffsetsPartitionResponseV0
-          { errorCode=0
-          , oldStyleOffsets=K.NonNullKaArray (V.singleton p.offset)
-          , partitionIndex=p.partitionIndex
-          }
-
-handleListOffsetsV1
-  :: ServerContext -> K.RequestContext -> K.ListOffsetsRequestV1 -> IO K.ListOffsetsResponseV1
-handleListOffsetsV1 sc _ K.ListOffsetsRequestV1{..} = do
-  case K.unKaArray topics of
-    Nothing      -> undefined
-    -- ^ check kafka
-    Just topics' -> do
-      res <- V.forM topics' $ \K.ListOffsetsTopicV1 {..} -> do
+      res <- V.forM topics' $ \K.ListOffsetsTopic {..} -> do
                listOffsetTopicPartitions sc name (K.unKaArray partitions)
-      return $ K.ListOffsetsResponseV1 {topics = K.KaArray {unKaArray = Just res}}
+      -- return . K.listOffsetsResponseFromV0 $
+      --   K.ListOffsetsResponseV0 {topics = K.NonNullKaArray (V.map K.listOffsetsTopicResponseToV0 res)}
+      return $ K.ListOffsetsResponse {topics = K.KaArray {unKaArray = Just res}, throttleTimeMs = 0}
 
-listOffsetTopicPartitions :: ServerContext -> Text -> Maybe (Vector K.ListOffsetsPartitionV1) -> IO K.ListOffsetsTopicResponseV1
+handleListOffsetsV1AndAbove
+  :: ServerContext -> K.RequestContext -> K.ListOffsetsRequest -> IO K.ListOffsetsResponse
+handleListOffsetsV1AndAbove sc _ K.ListOffsetsRequest{..} = do
+  case K.unKaArray topics of
+    Nothing      -> undefined
+    -- ^ check kafka
+    Just topics' -> do
+      res <- V.forM topics' $ \K.ListOffsetsTopic {..} -> do
+               listOffsetTopicPartitions sc name (K.unKaArray partitions)
+      return $ K.ListOffsetsResponse {topics = K.KaArray {unKaArray = Just res}, throttleTimeMs = 0}
+
+listOffsetTopicPartitions
+  :: ServerContext
+  -> Text
+  -> Maybe (Vector K.ListOffsetsPartition)
+  -> IO K.ListOffsetsTopicResponse
 listOffsetTopicPartitions _ topicName Nothing = do
-  return $ K.ListOffsetsTopicResponseV1 {partitions = K.KaArray {unKaArray = Nothing}, name = topicName}
+  return $ K.ListOffsetsTopicResponse {partitions = K.KaArray {unKaArray = Nothing}, name = topicName}
 listOffsetTopicPartitions ServerContext{..} topicName (Just offsetsPartitions) = do
   orderedParts <- S.listStreamPartitionsOrdered scLDClient (S.transToTopicStreamName topicName)
-  res <- V.forM offsetsPartitions $ \K.ListOffsetsPartitionV1{..} -> do
+  res <- V.forM offsetsPartitions $ \K.ListOffsetsPartition{..} -> do
     -- TODO: handle Nothing
     let partition = orderedParts V.! (fromIntegral partitionIndex)
     offset <- getOffset (snd partition) timestamp
-    return $ K.ListOffsetsPartitionResponseV1
+    return $ K.ListOffsetsPartitionResponse
               { offset = offset
               , timestamp = timestamp
               -- ^ FIXME: read record timestamp ?
               , partitionIndex = partitionIndex
               , errorCode = K.NONE
+              , oldStyleOffsets = K.NonNullKaArray (V.singleton offset)
               }
-  return $ K.ListOffsetsTopicResponseV1 {partitions = K.KaArray {unKaArray = Just res}, name = topicName}
+  return $ K.ListOffsetsTopicResponse {partitions = K.KaArray {unKaArray = Just res}, name = topicName}
  where
    -- NOTE: The last offset of a partition is the offset of the upcoming
    -- message, i.e. the offset of the last available message + 1.
