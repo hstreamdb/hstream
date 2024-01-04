@@ -96,8 +96,10 @@ validateTopic topic@K.CreatableTopic{..} = do
            else Left (K.INVALID_CONFIG, Just $ T.pack ("Null value not supported for topic configs: " <> show nullConfigs))
    validateNullConfig _ = Right topic
 
-   validateAssignments (K.unKaArray -> Just _) = Left (K.INVALID_REQUEST, unsuportedPartitionAssignments)
-   validateAssignments _                       = Right topic
+   validateAssignments (K.unKaArray -> Nothing) = Right topic
+   validateAssignments (K.unKaArray -> Just as)
+     | V.null as = Right topic
+   validateAssignments _ = Left (K.INVALID_REQUEST, unsuportedPartitionAssignments)
 
    validateReplica replica
      | replica < -1 || replica == 0 = Left (K.INVALID_REPLICATION_FACTOR, invalidReplicaMsg)
