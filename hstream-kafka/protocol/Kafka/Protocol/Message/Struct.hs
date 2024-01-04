@@ -104,6 +104,18 @@ data CreatableTopicV0 = CreatableTopicV0
   } deriving (Show, Eq, Generic)
 instance Serializable CreatableTopicV0
 
+type CreatableReplicaAssignmentV1 = CreatableReplicaAssignmentV0
+
+type CreateableTopicConfigV1 = CreateableTopicConfigV0
+
+type CreatableTopicV1 = CreatableTopicV0
+
+type CreatableReplicaAssignmentV2 = CreatableReplicaAssignmentV0
+
+type CreateableTopicConfigV2 = CreateableTopicConfigV0
+
+type CreatableTopicV2 = CreatableTopicV0
+
 data CreatableTopicResultV0 = CreatableTopicResultV0
   { name      :: !Text
     -- ^ The topic name.
@@ -111,6 +123,18 @@ data CreatableTopicResultV0 = CreatableTopicResultV0
     -- ^ The error code, or 0 if there was no error.
   } deriving (Show, Eq, Generic)
 instance Serializable CreatableTopicResultV0
+
+data CreatableTopicResultV1 = CreatableTopicResultV1
+  { name         :: !Text
+    -- ^ The topic name.
+  , errorCode    :: {-# UNPACK #-} !ErrorCode
+    -- ^ The error code, or 0 if there was no error.
+  , errorMessage :: !NullableString
+    -- ^ The error message, or null if there was no error.
+  } deriving (Show, Eq, Generic)
+instance Serializable CreatableTopicResultV1
+
+type CreatableTopicResultV2 = CreatableTopicResultV1
 
 data DeletableTopicResultV0 = DeletableTopicResultV0
   { name      :: !Text
@@ -802,10 +826,37 @@ data CreateTopicsRequestV0 = CreateTopicsRequestV0
   } deriving (Show, Eq, Generic)
 instance Serializable CreateTopicsRequestV0
 
+data CreateTopicsRequestV1 = CreateTopicsRequestV1
+  { topics       :: !(KaArray CreatableTopicV0)
+    -- ^ The topics to create.
+  , timeoutMs    :: {-# UNPACK #-} !Int32
+    -- ^ How long to wait in milliseconds before timing out the request.
+  , validateOnly :: Bool
+    -- ^ If true, check that the topics can be created as specified, but don't
+    -- create anything.
+  } deriving (Show, Eq, Generic)
+instance Serializable CreateTopicsRequestV1
+
+type CreateTopicsRequestV2 = CreateTopicsRequestV1
+
 newtype CreateTopicsResponseV0 = CreateTopicsResponseV0
   { topics :: (KaArray CreatableTopicResultV0)
   } deriving (Show, Eq, Generic)
 instance Serializable CreateTopicsResponseV0
+
+newtype CreateTopicsResponseV1 = CreateTopicsResponseV1
+  { topics :: (KaArray CreatableTopicResultV1)
+  } deriving (Show, Eq, Generic)
+instance Serializable CreateTopicsResponseV1
+
+data CreateTopicsResponseV2 = CreateTopicsResponseV2
+  { throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
+  , topics         :: !(KaArray CreatableTopicResultV1)
+    -- ^ Results for each topic we tried to create.
+  } deriving (Show, Eq, Generic)
+instance Serializable CreateTopicsResponseV2
 
 data DeleteTopicsRequestV0 = DeleteTopicsRequestV0
   { topicNames :: !(KaArray Text)
@@ -1730,6 +1781,7 @@ instance Service HStreamKafkaV1 where
      , "saslHandshake"
      , "apiVersions"
      , "deleteTopics"
+     , "createTopics"
      ]
 
 instance HasMethodImpl HStreamKafkaV1 "produce" where
@@ -1844,6 +1896,13 @@ instance HasMethodImpl HStreamKafkaV1 "deleteTopics" where
   type MethodInput HStreamKafkaV1 "deleteTopics" = DeleteTopicsRequestV1
   type MethodOutput HStreamKafkaV1 "deleteTopics" = DeleteTopicsResponseV1
 
+instance HasMethodImpl HStreamKafkaV1 "createTopics" where
+  type MethodName HStreamKafkaV1 "createTopics" = "createTopics"
+  type MethodKey HStreamKafkaV1 "createTopics" = 19
+  type MethodVersion HStreamKafkaV1 "createTopics" = 1
+  type MethodInput HStreamKafkaV1 "createTopics" = CreateTopicsRequestV1
+  type MethodOutput HStreamKafkaV1 "createTopics" = CreateTopicsResponseV1
+
 data HStreamKafkaV2
 
 instance Service HStreamKafkaV2 where
@@ -1857,6 +1916,7 @@ instance Service HStreamKafkaV2 where
      , "offsetFetch"
      , "joinGroup"
      , "apiVersions"
+     , "createTopics"
      ]
 
 instance HasMethodImpl HStreamKafkaV2 "produce" where
@@ -1914,6 +1974,13 @@ instance HasMethodImpl HStreamKafkaV2 "apiVersions" where
   type MethodVersion HStreamKafkaV2 "apiVersions" = 2
   type MethodInput HStreamKafkaV2 "apiVersions" = ApiVersionsRequestV2
   type MethodOutput HStreamKafkaV2 "apiVersions" = ApiVersionsResponseV2
+
+instance HasMethodImpl HStreamKafkaV2 "createTopics" where
+  type MethodName HStreamKafkaV2 "createTopics" = "createTopics"
+  type MethodKey HStreamKafkaV2 "createTopics" = 19
+  type MethodVersion HStreamKafkaV2 "createTopics" = 2
+  type MethodInput HStreamKafkaV2 "createTopics" = CreateTopicsRequestV2
+  type MethodOutput HStreamKafkaV2 "createTopics" = CreateTopicsResponseV2
 
 data HStreamKafkaV3
 
@@ -2054,7 +2121,7 @@ supportedApiVersions =
   , ApiVersionV0 (ApiKey 16) 0 1
   , ApiVersionV0 (ApiKey 17) 0 1
   , ApiVersionV0 (ApiKey 18) 0 3
-  , ApiVersionV0 (ApiKey 19) 0 0
+  , ApiVersionV0 (ApiKey 19) 0 2
   , ApiVersionV0 (ApiKey 20) 0 1
   , ApiVersionV0 (ApiKey 22) 0 0
   , ApiVersionV0 (ApiKey 32) 0 0
@@ -2111,6 +2178,8 @@ getHeaderVersion (ApiKey (18)) 1 = (1, 0)
 getHeaderVersion (ApiKey (18)) 2 = (1, 0)
 getHeaderVersion (ApiKey (18)) 3 = (2, 0)
 getHeaderVersion (ApiKey (19)) 0 = (1, 0)
+getHeaderVersion (ApiKey (19)) 1 = (1, 0)
+getHeaderVersion (ApiKey (19)) 2 = (1, 0)
 getHeaderVersion (ApiKey (20)) 0 = (1, 0)
 getHeaderVersion (ApiKey (20)) 1 = (1, 0)
 getHeaderVersion (ApiKey (22)) 0 = (1, 0)

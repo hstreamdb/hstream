@@ -64,6 +64,7 @@ import qualified Kafka.Protocol.Service                    as K
 #cv_handler Fetch, 0, 4
 #cv_handler DescribeConfigs, 0, 0
 
+#cv_handler CreateTopics, 0, 2
 #cv_handler DeleteTopics, 0, 1
 
 #cv_handler SaslHandshake, 0, 1
@@ -96,6 +97,7 @@ handlers sc =
 
   , #mk_handler FindCoordinator, 0, 1
 
+  , #mk_handler CreateTopics, 0, 2
   , #mk_handler DeleteTopics, 0, 1
 
     -- Group
@@ -108,8 +110,6 @@ handlers sc =
 
   , #mk_handler OffsetCommit, 0, 3
   , #mk_handler OffsetFetch, 0, 3
-
-  , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "createTopics") (handleCreateTopicsV0 sc)
 
   , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "saslHandshake") (handleAfterAuthSaslHandshakeV0 sc)
   , K.hd (K.RPC :: K.RPC K.HStreamKafkaV1 "saslHandshake") (handleAfterAuthSaslHandshakeV1 sc)
