@@ -120,6 +120,8 @@ data DeletableTopicResultV0 = DeletableTopicResultV0
   } deriving (Show, Eq, Generic)
 instance Serializable DeletableTopicResultV0
 
+type DeletableTopicResultV1 = DeletableTopicResultV0
+
 data DescribeConfigsResourceV0 = DescribeConfigsResourceV0
   { resourceType      :: {-# UNPACK #-} !Int8
     -- ^ The resource type.
@@ -814,10 +816,21 @@ data DeleteTopicsRequestV0 = DeleteTopicsRequestV0
   } deriving (Show, Eq, Generic)
 instance Serializable DeleteTopicsRequestV0
 
+type DeleteTopicsRequestV1 = DeleteTopicsRequestV0
+
 newtype DeleteTopicsResponseV0 = DeleteTopicsResponseV0
   { responses :: (KaArray DeletableTopicResultV0)
   } deriving (Show, Eq, Generic)
 instance Serializable DeleteTopicsResponseV0
+
+data DeleteTopicsResponseV1 = DeleteTopicsResponseV1
+  { throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
+  , responses      :: !(KaArray DeletableTopicResultV0)
+    -- ^ The results for each topic we tried to delete.
+  } deriving (Show, Eq, Generic)
+instance Serializable DeleteTopicsResponseV1
 
 newtype DescribeConfigsRequestV0 = DescribeConfigsRequestV0
   { resources :: (KaArray DescribeConfigsResourceV0)
@@ -1716,6 +1729,7 @@ instance Service HStreamKafkaV1 where
      , "listGroups"
      , "saslHandshake"
      , "apiVersions"
+     , "deleteTopics"
      ]
 
 instance HasMethodImpl HStreamKafkaV1 "produce" where
@@ -1822,6 +1836,13 @@ instance HasMethodImpl HStreamKafkaV1 "apiVersions" where
   type MethodVersion HStreamKafkaV1 "apiVersions" = 1
   type MethodInput HStreamKafkaV1 "apiVersions" = ApiVersionsRequestV1
   type MethodOutput HStreamKafkaV1 "apiVersions" = ApiVersionsResponseV1
+
+instance HasMethodImpl HStreamKafkaV1 "deleteTopics" where
+  type MethodName HStreamKafkaV1 "deleteTopics" = "deleteTopics"
+  type MethodKey HStreamKafkaV1 "deleteTopics" = 20
+  type MethodVersion HStreamKafkaV1 "deleteTopics" = 1
+  type MethodInput HStreamKafkaV1 "deleteTopics" = DeleteTopicsRequestV1
+  type MethodOutput HStreamKafkaV1 "deleteTopics" = DeleteTopicsResponseV1
 
 data HStreamKafkaV2
 
@@ -2034,7 +2055,7 @@ supportedApiVersions =
   , ApiVersionV0 (ApiKey 17) 0 1
   , ApiVersionV0 (ApiKey 18) 0 3
   , ApiVersionV0 (ApiKey 19) 0 0
-  , ApiVersionV0 (ApiKey 20) 0 0
+  , ApiVersionV0 (ApiKey 20) 0 1
   , ApiVersionV0 (ApiKey 22) 0 0
   , ApiVersionV0 (ApiKey 32) 0 0
   , ApiVersionV0 (ApiKey 36) 0 0
@@ -2091,6 +2112,7 @@ getHeaderVersion (ApiKey (18)) 2 = (1, 0)
 getHeaderVersion (ApiKey (18)) 3 = (2, 0)
 getHeaderVersion (ApiKey (19)) 0 = (1, 0)
 getHeaderVersion (ApiKey (20)) 0 = (1, 0)
+getHeaderVersion (ApiKey (20)) 1 = (1, 0)
 getHeaderVersion (ApiKey (22)) 0 = (1, 0)
 getHeaderVersion (ApiKey (32)) 0 = (1, 0)
 getHeaderVersion (ApiKey (36)) 0 = (1, 0)

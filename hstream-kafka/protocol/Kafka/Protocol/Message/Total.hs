@@ -203,12 +203,16 @@ deletableTopicResultToV0 x = DeletableTopicResultV0
   { name = x.name
   , errorCode = x.errorCode
   }
+deletableTopicResultToV1 :: DeletableTopicResult -> DeletableTopicResultV1
+deletableTopicResultToV1 = deletableTopicResultToV0
 
 deletableTopicResultFromV0 :: DeletableTopicResultV0 -> DeletableTopicResult
 deletableTopicResultFromV0 x = DeletableTopicResult
   { name = x.name
   , errorCode = x.errorCode
   }
+deletableTopicResultFromV1 :: DeletableTopicResultV1 -> DeletableTopicResult
+deletableTopicResultFromV1 = deletableTopicResultFromV0
 
 data DescribeConfigsResource = DescribeConfigsResource
   { resourceType      :: {-# UNPACK #-} !Int8
@@ -1658,15 +1662,23 @@ deleteTopicsRequestToV0 x = DeleteTopicsRequestV0
   { topicNames = x.topicNames
   , timeoutMs = x.timeoutMs
   }
+deleteTopicsRequestToV1 :: DeleteTopicsRequest -> DeleteTopicsRequestV1
+deleteTopicsRequestToV1 = deleteTopicsRequestToV0
 
 deleteTopicsRequestFromV0 :: DeleteTopicsRequestV0 -> DeleteTopicsRequest
 deleteTopicsRequestFromV0 x = DeleteTopicsRequest
   { topicNames = x.topicNames
   , timeoutMs = x.timeoutMs
   }
+deleteTopicsRequestFromV1 :: DeleteTopicsRequestV1 -> DeleteTopicsRequest
+deleteTopicsRequestFromV1 = deleteTopicsRequestFromV0
 
-newtype DeleteTopicsResponse = DeleteTopicsResponse
-  { responses :: (KaArray DeletableTopicResult)
+data DeleteTopicsResponse = DeleteTopicsResponse
+  { responses      :: !(KaArray DeletableTopicResult)
+    -- ^ The results for each topic we tried to delete.
+  , throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
   } deriving (Show, Eq, Generic)
 instance Serializable DeleteTopicsResponse
 
@@ -1674,10 +1686,21 @@ deleteTopicsResponseToV0 :: DeleteTopicsResponse -> DeleteTopicsResponseV0
 deleteTopicsResponseToV0 x = DeleteTopicsResponseV0
   { responses = fmap deletableTopicResultToV0 x.responses
   }
+deleteTopicsResponseToV1 :: DeleteTopicsResponse -> DeleteTopicsResponseV1
+deleteTopicsResponseToV1 x = DeleteTopicsResponseV1
+  { throttleTimeMs = x.throttleTimeMs
+  , responses = fmap deletableTopicResultToV1 x.responses
+  }
 
 deleteTopicsResponseFromV0 :: DeleteTopicsResponseV0 -> DeleteTopicsResponse
 deleteTopicsResponseFromV0 x = DeleteTopicsResponse
   { responses = fmap deletableTopicResultFromV0 x.responses
+  , throttleTimeMs = 0
+  }
+deleteTopicsResponseFromV1 :: DeleteTopicsResponseV1 -> DeleteTopicsResponse
+deleteTopicsResponseFromV1 x = DeleteTopicsResponse
+  { responses = fmap deletableTopicResultFromV1 x.responses
+  , throttleTimeMs = x.throttleTimeMs
   }
 
 newtype DescribeConfigsRequest = DescribeConfigsRequest
