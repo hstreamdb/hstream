@@ -5,9 +5,8 @@
 module HStream.Kafka.Server.Handler.Topic
   ( -- 19: CreateTopics
     handleCreateTopicsV0
-
     -- 20: DeleteTopics
-  , handleDeleteTopicsV0
+  , handleDeleteTopics
   ) where
 
 import           Control.Exception
@@ -21,9 +20,7 @@ import qualified HStream.Kafka.Common.Utils         as Utils
 import qualified HStream.Kafka.Server.Core.Topic    as Core
 import           HStream.Kafka.Server.Types         (ServerContext (..))
 import qualified HStream.Logger                     as Log
-import qualified HStream.Stats                      as Stats
 import qualified HStream.Store                      as S
-import qualified HStream.Utils                      as Utils
 import qualified Kafka.Protocol.Encoding            as K
 import qualified Kafka.Protocol.Error               as K
 import qualified Kafka.Protocol.Message             as K
@@ -64,28 +61,28 @@ handleCreateTopicsV0 ctx _ K.CreateTopicsRequestV0{..} =
 -- 20: DeleteTopics
 --------------------
 -- FIXME: The `timeoutMs` field of request is omitted.
-handleDeleteTopicsV0
-  :: ServerContext -> K.RequestContext -> K.DeleteTopicsRequestV0 -> IO K.DeleteTopicsResponseV0
-handleDeleteTopicsV0 ServerContext{..} _ K.DeleteTopicsRequestV0{..} =
+handleDeleteTopics
+  :: ServerContext -> K.RequestContext -> K.DeleteTopicsRequest -> IO K.DeleteTopicsResponse
+handleDeleteTopics ServerContext{..} _ K.DeleteTopicsRequest{..} =
   case topicNames of
     K.KaArray Nothing ->
       -- FIXME: We return `[]` when topics is `Nothing`.
       --        Is this proper?
-      return $ K.DeleteTopicsResponseV0 (K.KaArray $ Just V.empty)
+      return $ K.DeleteTopicsResponse {responses = K.KaArray $ Just V.empty, throttleTimeMs = 0}
     K.KaArray (Just topicNames_)
-      | V.null topicNames_ -> return $ K.DeleteTopicsResponseV0 (K.KaArray $ Just V.empty)
+      | V.null topicNames_ -> return $ K.DeleteTopicsResponse {responses = K.KaArray $ Just V.empty, throttleTimeMs = 0}
       | otherwise          -> do
           respTopics <- forM topicNames_ $ \topicName -> do
             try (deleteTopic topicName) >>= \case
               Left (e :: SomeException)
                 | Just _ <- fromException @S.NOTFOUND e -> do
                    Log.warning $ "Delete topic failed, topic " <> Log.build topicName <> " does not exist"
-                   return $ K.DeletableTopicResultV0 topicName K.UNKNOWN_TOPIC_OR_PARTITION
+                   return $ K.DeletableTopicResult topicName K.UNKNOWN_TOPIC_OR_PARTITION
                 | otherwise -> do
                     Log.warning $ "Exception occurs when deleting topic " <> Log.build topicName <> ": " <> Log.build (show e)
-                    return $ K.DeletableTopicResultV0 topicName K.UNKNOWN_SERVER_ERROR
+                    return $ K.DeletableTopicResult topicName K.UNKNOWN_SERVER_ERROR
               Right res -> return res
-          return $ K.DeleteTopicsResponseV0 (K.KaArray $ Just respTopics)
+          return $ K.DeleteTopicsResponse {responses = K.KaArray $ Just respTopics, throttleTimeMs = 0}
   where
     -- FIXME: There can be some potential exceptions which are difficult to
     --        classify using Kafka's error code. So this function may throw
@@ -93,7 +90,7 @@ handleDeleteTopicsV0 ServerContext{..} _ K.DeleteTopicsRequestV0{..} =
     -- WARNING: This function may throw exceptions!
     --
     -- TODO: Handle topic that has subscription (i.e. cannot be deleted)
-    deleteTopic :: T.Text -> IO K.DeletableTopicResultV0
+    deleteTopic :: T.Text -> IO K.DeletableTopicResult
     deleteTopic topicName = do
       let streamId = S.transToTopicStreamName topicName
       -- delete offset caches.
@@ -104,4 +101,4 @@ handleDeleteTopicsV0 ServerContext{..} _ K.DeleteTopicsRequestV0{..} =
       V.forM_ partitions $ \(_, logid) ->
         cleanOffsetCache scOffsetManager logid
       S.removeStream scLDClient streamId
-      return $ K.DeletableTopicResultV0 topicName K.NONE
+      return $ K.DeletableTopicResult topicName K.NONE
