@@ -38,12 +38,20 @@ abortedTransactionToV4 x = AbortedTransactionV4
   { producerId = x.producerId
   , firstOffset = x.firstOffset
   }
+abortedTransactionToV5 :: AbortedTransaction -> AbortedTransactionV5
+abortedTransactionToV5 = abortedTransactionToV4
+abortedTransactionToV6 :: AbortedTransaction -> AbortedTransactionV6
+abortedTransactionToV6 = abortedTransactionToV4
 
 abortedTransactionFromV4 :: AbortedTransactionV4 -> AbortedTransaction
 abortedTransactionFromV4 x = AbortedTransaction
   { producerId = x.producerId
   , firstOffset = x.firstOffset
   }
+abortedTransactionFromV5 :: AbortedTransactionV5 -> AbortedTransaction
+abortedTransactionFromV5 = abortedTransactionFromV4
+abortedTransactionFromV6 :: AbortedTransactionV6 -> AbortedTransaction
+abortedTransactionFromV6 = abortedTransactionFromV4
 
 data ApiVersion = ApiVersion
   { apiKey       :: {-# UNPACK #-} !ApiKey
@@ -432,6 +440,9 @@ data FetchPartition = FetchPartition
   , partitionMaxBytes :: {-# UNPACK #-} !Int32
     -- ^ The maximum bytes to fetch from this partition.  See KIP-74 for cases
     -- where this limit may not be honored.
+  , logStartOffset    :: {-# UNPACK #-} !Int64
+    -- ^ The earliest available offset of the follower replica.  The field is
+    -- only used when the request is sent by the follower.
   } deriving (Show, Eq, Generic)
 instance Serializable FetchPartition
 
@@ -449,12 +460,22 @@ fetchPartitionToV3 :: FetchPartition -> FetchPartitionV3
 fetchPartitionToV3 = fetchPartitionToV0
 fetchPartitionToV4 :: FetchPartition -> FetchPartitionV4
 fetchPartitionToV4 = fetchPartitionToV0
+fetchPartitionToV5 :: FetchPartition -> FetchPartitionV5
+fetchPartitionToV5 x = FetchPartitionV5
+  { partition = x.partition
+  , fetchOffset = x.fetchOffset
+  , logStartOffset = x.logStartOffset
+  , partitionMaxBytes = x.partitionMaxBytes
+  }
+fetchPartitionToV6 :: FetchPartition -> FetchPartitionV6
+fetchPartitionToV6 = fetchPartitionToV5
 
 fetchPartitionFromV0 :: FetchPartitionV0 -> FetchPartition
 fetchPartitionFromV0 x = FetchPartition
   { partition = x.partition
   , fetchOffset = x.fetchOffset
   , partitionMaxBytes = x.partitionMaxBytes
+  , logStartOffset = (-1)
   }
 fetchPartitionFromV1 :: FetchPartitionV1 -> FetchPartition
 fetchPartitionFromV1 = fetchPartitionFromV0
@@ -464,6 +485,15 @@ fetchPartitionFromV3 :: FetchPartitionV3 -> FetchPartition
 fetchPartitionFromV3 = fetchPartitionFromV0
 fetchPartitionFromV4 :: FetchPartitionV4 -> FetchPartition
 fetchPartitionFromV4 = fetchPartitionFromV0
+fetchPartitionFromV5 :: FetchPartitionV5 -> FetchPartition
+fetchPartitionFromV5 x = FetchPartition
+  { partition = x.partition
+  , fetchOffset = x.fetchOffset
+  , partitionMaxBytes = x.partitionMaxBytes
+  , logStartOffset = x.logStartOffset
+  }
+fetchPartitionFromV6 :: FetchPartitionV6 -> FetchPartition
+fetchPartitionFromV6 = fetchPartitionFromV5
 
 data FetchTopic = FetchTopic
   { topic      :: !Text
@@ -486,6 +516,13 @@ fetchTopicToV3 :: FetchTopic -> FetchTopicV3
 fetchTopicToV3 = fetchTopicToV0
 fetchTopicToV4 :: FetchTopic -> FetchTopicV4
 fetchTopicToV4 = fetchTopicToV0
+fetchTopicToV5 :: FetchTopic -> FetchTopicV5
+fetchTopicToV5 x = FetchTopicV5
+  { topic = x.topic
+  , partitions = fmap fetchPartitionToV5 x.partitions
+  }
+fetchTopicToV6 :: FetchTopic -> FetchTopicV6
+fetchTopicToV6 = fetchTopicToV5
 
 fetchTopicFromV0 :: FetchTopicV0 -> FetchTopic
 fetchTopicFromV0 x = FetchTopic
@@ -500,6 +537,13 @@ fetchTopicFromV3 :: FetchTopicV3 -> FetchTopic
 fetchTopicFromV3 = fetchTopicFromV0
 fetchTopicFromV4 :: FetchTopicV4 -> FetchTopic
 fetchTopicFromV4 = fetchTopicFromV0
+fetchTopicFromV5 :: FetchTopicV5 -> FetchTopic
+fetchTopicFromV5 x = FetchTopic
+  { topic = x.topic
+  , partitions = fmap fetchPartitionFromV5 x.partitions
+  }
+fetchTopicFromV6 :: FetchTopicV6 -> FetchTopic
+fetchTopicFromV6 = fetchTopicFromV5
 
 data FetchableTopicResponse = FetchableTopicResponse
   { topic      :: !Text
@@ -525,6 +569,13 @@ fetchableTopicResponseToV4 x = FetchableTopicResponseV4
   { topic = x.topic
   , partitions = fmap partitionDataToV4 x.partitions
   }
+fetchableTopicResponseToV5 :: FetchableTopicResponse -> FetchableTopicResponseV5
+fetchableTopicResponseToV5 x = FetchableTopicResponseV5
+  { topic = x.topic
+  , partitions = fmap partitionDataToV5 x.partitions
+  }
+fetchableTopicResponseToV6 :: FetchableTopicResponse -> FetchableTopicResponseV6
+fetchableTopicResponseToV6 = fetchableTopicResponseToV5
 
 fetchableTopicResponseFromV0 :: FetchableTopicResponseV0 -> FetchableTopicResponse
 fetchableTopicResponseFromV0 x = FetchableTopicResponse
@@ -542,6 +593,13 @@ fetchableTopicResponseFromV4 x = FetchableTopicResponse
   { topic = x.topic
   , partitions = fmap partitionDataFromV4 x.partitions
   }
+fetchableTopicResponseFromV5 :: FetchableTopicResponseV5 -> FetchableTopicResponse
+fetchableTopicResponseFromV5 x = FetchableTopicResponse
+  { topic = x.topic
+  , partitions = fmap partitionDataFromV5 x.partitions
+  }
+fetchableTopicResponseFromV6 :: FetchableTopicResponseV6 -> FetchableTopicResponse
+fetchableTopicResponseFromV6 = fetchableTopicResponseFromV5
 
 data FinalizedFeatureKey = FinalizedFeatureKey
   { name            :: !CompactString
@@ -1304,6 +1362,8 @@ data PartitionData = PartitionData
     -- offset have been decided (ABORTED or COMMITTED)
   , abortedTransactions :: !(KaArray AbortedTransaction)
     -- ^ The aborted transactions.
+  , logStartOffset      :: {-# UNPACK #-} !Int64
+    -- ^ The current log start offset.
   } deriving (Show, Eq, Generic)
 instance Serializable PartitionData
 
@@ -1329,6 +1389,18 @@ partitionDataToV4 x = PartitionDataV4
   , abortedTransactions = fmap abortedTransactionToV4 x.abortedTransactions
   , recordBytes = x.recordBytes
   }
+partitionDataToV5 :: PartitionData -> PartitionDataV5
+partitionDataToV5 x = PartitionDataV5
+  { partitionIndex = x.partitionIndex
+  , errorCode = x.errorCode
+  , highWatermark = x.highWatermark
+  , lastStableOffset = x.lastStableOffset
+  , logStartOffset = x.logStartOffset
+  , abortedTransactions = fmap abortedTransactionToV5 x.abortedTransactions
+  , recordBytes = x.recordBytes
+  }
+partitionDataToV6 :: PartitionData -> PartitionDataV6
+partitionDataToV6 = partitionDataToV5
 
 partitionDataFromV0 :: PartitionDataV0 -> PartitionData
 partitionDataFromV0 x = PartitionData
@@ -1338,6 +1410,7 @@ partitionDataFromV0 x = PartitionData
   , recordBytes = x.recordBytes
   , lastStableOffset = (-1)
   , abortedTransactions = KaArray (Just V.empty)
+  , logStartOffset = (-1)
   }
 partitionDataFromV1 :: PartitionDataV1 -> PartitionData
 partitionDataFromV1 = partitionDataFromV0
@@ -1353,7 +1426,20 @@ partitionDataFromV4 x = PartitionData
   , recordBytes = x.recordBytes
   , lastStableOffset = x.lastStableOffset
   , abortedTransactions = fmap abortedTransactionFromV4 x.abortedTransactions
+  , logStartOffset = (-1)
   }
+partitionDataFromV5 :: PartitionDataV5 -> PartitionData
+partitionDataFromV5 x = PartitionData
+  { partitionIndex = x.partitionIndex
+  , errorCode = x.errorCode
+  , highWatermark = x.highWatermark
+  , recordBytes = x.recordBytes
+  , lastStableOffset = x.lastStableOffset
+  , abortedTransactions = fmap abortedTransactionFromV5 x.abortedTransactions
+  , logStartOffset = x.logStartOffset
+  }
+partitionDataFromV6 :: PartitionDataV6 -> PartitionData
+partitionDataFromV6 = partitionDataFromV5
 
 data PartitionProduceData = PartitionProduceData
   { index       :: {-# UNPACK #-} !Int32
@@ -1982,6 +2068,17 @@ fetchRequestToV4 x = FetchRequestV4
   , isolationLevel = x.isolationLevel
   , topics = fmap fetchTopicToV4 x.topics
   }
+fetchRequestToV5 :: FetchRequest -> FetchRequestV5
+fetchRequestToV5 x = FetchRequestV5
+  { replicaId = x.replicaId
+  , maxWaitMs = x.maxWaitMs
+  , minBytes = x.minBytes
+  , maxBytes = x.maxBytes
+  , isolationLevel = x.isolationLevel
+  , topics = fmap fetchTopicToV5 x.topics
+  }
+fetchRequestToV6 :: FetchRequest -> FetchRequestV6
+fetchRequestToV6 = fetchRequestToV5
 
 fetchRequestFromV0 :: FetchRequestV0 -> FetchRequest
 fetchRequestFromV0 x = FetchRequest
@@ -2014,6 +2111,17 @@ fetchRequestFromV4 x = FetchRequest
   , maxBytes = x.maxBytes
   , isolationLevel = x.isolationLevel
   }
+fetchRequestFromV5 :: FetchRequestV5 -> FetchRequest
+fetchRequestFromV5 x = FetchRequest
+  { replicaId = x.replicaId
+  , maxWaitMs = x.maxWaitMs
+  , minBytes = x.minBytes
+  , topics = fmap fetchTopicFromV5 x.topics
+  , maxBytes = x.maxBytes
+  , isolationLevel = x.isolationLevel
+  }
+fetchRequestFromV6 :: FetchRequestV6 -> FetchRequest
+fetchRequestFromV6 = fetchRequestFromV5
 
 data FetchResponse = FetchResponse
   { responses      :: !(KaArray FetchableTopicResponse)
@@ -2042,6 +2150,13 @@ fetchResponseToV4 x = FetchResponseV4
   { throttleTimeMs = x.throttleTimeMs
   , responses = fmap fetchableTopicResponseToV4 x.responses
   }
+fetchResponseToV5 :: FetchResponse -> FetchResponseV5
+fetchResponseToV5 x = FetchResponseV5
+  { throttleTimeMs = x.throttleTimeMs
+  , responses = fmap fetchableTopicResponseToV5 x.responses
+  }
+fetchResponseToV6 :: FetchResponse -> FetchResponseV6
+fetchResponseToV6 = fetchResponseToV5
 
 fetchResponseFromV0 :: FetchResponseV0 -> FetchResponse
 fetchResponseFromV0 x = FetchResponse
@@ -2062,6 +2177,13 @@ fetchResponseFromV4 x = FetchResponse
   { responses = fmap fetchableTopicResponseFromV4 x.responses
   , throttleTimeMs = x.throttleTimeMs
   }
+fetchResponseFromV5 :: FetchResponseV5 -> FetchResponse
+fetchResponseFromV5 x = FetchResponse
+  { responses = fmap fetchableTopicResponseFromV5 x.responses
+  , throttleTimeMs = x.throttleTimeMs
+  }
+fetchResponseFromV6 :: FetchResponseV6 -> FetchResponse
+fetchResponseFromV6 = fetchResponseFromV5
 
 data FindCoordinatorRequest = FindCoordinatorRequest
   { key     :: !Text
