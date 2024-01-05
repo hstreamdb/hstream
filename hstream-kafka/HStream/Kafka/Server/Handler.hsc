@@ -27,22 +27,22 @@ import qualified Kafka.Protocol.Service                    as K
     hsc_printf("%s", ++s);                                                     \
   }
 
-#define hsc_cv_handler(key, start, end)                                        \
+#define hsc_cv_handler(key, start, end, suffix...)                             \
   {                                                                            \
     for (int i = start; i <= end; i++) {                                       \
-      hsc_printf("handle%sV%d :: ServerContext -> K.RequestContext -> "        \
+      hsc_printf("handle%s%sV%d :: ServerContext -> K.RequestContext -> "      \
                  "K.%sRequestV%d -> IO "                                       \
                  "K.%sResponseV%d \n",                                         \
-                 #key, i, #key, i, #key, i);                                   \
-      hsc_printf("handle%sV%d sc ctx req = K.", #key, i);                      \
+                 #key, #suffix, i, #key, i, #key, i);                          \
+      hsc_printf("handle%s%sV%d sc ctx req = K.", #key, #suffix, i);           \
       hsc_lowerfirst(#key);                                                    \
-      hsc_printf("ResponseToV%d <$> handle%s sc ctx (K.", i, #key);            \
+      hsc_printf("ResponseToV%d <$> handle%s%s sc ctx (K.", i, #key, #suffix); \
       hsc_lowerfirst(#key);                                                    \
       hsc_printf("RequestFromV%d req)\n", i);                                  \
     }                                                                          \
   }
 
-#define hsc_mk_handler(key, start, end)                                        \
+#define hsc_mk_handler(key, start, end, suffix...)                             \
   {                                                                            \
     for (int i = start; i <= end; i++) {                                       \
       if (i != start) {                                                        \
@@ -50,7 +50,7 @@ import qualified Kafka.Protocol.Service                    as K
       }                                                                        \
       hsc_printf("K.hd (K.RPC :: K.RPC K.HStreamKafkaV%d \"", i);              \
       hsc_lowerfirst(#key);                                                    \
-      hsc_printf("\") (handle%sV%d sc)\n", #key, i);                           \
+      hsc_printf("\") (handle%s%sV%d sc)\n", #key, #suffix, i);                \
     }                                                                          \
   }
 
@@ -67,8 +67,6 @@ import qualified Kafka.Protocol.Service                    as K
 #cv_handler CreateTopics, 0, 2
 #cv_handler DeleteTopics, 0, 1
 
-#cv_handler SaslHandshake, 0, 1
-
 #cv_handler FindCoordinator, 0, 1
 
 #cv_handler JoinGroup, 0, 2
@@ -80,6 +78,11 @@ import qualified Kafka.Protocol.Service                    as K
 
 #cv_handler OffsetCommit, 0, 3
 #cv_handler OffsetFetch, 0, 3
+
+-- Sasl
+#cv_handler SaslHandshake, 0, 1
+#cv_handler SaslHandshake, 0, 1, AfterAuth
+#cv_handler SaslAuthenticate, 0, 0
 
 -- For hstream
 #cv_handler HadminCommand, 0, 0
@@ -111,13 +114,12 @@ handlers sc =
   , #mk_handler OffsetCommit, 0, 3
   , #mk_handler OffsetFetch, 0, 3
 
-  , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "saslHandshake") (handleAfterAuthSaslHandshakeV0 sc)
-  , K.hd (K.RPC :: K.RPC K.HStreamKafkaV1 "saslHandshake") (handleAfterAuthSaslHandshakeV1 sc)
-
-  , K.hd (K.RPC :: K.RPC K.HStreamKafkaV0 "saslAuthenticate") (handleAfterAuthSaslAuthenticateV0 sc)
-
-  -- configs
+    -- configs
   , #mk_handler DescribeConfigs, 0, 0
+
+    -- Sasl
+  , #mk_handler SaslHandshake, 0, 1, AfterAuth
+  , #mk_handler SaslAuthenticate, 0, 0
 
     -- For hstream
   , #mk_handler HadminCommand, 0, 0
