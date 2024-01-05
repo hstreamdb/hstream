@@ -339,7 +339,9 @@ encodePartition mutMaxBytes mutIsFirstPartition p v = do
              let absStartOffset = rf.offset + 1 - fromIntegral rf.batchLength
                  offset = p.fetchOffset - absStartOffset
              if offset > 0
-                then K.seekBatch (fromIntegral offset) bytesOnDisk
+                then do
+                  Log.debug1 $ "Seek MessageSet " <> Log.build offset
+                  K.seekMessageSet (fromIntegral offset) bytesOnDisk
                 else pure bytesOnDisk
       pure (fstRecordBytes, vs)
 
