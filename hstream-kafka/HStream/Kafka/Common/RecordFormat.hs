@@ -1,7 +1,8 @@
 module HStream.Kafka.Common.RecordFormat
   ( RecordFormat (..)
-  , seekBatch
   , recordBytesSize
+    -- * Helpers
+  , seekMessageSet
   ) where
 
 import           Control.Monad
@@ -15,22 +16,30 @@ import qualified Kafka.Protocol.Encoding as K
 -- on-disk format
 data RecordFormat = RecordFormat
   { version     :: {-# UNPACK #-} !Int8
+    -- ^ Currently, the version is always 0.
   , offset      :: {-# UNPACK #-} !Int64
+    -- ^ Max offset in the batch
   , batchLength :: {-# UNPACK #-} !Int32
-  , recordBytes :: !K.CompactBytes
+    -- ^ Total number of records in the batch.
+  , recordBytes :: {-# UNPACK #-} !K.CompactBytes
+    -- ^ The BatchRecords data.
   } deriving (Generic, Show)
 
 instance K.Serializable RecordFormat
 
-seekBatch :: Int32 -> ByteString -> IO ByteString
-seekBatch i bs =
+-- Real size of the recordBytes.
+recordBytesSize :: ByteString -> Int
+recordBytesSize bs = BS.length bs - 13{- 1(version) + 8(offset) + 4(batchLength) -}
+{-# INLINE recordBytesSize #-}
+
+-- Only MessageSet need to be seeked.
+--
+-- https://kafka.apache.org/documentation/#messageset
+seekMessageSet :: Int32 -> ByteString -> IO ByteString
+seekMessageSet i bs{- MessageSet data -} =
   let parser = replicateM_ (fromIntegral i) $ do
-                 void $ K.takeBytes 9{- version(1) + offset(8) -}
-                 len <- K.get @Int32
+                 void $ K.takeBytes 8{- MessageSet.offset(8) -}
+                 len <- K.get @Int32 {- MessageSet.message_size(4) -}
                  void $ K.takeBytes (fromIntegral len)
    in snd <$> K.runParser' parser bs
-{-# INLINE seekBatch #-}
-
-recordBytesSize :: ByteString -> Int
-recordBytesSize bs = BS.length bs - 12{- 8(baseOffset) + 4(batchLength) -}
-{-# INLINE recordBytesSize #-}
+{-# INLINE seekMessageSet #-}

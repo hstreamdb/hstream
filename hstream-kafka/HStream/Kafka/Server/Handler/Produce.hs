@@ -140,9 +140,12 @@ appendRecords shouldValidateCrc ldclient om (streamName, partition) logid bs = d
         storedBs = K.encodeBatchRecords records'
         -- FIXME unlikely overflow: convert batchLength from Int to Int32
         storedRecord = K.runPut $ K.RecordFormat 0{- version -}
-                                                 o (fromIntegral batchLength)
+                                                 o
+                                                 (fromIntegral batchLength)
                                                  (K.CompactBytes storedBs)
     Log.debug1 $ "Append key " <> Log.buildString' appendKey
+              <> ", write offset " <> Log.build o
+              <> ", batch length " <> Log.build batchLength
     r <- M.observeWithLabel M.topicWriteStoreLatency streamName $
            S.appendCompressedBS ldclient logid storedRecord S.CompressionNone
                                 appendAttrs
