@@ -1780,8 +1780,8 @@ instance Service HStreamKafkaV1 where
      , "listGroups"
      , "saslHandshake"
      , "apiVersions"
-     , "deleteTopics"
      , "createTopics"
+     , "deleteTopics"
      ]
 
 instance HasMethodImpl HStreamKafkaV1 "produce" where
@@ -1889,19 +1889,19 @@ instance HasMethodImpl HStreamKafkaV1 "apiVersions" where
   type MethodInput HStreamKafkaV1 "apiVersions" = ApiVersionsRequestV1
   type MethodOutput HStreamKafkaV1 "apiVersions" = ApiVersionsResponseV1
 
-instance HasMethodImpl HStreamKafkaV1 "deleteTopics" where
-  type MethodName HStreamKafkaV1 "deleteTopics" = "deleteTopics"
-  type MethodKey HStreamKafkaV1 "deleteTopics" = 20
-  type MethodVersion HStreamKafkaV1 "deleteTopics" = 1
-  type MethodInput HStreamKafkaV1 "deleteTopics" = DeleteTopicsRequestV1
-  type MethodOutput HStreamKafkaV1 "deleteTopics" = DeleteTopicsResponseV1
-
 instance HasMethodImpl HStreamKafkaV1 "createTopics" where
   type MethodName HStreamKafkaV1 "createTopics" = "createTopics"
   type MethodKey HStreamKafkaV1 "createTopics" = 19
   type MethodVersion HStreamKafkaV1 "createTopics" = 1
   type MethodInput HStreamKafkaV1 "createTopics" = CreateTopicsRequestV1
   type MethodOutput HStreamKafkaV1 "createTopics" = CreateTopicsResponseV1
+
+instance HasMethodImpl HStreamKafkaV1 "deleteTopics" where
+  type MethodName HStreamKafkaV1 "deleteTopics" = "deleteTopics"
+  type MethodKey HStreamKafkaV1 "deleteTopics" = 20
+  type MethodVersion HStreamKafkaV1 "deleteTopics" = 1
+  type MethodInput HStreamKafkaV1 "deleteTopics" = DeleteTopicsRequestV1
+  type MethodOutput HStreamKafkaV1 "deleteTopics" = DeleteTopicsResponseV1
 
 data HStreamKafkaV2
 

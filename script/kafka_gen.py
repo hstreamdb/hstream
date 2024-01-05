@@ -110,9 +110,7 @@ GLOBAL_API_VERSION_PATCH = (0, 0)
 API_VERSION_PATCHES = {
     "ApiVersions": (0, 3),
     "Metadata": (0, 5),
-    "CreateTopics": (0, 2),
     "Produce": (0, 3),
-    "DeleteTopics": (0, 1),
     "Fetch": (0, 4),
     "OffsetFetch": (0, 3),
     "OffsetCommit": (0, 3),
@@ -123,6 +121,8 @@ API_VERSION_PATCHES = {
     "LeaveGroup": (0, 1),
     "Heartbeat": (0, 1),
     "ListGroups": (0, 1),
+    "CreateTopics": (0, 2),
+    "DeleteTopics": (0, 1),
     "DescribeGroups": (0, 1),
     "FindCoordinator": (0, 1),
 }
