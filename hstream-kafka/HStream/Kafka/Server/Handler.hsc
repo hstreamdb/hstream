@@ -61,7 +61,7 @@ import qualified Kafka.Protocol.Service                    as K
 #cv_handler Metadata, 0, 5
 #cv_handler Produce, 0, 5
 #cv_handler InitProducerId, 0, 0
-#cv_handler Fetch, 0, 4
+#cv_handler Fetch, 0, 6
 #cv_handler DescribeConfigs, 0, 0
 
 #cv_handler CreateTopics, 0, 2
@@ -93,7 +93,7 @@ handlers sc =
   , #mk_handler Produce, 0, 5
   , #mk_handler InitProducerId, 0, 0
     -- Read
-  , #mk_handler Fetch, 0, 4
+  , #mk_handler Fetch, 0, 6
 
   , #mk_handler FindCoordinator, 0, 1
 

@@ -153,11 +153,17 @@ handleFetch ServerContext{..} _ r = K.catchFetchResponseEx $ do
           mgv <- HT.lookup readRecords partition.logid
           case mgv of
             Nothing ->
-              pure $ K.PartitionData request.partition K.NONE
-                                     hioffset
-                                     (Just "")
-                                     (-1){- TODO: lastStableOffset -}
-                                     (K.NonNullKaArray V.empty){- TODO: abortedTransactions -}
+              pure $ K.PartitionData
+                { partitionIndex      = request.partition
+                , errorCode           = K.NONE
+                , highWatermark       = hioffset
+                , recordBytes         = (Just "")
+                , lastStableOffset    = (-1) -- TODO
+                , abortedTransactions = K.NonNullKaArray V.empty -- TODO
+                  -- TODO: for performance reason, we don't implement
+                  -- logStartOffset now
+                , logStartOffset      = (-1)
+                }
             Just gv -> do
               v <- GV.unsafeFreeze gv
               bs <- encodePartition mutMaxBytes mutIsFirstPartition request v
@@ -169,9 +175,17 @@ handleFetch ServerContext{..} _ r = K.catchFetchResponseEx $ do
                 let totalRecords = V.sum $ V.map (\K.RecordFormat{..} -> batchLength) v
                 M.addCounter counter (fromIntegral totalRecords)
               -- PartitionData
-              pure $ K.PartitionData request.partition K.NONE hioffset (Just bs)
-                                     (-1){- TODO: lastStableOffset -}
-                                     (K.NonNullKaArray V.empty){- TODO: abortedTransactions -}
+              pure $ K.PartitionData
+                { partitionIndex      = request.partition
+                , errorCode           = K.NONE
+                , highWatermark       = hioffset
+                , recordBytes         = (Just bs)
+                , lastStableOffset    = (-1) -- TODO
+                , abortedTransactions = K.NonNullKaArray V.empty -- TODO
+                  -- TODO: for performance reason, we don't implement
+                  -- logStartOffset now
+                , logStartOffset      = (-1)
+                }
     pure $ K.FetchableTopicResponse topic (K.NonNullKaArray respPartitionDatas)
   pure $ K.FetchResponse (K.NonNullKaArray respTopics) 0{- TODO: throttleTimeMs -}
 
@@ -346,10 +360,16 @@ encodePartition mutMaxBytes mutIsFirstPartition p v = do
       pure (fstRecordBytes, vs)
 
 errorPartitionResponse :: Int32 -> K.ErrorCode -> K.PartitionData
-errorPartitionResponse partitionIndex ec =
-  K.PartitionData partitionIndex ec (-1) (Just "")
-                  (-1){- TODO: lastStableOffset -}
-                  (K.NonNullKaArray V.empty){- TODO: abortedTransactions -}
+errorPartitionResponse partitionIndex ec = K.PartitionData
+  { partitionIndex      = partitionIndex
+  , errorCode           = ec
+  , highWatermark       = (-1)
+  , recordBytes         = (Just "")
+  , lastStableOffset    = (-1) -- TODO
+  , abortedTransactions = K.NonNullKaArray V.empty -- TODO
+    -- TODO: for performance reason, we don't implement logStartOffset now
+  , logStartOffset      = (-1)
+  }
 {-# INLINE errorPartitionResponse #-}
 
 foldWhileM :: Monad m => a -> (a -> m (a, Bool)) -> m a
