@@ -1,10 +1,12 @@
 {-# LANGUAGE CPP                 #-}
+{-# LANGUAGE MultiWayIf          #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE ViewPatterns        #-}
 
 module HStream.Kafka.Server.Handler.Topic
   ( -- 19: CreateTopics
-    handleCreateTopicsV0
+    handleCreateTopics
     -- 20: DeleteTopics
   , handleDeleteTopics
   ) where
@@ -15,13 +17,16 @@ import qualified Data.Text                          as T
 import qualified Data.Vector                        as V
 
 import qualified Data.Map                           as Map
+import           Data.Maybe                         (isNothing)
 import           HStream.Kafka.Common.OffsetManager (cleanOffsetCache)
 import qualified HStream.Kafka.Common.Utils         as Utils
 import qualified HStream.Kafka.Server.Core.Topic    as Core
 import           HStream.Kafka.Server.Types         (ServerContext (..))
 import qualified HStream.Logger                     as Log
 import qualified HStream.Store                      as S
+import           Kafka.Protocol                     (NullableString)
 import qualified Kafka.Protocol.Encoding            as K
+import           Kafka.Protocol.Error               (ErrorCode)
 import qualified Kafka.Protocol.Error               as K
 import qualified Kafka.Protocol.Message             as K
 import qualified Kafka.Protocol.Service             as K
@@ -30,32 +35,79 @@ import qualified Kafka.Protocol.Service             as K
 -- 19: CreateTopics
 --------------------
 -- FIXME: The `timeoutMs` field of request is omitted.
-handleCreateTopicsV0
-  :: ServerContext -> K.RequestContext -> K.CreateTopicsRequestV0 -> IO K.CreateTopicsResponseV0
-handleCreateTopicsV0 ctx _ K.CreateTopicsRequestV0{..} =
+handleCreateTopics
+  :: ServerContext -> K.RequestContext -> K.CreateTopicsRequest -> IO K.CreateTopicsResponse
+handleCreateTopics ctx@ServerContext{scLDClient} _ K.CreateTopicsRequest{..} =
   case topics of
     K.KaArray Nothing ->
       -- FIXME: We return `[]` when topics is `Nothing`.
       --        Is this proper?
-      return $ K.CreateTopicsResponseV0 (K.KaArray $ Just V.empty)
+      return $ K.CreateTopicsResponse {topics = K.KaArray $ Just V.empty, throttleTimeMs = 0}
     K.KaArray (Just topics_)
-      | V.null topics_ -> return $ K.CreateTopicsResponseV0 (K.KaArray $ Just V.empty)
-      | otherwise     -> do
-          respTopics <- forM topics_ $ createTopic
-          return $ K.CreateTopicsResponseV0 (K.KaArray $ Just respTopics)
+      | V.null topics_ -> return $ K.CreateTopicsResponse {topics = K.KaArray $ Just V.empty, throttleTimeMs = 0}
+      | otherwise      -> do
+          let (errRes, topics') = V.partitionWith (\tp -> mapErr tp.name . validateTopic $ tp) topics_
+          if | null topics' ->
+                -- all topics validate failed, return directly
+                return $ K.CreateTopicsResponse {topics = K.KaArray $ Just errRes, throttleTimeMs = 0}
+             | validateOnly -> do
+                res <- V.forM topics' $ \K.CreatableTopic{..} -> do
+                  let streamId = S.transToTopicStreamName name
+                  exist <- S.doesStreamExist scLDClient streamId
+                  if exist
+                    then do
+                      Log.info $ "Topic " <> Log.build name <> " already exist."
+                      return K.CreatableTopicResult
+                         { errorMessage=Just $ "Topic " <> name <> " already exist."
+                         , errorCode=K.TOPIC_ALREADY_EXISTS
+                         , name=name
+                         }
+                    else return K.CreatableTopicResult {errorMessage=Nothing, errorCode=K.NONE, name=name}
+
+                return $ K.CreateTopicsResponse {topics = K.KaArray . Just $ res <> errRes, throttleTimeMs = 0}
+             | otherwise -> do
+                respTopics <- forM topics' $ createTopic
+                return $ K.CreateTopicsResponse {topics = K.KaArray . Just $ respTopics <> errRes, throttleTimeMs = 0}
   where
-    createTopic :: K.CreatableTopicV0 -> IO K.CreatableTopicResultV0
-    createTopic K.CreatableTopicV0{..}
-      | replicationFactor < -1 || replicationFactor == 0 = do
-          Log.warning $ "Expect a positive replicationFactor but got " <> Log.build replicationFactor
-          return $ K.CreatableTopicResultV0 name K.INVALID_REPLICATION_FACTOR
-      | numPartitions < -1 || numPartitions == 0 = do
-          Log.warning $ "Expect a positive numPartitions but got " <> Log.build numPartitions
-          return $ K.CreatableTopicResultV0 name K.INVALID_PARTITIONS
-      | otherwise = do
-          let configMap = Map.fromList . map (\c -> (c.name, c.value)) . Utils.kaArrayToList $ configs
-          (errorCode, _) <- Core.createTopic ctx name replicationFactor numPartitions configMap
-          return $ K.CreatableTopicResultV0 name errorCode
+    mapErr name (Left (errorCode, msg)) = Left $ K.CreatableTopicResult name errorCode msg
+    mapErr _ (Right tp) = Right tp
+
+    createTopic :: K.CreatableTopic -> IO K.CreatableTopicResult
+    createTopic K.CreatableTopic{..} = do
+      let configMap = Map.fromList . map (\c -> (c.name, c.value)) . Utils.kaArrayToList $ configs
+      ((errorCode, msg), _) <- Core.createTopic ctx name replicationFactor numPartitions configMap
+      return $ K.CreatableTopicResult name errorCode (Just msg)
+
+validateTopic :: K.CreatableTopic -> Either (ErrorCode, NullableString) K.CreatableTopic
+validateTopic topic@K.CreatableTopic{..} = do
+  validateNullConfig configs
+  *> validateAssignments assignments
+  *> validateReplica replicationFactor
+  *> validateNumPartitions numPartitions
+ where
+   invalidReplicaMsg = Just . T.pack $ "Replication factor must be larger than 0, or -1 to use the default value."
+   invalidNumPartitionsMsg = Just . T.pack $ "Number of partitions must be larger than 0, or -1 to use the default value."
+   unsuportedPartitionAssignments = Just . T.pack $ "Partition assignments is not supported now."
+
+   validateNullConfig (K.unKaArray -> Just configs') =
+     let nullConfigs = V.filter (\K.CreateableTopicConfig{value} -> isNothing value) configs'
+      in if V.null nullConfigs
+           then Right topic
+           else Left (K.INVALID_CONFIG, Just $ T.pack ("Null value not supported for topic configs: " <> show nullConfigs))
+   validateNullConfig _ = Right topic
+
+   validateAssignments (K.unKaArray -> Nothing) = Right topic
+   validateAssignments (K.unKaArray -> Just as)
+     | V.null as = Right topic
+   validateAssignments _ = Left (K.INVALID_REQUEST, unsuportedPartitionAssignments)
+
+   validateReplica replica
+     | replica < -1 || replica == 0 = Left (K.INVALID_REPLICATION_FACTOR, invalidReplicaMsg)
+     | otherwise                    = Right topic
+
+   validateNumPartitions partitions
+     | partitions < -1 || partitions == 0 = Left (K.INVALID_PARTITIONS, invalidNumPartitionsMsg)
+     | otherwise                          = Right topic
 
 --------------------
 -- 20: DeleteTopics

@@ -106,12 +106,20 @@ creatableReplicaAssignmentToV0 x = CreatableReplicaAssignmentV0
   { partitionIndex = x.partitionIndex
   , brokerIds = x.brokerIds
   }
+creatableReplicaAssignmentToV1 :: CreatableReplicaAssignment -> CreatableReplicaAssignmentV1
+creatableReplicaAssignmentToV1 = creatableReplicaAssignmentToV0
+creatableReplicaAssignmentToV2 :: CreatableReplicaAssignment -> CreatableReplicaAssignmentV2
+creatableReplicaAssignmentToV2 = creatableReplicaAssignmentToV0
 
 creatableReplicaAssignmentFromV0 :: CreatableReplicaAssignmentV0 -> CreatableReplicaAssignment
 creatableReplicaAssignmentFromV0 x = CreatableReplicaAssignment
   { partitionIndex = x.partitionIndex
   , brokerIds = x.brokerIds
   }
+creatableReplicaAssignmentFromV1 :: CreatableReplicaAssignmentV1 -> CreatableReplicaAssignment
+creatableReplicaAssignmentFromV1 = creatableReplicaAssignmentFromV0
+creatableReplicaAssignmentFromV2 :: CreatableReplicaAssignmentV2 -> CreatableReplicaAssignment
+creatableReplicaAssignmentFromV2 = creatableReplicaAssignmentFromV0
 
 data CreatableTopic = CreatableTopic
   { name              :: !Text
@@ -140,6 +148,10 @@ creatableTopicToV0 x = CreatableTopicV0
   , assignments = fmap creatableReplicaAssignmentToV0 x.assignments
   , configs = fmap createableTopicConfigToV0 x.configs
   }
+creatableTopicToV1 :: CreatableTopic -> CreatableTopicV1
+creatableTopicToV1 = creatableTopicToV0
+creatableTopicToV2 :: CreatableTopic -> CreatableTopicV2
+creatableTopicToV2 = creatableTopicToV0
 
 creatableTopicFromV0 :: CreatableTopicV0 -> CreatableTopic
 creatableTopicFromV0 x = CreatableTopic
@@ -149,12 +161,18 @@ creatableTopicFromV0 x = CreatableTopic
   , assignments = fmap creatableReplicaAssignmentFromV0 x.assignments
   , configs = fmap createableTopicConfigFromV0 x.configs
   }
+creatableTopicFromV1 :: CreatableTopicV1 -> CreatableTopic
+creatableTopicFromV1 = creatableTopicFromV0
+creatableTopicFromV2 :: CreatableTopicV2 -> CreatableTopic
+creatableTopicFromV2 = creatableTopicFromV0
 
 data CreatableTopicResult = CreatableTopicResult
-  { name      :: !Text
+  { name         :: !Text
     -- ^ The topic name.
-  , errorCode :: {-# UNPACK #-} !ErrorCode
+  , errorCode    :: {-# UNPACK #-} !ErrorCode
     -- ^ The error code, or 0 if there was no error.
+  , errorMessage :: !NullableString
+    -- ^ The error message, or null if there was no error.
   } deriving (Show, Eq, Generic)
 instance Serializable CreatableTopicResult
 
@@ -163,12 +181,29 @@ creatableTopicResultToV0 x = CreatableTopicResultV0
   { name = x.name
   , errorCode = x.errorCode
   }
+creatableTopicResultToV1 :: CreatableTopicResult -> CreatableTopicResultV1
+creatableTopicResultToV1 x = CreatableTopicResultV1
+  { name = x.name
+  , errorCode = x.errorCode
+  , errorMessage = x.errorMessage
+  }
+creatableTopicResultToV2 :: CreatableTopicResult -> CreatableTopicResultV2
+creatableTopicResultToV2 = creatableTopicResultToV1
 
 creatableTopicResultFromV0 :: CreatableTopicResultV0 -> CreatableTopicResult
 creatableTopicResultFromV0 x = CreatableTopicResult
   { name = x.name
   , errorCode = x.errorCode
+  , errorMessage = Nothing
   }
+creatableTopicResultFromV1 :: CreatableTopicResultV1 -> CreatableTopicResult
+creatableTopicResultFromV1 x = CreatableTopicResult
+  { name = x.name
+  , errorCode = x.errorCode
+  , errorMessage = x.errorMessage
+  }
+creatableTopicResultFromV2 :: CreatableTopicResultV2 -> CreatableTopicResult
+creatableTopicResultFromV2 = creatableTopicResultFromV1
 
 data CreateableTopicConfig = CreateableTopicConfig
   { name  :: !Text
@@ -183,12 +218,20 @@ createableTopicConfigToV0 x = CreateableTopicConfigV0
   { name = x.name
   , value = x.value
   }
+createableTopicConfigToV1 :: CreateableTopicConfig -> CreateableTopicConfigV1
+createableTopicConfigToV1 = createableTopicConfigToV0
+createableTopicConfigToV2 :: CreateableTopicConfig -> CreateableTopicConfigV2
+createableTopicConfigToV2 = createableTopicConfigToV0
 
 createableTopicConfigFromV0 :: CreateableTopicConfigV0 -> CreateableTopicConfig
 createableTopicConfigFromV0 x = CreateableTopicConfig
   { name = x.name
   , value = x.value
   }
+createableTopicConfigFromV1 :: CreateableTopicConfigV1 -> CreateableTopicConfig
+createableTopicConfigFromV1 = createableTopicConfigFromV0
+createableTopicConfigFromV2 :: CreateableTopicConfigV2 -> CreateableTopicConfig
+createableTopicConfigFromV2 = createableTopicConfigFromV0
 
 data DeletableTopicResult = DeletableTopicResult
   { name      :: !Text
@@ -1614,10 +1657,13 @@ apiVersionsResponseFromV3 x = ApiVersionsResponse
   }
 
 data CreateTopicsRequest = CreateTopicsRequest
-  { topics    :: !(KaArray CreatableTopic)
+  { topics       :: !(KaArray CreatableTopic)
     -- ^ The topics to create.
-  , timeoutMs :: {-# UNPACK #-} !Int32
+  , timeoutMs    :: {-# UNPACK #-} !Int32
     -- ^ How long to wait in milliseconds before timing out the request.
+  , validateOnly :: Bool
+    -- ^ If true, check that the topics can be created as specified, but don't
+    -- create anything.
   } deriving (Show, Eq, Generic)
 instance Serializable CreateTopicsRequest
 
@@ -1626,15 +1672,36 @@ createTopicsRequestToV0 x = CreateTopicsRequestV0
   { topics = fmap creatableTopicToV0 x.topics
   , timeoutMs = x.timeoutMs
   }
+createTopicsRequestToV1 :: CreateTopicsRequest -> CreateTopicsRequestV1
+createTopicsRequestToV1 x = CreateTopicsRequestV1
+  { topics = fmap creatableTopicToV1 x.topics
+  , timeoutMs = x.timeoutMs
+  , validateOnly = x.validateOnly
+  }
+createTopicsRequestToV2 :: CreateTopicsRequest -> CreateTopicsRequestV2
+createTopicsRequestToV2 = createTopicsRequestToV1
 
 createTopicsRequestFromV0 :: CreateTopicsRequestV0 -> CreateTopicsRequest
 createTopicsRequestFromV0 x = CreateTopicsRequest
   { topics = fmap creatableTopicFromV0 x.topics
   , timeoutMs = x.timeoutMs
+  , validateOnly = False
   }
+createTopicsRequestFromV1 :: CreateTopicsRequestV1 -> CreateTopicsRequest
+createTopicsRequestFromV1 x = CreateTopicsRequest
+  { topics = fmap creatableTopicFromV1 x.topics
+  , timeoutMs = x.timeoutMs
+  , validateOnly = x.validateOnly
+  }
+createTopicsRequestFromV2 :: CreateTopicsRequestV2 -> CreateTopicsRequest
+createTopicsRequestFromV2 = createTopicsRequestFromV1
 
-newtype CreateTopicsResponse = CreateTopicsResponse
-  { topics :: (KaArray CreatableTopicResult)
+data CreateTopicsResponse = CreateTopicsResponse
+  { topics         :: !(KaArray CreatableTopicResult)
+    -- ^ Results for each topic we tried to create.
+  , throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
   } deriving (Show, Eq, Generic)
 instance Serializable CreateTopicsResponse
 
@@ -1642,10 +1709,30 @@ createTopicsResponseToV0 :: CreateTopicsResponse -> CreateTopicsResponseV0
 createTopicsResponseToV0 x = CreateTopicsResponseV0
   { topics = fmap creatableTopicResultToV0 x.topics
   }
+createTopicsResponseToV1 :: CreateTopicsResponse -> CreateTopicsResponseV1
+createTopicsResponseToV1 x = CreateTopicsResponseV1
+  { topics = fmap creatableTopicResultToV1 x.topics
+  }
+createTopicsResponseToV2 :: CreateTopicsResponse -> CreateTopicsResponseV2
+createTopicsResponseToV2 x = CreateTopicsResponseV2
+  { throttleTimeMs = x.throttleTimeMs
+  , topics = fmap creatableTopicResultToV2 x.topics
+  }
 
 createTopicsResponseFromV0 :: CreateTopicsResponseV0 -> CreateTopicsResponse
 createTopicsResponseFromV0 x = CreateTopicsResponse
   { topics = fmap creatableTopicResultFromV0 x.topics
+  , throttleTimeMs = 0
+  }
+createTopicsResponseFromV1 :: CreateTopicsResponseV1 -> CreateTopicsResponse
+createTopicsResponseFromV1 x = CreateTopicsResponse
+  { topics = fmap creatableTopicResultFromV1 x.topics
+  , throttleTimeMs = 0
+  }
+createTopicsResponseFromV2 :: CreateTopicsResponseV2 -> CreateTopicsResponse
+createTopicsResponseFromV2 x = CreateTopicsResponse
+  { topics = fmap creatableTopicResultFromV2 x.topics
+  , throttleTimeMs = x.throttleTimeMs
   }
 
 data DeleteTopicsRequest = DeleteTopicsRequest

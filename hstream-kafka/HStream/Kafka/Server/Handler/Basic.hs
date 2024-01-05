@@ -111,7 +111,7 @@ handleMetadata ctx reqCtx req = do
                 let defaultReplicas = kafkaBrokerConfigs.defaultReplicationFactor._value
                     defaultNumPartitions = kafkaBrokerConfigs.numPartitions._value
                 resp <- forM needCreate $ \topic -> do
-                  (code, shards) <- createTopic ctx topic (fromIntegral defaultReplicas) (fromIntegral defaultNumPartitions) Map.empty
+                  ((code, _), shards) <- createTopic ctx topic (fromIntegral defaultReplicas) (fromIntegral defaultNumPartitions) Map.empty
                   if code /= K.NONE
                     then
                       return $ K.MetadataResponseTopic
