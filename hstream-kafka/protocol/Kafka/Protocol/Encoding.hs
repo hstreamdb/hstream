@@ -78,6 +78,7 @@ import           Data.Int
 import           Data.Maybe
 import           Data.String                    (IsString)
 import           Data.Text                      (Text)
+import           Data.Typeable                  (Typeable, showsTypeRep, typeOf)
 import           Data.Vector                    (Vector)
 import qualified Data.Vector                    as V
 import           Data.Word
@@ -89,7 +90,7 @@ import           Kafka.Protocol.Encoding.Parser
 
 -------------------------------------------------------------------------------
 
-class Serializable a where
+class Typeable a => Serializable a where
   get :: Parser a
 
   default get :: (Generic a, GSerializable (Rep a)) => Parser a
@@ -165,13 +166,13 @@ newtype DecodeError = DecodeError String
 
 instance Exception DecodeError
 
-runParser' :: Parser r -> ByteString -> IO (r, ByteString)
+runParser' :: Typeable r => Parser r -> ByteString -> IO (r, ByteString)
 runParser' parser bs = do
   result <- runParser parser bs
   case result of
     Done l r   -> pure (r, l)
     Fail _ err -> throwIO $ DecodeError $ "Fail, " <> err
-    More _     -> throwIO $ DecodeError "Need more"
+    More _     -> throwIO $ DecodeError $ showsTypeRep (typeOf parser) ", need more"
 {-# INLINE runParser' #-}
 
 runGet :: Serializable a => ByteString -> IO a
@@ -571,7 +572,7 @@ instance LegacyRecord RecordV1
 
 -- Note that although message sets are represented as an array, they are not
 -- preceded by an int32 array size like other array elements in the protocol.
-decodeLegacyRecordBatch :: (LegacyRecord a) => ByteString -> IO (Vector a)
+decodeLegacyRecordBatch :: LegacyRecord a => ByteString -> IO (Vector a)
 decodeLegacyRecordBatch batchBs = Growing.new >>= decode batchBs
   where
     decode "" !v = Growing.unsafeFreeze v
