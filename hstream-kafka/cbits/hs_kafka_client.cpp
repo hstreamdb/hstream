@@ -334,6 +334,7 @@ HsConsumer* hs_new_consumer(const char* brokers_, HsInt brokers_size_,
   CONF_SET("group.id", std::string(group_id_, group_id_size_));
   CONF_SET("auto.offset.reset", std::string(offset_reset_, offset_reset_size_));
   CONF_SET("enable.auto.commit", auto_commit ? "true" : "false");
+  CONF_SET("isolation.level", "read_uncommitted");
 
   std::string brokers(brokers_, brokers_size_);
   CONF_SET("metadata.broker.list", brokers);

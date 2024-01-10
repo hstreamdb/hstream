@@ -20,6 +20,7 @@ import           HStream.Kafka.Common.OffsetManager   (getLatestOffset,
 import           HStream.Kafka.Common.Utils           (mapKaArray)
 import qualified HStream.Kafka.Group.GroupCoordinator as GC
 import           HStream.Kafka.Server.Types           (ServerContext (..))
+import qualified HStream.Logger                       as Log
 import qualified HStream.Store                        as S
 import qualified Kafka.Protocol                       as K
 import qualified Kafka.Protocol.Error                 as K
@@ -37,7 +38,9 @@ pattern EarliestTimestamp = (-2)
 handleListOffsets
   :: ServerContext -> K.RequestContext -> K.ListOffsetsRequest -> IO K.ListOffsetsResponse
 handleListOffsets sc reqCtx req
-  | reqCtx.apiVersion >= 2 && req.isolationLevel /= 0 = return $ mkErrResponse req
+  | reqCtx.apiVersion >= 2 && req.isolationLevel /= 0 = do
+    Log.warning $ "currently only support READ_UNCOMMITED(isolationLevel = 0) request."
+    return $ mkErrResponse req
   | otherwise = listOffsets sc reqCtx req
  where
    mkErrResponse K.ListOffsetsRequest{..} =
