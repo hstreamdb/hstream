@@ -143,7 +143,7 @@ COPY --from=ld_image /logdevice/common/test/ssl_certs/ /logdevice/common/test/ss
 
 COPY --from=builder /root/.cabal/bin/hstream-server \
                     /root/.cabal/bin/hstream-server-old \
-                    /root/.cabal/bin/hkcli \
+                    /root/.cabal/bin/hstream-kafka \
                     /root/.cabal/bin/hstream \
                     /root/.cabal/bin/hadmin \
                     /root/.cabal/bin/hstore-bench-writter \

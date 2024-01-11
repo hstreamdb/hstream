@@ -20,7 +20,7 @@ import qualified Kafka.Protocol.Message  as K
 import qualified Kafka.Protocol.Service  as K
 
 clientId :: K.NullableString
-clientId  = Just "hkcli"
+clientId  = Just "hstream-kafka"
 
 withSendAndRecv :: String -> Int -> (ClientHandler -> IO a) -> IO a
 withSendAndRecv host port =
