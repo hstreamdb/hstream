@@ -49,6 +49,7 @@ import qualified HStream.Gossip.Types              as Gossip
 import           HStream.Kafka.Common.Metrics      (startMetricsServer)
 import qualified HStream.Kafka.Network             as K
 import           HStream.Kafka.Server.Config       (AdvertisedListeners,
+                                                    ExperimentalFeature (..),
                                                     FileLoggerSettings (..),
                                                     ListenersSecurityProtocolMap,
                                                     MetaStoreAddr (..),
@@ -126,10 +127,13 @@ app config@ServerOpts{..} = do
       -- FIXME: currently only listeners support SASL authentication
       let netOpts = K.defaultServerOpts
                       { K.serverHost = T.unpack $ decodeUtf8 _serverHost
-                      , K.serverPort = fromIntegral _serverPort
+                      , K.serverPort = _serverPort
                       , K.serverSaslOptions = Nothing
                       }
-      Async.withAsync (serve serverContext netOpts) $ \a -> do
+
+      -- Experimental features
+      let usingCppServer = ExperimentalCppServer `elem` experimentalFeatures
+      Async.withAsync (serve serverContext netOpts usingCppServer) $ \a -> do
         -- start gossip
         a1 <- startGossip _serverHost gossipContext
         Async.link2Only (const True) a a1
@@ -139,6 +143,7 @@ app config@ServerOpts{..} = do
                              _securityProtocolMap
                              _serverAdvertisedListeners
                              _listenersSecurityProtocolMap
+                             usingCppServer
         forM_ as (Async.link2Only (const True) a)
         -- wait the default server
         waitGossipBoot gossipContext
@@ -149,8 +154,11 @@ app config@ServerOpts{..} = do
 
 -- TODO: This server primarily serves as a demonstration, and there
 -- is certainly room for enhancements and refinements.
-serve :: ServerContext -> K.ServerOptions -> IO ()
-serve sc@ServerContext{..} netOpts = do
+serve :: ServerContext -> K.ServerOptions
+      -> Bool
+      -- ^ ExperimentalFeature: ExperimentalCppServer
+      -> IO ()
+serve sc@ServerContext{..} netOpts usingCppServer = do
   Log.i "************************"
 #ifndef HSTREAM_ENABLE_ASAN
   hPutStrLn stderr $ [r|
@@ -196,7 +204,10 @@ serve sc@ServerContext{..} netOpts = do
   Log.info $ "Starting"
         <> if isJust (K.serverSslOptions netOpts') then " secure " else " insecure "
         <> "kafka server..."
-  K.runServer netOpts' sc K.unAuthedHandlers K.handlers
+  if usingCppServer
+     then do Log.warning "Using a still-in-development c++ kafka server!"
+             K.runCppServer netOpts' sc K.handlers
+     else K.runHsServer netOpts' sc K.unAuthedHandlers K.handlers
   where
    exceptionHandlers =
      [ Handler $ \(_ :: HE.RQLiteRowNotFound)    -> return ()
@@ -209,9 +220,12 @@ serveListeners
   -> SecurityProtocolMap
   -> AdvertisedListeners
   -> ListenersSecurityProtocolMap
+  -> Bool
+  -- ^ ExperimentalFeature: ExperimentalCppServer
   -> IO [Async.Async ()]
 serveListeners sc netOpts
                securityMap listeners listenerSecurityMap
+               usingCppServer
                = do
   let listeners' = [(k, v) | (k, vs) <- Map.toList listeners, v <- Set.toList vs]
   forM listeners' $ \(key, I.Listener{..}) -> Async.async $ do
@@ -240,7 +254,10 @@ serveListeners sc netOpts
             <> Log.build key <> ":"
             <> Log.build listenerAddress <> ":"
             <> Log.build listenerPort
-    K.runServer netOpts' sc' K.unAuthedHandlers K.handlers
+    if usingCppServer
+       then do Log.warning "Using a still-in-development c++ kafka server!"
+               K.runCppServer netOpts' sc' K.handlers
+       else K.runHsServer netOpts' sc' K.unAuthedHandlers K.handlers
 
 -------------------------------------------------------------------------------
 

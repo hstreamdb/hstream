@@ -457,13 +457,11 @@ querySnapshotPathParser = strOption
 
 data ExperimentalFeature
   = ExperimentalStreamV2
-  | ExperimentalKafka
   deriving (Show, Eq)
 
 parseExperimentalFeature :: O.ReadM ExperimentalFeature
 parseExperimentalFeature = O.eitherReader $ \case
   "stream-v2" -> Right ExperimentalStreamV2
-  "kafka"     -> Right ExperimentalKafka
   x           -> Left $ "cannot parse experimental feature: " <> x
 
 experimentalFeatureParser :: O.Parser ExperimentalFeature

@@ -102,6 +102,8 @@ cliOptionsParser = do
 
   cliDisableAutoCreateTopic <- disableAutoCreateTopicParser
 
+  cliExperimentalFeatures <- O.many experimentalFeatureParser
+
   return CliOptions{..}
 
 -------------------------------------------------------------------------------
@@ -288,6 +290,10 @@ disableAutoCreateTopicParser :: O.Parser Bool
 disableAutoCreateTopicParser = flag False True
   $  long "disable-auto-create-topic"
   <> help "Disable auto create topic"
+
+experimentalFeatureParser :: O.Parser ExperimentalFeature
+experimentalFeatureParser = option parseExperimentalFeature $
+  long "experimental" <> metavar "ExperimentalFeature"
 
 -------------------------------------------------------------------------------
 

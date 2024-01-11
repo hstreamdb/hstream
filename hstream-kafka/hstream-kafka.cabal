@@ -1,6 +1,6 @@
-cabal-version: 3.6
-name:          hstream-kafka
-version:       0.1.0.0
+cabal-version:      3.6
+name:               hstream-kafka
+version:            0.1.0.0
 synopsis:
   High performance stream processing platform for IoT data written in Haskell.
 
@@ -8,16 +8,17 @@ description:
   Please see the README on GitHub at
   <https://github.com/hstreamdb/hstream#readme>
 
-license:       BSD-3-Clause
-license-file:  LICENSE
-copyright:     Copyright (c) 2020-present EMQ Technologies Co., Ltd.
-author:        Mu <lambda@emqx.io>
-maintainer:    lambda@emqx.io
-tested-with:   GHC ==9.2.8
-category:      Database
-homepage:      https://github.com/hstreamdb/hstream
-bug-reports:   https://github.com/hstreamdb/hstream/issues
-build-type:    Simple
+license:            BSD-3-Clause
+license-file:       LICENSE
+copyright:          Copyright (c) 2020-present EMQ Technologies Co., Ltd.
+author:             Mu <lambda@emqx.io>
+maintainer:         lambda@emqx.io
+tested-with:        GHC ==9.2.8
+category:           Database
+homepage:           https://github.com/hstreamdb/hstream
+bug-reports:        https://github.com/hstreamdb/hstream/issues
+build-type:         Simple
+extra-source-files: include/*.h
 
 source-repository head
   type:     git
@@ -134,8 +135,6 @@ library
     HStream.Kafka.Group.Member
     HStream.Kafka.Group.OffsetsStore
     HStream.Kafka.Network
-    HStream.Kafka.Network.IO
-    HStream.Kafka.Network.Security
     HStream.Kafka.Server.Config
     HStream.Kafka.Server.Handler
     HStream.Kafka.Server.Handler.Security
@@ -146,6 +145,9 @@ library
     HStream.Kafka.Common.Metrics.ConsumeStats
     HStream.Kafka.Common.Metrics.ProduceStats
     HStream.Kafka.Common.Metrics.ServerStats
+    HStream.Kafka.Network.Cxx
+    HStream.Kafka.Network.IO
+    HStream.Kafka.Network.Security
     HStream.Kafka.Server.Config.FromCli
     HStream.Kafka.Server.Config.FromJson
     HStream.Kafka.Server.Config.KafkaConfig
@@ -161,9 +163,23 @@ library
     HStream.Kafka.Server.Handler.Topic
     HStream.Kafka.Server.Security.SASL
 
-  cxx-sources:        cbits/hs_kafka_client.cpp
+  cxx-sources:
+    cbits/hs_kafka_client.cpp
+    cbits/hs_kafka_server.cpp
+
   cxx-options:        -std=c++17
-  extra-libraries:    rdkafka++
+  hsc2hs-options:
+    "--cc=g++" "--lflag=-lstdc++" "--cflag=-D__HSC2HS__=1"
+    "--cflag=-std=c++17"
+
+  extra-libraries:
+    rdkafka++
+    folly
+    fizz
+    wangle
+
+  include-dirs:       include /usr/local/include
+  extra-lib-dirs:     /usr/local/lib
   hs-source-dirs:     .
   build-tool-depends: hsc2hs:hsc2hs
   build-depends:
@@ -198,6 +214,7 @@ library
     , prometheus-client
     , stm
     , text
+    , unix
     , unordered-containers
     , utf8-string
     , uuid
@@ -217,3 +234,5 @@ library
     OverloadedRecordDot
     OverloadedStrings
     RecordWildCards
+    UnliftedFFITypes
+    UnliftedNewtypes
