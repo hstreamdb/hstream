@@ -536,16 +536,19 @@ foreign import ccall interruptible "hs_consumer_consume"
 
 creatableTopicParserV0 :: Parser K.CreatableTopicV0
 creatableTopicParserV0 = K.CreatableTopicV0
-  <$> strArgument (metavar "TopicName")
-  <*> option auto (O.long "num-partitions" <> O.short 'p' <> O.value 1 <> O.showDefault <> metavar "Int32")
-  <*> option auto (O.long "replication-factor" <> O.short 'r' <> O.value 1 <> O.showDefault <> metavar "Int16")
+  <$> strArgument (metavar "TopicName" <> help "Topic name")
+  <*> option auto ( O.long "num-partitions" <> O.short 'p' <> O.value 1 <> O.showDefault <> metavar "Int32"
+                 <> help "Number of partitions")
+  <*> option auto ( O.long "replication-factor" <> O.short 'r' <> O.value 1 <> O.showDefault <> metavar "Int16"
+                 <> help "Topic replication factor")
   <*> pure (K.KaArray $ Just V.empty)
   <*> pure (K.KaArray $ Just V.empty)
 
 createTopicsRequestParserV0 :: Parser K.CreateTopicsRequestV0
 createTopicsRequestParserV0 = K.CreateTopicsRequestV0
   <$> (K.KaArray . Just . V.singleton <$> creatableTopicParserV0)
-  <*> option auto (O.long "timeout" <> O.short 't' <> O.value 5000 <> O.showDefault <> metavar "Int32")
+  <*> option auto ( O.long "timeout" <> O.short 't' <> O.value 5000 <> O.showDefault <> metavar "Int32"
+                 <> help "Request timeout in milliseconds")
 
 -------------------------------------------------------------------------------
 
