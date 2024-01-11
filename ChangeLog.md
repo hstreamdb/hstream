@@ -10,7 +10,7 @@ HStream v0.19.0 introduces support for [Kafka API](https://kafka.apache.org/prot
 ### New Features
 
 - Add support for [Kafka API](https://kafka.apache.org/protocol.html#protocol_api_keys), compatible with Apache Kafka 0.11 or later.
-- Add a new `hkcli` command line tool for working with HStream Kafka API.
+- Add a new `hstream-kafka` command line tool for working with HStream Kafka API.
 
 ### Enhancements
 
