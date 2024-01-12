@@ -13,6 +13,7 @@ module HStream.Kafka.Client.Api
   ) where
 
 import           Data.Int
+import           Data.Word
 
 import           HStream.Kafka.Network
 import qualified Kafka.Protocol.Encoding as K
@@ -22,7 +23,7 @@ import qualified Kafka.Protocol.Service  as K
 clientId :: K.NullableString
 clientId  = Just "hstream-kafka"
 
-withSendAndRecv :: String -> Int -> (ClientHandler -> IO a) -> IO a
+withSendAndRecv :: String -> Word16 -> (ClientHandler -> IO a) -> IO a
 withSendAndRecv host port =
   withClient defaultClientOptions{host = host, port = port}
 

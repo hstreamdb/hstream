@@ -14,6 +14,7 @@ module HStream.Kafka.Server.Config
   , SecurityProtocolMap, defaultProtocolMap
   , advertisedListenersToPB
   , StorageOptions (..)
+  , ExperimentalFeature (..)
   ) where
 
 import           Control.Exception                    (throwIO)
