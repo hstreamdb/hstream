@@ -143,7 +143,7 @@ COPY --from=ld_image /logdevice/common/test/ssl_certs/ /logdevice/common/test/ss
 
 COPY --from=builder /root/.cabal/bin/hstream-server \
                     /root/.cabal/bin/hstream-server-old \
-                    /root/.cabal/bin/hstream-kafka-cli \
+                    /root/.cabal/bin/hstream-kafka \
                     /root/.cabal/bin/hstream \
                     /root/.cabal/bin/hadmin \
                     /root/.cabal/bin/hstore-bench-writter \
@@ -165,7 +165,7 @@ RUN mkdir -p /etc/bash_completion.d && \
     grep -wq '^source /etc/profile.d/bash_completion.sh' /etc/bash.bashrc || echo 'source /etc/profile.d/bash_completion.sh' >> /etc/bash.bashrc && \
     /usr/local/bin/hadmin --bash-completion-script /usr/local/bin/hadmin > /etc/bash_completion.d/hadmin && \
     /usr/local/bin/hadmin-store --bash-completion-script /usr/local/bin/hadmin-store > /etc/bash_completion.d/hadmin-store && \
-    /usr/local/bin/hstream-kafka-cli --bash-completion-script /usr/local/bin/hstream-kafka-cli > /etc/bash_completion.d/hstream-kafka-cli && \
+    /usr/local/bin/hkcli --bash-completion-script /usr/local/bin/hkcli > /etc/bash_completion.d/hkcli && \
     /usr/local/bin/hstream --bash-completion-script /usr/local/bin/hstream > /etc/bash_completion.d/hstream
 
 EXPOSE 6560 6570
