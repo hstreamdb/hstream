@@ -123,12 +123,19 @@ library
   exposed-modules:
     HStream.Kafka.Client.Api
     HStream.Kafka.Client.Cli
+    HStream.Kafka.Common.Acl
+    HStream.Kafka.Common.AclEntry
+    HStream.Kafka.Common.AclStore
+    HStream.Kafka.Common.Authorizer
+    HStream.Kafka.Common.Authorizer.Class
     HStream.Kafka.Common.FetchManager
     HStream.Kafka.Common.KafkaException
     HStream.Kafka.Common.Metrics
     HStream.Kafka.Common.OffsetManager
     HStream.Kafka.Common.Read
     HStream.Kafka.Common.RecordFormat
+    HStream.Kafka.Common.Resource
+    HStream.Kafka.Common.Security
     HStream.Kafka.Common.Utils
     HStream.Kafka.Group.Group
     HStream.Kafka.Group.GroupCoordinator
@@ -194,6 +201,7 @@ library
     , colourista                    ^>=0.1.0.1
     , containers
     , directory
+    , extra
     , foreign
     , ghc
     , gsasl-hs
@@ -237,3 +245,29 @@ library
     RecordWildCards
     UnliftedFFITypes
     UnliftedNewtypes
+
+test-suite kafka-common-test
+  import:             shared-properties
+  type:               exitcode-stdio-1.0
+  main-is:            Spec.hs
+  hs-source-dirs:     tests/common
+  build-depends:
+    , aeson
+    , base                                           >=4.11 && <5
+    , bytestring
+    , containers
+    , hspec
+    , hspec-expectations
+    , hstream-kafka:{hstream-kafka, kafka-protocol}
+    , text
+    , uuid
+    , vector
+
+  default-extensions:
+    LambdaCase
+    OverloadedStrings
+    RecordWildCards
+
+  default-language:   GHC2021
+  build-tool-depends: hspec-discover:hspec-discover >=2 && <3
+  ghc-options:        -threaded -rtsopts -with-rtsopts=-N
