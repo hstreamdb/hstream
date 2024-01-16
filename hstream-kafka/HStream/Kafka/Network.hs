@@ -9,7 +9,9 @@ module HStream.Kafka.Network
     ServerOptions (..)
   , SaslOptions (..)
   , defaultServerOpts
-  , runServer
+  , runHsServer
+  , runCppServer
+
     -- * Client
   , ClientOptions (..)
   , defaultClientOptions
@@ -19,23 +21,33 @@ module HStream.Kafka.Network
   ) where
 
 import           Control.Concurrent
+import qualified Control.Concurrent.Async          as Async
 import qualified Control.Exception                 as E
 import           Control.Monad
 import           Control.Monad.IO.Class            (liftIO)
 import qualified Control.Monad.State               as State
 import           Data.ByteString                   (ByteString)
 import qualified Data.ByteString                   as BS
+import qualified Data.ByteString.Lazy              as BL
 import           Data.Int
 import           Data.List                         (find, intersperse)
 import           Data.Maybe                        (fromMaybe, isJust,
                                                     isNothing)
-import qualified Data.Text                         as T
+import qualified Data.Text                         as Text
+import           Data.Word
+import           Foreign.C.String                  (newCString)
+import           Foreign.Ptr                       (nullPtr)
+import           Foreign.StablePtr                 (castStablePtrToPtr,
+                                                    deRefStablePtr,
+                                                    newStablePtr)
+import           Foreign.Storable                  (Storable (..))
 import qualified Network.Socket                    as N
 import qualified Network.Socket.ByteString         as N
 import qualified Network.Socket.ByteString.Lazy    as NL
 import           Numeric                           (showHex, showInt)
 
 import qualified HStream.Kafka.Common.Metrics      as M
+import qualified HStream.Kafka.Network.Cxx         as Cxx
 import qualified HStream.Kafka.Network.IO          as KIO
 import qualified HStream.Kafka.Network.Security    as Security
 import           HStream.Kafka.Server.Config.Types (SaslOptions (..))
@@ -54,7 +66,7 @@ data SslOptions
 
 data ServerOptions = ServerOptions
   { serverHost        :: !String
-  , serverPort        :: !Int
+  , serverPort        :: !Word16
   , serverSslOptions  :: !(Maybe SslOptions)
   , serverSaslOptions :: !(Maybe SaslOptions)
   , serverOnStarted   :: !(Maybe (IO ()))
@@ -69,15 +81,18 @@ defaultServerOpts = ServerOptions
   , serverOnStarted      = Nothing
   }
 
+-------------------------------------------------------------------------------
+-- Haskell Server
+
 -- TODO: This server primarily serves as a demonstration, and there is
 -- certainly room for enhancements and refinements.
-runServer
+runHsServer
   :: ServerOptions
   -> ServerContext
   -> (ServerContext -> [ServiceHandler])
   -> (ServerContext -> [ServiceHandler])
   -> IO ()
-runServer opts sc_ mkPreAuthedHandlers mkAuthedHandlers =
+runHsServer opts sc_ mkPreAuthedHandlers mkAuthedHandlers =
   startTCPServer opts $ \(s, peer) -> do
     sc <- initConnectionContext sc_
     -- Decide if we require SASL authentication
@@ -118,7 +133,7 @@ runServer opts sc_ mkPreAuthedHandlers mkAuthedHandlers =
         UnaryHandler rpcHandler' -> do
           M.observeWithLabel
             M.handlerLatencies
-            (T.pack $ show requestApiKey) $
+            (Text.pack $ show requestApiKey) $
               doUnaryHandler reqBs reqHeader rpcHandler' peer
 
     doUnaryHandler l reqHeader@RequestHeader{..} rpcHandler' peer = do
@@ -139,12 +154,6 @@ runServer opts sc_ mkPreAuthedHandlers mkAuthedHandlers =
       resp <- rpcHandler' reqContext req
       Log.debug $ "Server response: " <> Log.buildString' resp
       return $ KIO.packKafkaMsgBs reqHeader resp
-
-    findHandler handlers apikey@(ApiKey key) version = do
-      let m_handler = find (\ServiceHandler{..} ->
-            rpcMethod == (key, version)) handlers
-          errmsg = "NotImplemented: " <> show apikey <> ":v" <> show version
-      fromMaybe (error errmsg) m_handler
 
 startTCPServer :: ServerOptions -> ((N.Socket, N.SockAddr) -> IO a) -> IO a
 startTCPServer ServerOptions{..} server = do
@@ -178,11 +187,99 @@ startTCPServer ServerOptions{..} server = do
             Right _  -> pure ()
 
 -------------------------------------------------------------------------------
+-- C++ Server
+
+-- TODO:
+--
+-- - PreAuthedHandlers
+runCppServer
+  :: ServerOptions
+  -> ServerContext
+  -> (ServerContext -> [ServiceHandler])
+  -> IO ()
+runCppServer opts sc_ mkAuthedHandlers =
+  Cxx.withProcessorCallback processorCallback $ \cb ->
+  Cxx.withConnContextCallback newConnectionContext $ \connCb -> do
+    -- FIXME: does userError make sense here?
+    evm <- Cxx.getSystemEventManager' $ userError "failed to get event manager"
+    Cxx.withFdEventNotification evm opts.serverOnStarted Cxx.OneShot $
+      \(Cxx.Fd cfdOnStarted) -> do
+        hostPtr <- newCString opts.serverHost  -- Freed by C++ code
+        server <- Cxx.new_kafka_server
+        let start = Cxx.run_kafka_server server hostPtr opts.serverPort
+                                         cb connCb cfdOnStarted
+            stop a = Cxx.stop_kafka_server server >> Async.wait a
+         in E.bracket (Async.async start) stop Async.wait
+  where
+    newConnectionContext conn_ctx_ptr = do
+      -- Cpp per-connection context
+      conn <- peek conn_ctx_ptr
+      -- Haskell per-connection context
+      sc <- initConnectionContext sc_
+      newStablePtr (sc, conn)  -- Freed by C++ code
+
+    processorCallback :: Cxx.ProcessorCallback ServerContext
+    processorCallback sptr request_ptr response_ptr =
+      -- nullPtr means client closed the connection
+      when (castStablePtrToPtr sptr /= nullPtr) $ do
+        (sc, conn) <- deRefStablePtr sptr
+        let handlers = mkAuthedHandlers sc
+        req <- peek request_ptr
+        -- Nothing means some error occurred, and the server will close the
+        -- connection
+        respBs <- E.catch
+          (Just <$> handleKafkaMsg conn handlers req.requestPayload)
+          (\err -> do Log.fatal $ Log.buildString' (err :: E.SomeException)
+                      pure Nothing)
+        poke response_ptr Cxx.Response{responseData = respBs}
+
+-------------------------------------------------------------------------------
+-- Server misc
+
+handleKafkaMsg
+  :: Cxx.ConnContext -> [ServiceHandler] -> ByteString -> IO ByteString
+handleKafkaMsg conn handlers bs = do
+  (header, reqBs) <- runGet' @RequestHeader bs
+  let ServiceHandler{..} = findHandler handlers header.requestApiKey header.requestApiVersion
+  case rpcHandler of
+    UnaryHandler rpcHandler' -> do
+      (req, left) <- runGet' reqBs
+      Log.debug $ "Received request "
+               <> Log.buildString' header.requestApiKey
+               <> ":v" <> Log.build header.requestApiVersion
+               <> " from " <> Log.buildString' conn.peerHost
+               <> ", payload: " <> Log.buildString' req
+      when (not . BS.null $ left) $
+        Log.warning $ "Leftover bytes: " <> Log.buildString' left
+      let reqContext =
+            RequestContext
+              { clientId = header.requestClientId
+              , clientHost = show conn.peerHost
+              , apiVersion = header.requestApiVersion
+              }
+      resp <- rpcHandler' reqContext req
+      let (_, respHeaderVer) = getHeaderVersion header.requestApiKey header.requestApiVersion
+          respHeaderBuilder =
+            case respHeaderVer of
+              0 -> putResponseHeader $ ResponseHeader header.requestCorrelationId Nothing
+              1 -> putResponseHeader $ ResponseHeader header.requestCorrelationId (Just EmptyTaggedFields)
+              _ -> error $ "Unknown response header version " <> show respHeaderVer
+      pure $ BL.toStrict $ toLazyByteString $ respHeaderBuilder <> put resp
+
+findHandler :: [ServiceHandler] -> ApiKey -> Int16 -> ServiceHandler
+findHandler handlers apikey@(ApiKey key) version = do
+  let m_handler = find (\ServiceHandler{..} ->
+        rpcMethod == (key, version)) handlers
+      errmsg = "NotImplemented: " <> show apikey <> ":v" <> show version
+  fromMaybe (error errmsg) m_handler
+{-# INLINE findHandler #-}
+
+-------------------------------------------------------------------------------
 -- Client
 
 data ClientOptions = ClientOptions
   { host         :: !String
-  , port         :: !Int
+  , port         :: !Word16
   , maxRecvBytes :: !Int
   } deriving (Show)
 

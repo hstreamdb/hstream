@@ -62,7 +62,7 @@ getCorrelationId = do
 
 data Options = Options
   { host :: !String
-  , port :: !Int
+  , port :: !Word16
   } deriving (Show)
 
 data Command
@@ -553,7 +553,7 @@ createTopicsRequestParserV0 = K.CreateTopicsRequestV0
 -------------------------------------------------------------------------------
 
 -- Helper to get one topic info, throw exception if error occurs
-describeTopic :: String -> Int -> Text -> IO K.MetadataResponseTopicV1
+describeTopic :: String -> Word16 -> Text -> IO K.MetadataResponseTopicV1
 describeTopic host port name = do
   let repTopics = V.singleton $ K.MetadataRequestTopicV0 name
       req = K.MetadataRequestV0 (K.NonNullKaArray repTopics)
@@ -580,10 +580,10 @@ unsafeWithStdString f = do
 data Broker = Broker
  { nodeId :: !Int32
  , host   :: String
- , port   :: !Int
+ , port   :: !Word16
  }
 
-findAllBrokers :: String -> Int -> IO (V.Vector Broker)
+findAllBrokers :: String -> Word16 -> IO (V.Vector Broker)
 findAllBrokers host port = do
   let req = K.MetadataRequestV0 (K.KaArray Nothing)
   correlationId <- getCorrelationId
