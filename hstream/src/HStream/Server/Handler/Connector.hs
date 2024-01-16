@@ -193,8 +193,9 @@ alterConnectorConfigHandler
   -> IO (ServerResponse 'Normal Empty)
 alterConnectorConfigHandler sc@ServerContext{..}
   (ServerNormalRequest _metadata AlterConnectorConfigRequest{..}) = defaultExceptionHandle $ do
-  Log.debug $ "Receive Alter Connector config Request. "
+  Log.info $ "Receive Alter Connector config Request. "
     <> "Connector ID: " <> Log.build alterConnectorConfigRequestName
+    <> "Overrided Config: " <> Log.build alterConnectorConfigRequestConfig
   ServerNode{..} <- lookupResource sc ResConnector alterConnectorConfigRequestName
   unless (serverNodeId == serverID) $
     throwIO $ HE.WrongServer "Connector is bound to a different node"
@@ -203,6 +204,9 @@ alterConnectorConfigHandler sc@ServerContext{..}
 
 handleAlterConnectorConfig :: ServerContext -> G.UnaryHandler AlterConnectorConfigRequest Empty
 handleAlterConnectorConfig sc@ServerContext{..} _ AlterConnectorConfigRequest{..} = catchDefaultEx $ do
+  Log.info $ "Receive Alter Connector config Request. "
+    <> "Connector ID: " <> Log.build alterConnectorConfigRequestName
+    <> "Overrided Config: " <> Log.build alterConnectorConfigRequestConfig
   ServerNode{..} <- lookupResource sc ResConnector alterConnectorConfigRequestName
   unless (serverNodeId == serverID) $
     throwIO $ HE.WrongServer "Connector is bound to a different node"

@@ -193,7 +193,6 @@ alterConnectorConfig worker name config = do
 
 updateConnectorConfig :: Worker -> T.Text -> T.Text -> IO Bool
 updateConnectorConfig worker name config = do
-  Log.info $ "updating connector config, connector:" <> Log.build name <> ", overrided:" <> Log.build config
   M.getIOTaskFromName worker.workerHandle name >>= \case
     Nothing -> throwIO $ HE.ConnectorNotFound name
     Just (taskId, TaskMeta{taskInfoMeta=TaskInfo{..}}) -> do
@@ -203,6 +202,8 @@ updateConnectorConfig worker name config = do
           let mergeCfg (J.Object x) (J.Object y) = J.Object (J.union x y)
           let newConnCfg = J.insertWith mergeCfg "connector" (J.toJSON overrided) connectorConfig
           M.updateConfig worker.workerHandle taskId newConnCfg
+          Log.info $ "updated connector config, connector:" <> Log.build name
+            <> ", new config:" <> Log.buildString' newConnCfg
           return True
 
 getIOTask :: Worker -> T.Text -> IO (Maybe IOTask)
