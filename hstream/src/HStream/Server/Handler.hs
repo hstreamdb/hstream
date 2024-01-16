@@ -103,6 +103,7 @@ handlers serverContext@ServerContext{..} =
         hstreamApiDeleteConnector = deleteConnectorHandler serverContext,
         hstreamApiPauseConnector = pauseConnectorHandler serverContext,
         hstreamApiResumeConnector = resumeConnectorHandler serverContext,
+        hstreamApiAlterConnectorConfig = alterConnectorConfigHandler serverContext,
 
         -- View
         hstreamApiGetView = getViewHandler serverContext,

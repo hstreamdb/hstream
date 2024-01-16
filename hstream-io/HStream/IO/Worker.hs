@@ -1,6 +1,7 @@
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE LambdaCase         #-}
-{-# LANGUAGE OverloadedStrings  #-}
+{-# LANGUAGE DerivingStrategies  #-}
+{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE OverloadedRecordDot #-}
+{-# LANGUAGE OverloadedStrings   #-}
 
 module HStream.IO.Worker where
 
@@ -149,10 +150,10 @@ showIOTask_ worker@Worker{..} name = do
 listIOTasks :: Worker -> IO [API.Connector]
 listIOTasks Worker{..} = M.listIOTaskMeta workerHandle
 
-stopIOTask :: Worker -> T.Text -> Bool -> Bool-> IO ()
-stopIOTask worker name ifIsRunning force = do
+stopIOTask :: Worker -> T.Text -> Bool-> IO ()
+stopIOTask worker name force = do
   ioTask <- getIOTask_ worker name
-  IOTask.stopIOTask ioTask ifIsRunning force
+  IOTask.stopIOTask ioTask force
 
 -- startIOTask :: Worker -> T.Text -> IO ()
 -- startIOTask worker name = do
@@ -177,6 +178,33 @@ recoverTask worker@Worker{..} name = do
       let newConnCfg = J.insert "hstream" (J.toJSON hsConfig) connectorConfig
       createIOTaskFromTaskInfo worker taskId taskInfo{connectorConfig=newConnCfg} options True False False
 
+-- update config and restart
+alterConnectorConfig :: Worker -> T.Text -> T.Text -> IO ()
+alterConnectorConfig worker name config = do
+  updated <- updateConnectorConfig worker name config
+  when updated $ do
+    Log.info $ "updated connector config, connector:" <> Log.build name
+    E.catch
+      (stopIOTask worker name True)
+      (\(e :: E.SomeException) -> Log.warning $ "failed to stop io task:" <> Log.buildString (show e))
+    Log.info $ "paused connector:" <> Log.build name
+    recoverTask worker name
+    Log.info $ "resumed connector:" <> Log.build name
+
+updateConnectorConfig :: Worker -> T.Text -> T.Text -> IO Bool
+updateConnectorConfig worker name config = do
+  Log.info $ "updating connector config, connector:" <> Log.build name <> ", overrided:" <> Log.build config
+  M.getIOTaskFromName worker.workerHandle name >>= \case
+    Nothing -> throwIO $ HE.ConnectorNotFound name
+    Just (taskId, TaskMeta{taskInfoMeta=TaskInfo{..}}) -> do
+      case J.decodeStrict $ T.encodeUtf8 config :: Maybe J.Object of
+        Nothing -> return False
+        Just overrided -> do
+          let mergeCfg (J.Object x) (J.Object y) = J.Object (J.union x y)
+          let newConnCfg = J.insertWith mergeCfg "connector" (J.toJSON overrided) connectorConfig
+          M.updateConfig worker.workerHandle taskId newConnCfg
+          return True
+
 getIOTask :: Worker -> T.Text -> IO (Maybe IOTask)
 getIOTask Worker{..} name = HM.lookup name <$> C.readMVar ioTasksM
 
@@ -190,7 +218,7 @@ getIOTask_ Worker{..} name = do
 deleteIOTask :: Worker -> T.Text -> IO ()
 deleteIOTask worker@Worker{..} taskName = do
   E.catch
-    (stopIOTask worker taskName True False)
+    (stopIOTask worker taskName True)
     (\(e :: E.SomeException) -> Log.info $ "try to stop io task:" <> Log.buildString (show e))
   M.deleteIOTaskMeta workerHandle taskName
   C.modifyMVar_ ioTasksM $ return . HM.delete taskName

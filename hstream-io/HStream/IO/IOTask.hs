@@ -149,8 +149,8 @@ startIOTask task = do
     runIOTask task
     return RUNNING
 
-stopIOTask :: IOTask -> Bool -> Bool -> IO ()
-stopIOTask task@IOTask{..} ifIsRunning force = do
+stopIOTask :: IOTask -> Bool -> IO ()
+stopIOTask task@IOTask{..} force = do
   updateStatus task $ \case
     RUNNING -> do
       if force
@@ -168,7 +168,6 @@ stopIOTask task@IOTask{..} ifIsRunning force = do
         writeIORef process' Nothing
       return STOPPED
     s -> do
-      unless ifIsRunning $ throwIO (HE.ConnectorInvalidStatus $ ioTaskStatusToText s)
       return s
 
 killIOTask :: IOTask -> IO ()

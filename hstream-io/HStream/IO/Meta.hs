@@ -1,6 +1,7 @@
 {-# LANGUAGE DerivingStrategies    #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedRecordDot   #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE TupleSections         #-}
 
@@ -9,6 +10,7 @@ module HStream.IO.Meta where
 import qualified Data.Text                 as T
 import           GHC.Stack                 (HasCallStack)
 
+import qualified Data.Aeson                as J
 import           HStream.IO.Types
 import qualified HStream.IO.Types          as Types
 import           HStream.MetaStore.Types   (MetaHandle, MetaStore (..))
@@ -45,6 +47,10 @@ deleteIOTaskMeta h name = do
       -- FIXME: use multiops
       deleteMeta @TaskIdMeta name Nothing h
       updateStatusInMeta h tid DELETED
+
+updateConfig :: MetaHandle -> T.Text -> J.Object -> IO ()
+updateConfig h taskId cfg = do
+  updateMetaWith taskId (\(Just tm) -> tm {taskInfoMeta=tm.taskInfoMeta{connectorConfig = cfg}}) Nothing h
 
 mapKvKey :: T.Text -> T.Text -> T.Text
 mapKvKey taskId key = taskId <> "_" <> key

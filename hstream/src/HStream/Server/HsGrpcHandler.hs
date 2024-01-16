@@ -80,6 +80,7 @@ handlers sc =
   , unary (GRPC :: GRPC P.HStreamApi "deleteConnector") (H.handleDeleteConnector sc)
   , unary (GRPC :: GRPC P.HStreamApi "resumeConnector") (H.handleResumeConnector sc)
   , unary (GRPC :: GRPC P.HStreamApi "pauseConnector") (H.handlePauseConnector sc)
+  , unary (GRPC :: GRPC P.HStreamApi "alterConnectorConfig") (H.handleAlterConnectorConfig sc)
     -- View
   , unary (GRPC :: GRPC P.HStreamApi "getView") (H.handleGetView sc)
   , unary (GRPC :: GRPC P.HStreamApi "listViews") (H.handleListView sc)

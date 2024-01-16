@@ -106,7 +106,7 @@ executeQuery sc@ServerContext{..} CommandQuery{..} = do
 #endif
     ExplainPlan plan -> pure $ API.CommandQueryResponse (mkVectorStruct plan "explain")
     PausePlan (PauseObjectConnector name) -> do
-      IO.stopIOTask scIOWorker name False False
+      IO.stopIOTask scIOWorker name False
       pure (CommandQueryResponse V.empty)
     ResumePlan (ResumeObjectConnector name) -> do
       IO.recoverTask scIOWorker name
