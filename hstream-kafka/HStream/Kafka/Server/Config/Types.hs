@@ -13,10 +13,12 @@ module HStream.Kafka.Server.Config.Types
   , SaslOptions (..)
   , SecurityProtocolMap, defaultProtocolMap
   , StorageOptions (..)
+  , ExperimentalFeature (..)
 
     -- * Helpers
   , advertisedListenersToPB
   , parseMetaStoreAddr
+  , parseExperimentalFeature
 
     -- * Re-exports
   , GossipOpts (..), defaultGossipOpts
@@ -36,6 +38,7 @@ import qualified Data.Vector                             as V
 import           Data.Word
 import           HStream.Gossip                          (GossipOpts (..),
                                                           defaultGossipOpts)
+import qualified Options.Applicative                     as O
 import qualified Z.Data.CBytes                           as CBytes
 import           Z.Data.CBytes                           (CBytes)
 
@@ -83,6 +86,8 @@ data ServerOpts = ServerOpts
   , _compression                  :: !Compression
   , _ldLogLevel                   :: !LDLogLevel
   , _ldConfigPath                 :: !CBytes
+
+  , experimentalFeatures          :: ![ExperimentalFeature]
   } deriving (Show, Eq)
 
 -------------------------------------------------------------------------------
@@ -125,11 +130,10 @@ data CliOptions = CliOptions
   , cliTlsCertPath                  :: !(Maybe String)
   , cliTlsCaPath                    :: !(Maybe String)
 
-    -- Store config
+    -- * Store config
   , cliStoreConfigPath              :: !CBytes
   , cliLdLogLevel                   :: !(Maybe LDLogLevel)
-
-    -- Internal options
+    -- ** Internal Store options
   , cliStoreCompression             :: !(Maybe Compression)
 
     -- SASL Authentication
@@ -137,6 +141,9 @@ data CliOptions = CliOptions
 
     -- Kafka config
   , cliDisableAutoCreateTopic       :: !Bool
+
+    -- HStream Experimental Features
+  , cliExperimentalFeatures         :: ![ExperimentalFeature]
   } deriving Show
 
 -------------------------------------------------------------------------------
@@ -219,3 +226,12 @@ data StorageOptions = StorageOptions
   { fetchReaderTimeout :: Int
   , fetchMaxLen        :: Int
   } deriving (Show, Eq)
+
+data ExperimentalFeature
+  = ExperimentalCppServer
+  deriving (Show, Eq)
+
+parseExperimentalFeature :: O.ReadM ExperimentalFeature
+parseExperimentalFeature = O.eitherReader $ \case
+  "cpp" -> Right ExperimentalCppServer
+  x     -> Left $ "cannot parse experimental feature: " <> x
