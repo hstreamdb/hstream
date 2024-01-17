@@ -187,7 +187,7 @@ library
     , async                         ^>=2.2
     , attoparsec
     , base                          >=4.11     && <5
-    , base64
+    , base64                        ^>=1.0
     , bytestring
     , clock
     , colourista                    ^>=0.1.0.1

@@ -6,6 +6,7 @@ module HStream.Kafka.Common.Utils where
 import           Control.Exception                   (throw)
 import qualified Control.Monad                       as M
 import qualified Control.Monad.ST                    as ST
+import qualified Data.Base64.Types                   as Base64
 import qualified Data.ByteString                     as BS
 import qualified Data.ByteString.Base64              as Base64
 import qualified Data.HashTable.IO                   as H
@@ -76,7 +77,7 @@ unlessIORefEq ioRefVal expected action = do
     M.unless (expected == val) $ action val
 
 encodeBase64 :: BS.ByteString -> T.Text
-encodeBase64 = Base64.encodeBase64
+encodeBase64 = Base64.extractBase64 . Base64.encodeBase64
 
 decodeBase64 :: T.Text -> BS.ByteString
 decodeBase64 = Base64.decodeBase64Lenient . T.encodeUtf8
