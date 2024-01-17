@@ -56,6 +56,7 @@ data Command
   | HStreamInit HStreamInitOpts
   | HStreamStream StreamCommand
   | HStreamSubscription SubscriptionCommand
+  | HStreamConnector ConnectorCommand
 
 commandParser :: O.Parser HStreamCommand
 commandParser = HStreamCommand
@@ -68,6 +69,7 @@ commandParser = HStreamCommand
       <> O.command "subscription" (O.info (HStreamSubscription <$> subscriptionCmdParser) (O.progDesc "Manage Subscriptions in HStreamDB (`sub` is an alias for this command)"))
       -- Also see: https://github.com/pcapriotti/optparse-applicative#command-groups
       <> O.command "sub" (O.info (HStreamSubscription <$> subscriptionCmdParser) (O.progDesc "Alias for the command `subscription`"))
+      <> O.command "connector" (O.info (HStreamConnector <$> connectorCmdParser) (O.progDesc "Manage Connector in HStreamDB"))
       )
 
 data StreamCommand
@@ -275,6 +277,21 @@ subscriptionCmdParser = O.hsubparser
                                                                   <> O.short 'f'
                                                                   <> O.help "Whether to enable force deletion"))
                                (O.progDesc "Delete a subscription"))
+  )
+
+data ConnectorCommand
+  = ConnectorCmdAlterConfig Text (Maybe Text) (Maybe Text)
+  deriving (Show)
+
+connectorCmdParser :: O.Parser ConnectorCommand
+connectorCmdParser = O.hsubparser
+  ( O.command "alter-config" (O.info (ConnectorCmdAlterConfig <$> O.strArgument ( O.metavar "CONNECTOR_NAME"
+                                                                       <> O.help "The Name of the connector")
+                                                      <*> (O.optional . O.option O.str) (O.long "config-json"
+                                                                  <> O.metavar "STRING" <> O.help "connector config json string")
+                                                      <*> (O.optional . O.option O.str) (O.long "config-path"
+                                                                  <> O.metavar "STRING" <> O.help "connector config file path"))
+                               (O.progDesc "alter connector config"))
   )
 
 data HStreamCliContext = HStreamCliContext

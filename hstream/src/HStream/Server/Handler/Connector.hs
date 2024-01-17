@@ -16,6 +16,7 @@ module HStream.Server.Handler.Connector
   , deleteConnectorHandler
   , resumeConnectorHandler
   , pauseConnectorHandler
+  , alterConnectorConfigHandler
     -- * For hs-grpc-server
   , handleCreateConnector
   , handleListConnectors
@@ -25,6 +26,7 @@ module HStream.Server.Handler.Connector
   , handleDeleteConnector
   , handleResumeConnector
   , handlePauseConnector
+  , handleAlterConnectorConfig
   ) where
 
 import           Control.Exception                (throwIO)
@@ -175,7 +177,7 @@ pauseConnectorHandler sc@ServerContext{..}
   ServerNode{..} <- lookupResource sc ResConnector pauseConnectorRequestName
   unless (serverNodeId == serverID) $
     throwIO $ HE.WrongServer "Connector is bound to a different node"
-  IO.stopIOTask scIOWorker pauseConnectorRequestName False False
+  IO.stopIOTask scIOWorker pauseConnectorRequestName False
   returnResp Empty
 
 handlePauseConnector :: ServerContext -> G.UnaryHandler PauseConnectorRequest Empty
@@ -183,7 +185,32 @@ handlePauseConnector sc@ServerContext{..} _ PauseConnectorRequest{..} = catchDef
   ServerNode{..} <- lookupResource sc ResConnector pauseConnectorRequestName
   unless (serverNodeId == serverID) $
     throwIO $ HE.WrongServer "Connector is bound to a different node"
-  IO.stopIOTask scIOWorker pauseConnectorRequestName False False >> pure Empty
+  IO.stopIOTask scIOWorker pauseConnectorRequestName False >> pure Empty
+
+alterConnectorConfigHandler
+  :: ServerContext
+  -> ServerRequest 'Normal AlterConnectorConfigRequest Empty
+  -> IO (ServerResponse 'Normal Empty)
+alterConnectorConfigHandler sc@ServerContext{..}
+  (ServerNormalRequest _metadata AlterConnectorConfigRequest{..}) = defaultExceptionHandle $ do
+  Log.info $ "Receive Alter Connector config Request. "
+    <> "Connector ID: " <> Log.build alterConnectorConfigRequestName
+    <> "Overrided Config: " <> Log.build alterConnectorConfigRequestConfig
+  ServerNode{..} <- lookupResource sc ResConnector alterConnectorConfigRequestName
+  unless (serverNodeId == serverID) $
+    throwIO $ HE.WrongServer "Connector is bound to a different node"
+  IO.alterConnectorConfig scIOWorker alterConnectorConfigRequestName alterConnectorConfigRequestConfig
+  returnResp Empty
+
+handleAlterConnectorConfig :: ServerContext -> G.UnaryHandler AlterConnectorConfigRequest Empty
+handleAlterConnectorConfig sc@ServerContext{..} _ AlterConnectorConfigRequest{..} = catchDefaultEx $ do
+  Log.info $ "Receive Alter Connector config Request. "
+    <> "Connector ID: " <> Log.build alterConnectorConfigRequestName
+    <> "Overrided Config: " <> Log.build alterConnectorConfigRequestConfig
+  ServerNode{..} <- lookupResource sc ResConnector alterConnectorConfigRequestName
+  unless (serverNodeId == serverID) $
+    throwIO $ HE.WrongServer "Connector is bound to a different node"
+  IO.alterConnectorConfig scIOWorker alterConnectorConfigRequestName alterConnectorConfigRequestConfig >> pure Empty
 
 -- uncurry
 createIOTaskFromRequest :: ServerContext -> CreateConnectorRequest -> IO Connector

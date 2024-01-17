@@ -31,6 +31,7 @@ module HStream.Client.Action
   , listConnectors
   , pauseConnector
   , resumeConnector
+  , alterConnectorConfig
 
   , listQueries
   , listViews
@@ -167,6 +168,12 @@ createConnector name typ target cfg API.HStreamApi{..} =
     , API.createConnectorRequestType = typ
     , API.createConnectorRequestTarget = target
     , API.createConnectorRequestConfig = cfg })
+
+alterConnectorConfig :: T.Text -> T.Text -> Action Empty
+alterConnectorConfig name cfg API.HStreamApi{..} =
+  hstreamApiAlterConnectorConfig (mkClientNormalRequest' def
+    { API.alterConnectorConfigRequestName = name
+    , API.alterConnectorConfigRequestConfig = cfg })
 
 listShards :: T.Text -> Action API.ListShardsResponse
 listShards sName API.HStreamApi{..} = do

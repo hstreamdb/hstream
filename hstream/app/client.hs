@@ -21,6 +21,7 @@ import qualified Data.List                        as L
 import           Data.Maybe                       (mapMaybe, maybeToList)
 import qualified Data.Text                        as T
 import qualified Data.Text.Encoding               as T
+import qualified Data.Text.IO                     as T
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated (ClientError (..),
                                                    ClientResult (..),
@@ -33,7 +34,8 @@ import           System.Timeout                   (timeout)
 import           Text.RawString.QQ                (r)
 
 import qualified HStream.Admin.Server.Command     as Admin
-import           HStream.Client.Action            (createSubscription',
+import           HStream.Client.Action            (alterConnectorConfig,
+                                                   createSubscription',
                                                    deleteStream,
                                                    deleteSubscription,
                                                    getStream, getSubscription,
@@ -54,6 +56,7 @@ import           HStream.Client.SQL               (commandExec,
 import           HStream.Client.Types             (AppendContext (..),
                                                    AppendOpts (..), CliCmd (..),
                                                    Command (..),
+                                                   ConnectorCommand (..),
                                                    HStreamCommand (..),
                                                    HStreamInitOpts (..),
                                                    HStreamNodes (..),
@@ -106,6 +109,7 @@ runCommand (CliCmd HStreamCommand{..}) = do
     HStreamSql    opts       -> hstreamSQL    rConnOpts opts
     HStreamStream opts       -> hstreamStream rConnOpts opts
     HStreamSubscription opts -> hstreamSubscription rConnOpts opts
+    HStreamConnector opts    -> hstreamConnector rConnOpts opts
 
 hstreamSQL :: RefinedCliConnOpts -> HStreamSqlOpts -> IO ()
 hstreamSQL connOpt HStreamSqlOpts{_updateInterval = updateInterval,
@@ -236,6 +240,16 @@ hstreamSubscription connOpts@RefinedCliConnOpts{..} = \case
   SubscriptionCmdDelete sid bool -> do
     ctx <- initCliContext connOpts
     executeWithLookupResource_ ctx (Resource ResSubscription sid) (deleteSubscription sid bool) >>= printResult
+
+hstreamConnector :: RefinedCliConnOpts -> ConnectorCommand -> IO ()
+hstreamConnector connOpts@RefinedCliConnOpts{..} = \case
+  ConnectorCmdAlterConfig name configJson configPath -> do
+    cfg <- case (configJson, configPath) of
+      (Just x, _) -> pure x
+      (_, Just x) -> T.readFile (T.unpack x)
+      _ -> error "connector config is required(--config-json or --config-path)"
+    ctx <- initCliContext connOpts
+    executeWithLookupResource_ ctx (Resource ResConnector name) (alterConnectorConfig name cfg) >>= printResult
 
 getNodes :: RefinedCliConnOpts -> IO DescribeClusterResponse
 getNodes RefinedCliConnOpts{..} =
