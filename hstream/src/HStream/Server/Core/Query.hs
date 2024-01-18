@@ -175,10 +175,11 @@ createQueryWithNamespace'
         _ -> throw $ HE.WrongExecutionPlan "Create query only support select / create stream as select statements"
 #else
       parseAndRefine createQueryRequestSql >>= \rSQL -> case rSQL of
-        RQCreate (RCreateAs stream select rOptions) ->
-          hstreamCodegen (RQCreate (RCreateAs (namespace <> stream)
-                                              (modifySelect namespace select)
-                                              rOptions)) >>= \case
+        RQCreate (RCreateAs stream select rOptions) -> do
+          let rSQLWithNamespace = RQCreate (RCreateAs (namespace <> stream)
+                                                      (modifySelect namespace select)
+                                                      rOptions)
+          hstreamCodegen rSQLWithNamespace >>= \case
             CreateBySelectPlan sources sink builder factor persist -> do
               -- validate names
               mapM_ (validateNameAndThrow ResStream) sources
@@ -206,7 +207,7 @@ createQueryWithNamespace'
                   }
               -- update metadata
               let relatedStreams = (sources, sink)
-              qInfo <- P.createInsertQueryInfo createQueryRequestQueryName createQueryRequestSql relatedStreams rSQL serverID metaHandle
+              qInfo <- P.createInsertQueryInfo createQueryRequestQueryName createQueryRequestSql relatedStreams rSQLWithNamespace serverID metaHandle
               -- run core task
               consumerClosed <- newTVarIO False
               createQueryAndRun sc QueryRunner {
@@ -221,10 +222,9 @@ createQueryWithNamespace'
             _ -> throw $ HE.WrongExecutionPlan "Create query only support create stream/view <name> as select statements"
 
         RQInsert (RInsertSel streamName rSel) -> do
-          (hstreamCodegen $ RQInsert (RInsertSel
-            (namespace <> streamName)
-            (modifySelect namespace rSel))
-            ) >>= \case
+          let rSQLWithNamespace = RQInsert (RInsertSel (namespace <> streamName)
+                                                       (modifySelect namespace rSel))
+          hstreamCodegen rSQLWithNamespace >>= \case
             InsertBySelectPlan srcs sink builder persist -> do
               -- validate names
               traverse_ (validateNameAndThrow ResStream) (sink : srcs)
@@ -250,7 +250,7 @@ createQueryWithNamespace'
               -- update metadata
               qInfo <- P.createInsertQueryInfo createQueryRequestQueryName createQueryRequestSql
                 (srcs, sink)
-                rSQL serverID metaHandle
+                rSQLWithNamespace serverID metaHandle
               -- run core task
               consumerClosed <- newTVarIO False
               createQueryAndRun sc QueryRunner
@@ -264,13 +264,13 @@ createQueryWithNamespace'
               hstreamQueryToQuery metaHandle qInfo
             _ -> throw $ HE.WrongExecutionPlan "Insert by Select query only supports `INSERT INTO <stream_name> SELECT FROM STREAM`"
 
-        RQCreate (RCreateView view select) ->
-          hstreamCodegen (RQCreate (RCreateView (namespace <> view)
-                                                (modifySelect namespace select)
-                                   )) >>= \case
+        RQCreate (RCreateView view select) -> do
+          let rSQLWithNamespace = RQCreate (RCreateView (namespace <> view)
+                                                        (modifySelect namespace select))
+          hstreamCodegen rSQLWithNamespace >>= \case
             CreateViewPlan sources sink view builder persist -> do
               validateNameAndThrow ResView view
-              Core.createView' sc view sources sink builder persist createQueryRequestSql rSQL createQueryRequestQueryName
+              Core.createView' sc view sources sink builder persist createQueryRequestSql rSQLWithNamespace createQueryRequestQueryName
               >>= hstreamViewToQuery metaHandle
             _ -> throw $ HE.WrongExecutionPlan "Create query only support create stream/view <name> as select statements"
         _ -> throw $ HE.WrongExecutionPlan "Create query only support create stream/view <name> as select statements"
