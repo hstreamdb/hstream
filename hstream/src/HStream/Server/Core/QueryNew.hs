@@ -174,10 +174,11 @@ createQueryWithNamespace'
         _ -> throw $ HE.WrongExecutionPlan "Create query only support select / create stream as select statements"
 #else
       parseAndBind createQueryRequestSql (P.getSchema metaHandle) >>= \bSQL -> case bSQL of
-        BoundQCreate (BoundCreateAs stream select rOptions) ->
-          hstreamCodegen (BoundQCreate (BoundCreateAs (namespace <> stream)
-                                                      (modifySelect namespace select)
-                                                      rOptions)) (P.getSchema metaHandle) >>= \case
+        BoundQCreate (BoundCreateAs stream select rOptions) -> do
+          let bSQLWithNamespace = BoundQCreate (BoundCreateAs (namespace <> stream)
+                                                              (modifySelect namespace select)
+                                                              rOptions)
+          hstreamCodegen bSQLWithNamespace (P.getSchema metaHandle) >>= \case
             CreateBySelectPlan sources sink schema builder factor persist -> do
               -- validate names
               mapM_ (validateNameAndThrow ResStream) sources
@@ -206,7 +207,7 @@ createQueryWithNamespace'
                   P.registerSchema metaHandle schema
               -- update metadata
               let relatedStreams = (sources, sink)
-              qInfo <- P.createInsertQueryInfo createQueryRequestQueryName createQueryRequestSql relatedStreams bSQL serverID metaHandle
+              qInfo <- P.createInsertQueryInfo createQueryRequestQueryName createQueryRequestSql relatedStreams bSQLWithNamespace serverID metaHandle
               -- run core task
               consumerClosed <- newTVarIO False
               createQueryAndRun sc QueryRunner {
@@ -264,13 +265,13 @@ createQueryWithNamespace'
               hstreamQueryToQuery metaHandle qInfo
             _ -> throw $ HE.WrongExecutionPlan "Insert by Select query only supports `INSERT INTO <stream_name> SELECT FROM STREAM`"
 -}
-        BoundQCreate (BoundCreateView view select) ->
-          hstreamCodegen (BoundQCreate (BoundCreateView (namespace <> view)
-                                                        (modifySelect namespace select)
-                                   )) (P.getSchema metaHandle) >>= \case
+        BoundQCreate (BoundCreateView view select) -> do
+          let bSQLWithNamespace = BoundQCreate (BoundCreateView (namespace <> view)
+                                                                (modifySelect namespace select))
+          hstreamCodegen bSQLWithNamespace (P.getSchema metaHandle) >>= \case
             CreateViewPlan sources sink view schema builder persist -> do
               validateNameAndThrow ResView view
-              Core.createView' sc view sources sink schema builder persist createQueryRequestSql bSQL createQueryRequestQueryName
+              Core.createView' sc view sources sink schema builder persist createQueryRequestSql bSQLWithNamespace createQueryRequestQueryName
               >>= hstreamViewToQuery metaHandle
             _ -> throw $ HE.WrongExecutionPlan "Create query only support create stream/view <name> as select statements"
         _ -> throw $ HE.WrongExecutionPlan "Create query only support create stream/view <name> as select statements"
