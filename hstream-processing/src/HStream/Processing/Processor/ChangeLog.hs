@@ -18,6 +18,7 @@ import qualified RIO.ByteString.Lazy                   as BL
 class ChangeLogger h where
   logChangelog :: h -> BL.ByteString -> IO ()
   getChangelogProgress :: h -> IO Word64 -- FIXME: use type variable i
+  trimChangelog :: h -> Word64 -> IO () -- FIXME: use type variable i
 
 data StateStoreChangelog k v ser
   = CLKSPut    Text k v -- HS.table: K/V; HG.aggregate: K/V; HTW.aggregate: K/V
