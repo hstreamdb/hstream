@@ -309,12 +309,14 @@ data QueryRunner = QueryRunner {
 instance ChangeLogger () where
   logChangelog () _ = return ()
   getChangelogProgress () = return minBound
+  trimChangelog () _ = return ()
 
 -- use logdevice stream
 instance ChangeLogger (S.LDClient, S.C_LogID) where
   logChangelog (ldClient, logId) bs =
     void $ S.append ldClient logId (lazyByteStringToBytes bs) Nothing
   getChangelogProgress (ldClient, logId) = S.getTailLSN ldClient logId
+  trimChangelog (ldClient, logId) lsn = S.trim ldClient logId lsn
 
 ---- store processing node states (snapshot)
 -- do nothing
@@ -325,6 +327,8 @@ instance Snapshotter () where
 instance Snapshotter RocksDB.DB where
   snapshot db = RocksDB.put db def
 
+-- | Do snapshot for a task, then trim old changelogs for this task.
+--   May throw exceptions.
 doSnapshot :: (ChangeLogger h1, Snapshotter h2) => h1 -> h2 -> Task -> IO ()
 doSnapshot h1 h2 Task{..} = do
   changelogTail <- getChangelogProgress h1
@@ -350,6 +354,8 @@ doSnapshot h1 h2 Task{..} = do
         valueSer = BL.toStrict $ Aeson.encode value
     snapshot h2 keySer valueSer
   Log.debug $ "Query " <> Log.build taskName <> ": I have successfully done a snapshot!"
+  trimChangelog h1 changelogTail
+  Log.debug $ "Query " <> Log.build taskName <> ": I have successfully trimmed the old changelog!"
 
 --------------------------------------------------------------------------------
 
