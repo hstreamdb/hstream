@@ -55,9 +55,12 @@ private:
   HsStablePtr sp_;
 
   void onClientExit() {
-    hs_free_stable_ptr(sp_);
-    // Make sure the haskell land does not use the freed stable pointer
-    sp_ = nullptr;
+    // FIXME: lock guard here?
+    if (sp_ != nullptr) {
+      hs_free_stable_ptr(sp_);
+      // Make sure the haskell land does not use the freed stable pointer
+      sp_ = nullptr;
+    }
   }
 };
 
