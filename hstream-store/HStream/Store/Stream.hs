@@ -175,6 +175,7 @@ import           Data.Hashable                    (Hashable)
 import           Data.Int                         (Int64)
 import           Data.IORef                       (IORef, atomicModifyIORef',
                                                    newIORef, readIORef)
+import           Data.List                        (sort)
 import           Data.Map.Strict                  (Map)
 import qualified Data.Map.Strict                  as Map
 import           Data.Text                        (Text)
@@ -529,13 +530,27 @@ listStreamPartitions client streamid = do
       logId <- getUnderlyingLogId client streamid (Just key)
       return $ Map.insert key logId keyMap
 
--- Sorted by logid
+-- Sorted by logs name
 listStreamPartitionsOrdered
   :: HasCallStack
   => FFI.LDClient
   -> StreamId
   -> IO (Vector (CBytes, FFI.C_LogID))
 listStreamPartitionsOrdered client streamid = do
+  dir_path <- getStreamDirPath streamid
+  keys <- LD.logDirLogsNames =<< LD.getLogDirectory client dir_path
+  let keys' = sort keys
+  forM (V.fromList keys') $ \key -> do
+    logId <- getUnderlyingLogId client streamid (Just key)
+    pure (key, logId)
+
+-- Sorted by logid
+listStreamPartitionsOrderedByLogId
+  :: HasCallStack
+  => FFI.LDClient
+  -> StreamId
+  -> IO (Vector (CBytes, FFI.C_LogID))
+listStreamPartitionsOrderedByLogId client streamid = do
   dir_path <- getStreamDirPath streamid
   keys <- LD.logDirLogsNames =<< LD.getLogDirectory client dir_path
   ps <- forM (V.fromList keys) $ \key -> do
