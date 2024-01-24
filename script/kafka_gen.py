@@ -125,6 +125,7 @@ API_VERSION_PATCHES = {
     "DeleteTopics": (0, 1),
     "DescribeGroups": (0, 1),
     "FindCoordinator": (0, 1),
+    "CreatePartitions": (0, 1),
 }
 
 # -----------------------------------------------------------------------------

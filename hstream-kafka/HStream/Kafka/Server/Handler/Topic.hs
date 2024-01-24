@@ -9,17 +9,20 @@ module HStream.Kafka.Server.Handler.Topic
     handleCreateTopics
     -- 20: DeleteTopics
   , handleDeleteTopics
+    -- 37: CreatePartitions
+  , handleCreatePartitions
   ) where
 
 import           Control.Exception
 import           Control.Monad
-import qualified Data.Text                          as T
-import qualified Data.Vector                        as V
-
+import qualified Data.List                          as L
 import qualified Data.Map                           as Map
 import           Data.Maybe                         (isNothing)
+import qualified Data.Text                          as T
+import qualified Data.Vector                        as V
 import           HStream.Kafka.Common.OffsetManager (cleanOffsetCache)
 import qualified HStream.Kafka.Common.Utils         as Utils
+import           HStream.Kafka.Server.Core.Topic    (createPartitions)
 import qualified HStream.Kafka.Server.Core.Topic    as Core
 import           HStream.Kafka.Server.Types         (ServerContext (..))
 import qualified HStream.Logger                     as Log
@@ -154,3 +157,30 @@ handleDeleteTopics ServerContext{..} _ K.DeleteTopicsRequest{..} =
         cleanOffsetCache scOffsetManager logid
       S.removeStream scLDClient streamId
       return $ K.DeletableTopicResult topicName K.NONE
+
+--------------------
+-- 37: CreatePartitions
+--------------------
+handleCreatePartitions
+  :: ServerContext -> K.RequestContext -> K.CreatePartitionsRequest -> IO K.CreatePartitionsResponse
+handleCreatePartitions ctx _ req@K.CreatePartitionsRequest{..} = do
+  let topics' = Utils.kaArrayToVector req.topics
+      groups = L.groupBy (\a b -> a.name == b.name) . L.sortBy (\a b -> compare a.name b.name) $ V.toList topics'
+      dups = concat $ L.filter (\l -> length l > 1) groups
+      validReques = concat $ L.filter (\l -> length l == 1) groups
+
+  succResults <- forM validReques $ \K.CreatePartitionsTopic{..} -> do
+    res <- createPartitions ctx name count assignments timeoutMs validateOnly
+    return $ mkResults name res
+  let dupsResults = map (\t -> mkResults t.name (K.INVALID_REQUEST, "Duplicate topic in request.")) dups
+  return K.CreatePartitionsResponse
+        { results = K.KaArray . Just . V.fromList $ succResults <> dupsResults
+        , throttleTimeMs = 0
+        }
+ where
+   mkResults topic (code, msg) =
+     K.CreatePartitionsTopicResult
+       { name = topic
+       , errorCode = code
+       , errorMessage = Just msg
+       }
