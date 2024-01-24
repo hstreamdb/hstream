@@ -154,6 +154,7 @@ library
     HStream.Kafka.Server.Config.KafkaConfigManager
     HStream.Kafka.Server.Config.Types
     HStream.Kafka.Server.Core.Topic
+    HStream.Kafka.Server.Core.Store
     HStream.Kafka.Server.Handler.AdminCommand
     HStream.Kafka.Server.Handler.Basic
     HStream.Kafka.Server.Handler.Consume

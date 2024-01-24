@@ -530,27 +530,13 @@ listStreamPartitions client streamid = do
       logId <- getUnderlyingLogId client streamid (Just key)
       return $ Map.insert key logId keyMap
 
--- Sorted by logs name
+-- Sorted by logid
 listStreamPartitionsOrdered
   :: HasCallStack
   => FFI.LDClient
   -> StreamId
   -> IO (Vector (CBytes, FFI.C_LogID))
 listStreamPartitionsOrdered client streamid = do
-  dir_path <- getStreamDirPath streamid
-  keys <- LD.logDirLogsNames =<< LD.getLogDirectory client dir_path
-  let keys' = sort keys
-  forM (V.fromList keys') $ \key -> do
-    logId <- getUnderlyingLogId client streamid (Just key)
-    pure (key, logId)
-
--- Sorted by logid
-listStreamPartitionsOrderedByLogId
-  :: HasCallStack
-  => FFI.LDClient
-  -> StreamId
-  -> IO (Vector (CBytes, FFI.C_LogID))
-listStreamPartitionsOrderedByLogId client streamid = do
   dir_path <- getStreamDirPath streamid
   keys <- LD.logDirLogsNames =<< LD.getLogDirectory client dir_path
   ps <- forM (V.fromList keys) $ \key -> do

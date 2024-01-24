@@ -30,6 +30,7 @@ import           HStream.Kafka.Common.KafkaException (ErrorCodeException (ErrorC
 import qualified HStream.Kafka.Common.Metrics        as M
 import           HStream.Kafka.Group.OffsetsStore    (OffsetStorage (..),
                                                       mkCkpOffsetStorage)
+import           HStream.Kafka.Server.Core.Store     (listTopicPartitions)
 import qualified HStream.Logger                      as Log
 import qualified HStream.Store                       as LD
 import qualified HStream.Store                       as S
@@ -48,7 +49,7 @@ data GroupOffsetManager = forall os. OffsetStorage os => GroupOffsetManager
   , groupName     :: T.Text
   , offsetStorage :: os
   , offsetsCache  :: IORef (Map.Map TopicPartition Int64)
-  , partitionsMap :: IORef (Map.Map TopicPartition Word64)
+  , partitionsMap :: IORef (Map.Map TopicPartition S.C_LogID)
   }
 
 -- FIXME: if we create a consumer group with groupName haven been used, call
@@ -64,11 +65,13 @@ loadOffsetsFromStorage :: GroupOffsetManager -> IO ()
 loadOffsetsFromStorage GroupOffsetManager{..} = do
   Log.info $ "Consumer group " <> Log.build groupName <> " start load offsets from storage"
   start <- getTime Monotonic
+  -- load offsets from storage
   tpOffsets <- Map.map fromIntegral <$> loadOffsets offsetStorage groupName
   let totalPartitions = length tpOffsets
       logIds = S.fromList $ Map.keys tpOffsets
   topicNumRef <- newIORef 0
-  tps <- getTopicPartitions logIds [] topicNumRef
+  -- get all topic-partitions from logIds
+  tps <- getTopicPartitions logIds topicNumRef
   totalTopicNum <- readIORef topicNumRef
   let partitionMap = Map.fromList tps
       offsetsMap = Map.compose tpOffsets partitionMap
@@ -86,25 +89,27 @@ loadOffsetsFromStorage GroupOffsetManager{..} = do
           <> ", total nums of topics " <> Log.build totalTopicNum
           <> ", total nums of partitions " <> Log.build totalPartitions
  where
-   getTopicPartitions :: Set Word64 -> [[(TopicPartition, S.C_LogID)]] -> IORef Int -> IO ([(TopicPartition, S.C_LogID)])
-   getTopicPartitions lgs res topicNum
-     | S.null lgs = return $ concat res
+   getTopicPartitions :: Set S.C_LogID -> IORef Int -> IO ([(TopicPartition, S.C_LogID)])
+   getTopicPartitions = loop []
+
+   loop acc lgs topicNum
+     | S.null lgs = return $ concat acc
      | otherwise = do
          let lgId = S.elemAt 0 lgs
          LD.logIdHasGroup ldClient lgId >>= \case
           True -> do
              (streamId, _) <- S.getStreamIdFromLogId ldClient lgId
              modifyIORef' topicNum (+1)
-             partitions <- V.toList <$> S.listStreamPartitionsOrdered ldClient streamId
+             partitions <- listTopicPartitions ldClient streamId
              let topicName = T.pack $ S.showStreamName streamId
-                 tpWithLogId = zipWith (\(_, logId) idx -> (mkTopicPartition topicName idx, logId)) partitions ([0..])
-                 res' = tpWithLogId : res
+                 tpWithLogId = Map.toList $ Map.mapKeys (mkTopicPartition topicName) partitions
+                 res = tpWithLogId : acc
                  -- remove partition ids from lgs because they all have same streamId
-                 lgs' = lgs S.\\ S.fromList (map snd partitions)
-             getTopicPartitions lgs' res' topicNum
+                 lgs' = lgs S.\\ S.fromList (Map.elems partitions)
+             loop res lgs' topicNum
           False -> do
-            Log.warning $ "get log group from log id failed, skip this log id:" <> Log.build lgId
-            getTopicPartitions (S.delete lgId lgs) res topicNum
+            Log.fatal $ "cann't get log group with log id " <> Log.build lgId <> ", skip this log id"
+            loop acc (S.delete lgId lgs) topicNum
 
 storeOffsets
   :: GroupOffsetManager
@@ -152,19 +157,22 @@ getOffsetsInfo GroupOffsetManager{..} topicName requestOffsets = do
       Nothing -> do
         Log.info $ "can't find topic-partition " <> Log.build (show tp) <> " in partitionsMap: " <> Log.build (show mp)
         -- read partitions and build partitionsMap
-        partitions <- S.listStreamPartitionsOrdered ldClient (S.transToTopicStreamName topicName)
+        partitions <- listTopicPartitions ldClient (S.transToTopicStreamName topicName)
         Log.info $ "list all partitions for topic " <> Log.build topicName <> ": " <> Log.build (show partitions)
-        case partitions V.!? (fromIntegral partitionIndex) of
+        let partitionMap = Map.mapKeys (mkTopicPartition topicName) partitions
+            mp' = Map.union partitionMap mp
+        writeIORef partitionsMap mp'
+        Log.info $ "update partitionsMap to: " <> Log.build (show mp')
+
+        case Map.lookup partitionIndex partitions of
           Nothing -> do
-            Log.info $ "consumer group " <> Log.build groupName <> " receive OffsetCommitRequestPartition with unknown topic or partion"
+            Log.info $ "consumer group " <> Log.build groupName
+                    <> " receive OffsetCommitRequestPartition with unknown topic or partion"
                     <> ", topic name: " <> Log.build topicName
                     <> ", partition: " <> Log.build partitionIndex
             throw (ErrorCodeException K.UNKNOWN_TOPIC_OR_PARTITION)
             -- ^ TODO: better response(and exception)
-          Just (_, logId) -> do
-            let partitionMap = Map.fromList . V.toList $ V.zipWith (\idx (_, lgId) -> ((mkTopicPartition topicName idx), lgId)) (V.fromList [0..]) partitions
-                mp' = Map.union partitionMap mp
-            writeIORef partitionsMap mp'
+          Just logId -> do
             return (tp, logId, fromIntegral committedOffset)
       Just logId -> return (tp, logId, fromIntegral committedOffset)
 
