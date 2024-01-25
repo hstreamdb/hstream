@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedRecordDot #-}
+{-# LANGUAGE PatternGuards       #-}
 
 module HStream.Kafka.Server.Core.Topic
  ( createTopic
@@ -16,6 +17,7 @@ import qualified Data.Map.Strict                         as M
 import           Data.Maybe                              (isJust)
 import           Data.Text                               (Text)
 import qualified Data.Text                               as T
+import qualified Data.Vector                             as V
 import qualified HStream.Base.Time                       as BaseTime
 import qualified HStream.Kafka.Server.Config.KafkaConfig as KC
 import           HStream.Kafka.Server.Core.Store         (createTopicPartitions,
@@ -88,11 +90,12 @@ createPartitions
   -> Bool
   -> IO (K.ErrorCode, T.Text)
 createPartitions ServerContext{..} topicName newPartitionCnt ass timeoutMs validateOnly
-  | isJust $ K.unKaArray ass = do 
+  -- if assignment is not Nothing or Just [], return error
+  | Just ass' <- K.unKaArray ass, (not $ V.null ass') = do
       Log.info $ "createPartitions for topic " <> Log.build topicName <> " failed because assignment is not supported."
       return (K.INVALID_REQUEST, "Partition assignments is not supported now.")
   | otherwise = do
-     let streamId = S.transToStreamName topicName
+     let streamId = S.transToTopicStreamName topicName
      inc <- getIncreamentPartitions streamId
      case inc of
        Right cnt -> doCreate streamId cnt

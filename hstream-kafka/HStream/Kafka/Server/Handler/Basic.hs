@@ -178,7 +178,7 @@ handleMetadata ctx reqCtx req = do
              , partitions = K.emptyKaArray
              , isInternal = False
              }
-      shards_e <- try ((V.map snd) <$> S.listStreamPartitionsOrdered ctx.scLDClient streamId)
+      shards_e <- try (Map.elems <$> S.listStreamPartitions ctx.scLDClient streamId)
       case shards_e of
         -- FIXME: Are the following error codes proper?
         -- FIXME: We passed `Nothing` as partitions when an error occurs. Is this proper?
@@ -188,11 +188,11 @@ handleMetadata ctx reqCtx req = do
           | otherwise ->
               return $ errTopicResp K.UNKNOWN_SERVER_ERROR
         Right shards
-          | V.null shards ->
+          | null shards ->
               return $ errTopicResp K.INVALID_TOPIC_EXCEPTION
-          | V.length shards > fromIntegral (maxBound :: Int32) ->
+          | length shards > fromIntegral (maxBound :: Int32) ->
               return $ errTopicResp K.INVALID_PARTITIONS
-          | otherwise -> mkResponse topicName shards
+          | otherwise -> mkResponse topicName (V.fromList shards)
 
     mkResponse topicName shards = do
       respPartitions <-

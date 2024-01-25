@@ -25,6 +25,7 @@ instance Exception ParsePartitionIdError
 
 type PartitionId = Int32
 
+-- FIXME: find a better way to handle parse exception
 listTopicPartitions :: HasCallStack => S.LDClient -> S.StreamId -> IO (M.Map PartitionId S.C_LogID)
 listTopicPartitions client streamId = do
   partitions <- S.listStreamPartitions client streamId
