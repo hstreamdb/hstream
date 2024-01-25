@@ -11,6 +11,7 @@ import qualified Data.ByteString                    as BS
 import qualified Data.ByteString.Builder            as BB
 import           Data.Either                        (isRight)
 import           Data.Int
+import qualified Data.Map.Strict                    as Map
 import           Data.Maybe
 import qualified Data.Text                          as T
 import qualified Data.Vector                        as V
@@ -25,6 +26,7 @@ import qualified HStream.Kafka.Common.OffsetManager as K
 import qualified HStream.Kafka.Common.RecordFormat  as K
 import           HStream.Kafka.Server.Config        (ServerOpts (..),
                                                      StorageOptions (..))
+import           HStream.Kafka.Server.Core.Store    (listTopicPartitions)
 import           HStream.Kafka.Server.Types         (ServerContext (..))
 import qualified HStream.Logger                     as Log
 import qualified HStream.Store                      as S
@@ -68,19 +70,17 @@ handleFetch ServerContext{..} _ r = K.catchFetchResponseEx $ do
   topics <- V.forM topicReqs $ \t{- K.FetchTopic -} -> do
     -- Partition should be non-empty
     let K.NonNullKaArray partitionReqs = t.partitions
-    orderedParts <- S.listStreamPartitionsOrdered scLDClient
-                      (S.transToTopicStreamName t.topic)
+    partitions <- listTopicPartitions scLDClient (S.transToTopicStreamName t.topic)
     ps <- V.forM partitionReqs $ \p{- K.FetchPartition -} -> do
       M.withLabel M.totalConsumeRequest (t.topic, T.pack . show $ p.partition) $
         \counter -> void $ M.addCounter counter 1
-      let m_logid = orderedParts V.!? fromIntegral p.partition
-      case m_logid of
+      case Map.lookup p.partition partitions of
         Nothing -> do
           let elsn = errorPartitionResponse p.partition K.UNKNOWN_TOPIC_OR_PARTITION
           -- Actually, the logid should be Nothing but 0, however, we won't
           -- use it, so just set it to 0
           pure $ Partition 0 (Left elsn) p
-        Just (_, logid) -> do
+        Just logid -> do
           elsn <- getPartitionLsn scLDClient scOffsetManager logid p.partition
                                   p.fetchOffset
           when (isRight elsn) $ void $ atomicFetchAddFastMut mutNumOfReads 1

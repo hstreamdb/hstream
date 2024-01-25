@@ -8,6 +8,7 @@ import           Control.Monad
 import           Data.ByteString                    (ByteString)
 import qualified Data.ByteString                    as BS
 import           Data.Int
+import qualified Data.Map.Strict                    as Map
 import           Data.Maybe                         (fromMaybe)
 import           Data.Text                          (Text)
 import qualified Data.Text                          as T
@@ -17,6 +18,7 @@ import           Data.Word
 import qualified HStream.Kafka.Common.Metrics       as M
 import qualified HStream.Kafka.Common.OffsetManager as K
 import qualified HStream.Kafka.Common.RecordFormat  as K
+import           HStream.Kafka.Server.Core.Store    (listTopicPartitions)
 import           HStream.Kafka.Server.Types         (ServerContext (..))
 import qualified HStream.Logger                     as Log
 import qualified HStream.Store                      as S
@@ -52,15 +54,14 @@ handleProduce ServerContext{..} reqCtx req = do
   responses <- V.forM topicData $ \topic{- TopicProduceData -} -> do
     -- A topic is a stream. Here we donot need to check the topic existence,
     -- because the metadata api already does(?)
-    partitions <- S.listStreamPartitionsOrdered
-                    scLDClient (S.transToTopicStreamName topic.name)
+    partitions <- listTopicPartitions scLDClient (S.transToTopicStreamName topic.name)
     let partitionData = fromMaybe V.empty (K.unKaArray topic.partitionData)
     -- TODO: limit total concurrencies ?
     let loopPart = if V.length partitionData > 1
                       then Async.forConcurrently
                       else V.forM
     partitionResponses <- loopPart partitionData $ \partition -> do
-      let Just (_, logid) = partitions V.!? (fromIntegral partition.index) -- TODO: handle Nothing
+      let Just logid = Map.lookup partition.index partitions -- TODO: handle Nothing
       M.withLabel
         M.totalProduceRequest
         (topic.name, T.pack . show $ partition.index) $ \counter ->

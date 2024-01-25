@@ -22,6 +22,7 @@ import qualified Data.Text                          as T
 import qualified Data.Vector                        as V
 import           HStream.Kafka.Common.OffsetManager (cleanOffsetCache)
 import qualified HStream.Kafka.Common.Utils         as Utils
+import           HStream.Kafka.Server.Core.Store    (listTopicPartitions)
 import           HStream.Kafka.Server.Core.Topic    (createPartitions)
 import qualified HStream.Kafka.Server.Core.Topic    as Core
 import           HStream.Kafka.Server.Types         (ServerContext (..))
@@ -152,8 +153,8 @@ handleDeleteTopics ServerContext{..} _ K.DeleteTopicsRequest{..} =
       --
       -- XXX: Normally we do not need to delete this because the logid is a
       -- random number and will unlikely be reused.
-      partitions <- S.listStreamPartitionsOrdered scLDClient streamId
-      V.forM_ partitions $ \(_, logid) ->
+      logIds <- Map.elems <$> listTopicPartitions scLDClient streamId
+      forM_ logIds $ \logid ->
         cleanOffsetCache scOffsetManager logid
       S.removeStream scLDClient streamId
       return $ K.DeletableTopicResult topicName K.NONE

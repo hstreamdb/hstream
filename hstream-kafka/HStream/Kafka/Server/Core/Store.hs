@@ -11,14 +11,14 @@ import qualified Z.Data.Builder    as CB
 import qualified Z.Data.CBytes     as CB
 import qualified Z.Data.Parser     as CB
 
-createTopicPartitions :: S.LDClient -> S.StreamId -> Int32 -> IO [S.C_LogID]
+createTopicPartitions :: HasCallStack => S.LDClient -> S.StreamId -> Int32 -> IO [S.C_LogID]
 createTopicPartitions client streamId partitions = do
   totalCnt <- getTotalPartitionCount client streamId
   forM [0..partitions-1] $ \i -> do
     S.createStreamPartition client streamId (Just (CB.pack . show $ totalCnt + i)) M.empty
 
 -- Get the total number of partitions of a topic
-getTotalPartitionCount :: S.LDClient -> S.StreamId -> IO Int32
+getTotalPartitionCount :: HasCallStack => S.LDClient -> S.StreamId -> IO Int32
 getTotalPartitionCount client streamId = do
   fromIntegral . M.size <$> S.listStreamPartitions client streamId
 
