@@ -175,7 +175,6 @@ import           Data.Hashable                    (Hashable)
 import           Data.Int                         (Int64)
 import           Data.IORef                       (IORef, atomicModifyIORef',
                                                    newIORef, readIORef)
-import           Data.List                        (sort)
 import           Data.Map.Strict                  (Map)
 import qualified Data.Map.Strict                  as Map
 import           Data.Text                        (Text)
