@@ -32,6 +32,8 @@ module Kafka.Protocol.Encoding.Parser
   , getRecordString
     -- * Internals
   , takeBytes
+  , dropBytes
+  , directDropBytes
   , fromIO
   ) where
 
@@ -390,6 +392,17 @@ takeBytes n = Parser $ \bs next ->
                   then pure $ Fail BS.empty "No more input"
                   else run (go (bs : res) (i - len)) bs' next
 {-# INLINE takeBytes #-}
+
+dropBytes :: Int -> Parser ()
+dropBytes = void . takeBytes
+{-# INLINE dropBytes #-}
+
+-- | Drop the specified number of bytes without checking the length.
+--
+-- The number must <= the length of input.
+directDropBytes :: Int -> Parser ()
+directDropBytes n = Parser $ \bs next -> next (BS.drop n bs) ()
+{-# INLINE directDropBytes #-}
 
 fromIO :: IO a -> Parser a
 fromIO f = Parser $ \bs next -> do

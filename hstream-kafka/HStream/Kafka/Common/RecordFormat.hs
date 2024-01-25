@@ -28,6 +28,8 @@ data RecordFormat = RecordFormat
 instance K.Serializable RecordFormat
 
 -- Real size of the recordBytes.
+--
+-- Actually, the size is not accurate, because the recordBytes is a CompactBytes
 recordBytesSize :: ByteString -> Int
 recordBytesSize bs = BS.length bs - 13{- 1(version) + 8(offset) + 4(batchLength) -}
 {-# INLINE recordBytesSize #-}

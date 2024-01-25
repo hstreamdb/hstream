@@ -1,5 +1,6 @@
 module Kafka.Protocol.Encoding.Encode
-  ( Builder (..)
+  ( Builder
+  , builderLength
   , toLazyByteString
     -- * Builders
   , putBool
@@ -189,8 +190,11 @@ putRecordString x =
 
 data Builder = Builder
   { builderLen :: {-# UNPACK #-} !(Sum Word)
-  , builderBS  :: !BB.Builder
+  , _builderBS :: !BB.Builder
   }
+
+builderLength :: Builder -> Word
+builderLength = getSum . builderLen
 
 instance Semigroup Builder where
   {-# INLINE (<>) #-}

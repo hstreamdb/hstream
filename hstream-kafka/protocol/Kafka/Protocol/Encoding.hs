@@ -40,7 +40,11 @@ module Kafka.Protocol.Encoding
   , RecordV0 (..)
   , RecordV1 (..)
   , RecordV2 (..)
+  , RecordV2_ (..)
   , RecordBatch (..)
+  , RecordBatch_ (..)
+  , unsafeAlterRecordBatchBs
+  , unsafeAlterMessageSetBs
   , RecordKey (..)
   , RecordValue (..)
   , RecordArray (..)
@@ -50,42 +54,51 @@ module Kafka.Protocol.Encoding
     -- ** Helpers
   , decodeLegacyRecordBatch
   , decodeRecordMagic
+  , decodeNextRecordOffset
     -- ** Misc
   , pattern NonNullKaArray
   , unNonNullKaArray
   , kaArrayToCompact
   , kaArrayFromCompact
     -- * Internals
+    -- ** Parser
   , Parser
   , runParser
   , runParser'
   , Result (..)
-  , Builder
-  , toLazyByteString
   , takeBytes
+    -- ** Builder
+  , Builder
+  , builderLength
+  , toLazyByteString
   ) where
 
-import           Control.DeepSeq                (NFData)
+import           Control.DeepSeq                  (NFData)
 import           Control.Exception
 import           Control.Monad
-import           Data.ByteString                (ByteString)
-import qualified Data.ByteString                as BS
-import           Data.ByteString.Internal       (w2c)
-import qualified Data.ByteString.Lazy           as BL
-import           Data.Digest.CRC32              (crc32)
-import           Data.Digest.CRC32C             (crc32c)
+import           Data.ByteString                  (ByteString)
+import qualified Data.ByteString                  as BS
+import           Data.ByteString.Internal         (ByteString (BS), w2c)
+import qualified Data.ByteString.Lazy             as BL
+import qualified Data.ByteString.Unsafe           as BSU
+import           Data.Digest.CRC32                (crc32)
+import           Data.Digest.CRC32C               (crc32c)
 import           Data.Int
 import           Data.Maybe
-import           Data.String                    (IsString)
-import           Data.Text                      (Text)
-import           Data.Typeable                  (Typeable, showsTypeRep, typeOf)
-import           Data.Vector                    (Vector)
-import qualified Data.Vector                    as V
+import           Data.String                      (IsString)
+import           Data.Text                        (Text)
+import           Data.Typeable                    (Typeable, showsTypeRep,
+                                                   typeOf)
+import           Data.Vector                      (Vector)
+import qualified Data.Vector                      as V
 import           Data.Word
+import           Foreign.Ptr                      (plusPtr)
+import           GHC.ForeignPtr                   (unsafeWithForeignPtr)
 import           GHC.Generics
 
-import qualified HStream.Base.Growing           as Growing
+import qualified HStream.Base.Growing             as Growing
 import           Kafka.Protocol.Encoding.Encode
+import           Kafka.Protocol.Encoding.Internal
 import           Kafka.Protocol.Encoding.Parser
 
 -------------------------------------------------------------------------------
@@ -368,7 +381,7 @@ decodeBatchRecords shouldValidateCrc batchBs =
 -- | The same as 'decodeBatchRecords', but with some extra information for
 -- convenience.
 --
--- Currently, only the real total number of records is returned.
+-- Extra information: the real total number of records.
 decodeBatchRecords' :: Bool -> ByteString -> IO (Vector BatchRecord, Int)
 decodeBatchRecords' shouldValidateCrc batchBs = Growing.new >>= decode 0 batchBs
   where
@@ -409,11 +422,15 @@ decodeBatchRecords' shouldValidateCrc batchBs = Growing.new >>= decode 0 batchBs
                 -- The CRC-32C (Castagnoli) polynomial is used for the
                 -- computation.
                 (crc, bs'') <- runGet' @Int32 bs'
-                when (shouldValidateCrc && fromIntegral (crc32c bs'') /= crc) $
-                  throwIO $ DecodeError "Invalid CRC32"
+                when shouldValidateCrc $ do
+                  let crcPayload = BS.take (fromIntegral batchLength - 9) bs''
+                  when (fromIntegral (crc32c crcPayload) /= crc) $
+                    throwIO $ DecodeError "Invalid CRC32"
                 (RecordBodyV2{..}, remainder) <- runGet' @RecordBodyV2 bs''
                 !v' <- Growing.append v (BatchRecordV2 RecordBatch{..})
                 let !batchLen = maybe 0 V.length (unKaArray records)
+                -- Actually, there should be only one batch record here, but
+                -- we don't require it.
                 decode (len + batchLen) remainder v'
         _ -> throwIO $ DecodeError $ "Invalid magic " <> show magic
 {-# INLINABLE decodeBatchRecords' #-}
@@ -448,10 +465,51 @@ decodeRecordMagic :: ByteString -> IO Int8
 decodeRecordMagic bs =
   let parser = do
         -- baseOffset(8) + batchLength(4) + partitionLeaderEpochOrCrc(4)
-        void $ takeBytes (8 + 4 + 4)
+        dropBytes 16
         get @Int8
    in fst <$> runParser' parser bs
 {-# INLINE decodeRecordMagic #-}
+
+-- | Get the offset of the record from the batch bs.
+--
+-- Return (baseOffset + batchLen) which is the (offset + 1) of the last complete
+-- record.
+decodeNextRecordOffset :: ByteString -> IO (Maybe Int64)
+decodeNextRecordOffset bs = fst <$> runParser' parser' bs
+  where
+    parser' = parser (fromIntegral $ BS.length bs) Nothing
+
+    parser !remainingLen !r = if remainingLen <= 12{- baseOffset, batchLength -}
+      -- FailFast: batch is incomplete
+      then pure r
+      else do
+        baseOffset <- get @Int64
+        batchLength <- get @Int32
+        let remainingLen' = remainingLen - 12 - batchLength
+        -- batch is incomplete
+        if remainingLen' < 0 then pure r else do
+          dropBytes 4 -- partitionLeaderEpoch: int32
+          magic <- get @Int8
+          case magic of
+            2 -> do
+              -- crc: int32 + attributes: int16 + lastOffsetDelta: int32 +
+              -- baseTimestamp: int64 + maxTimestamp: int64 +
+              -- producerId: int64 + producerEpoch: int16 +
+              -- baseSequence: int32
+              dropBytes 40
+              batchRecordsLen <- get @Int32
+              -- Note here we don't minus 1
+              let r' = baseOffset + fromIntegral batchRecordsLen
+              dropBytes (fromIntegral batchLength - 49)
+              parser remainingLen' (Just r')
+            1 -> do
+              dropBytes $ fromIntegral batchLength - 5
+              parser remainingLen' (Just $ baseOffset + 1)
+            0 -> do
+              dropBytes $ fromIntegral batchLength - 5
+              parser remainingLen' (Just $ baseOffset + 1)
+            _ -> fail $ "Invalid magic " <> show magic
+{-# INLINE decodeNextRecordOffset #-}
 
 -- Internal type to help parse all Record version.
 --
@@ -459,6 +517,8 @@ decodeRecordMagic bs =
 data RecordBase = RecordBase
   { baseOffset                :: {-# UNPACK #-} !Int64
   , batchLength               :: {-# UNPACK #-} !Int32
+    -- ^ The total size of the record batch in bytes
+    -- (from partitionLeaderEpochOrCrc to the end)
   , partitionLeaderEpochOrCrc :: {-# UNPACK #-} !Int32
     -- ^ For version 0-1, this is the CRC32 of the remainder of the record.
     -- For version 2, this is the partition leader epoch.
@@ -581,6 +641,16 @@ decodeLegacyRecordBatch batchBs = Growing.new >>= decode batchBs
       !v' <- Growing.append v r
       decode l v'
 
+-- | Alter batchLength and crc of a LegacyRecordBatch(MessageSet) bytes.
+--
+-- The bytes must be a valid MessageSet bytes which only contains one message.
+unsafeAlterMessageSetBs :: ByteString -> IO ()
+unsafeAlterMessageSetBs (BS fp len) = unsafeWithForeignPtr fp $ \p -> do
+  poke32BE (p `plusPtr` 8) (fromIntegral len - 12)
+  -- 16: 8 + 4 + 4
+  crc <- crc32 <$> BSU.unsafePackCStringLen ((p `plusPtr` 16), (len - 16))
+  poke32BE (p `plusPtr` 12) crc
+
 -------------------------------------------------------------------------------
 -- RecordBatch: v2
 --
@@ -603,6 +673,29 @@ data RecordV2 = RecordV2
 instance Serializable RecordV2
 instance NFData RecordV2
 
+-- | The same as 'RecordV2' but without length.
+--
+-- This may useful for constructing 'RecordV2' bytes.
+--
+-- @
+-- let r = RecordV2_ ...
+--     rb = put r
+--     len = builderLength rb
+--     bb = put @VarInt32 len <> rb
+--     lbs = toLazyByteString bb
+-- @
+data RecordV2_ = RecordV2_
+  { attributes     :: {-# UNPACK #-} !Int8
+  , timestampDelta :: {-# UNPACK #-} !VarInt64
+  , offsetDelta    :: {-# UNPACK #-} !VarInt32
+  , key            :: !RecordKey
+  , value          :: !RecordValue
+  , headers        :: !(RecordArray RecordHeader)
+  } deriving (Generic, Show, Eq)
+
+instance Serializable RecordV2_
+instance NFData RecordV2_
+
 data RecordBatch = RecordBatch
   { baseOffset           :: {-# UNPACK #-} !Int64
   , batchLength          :: {-# UNPACK #-} !Int32
@@ -621,6 +714,37 @@ data RecordBatch = RecordBatch
 
 instance Serializable RecordBatch
 instance NFData RecordBatch
+
+-- | The same as 'RecordBatch' but without records.
+--
+-- This may useful for constructing 'RecordBatch' bytes.
+data RecordBatch_ = RecordBatch_
+  { baseOffset           :: {-# UNPACK #-} !Int64
+  , batchLength          :: {-# UNPACK #-} !Int32
+  , partitionLeaderEpoch :: {-# UNPACK #-} !Int32
+  , magic                :: {-# UNPACK #-} !Int8
+  , crc                  :: {-# UNPACK #-} !Int32
+  , attributes           :: {-# UNPACK #-} !Int16
+  , lastOffsetDelta      :: {-# UNPACK #-} !Int32
+  , baseTimestamp        :: {-# UNPACK #-} !Int64
+  , maxTimestamp         :: {-# UNPACK #-} !Int64
+  , producerId           :: {-# UNPACK #-} !Int64
+  , producerEpoch        :: {-# UNPACK #-} !Int16
+  , baseSequence         :: {-# UNPACK #-} !Int32
+  } deriving (Generic, Show, Eq)
+
+instance Serializable RecordBatch_
+instance NFData RecordBatch_
+
+-- | Alter batchLength and crc of a 'RecordBatch' bytes.
+--
+-- The bytes must be a valid 'RecordBatch' bytes.
+unsafeAlterRecordBatchBs :: ByteString -> IO ()
+unsafeAlterRecordBatchBs (BS fp len) = unsafeWithForeignPtr fp $ \p -> do
+  poke32BE (p `plusPtr` 8) (fromIntegral len - 12)
+  -- 21: 8 + 4 + 4 + 1 + 4
+  crc <- crc32c <$> BSU.unsafePackCStringLen ((p `plusPtr` 21), (len - 21))
+  poke32BE (p `plusPtr` 17) crc
 
 -------------------------------------------------------------------------------
 -- Misc
