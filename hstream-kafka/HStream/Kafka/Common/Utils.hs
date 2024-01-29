@@ -11,7 +11,9 @@ import qualified Data.ByteString                     as BS
 import qualified Data.ByteString.Base64              as Base64
 import qualified Data.HashTable.IO                   as H
 import qualified Data.HashTable.ST.Basic             as HB
+import qualified Data.IntMap.Strict                  as IntMap
 import qualified Data.IORef                          as IO
+import qualified Data.Map.Strict                     as Map
 import           Data.Maybe                          (fromMaybe)
 import qualified Data.Text                           as T
 import qualified Data.Text.Encoding                  as T
@@ -81,3 +83,6 @@ encodeBase64 = Base64.extractBase64 . Base64.encodeBase64
 
 decodeBase64 :: T.Text -> BS.ByteString
 decodeBase64 = Base64.decodeBase64Lenient . T.encodeUtf8
+
+mapIntMapKeys :: Ord b => (IntMap.Key -> b) -> IntMap.IntMap a -> Map.Map b a
+mapIntMapKeys f = IntMap.foldrWithKey (Map.insert . f) Map.empty

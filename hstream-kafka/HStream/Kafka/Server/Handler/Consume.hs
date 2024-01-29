@@ -11,7 +11,7 @@ import qualified Data.ByteString                    as BS
 import qualified Data.ByteString.Builder            as BB
 import           Data.Either                        (isRight)
 import           Data.Int
-import qualified Data.Map.Strict                    as Map
+import qualified Data.IntMap.Strict                 as IntMap
 import           Data.Maybe
 import qualified Data.Text                          as T
 import qualified Data.Vector                        as V
@@ -74,7 +74,7 @@ handleFetch ServerContext{..} _ r = K.catchFetchResponseEx $ do
     ps <- V.forM partitionReqs $ \p{- K.FetchPartition -} -> do
       M.withLabel M.totalConsumeRequest (t.topic, T.pack . show $ p.partition) $
         \counter -> void $ M.addCounter counter 1
-      case Map.lookup p.partition partitions of
+      case IntMap.lookup (fromIntegral p.partition) partitions of
         Nothing -> do
           let elsn = errorPartitionResponse p.partition K.UNKNOWN_TOPIC_OR_PARTITION
           -- Actually, the logid should be Nothing but 0, however, we won't

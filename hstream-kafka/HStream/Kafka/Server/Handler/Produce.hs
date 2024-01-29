@@ -8,7 +8,7 @@ import           Control.Monad
 import           Data.ByteString                    (ByteString)
 import qualified Data.ByteString                    as BS
 import           Data.Int
-import qualified Data.Map.Strict                    as Map
+import qualified Data.IntMap.Strict                 as Map
 import           Data.Maybe                         (fromMaybe)
 import           Data.Text                          (Text)
 import qualified Data.Text                          as T
@@ -61,7 +61,7 @@ handleProduce ServerContext{..} reqCtx req = do
                       then Async.forConcurrently
                       else V.forM
     partitionResponses <- loopPart partitionData $ \partition -> do
-      let Just logid = Map.lookup partition.index partitions -- TODO: handle Nothing
+      let Just logid = Map.lookup (fromIntegral partition.index) partitions -- TODO: handle Nothing
       M.withLabel
         M.totalProduceRequest
         (topic.name, T.pack . show $ partition.index) $ \counter ->

@@ -15,6 +15,7 @@ module HStream.Kafka.Server.Handler.Topic
 
 import           Control.Exception
 import           Control.Monad
+import qualified Data.IntMap.Strict                 as IntMap
 import qualified Data.List                          as L
 import qualified Data.Map                           as Map
 import           Data.Maybe                         (isNothing)
@@ -153,7 +154,7 @@ handleDeleteTopics ServerContext{..} _ K.DeleteTopicsRequest{..} =
       --
       -- XXX: Normally we do not need to delete this because the logid is a
       -- random number and will unlikely be reused.
-      logIds <- Map.elems <$> listTopicPartitions scLDClient streamId
+      logIds <- IntMap.elems <$> listTopicPartitions scLDClient streamId
       forM_ logIds $ \logid ->
         cleanOffsetCache scOffsetManager logid
       S.removeStream scLDClient streamId

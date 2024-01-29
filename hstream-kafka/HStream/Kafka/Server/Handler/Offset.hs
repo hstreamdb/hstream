@@ -9,7 +9,7 @@ module HStream.Kafka.Server.Handler.Offset
 where
 
 import           Data.Int                             (Int64)
-import qualified Data.Map.Strict                      as Map
+import qualified Data.IntMap.Strict                   as IntMap
 import           Data.Maybe                           (fromMaybe)
 import           Data.Text                            (Text)
 import           Data.Vector                          (Vector)
@@ -82,7 +82,7 @@ listOffsetTopicPartitions ServerContext{..} topicName (Just offsetsPartitions) =
   partitions <- listTopicPartitions scLDClient (S.transToTopicStreamName topicName)
   res <- V.forM offsetsPartitions $ \K.ListOffsetsPartition{..} -> do
     -- TODO: handle Nothing
-    let logId = partitions Map.! partitionIndex
+    let logId = partitions IntMap.! (fromIntegral partitionIndex)
     offset <- getOffset logId timestamp
     return $ K.ListOffsetsPartitionResponse
               { offset = offset
