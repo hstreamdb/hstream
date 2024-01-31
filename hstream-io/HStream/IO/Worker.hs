@@ -180,6 +180,10 @@ recoverTask worker@Worker{..} name = do
                      then taskConfig.tcImage
                      else makeImage taskType taskTarget options
           newTaskConfig = taskConfig{tcImage=newImage}
+      when (newImage /= taskConfig.tcImage) $ do
+        Log.info $ "connector:" <> Log.build name <> " image changed, "
+          <> Log.build taskConfig.tcImage <> " -> " <> Log.build newImage
+        M.updateTaskConfig workerHandle taskId newTaskConfig
       createIOTaskFromTaskInfo worker taskId taskInfo{connectorConfig=newConnCfg, taskConfig=newTaskConfig} options True False False
 
 -- update config and restart
