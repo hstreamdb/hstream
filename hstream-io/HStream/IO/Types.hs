@@ -60,11 +60,12 @@ data IOTaskStatus
   deriving (Show, Eq, Generic, J.FromJSON, J.ToJSON)
 
 data IOOptions = IOOptions
-  { optTasksNetwork    :: T.Text
-  , optTasksPath       :: T.Text
-  , optSourceImages    :: HM.HashMap T.Text T.Text
-  , optSinkImages      :: HM.HashMap T.Text T.Text
-  , optExtraDockerArgs :: T.Text
+  { optTasksNetwork        :: T.Text
+  , optTasksPath           :: T.Text
+  , optSourceImages        :: HM.HashMap T.Text T.Text
+  , optSinkImages          :: HM.HashMap T.Text T.Text
+  , optExtraDockerArgs     :: T.Text
+  , optFixedConnectorImage :: Bool
   } deriving (Show, Eq)
 
 type TaskProcess = TP.Process IO.Handle IO.Handle ()

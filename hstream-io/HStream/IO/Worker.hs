@@ -176,7 +176,11 @@ recoverTask worker@Worker{..} name = do
     Nothing -> throwIO $ HE.ConnectorNotFound name
     Just (taskId, TaskMeta{taskInfoMeta=taskInfo@TaskInfo{..}}) -> do
       let newConnCfg = J.insert "hstream" (J.toJSON hsConfig) connectorConfig
-      createIOTaskFromTaskInfo worker taskId taskInfo{connectorConfig=newConnCfg} options True False False
+          newImage = if options.optFixedConnectorImage
+                     then taskConfig.tcImage
+                     else makeImage taskType taskTarget options
+          newTaskConfig = taskConfig{tcImage=newImage}
+      createIOTaskFromTaskInfo worker taskId taskInfo{connectorConfig=newConnCfg, taskConfig=newTaskConfig} options True False False
 
 -- update config and restart
 alterConnectorConfig :: Worker -> T.Text -> T.Text -> IO ()

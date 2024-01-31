@@ -119,6 +119,12 @@ hserver:
     # so the tasks-network should be the network that can connect to HStreamDB and external systems.
     tasks-network: host
     extra-docker-args: "-m 4g"
+
+    # when restarting a connector, whether use fixed connector image(if images of config file was updated),
+    # true -> read image from metastore
+    # false -> read image from config file
+    fixed-connector-image: true
+
     # source images
     source-images:
       mysql: hstreamdb/source-mysql:latest
