@@ -238,6 +238,7 @@ parseJSONToOptions CliOptions{..} obj = do
   nodeSourceImages <- nodeIOCfg .:? "source-images" .!= HM.empty
   nodeSinkImages <- nodeIOCfg .:? "sink-images" .!= HM.empty
   optExtraDockerArgs <- nodeIOCfg .:? "extra-docker-args" .!= ""
+  optFixedConnectorImage <- nodeIOCfg .:? "fixed-connector-image" .!= True
   (optSourceImages, optSinkImages) <- foldrM
         (\img (ss, sk) -> do
           -- "source mysql IMAGE" -> ("source" "mysq" "IMAGE")

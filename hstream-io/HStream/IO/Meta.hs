@@ -52,6 +52,10 @@ updateConfig :: MetaHandle -> T.Text -> J.Object -> IO ()
 updateConfig h taskId cfg = do
   updateMetaWith taskId (\(Just tm) -> tm {taskInfoMeta=tm.taskInfoMeta{connectorConfig = cfg}}) Nothing h
 
+updateTaskConfig :: MetaHandle -> T.Text -> TaskConfig -> IO ()
+updateTaskConfig h taskId cfg = do
+  updateMetaWith taskId (\(Just tm) -> tm {taskInfoMeta=tm.taskInfoMeta{taskConfig = cfg}}) Nothing h
+
 mapKvKey :: T.Text -> T.Text -> T.Text
 mapKvKey taskId key = taskId <> "_" <> key
 
