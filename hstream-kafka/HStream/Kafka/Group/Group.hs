@@ -844,6 +844,9 @@ commitOffsets group@Group{..} req = do
         Utils.whenIORefEq storedMetadata False $ do
           Log.info $ "commited offsets on Empty Group, storing Empty Group:" <> Log.build group.groupId
           storeGroup group Map.empty
+        H.lookup members req.memberId >>= \case
+          Nothing -> pure ()
+          Just m -> updateLatestHeartbeat m
         return K.OffsetCommitResponse {topics=topics, throttleTimeMs=0}
 
 validateOffsetcommit :: Group -> K.OffsetCommitRequest -> IO ()
