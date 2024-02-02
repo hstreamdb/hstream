@@ -2,8 +2,8 @@
 
 module HStream.Kafka.Server.Core.Topic
  ( createTopic
- )
- where
+ , createPartitions
+ ) where
 
 import           Control.Exception                       (Exception (displayException, fromException),
                                                           SomeException, try)
@@ -16,6 +16,7 @@ import qualified Data.Map.Strict                         as M
 import           Data.Maybe                              (isJust)
 import           Data.Text                               (Text)
 import qualified Data.Text                               as T
+import qualified Data.Vector                             as V
 import           GHC.Stack                               (HasCallStack)
 
 import qualified HStream.Base.Time                       as BaseTime
@@ -24,6 +25,7 @@ import           HStream.Kafka.Server.Types              (ServerContext (..))
 import qualified HStream.Logger                          as Log
 import qualified HStream.Store                           as S
 import qualified HStream.Utils                           as Utils
+import qualified Kafka.Protocol                          as K
 import qualified Kafka.Protocol.Error                    as K
 
 createTopic
@@ -91,3 +93,47 @@ createTopicPartitions client streamId partitions = do
 getTotalPartitionCount :: HasCallStack => S.LDClient -> S.StreamId -> IO Int32
 getTotalPartitionCount client streamId = do
   fromIntegral . M.size <$> S.listStreamPartitions client streamId
+
+createPartitions
+  :: ServerContext
+  -> T.Text
+  -> Int32
+  -> K.KaArray K.CreatePartitionsAssignment
+  -> Int32
+  -> Bool
+  -> IO (K.ErrorCode, T.Text)
+createPartitions ServerContext{..} topicName newPartitionCnt ass timeoutMs validateOnly
+  -- if assignment is not Nothing or Just [], return error
+  | Just ass' <- K.unKaArray ass, (not $ V.null ass') = do
+      Log.info $ "createPartitions for topic " <> Log.build topicName <> " failed because assignment is not supported."
+      return (K.INVALID_REQUEST, "Partition assignments is not supported now.")
+  | otherwise = do
+     let streamId = S.transToTopicStreamName topicName
+     inc <- getIncreamentPartitions streamId
+     case inc of
+       Right cnt -> doCreate streamId cnt
+       Left e    -> return e
+ where
+  getIncreamentPartitions streamId = do
+    res <- try $ getTotalPartitionCount scLDClient streamId
+    case res of
+       Left (e :: SomeException)
+         | Just (_ :: S.NOTFOUND) <- fromException e ->
+             return . Left $ (K.UNKNOWN_TOPIC_OR_PARTITION, "The topic " <> topicName <> " does not exist")
+         | otherwise -> do
+             Log.fatal $ "getTotalPartitionCount for topic " <> Log.build topicName <> " failed: " <> Log.build (displayException e)
+             return . Left $ (K.UNKNOWN_SERVER_ERROR, T.pack $ displayException e)
+       Right oldPartitions
+         | newPartitionCnt - oldPartitions < 0 -> do
+             let msg = "Topic currently has " <> show oldPartitions <> " partitions, which is higher than the requested " <> show newPartitionCnt
+             return . Left $ (K.INVALID_PARTITIONS, T.pack msg)
+         | newPartitionCnt == oldPartitions ->
+             return . Left $ (K.INVALID_PARTITIONS, "Topic already has " <> T.pack (show oldPartitions) <> " partitions")
+         | otherwise -> return . Right $ newPartitionCnt - oldPartitions
+
+  doCreate streamId cnt
+    | timeoutMs <= 0 = return (K.REQUEST_TIMED_OUT, T.empty)
+    | validateOnly = return (K.NONE, T.empty)
+    | otherwise = do
+       _ <- createTopicPartitions scLDClient streamId cnt
+       return (K.NONE, T.empty)

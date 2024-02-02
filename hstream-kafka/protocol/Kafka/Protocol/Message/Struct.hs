@@ -69,6 +69,37 @@ data FinalizedFeatureKeyV3 = FinalizedFeatureKeyV3
   } deriving (Show, Eq, Generic)
 instance Serializable FinalizedFeatureKeyV3
 
+newtype CreatePartitionsAssignmentV0 = CreatePartitionsAssignmentV0
+  { brokerIds :: (KaArray Int32)
+  } deriving (Show, Eq, Generic)
+instance Serializable CreatePartitionsAssignmentV0
+
+data CreatePartitionsTopicV0 = CreatePartitionsTopicV0
+  { name        :: !Text
+    -- ^ The topic name.
+  , count       :: {-# UNPACK #-} !Int32
+    -- ^ The new partition count.
+  , assignments :: !(KaArray CreatePartitionsAssignmentV0)
+    -- ^ The new partition assignments.
+  } deriving (Show, Eq, Generic)
+instance Serializable CreatePartitionsTopicV0
+
+type CreatePartitionsAssignmentV1 = CreatePartitionsAssignmentV0
+
+type CreatePartitionsTopicV1 = CreatePartitionsTopicV0
+
+data CreatePartitionsTopicResultV0 = CreatePartitionsTopicResultV0
+  { name         :: !Text
+    -- ^ The topic name.
+  , errorCode    :: {-# UNPACK #-} !ErrorCode
+    -- ^ The result error, or zero if there was no error.
+  , errorMessage :: !NullableString
+    -- ^ The result message, or null if there was no error.
+  } deriving (Show, Eq, Generic)
+instance Serializable CreatePartitionsTopicResultV0
+
+type CreatePartitionsTopicResultV1 = CreatePartitionsTopicResultV0
+
 data CreatableReplicaAssignmentV0 = CreatableReplicaAssignmentV0
   { partitionIndex :: {-# UNPACK #-} !Int32
     -- ^ The partition index.
@@ -917,6 +948,30 @@ data ApiVersionsResponseV3 = ApiVersionsResponseV3
   } deriving (Show, Eq, Generic)
 instance Serializable ApiVersionsResponseV3
 
+data CreatePartitionsRequestV0 = CreatePartitionsRequestV0
+  { topics       :: !(KaArray CreatePartitionsTopicV0)
+    -- ^ Each topic that we want to create new partitions inside.
+  , timeoutMs    :: {-# UNPACK #-} !Int32
+    -- ^ The time in ms to wait for the partitions to be created.
+  , validateOnly :: Bool
+    -- ^ If true, then validate the request, but don't actually increase the
+    -- number of partitions.
+  } deriving (Show, Eq, Generic)
+instance Serializable CreatePartitionsRequestV0
+
+type CreatePartitionsRequestV1 = CreatePartitionsRequestV0
+
+data CreatePartitionsResponseV0 = CreatePartitionsResponseV0
+  { throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
+  , results        :: !(KaArray CreatePartitionsTopicResultV0)
+    -- ^ The partition creation results for each topic.
+  } deriving (Show, Eq, Generic)
+instance Serializable CreatePartitionsResponseV0
+
+type CreatePartitionsResponseV1 = CreatePartitionsResponseV0
+
 data CreateTopicsRequestV0 = CreateTopicsRequestV0
   { topics    :: !(KaArray CreatableTopicV0)
     -- ^ The topics to create.
@@ -1763,6 +1818,7 @@ instance Service HStreamKafkaV0 where
      , "initProducerId"
      , "describeConfigs"
      , "saslAuthenticate"
+     , "createPartitions"
      ]
 
 instance HasMethodImpl HStreamKafkaV0 "hadminCommand" where
@@ -1912,6 +1968,13 @@ instance HasMethodImpl HStreamKafkaV0 "saslAuthenticate" where
   type MethodInput HStreamKafkaV0 "saslAuthenticate" = SaslAuthenticateRequestV0
   type MethodOutput HStreamKafkaV0 "saslAuthenticate" = SaslAuthenticateResponseV0
 
+instance HasMethodImpl HStreamKafkaV0 "createPartitions" where
+  type MethodName HStreamKafkaV0 "createPartitions" = "createPartitions"
+  type MethodKey HStreamKafkaV0 "createPartitions" = 37
+  type MethodVersion HStreamKafkaV0 "createPartitions" = 0
+  type MethodInput HStreamKafkaV0 "createPartitions" = CreatePartitionsRequestV0
+  type MethodOutput HStreamKafkaV0 "createPartitions" = CreatePartitionsResponseV0
+
 data HStreamKafkaV1
 
 instance Service HStreamKafkaV1 where
@@ -1934,6 +1997,7 @@ instance Service HStreamKafkaV1 where
      , "apiVersions"
      , "createTopics"
      , "deleteTopics"
+     , "createPartitions"
      ]
 
 instance HasMethodImpl HStreamKafkaV1 "produce" where
@@ -2054,6 +2118,13 @@ instance HasMethodImpl HStreamKafkaV1 "deleteTopics" where
   type MethodVersion HStreamKafkaV1 "deleteTopics" = 1
   type MethodInput HStreamKafkaV1 "deleteTopics" = DeleteTopicsRequestV1
   type MethodOutput HStreamKafkaV1 "deleteTopics" = DeleteTopicsResponseV1
+
+instance HasMethodImpl HStreamKafkaV1 "createPartitions" where
+  type MethodName HStreamKafkaV1 "createPartitions" = "createPartitions"
+  type MethodKey HStreamKafkaV1 "createPartitions" = 37
+  type MethodVersion HStreamKafkaV1 "createPartitions" = 1
+  type MethodInput HStreamKafkaV1 "createPartitions" = CreatePartitionsRequestV1
+  type MethodOutput HStreamKafkaV1 "createPartitions" = CreatePartitionsResponseV1
 
 data HStreamKafkaV2
 
@@ -2293,6 +2364,7 @@ instance Show ApiKey where
   show (ApiKey (22))  = "InitProducerId(22)"
   show (ApiKey (32))  = "DescribeConfigs(32)"
   show (ApiKey (36))  = "SaslAuthenticate(36)"
+  show (ApiKey (37))  = "CreatePartitions(37)"
   show (ApiKey n)     = "Unknown " <> show n
 
 supportedApiVersions :: [ApiVersionV0]
@@ -2317,6 +2389,7 @@ supportedApiVersions =
   , ApiVersionV0 (ApiKey 22) 0 0
   , ApiVersionV0 (ApiKey 32) 0 0
   , ApiVersionV0 (ApiKey 36) 0 0
+  , ApiVersionV0 (ApiKey 37) 0 1
   ]
 
 getHeaderVersion :: ApiKey -> Int16 -> (Int16, Int16)
@@ -2380,5 +2453,7 @@ getHeaderVersion (ApiKey (20)) 1 = (1, 0)
 getHeaderVersion (ApiKey (22)) 0 = (1, 0)
 getHeaderVersion (ApiKey (32)) 0 = (1, 0)
 getHeaderVersion (ApiKey (36)) 0 = (1, 0)
+getHeaderVersion (ApiKey (37)) 0 = (1, 0)
+getHeaderVersion (ApiKey (37)) 1 = (1, 0)
 getHeaderVersion k v = error $ "Unknown " <> show k <> " v" <> show v
 {-# INLINE getHeaderVersion #-}
