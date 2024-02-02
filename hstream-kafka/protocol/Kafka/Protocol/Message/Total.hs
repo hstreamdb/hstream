@@ -213,6 +213,81 @@ creatableTopicResultFromV1 x = CreatableTopicResult
 creatableTopicResultFromV2 :: CreatableTopicResultV2 -> CreatableTopicResult
 creatableTopicResultFromV2 = creatableTopicResultFromV1
 
+newtype CreatePartitionsAssignment = CreatePartitionsAssignment
+  { brokerIds :: (KaArray Int32)
+  } deriving (Show, Eq, Generic)
+instance Serializable CreatePartitionsAssignment
+
+createPartitionsAssignmentToV0 :: CreatePartitionsAssignment -> CreatePartitionsAssignmentV0
+createPartitionsAssignmentToV0 x = CreatePartitionsAssignmentV0
+  { brokerIds = x.brokerIds
+  }
+createPartitionsAssignmentToV1 :: CreatePartitionsAssignment -> CreatePartitionsAssignmentV1
+createPartitionsAssignmentToV1 = createPartitionsAssignmentToV0
+
+createPartitionsAssignmentFromV0 :: CreatePartitionsAssignmentV0 -> CreatePartitionsAssignment
+createPartitionsAssignmentFromV0 x = CreatePartitionsAssignment
+  { brokerIds = x.brokerIds
+  }
+createPartitionsAssignmentFromV1 :: CreatePartitionsAssignmentV1 -> CreatePartitionsAssignment
+createPartitionsAssignmentFromV1 = createPartitionsAssignmentFromV0
+
+data CreatePartitionsTopic = CreatePartitionsTopic
+  { name        :: !Text
+    -- ^ The topic name.
+  , count       :: {-# UNPACK #-} !Int32
+    -- ^ The new partition count.
+  , assignments :: !(KaArray CreatePartitionsAssignment)
+    -- ^ The new partition assignments.
+  } deriving (Show, Eq, Generic)
+instance Serializable CreatePartitionsTopic
+
+createPartitionsTopicToV0 :: CreatePartitionsTopic -> CreatePartitionsTopicV0
+createPartitionsTopicToV0 x = CreatePartitionsTopicV0
+  { name = x.name
+  , count = x.count
+  , assignments = fmap createPartitionsAssignmentToV0 x.assignments
+  }
+createPartitionsTopicToV1 :: CreatePartitionsTopic -> CreatePartitionsTopicV1
+createPartitionsTopicToV1 = createPartitionsTopicToV0
+
+createPartitionsTopicFromV0 :: CreatePartitionsTopicV0 -> CreatePartitionsTopic
+createPartitionsTopicFromV0 x = CreatePartitionsTopic
+  { name = x.name
+  , count = x.count
+  , assignments = fmap createPartitionsAssignmentFromV0 x.assignments
+  }
+createPartitionsTopicFromV1 :: CreatePartitionsTopicV1 -> CreatePartitionsTopic
+createPartitionsTopicFromV1 = createPartitionsTopicFromV0
+
+data CreatePartitionsTopicResult = CreatePartitionsTopicResult
+  { name         :: !Text
+    -- ^ The topic name.
+  , errorCode    :: {-# UNPACK #-} !ErrorCode
+    -- ^ The result error, or zero if there was no error.
+  , errorMessage :: !NullableString
+    -- ^ The result message, or null if there was no error.
+  } deriving (Show, Eq, Generic)
+instance Serializable CreatePartitionsTopicResult
+
+createPartitionsTopicResultToV0 :: CreatePartitionsTopicResult -> CreatePartitionsTopicResultV0
+createPartitionsTopicResultToV0 x = CreatePartitionsTopicResultV0
+  { name = x.name
+  , errorCode = x.errorCode
+  , errorMessage = x.errorMessage
+  }
+createPartitionsTopicResultToV1 :: CreatePartitionsTopicResult -> CreatePartitionsTopicResultV1
+createPartitionsTopicResultToV1 = createPartitionsTopicResultToV0
+
+createPartitionsTopicResultFromV0 :: CreatePartitionsTopicResultV0 -> CreatePartitionsTopicResult
+createPartitionsTopicResultFromV0 x = CreatePartitionsTopicResult
+  { name = x.name
+  , errorCode = x.errorCode
+  , errorMessage = x.errorMessage
+  }
+createPartitionsTopicResultFromV1 :: CreatePartitionsTopicResultV1 -> CreatePartitionsTopicResult
+createPartitionsTopicResultFromV1 = createPartitionsTopicResultFromV0
+
 data CreateableTopicConfig = CreateableTopicConfig
   { name  :: !Text
     -- ^ The configuration name.
@@ -1796,6 +1871,60 @@ apiVersionsResponseFromV3 x = ApiVersionsResponse
   , taggedFields = x.taggedFields
   }
 
+data CreatePartitionsRequest = CreatePartitionsRequest
+  { topics       :: !(KaArray CreatePartitionsTopic)
+    -- ^ Each topic that we want to create new partitions inside.
+  , timeoutMs    :: {-# UNPACK #-} !Int32
+    -- ^ The time in ms to wait for the partitions to be created.
+  , validateOnly :: Bool
+    -- ^ If true, then validate the request, but don't actually increase the
+    -- number of partitions.
+  } deriving (Show, Eq, Generic)
+instance Serializable CreatePartitionsRequest
+
+createPartitionsRequestToV0 :: CreatePartitionsRequest -> CreatePartitionsRequestV0
+createPartitionsRequestToV0 x = CreatePartitionsRequestV0
+  { topics = fmap createPartitionsTopicToV0 x.topics
+  , timeoutMs = x.timeoutMs
+  , validateOnly = x.validateOnly
+  }
+createPartitionsRequestToV1 :: CreatePartitionsRequest -> CreatePartitionsRequestV1
+createPartitionsRequestToV1 = createPartitionsRequestToV0
+
+createPartitionsRequestFromV0 :: CreatePartitionsRequestV0 -> CreatePartitionsRequest
+createPartitionsRequestFromV0 x = CreatePartitionsRequest
+  { topics = fmap createPartitionsTopicFromV0 x.topics
+  , timeoutMs = x.timeoutMs
+  , validateOnly = x.validateOnly
+  }
+createPartitionsRequestFromV1 :: CreatePartitionsRequestV1 -> CreatePartitionsRequest
+createPartitionsRequestFromV1 = createPartitionsRequestFromV0
+
+data CreatePartitionsResponse = CreatePartitionsResponse
+  { throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
+  , results        :: !(KaArray CreatePartitionsTopicResult)
+    -- ^ The partition creation results for each topic.
+  } deriving (Show, Eq, Generic)
+instance Serializable CreatePartitionsResponse
+
+createPartitionsResponseToV0 :: CreatePartitionsResponse -> CreatePartitionsResponseV0
+createPartitionsResponseToV0 x = CreatePartitionsResponseV0
+  { throttleTimeMs = x.throttleTimeMs
+  , results = fmap createPartitionsTopicResultToV0 x.results
+  }
+createPartitionsResponseToV1 :: CreatePartitionsResponse -> CreatePartitionsResponseV1
+createPartitionsResponseToV1 = createPartitionsResponseToV0
+
+createPartitionsResponseFromV0 :: CreatePartitionsResponseV0 -> CreatePartitionsResponse
+createPartitionsResponseFromV0 x = CreatePartitionsResponse
+  { throttleTimeMs = x.throttleTimeMs
+  , results = fmap createPartitionsTopicResultFromV0 x.results
+  }
+createPartitionsResponseFromV1 :: CreatePartitionsResponseV1 -> CreatePartitionsResponse
+createPartitionsResponseFromV1 = createPartitionsResponseFromV0
+
 data CreateTopicsRequest = CreateTopicsRequest
   { topics       :: !(KaArray CreatableTopic)
     -- ^ The topics to create.
@@ -3337,6 +3466,13 @@ instance Exception ApiVersionsResponseEx
 
 catchApiVersionsResponseEx :: IO ApiVersionsResponse -> IO ApiVersionsResponse
 catchApiVersionsResponseEx act = act `catch` \(ApiVersionsResponseEx resp) -> pure resp
+
+newtype CreatePartitionsResponseEx = CreatePartitionsResponseEx CreatePartitionsResponse
+  deriving (Show, Eq)
+instance Exception CreatePartitionsResponseEx
+
+catchCreatePartitionsResponseEx :: IO CreatePartitionsResponse -> IO CreatePartitionsResponse
+catchCreatePartitionsResponseEx act = act `catch` \(CreatePartitionsResponseEx resp) -> pure resp
 
 newtype CreateTopicsResponseEx = CreateTopicsResponseEx CreateTopicsResponse
   deriving (Show, Eq)

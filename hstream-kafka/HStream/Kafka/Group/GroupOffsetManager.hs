@@ -48,7 +48,7 @@ data GroupOffsetManager = forall os. OffsetStorage os => GroupOffsetManager
   , groupName     :: T.Text
   , offsetStorage :: os
   , offsetsCache  :: IORef (Map.Map TopicPartition Int64)
-  , partitionsMap :: IORef (Map.Map TopicPartition Word64)
+  , partitionsMap :: IORef (Map.Map TopicPartition S.C_LogID)
   }
 
 -- FIXME: if we create a consumer group with groupName haven been used, call
@@ -86,7 +86,7 @@ loadOffsetsFromStorage GroupOffsetManager{..} = do
           <> ", total nums of topics " <> Log.build totalTopicNum
           <> ", total nums of partitions " <> Log.build totalPartitions
  where
-   getTopicPartitions :: Set Word64 -> [[(TopicPartition, S.C_LogID)]] -> IORef Int -> IO ([(TopicPartition, S.C_LogID)])
+   getTopicPartitions :: Set S.C_LogID -> [[(TopicPartition, S.C_LogID)]] -> IORef Int -> IO ([(TopicPartition, S.C_LogID)])
    getTopicPartitions lgs res topicNum
      | S.null lgs = return $ concat res
      | otherwise = do

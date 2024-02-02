@@ -14,9 +14,12 @@ import qualified HStream.Logger  as Log
 import qualified HStream.Store   as S
 import           HStream.Utils   (textToCBytes)
 
+type LogID = Word64
+type LSN = Word64
+
 class OffsetStorage s where
-  commitOffsets :: s -> T.Text -> Map Word64 Word64 -> IO ()
-  loadOffsets :: s -> T.Text -> IO (Map Word64 Word64)
+  commitOffsets :: s -> T.Text -> Map LogID LSN -> IO ()
+  loadOffsets :: s -> T.Text -> IO (Map LogID LSN)
 
 --------------------------------------------------------------------------------
 

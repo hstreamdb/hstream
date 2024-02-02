@@ -66,6 +66,7 @@ import qualified Kafka.Protocol.Service                    as K
 
 #cv_handler CreateTopics, 0, 2
 #cv_handler DeleteTopics, 0, 1
+#cv_handler CreatePartitions, 0, 1
 
 #cv_handler FindCoordinator, 0, 1
 
@@ -102,6 +103,7 @@ handlers sc =
 
   , #mk_handler CreateTopics, 0, 2
   , #mk_handler DeleteTopics, 0, 1
+  , #mk_handler CreatePartitions, 0, 1
 
     -- Group
   , #mk_handler JoinGroup, 0, 2
