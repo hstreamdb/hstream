@@ -219,7 +219,7 @@ preProcessRequest ServerContext{..} r = do
     let K.NonNullKaArray partitionReqs = t.partitions
     -- FIXME: we can also cache this in FetchContext, however, we need to
     -- consider the following: what if someone delete the topic?
-    orderedParts <- S.listStreamPartitionsOrdered scLDClient
+    orderedParts <- S.listStreamPartitionsOrderedByName scLDClient
                       (S.transToTopicStreamName t.topic)
     ps <- V.forM partitionReqs $ \p{- K.FetchPartition -} -> do
       M.withLabel M.totalConsumeRequest (t.topic, T.pack . show $ p.partition) $

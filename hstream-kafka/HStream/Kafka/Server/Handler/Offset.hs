@@ -77,7 +77,7 @@ listOffsetTopicPartitions
 listOffsetTopicPartitions _ topicName Nothing = do
   return $ K.ListOffsetsTopicResponse {partitions = K.KaArray {unKaArray = Nothing}, name = topicName}
 listOffsetTopicPartitions ServerContext{..} topicName (Just offsetsPartitions) = do
-  orderedParts <- S.listStreamPartitionsOrdered scLDClient (S.transToTopicStreamName topicName)
+  orderedParts <- S.listStreamPartitionsOrderedByName scLDClient (S.transToTopicStreamName topicName)
   res <- V.forM offsetsPartitions $ \K.ListOffsetsPartition{..} -> do
     -- TODO: handle Nothing
     let partition = orderedParts V.! (fromIntegral partitionIndex)

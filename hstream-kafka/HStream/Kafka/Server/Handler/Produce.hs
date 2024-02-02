@@ -45,15 +45,15 @@ handleProduce
   -> K.RequestContext
   -> K.ProduceRequest
   -> IO K.ProduceResponse
-handleProduce ServerContext{..} reqCtx req = do
+handleProduce ServerContext{..} _reqCtx req = do
   -- TODO: handle request args: acks, timeoutMs
   let topicData = fromMaybe V.empty (K.unKaArray req.topicData)
 
   responses <- V.forM topicData $ \topic{- TopicProduceData -} -> do
     -- A topic is a stream. Here we donot need to check the topic existence,
     -- because the metadata api already does(?)
-    partitions <- S.listStreamPartitionsOrdered
-                    scLDClient (S.transToTopicStreamName topic.name)
+    partitions <- S.listStreamPartitionsOrderedByName
+                      scLDClient (S.transToTopicStreamName topic.name)
     let partitionData = fromMaybe V.empty (K.unKaArray topic.partitionData)
     -- TODO: limit total concurrencies ?
     let loopPart = if V.length partitionData > 1

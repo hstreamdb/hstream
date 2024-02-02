@@ -95,7 +95,7 @@ loadOffsetsFromStorage GroupOffsetManager{..} = do
           True -> do
              (streamId, _) <- S.getStreamIdFromLogId ldClient lgId
              modifyIORef' topicNum (+1)
-             partitions <- V.toList <$> S.listStreamPartitionsOrdered ldClient streamId
+             partitions <- V.toList <$> S.listStreamPartitionsOrderedByName ldClient streamId
              let topicName = T.pack $ S.showStreamName streamId
                  tpWithLogId = zipWith (\(_, logId) idx -> (mkTopicPartition topicName idx, logId)) partitions ([0..])
                  res' = tpWithLogId : res
@@ -152,7 +152,7 @@ getOffsetsInfo GroupOffsetManager{..} topicName requestOffsets = do
       Nothing -> do
         Log.info $ "can't find topic-partition " <> Log.build (show tp) <> " in partitionsMap: " <> Log.build (show mp)
         -- read partitions and build partitionsMap
-        partitions <- S.listStreamPartitionsOrdered ldClient (S.transToTopicStreamName topicName)
+        partitions <- S.listStreamPartitionsOrderedByName ldClient (S.transToTopicStreamName topicName)
         Log.info $ "list all partitions for topic " <> Log.build topicName <> ": " <> Log.build (show partitions)
         case partitions V.!? (fromIntegral partitionIndex) of
           Nothing -> do
