@@ -11,7 +11,6 @@ import qualified Data.ByteString                    as BS
 import qualified Data.ByteString.Builder            as BB
 import           Data.Either                        (isRight)
 import           Data.Int
-import qualified Data.IntMap.Strict                 as IntMap
 import           Data.Maybe
 import qualified Data.Text                          as T
 import qualified Data.Vector                        as V
@@ -26,7 +25,7 @@ import qualified HStream.Kafka.Common.OffsetManager as K
 import qualified HStream.Kafka.Common.RecordFormat  as K
 import           HStream.Kafka.Server.Config        (ServerOpts (..),
                                                      StorageOptions (..))
-import           HStream.Kafka.Server.Core.Store    (listTopicPartitions)
+import           HStream.Kafka.Server.Core.Store    (listTopicPartitionsOrdered)
 import           HStream.Kafka.Server.Types         (ServerContext (..))
 import qualified HStream.Logger                     as Log
 import qualified HStream.Store                      as S
@@ -70,11 +69,11 @@ handleFetch ServerContext{..} _ r = K.catchFetchResponseEx $ do
   topics <- V.forM topicReqs $ \t{- K.FetchTopic -} -> do
     -- Partition should be non-empty
     let K.NonNullKaArray partitionReqs = t.partitions
-    partitions <- listTopicPartitions scLDClient (S.transToTopicStreamName t.topic)
+    partitions <- listTopicPartitionsOrdered scLDClient (S.transToTopicStreamName t.topic)
     ps <- V.forM partitionReqs $ \p{- K.FetchPartition -} -> do
       M.withLabel M.totalConsumeRequest (t.topic, T.pack . show $ p.partition) $
         \counter -> void $ M.addCounter counter 1
-      case IntMap.lookup (fromIntegral p.partition) partitions of
+      case partitions V.!? fromIntegral p.partition of
         Nothing -> do
           let elsn = errorPartitionResponse p.partition K.UNKNOWN_TOPIC_OR_PARTITION
           -- Actually, the logid should be Nothing but 0, however, we won't

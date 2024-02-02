@@ -6,6 +6,7 @@ import           Data.Int           (Int32)
 import           Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IntMap
 import qualified Data.Map.Strict    as M
+import           Data.Vector        (Vector)
 import           GHC.Stack          (HasCallStack)
 import qualified HStream.Logger     as Log
 import qualified HStream.Store      as S
@@ -45,4 +46,9 @@ listTopicPartitions client streamId = do
     Left e  -> do
       Log.fatal $ "parse partitionId error: " <> Log.build (show e)
       throwIO $ ParsePartitionIdError $ "Invalid partition id: " <> show key
+
+-- list all partitions in ascending order by partitionId
+listTopicPartitionsOrdered :: HasCallStack => S.LDClient -> S.StreamId -> IO (Vector S.C_LogID)
+listTopicPartitionsOrdered client streamId = do
+  fmap snd <$> S.listStreamPartitionsOrderedByLogName client streamId
 

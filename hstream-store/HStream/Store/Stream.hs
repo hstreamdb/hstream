@@ -35,6 +35,7 @@ module HStream.Store.Stream
   , doesStreamExist
   , listStreamPartitions
   , listStreamPartitionsOrdered
+  , listStreamPartitionsOrderedByLogName
   , doesStreamPartitionExist
   , doesStreamPartitionValExist
   , getStreamExtraAttrs
@@ -167,7 +168,7 @@ module HStream.Store.Stream
 
 import           Control.Exception                (catch, try)
 import           Control.Monad                    (filterM, forM, (<=<))
-import           Data.Bifunctor                   (bimap, second)
+import           Data.Bifunctor                   (bimap)
 import           Data.Bits                        (bit)
 import           Data.Default                     (def)
 import           Data.Foldable                    (foldrM)
@@ -175,6 +176,7 @@ import           Data.Hashable                    (Hashable)
 import           Data.Int                         (Int64)
 import           Data.IORef                       (IORef, atomicModifyIORef',
                                                    newIORef, readIORef)
+import qualified Data.List                        as L
 import           Data.Map.Strict                  (Map)
 import qualified Data.Map.Strict                  as Map
 import           Data.Text                        (Text)
@@ -528,6 +530,20 @@ listStreamPartitions client streamid = do
     insertMap key keyMap = do
       logId <- getUnderlyingLogId client streamid (Just key)
       return $ Map.insert key logId keyMap
+
+-- Sorted by log name
+listStreamPartitionsOrderedByLogName
+  :: HasCallStack
+  => FFI.LDClient
+  -> StreamId
+  -> IO (Vector (CBytes, FFI.C_LogID))
+listStreamPartitionsOrderedByLogName client streamid = do
+  dir_path <- getStreamDirPath streamid
+  keys <- LD.logDirLogsNames =<< LD.getLogDirectory client dir_path
+  let keys' = L.sort keys
+  forM (V.fromList keys') $ \key -> do
+    logId <- getUnderlyingLogId client streamid (Just key)
+    pure (key, logId)
 
 -- Sorted by logid
 listStreamPartitionsOrdered

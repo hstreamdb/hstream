@@ -9,7 +9,6 @@ module HStream.Kafka.Server.Handler.Offset
 where
 
 import           Data.Int                             (Int64)
-import qualified Data.IntMap.Strict                   as IntMap
 import           Data.Maybe                           (fromMaybe)
 import           Data.Text                            (Text)
 import           Data.Vector                          (Vector)
@@ -20,7 +19,7 @@ import           HStream.Kafka.Common.OffsetManager   (getLatestOffset,
                                                        getOldestOffset)
 import           HStream.Kafka.Common.Utils           (mapKaArray)
 import qualified HStream.Kafka.Group.GroupCoordinator as GC
-import           HStream.Kafka.Server.Core.Store      (listTopicPartitions)
+import           HStream.Kafka.Server.Core.Store      (listTopicPartitionsOrdered)
 import           HStream.Kafka.Server.Types           (ServerContext (..))
 import qualified HStream.Logger                       as Log
 import qualified HStream.Store                        as S
@@ -79,10 +78,10 @@ listOffsetTopicPartitions
 listOffsetTopicPartitions _ topicName Nothing = do
   return $ K.ListOffsetsTopicResponse {partitions = K.KaArray {unKaArray = Nothing}, name = topicName}
 listOffsetTopicPartitions ServerContext{..} topicName (Just offsetsPartitions) = do
-  partitions <- listTopicPartitions scLDClient (S.transToTopicStreamName topicName)
+  partitions <- listTopicPartitionsOrdered scLDClient (S.transToTopicStreamName topicName)
   res <- V.forM offsetsPartitions $ \K.ListOffsetsPartition{..} -> do
     -- TODO: handle Nothing
-    let logId = partitions IntMap.! (fromIntegral partitionIndex)
+    let logId = partitions V.! (fromIntegral partitionIndex)
     offset <- getOffset logId timestamp
     return $ K.ListOffsetsPartitionResponse
               { offset = offset

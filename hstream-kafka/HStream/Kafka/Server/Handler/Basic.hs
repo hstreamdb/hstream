@@ -31,6 +31,7 @@ import qualified HStream.Kafka.Common.Utils                     as K
 import qualified HStream.Kafka.Common.Utils                     as Utils
 import qualified HStream.Kafka.Server.Config.KafkaConfig        as KC
 import qualified HStream.Kafka.Server.Config.KafkaConfigManager as KCM
+import           HStream.Kafka.Server.Core.Store                (listTopicPartitionsOrdered)
 import           HStream.Kafka.Server.Core.Topic                (createTopic)
 import           HStream.Kafka.Server.Types                     (ServerContext (..))
 import qualified HStream.Logger                                 as Log
@@ -178,7 +179,7 @@ handleMetadata ctx reqCtx req = do
              , partitions = K.emptyKaArray
              , isInternal = False
              }
-      shards_e <- try (Map.elems <$> S.listStreamPartitions ctx.scLDClient streamId)
+      shards_e <- try (listTopicPartitionsOrdered ctx.scLDClient streamId)
       case shards_e of
         -- FIXME: Are the following error codes proper?
         -- FIXME: We passed `Nothing` as partitions when an error occurs. Is this proper?
@@ -188,11 +189,11 @@ handleMetadata ctx reqCtx req = do
           | otherwise ->
               return $ errTopicResp K.UNKNOWN_SERVER_ERROR
         Right shards
-          | null shards ->
+          | V.null shards ->
               return $ errTopicResp K.INVALID_TOPIC_EXCEPTION
-          | length shards > fromIntegral (maxBound :: Int32) ->
+          | V.length shards > fromIntegral (maxBound :: Int32) ->
               return $ errTopicResp K.INVALID_PARTITIONS
-          | otherwise -> mkResponse topicName (V.fromList shards)
+          | otherwise -> mkResponse topicName shards
 
     mkResponse topicName shards = do
       respPartitions <-
