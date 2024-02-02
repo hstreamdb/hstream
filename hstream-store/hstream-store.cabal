@@ -305,3 +305,19 @@ executable hstore-bench-writter
 
   default-language: Haskell2010
   ghc-options:      -threaded -rtsopts -with-rtsopts=-N
+
+benchmark hstore-sort-bench
+  import:           shared-properties
+  type:             exitcode-stdio-1.0
+  main-is:          SortBench.hs
+  hs-source-dirs:   bench
+  build-depends:
+    , base               >=4.11 && <5
+    , bytestring
+    , criterion
+    , random
+    , vector
+    , vector-algorithms
+
+  default-language: Haskell2010
+  ghc-options:      -threaded -rtsopts -with-rtsopts=-N
