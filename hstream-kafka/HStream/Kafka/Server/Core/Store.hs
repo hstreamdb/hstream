@@ -9,6 +9,7 @@ import qualified Data.Map.Strict    as M
 import           GHC.Stack          (HasCallStack)
 import qualified HStream.Logger     as Log
 import qualified HStream.Store      as S
+import           Text.Printf        (printf)
 import qualified Z.Data.Builder     as CB
 import qualified Z.Data.CBytes      as CB
 import qualified Z.Data.Parser      as CB
@@ -17,7 +18,10 @@ createTopicPartitions :: HasCallStack => S.LDClient -> S.StreamId -> Int32 -> IO
 createTopicPartitions client streamId partitions = do
   totalCnt <- getTotalPartitionCount client streamId
   forM [0..partitions-1] $ \i -> do
-    S.createStreamPartition client streamId (Just (CB.pack . show $ totalCnt + i)) M.empty
+    S.createStreamPartition client streamId (Just (CB.pack . encode $ totalCnt + i)) M.empty
+ where
+  encode :: Int32 -> String
+  encode = printf "%016d"
 
 -- Get the total number of partitions of a topic
 getTotalPartitionCount :: HasCallStack => S.LDClient -> S.StreamId -> IO Int32
