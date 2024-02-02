@@ -4,10 +4,12 @@
 module HStream.Store.StreamSpec (spec) where
 
 import           Control.Concurrent               (threadDelay)
-import           Control.Monad                    (replicateM, void)
+import           Control.Monad
 import           Data.Int
+import           Data.List                        (sort)
 import qualified Data.Map                         as M
 import qualified Data.Map.Strict                  as Map
+import qualified Data.Vector                      as V
 import           Test.Hspec
 import           Z.Data.Vector.Base               (Bytes)
 
@@ -141,6 +143,21 @@ base = describe "BaseSpec" $ do
   it "remove the stream" $ do
     S.removeStream client newStreamId
     S.doesStreamExist client newStreamId `shouldReturn` False
+
+  it "listStreamPartitionsOrdered" $ do
+    streamid <- S.mkStreamId S.StreamTypeTopic <$> newRandomName 5
+    let attrs = S.def{ S.logReplicationFactor = S.defAttr1 1 }
+    S.createStream client streamid attrs
+    S.doesStreamExist client streamid `shouldReturn` True
+    let parts = ["10", "01", "11"]
+    logids <- forM parts $ \p -> do
+      S.createStreamPartition client streamid (Just p) Map.empty
+    vs1 <- S.listStreamPartitionsOrdered client streamid
+    V.map snd vs1 `shouldBe` V.fromList (sort logids)
+    vs2 <- S.listStreamPartitionsOrderedByName client streamid
+    V.map fst vs2 `shouldBe` V.fromList (sort parts)
+
+    S.removeStream client streamid
 
 archiveStreamSpec :: Spec
 archiveStreamSpec = describe "ArchiveStreamSpec" $ do
