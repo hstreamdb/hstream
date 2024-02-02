@@ -22,7 +22,7 @@ handleSyncGroup :: ServerContext -> K.RequestContext -> K.SyncGroupRequest -> IO
 handleSyncGroup ServerContext{..} _ = GC.syncGroup scGroupCoordinator
 
 handleHeartbeat :: ServerContext -> K.RequestContext -> K.HeartbeatRequest -> IO K.HeartbeatResponse
-handleHeartbeat ServerContext{..} _ r = GC.heartbeat scGroupCoordinator r
+handleHeartbeat ServerContext{..} _ = GC.heartbeat scGroupCoordinator
 
 handleLeaveGroup :: ServerContext -> K.RequestContext -> K.LeaveGroupRequest -> IO K.LeaveGroupResponse
 handleLeaveGroup ServerContext{..} _ = GC.leaveGroup scGroupCoordinator
