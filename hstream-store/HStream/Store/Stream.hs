@@ -35,6 +35,7 @@ module HStream.Store.Stream
   , doesStreamExist
   , listStreamPartitions
   , listStreamPartitionsOrdered
+  , listStreamPartitionsOrderedByName
   , doesStreamPartitionExist
   , doesStreamPartitionValExist
   , getStreamExtraAttrs
@@ -167,7 +168,7 @@ module HStream.Store.Stream
 
 import           Control.Exception                (catch, try)
 import           Control.Monad                    (filterM, forM, (<=<))
-import           Data.Bifunctor                   (bimap, second)
+import           Data.Bifunctor                   (bimap)
 import           Data.Bits                        (bit)
 import           Data.Default                     (def)
 import           Data.Foldable                    (foldrM)
@@ -543,6 +544,22 @@ listStreamPartitionsOrdered client streamid = do
     pure (key, logId)
   !mvec <- V.unsafeThaw ps
   V.sortBy (\e1 e2 -> compare (snd e1) (snd e2)) mvec
+  V.unsafeFreeze mvec
+
+-- Sorted by log name
+listStreamPartitionsOrderedByName
+  :: HasCallStack
+  => FFI.LDClient
+  -> StreamId
+  -> IO (Vector (CBytes, FFI.C_LogID))
+listStreamPartitionsOrderedByName client streamid = do
+  dir_path <- getStreamDirPath streamid
+  keys <- LD.logDirLogsNames =<< LD.getLogDirectory client dir_path
+  ps <- forM (V.fromList keys) $ \key -> do
+    logId <- getUnderlyingLogId client streamid (Just key)
+    pure (key, logId)
+  !mvec <- V.unsafeThaw ps
+  V.sortBy (\e1 e2 -> compare (fst e1) (fst e2)) mvec
   V.unsafeFreeze mvec
 
 doesStreamPartitionExist
