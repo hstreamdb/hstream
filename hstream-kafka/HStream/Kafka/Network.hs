@@ -221,7 +221,7 @@ runCppServer opts sc_ mkAuthedHandlers =
     processorCallback :: Cxx.ProcessorCallback ServerContext
     processorCallback sptr request_ptr response_ptr =
       -- nullPtr means client closed the connection
-      when (castStablePtrToPtr sptr /= nullPtr) $ do
+      when (castStablePtrToPtr sptr /= nullPtr) $ void $ forkIO $ do
         (sc, conn) <- deRefStablePtr sptr
         let handlers = mkAuthedHandlers sc
         req <- peek request_ptr
@@ -232,6 +232,7 @@ runCppServer opts sc_ mkAuthedHandlers =
           (\err -> do Log.fatal $ Log.buildString' (err :: E.SomeException)
                       pure Nothing)
         poke response_ptr Cxx.Response{responseData = respBs}
+        Cxx.release_lock req.requestLock
 
 -------------------------------------------------------------------------------
 -- Server misc

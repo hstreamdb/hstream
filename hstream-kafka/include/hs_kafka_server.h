@@ -3,13 +3,20 @@
 #include <HsFFI.h>
 #include <cstdint>
 
+#include <folly/Unit.h>
+#include <folly/futures/Promise.h>
+
 struct server_request_t {
   uint8_t* data;
   size_t data_size;
+  folly::Promise<folly::Unit>* lock;
 };
 
 struct server_response_t {
-  uint8_t* data;
+  // Must be initialized to nullptr. Because we'll use it to check if the
+  // response is empty, and the haskell land may not set it to nullptr
+  // (when the StablePtr == nullPtr).
+  uint8_t* data = nullptr;
   size_t data_size;
 };
 

@@ -20,21 +20,27 @@ using namespace wangle;
 // Note: this should be the end of pipeline
 class ServerHandler : public HandlerAdapter<std::unique_ptr<folly::IOBuf>> {
 public:
-  explicit ServerHandler(HsCallback& callback, HsStablePtr& sp)
-      : callback_(callback), sp_(sp) {}
+  explicit ServerHandler(HsCallback& callback, HsStablePtr& sp,
+                         std::shared_ptr<folly::Executor> exe)
+      : callback_(callback), sp_(sp), exe_(exe) {}
 
-  void read(Context* ctx, std::unique_ptr<folly::IOBuf> request) override {
-    folly::fbstring request_ = request->moveToFbString();
+  void read(Context* ctx, std::unique_ptr<folly::IOBuf> req) override {
+    folly::fbstring request_ = req->moveToFbString();
 
-    server_request_t hs_req{(uint8_t*)request_.data(), request_.size()};
+    folly::Promise<folly::Unit> lock;
+    folly::Future<folly::Unit> lock_fu = lock.getSemiFuture().via(exe_.get());
+
+    server_request_t hs_req{(uint8_t*)request_.data(), request_.size(), &lock};
     server_response_t hs_resp;
 
     callback_(sp_, &hs_req, &hs_resp);
 
+    std::move(lock_fu).get();
+
     if (hs_resp.data != nullptr) {
-      std::unique_ptr<folly::IOBuf> response =
+      std::unique_ptr<folly::IOBuf> resp =
           folly::IOBuf::takeOwnership(hs_resp.data, hs_resp.data_size);
-      ctx->fireWrite(std::move(response));
+      ctx->fireWrite(std::move(resp));
     } else {
       ctx->fireClose();
     }
@@ -53,6 +59,7 @@ public:
 private:
   HsCallback& callback_;
   HsStablePtr sp_;
+  std::shared_ptr<folly::Executor> exe_;
 
   void onClientExit() {
     // FIXME: lock guard here?
@@ -66,8 +73,9 @@ private:
 
 class RpcPipelineFactory : public PipelineFactory<DefaultPipeline> {
 public:
-  explicit RpcPipelineFactory(HsCallback callback, HsNewStablePtr newConnCtx)
-      : callback_(callback), newConnCtx_(newConnCtx) {}
+  explicit RpcPipelineFactory(HsCallback callback, HsNewStablePtr newConnCtx,
+                              std::shared_ptr<folly::Executor> exe)
+      : callback_(callback), newConnCtx_(newConnCtx), exe_(exe) {}
 
   DefaultPipeline::Ptr
   newPipeline(std::shared_ptr<folly::AsyncTransport> sock) override {
@@ -82,7 +90,7 @@ public:
     pipeline->addBack(LengthFieldBasedFrameDecoder());
     pipeline->addBack(LengthFieldPrepender());
     // Haskell handler
-    pipeline->addBack(ServerHandler(callback_, hssp));
+    pipeline->addBack(ServerHandler(callback_, hssp, exe_));
     pipeline->finalize();
     return pipeline;
   }
@@ -90,6 +98,7 @@ public:
 private:
   HsCallback callback_;
   HsNewStablePtr newConnCtx_;
+  std::shared_ptr<folly::Executor> exe_;
 };
 
 void hs_event_notify(int& fd) {
@@ -118,8 +127,20 @@ void run_kafka_server(ServerBootstrap<DefaultPipeline>* server,
   auto addr = folly::SocketAddress{host, port};
   free((void*)host);
 
+  auto threads = std::thread::hardware_concurrency();
+  if (threads <= 0) {
+    // Reasonable mid-point for concurrency when actual value unknown
+    threads = 8;
+  }
+  auto io_group = std::make_shared<folly::IOThreadPoolExecutor>(
+      threads, std::make_shared<folly::NamedThreadFactory>("IO Thread"));
+
   server->childPipeline(
-      std::make_shared<RpcPipelineFactory>(callback, newConnCtx));
+      std::make_shared<RpcPipelineFactory>(callback, newConnCtx, io_group));
+
+  // Using default accept_group (a single thread)
+  server->group(io_group);
+
   server->bind(addr);
 
   hs_event_notify(fd_on_started);
@@ -131,6 +152,10 @@ void run_kafka_server(ServerBootstrap<DefaultPipeline>* server,
 
 void stop_kafka_server(ServerBootstrap<DefaultPipeline>* server) {
   server->stop();
+}
+
+void release_lock(folly::Promise<folly::Unit>* p) {
+  p->setValue(folly::Unit{});
 }
 
 // ---

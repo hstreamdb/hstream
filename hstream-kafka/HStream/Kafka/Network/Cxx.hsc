@@ -13,6 +13,7 @@ module HStream.Kafka.Network.Cxx
   , new_kafka_server
   , run_kafka_server
   , stop_kafka_server
+  , release_lock
     --
   , getSystemEventManager'
   , withFdEventNotification
@@ -48,8 +49,11 @@ import           System.Posix.Types     (Fd (..))
 
 #include "hs_kafka_server.h"
 
+data CppLock
+
 data Request = Request
   { requestPayload :: ByteString
+  , requestLock    :: Ptr CppLock
   } deriving (Show)
 
 instance Storable Request where
@@ -69,7 +73,9 @@ instance Storable Request where
     --
     -- BS.unsafePackCStringLen (nullPtr, 0) === ""
     payload <- BS.unsafePackCStringLen (data_ptr, fromIntegral data_size)
+    lock <- (#peek server_request_t, lock) ptr
     return $ Request{ requestPayload = payload
+                    , requestLock = lock
                     }
   poke _ptr _req = error "Request is not pokeable"
 
@@ -160,6 +166,9 @@ foreign import ccall safe "run_kafka_server"
 
 foreign import ccall safe "stop_kafka_server"
   stop_kafka_server :: Ptr CppKafkaServer -> IO ()
+
+foreign import ccall unsafe "release_lock"
+  release_lock :: Ptr CppLock -> IO ()
 
 -------------------------------------------------------------------------------
 -- Copy from foreign: HsForeign.String

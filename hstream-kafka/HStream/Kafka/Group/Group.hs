@@ -763,7 +763,7 @@ checkGroupGenerationId :: Group -> Int32 -> IO ()
 checkGroupGenerationId Group{..} generationId = do
   currentGenerationId <- IO.readIORef groupGenerationId
   M.unless (currentGenerationId == generationId) $ do
-    Log.info $ "invalid generation id"
+    Log.warning $ "invalid generation id"
       <> ", current generationId:" <> Log.buildString' currentGenerationId
       <> ", expected generationId:" <> Log.buildString' generationId
       <> ", group:" <> Log.build groupId
