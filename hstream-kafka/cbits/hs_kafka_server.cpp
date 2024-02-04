@@ -2,6 +2,9 @@
 
 #include <folly/SocketAddress.h>
 #include <folly/executors/CPUThreadPoolExecutor.h>
+#include <folly/fibers/FiberManager.h>
+#include <folly/fibers/FiberManagerMap.h>
+#include <folly/fibers/Semaphore.h>
 #include <folly/init/Init.h>
 #include <wangle/bootstrap/ServerBootstrap.h>
 #include <wangle/channel/AsyncSocketHandler.h>
@@ -21,29 +24,40 @@ using namespace wangle;
 class ServerHandler : public HandlerAdapter<std::unique_ptr<folly::IOBuf>> {
 public:
   explicit ServerHandler(HsCallback& callback, HsStablePtr& sp,
-                         std::shared_ptr<folly::Executor> exe)
-      : callback_(callback), sp_(sp), exe_(exe) {}
+                         std::shared_ptr<folly::IOExecutor> exe)
+      : callback_(callback), sp_(sp), exe_(exe) {
+    reqLock_ = std::make_shared<folly::fibers::Semaphore>(1);
+  }
 
   void read(Context* ctx, std::unique_ptr<folly::IOBuf> req) override {
-    folly::fbstring request_ = req->moveToFbString();
+    auto evb = exe_->getEventBase();
+    auto& fiberManager = folly::fibers::getFiberManager(*evb);
+    fiberManager.addTask([req = std::move(req), this]() {
+      // Kafka protocol requires that the server must process requests from
+      // the same connection in order.
+      this->reqLock_->wait();
 
-    folly::Promise<folly::Unit> lock;
-    folly::Future<folly::Unit> lock_fu = lock.getSemiFuture().via(exe_.get());
+      folly::fbstring request_ = req->moveToFbString();
+      AsyncLock lock;
 
-    server_request_t hs_req{(uint8_t*)request_.data(), request_.size(), &lock};
-    server_response_t hs_resp;
+      server_request_t hs_req{(uint8_t*)request_.data(), request_.size(),
+                              &lock};
+      server_response_t hs_resp;
 
-    callback_(sp_, &hs_req, &hs_resp);
+      callback_(sp_, &hs_req, &hs_resp);
 
-    std::move(lock_fu).get();
+      lock.wait();
 
-    if (hs_resp.data != nullptr) {
-      std::unique_ptr<folly::IOBuf> resp =
-          folly::IOBuf::takeOwnership(hs_resp.data, hs_resp.data_size);
-      ctx->fireWrite(std::move(resp));
-    } else {
-      ctx->fireClose();
-    }
+      if (hs_resp.data != nullptr) {
+        std::unique_ptr<folly::IOBuf> resp =
+            folly::IOBuf::takeOwnership(hs_resp.data, hs_resp.data_size);
+        this->getContext()->fireWrite(std::move(resp));
+      } else {
+        this->getContext()->fireClose();
+      }
+
+      this->reqLock_->signal();
+    });
   }
 
   // [?] Do not need to call ctx->fireReadEOF() here, since this is the last
@@ -59,7 +73,8 @@ public:
 private:
   HsCallback& callback_;
   HsStablePtr sp_;
-  std::shared_ptr<folly::Executor> exe_;
+  std::shared_ptr<folly::IOExecutor> exe_;
+  std::shared_ptr<folly::fibers::Semaphore> reqLock_;
 
   void onClientExit() {
     // FIXME: lock guard here?
@@ -74,7 +89,7 @@ private:
 class RpcPipelineFactory : public PipelineFactory<DefaultPipeline> {
 public:
   explicit RpcPipelineFactory(HsCallback callback, HsNewStablePtr newConnCtx,
-                              std::shared_ptr<folly::Executor> exe)
+                              std::shared_ptr<folly::IOExecutor> exe)
       : callback_(callback), newConnCtx_(newConnCtx), exe_(exe) {}
 
   DefaultPipeline::Ptr
@@ -98,7 +113,7 @@ public:
 private:
   HsCallback callback_;
   HsNewStablePtr newConnCtx_;
-  std::shared_ptr<folly::Executor> exe_;
+  std::shared_ptr<folly::IOExecutor> exe_;
 };
 
 void hs_event_notify(int& fd) {
@@ -154,9 +169,7 @@ void stop_kafka_server(ServerBootstrap<DefaultPipeline>* server) {
   server->stop();
 }
 
-void release_lock(folly::Promise<folly::Unit>* p) {
-  p->setValue(folly::Unit{});
-}
+void release_lock(AsyncLock* lock) { lock->post(); }
 
 // ---
 }
