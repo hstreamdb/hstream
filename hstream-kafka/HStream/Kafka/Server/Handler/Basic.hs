@@ -178,7 +178,7 @@ handleMetadata ctx reqCtx req = do
              , partitions = K.emptyKaArray
              , isInternal = False
              }
-      shards_e <- try ((V.map snd) <$> S.listStreamPartitionsOrdered ctx.scLDClient streamId)
+      shards_e <- try ((V.map snd) <$> S.listStreamPartitionsOrderedByName ctx.scLDClient streamId)
       case shards_e of
         -- FIXME: Are the following error codes proper?
         -- FIXME: We passed `Nothing` as partitions when an error occurs. Is this proper?
