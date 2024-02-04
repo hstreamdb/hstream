@@ -123,6 +123,7 @@ library
   exposed-modules:
     HStream.Kafka.Client.Api
     HStream.Kafka.Client.Cli
+    HStream.Kafka.Common.FetchManager
     HStream.Kafka.Common.KafkaException
     HStream.Kafka.Common.Metrics
     HStream.Kafka.Common.OffsetManager

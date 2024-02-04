@@ -12,6 +12,9 @@ import           Foreign.Ptr                             (nullPtr)
 import           HStream.Common.Server.HashRing          (LoadBalanceHashRing,
                                                           initializeHashRing)
 import           HStream.Gossip.Types                    (GossipContext)
+import           HStream.Kafka.Common.FetchManager       (FetchContext,
+                                                          fakeFetchContext,
+                                                          initFetchContext)
 import           HStream.Kafka.Common.OffsetManager      (OffsetManager,
                                                           initOffsetReader,
                                                           newOffsetManager)
@@ -39,7 +42,7 @@ data ServerContext = ServerContext
   , kafkaBrokerConfigs       :: !KC.KafkaBrokerConfigs
     -- { per connection, see 'initConnectionContext'
   , scOffsetManager          :: !OffsetManager
-  , fetchReader              :: !S.LDReader
+  , fetchCtx                 :: !FetchContext
     -- } per connection end
   }
 
@@ -59,9 +62,10 @@ initServerContext opts@ServerOpts{..} gossipContext mh = do
   epochHashRing <- initializeHashRing gossipContext
   scGroupCoordinator <- mkGroupCoordinator mh ldclient _serverID
 
+  -- must be initialized later
   offsetManager <- newOffsetManager ldclient
   -- Trick to avoid use maybe, must be initialized later
-  fetchReader <- newForeignPtr_ nullPtr
+  fetchCtx <- fakeFetchContext
 
   return
     ServerContext
@@ -78,7 +82,7 @@ initServerContext opts@ServerOpts{..} gossipContext mh = do
       , scGroupCoordinator       = scGroupCoordinator
       , kafkaBrokerConfigs       = _kafkaBrokerConfigs
       , scOffsetManager          = offsetManager
-      , fetchReader              = fetchReader
+      , fetchCtx                 = fetchCtx
       }
 
 initConnectionContext :: ServerContext -> IO ServerContext
@@ -86,21 +90,6 @@ initConnectionContext sc = do
   -- Since the Reader inside OffsetManger is thread-unsafe, for each connection
   -- we create a new Reader.
   !om <- initOffsetReader $ scOffsetManager sc
+  !fc <- initFetchContext (scLDClient sc)
 
-  -- Reader used for fetch.
-  --
-  -- Currently, we only need one reader per connection because there will be
-  -- only one thread to fetch data.
-  --
-  -- TODO: also considering the following:
-  --
-  -- - use a pool of readers.
-  -- - create a reader(or pool of readers) for each consumer group.
-  --
-  -- NOTE: the maxLogs is set to 1000, which means the reader will fetch at most
-  -- 1000 logs.
-  -- TODO: maybe we should set maxLogs dynamically according to the max number
-  -- of all fetch requests in this connection.
-  !reader <- S.newLDReader (scLDClient sc) 1000{-maxLogs-} (Just 10){-bufferSize-}
-
-  pure sc{scOffsetManager = om, fetchReader = reader}
+  pure sc{scOffsetManager = om, fetchCtx = fc}
