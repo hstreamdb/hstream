@@ -6,10 +6,12 @@
 #include <folly/Unit.h>
 #include <folly/futures/Promise.h>
 
+using AsyncLock = folly::fibers::Baton;
+
 struct server_request_t {
   uint8_t* data;
   size_t data_size;
-  folly::Promise<folly::Unit>* lock;
+  AsyncLock* lock;
 };
 
 struct server_response_t {
