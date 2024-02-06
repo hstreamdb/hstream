@@ -35,15 +35,16 @@ import           HStream.Gossip.Types           (EventMessage (EventMessage),
 import qualified HStream.Gossip.Types           as T
 import           HStream.Gossip.Utils           (broadcastMessage,
                                                  eventNameINIT, eventNameINITED,
-                                                 incrementTVar,
+                                                 foreverCatchAll, incrementTVar,
                                                  initServerStatus,
                                                  updateLamportTime)
 import           HStream.Gossip.Worker          (addToServerList, initGossip)
 import qualified HStream.Logger                 as Log
 import qualified HStream.Server.HStreamInternal as I
 
+-- FIXME: does catch all exception(SomeException) proper here?
 runStateHandler :: GossipContext -> IO ()
-runStateHandler gc@GossipContext{..} = forever $ do
+runStateHandler gc@GossipContext{..} = foreverCatchAll True "GossipStateHandler" $ do
   newMsgs <- atomically $ do
     void $ peekTQueue statePool
     flushTQueue statePool
@@ -141,8 +142,9 @@ handleStateMessage gc@GossipContext{..} msg@(T.GAlive i node@I.ServerNode{..} _n
 
 handleStateMessage _ _ = throwIOError "illegal state message"
 
+-- FIXME: does catch all exception(SomeException) proper here?
 runEventHandler :: GossipContext -> IO ()
-runEventHandler gc@GossipContext{..} = forever $ do
+runEventHandler gc@GossipContext{..} = foreverCatchAll True "GossipEventHandler" $ do
   newMsgs <- atomically $ do
     void $ peekTQueue eventPool
     flushTQueue eventPool

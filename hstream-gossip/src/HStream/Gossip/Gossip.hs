@@ -21,7 +21,8 @@ import qualified HStream.Gossip.HStreamGossip   as G
 import           HStream.Gossip.Types           (GossipContext (..),
                                                  GossipOpts (..),
                                                  RequestAction (..))
-import           HStream.Gossip.Utils           (getMessagesToSend,
+import           HStream.Gossip.Utils           (foreverCatchAll,
+                                                 getMessagesToSend,
                                                  getOtherMembersSTM,
                                                  mkClientNormalRequest)
 import qualified HStream.Logger                 as Log
@@ -37,7 +38,8 @@ doGossip client msgs = do
 scheduleGossip :: GossipContext -> IO ()
 scheduleGossip gc@GossipContext{..} = do
   _ <- readMVar clusterInited
-  forever $ do
+  -- FIXME: does catch all exception(SomeException) proper here?
+  foreverCatchAll True "ScheduleGossip" $ do
     atomically doGossip
     threadDelay $ gossipInterval gossipOpts
   where
