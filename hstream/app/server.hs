@@ -12,7 +12,8 @@
 {-# LANGUAGE TypeApplications    #-}
 
 import           Control.Concurrent               (forkIO, newEmptyMVar,
-                                                   putMVar, readMVar)
+                                                   putMVar, readMVar,
+                                                   threadDelay)
 import qualified Control.Concurrent.Async         as Async
 import           Control.Exception                (bracket, handle)
 import           Control.Monad                    (forM, forM_, join, void,
@@ -55,6 +56,7 @@ import           HStream.Server.Config            (AdvertisedListeners,
                                                    FileLoggerSettings (..),
                                                    ListenersSecurityProtocolMap,
                                                    MetaStoreAddr (..),
+                                                   RecoverOpts (..),
                                                    SecurityProtocolMap,
                                                    ServerCli (..),
                                                    ServerOpts (..), TlsConfig,
@@ -219,7 +221,10 @@ serve sc@ServerContext{..} rpcOpts enableStreamV2 = do
             _ -> do
               getProtoTimestamp >>= \x -> upsertMeta @Proto.Timestamp clusterStartTimeId x metaHandle
               handle (\(_ :: RQLiteRowNotFound) -> return ()) $ deleteAllMeta @TaskAllocation metaHandle
+              Log.info "deleted all TaskAllocation records"
           -- recover tasks
+          when (serverOpts._recover_opts._recover_tasks_delay_ms > 0) $ do
+            threadDelay $ 1000 * serverOpts._recover_opts._recover_tasks_delay_ms
           Log.info "recovering local io tasks"
           Cluster.recoverLocalTasks sc scIOWorker
           Log.info "recovering local query tasks"

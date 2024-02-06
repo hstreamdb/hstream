@@ -106,6 +106,8 @@ hserver:
   #  gossip-interval: 1000000   # 1 sec
   #  probe-interval: 2000000    # 2 sec
   #  roundtrip-timeout: 500000  # 0.5 sec
+  #
+  # recover-tasks-delay-ms: 0
 
   # TODO: Auth tokens
   #   - store tokens safely

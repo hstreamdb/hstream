@@ -28,6 +28,8 @@ module HStream.Server.Config
   , readProtocol
 #endif
   , parseHostPorts
+
+  , RecoverOpts (..)
   ) where
 
 import           Control.Exception                (throwIO)
@@ -122,6 +124,7 @@ data ServerOpts = ServerOpts
 
   , _gossipOpts                   :: !GossipOpts
   , _ioOptions                    :: !IO.IOOptions
+  , _recover_opts                 :: !RecoverOpts
 
   , _querySnapshotPath            :: !FilePath
   , experimentalFeatures          :: ![ExperimentalFeature]
@@ -272,6 +275,9 @@ parseJSONToOptions CliOptions{..} obj = do
   tokensCfg <- nodeCfgObj .:? "tokens" .!= mempty
   let serverTokens = map encodeUtf8 tokensCfg
 
+  _recover_tasks_delay_ms <- nodeCfgObj .:? "recover-tasks-delay-ms" .!= 0
+  let !_recover_opts = RecoverOpts{..}
+
   return ServerOpts {..}
 
 -------------------------------------------------------------------------------
@@ -325,3 +331,9 @@ readWithErrLog :: Read a => String -> String -> a
 readWithErrLog opt v = case readEither v of
   Right x -> x
   Left _err -> errorWithoutStackTrace $ "Failed to parse value " <> show v <> " for option " <> opt
+
+-------------------------------------------------------------------------------
+data RecoverOpts
+  = RecoverOpts
+  { _recover_tasks_delay_ms :: Int
+  } deriving (Show, Eq)
