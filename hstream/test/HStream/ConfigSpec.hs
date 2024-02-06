@@ -31,6 +31,7 @@ import           HStream.Gossip                   (GossipOpts (..),
 import           HStream.IO.Types                 (IOOptions (..))
 import           HStream.Server.Config            (CliOptions (..),
                                                    MetaStoreAddr (..),
+                                                   RecoverOpts (RecoverOpts),
                                                    ServerOpts (..),
                                                    TlsConfig (..),
                                                    parseHostPorts,
@@ -124,6 +125,8 @@ defaultConfig = ServerOpts
 
   , _gossipOpts                = defaultGossipOpts
   , _ioOptions                 = defaultIOOptions
+  , _recover_opts              = RecoverOpts 0
+
   , _querySnapshotPath         = "/data/query_snapshots"
   , experimentalFeatures       = []
   , grpcChannelArgs            = []
@@ -294,6 +297,8 @@ instance Arbitrary ServerOpts where
     let experimentalFeatures = []
     let grpcChannelArgs = []
     let serverTokens = []
+
+    let _recover_opts = RecoverOpts 0
     pure ServerOpts{..}
 
 instance Arbitrary CliOptions where
