@@ -346,6 +346,10 @@ showVersion = do
   putStrLn $ "version: " <> T.unpack hstreamVersionVersion
           <> " (" <> T.unpack hstreamVersionCommit <> ")"
 
+-- TODO: here, we just catch `SomeException` and then show some error messages.
+--
+-- 1. There may need to be a uniform way to handle all gossip handles(threads).
+-- 2. Retry retriable actions
 nodeChangeEventHd
   :: MVar ServerContext
   -> Gossip.ServerState
