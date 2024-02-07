@@ -86,7 +86,7 @@ getStatsHandler sc (ServerNormalRequest _ (API.GetStatsRequest mstats)) = defaul
 handleGetStats
   :: ServerContext
   -> G.UnaryHandler API.GetStatsRequest API.GetStatsResponse
-handleGetStats sc _ (API.GetStatsRequest mstats) = do
+handleGetStats sc _ (API.GetStatsRequest mstats) = catchDefaultEx $ do
   (failed, suc) <- getStats mstats sc
   pure $ API.GetStatsResponse {getStatsResponseStatsValues = V.fromList suc, getStatsResponseErrors = V.fromList failed}
 

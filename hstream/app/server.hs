@@ -11,10 +11,11 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
 
-import           Control.Concurrent               (forkIO, newEmptyMVar,
+import           Control.Concurrent               (MVar, forkIO, newEmptyMVar,
                                                    putMVar, readMVar)
 import qualified Control.Concurrent.Async         as Async
-import           Control.Exception                (bracket, handle)
+import           Control.Exception                (SomeException, bracket,
+                                                   catch, handle)
 import           Control.Monad                    (forM, forM_, join, void,
                                                    when)
 import           Data.ByteString                  (ByteString)
@@ -91,6 +92,8 @@ import qualified Network.GRPC.HighLevel.Generated as GRPC
 import           Text.RawString.QQ                (r)
 #endif
 
+import qualified HStream.Gossip.Types             as Gossip
+
 -------------------------------------------------------------------------------
 
 main :: IO ()
@@ -143,7 +146,7 @@ app config@ServerOpts{..} = do
                         }
 
       scMVar <- newEmptyMVar
-      gossipContext <- initGossipContext defaultGossipOpts mempty (Just $ Cluster.nodeChangeEventHandler scMVar) serverNode _seedNodes
+      gossipContext <- initGossipContext defaultGossipOpts mempty (Just $ nodeChangeEventHd scMVar) serverNode _seedNodes
 
       serverContext <- initializeServer config gossipContext h db_m
       putMVar scMVar serverContext
@@ -342,3 +345,11 @@ showVersion = do
   API.HStreamVersion{..} <- getHStreamVersion
   putStrLn $ "version: " <> T.unpack hstreamVersionVersion
           <> " (" <> T.unpack hstreamVersionCommit <> ")"
+
+nodeChangeEventHd
+  :: MVar ServerContext
+  -> Gossip.ServerState
+  -> I.ServerNode
+  -> IO ()
+nodeChangeEventHd m s n = catch (Cluster.nodeChangeEventHandler m s n) $
+  \(e :: SomeException) -> Log.fatal $ "handle node change event error: " <> Log.buildString' e

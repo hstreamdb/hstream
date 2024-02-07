@@ -60,7 +60,7 @@ createShardReaderHandler
   -> ServerRequest 'Normal CreateShardReaderRequest CreateShardReaderResponse
   -> IO (ServerResponse 'Normal CreateShardReaderResponse)
 createShardReaderHandler sc (ServerNormalRequest _metadata request) = defaultExceptionHandle $ do
-  Log.debug $ "Receive Create ShardReader Request" <> Log.buildString' (show request)
+  Log.info $ "Receive Create ShardReader Request" <> Log.buildString' (show request)
   validateCreateShardReader request
   C.createShardReader sc request >>= returnResp
 
@@ -68,7 +68,7 @@ handleCreateShardReader
   :: ServerContext
   -> G.UnaryHandler CreateShardReaderRequest CreateShardReaderResponse
 handleCreateShardReader sc _ req = catchDefaultEx $ do
-  Log.debug $ "Receive Create ShardReader Request" <> Log.buildString' (show req)
+  Log.info $ "Receive Create ShardReader Request" <> Log.buildString' (show req)
   validateCreateShardReader req
   C.createShardReader sc req
 
@@ -77,7 +77,7 @@ deleteShardReaderHandler
   -> ServerRequest 'Normal DeleteShardReaderRequest Empty
   -> IO (ServerResponse 'Normal Empty)
 deleteShardReaderHandler sc@ServerContext{..} (ServerNormalRequest _metadata request@DeleteShardReaderRequest{..}) = defaultExceptionHandle $ do
-  Log.debug $ "Receive Delete ShardReader Request" <> Log.buildString' (show request)
+  Log.info $ "Receive Delete ShardReader Request" <> Log.buildString' (show request)
   validateNameAndThrow ResShardReader deleteShardReaderRequestReaderId
   ServerNode{..} <- lookupResource sc ResShardReader deleteShardReaderRequestReaderId
   unless (serverNodeId == serverID) $
@@ -88,7 +88,7 @@ handleDeleteShardReader
   :: ServerContext
   -> G.UnaryHandler DeleteShardReaderRequest Empty
 handleDeleteShardReader sc@ServerContext{..} _ req@DeleteShardReaderRequest{..} = catchDefaultEx $ do
-  Log.debug $ "Receive Delete ShardReader Request" <> Log.buildString' (show req)
+  Log.info $ "Receive Delete ShardReader Request" <> Log.buildString' (show req)
   validateNameAndThrow ResShardReader deleteShardReaderRequestReaderId
   ServerNode{..} <- lookupResource sc ResShardReader deleteShardReaderRequestReaderId
   unless (serverNodeId == serverID) $
