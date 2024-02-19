@@ -15,7 +15,7 @@ import           Control.Concurrent.STM           (STM, TQueue, TVar,
                                                    writeTVar)
 import           Control.Exception                (Handler (..))
 import           Control.Exception.Base
-import           Control.Monad                    (filterM, unless)
+import           Control.Monad                    (filterM, forever, unless)
 import           Data.ByteString                  (ByteString)
 import           Data.Foldable                    (foldl')
 import           Data.Functor
@@ -344,3 +344,10 @@ getClusterStatus gc@GossipContext {..} = do
     helper state node@ServerNode{..} =
       (serverNodeId, ServerNodeStatus { serverNodeStatusNode  = Just node
                                       , serverNodeStatusState = EnumPB state})
+
+-- FIXME: how about mv this to HStream.Base?
+foreverCatchAll :: Bool -> String -> IO () -> IO a
+foreverCatchAll shouldThrow label f =
+  forever $ catch f $ \(e :: SomeException) -> do
+    Log.fatal $ Log.buildString label <> ", error: " <> Log.buildString' e
+    if shouldThrow then throwIO e else threadDelay 1000000

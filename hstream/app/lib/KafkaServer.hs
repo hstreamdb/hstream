@@ -120,6 +120,7 @@ app config@ServerOpts{..} = do
       serverContext <- initServerContext config gossipContext h
       putMVar scMVar serverContext
 
+      -- FIXME: safer way to handle this: what if updateHashRing failed?
       void . forkIO $ updateHashRing gossipContext (loadBalanceHashRing serverContext)
 
       -- TODO: support tls (_tlsConfig)

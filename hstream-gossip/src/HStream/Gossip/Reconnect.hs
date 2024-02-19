@@ -26,7 +26,8 @@ import           HStream.Gossip.Types             (GossipContext (..),
                                                    RequestAction (..),
                                                    ServerStatus (..))
 import qualified HStream.Gossip.Types             as T
-import           HStream.Gossip.Utils             (getMemberList, getMsgInc,
+import           HStream.Gossip.Utils             (foreverCatchAll,
+                                                   getMemberList, getMsgInc,
                                                    mkClientNormalRequest',
                                                    mkGRPCClientConf')
 import           HStream.Logger                   as Log
@@ -35,7 +36,8 @@ import qualified HStream.Server.HStreamInternal   as I
 scheduleReconnect :: GossipContext -> IO ()
 scheduleReconnect gc@GossipContext{..} = do
   _ <- readMVar clusterInited
-  forever $ do
+  -- FIXME: does catch all exception(SomeException) proper here?
+  foreverCatchAll True "Gossip ScheduleReconnect" $ do
     memberMap <- atomically $ do
       memberMap <- readTVar deadServers
       check (not $ Map.null memberMap)

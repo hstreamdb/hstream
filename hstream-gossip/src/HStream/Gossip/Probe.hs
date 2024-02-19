@@ -45,6 +45,7 @@ import           HStream.Gossip.Utils           (ClusterInitedErr (..),
                                                  ClusterReadyErr (..),
                                                  broadcast, clusterInitedErr,
                                                  clusterReadyErr,
+                                                 foreverCatchAll,
                                                  getMessagesToSend,
                                                  getOtherMembersSTM,
                                                  mkClientNormalRequest,
@@ -158,7 +159,8 @@ doPing client gc@GossipContext{gossipOpts = GossipOpts{..}, ..}
 scheduleProbe :: GossipContext -> IO ()
 scheduleProbe gc@GossipContext{..} = do
   _ <- readMVar clusterInited
-  forever $ do
+  -- FIXME: does catch all exception(SomeException) proper here?
+  foreverCatchAll True "Gossip ScheduleProbe" $ do
     memberMap <- atomically $ do
       memberMap <- getOtherMembersSTM gc
       check (not $ null memberMap)
