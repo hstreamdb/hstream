@@ -61,8 +61,9 @@ loadAllAcls a aclsConsumer = do
 zkAclStorePath :: PatternType -> Text
 zkAclStorePath pat =
   case pat of
-    Pat_LITERAL  -> "/kafka-acl"
-    Pat_PREFIXED -> "kafka-acl-extended"
+    -- FIXME: hardcoded
+    Pat_LITERAL  -> "/hstream/kafka/acl"
+    Pat_PREFIXED -> "/hstream/kafka/aclExtended"
     pat_         -> error $ "Invalid pattern type: " <> show pat_ -- FIXME: error
 
 zkAclStorePath' :: PatternType -> ResourceType -> Text
@@ -97,8 +98,18 @@ instance AclStore ZHandle where
     let path = zkAclStorePath'' resPat
     ZK.zooExists zkHandle (Utils.textToCBytes path) >>= \case
       -- FIXME: zookeeper acl
-      Nothing -> void $
-        ZK.zooCreate zkHandle (Utils.textToCBytes path) (Just (Utils.lazyByteStringToBytes (Aeson.encode node))) ZK.zooOpenAclUnsafe ZK.ZooPersistent
+      Nothing -> do
+        -- FIXME: create paths if parent not exist?
+        void $ ZK.zooCreateIfMissing zkHandle
+                                     (Utils.textToCBytes (zkAclStorePath' resPat.resPatPatternType resPat.resPatResourceType))
+                                     Nothing
+                                     ZK.zooOpenAclUnsafe
+                                     ZK.ZooPersistent
+        void $ ZK.zooCreate zkHandle
+                            (Utils.textToCBytes path)
+                            (Just (Utils.lazyByteStringToBytes (Aeson.encode node)))
+                            ZK.zooOpenAclUnsafe
+                            ZK.ZooPersistent
       -- FIXME: check version
       Just _  -> void $
         ZK.zooSet zkHandle (Utils.textToCBytes path) (Just (Utils.lazyByteStringToBytes (Aeson.encode node))) Nothing

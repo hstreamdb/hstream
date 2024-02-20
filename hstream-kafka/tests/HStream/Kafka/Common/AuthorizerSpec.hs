@@ -11,7 +11,7 @@ import           HStream.Kafka.Common.Acl
 import           HStream.Kafka.Common.AclEntry
 import           HStream.Kafka.Common.AclStore
 import           HStream.Kafka.Common.Authorizer
-import           HStream.Kafka.Common.Authorizer.Class hiding (Authorizer (..))
+import           HStream.Kafka.Common.Authorizer.Class
 import           HStream.Kafka.Common.Resource         hiding (match)
 import           HStream.Kafka.Common.Security
 import qualified Kafka.Protocol.Encoding               as K

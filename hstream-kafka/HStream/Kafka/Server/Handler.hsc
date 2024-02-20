@@ -88,6 +88,11 @@ import qualified Kafka.Protocol.Service                    as K
 -- For hstream
 #cv_handler HadminCommand, 0, 0
 
+-- ACL
+#cv_handler DescribeAcls, 0, 0
+#cv_handler CreateAcls, 0, 0
+#cv_handler DeleteAcls, 0, 0
+
 handlers :: ServerContext -> [K.ServiceHandler]
 handlers sc =
   [ #mk_handler ApiVersions, 0, 3
@@ -125,6 +130,11 @@ handlers sc =
 
     -- For hstream
   , #mk_handler HadminCommand, 0, 0
+
+    -- ACL
+  , #mk_handler DescribeAcls, 0, 0
+  , #mk_handler CreateAcls, 0, 0
+  , #mk_handler DeleteAcls, 0, 0
   ]
 
 unAuthedHandlers :: ServerContext -> [K.ServiceHandler]

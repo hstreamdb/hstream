@@ -50,6 +50,20 @@ initAclAuthorizer authorizer =
     atomicModifyIORef' (authorizerCache authorizer)
                        (\x -> (updateCache x res acls, ()))
 
+------------------------------------------------------------
+-- Class instance
+------------------------------------------------------------
+instance (AclStore a) => Authorizer (AclAuthorizer a) where
+  createAcls = aclCreateAcls
+  deleteAcls = aclDeleteAcls
+  getAcls    = aclGetAcls
+  aclCount   = aclAclCount
+  authorize  = aclAuthorize
+
+------------------------------------------------------------
+-- Authorizer implementation
+------------------------------------------------------------
+
 -- FIXME: Does this function behave the same as Kafka?
 --        e.g. List or Set?
 -- | Get matching ACLs in cache for the given resource.
@@ -166,19 +180,19 @@ authorizeAction reqCtx authorizer action@AclAction{..} = do
             ) False canAllowOps
 
 -- | Authorize a list of ACL actions based on the request context and the given ACL cache.
-authorize :: AuthorizableRequestContext
-          -> AclAuthorizer a
-          -> [AclAction]
-          -> IO [AuthorizationResult]
-authorize reqCtx authorizer actions =
+aclAuthorize :: AuthorizableRequestContext
+             -> AclAuthorizer a
+             -> [AclAction]
+             -> IO [AuthorizationResult]
+aclAuthorize reqCtx authorizer actions =
   forM actions (authorizeAction reqCtx authorizer)
 
 -- | Get ACL bindings (ACL entry with resource) in cache matching the given filter.
-getAcls :: AuthorizableRequestContext
-        -> AclAuthorizer a
-        -> AclBindingFilter
-        -> IO [AclBinding]
-getAcls _ AclAuthorizer{..} aclFilter = do
+aclGetAcls :: AuthorizableRequestContext
+           -> AclAuthorizer a
+           -> AclBindingFilter
+           -> IO [AclBinding]
+aclGetAcls _ AclAuthorizer{..} aclFilter = do
   cache <- readIORef authorizerCache
   return $ Map.foldrWithKey' f [] (aclCacheAcls cache)
   where
@@ -192,12 +206,12 @@ getAcls _ AclAuthorizer{..} aclFilter = do
 
 -- | Create ACLs for the given bindings.
 --   It updates both the cache and the store.
-createAcls :: AclStore a
-           => AuthorizableRequestContext
-           -> AclAuthorizer a
-           -> [AclBinding]
-           -> IO K.CreateAclsResponse
-createAcls _ authorizer bindings = withMVar (authorizerLock authorizer) $ \_ -> do
+aclCreateAcls :: AclStore a
+              => AuthorizableRequestContext
+              -> AclAuthorizer a
+              -> [AclBinding]
+              -> IO K.CreateAclsResponse
+aclCreateAcls _ authorizer bindings = withMVar (authorizerLock authorizer) $ \_ -> do
   let bindingsWithIdx = L.zip [0..] bindings
   (lefts_, rights_) <- partitionEithers <$> mapM validateEachBinding bindingsWithIdx
   let errorResults = Map.fromList lefts_
@@ -233,17 +247,17 @@ createAcls _ authorizer bindings = withMVar (authorizerLock authorizer) $ \_ -> 
          in (newAcls, results)
       case results_e of
         -- FIXME: ERROR CODE
-        Left (_ :: SomeException) -> return $ L.map (\(i,_) -> (i, K.AclCreationResult K.NONE (Just "Failed to update ACLs"))) bs
+        Left (e :: SomeException) -> return $ L.map (\(i,_) -> (i, K.AclCreationResult K.NONE (Just $ "Failed to update ACLs" <> (T.pack (show e))))) bs
         Right x                   -> return x
 
 -- | Delete ACls for the given filters.
 --   It updates both the cache and the store.
-deleteAcls :: AclStore a
-           => AuthorizableRequestContext
-           -> AclAuthorizer a
-           -> [AclBindingFilter]
-           -> IO K.DeleteAclsResponse
-deleteAcls _ authorizer filters = withMVar (authorizerLock authorizer) $ \_ -> do
+aclDeleteAcls :: AclStore a
+              => AuthorizableRequestContext
+              -> AclAuthorizer a
+              -> [AclBindingFilter]
+              -> IO K.DeleteAclsResponse
+aclDeleteAcls _ authorizer filters = withMVar (authorizerLock authorizer) $ \_ -> do
   AclCache{..} <- readIORef (authorizerCache authorizer)
   let filtersWithIdx = L.zip [0..] filters
   let possibleResources = Map.keys aclCacheAcls <>
@@ -356,9 +370,10 @@ updateResourceAcls authorizer resPat f = do
             return (newAcls, a)
           >>= \case
             -- FIXME: catch all exceptions?
-            Left (_ :: SomeException) -> do
+            Left (e :: SomeException) -> do
               Log.warning $ "Failed to update ACLs for " <> Log.buildString' resPat <>
-                            ". Reading data and retrying update."
+                            ". Reading data and retrying update." <>
+                            " error: " <> Log.buildString' e
               threadDelay (50 * 1000) -- FIXME: retry interval
               go oldAcls (retries + 1)
             Right acls_ -> return acls_
@@ -391,6 +406,12 @@ updateCache AclCache{..} resPat@ResourcePattern{..} acls =
                         else Map.insert resPat acls aclCacheAcls
            in AclCache newAcls cacheResAfterRemove
 
+-- | Get the current number of ACLs. Return -1 if not implemented.
+-- TODO: implement this
+aclAclCount :: AuthorizableRequestContext
+            -> AclAuthorizer a
+            -> IO Int
+aclAclCount _ _ = pure (-1)
 
 ------------------------------------------------------------
 -- Helper functions
@@ -432,3 +453,21 @@ logAuditMessage AuthorizableRequestContext{..} AclAction{..} isAuthorized = do
     False -> case aclActionLogIfDenied of
                True  -> Log.info  . Log.buildString $ msg
                False -> Log.trace . Log.buildString $ msg
+
+----
+aceToAclDescription :: AccessControlEntry -> K.AclDescription
+aceToAclDescription (AccessControlEntry AccessControlEntryData{..}) =
+  K.AclDescription
+  { principal = aceDataPrincipal
+  , host = aceDataHost
+  , operation = fromIntegral (fromEnum aceDataOperation)
+  , permissionType = fromIntegral (fromEnum aceDataPermissionType)
+  }
+
+aclBindingsToDescribeAclsResource :: [AclBinding] -> K.DescribeAclsResource
+aclBindingsToDescribeAclsResource xs =
+  K.DescribeAclsResource
+  { resourceType = fromIntegral . fromEnum . resPatResourceType . aclBindingResourcePattern $ head xs -- FIXME: L.head
+  , resourceName = resPatResourceName . aclBindingResourcePattern $ head xs -- FIXME: L.head
+  , acls = K.KaArray (Just (V.fromList (aceToAclDescription . aclBindingACE <$> xs)))
+  }

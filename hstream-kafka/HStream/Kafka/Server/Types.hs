@@ -22,10 +22,14 @@ import           HStream.Kafka.Group.GroupCoordinator    (GroupCoordinator,
                                                           mkGroupCoordinator)
 import           HStream.Kafka.Server.Config             (ServerOpts (..))
 import qualified HStream.Kafka.Server.Config.KafkaConfig as KC
-import           HStream.MetaStore.Types                 (MetaHandle)
+import           HStream.MetaStore.Types                 (MetaHandle (..))
 import           HStream.Stats                           (newServerStatsHolder)
 import qualified HStream.Stats                           as Stats
 import qualified HStream.Store                           as S
+
+import           HStream.Kafka.Common.AclStore
+import           HStream.Kafka.Common.Authorizer
+import           HStream.Kafka.Common.Authorizer.Class
 
 data ServerContext = ServerContext
   { serverID                 :: !Word32
@@ -44,6 +48,7 @@ data ServerContext = ServerContext
   , scOffsetManager          :: !OffsetManager
   , fetchCtx                 :: !FetchContext
     -- } per connection end
+  , authorizer               :: AuthorizerObject
   }
 
 initServerContext
@@ -67,6 +72,17 @@ initServerContext opts@ServerOpts{..} gossipContext mh = do
   -- Trick to avoid use maybe, must be initialized later
   fetchCtx <- fakeFetchContext
 
+  -- FIXME: abstract metadata interface
+  authorizer <- case mh of
+    ZkHandle zkHandle -> do
+      x <- newAclAuthorizer (pure zkHandle)
+      initAclAuthorizer x
+      return $ AuthorizerObject x
+    _                 -> do
+      x <- newAclAuthorizer newMockAclStore
+      initAclAuthorizer x
+      return $ AuthorizerObject x
+
   return
     ServerContext
       { serverID                 = _serverID
@@ -83,6 +99,7 @@ initServerContext opts@ServerOpts{..} gossipContext mh = do
       , kafkaBrokerConfigs       = _kafkaBrokerConfigs
       , scOffsetManager          = offsetManager
       , fetchCtx                 = fetchCtx
+      , authorizer = authorizer
       }
 
 initConnectionContext :: ServerContext -> IO ServerContext

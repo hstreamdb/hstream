@@ -246,11 +246,17 @@ library
     UnliftedFFITypes
     UnliftedNewtypes
 
-test-suite kafka-common-test
+test-suite hstream-kafka-test
   import:             shared-properties
   type:               exitcode-stdio-1.0
   main-is:            Spec.hs
-  hs-source-dirs:     tests/common
+  other-modules:
+    HStream.Kafka.Common.AclEntrySpec
+    HStream.Kafka.Common.AclSpec
+    HStream.Kafka.Common.AuthorizerSpec
+    HStream.Kafka.Common.TestUtils
+
+  hs-source-dirs:     tests
   build-depends:
     , aeson
     , base                                           >=4.11 && <5

@@ -9,6 +9,9 @@ import           HStream.Kafka.Common.Resource
 import           HStream.Kafka.Common.Security
 import qualified Kafka.Protocol.Message        as K
 
+------------------------------------------------------------
+-- Helper types
+------------------------------------------------------------
 data AclAction = AclAction
   { aclActionResPat       :: ResourcePattern
   , aclActionOp           :: AclOperation
@@ -36,6 +39,9 @@ data AuthorizableRequestContext = AuthorizableRequestContext
   -- , ...
   }
 
+------------------------------------------------------------
+-- Abstract authorizer interface
+------------------------------------------------------------
 class Authorizer s where
   -- | Create new ACL bindings.
   createAcls :: AuthorizableRequestContext
@@ -58,10 +64,21 @@ class Authorizer s where
   -- | Get the current number of ACLs. Return -1 if not implemented.
   aclCount :: AuthorizableRequestContext
            -> s
-           -> Int
+           -> IO Int
 
   -- | Authorize the specified actions.
   authorize :: AuthorizableRequestContext
             -> s
             -> [AclAction]
             -> IO [AuthorizationResult]
+
+------------------------------------------------------------
+-- Existential wrapper for Authorizer
+------------------------------------------------------------
+data AuthorizerObject where
+  AuthorizerObject :: Authorizer s => s -> AuthorizerObject
+
+withAuthorizerObject :: AuthorizerObject
+                     -> (forall s. Authorizer s => s -> a)
+                     -> a
+withAuthorizerObject (AuthorizerObject x) f = f x
