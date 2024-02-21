@@ -1,119 +1,125 @@
-#include <HsFFI.h>
-
-#include <folly/SocketAddress.h>
-#include <folly/executors/CPUThreadPoolExecutor.h>
-#include <folly/fibers/FiberManager.h>
-#include <folly/fibers/FiberManagerMap.h>
-#include <folly/fibers/Semaphore.h>
-#include <folly/init/Init.h>
-#include <wangle/bootstrap/ServerBootstrap.h>
-#include <wangle/channel/AsyncSocketHandler.h>
-#include <wangle/channel/EventBaseHandler.h>
-#include <wangle/channel/Handler.h>
-#include <wangle/codec/LengthFieldBasedFrameDecoder.h>
-#include <wangle/codec/LengthFieldPrepender.h>
-#include <wangle/service/ExecutorFilter.h>
-#include <wangle/service/ServerDispatcher.h>
-#include <wangle/service/Service.h>
+#include <asio/as_tuple.hpp>
+#include <asio/awaitable.hpp>
+#include <asio/co_spawn.hpp>
+#include <asio/detached.hpp>
+#include <asio/io_context.hpp>
+#include <asio/ip/address.hpp>
+#include <asio/ip/tcp.hpp>
+#include <asio/read.hpp>
+#include <asio/redirect_error.hpp>
+#include <asio/signal_set.hpp>
+#include <asio/use_awaitable.hpp>
+#include <asio/write.hpp>
+#include <iostream>
 
 #include "hs_kafka_server.h"
 
-using namespace wangle;
+static void writeBE(int32_t value, uint8_t bytes[4]) {
+  bytes[0] = (value >> 24) & 0xFF;
+  bytes[1] = (value >> 16) & 0xFF;
+  bytes[2] = (value >> 8) & 0xFF;
+  bytes[3] = value & 0xFF;
+}
 
-// Note: this should be the end of pipeline
-class ServerHandler : public HandlerAdapter<std::unique_ptr<folly::IOBuf>> {
+static int32_t readBE(uint8_t bytes[4]) {
+  return (bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3];
+}
+
+class ServerHandler : public std::enable_shared_from_this<ServerHandler> {
 public:
-  explicit ServerHandler(HsCallback& callback, HsStablePtr& sp,
-                         std::shared_ptr<folly::IOExecutor> exe)
-      : callback_(callback), sp_(sp), exe_(exe) {
-    reqLock_ = std::make_shared<folly::fibers::Semaphore>(1);
+  ServerHandler(asio::ip::tcp::socket socket, HsCallback& callback,
+                HsStablePtr& sp)
+      : socket_(std::move(socket)), callback_(callback), sp_(sp) {}
+  ServerHandler& operator=(const ServerHandler&) = delete;
+
+  void start() {
+    // There is no need to set no_delay as we focus on throughput
+    //
+    // asio::ip::tcp::no_delay no_delay(true);
+    // socket_.set_option(no_delay);
+    asio::co_spawn(
+        socket_.get_executor(),
+        [self = shared_from_this()] { return self->handler(); },
+        asio::detached);
   }
 
-  void read(Context* ctx, std::unique_ptr<folly::IOBuf> req) override {
-    auto evb = exe_->getEventBase();
-    auto& fiberManager = folly::fibers::getFiberManager(*evb);
-    fiberManager.addTask([req = std::move(req), this]() {
-      // Kafka protocol requires that the server must process requests from
-      // the same connection in order.
-      this->reqLock_->wait();
-
-      folly::fbstring request_ = req->moveToFbString();
-      AsyncLock lock;
-
-      server_request_t hs_req{(uint8_t*)request_.data(), request_.size(),
-                              &lock};
-      server_response_t hs_resp;
-
-      callback_(sp_, &hs_req, &hs_resp);
-
-      lock.wait();
-
-      if (hs_resp.data != nullptr) {
-        std::unique_ptr<folly::IOBuf> resp =
-            folly::IOBuf::takeOwnership(hs_resp.data, hs_resp.data_size);
-        this->getContext()->fireWrite(std::move(resp));
-      } else {
-        this->getContext()->fireClose();
-      }
-
-      this->reqLock_->signal();
-    });
+  void stop() {
+    socket_.shutdown(asio::ip::tcp::socket::shutdown_both);
+    socket_.close();
   }
 
-  // [?] Do not need to call ctx->fireReadEOF() here, since this is the last
-  // handler in pipeline.
-  void readEOF(Context* ctx) override { onClientExit(); }
-
-  // [?] Do not need to call ctx->fireReadException() here, since this is the
-  // last handler in pipeline.
-  void readException(Context* ctx, folly::exception_wrapper e) override {
-    onClientExit();
-  }
-
-private:
-  HsCallback& callback_;
-  HsStablePtr sp_;
-  std::shared_ptr<folly::IOExecutor> exe_;
-  std::shared_ptr<folly::fibers::Semaphore> reqLock_;
-
-  void onClientExit() {
-    // FIXME: lock guard here?
+  ~ServerHandler() {
     if (sp_ != nullptr) {
       hs_free_stable_ptr(sp_);
       // Make sure the haskell land does not use the freed stable pointer
       sp_ = nullptr;
     }
   }
-};
-
-class RpcPipelineFactory : public PipelineFactory<DefaultPipeline> {
-public:
-  explicit RpcPipelineFactory(HsCallback callback, HsNewStablePtr newConnCtx,
-                              std::shared_ptr<folly::IOExecutor> exe)
-      : callback_(callback), newConnCtx_(newConnCtx), exe_(exe) {}
-
-  DefaultPipeline::Ptr
-  newPipeline(std::shared_ptr<folly::AsyncTransport> sock) override {
-    auto peer_host = sock->getPeerAddress().getHostStr();
-    conn_context_t conn_ctx{peer_host.data(), peer_host.size()};
-    auto hssp = newConnCtx_(&conn_ctx);
-
-    auto pipeline = DefaultPipeline::create();
-    pipeline->addBack(AsyncSocketHandler(sock));
-    // ensure we can write from any thread
-    pipeline->addBack(EventBaseHandler());
-    pipeline->addBack(LengthFieldBasedFrameDecoder());
-    pipeline->addBack(LengthFieldPrepender());
-    // Haskell handler
-    pipeline->addBack(ServerHandler(callback_, hssp, exe_));
-    pipeline->finalize();
-    return pipeline;
-  }
 
 private:
-  HsCallback callback_;
-  HsNewStablePtr newConnCtx_;
-  std::shared_ptr<folly::IOExecutor> exe_;
+  asio::awaitable<void> handler() {
+    try {
+      uint8_t length_bytes_[4]; // Kafka protocol: big-endian. Both for request
+                                // and response.
+      asio::error_code ec;
+
+      while (true) {
+        co_await asio::async_read(
+            socket_, asio::buffer(length_bytes_, 4),
+            asio::redirect_error(asio::use_awaitable, ec));
+        if (ec) {
+          // Read failed, maybe client is done writing.
+          co_return;
+        }
+        int32_t length_ = readBE(length_bytes_);
+        // FIXME:
+        // 1. How about the case when length_ is negative?
+        // 2. How about using stack memory for small messages?
+        std::vector<uint8_t> msg_bytes_(length_);
+        co_await asio::async_read(socket_, asio::buffer(msg_bytes_),
+                                  asio::use_awaitable);
+
+        auto coro_lock = CoroLock(co_await asio::this_coro::executor, 1);
+        server_request_t request{msg_bytes_.data(), msg_bytes_.size(),
+                                 &coro_lock};
+        server_response_t response;
+
+        // Call haskell handler
+        callback_(sp_, &request, &response);
+        // Wait haskell handler done
+        const auto [ec, _] = co_await coro_lock.async_receive(
+            asio::as_tuple(asio::use_awaitable));
+
+        if (socket_.is_open()) {
+          if (response.data != nullptr) {
+            // It's safe to use length_bytes_ again as we process the request
+            // one by one.
+            writeBE(response.data_size, length_bytes_);
+            std::vector<asio::const_buffer> buffers;
+            buffers.push_back(asio::buffer(length_bytes_, 4));
+            buffers.push_back(asio::buffer(response.data, response.data_size));
+
+            co_await asio::async_write(socket_, buffers, asio::use_awaitable);
+            free(response.data);
+          } else {
+            // Server active close
+            stop();
+            co_return;
+          }
+        } else {
+          // The socket is closed, stop the handler
+          co_return;
+        }
+      }
+    } catch (std::exception& e) {
+      std::cerr << "Session exception: " << e.what() << std::endl;
+      stop();
+    }
+  }
+
+  asio::ip::tcp::socket socket_;
+  HsStablePtr sp_;
+  HsCallback& callback_;
 };
 
 void hs_event_notify(int& fd) {
@@ -128,48 +134,70 @@ void hs_event_notify(int& fd) {
   }
 }
 
+asio::awaitable<void> listener(asio::ip::tcp::acceptor acceptor,
+                               HsCallback callback, HsNewStablePtr newConnCtx) {
+  for (;;) {
+    auto socket = co_await acceptor.async_accept(asio::use_awaitable);
+    auto peer_host = socket.remote_endpoint().address().to_string();
+    conn_context_t conn_ctx{peer_host.data(), peer_host.size()};
+    auto sp = newConnCtx(&conn_ctx);
+    std::make_shared<ServerHandler>(std::move(socket), callback, sp)->start();
+  }
+}
+
 // ----------------------------------------------------------------------------
 
 extern "C" {
 
-ServerBootstrap<DefaultPipeline>* new_kafka_server() {
-  return new ServerBootstrap<DefaultPipeline>();
-}
+struct Server {
+  asio::io_context io_context{1};
+};
 
-void run_kafka_server(ServerBootstrap<DefaultPipeline>* server,
-                      const char* host, uint16_t port, HsCallback callback,
-                      HsNewStablePtr newConnCtx, int fd_on_started) {
-  auto addr = folly::SocketAddress{host, port};
+Server* new_kafka_server() { return new Server(); }
+
+void run_kafka_server(Server* server, const char* host, uint16_t port,
+                      HsCallback callback, HsNewStablePtr newConnCtx,
+                      int fd_on_started) {
+  // Create an address from an IPv4 address string in dotted decimal form, or
+  // from an IPv6 address in hexadecimal notation.
+  //
+  // FIXME: what if the host is a domain? e.g. 'localhost'
+  auto addr = asio::ip::make_address(host);
   free((void*)host);
+  auto& io_context = server->io_context;
 
-  auto threads = std::thread::hardware_concurrency();
-  if (threads <= 0) {
-    // Reasonable mid-point for concurrency when actual value unknown
-    threads = 8;
-  }
-  auto io_group = std::make_shared<folly::IOThreadPoolExecutor>(
-      threads, std::make_shared<folly::NamedThreadFactory>("IO Thread"));
+  asio::co_spawn(io_context,
+                 listener(asio::ip::tcp::acceptor(io_context, {addr, port},
+                                                  true /*reuse_addr*/),
+                          callback, newConnCtx),
+                 asio::detached);
 
-  server->childPipeline(
-      std::make_shared<RpcPipelineFactory>(callback, newConnCtx, io_group));
-
-  // Using default accept_group (a single thread)
-  server->group(io_group);
-
-  server->bind(addr);
+  // FIXME: Do we need to handle SIGINT and SIGTERM?
+  //
+  // asio::signal_set signals(io_context, SIGINT, SIGTERM);
+  // signals.async_wait([&](auto, auto) { io_context.stop(); });
 
   hs_event_notify(fd_on_started);
-  server->waitForStop();
 
-  // Server stopped
-  delete server;
+  io_context.run();
 }
 
-void stop_kafka_server(ServerBootstrap<DefaultPipeline>* server) {
-  server->stop();
-}
+void stop_kafka_server(Server* server) { server->io_context.stop(); }
 
-void release_lock(AsyncLock* lock) { lock->post(); }
+void delete_kafka_server(Server* server) { delete server; }
+
+void ka_release_lock(CoroLock* channel, HsStablePtr mvar, HsInt cap,
+                     HsInt* ret_code) {
+  if (channel) {
+    // NOTE: make sure the io_context(inside Server) is alive when we call
+    // async_send, otherwise, you'll get a segfault.
+    channel->async_send(asio::error_code{}, true,
+                        [cap, mvar, ret_code](asio::error_code ec) {
+                          *ret_code = (HsInt)ec.value();
+                          hs_try_putmvar(cap, mvar);
+                        });
+  }
+}
 
 // ---
 }

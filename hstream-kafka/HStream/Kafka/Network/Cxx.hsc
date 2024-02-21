@@ -11,6 +11,7 @@ module HStream.Kafka.Network.Cxx
   , withConnContextCallback
     --
   , new_kafka_server
+  , delete_kafka_server
   , run_kafka_server
   , stop_kafka_server
   , release_lock
@@ -41,9 +42,11 @@ import           Foreign.Marshal
 import           Foreign.Ptr
 import           Foreign.StablePtr
 import           Foreign.Storable
+import           GHC.Conc               (PrimMVar)
 import           GHC.Event              (EventManager, Lifetime (..), evtRead,
                                          getSystemEventManager, registerFd,
                                          unregisterFd)
+import qualified HsForeign              as HF
 import           System.Posix.IO        (closeFd)
 import           System.Posix.Types     (Fd (..))
 
@@ -95,7 +98,7 @@ instance Storable Response where
     return $ Response{ responseData = payload
                      }
   poke ptr Response{..} = do
-    (data_ptr, data_size) <- mallocFromMaybeByteString responseData
+    (data_ptr, data_size) <- HF.mallocFromMaybeByteString responseData
     (#poke server_response_t, data) ptr data_ptr
     (#poke server_response_t, data_size) ptr data_size
 
@@ -150,6 +153,9 @@ data CppKafkaServer
 foreign import ccall unsafe "new_kafka_server"
   new_kafka_server :: IO (Ptr CppKafkaServer)
 
+foreign import ccall unsafe "delete_kafka_server"
+  delete_kafka_server :: Ptr CppKafkaServer -> IO ()
+
 foreign import ccall safe "run_kafka_server"
   run_kafka_server
     :: Ptr CppKafkaServer
@@ -167,26 +173,16 @@ foreign import ccall safe "run_kafka_server"
 foreign import ccall safe "stop_kafka_server"
   stop_kafka_server :: Ptr CppKafkaServer -> IO ()
 
-foreign import ccall unsafe "release_lock"
-  release_lock :: Ptr CppLock -> IO ()
+-- The pointer should never be NULL. However, I recheck it inside the c function
+-- 'ka_release_lock'.
+release_lock :: Ptr CppLock -> IO ()
+release_lock lock = do
+  rc <- HF.withPrimAsyncFFI @Int (ka_release_lock lock)
+  unless (rc == 0) $ throwIO $ userError "release_lock failed!" -- TODO
 
--------------------------------------------------------------------------------
--- Copy from foreign: HsForeign.String
---
--- TODO: import from HsForeign.String
-
-mallocFromMaybeByteString :: Maybe ByteString -> IO (CString, Int)
-mallocFromMaybeByteString (Just bs) = mallocFromByteString bs
-mallocFromMaybeByteString Nothing   = return (nullPtr, 0)
-{-# INLINE mallocFromMaybeByteString #-}
-
-mallocFromByteString :: ByteString -> IO (CString, Int)
-mallocFromByteString bs =
-  BS.unsafeUseAsCStringLen bs $ \(src, len) -> do
-    buf <- mallocBytes len
-    copyBytes buf src len
-    return (buf, len)
-{-# INLINE mallocFromByteString #-}
+foreign import ccall unsafe "ka_release_lock"
+  ka_release_lock
+    :: Ptr CppLock -> StablePtr PrimMVar -> Int -> Ptr Int -> IO ()
 
 -------------------------------------------------------------------------------
 -- Copy from hs-grpc: HsGrpc.Common.Utils

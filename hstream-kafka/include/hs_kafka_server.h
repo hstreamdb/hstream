@@ -1,17 +1,17 @@
 #pragma once
 
 #include <HsFFI.h>
+#include <asio/experimental/concurrent_channel.hpp>
 #include <cstdint>
 
-#include <folly/Unit.h>
-#include <folly/futures/Promise.h>
-
-using AsyncLock = folly::fibers::Baton;
+// FIXME: use a lightweight structure instead
+using CoroLock =
+    asio::experimental::concurrent_channel<void(asio::error_code, bool)>;
 
 struct server_request_t {
   uint8_t* data;
   size_t data_size;
-  AsyncLock* lock;
+  CoroLock* lock;
 };
 
 struct server_response_t {
@@ -23,7 +23,7 @@ struct server_response_t {
 };
 
 struct conn_context_t {
-  char* peer_host;
+  const char* peer_host;
   size_t peer_host_size;
 };
 

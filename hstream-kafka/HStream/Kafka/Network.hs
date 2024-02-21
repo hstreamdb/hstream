@@ -205,6 +205,12 @@ runCppServer opts sc_ mkAuthedHandlers =
     Cxx.withFdEventNotification evm opts.serverOnStarted Cxx.OneShot $
       \(Cxx.Fd cfdOnStarted) -> do
         hostPtr <- newCString opts.serverHost  -- Freed by C++ code
+        -- FIXME: we donot delete the memory here(it's OK since the process will
+        -- exit soon).
+        -- Because after the server(by Cxx.new_kafka_server) is deleted the
+        -- 'io_context' inside it will be invalid. And there are potential
+        -- haskell threads that are still using it. For example, the
+        -- 'Cxx.release_lock' in 'processorCallback'. Which will cause a crash.
         server <- Cxx.new_kafka_server
         let start = Cxx.run_kafka_server server hostPtr opts.serverPort
                                          cb connCb cfdOnStarted
@@ -225,8 +231,8 @@ runCppServer opts sc_ mkAuthedHandlers =
         (sc, conn) <- deRefStablePtr sptr
         let handlers = mkAuthedHandlers sc
         req <- peek request_ptr
-        -- Nothing means some error occurred, and the server will close the
-        -- connection
+        -- respBs: Nothing means some error occurred, and the server will close
+        -- the connection
         respBs <- E.catch
           (Just <$> handleKafkaMsg conn handlers req.requestPayload)
           (\err -> do Log.fatal $ Log.buildString' (err :: E.SomeException)
@@ -259,6 +265,7 @@ handleKafkaMsg conn handlers bs = do
               , apiVersion = header.requestApiVersion
               }
       resp <- rpcHandler' reqContext req
+      Log.debug $ "Server response: " <> Log.buildString' resp
       let (_, respHeaderVer) = getHeaderVersion header.requestApiKey header.requestApiVersion
           respHeaderBuilder =
             case respHeaderVer of
