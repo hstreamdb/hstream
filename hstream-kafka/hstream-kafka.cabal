@@ -18,7 +18,10 @@ category:           Database
 homepage:           https://github.com/hstreamdb/hstream
 bug-reports:        https://github.com/hstreamdb/hstream/issues
 build-type:         Simple
-extra-source-files: include/*.h
+extra-source-files:
+  external/asio/asio/include/**/*.hpp
+  external/asio/asio/include/**/*.ipp
+  include/*.h
 
 source-repository head
   type:     git
@@ -175,18 +178,21 @@ library
     cbits/hs_kafka_client.cpp
     cbits/hs_kafka_server.cpp
 
-  cxx-options:        -std=c++17
   hsc2hs-options:
     "--cc=g++" "--lflag=-lstdc++" "--cflag=-D__HSC2HS__=1"
     "--cflag=-std=c++17"
 
-  extra-libraries:
-    rdkafka++
-    folly
-    fizz
-    wangle
+  cxx-options:
+    -O3 -std=c++17 -std=c++17 -Werror=switch -fcoroutines
+    -DASIO_HAS_CO_AWAIT -DASIO_HAS_STD_COROUTINE
 
-  include-dirs:       include /usr/local/include
+  -- TODO: Debug cxx-options
+  -- -DASIO_ENABLE_BUFFER_DEBUGGING
+
+  extra-libraries:    rdkafka++
+  include-dirs:
+    include /usr/local/include external/asio/asio/include include
+
   extra-lib-dirs:     /usr/local/lib
   hs-source-dirs:     .
   build-tool-depends: hsc2hs:hsc2hs
