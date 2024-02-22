@@ -168,6 +168,7 @@ module HStream.Store.Stream
 
 import           Control.Exception                (catch, try)
 import           Control.Monad                    (filterM, forM, (<=<))
+import           Control.Monad.Primitive          (PrimMonad, PrimState)
 import           Data.Bifunctor                   (bimap)
 import           Data.Bits                        (bit)
 import           Data.Default                     (def)
@@ -183,6 +184,7 @@ import qualified Data.Text                        as T
 import           Data.Vector                      (Vector)
 import qualified Data.Vector                      as V
 import qualified Data.Vector.Algorithms.Intro     as V
+import qualified Data.Vector.Generic.Mutable      as VGM
 import           Foreign.C                        (CSize)
 import           Foreign.ForeignPtr               (withForeignPtr)
 import           GHC.Generics                     (Generic)
@@ -539,10 +541,9 @@ listStreamPartitionsOrdered
 listStreamPartitionsOrdered client streamid = do
   dir_path <- getStreamDirPath streamid
   keys <- LD.logDirLogsNames =<< LD.getLogDirectory client dir_path
-  ps <- forM (V.fromList keys) $ \key -> do
+  !mvec <- generateFromListM keys $ \key -> do
     logId <- getUnderlyingLogId client streamid (Just key)
     pure (key, logId)
-  !mvec <- V.unsafeThaw ps
   V.sortBy (\e1 e2 -> compare (snd e1) (snd e2)) mvec
   V.unsafeFreeze mvec
 
@@ -555,10 +556,9 @@ listStreamPartitionsOrderedByName
 listStreamPartitionsOrderedByName client streamid = do
   dir_path <- getStreamDirPath streamid
   keys <- LD.logDirLogsNames =<< LD.getLogDirectory client dir_path
-  ps <- forM (V.fromList keys) $ \key -> do
+  !mvec <- generateFromListM keys $ \key -> do
     logId <- getUnderlyingLogId client streamid (Just key)
     pure (key, logId)
-  !mvec <- V.unsafeThaw ps
   V.sortBy (\e1 e2 -> compare (fst e1) (fst e2)) mvec
   V.unsafeFreeze mvec
 
@@ -954,6 +954,23 @@ thawToPosixPath :: StreamName -> P.PosixPath
 thawToPosixPath name = P.PosixString (cbytes2sbsUnsafe name)
 {-# INLINABLE thawToPosixPath #-}
 #endif
+
+-- Variant of 'VGM.generateM'
+--
+-- https://hackage.haskell.org/package/vector-0.13.0.0/docs/Data-Vector-Generic-Mutable.html#v:generateM
+generateFromListM
+  :: (PrimMonad m, VGM.MVector v b)
+  => [a] -> (a -> m b) -> m (v (PrimState m) b)
+generateFromListM es f
+  | length es <= 0 = VGM.new 0
+  | otherwise = do
+      let n = length es
+      vec <- VGM.new n
+      let loop (i, xs) | i >= n    = return vec
+                       | otherwise = do VGM.unsafeWrite vec i =<< f (head xs)
+                                        loop (i + 1, tail xs)
+      loop (0, es)
+{-# INLINE generateFromListM #-}
 
 -------------------------------------------------------------------------------
 
