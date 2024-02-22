@@ -69,6 +69,30 @@ data FinalizedFeatureKeyV3 = FinalizedFeatureKeyV3
   } deriving (Show, Eq, Generic)
 instance Serializable FinalizedFeatureKeyV3
 
+data AclCreationV0 = AclCreationV0
+  { resourceType   :: {-# UNPACK #-} !Int8
+    -- ^ The type of the resource.
+  , resourceName   :: !Text
+    -- ^ The resource name for the ACL.
+  , principal      :: !Text
+    -- ^ The principal for the ACL.
+  , host           :: !Text
+    -- ^ The host for the ACL.
+  , operation      :: {-# UNPACK #-} !Int8
+    -- ^ The operation type for the ACL (read, write, etc.).
+  , permissionType :: {-# UNPACK #-} !Int8
+    -- ^ The permission type for the ACL (allow, deny, etc.).
+  } deriving (Show, Eq, Generic)
+instance Serializable AclCreationV0
+
+data AclCreationResultV0 = AclCreationResultV0
+  { errorCode    :: {-# UNPACK #-} !ErrorCode
+    -- ^ The result error, or zero if there was no error.
+  , errorMessage :: !NullableString
+    -- ^ The result message, or null if there was no error.
+  } deriving (Show, Eq, Generic)
+instance Serializable AclCreationResultV0
+
 newtype CreatePartitionsAssignmentV0 = CreatePartitionsAssignmentV0
   { brokerIds :: (KaArray Int32)
   } deriving (Show, Eq, Generic)
@@ -167,6 +191,52 @@ instance Serializable CreatableTopicResultV1
 
 type CreatableTopicResultV2 = CreatableTopicResultV1
 
+data DeleteAclsFilterV0 = DeleteAclsFilterV0
+  { resourceTypeFilter :: {-# UNPACK #-} !Int8
+    -- ^ The resource type.
+  , resourceNameFilter :: !NullableString
+    -- ^ The resource name.
+  , principalFilter    :: !NullableString
+    -- ^ The principal filter, or null to accept all principals.
+  , hostFilter         :: !NullableString
+    -- ^ The host filter, or null to accept all hosts.
+  , operation          :: {-# UNPACK #-} !Int8
+    -- ^ The ACL operation.
+  , permissionType     :: {-# UNPACK #-} !Int8
+    -- ^ The permission type.
+  } deriving (Show, Eq, Generic)
+instance Serializable DeleteAclsFilterV0
+
+data DeleteAclsMatchingAclV0 = DeleteAclsMatchingAclV0
+  { errorCode      :: {-# UNPACK #-} !ErrorCode
+    -- ^ The deletion error code, or 0 if the deletion succeeded.
+  , errorMessage   :: !NullableString
+    -- ^ The deletion error message, or null if the deletion succeeded.
+  , resourceType   :: {-# UNPACK #-} !Int8
+    -- ^ The ACL resource type.
+  , resourceName   :: !Text
+    -- ^ The ACL resource name.
+  , principal      :: !Text
+    -- ^ The ACL principal.
+  , host           :: !Text
+    -- ^ The ACL host.
+  , operation      :: {-# UNPACK #-} !Int8
+    -- ^ The ACL operation.
+  , permissionType :: {-# UNPACK #-} !Int8
+    -- ^ The ACL permission type.
+  } deriving (Show, Eq, Generic)
+instance Serializable DeleteAclsMatchingAclV0
+
+data DeleteAclsFilterResultV0 = DeleteAclsFilterResultV0
+  { errorCode    :: {-# UNPACK #-} !ErrorCode
+    -- ^ The error code, or 0 if the filter succeeded.
+  , errorMessage :: !NullableString
+    -- ^ The error message, or null if the filter succeeded.
+  , matchingAcls :: !(KaArray DeleteAclsMatchingAclV0)
+    -- ^ The ACLs which matched this filter.
+  } deriving (Show, Eq, Generic)
+instance Serializable DeleteAclsFilterResultV0
+
 data DeletableTopicResultV0 = DeletableTopicResultV0
   { name      :: !Text
     -- ^ The topic name
@@ -176,6 +246,28 @@ data DeletableTopicResultV0 = DeletableTopicResultV0
 instance Serializable DeletableTopicResultV0
 
 type DeletableTopicResultV1 = DeletableTopicResultV0
+
+data AclDescriptionV0 = AclDescriptionV0
+  { principal      :: !Text
+    -- ^ The ACL principal.
+  , host           :: !Text
+    -- ^ The ACL host.
+  , operation      :: {-# UNPACK #-} !Int8
+    -- ^ The ACL operation.
+  , permissionType :: {-# UNPACK #-} !Int8
+    -- ^ The ACL permission type.
+  } deriving (Show, Eq, Generic)
+instance Serializable AclDescriptionV0
+
+data DescribeAclsResourceV0 = DescribeAclsResourceV0
+  { resourceType :: {-# UNPACK #-} !Int8
+    -- ^ The resource type.
+  , resourceName :: !Text
+    -- ^ The resource name.
+  , acls         :: !(KaArray AclDescriptionV0)
+    -- ^ The ACLs.
+  } deriving (Show, Eq, Generic)
+instance Serializable DescribeAclsResourceV0
 
 data DescribeConfigsResourceV0 = DescribeConfigsResourceV0
   { resourceType      :: {-# UNPACK #-} !Int8
@@ -948,6 +1040,20 @@ data ApiVersionsResponseV3 = ApiVersionsResponseV3
   } deriving (Show, Eq, Generic)
 instance Serializable ApiVersionsResponseV3
 
+newtype CreateAclsRequestV0 = CreateAclsRequestV0
+  { creations :: (KaArray AclCreationV0)
+  } deriving (Show, Eq, Generic)
+instance Serializable CreateAclsRequestV0
+
+data CreateAclsResponseV0 = CreateAclsResponseV0
+  { throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
+  , results        :: !(KaArray AclCreationResultV0)
+    -- ^ The results for each ACL creation.
+  } deriving (Show, Eq, Generic)
+instance Serializable CreateAclsResponseV0
+
 data CreatePartitionsRequestV0 = CreatePartitionsRequestV0
   { topics       :: !(KaArray CreatePartitionsTopicV0)
     -- ^ Each topic that we want to create new partitions inside.
@@ -1012,6 +1118,20 @@ data CreateTopicsResponseV2 = CreateTopicsResponseV2
   } deriving (Show, Eq, Generic)
 instance Serializable CreateTopicsResponseV2
 
+newtype DeleteAclsRequestV0 = DeleteAclsRequestV0
+  { filters :: (KaArray DeleteAclsFilterV0)
+  } deriving (Show, Eq, Generic)
+instance Serializable DeleteAclsRequestV0
+
+data DeleteAclsResponseV0 = DeleteAclsResponseV0
+  { throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
+  , filterResults  :: !(KaArray DeleteAclsFilterResultV0)
+    -- ^ The results for each filter.
+  } deriving (Show, Eq, Generic)
+instance Serializable DeleteAclsResponseV0
+
 data DeleteTopicsRequestV0 = DeleteTopicsRequestV0
   { topicNames :: !(KaArray Text)
     -- ^ The names of the topics to delete
@@ -1036,6 +1156,35 @@ data DeleteTopicsResponseV1 = DeleteTopicsResponseV1
     -- ^ The results for each topic we tried to delete.
   } deriving (Show, Eq, Generic)
 instance Serializable DeleteTopicsResponseV1
+
+data DescribeAclsRequestV0 = DescribeAclsRequestV0
+  { resourceTypeFilter :: {-# UNPACK #-} !Int8
+    -- ^ The resource type.
+  , resourceNameFilter :: !NullableString
+    -- ^ The resource name, or null to match any resource name.
+  , principalFilter    :: !NullableString
+    -- ^ The principal to match, or null to match any principal.
+  , hostFilter         :: !NullableString
+    -- ^ The host to match, or null to match any host.
+  , operation          :: {-# UNPACK #-} !Int8
+    -- ^ The operation to match.
+  , permissionType     :: {-# UNPACK #-} !Int8
+    -- ^ The permission type to match.
+  } deriving (Show, Eq, Generic)
+instance Serializable DescribeAclsRequestV0
+
+data DescribeAclsResponseV0 = DescribeAclsResponseV0
+  { throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
+  , errorCode      :: {-# UNPACK #-} !ErrorCode
+    -- ^ The error code, or 0 if there was no error.
+  , errorMessage   :: !NullableString
+    -- ^ The error message, or null if there was no error.
+  , resources      :: !(KaArray DescribeAclsResourceV0)
+    -- ^ Each Resource that is referenced in an ACL.
+  } deriving (Show, Eq, Generic)
+instance Serializable DescribeAclsResponseV0
 
 newtype DescribeConfigsRequestV0 = DescribeConfigsRequestV0
   { resources :: (KaArray DescribeConfigsResourceV0)
@@ -1816,6 +1965,9 @@ instance Service HStreamKafkaV0 where
      , "createTopics"
      , "deleteTopics"
      , "initProducerId"
+     , "describeAcls"
+     , "createAcls"
+     , "deleteAcls"
      , "describeConfigs"
      , "saslAuthenticate"
      , "createPartitions"
@@ -1953,6 +2105,27 @@ instance HasMethodImpl HStreamKafkaV0 "initProducerId" where
   type MethodVersion HStreamKafkaV0 "initProducerId" = 0
   type MethodInput HStreamKafkaV0 "initProducerId" = InitProducerIdRequestV0
   type MethodOutput HStreamKafkaV0 "initProducerId" = InitProducerIdResponseV0
+
+instance HasMethodImpl HStreamKafkaV0 "describeAcls" where
+  type MethodName HStreamKafkaV0 "describeAcls" = "describeAcls"
+  type MethodKey HStreamKafkaV0 "describeAcls" = 29
+  type MethodVersion HStreamKafkaV0 "describeAcls" = 0
+  type MethodInput HStreamKafkaV0 "describeAcls" = DescribeAclsRequestV0
+  type MethodOutput HStreamKafkaV0 "describeAcls" = DescribeAclsResponseV0
+
+instance HasMethodImpl HStreamKafkaV0 "createAcls" where
+  type MethodName HStreamKafkaV0 "createAcls" = "createAcls"
+  type MethodKey HStreamKafkaV0 "createAcls" = 30
+  type MethodVersion HStreamKafkaV0 "createAcls" = 0
+  type MethodInput HStreamKafkaV0 "createAcls" = CreateAclsRequestV0
+  type MethodOutput HStreamKafkaV0 "createAcls" = CreateAclsResponseV0
+
+instance HasMethodImpl HStreamKafkaV0 "deleteAcls" where
+  type MethodName HStreamKafkaV0 "deleteAcls" = "deleteAcls"
+  type MethodKey HStreamKafkaV0 "deleteAcls" = 31
+  type MethodVersion HStreamKafkaV0 "deleteAcls" = 0
+  type MethodInput HStreamKafkaV0 "deleteAcls" = DeleteAclsRequestV0
+  type MethodOutput HStreamKafkaV0 "deleteAcls" = DeleteAclsResponseV0
 
 instance HasMethodImpl HStreamKafkaV0 "describeConfigs" where
   type MethodName HStreamKafkaV0 "describeConfigs" = "describeConfigs"
@@ -2362,6 +2535,9 @@ instance Show ApiKey where
   show (ApiKey (19))  = "CreateTopics(19)"
   show (ApiKey (20))  = "DeleteTopics(20)"
   show (ApiKey (22))  = "InitProducerId(22)"
+  show (ApiKey (29))  = "DescribeAcls(29)"
+  show (ApiKey (30))  = "CreateAcls(30)"
+  show (ApiKey (31))  = "DeleteAcls(31)"
   show (ApiKey (32))  = "DescribeConfigs(32)"
   show (ApiKey (36))  = "SaslAuthenticate(36)"
   show (ApiKey (37))  = "CreatePartitions(37)"
@@ -2387,6 +2563,9 @@ supportedApiVersions =
   , ApiVersionV0 (ApiKey 19) 0 2
   , ApiVersionV0 (ApiKey 20) 0 1
   , ApiVersionV0 (ApiKey 22) 0 0
+  , ApiVersionV0 (ApiKey 29) 0 0
+  , ApiVersionV0 (ApiKey 30) 0 0
+  , ApiVersionV0 (ApiKey 31) 0 0
   , ApiVersionV0 (ApiKey 32) 0 0
   , ApiVersionV0 (ApiKey 36) 0 0
   , ApiVersionV0 (ApiKey 37) 0 1
@@ -2451,6 +2630,9 @@ getHeaderVersion (ApiKey (19)) 2 = (1, 0)
 getHeaderVersion (ApiKey (20)) 0 = (1, 0)
 getHeaderVersion (ApiKey (20)) 1 = (1, 0)
 getHeaderVersion (ApiKey (22)) 0 = (1, 0)
+getHeaderVersion (ApiKey (29)) 0 = (1, 0)
+getHeaderVersion (ApiKey (30)) 0 = (1, 0)
+getHeaderVersion (ApiKey (31)) 0 = (1, 0)
 getHeaderVersion (ApiKey (32)) 0 = (1, 0)
 getHeaderVersion (ApiKey (36)) 0 = (1, 0)
 getHeaderVersion (ApiKey (37)) 0 = (1, 0)

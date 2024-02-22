@@ -53,6 +53,90 @@ abortedTransactionFromV5 = abortedTransactionFromV4
 abortedTransactionFromV6 :: AbortedTransactionV6 -> AbortedTransaction
 abortedTransactionFromV6 = abortedTransactionFromV4
 
+data AclCreation = AclCreation
+  { resourceType   :: {-# UNPACK #-} !Int8
+    -- ^ The type of the resource.
+  , resourceName   :: !Text
+    -- ^ The resource name for the ACL.
+  , principal      :: !Text
+    -- ^ The principal for the ACL.
+  , host           :: !Text
+    -- ^ The host for the ACL.
+  , operation      :: {-# UNPACK #-} !Int8
+    -- ^ The operation type for the ACL (read, write, etc.).
+  , permissionType :: {-# UNPACK #-} !Int8
+    -- ^ The permission type for the ACL (allow, deny, etc.).
+  } deriving (Show, Eq, Generic)
+instance Serializable AclCreation
+
+aclCreationToV0 :: AclCreation -> AclCreationV0
+aclCreationToV0 x = AclCreationV0
+  { resourceType = x.resourceType
+  , resourceName = x.resourceName
+  , principal = x.principal
+  , host = x.host
+  , operation = x.operation
+  , permissionType = x.permissionType
+  }
+
+aclCreationFromV0 :: AclCreationV0 -> AclCreation
+aclCreationFromV0 x = AclCreation
+  { resourceType = x.resourceType
+  , resourceName = x.resourceName
+  , principal = x.principal
+  , host = x.host
+  , operation = x.operation
+  , permissionType = x.permissionType
+  }
+
+data AclCreationResult = AclCreationResult
+  { errorCode    :: {-# UNPACK #-} !ErrorCode
+    -- ^ The result error, or zero if there was no error.
+  , errorMessage :: !NullableString
+    -- ^ The result message, or null if there was no error.
+  } deriving (Show, Eq, Generic)
+instance Serializable AclCreationResult
+
+aclCreationResultToV0 :: AclCreationResult -> AclCreationResultV0
+aclCreationResultToV0 x = AclCreationResultV0
+  { errorCode = x.errorCode
+  , errorMessage = x.errorMessage
+  }
+
+aclCreationResultFromV0 :: AclCreationResultV0 -> AclCreationResult
+aclCreationResultFromV0 x = AclCreationResult
+  { errorCode = x.errorCode
+  , errorMessage = x.errorMessage
+  }
+
+data AclDescription = AclDescription
+  { principal      :: !Text
+    -- ^ The ACL principal.
+  , host           :: !Text
+    -- ^ The ACL host.
+  , operation      :: {-# UNPACK #-} !Int8
+    -- ^ The ACL operation.
+  , permissionType :: {-# UNPACK #-} !Int8
+    -- ^ The ACL permission type.
+  } deriving (Show, Eq, Generic)
+instance Serializable AclDescription
+
+aclDescriptionToV0 :: AclDescription -> AclDescriptionV0
+aclDescriptionToV0 x = AclDescriptionV0
+  { principal = x.principal
+  , host = x.host
+  , operation = x.operation
+  , permissionType = x.permissionType
+  }
+
+aclDescriptionFromV0 :: AclDescriptionV0 -> AclDescription
+aclDescriptionFromV0 x = AclDescription
+  { principal = x.principal
+  , host = x.host
+  , operation = x.operation
+  , permissionType = x.permissionType
+  }
+
 data ApiVersion = ApiVersion
   { apiKey       :: {-# UNPACK #-} !ApiKey
     -- ^ The API index.
@@ -339,6 +423,134 @@ deletableTopicResultFromV0 x = DeletableTopicResult
   }
 deletableTopicResultFromV1 :: DeletableTopicResultV1 -> DeletableTopicResult
 deletableTopicResultFromV1 = deletableTopicResultFromV0
+
+data DeleteAclsFilter = DeleteAclsFilter
+  { resourceTypeFilter :: {-# UNPACK #-} !Int8
+    -- ^ The resource type.
+  , resourceNameFilter :: !NullableString
+    -- ^ The resource name.
+  , principalFilter    :: !NullableString
+    -- ^ The principal filter, or null to accept all principals.
+  , hostFilter         :: !NullableString
+    -- ^ The host filter, or null to accept all hosts.
+  , operation          :: {-# UNPACK #-} !Int8
+    -- ^ The ACL operation.
+  , permissionType     :: {-# UNPACK #-} !Int8
+    -- ^ The permission type.
+  } deriving (Show, Eq, Generic)
+instance Serializable DeleteAclsFilter
+
+deleteAclsFilterToV0 :: DeleteAclsFilter -> DeleteAclsFilterV0
+deleteAclsFilterToV0 x = DeleteAclsFilterV0
+  { resourceTypeFilter = x.resourceTypeFilter
+  , resourceNameFilter = x.resourceNameFilter
+  , principalFilter = x.principalFilter
+  , hostFilter = x.hostFilter
+  , operation = x.operation
+  , permissionType = x.permissionType
+  }
+
+deleteAclsFilterFromV0 :: DeleteAclsFilterV0 -> DeleteAclsFilter
+deleteAclsFilterFromV0 x = DeleteAclsFilter
+  { resourceTypeFilter = x.resourceTypeFilter
+  , resourceNameFilter = x.resourceNameFilter
+  , principalFilter = x.principalFilter
+  , hostFilter = x.hostFilter
+  , operation = x.operation
+  , permissionType = x.permissionType
+  }
+
+data DeleteAclsFilterResult = DeleteAclsFilterResult
+  { errorCode    :: {-# UNPACK #-} !ErrorCode
+    -- ^ The error code, or 0 if the filter succeeded.
+  , errorMessage :: !NullableString
+    -- ^ The error message, or null if the filter succeeded.
+  , matchingAcls :: !(KaArray DeleteAclsMatchingAcl)
+    -- ^ The ACLs which matched this filter.
+  } deriving (Show, Eq, Generic)
+instance Serializable DeleteAclsFilterResult
+
+deleteAclsFilterResultToV0 :: DeleteAclsFilterResult -> DeleteAclsFilterResultV0
+deleteAclsFilterResultToV0 x = DeleteAclsFilterResultV0
+  { errorCode = x.errorCode
+  , errorMessage = x.errorMessage
+  , matchingAcls = fmap deleteAclsMatchingAclToV0 x.matchingAcls
+  }
+
+deleteAclsFilterResultFromV0 :: DeleteAclsFilterResultV0 -> DeleteAclsFilterResult
+deleteAclsFilterResultFromV0 x = DeleteAclsFilterResult
+  { errorCode = x.errorCode
+  , errorMessage = x.errorMessage
+  , matchingAcls = fmap deleteAclsMatchingAclFromV0 x.matchingAcls
+  }
+
+data DeleteAclsMatchingAcl = DeleteAclsMatchingAcl
+  { errorCode      :: {-# UNPACK #-} !ErrorCode
+    -- ^ The deletion error code, or 0 if the deletion succeeded.
+  , errorMessage   :: !NullableString
+    -- ^ The deletion error message, or null if the deletion succeeded.
+  , resourceType   :: {-# UNPACK #-} !Int8
+    -- ^ The ACL resource type.
+  , resourceName   :: !Text
+    -- ^ The ACL resource name.
+  , principal      :: !Text
+    -- ^ The ACL principal.
+  , host           :: !Text
+    -- ^ The ACL host.
+  , operation      :: {-# UNPACK #-} !Int8
+    -- ^ The ACL operation.
+  , permissionType :: {-# UNPACK #-} !Int8
+    -- ^ The ACL permission type.
+  } deriving (Show, Eq, Generic)
+instance Serializable DeleteAclsMatchingAcl
+
+deleteAclsMatchingAclToV0 :: DeleteAclsMatchingAcl -> DeleteAclsMatchingAclV0
+deleteAclsMatchingAclToV0 x = DeleteAclsMatchingAclV0
+  { errorCode = x.errorCode
+  , errorMessage = x.errorMessage
+  , resourceType = x.resourceType
+  , resourceName = x.resourceName
+  , principal = x.principal
+  , host = x.host
+  , operation = x.operation
+  , permissionType = x.permissionType
+  }
+
+deleteAclsMatchingAclFromV0 :: DeleteAclsMatchingAclV0 -> DeleteAclsMatchingAcl
+deleteAclsMatchingAclFromV0 x = DeleteAclsMatchingAcl
+  { errorCode = x.errorCode
+  , errorMessage = x.errorMessage
+  , resourceType = x.resourceType
+  , resourceName = x.resourceName
+  , principal = x.principal
+  , host = x.host
+  , operation = x.operation
+  , permissionType = x.permissionType
+  }
+
+data DescribeAclsResource = DescribeAclsResource
+  { resourceType :: {-# UNPACK #-} !Int8
+    -- ^ The resource type.
+  , resourceName :: !Text
+    -- ^ The resource name.
+  , acls         :: !(KaArray AclDescription)
+    -- ^ The ACLs.
+  } deriving (Show, Eq, Generic)
+instance Serializable DescribeAclsResource
+
+describeAclsResourceToV0 :: DescribeAclsResource -> DescribeAclsResourceV0
+describeAclsResourceToV0 x = DescribeAclsResourceV0
+  { resourceType = x.resourceType
+  , resourceName = x.resourceName
+  , acls = fmap aclDescriptionToV0 x.acls
+  }
+
+describeAclsResourceFromV0 :: DescribeAclsResourceV0 -> DescribeAclsResource
+describeAclsResourceFromV0 x = DescribeAclsResource
+  { resourceType = x.resourceType
+  , resourceName = x.resourceName
+  , acls = fmap aclDescriptionFromV0 x.acls
+  }
 
 data DescribeConfigsResource = DescribeConfigsResource
   { resourceType      :: {-# UNPACK #-} !Int8
@@ -1871,6 +2083,42 @@ apiVersionsResponseFromV3 x = ApiVersionsResponse
   , taggedFields = x.taggedFields
   }
 
+newtype CreateAclsRequest = CreateAclsRequest
+  { creations :: (KaArray AclCreation)
+  } deriving (Show, Eq, Generic)
+instance Serializable CreateAclsRequest
+
+createAclsRequestToV0 :: CreateAclsRequest -> CreateAclsRequestV0
+createAclsRequestToV0 x = CreateAclsRequestV0
+  { creations = fmap aclCreationToV0 x.creations
+  }
+
+createAclsRequestFromV0 :: CreateAclsRequestV0 -> CreateAclsRequest
+createAclsRequestFromV0 x = CreateAclsRequest
+  { creations = fmap aclCreationFromV0 x.creations
+  }
+
+data CreateAclsResponse = CreateAclsResponse
+  { throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
+  , results        :: !(KaArray AclCreationResult)
+    -- ^ The results for each ACL creation.
+  } deriving (Show, Eq, Generic)
+instance Serializable CreateAclsResponse
+
+createAclsResponseToV0 :: CreateAclsResponse -> CreateAclsResponseV0
+createAclsResponseToV0 x = CreateAclsResponseV0
+  { throttleTimeMs = x.throttleTimeMs
+  , results = fmap aclCreationResultToV0 x.results
+  }
+
+createAclsResponseFromV0 :: CreateAclsResponseV0 -> CreateAclsResponse
+createAclsResponseFromV0 x = CreateAclsResponse
+  { throttleTimeMs = x.throttleTimeMs
+  , results = fmap aclCreationResultFromV0 x.results
+  }
+
 data CreatePartitionsRequest = CreatePartitionsRequest
   { topics       :: !(KaArray CreatePartitionsTopic)
     -- ^ Each topic that we want to create new partitions inside.
@@ -2004,6 +2252,42 @@ createTopicsResponseFromV2 x = CreateTopicsResponse
   , throttleTimeMs = x.throttleTimeMs
   }
 
+newtype DeleteAclsRequest = DeleteAclsRequest
+  { filters :: (KaArray DeleteAclsFilter)
+  } deriving (Show, Eq, Generic)
+instance Serializable DeleteAclsRequest
+
+deleteAclsRequestToV0 :: DeleteAclsRequest -> DeleteAclsRequestV0
+deleteAclsRequestToV0 x = DeleteAclsRequestV0
+  { filters = fmap deleteAclsFilterToV0 x.filters
+  }
+
+deleteAclsRequestFromV0 :: DeleteAclsRequestV0 -> DeleteAclsRequest
+deleteAclsRequestFromV0 x = DeleteAclsRequest
+  { filters = fmap deleteAclsFilterFromV0 x.filters
+  }
+
+data DeleteAclsResponse = DeleteAclsResponse
+  { throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
+  , filterResults  :: !(KaArray DeleteAclsFilterResult)
+    -- ^ The results for each filter.
+  } deriving (Show, Eq, Generic)
+instance Serializable DeleteAclsResponse
+
+deleteAclsResponseToV0 :: DeleteAclsResponse -> DeleteAclsResponseV0
+deleteAclsResponseToV0 x = DeleteAclsResponseV0
+  { throttleTimeMs = x.throttleTimeMs
+  , filterResults = fmap deleteAclsFilterResultToV0 x.filterResults
+  }
+
+deleteAclsResponseFromV0 :: DeleteAclsResponseV0 -> DeleteAclsResponse
+deleteAclsResponseFromV0 x = DeleteAclsResponse
+  { throttleTimeMs = x.throttleTimeMs
+  , filterResults = fmap deleteAclsFilterResultFromV0 x.filterResults
+  }
+
 data DeleteTopicsRequest = DeleteTopicsRequest
   { topicNames :: !(KaArray Text)
     -- ^ The names of the topics to delete
@@ -2057,6 +2341,71 @@ deleteTopicsResponseFromV1 :: DeleteTopicsResponseV1 -> DeleteTopicsResponse
 deleteTopicsResponseFromV1 x = DeleteTopicsResponse
   { responses = fmap deletableTopicResultFromV1 x.responses
   , throttleTimeMs = x.throttleTimeMs
+  }
+
+data DescribeAclsRequest = DescribeAclsRequest
+  { resourceTypeFilter :: {-# UNPACK #-} !Int8
+    -- ^ The resource type.
+  , resourceNameFilter :: !NullableString
+    -- ^ The resource name, or null to match any resource name.
+  , principalFilter    :: !NullableString
+    -- ^ The principal to match, or null to match any principal.
+  , hostFilter         :: !NullableString
+    -- ^ The host to match, or null to match any host.
+  , operation          :: {-# UNPACK #-} !Int8
+    -- ^ The operation to match.
+  , permissionType     :: {-# UNPACK #-} !Int8
+    -- ^ The permission type to match.
+  } deriving (Show, Eq, Generic)
+instance Serializable DescribeAclsRequest
+
+describeAclsRequestToV0 :: DescribeAclsRequest -> DescribeAclsRequestV0
+describeAclsRequestToV0 x = DescribeAclsRequestV0
+  { resourceTypeFilter = x.resourceTypeFilter
+  , resourceNameFilter = x.resourceNameFilter
+  , principalFilter = x.principalFilter
+  , hostFilter = x.hostFilter
+  , operation = x.operation
+  , permissionType = x.permissionType
+  }
+
+describeAclsRequestFromV0 :: DescribeAclsRequestV0 -> DescribeAclsRequest
+describeAclsRequestFromV0 x = DescribeAclsRequest
+  { resourceTypeFilter = x.resourceTypeFilter
+  , resourceNameFilter = x.resourceNameFilter
+  , principalFilter = x.principalFilter
+  , hostFilter = x.hostFilter
+  , operation = x.operation
+  , permissionType = x.permissionType
+  }
+
+data DescribeAclsResponse = DescribeAclsResponse
+  { throttleTimeMs :: {-# UNPACK #-} !Int32
+    -- ^ The duration in milliseconds for which the request was throttled due
+    -- to a quota violation, or zero if the request did not violate any quota.
+  , errorCode      :: {-# UNPACK #-} !ErrorCode
+    -- ^ The error code, or 0 if there was no error.
+  , errorMessage   :: !NullableString
+    -- ^ The error message, or null if there was no error.
+  , resources      :: !(KaArray DescribeAclsResource)
+    -- ^ Each Resource that is referenced in an ACL.
+  } deriving (Show, Eq, Generic)
+instance Serializable DescribeAclsResponse
+
+describeAclsResponseToV0 :: DescribeAclsResponse -> DescribeAclsResponseV0
+describeAclsResponseToV0 x = DescribeAclsResponseV0
+  { throttleTimeMs = x.throttleTimeMs
+  , errorCode = x.errorCode
+  , errorMessage = x.errorMessage
+  , resources = fmap describeAclsResourceToV0 x.resources
+  }
+
+describeAclsResponseFromV0 :: DescribeAclsResponseV0 -> DescribeAclsResponse
+describeAclsResponseFromV0 x = DescribeAclsResponse
+  { throttleTimeMs = x.throttleTimeMs
+  , errorCode = x.errorCode
+  , errorMessage = x.errorMessage
+  , resources = fmap describeAclsResourceFromV0 x.resources
   }
 
 newtype DescribeConfigsRequest = DescribeConfigsRequest
@@ -3467,6 +3816,13 @@ instance Exception ApiVersionsResponseEx
 catchApiVersionsResponseEx :: IO ApiVersionsResponse -> IO ApiVersionsResponse
 catchApiVersionsResponseEx act = act `catch` \(ApiVersionsResponseEx resp) -> pure resp
 
+newtype CreateAclsResponseEx = CreateAclsResponseEx CreateAclsResponse
+  deriving (Show, Eq)
+instance Exception CreateAclsResponseEx
+
+catchCreateAclsResponseEx :: IO CreateAclsResponse -> IO CreateAclsResponse
+catchCreateAclsResponseEx act = act `catch` \(CreateAclsResponseEx resp) -> pure resp
+
 newtype CreatePartitionsResponseEx = CreatePartitionsResponseEx CreatePartitionsResponse
   deriving (Show, Eq)
 instance Exception CreatePartitionsResponseEx
@@ -3481,12 +3837,26 @@ instance Exception CreateTopicsResponseEx
 catchCreateTopicsResponseEx :: IO CreateTopicsResponse -> IO CreateTopicsResponse
 catchCreateTopicsResponseEx act = act `catch` \(CreateTopicsResponseEx resp) -> pure resp
 
+newtype DeleteAclsResponseEx = DeleteAclsResponseEx DeleteAclsResponse
+  deriving (Show, Eq)
+instance Exception DeleteAclsResponseEx
+
+catchDeleteAclsResponseEx :: IO DeleteAclsResponse -> IO DeleteAclsResponse
+catchDeleteAclsResponseEx act = act `catch` \(DeleteAclsResponseEx resp) -> pure resp
+
 newtype DeleteTopicsResponseEx = DeleteTopicsResponseEx DeleteTopicsResponse
   deriving (Show, Eq)
 instance Exception DeleteTopicsResponseEx
 
 catchDeleteTopicsResponseEx :: IO DeleteTopicsResponse -> IO DeleteTopicsResponse
 catchDeleteTopicsResponseEx act = act `catch` \(DeleteTopicsResponseEx resp) -> pure resp
+
+newtype DescribeAclsResponseEx = DescribeAclsResponseEx DescribeAclsResponse
+  deriving (Show, Eq)
+instance Exception DescribeAclsResponseEx
+
+catchDescribeAclsResponseEx :: IO DescribeAclsResponse -> IO DescribeAclsResponse
+catchDescribeAclsResponseEx act = act `catch` \(DescribeAclsResponseEx resp) -> pure resp
 
 newtype DescribeConfigsResponseEx = DescribeConfigsResponseEx DescribeConfigsResponse
   deriving (Show, Eq)

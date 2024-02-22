@@ -139,6 +139,9 @@ kafkaZkPaths =
   , textToCBytes $ myRootPath @Proto.Timestamp @ZHandle
   , textToCBytes $ myRootPath @TaskAllocation @ZHandle
   , textToCBytes $ myRootPath @GroupMetadataValue @ZHandle
+  -- FIXME: hardcoded
+  , textToCBytes kafkaRootPath <> "/acl"
+  , textToCBytes kafkaRootPath <> "/aclExtended"
   ]
 
 kafkaRqTables :: [Text]
@@ -146,6 +149,9 @@ kafkaRqTables =
   [ myRootPath @TaskAllocation @RHandle
   , myRootPath @GroupMetadataValue @RHandle
   , myRootPath @Proto.Timestamp @RHandle
+  -- FIXME: hardcoded
+  , "acl"
+  , "aclExtended"
   ]
 
 kafkaFileTables :: [Text]
@@ -153,6 +159,9 @@ kafkaFileTables =
   [ myRootPath @TaskAllocation @FHandle
   , myRootPath @GroupMetadataValue @FHandle
   , myRootPath @Proto.Timestamp @RHandle
+  -- FIXME: hardcoded
+  , "acl"
+  , "aclExtended"
   ]
 
 initKafkaZkPaths :: HasCallStack => ZHandle -> IO ()
