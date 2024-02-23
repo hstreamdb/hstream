@@ -61,17 +61,27 @@ RUN rm -rf /root/.cabal/bin && \
 # 1. ~/.ghc is requred for running 'cabal-store-gc --collect'
 #    Because it will call a subprocess "cwd=/root/.ghc /opt/ghc/9.2.8/lib/ghc-9.2.8/bin/ghc-pkg --version"
 # 2. Because of this https://github.com/phadej/cabal-extras/issues/75, I use my own fork.
+#
+# For manually build:
+#
+#   TEMP_STORE=$(mktemp -d); \
+#   git clone https://github.com/4eUeP/cabal-extras.git; \
+#   cd cabal-extras; \
+#   cabal --store-dir $TEMP_STORE install \
+#     --with-compiler ghc \
+#     --installdir /usr/local/bin \
+#     --install-method copy \
+#     cabal-store-gc; \
+#   rm -rf /cabal-extras; rm -rf $TEMP_STORE; \
 RUN set -eux; \
     export TEMP_STORE=$(mktemp -d); \
+    export ARCH="$(uname -m)"; \
     if [ -z "$(command -v cabal-store-gc)" ]; then \
-      git clone https://github.com/4eUeP/cabal-extras.git; \
-      cd cabal-extras; \
-      cabal --store-dir $TEMP_STORE install \
-        --with-compiler ghc \
-        --installdir /usr/local/bin \
-        --install-method copy \
-        cabal-store-gc; \
-      rm -rf /cabal-extras; rm -rf $TEMP_STORE; \
+      CABAL_STORE_GC_URL="https://github.com/4eUeP/cabal-extras/releases/download/cabal-store-gc/cabal-store-gc-${ARCH}-linux.xz"; \
+      curl -fSL "$CABAL_STORE_GC_URL" -o cabal-store-gc.xz; \
+      xz -d cabal-store-gc.xz; \
+      mv cabal-store-gc /usr/local/bin/cabal-store-gc; \
+      chmod +x /usr/local/bin/cabal-store-gc; \
     fi; \
     cd /hstream; \
     cabal-store-gc --add-project-root; \
