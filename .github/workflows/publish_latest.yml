@@ -14,10 +14,10 @@ jobs:
     strategy:
       matrix:
         include:
-          - hs_image: "hstreamdb/haskell:9.2"
+          - hs_image: "hstreamdb/haskell:9.4"
             ld_image: "hstreamdb/logdevice"
             tag: "latest"
-          - hs_image: "hstreamdb/haskell:rqlite_9.2"
+          - hs_image: "hstreamdb/haskell:rqlite_9.4"
             ld_image: "hstreamdb/logdevice:rqlite"
             tag: "rqlite"
     steps:
