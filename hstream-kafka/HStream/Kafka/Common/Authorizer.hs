@@ -1,3 +1,5 @@
+{-# LANGUAGE UndecidableInstances #-}
+
 module HStream.Kafka.Common.Authorizer where
 
 import           Control.Concurrent
@@ -23,6 +25,7 @@ import           HStream.Kafka.Common.Authorizer.Class
 import           HStream.Kafka.Common.Resource
 import           HStream.Kafka.Common.Security
 import qualified HStream.Logger                        as Log
+import qualified HStream.MetaStore.Types               as Meta
 import qualified Kafka.Protocol.Encoding               as K
 import qualified Kafka.Protocol.Error                  as K
 import qualified Kafka.Protocol.Message                as K
@@ -34,9 +37,9 @@ import qualified Kafka.Protocol.Message                as K
 --   The lock ensures that only one thread can update the cache and the store
 --   at the same time.
 data AclAuthorizer a = AclAuthorizer
-  { authorizerCache    :: IORef AclCache
-  , authorizerAclStore :: a
-  , authorizerLock     :: MVar ()
+  { authorizerCache     :: IORef AclCache
+  , authorizerMetaStore :: a
+  , authorizerLock      :: MVar ()
   }
 
 newAclAuthorizer :: IO a -> IO (AclAuthorizer a)
@@ -44,16 +47,34 @@ newAclAuthorizer newStore = do
   let cache = AclCache Map.empty Map.empty
   AclAuthorizer <$> newIORef cache <*> newStore <*> newMVar ()
 
-initAclAuthorizer :: AclStore a => AclAuthorizer a -> IO ()
+initAclAuthorizer :: ( Meta.MetaStore AclResourceNode a
+                     , Meta.HasPath AclResourceNode a
+                     )
+                  => AclAuthorizer a
+                  -> IO ()
 initAclAuthorizer authorizer =
-  loadAllAcls (authorizerAclStore authorizer) $ \res acls ->
+  loadAllAcls (authorizerMetaStore authorizer) $ \res acls ->
     atomicModifyIORef' (authorizerCache authorizer)
                        (\x -> (updateCache x res acls, ()))
+
+-- | Synchronize the cache with the (central) metastore periodically.
+--   This function runs forever. So it should be run in a separate thread.
+--   This is an alternative method to metastore change notification.
+syncAclAuthorizer :: ( Meta.MetaStore AclResourceNode a
+                     , Meta.HasPath AclResourceNode a
+                     )
+                  => AclAuthorizer a
+                  -> IO ()
+syncAclAuthorizer authorizer = forever $ do
+  loadAllAcls (authorizerMetaStore authorizer) $ \res acls ->
+    atomicModifyIORef' (authorizerCache authorizer)
+                       (\x -> (updateCache x res acls, ()))
+  threadDelay (5 * 1000 * 1000) -- FIXME: configuable sync interval
 
 ------------------------------------------------------------
 -- Class instance
 ------------------------------------------------------------
-instance (AclStore a) => Authorizer (AclAuthorizer a) where
+instance (Meta.MetaType AclResourceNode a) => Authorizer (AclAuthorizer a) where
   createAcls = aclCreateAcls
   deleteAcls = aclDeleteAcls
   getAcls    = aclGetAcls
@@ -206,7 +227,7 @@ aclGetAcls _ AclAuthorizer{..} aclFilter = do
 
 -- | Create ACLs for the given bindings.
 --   It updates both the cache and the store.
-aclCreateAcls :: AclStore a
+aclCreateAcls :: (Meta.MetaType AclResourceNode a)
               => AuthorizableRequestContext
               -> AclAuthorizer a
               -> [AclBinding]
@@ -252,7 +273,7 @@ aclCreateAcls _ authorizer bindings = withMVar (authorizerLock authorizer) $ \_ 
 
 -- | Delete ACls for the given filters.
 --   It updates both the cache and the store.
-aclDeleteAcls :: AclStore a
+aclDeleteAcls :: (Meta.MetaType AclResourceNode a)
               => AuthorizableRequestContext
               -> AclAuthorizer a
               -> [AclBindingFilter]
@@ -338,7 +359,11 @@ aclDeleteAcls _ authorizer filters = withMVar (authorizerLock authorizer) $ \_ -
 --   It updates both the cache and the store.
 --   It will retry for some times.
 --   This function may throw exceptions.
-updateResourceAcls :: AclStore s => AclAuthorizer s -> ResourcePattern -> (Acls -> (Acls, a)) -> IO a
+updateResourceAcls :: (Meta.MetaType AclResourceNode s)
+                   => AclAuthorizer s
+                   -> ResourcePattern
+                   -> (Acls -> (Acls, a))
+                   -> IO a
 updateResourceAcls authorizer resPat f = do
   cache <- readIORef (authorizerCache authorizer)
   curAcls <- case Map.lookup resPat (aclCacheAcls cache) of
@@ -346,7 +371,9 @@ updateResourceAcls authorizer resPat f = do
     --       have updated the cache.
     --       (Won't happen now because of one global cache and lock)
     Nothing   ->
-      getAclNode (authorizerAclStore authorizer) resPat <&> aclResNodeAcls
+      Meta.getMeta (resourcePatternToMetadataKey resPat)
+                   (authorizerMetaStore authorizer) <&>
+        (maybe Set.empty aclResNodeAcls)
     Just acls -> return acls
   (newAcls, a) <- go curAcls (0 :: Int)
   when (curAcls /= newAcls) $ do
@@ -361,12 +388,17 @@ updateResourceAcls authorizer resPat f = do
           try $ if Set.null newAcls then do
             Log.debug $ "Deleting path for " <> Log.buildString' resPat <> " because it had no ACLs remaining"
             -- delete from store
-            deleteAclNode (authorizerAclStore authorizer) resPat
+            Meta.deleteMeta @AclResourceNode
+                            (resourcePatternToMetadataKey resPat)
+                            Nothing
+                            (authorizerMetaStore authorizer)
             return (newAcls, a)
             else do
             -- update store
             let newNode = AclResourceNode defaultVersion newAcls -- FIXME: version
-            setAclNode (authorizerAclStore authorizer) resPat newNode
+            Meta.upsertMeta (resourcePatternToMetadataKey resPat)
+                            newNode
+                            (authorizerMetaStore authorizer)
             return (newAcls, a)
           >>= \case
             -- FIXME: catch all exceptions?

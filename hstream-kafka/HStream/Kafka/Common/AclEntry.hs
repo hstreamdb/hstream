@@ -82,5 +82,3 @@ data AclCache = AclCache
   , aclCacheResources :: Map.Map (AccessControlEntry,ResourceType,PatternType)
                                  (Set.Set Text)
   }
-
-------------------------------------

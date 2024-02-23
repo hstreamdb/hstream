@@ -147,6 +147,33 @@ instance Show ResourcePattern where
     ", name="                       <> T.unpack resPatResourceName <>
     ", patternType="                <> show resPatPatternType      <> ")"
 
+-- FIXME: design a proper serialization format for 'ResourcePattern'.
+-- WARNING: the resource name may contain '_'!
+-- | Convert a 'ResourcePattern' to a metadata key typed 'Text'.
+--   A wildcard resource name "*" will be converted to "AnyResource".
+resourcePatternToMetadataKey :: ResourcePattern -> Text
+resourcePatternToMetadataKey ResourcePattern{..} =
+  T.pack (show resPatPatternType)  <> "_" <>
+  T.pack (show resPatResourceType) <> "_" <>
+  (if resPatResourceName == wildcardResourceName
+    then "AnyResource"
+    else resPatResourceName
+  )
+-- WARNING: the resource name may contain '_'!
+-- | Convert a metadata key typed 'Text' to a 'ResourcePattern'.
+resourcePatternFromMetadataKey :: Text -> Maybe ResourcePattern
+resourcePatternFromMetadataKey name =
+  let (pat,_left1) = T.breakOn "_" name
+      (typ,_left2) = T.breakOn "_" (T.drop 1 _left1)
+      res          = T.drop 1 _left2
+   in if T.null pat || T.null typ || T.null res
+        then Nothing
+        else Just $ ResourcePattern (read (T.unpack typ))
+                                    (if res == "AnyResource"
+                                      then wildcardResourceName
+                                      else res)
+                                    (read (T.unpack pat))
+
 wildcardResourceName :: Text
 wildcardResourceName = "*"
 

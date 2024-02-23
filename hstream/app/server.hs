@@ -70,9 +70,9 @@ import           HStream.Server.Initialization    (closeRocksDBHandle,
                                                    initializeServer,
                                                    openRocksDBHandle,
                                                    readTlsPemFile)
-import           HStream.Server.MetaData          (initializeAncestors,
-                                                   initializeFile,
-                                                   initializeTables)
+import           HStream.Server.MetaData          (initHStreamFileTables,
+                                                   initHStreamRqTables,
+                                                   initHStreamZkPaths)
 import           HStream.Server.QueryWorker       (QueryWorker (QueryWorker))
 import           HStream.Server.Types             (ServerContext (..))
 import qualified HStream.Store.Logger             as Log
@@ -123,14 +123,14 @@ app config@ServerOpts{..} = do
    case _metaStore of
      ZkAddr addr -> do
        let zkRes = zookeeperResInit addr Nothing 5000 Nothing 0
-       withResource zkRes $ \zk -> initializeAncestors zk >> action (ZkHandle zk) db_m
+       withResource zkRes $ \zk -> initHStreamZkPaths zk >> action (ZkHandle zk) db_m
      RqAddr addr -> do
        m <- newManager defaultManagerSettings
        let rq = RHandle m addr
-       initializeTables rq
+       initHStreamRqTables rq
        action (RLHandle rq) db_m
      FileAddr addr -> do
-       initializeFile addr
+       initHStreamFileTables addr
        action (FileHandle addr) db_m
   where
     action h db_m = do

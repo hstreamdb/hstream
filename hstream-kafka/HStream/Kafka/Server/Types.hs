@@ -6,12 +6,12 @@ module HStream.Kafka.Server.Types
 
 import           Data.Text                               (Text)
 import           Data.Word
-import           Foreign.ForeignPtr                      (newForeignPtr_)
-import           Foreign.Ptr                             (nullPtr)
 
 import           HStream.Common.Server.HashRing          (LoadBalanceHashRing,
                                                           initializeHashRing)
 import           HStream.Gossip.Types                    (GossipContext)
+import           HStream.Kafka.Common.Authorizer
+import           HStream.Kafka.Common.Authorizer.Class
 import           HStream.Kafka.Common.FetchManager       (FetchContext,
                                                           fakeFetchContext,
                                                           initFetchContext)
@@ -26,10 +26,6 @@ import           HStream.MetaStore.Types                 (MetaHandle (..))
 import           HStream.Stats                           (newServerStatsHolder)
 import qualified HStream.Stats                           as Stats
 import qualified HStream.Store                           as S
-
-import           HStream.Kafka.Common.AclStore
-import           HStream.Kafka.Common.Authorizer
-import           HStream.Kafka.Common.Authorizer.Class
 
 data ServerContext = ServerContext
   { serverID                 :: !Word32
@@ -48,7 +44,7 @@ data ServerContext = ServerContext
   , scOffsetManager          :: !OffsetManager
   , fetchCtx                 :: !FetchContext
     -- } per connection end
-  , authorizer               :: AuthorizerObject
+  , authorizer               :: !AuthorizerObject
   }
 
 initServerContext
@@ -78,8 +74,12 @@ initServerContext opts@ServerOpts{..} gossipContext mh = do
       x <- newAclAuthorizer (pure zkHandle)
       initAclAuthorizer x
       return $ AuthorizerObject x
-    _                 -> do
-      x <- newAclAuthorizer newMockAclStore
+    RLHandle rlHandle -> do
+      x <- newAclAuthorizer (pure rlHandle)
+      initAclAuthorizer x
+      return $ AuthorizerObject x
+    FileHandle fileHandle -> do
+      x <- newAclAuthorizer (pure fileHandle)
       initAclAuthorizer x
       return $ AuthorizerObject x
 
