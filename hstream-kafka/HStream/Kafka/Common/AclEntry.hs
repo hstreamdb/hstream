@@ -12,10 +12,10 @@ import           HStream.Kafka.Common.Resource
 import           HStream.Kafka.Common.Security
 
 data AclEntry = AclEntry
-  { aclEntryPrincipal      :: Principal
-  , aclEntryHost           :: Text
-  , aclEntryOperation      :: AclOperation
-  , aclEntryPermissionType :: AclPermissionType
+  { aclEntryPrincipal      :: !Principal
+  , aclEntryHost           :: !Text
+  , aclEntryOperation      :: !AclOperation
+  , aclEntryPermissionType :: !AclPermissionType
   } deriving (Eq, Ord)
 instance Show AclEntry where
   show AclEntry{..} =
@@ -63,8 +63,8 @@ defaultVersion :: Version
 defaultVersion = 1
 
 data AclResourceNode = AclResourceNode
-  { aclResNodeVersion :: Version
-  , aclResNodeAcls    :: Acls
+  { aclResNodeVersion :: !Version
+  , aclResNodeAcls    :: !Acls
   } deriving (Eq, Show)
 instance Aeson.ToJSON AclResourceNode where
   toJSON AclResourceNode{..} =
@@ -78,7 +78,7 @@ instance Aeson.FromJSON AclResourceNode where
   parseJSON o = fail $ "Invalid AclResourceNode: " <> show o
 
 data AclCache = AclCache
-  { aclCacheAcls      :: Map.Map ResourcePattern Acls
-  , aclCacheResources :: Map.Map (AccessControlEntry,ResourceType,PatternType)
-                                 (Set.Set Text)
+  { aclCacheAcls      :: !(Map.Map ResourcePattern Acls)
+  , aclCacheResources :: !(Map.Map (AccessControlEntry,ResourceType,PatternType)
+                                   (Set.Set Text))
   }

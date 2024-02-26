@@ -28,6 +28,6 @@ loadAllAcls a aclsConsumer = do
   aclNodes <- Meta.getAllMeta @AclResourceNode a
   forM_ (Map.toList aclNodes) $ \(key, node) -> do
     case resourcePatternFromMetadataKey key of
-      Nothing     -> error $ "Invalid key of resource pattern: " <> T.unpack key
+      Nothing     -> error $ "Invalid key of resource pattern: " <> T.unpack key -- FIXME: error
       Just resPat -> do
         aclsConsumer resPat (aclResNodeAcls node)

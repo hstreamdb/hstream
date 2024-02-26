@@ -133,10 +133,10 @@ instance Enum AclPermissionType where
 --   Used in both 'AccessControlEntry' and 'AccessControlEntryFilter',
 --   with slightly different field requirements.
 data AccessControlEntryData = AccessControlEntryData
-  { aceDataPrincipal      :: Text
-  , aceDataHost           :: Text
-  , aceDataOperation      :: AclOperation
-  , aceDataPermissionType :: AclPermissionType
+  { aceDataPrincipal      :: !Text
+  , aceDataHost           :: !Text
+  , aceDataOperation      :: !AclOperation
+  , aceDataPermissionType :: !AclPermissionType
   } deriving (Eq, Ord)
 instance Show AccessControlEntryData where
   show AccessControlEntryData{..} =
@@ -190,8 +190,8 @@ instance Matchable AccessControlEntry AccessControlEntryFilter where
 
 -- | A binding between a resource pattern and an access control entry (ACE).
 data AclBinding = AclBinding
-  { aclBindingResourcePattern :: ResourcePattern
-  , aclBindingACE             :: AccessControlEntry
+  { aclBindingResourcePattern :: !ResourcePattern
+  , aclBindingACE             :: !AccessControlEntry
   } deriving (Eq, Ord)
 instance Show AclBinding where
   show AclBinding{..} =
@@ -200,8 +200,8 @@ instance Show AclBinding where
 
 -- | A filter which can match 'AclBinding's.
 data AclBindingFilter = AclBindingFilter
-  { aclBindingFilterResourcePatternFilter :: ResourcePatternFilter
-  , aclBindingFilterACEFilter             :: AccessControlEntryFilter
+  { aclBindingFilterResourcePatternFilter :: !ResourcePatternFilter
+  , aclBindingFilterACEFilter             :: !AccessControlEntryFilter
   }
 instance Show AclBindingFilter where
   show AclBindingFilter{..} =
@@ -225,11 +225,10 @@ instance Matchable AclBinding AclBindingFilter where
     }
   anyFilter = AclBindingFilter anyFilter anyFilter
 
--- TODO: validate
 -- 1. No UNKNOWN contained
 -- 2. resource pattern name is not empty and does not contain '/'
 validateAclBinding :: AclBinding -> Either String ()
 validateAclBinding AclBinding{..}
   | T.null (resPatResourceName aclBindingResourcePattern) = Left "Resource name is empty"
   | T.any (== '/') (resPatResourceName aclBindingResourcePattern) = Left "Resource name contains '/'"
-  | otherwise = Right () -- FIXME
+  | otherwise = Right ()

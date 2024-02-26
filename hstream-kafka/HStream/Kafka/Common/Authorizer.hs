@@ -37,9 +37,9 @@ import qualified Kafka.Protocol.Message                as K
 --   The lock ensures that only one thread can update the cache and the store
 --   at the same time.
 data AclAuthorizer a = AclAuthorizer
-  { authorizerCache     :: IORef AclCache
-  , authorizerMetaStore :: a
-  , authorizerLock      :: MVar ()
+  { authorizerCache     :: !(IORef AclCache)
+  , authorizerMetaStore :: !a
+  , authorizerLock      :: !(MVar ())
   }
 
 newAclAuthorizer :: IO a -> IO (AclAuthorizer a)
@@ -251,12 +251,11 @@ aclCreateAcls _ authorizer bindings = withMVar (authorizerLock authorizer) $ \_ 
     validateEachBinding (i, b@AclBinding{..}) = do
       case supportExtenedAcl of
         False -> do
-          -- FIXME: ERROR CODE
-          let result = K.AclCreationResult K.NONE (Just "Adding ACLs on prefixed resource patterns requires version xxx or higher")
+          -- FIXME: error message
+          let result = K.AclCreationResult K.UNSUPPORTED_VERSION (Just "Adding ACLs on prefixed resource patterns requires version xxx or higher")
           return $ Left (i, result)
         True  -> case validateAclBinding b of
-          -- FIXME: ERROR CODE
-          Left s  -> return $ Left  (i, K.AclCreationResult K.NONE (Just . T.pack $ s))
+          Left s  -> return $ Left  (i, K.AclCreationResult K.INVALID_REQUEST (Just . T.pack $ s))
           Right _ -> return $ Right (aclBindingResourcePattern, (i, b))
 
     addAclsForEachRes :: (ResourcePattern, [(Int, AclBinding)]) -> IO [(Int, K.AclCreationResult)]
@@ -268,7 +267,7 @@ aclCreateAcls _ authorizer bindings = withMVar (authorizerLock authorizer) $ \_ 
          in (newAcls, results)
       case results_e of
         -- FIXME: ERROR CODE
-        Left (e :: SomeException) -> return $ L.map (\(i,_) -> (i, K.AclCreationResult K.NONE (Just $ "Failed to update ACLs" <> (T.pack (show e))))) bs
+        Left (e :: SomeException) -> return $ L.map (\(i,_) -> (i, K.AclCreationResult K.UNKNOWN_SERVER_ERROR (Just $ "Failed to update ACLs" <> (T.pack (show e))))) bs
         Right x                   -> return x
 
 -- | Delete ACls for the given filters.
@@ -406,7 +405,7 @@ updateResourceAcls authorizer resPat f = do
               Log.warning $ "Failed to update ACLs for " <> Log.buildString' resPat <>
                             ". Reading data and retrying update." <>
                             " error: " <> Log.buildString' e
-              threadDelay (50 * 1000) -- FIXME: retry interval
+              threadDelay (500 * 1000) -- FIXME: retry interval
               go oldAcls (retries + 1)
             Right acls_ -> return acls_
       | otherwise = do
@@ -453,12 +452,15 @@ groupByValue m = Map.foldrWithKey' f Map.empty m
   where
     f k v acc = Map.insertWith (++) v [k] acc
 
+-- FIXME: configuable
 supportExtenedAcl :: Bool
 supportExtenedAcl = True
 
+-- FIXME: configuable
 superUsers :: Set.Set Principal
 superUsers = Set.empty
 
+-- FIXME: configuable
 allowIfNoAclFound :: Bool
 allowIfNoAclFound = False
 

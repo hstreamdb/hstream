@@ -10,6 +10,7 @@ import           HStream.Kafka.Common.Authorizer.Class
 import           HStream.Kafka.Common.Resource         hiding (match)
 import           HStream.Kafka.Common.Security
 import qualified Kafka.Protocol.Encoding               as K
+import qualified Kafka.Protocol.Error                  as K
 import qualified Kafka.Protocol.Message                as K
 
 spec :: Spec
@@ -72,8 +73,7 @@ specWithAuthorizer storeType =
     it "create acl with empty resource name should fail" $ \a -> do
       K.CreateAclsResponse{..} <-
         createAcls baseReqCtx a [allowReadAcl `on` ("" `typed` Res_GROUP `match` Pat_LITERAL)]
-      -- FIXME: error code
-      results `shouldBe` K.KaArray (Just . V.singleton $ K.AclCreationResult 0 (Just "Resource name is empty"))
+      results `shouldBe` K.KaArray (Just . V.singleton $ K.AclCreationResult K.INVALID_REQUEST (Just "Resource name is empty"))
     it "deny rule should override allow rule" $ \a -> do
       let host = "192.168.2.1"
           principal = Principal "User" baseUsername
@@ -92,9 +92,5 @@ specWithAuthorizer storeType =
       void $ createAcls reqCtx a [allowAll `on` resource]
       authorize reqCtx a [AclOp_READ `on` resource] `shouldReturn` [Authz_ALLOWED]
     it "delete all acls" $ \a -> do
-      let anyResPatFilter = ResourcePatternFilter Res_ANY wildcardResourceName Pat_LITERAL
-          anyAceFilter = AccessControlEntryFilter $
-                           AccessControlEntryData "" ""AclOp_ANY AclPerm_ANY
-      let anyAclBindingFilter = AclBindingFilter anyResPatFilter anyAceFilter
-      void $ deleteAcls baseReqCtx a [anyAclBindingFilter]
-      getAcls baseReqCtx a anyAclBindingFilter `shouldReturn` []
+      void $ deleteAcls baseReqCtx a [anyFilter]
+      getAcls baseReqCtx a anyFilter `shouldReturn` []
