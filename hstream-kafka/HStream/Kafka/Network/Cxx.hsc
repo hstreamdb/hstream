@@ -151,7 +151,9 @@ withConnContextCallback cb =
 data CppKafkaServer
 
 foreign import ccall unsafe "new_kafka_server"
-  new_kafka_server :: IO (Ptr CppKafkaServer)
+  new_kafka_server
+    :: CSize    -- ^ size of io_context_pool
+    -> IO (Ptr CppKafkaServer)
 
 foreign import ccall unsafe "delete_kafka_server"
   delete_kafka_server :: Ptr CppKafkaServer -> IO ()

@@ -70,15 +70,19 @@ data ServerOptions = ServerOptions
   , serverSslOptions  :: !(Maybe SslOptions)
   , serverSaslOptions :: !(Maybe SaslOptions)
   , serverOnStarted   :: !(Maybe (IO ()))
+  , ioContextPoolSize :: !Word64
+    -- ^ The number of io_contexts in the pool. The default value is 1.
+    -- Only for c++ server.
   }
 
 defaultServerOpts :: ServerOptions
 defaultServerOpts = ServerOptions
-  { serverHost           = "0.0.0.0"
-  , serverPort           = 9092
-  , serverSslOptions     = Nothing
-  , serverSaslOptions    = Nothing
-  , serverOnStarted      = Nothing
+  { serverHost        = "0.0.0.0"
+  , serverPort        = 9092
+  , serverSslOptions  = Nothing
+  , serverSaslOptions = Nothing
+  , serverOnStarted   = Nothing
+  , ioContextPoolSize = 1
   }
 
 -------------------------------------------------------------------------------
@@ -211,7 +215,7 @@ runCppServer opts sc_ mkAuthedHandlers =
         -- 'io_context' inside it will be invalid. And there are potential
         -- haskell threads that are still using it. For example, the
         -- 'Cxx.release_lock' in 'processorCallback'. Which will cause a crash.
-        server <- Cxx.new_kafka_server
+        server <- Cxx.new_kafka_server (fromIntegral opts.ioContextPoolSize)
         let start = Cxx.run_kafka_server server hostPtr opts.serverPort
                                          cb connCb cfdOnStarted
             stop a = Cxx.stop_kafka_server server >> Async.wait a
