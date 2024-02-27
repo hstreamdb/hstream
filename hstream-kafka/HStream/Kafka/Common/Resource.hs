@@ -3,7 +3,20 @@
 {-# LANGUAGE RecordWildCards        #-}
 {-# LANGUAGE TypeFamilies           #-}
 
-module HStream.Kafka.Common.Resource where
+module HStream.Kafka.Common.Resource
+  ( Matchable(..)
+  , ResourceType(..)
+  , Resource(..)
+  , PatternType(..)
+  , isPatternTypeSpecific
+  , ResourcePattern(..)
+  , ResourcePatternFilter(..)
+  , wildcardResourceName
+
+  , resourcePatternToMetadataKey
+  , resourcePatternFromMetadataKey
+  , resourcePatternFromFilter
+  ) where
 
 import           Data.Char
 import           Data.Maybe
@@ -11,7 +24,6 @@ import qualified Data.Set   as Set
 import           Data.Text  (Text)
 import qualified Data.Text  as T
 
---
 class Matchable a b | a -> b, b -> a where
   match                   :: a -> b -> Bool
   matchAtMostOne          :: b -> Bool
@@ -85,7 +97,6 @@ instance Show Resource where
     ", name="        <> s_name               <> ")"
     where s_name = if T.null resResourceName then "<any>" else T.unpack resResourceName
 
--- [0..4]
 -- | A resource pattern type, which is an 'Int8' start from 0.
 --   WARNING: Be sure to understand the meaning of 'Pat_MATCH'.
 --            A '(TYPE, "name", MATCH)' filter matches the following patterns:

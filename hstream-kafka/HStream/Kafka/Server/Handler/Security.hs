@@ -9,7 +9,6 @@ module HStream.Kafka.Server.Handler.Security
   ) where
 
 import qualified Control.Exception                     as E
-import           Control.Monad
 import           Data.Function                         (on)
 import qualified Data.List                             as L
 import           Data.Maybe
@@ -21,7 +20,6 @@ import           HStream.Kafka.Common.Authorizer
 import           HStream.Kafka.Common.Authorizer.Class
 import qualified HStream.Kafka.Common.KafkaException   as K
 import           HStream.Kafka.Common.Resource
-import           HStream.Kafka.Common.Security
 import           HStream.Kafka.Server.Security.SASL    (serverSupportedMechanismNames)
 import           HStream.Kafka.Server.Types            (ServerContext (..))
 import qualified HStream.Logger                        as Log
@@ -161,8 +159,3 @@ handleDeleteAcls ctx reqCtx req = do
                                                  (fromMaybe "" x.hostFilter)
                                                  (toEnum (fromIntegral x.operation))
                                                  (toEnum (fromIntegral x.permissionType))))
-
-toAuthorizableReqCtx :: K.RequestContext -> AuthorizableRequestContext
-toAuthorizableReqCtx reqCtx =
-  AuthorizableRequestContext (T.pack reqCtx.clientHost)
-                             (Principal "User" (fromMaybe "" (join reqCtx.clientId)))
