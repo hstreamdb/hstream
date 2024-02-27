@@ -78,6 +78,7 @@ data ServerOpts = ServerOpts
   , _disableAutoCreateTopic       :: !Bool
 
   , _enableSaslAuth               :: !Bool
+  , _enableAcl                    :: !Bool
 
   , _kafkaBrokerConfigs           :: !KC.KafkaBrokerConfigs
 
@@ -138,6 +139,8 @@ data CliOptions = CliOptions
 
     -- SASL Authentication
   , cliEnableSaslAuth               :: !Bool
+    -- ACL Authorization
+  , cliEnableAcl                    :: !Bool
 
     -- Kafka config
   , cliDisableAutoCreateTopic       :: !Bool

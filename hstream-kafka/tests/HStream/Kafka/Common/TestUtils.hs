@@ -24,7 +24,6 @@ import           System.Environment                    (lookupEnv)
 import           Test.Hspec
 import qualified Z.Data.CBytes                         as CB
 import qualified ZooKeeper                             as ZK
-import qualified ZooKeeper.Types                       as ZK
 
 import           HStream.Kafka.Common.Acl
 import           HStream.Kafka.Common.Authorizer
@@ -104,7 +103,7 @@ genResource resType = do
   uuid <- UUID.toText <$> UUID.nextRandom
   return $ ("foo-" <> uuid) `typed` resType `match` Pat_LITERAL
 
-withZkBasedAclAuthorizer :: ActionWith (AclAuthorizer ZK.ZHandle) -> IO ()
+withZkBasedAclAuthorizer :: ActionWith AuthorizerObject -> IO ()
 withZkBasedAclAuthorizer action = do
   zkPortStr <- fromMaybe "2181" <$> lookupEnv "ZOOKEEPER_LOCAL_PORT"
   let zkAddr = "127.0.0.1" <> ":" <> CB.pack zkPortStr
@@ -113,9 +112,9 @@ withZkBasedAclAuthorizer action = do
     Meta.initKafkaZkPaths zkHandle
     authorizer <- newAclAuthorizer (pure zkHandle)
     initAclAuthorizer authorizer
-    action authorizer
+    action (AuthorizerObject $ Just authorizer)
 
-withRqliteBasedAclAuthorizer :: ActionWith (AclAuthorizer Meta.RHandle) -> IO ()
+withRqliteBasedAclAuthorizer :: ActionWith AuthorizerObject -> IO ()
 withRqliteBasedAclAuthorizer action = do
   rqPortStr <- fromMaybe "4001" <$> lookupEnv "RQLITE_LOCAL_PORT"
   let rqAddr = "127.0.0.1" <> ":" <> T.pack rqPortStr
@@ -124,12 +123,12 @@ withRqliteBasedAclAuthorizer action = do
   Meta.initKafkaRqTables rq
   authorizer <- newAclAuthorizer (pure rq)
   initAclAuthorizer authorizer
-  action authorizer
+  action (AuthorizerObject $ Just authorizer)
 
-withFileBasedAclAuthorizer :: ActionWith (AclAuthorizer Meta.FHandle) -> IO ()
+withFileBasedAclAuthorizer :: ActionWith AuthorizerObject -> IO ()
 withFileBasedAclAuthorizer action = do
   let filePath = "/tmp/hstream_metadata"
   Meta.initKafkaFileTables filePath
   authorizer <- newAclAuthorizer (pure filePath)
   initAclAuthorizer authorizer
-  action authorizer
+  action (AuthorizerObject $ Just authorizer)
