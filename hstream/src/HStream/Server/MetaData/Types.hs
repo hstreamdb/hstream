@@ -46,8 +46,7 @@ module HStream.Server.MetaData.Types
 #endif
   ) where
 
-import           Control.Exception                 (SomeException (..), catch,
-                                                    catches)
+import           Control.Exception                 (catches)
 import           Data.Aeson                        (FromJSON (..), ToJSON (..))
 import qualified Data.HashMap.Strict               as HM
 import           Data.Int                          (Int64)
@@ -56,8 +55,6 @@ import           Data.IORef
 import qualified Data.List                         as L
 import           Data.Text                         (Text)
 import qualified Data.Text                         as T
-import qualified Data.Text.Lazy                    as TL
-import qualified Data.Text.Lazy.Encoding           as TL
 import           Data.Time.Clock.System            (SystemTime (MkSystemTime),
                                                     getSystemTime)
 import qualified Data.Vector                       as V
@@ -77,14 +74,11 @@ import           HStream.MetaStore.Types           (FHandle, HasPath (..),
                                                     MetaStore (..), MetaType,
                                                     RHandle)
 import qualified HStream.Server.ConnectorTypes     as HCT
-import           HStream.Server.HStreamApi         (ServerNode (..),
-                                                    Subscription (..))
+import           HStream.Server.HStreamApi         (Subscription (..))
 import qualified HStream.Server.HStreamApi         as API
 import           HStream.Server.MetaData.Exception
-import           HStream.Server.Types              (ServerID,
-                                                    SubscriptionWrap (..))
+import           HStream.Server.Types              (SubscriptionWrap (..))
 import qualified HStream.Store                     as S
-import qualified HStream.ThirdParty.Protobuf       as Proto
 import           HStream.Utils
 #ifdef HStreamUseV2Engine
 import           DiffFlow.Types

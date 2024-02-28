@@ -149,6 +149,7 @@ library
     HStream.Kafka.Server.Config
     HStream.Kafka.Server.Handler
     HStream.Kafka.Server.Handler.Security
+    HStream.Kafka.Server.MetaData
     HStream.Kafka.Server.Types
 
   other-modules:
@@ -270,10 +271,15 @@ test-suite hstream-kafka-test
     , containers
     , hspec
     , hspec-expectations
+    , hstream-common
+    , hstream-common-server
     , hstream-kafka:{hstream-kafka, kafka-protocol}
+    , http-client
     , text
     , uuid
     , vector
+    , Z-Data
+    , zoovisitor
 
   default-extensions:
     LambdaCase

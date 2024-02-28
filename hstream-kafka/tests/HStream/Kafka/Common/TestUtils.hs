@@ -9,18 +9,30 @@ module HStream.Kafka.Common.TestUtils
   , on
 
   , genResource
+  , withZkBasedAclAuthorizer
+  , withRqliteBasedAclAuthorizer
+  , withFileBasedAclAuthorizer
   ) where
 
+import           Data.Maybe
 import           Data.Text                             (Text)
 import qualified Data.Text                             as T
 import qualified Data.UUID                             as UUID
 import qualified Data.UUID.V4                          as UUID
+import qualified Network.HTTP.Client                   as HTTP
+import           System.Environment                    (lookupEnv)
+import           Test.Hspec
+import qualified Z.Data.CBytes                         as CB
+import qualified ZooKeeper                             as ZK
+import qualified ZooKeeper.Types                       as ZK
 
 import           HStream.Kafka.Common.Acl
-import           HStream.Kafka.Common.AclEntry
+import           HStream.Kafka.Common.Authorizer
 import           HStream.Kafka.Common.Authorizer.Class
 import           HStream.Kafka.Common.Resource         hiding (match)
 import           HStream.Kafka.Common.Security
+import qualified HStream.Kafka.Server.MetaData         as Meta
+import qualified HStream.MetaStore.Types               as Meta
 
 ------------------------------------------------------------
 --   Construct 'ResourcePattern':
@@ -91,3 +103,33 @@ genResource :: ResourceType -> IO ResourcePattern
 genResource resType = do
   uuid <- UUID.toText <$> UUID.nextRandom
   return $ ("foo-" <> uuid) `typed` resType `match` Pat_LITERAL
+
+withZkBasedAclAuthorizer :: ActionWith (AclAuthorizer ZK.ZHandle) -> IO ()
+withZkBasedAclAuthorizer action = do
+  zkPortStr <- fromMaybe "2181" <$> lookupEnv "ZOOKEEPER_LOCAL_PORT"
+  let zkAddr = "127.0.0.1" <> ":" <> CB.pack zkPortStr
+  let res = ZK.zookeeperResInit zkAddr Nothing 5000 Nothing 0
+  ZK.withResource res $ \zkHandle -> do
+    Meta.initKafkaZkPaths zkHandle
+    authorizer <- newAclAuthorizer (pure zkHandle)
+    initAclAuthorizer authorizer
+    action authorizer
+
+withRqliteBasedAclAuthorizer :: ActionWith (AclAuthorizer Meta.RHandle) -> IO ()
+withRqliteBasedAclAuthorizer action = do
+  rqPortStr <- fromMaybe "4001" <$> lookupEnv "RQLITE_LOCAL_PORT"
+  let rqAddr = "127.0.0.1" <> ":" <> T.pack rqPortStr
+  m <- HTTP.newManager HTTP.defaultManagerSettings
+  let rq = Meta.RHandle m rqAddr
+  Meta.initKafkaRqTables rq
+  authorizer <- newAclAuthorizer (pure rq)
+  initAclAuthorizer authorizer
+  action authorizer
+
+withFileBasedAclAuthorizer :: ActionWith (AclAuthorizer Meta.FHandle) -> IO ()
+withFileBasedAclAuthorizer action = do
+  let filePath = "/tmp/hstream_metadata"
+  Meta.initKafkaFileTables filePath
+  authorizer <- newAclAuthorizer (pure filePath)
+  initAclAuthorizer authorizer
+  action authorizer

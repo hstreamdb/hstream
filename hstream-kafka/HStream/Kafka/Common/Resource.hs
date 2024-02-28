@@ -138,7 +138,7 @@ isPatternTypeSpecific _            = False
 --   See org.apache.kafka.common.resource.ResourcePattern.
 data ResourcePattern = ResourcePattern
   { resPatResourceType :: ResourceType -- | Can not be 'Res_ANY'
-  , resPatResourceName :: Text -- | Can not be null but can be 'WILDCARD' -- FIXME: which?
+  , resPatResourceName :: Text -- | Can not be null but can be 'WILDCARD'
   , resPatPatternType  :: PatternType -- | Can not be 'Pat_ANY' or 'Pat_MATCH'
   } deriving (Eq)
 instance Show ResourcePattern where
@@ -146,6 +146,33 @@ instance Show ResourcePattern where
     "ResourcePattern(resourceType=" <> show resPatResourceType     <>
     ", name="                       <> T.unpack resPatResourceName <>
     ", patternType="                <> show resPatPatternType      <> ")"
+
+-- FIXME then: design a proper serialization format for 'ResourcePattern'.
+-- WARNING: the resource name may contain '_'!
+-- | Convert a 'ResourcePattern' to a metadata key typed 'Text'.
+--   A wildcard resource name "*" will be converted to "AnyResource".
+resourcePatternToMetadataKey :: ResourcePattern -> Text
+resourcePatternToMetadataKey ResourcePattern{..} =
+  T.pack (show resPatPatternType)  <> "_" <>
+  T.pack (show resPatResourceType) <> "_" <>
+  (if resPatResourceName == wildcardResourceName
+    then "AnyResource"
+    else resPatResourceName
+  )
+-- WARNING: the resource name may contain '_'!
+-- | Convert a metadata key typed 'Text' to a 'ResourcePattern'.
+resourcePatternFromMetadataKey :: Text -> Maybe ResourcePattern
+resourcePatternFromMetadataKey name =
+  let (pat,_left1) = T.breakOn "_" name
+      (typ,_left2) = T.breakOn "_" (T.drop 1 _left1)
+      res          = T.drop 1 _left2
+   in if T.null pat || T.null typ || T.null res
+        then Nothing
+        else Just $ ResourcePattern (read (T.unpack typ))
+                                    (if res == "AnyResource"
+                                      then wildcardResourceName
+                                      else res)
+                                    (read (T.unpack pat))
 
 wildcardResourceName :: Text
 wildcardResourceName = "*"
@@ -165,7 +192,7 @@ data ResourcePatternFilter = ResourcePatternFilter
     --   Otherwise, only match patterns with the same resource type.
   , resPatFilterResourceName :: Text
     -- | The resource name to match. If null, ignore the resource name.
-    --   If 'WILDCARD', only match wildcard patterns. -- FIXME: which WILDCARD?
+    --   If 'WILDCARD', only match wildcard patterns.
   , resPatFilterPatternType  :: PatternType
     -- | The resource pattern type to match.
     --   If 'Pat_ANY', match ignore the pattern type.

@@ -58,6 +58,7 @@ import           HStream.Kafka.Server.Config       (AdvertisedListeners,
                                                     advertisedListenersToPB,
                                                     runServerConfig)
 import qualified HStream.Kafka.Server.Handler      as K
+import qualified HStream.Kafka.Server.MetaData     as M
 import           HStream.Kafka.Server.Types        (ServerContext (..),
                                                     initServerContext)
 import qualified HStream.Logger                    as Log

@@ -3,19 +3,21 @@
 
 module HStream.Common.Server.MetaData
   ( rootPath
+  , kafkaRootPath
   , clusterStartTimeId
-  , TaskAllocation (..), renderTaskAllocationsToTable
 
+  , TaskAllocation (..)
+  , renderTaskAllocationsToTable
   , GroupMetadataValue(..)
   , MemberMetadataValue(..)
 
-  , initKafkaZkPaths
-  , initKafkaRqTables
-  , initKafkaFileTables
+  , initializeZkPaths
+  , initializeRqTables
+  , initializeFileTables
   ) where
 
 import           Control.Exception                     (handle)
-import           Control.Monad                         (unless, void)
+import           Control.Monad
 import           Data.Aeson                            (FromJSON (..),
                                                         ToJSON (..))
 import qualified Data.Aeson                            as Aeson
@@ -34,18 +36,18 @@ import           Data.Int                              (Int32)
 import qualified Data.Text                             as T
 import qualified Data.Vector                           as V
 import           HStream.Common.Server.MetaData.Values
-import           HStream.Exception                     (RQLiteTableAlreadyExists)
-import           HStream.MetaStore.FileUtils           (Contents, createTables)
-import           HStream.MetaStore.RqliteUtils         (createTable)
+import qualified HStream.Exception                     as HE
+import qualified HStream.MetaStore.FileUtils           as File
+import qualified HStream.MetaStore.RqliteUtils         as Rqlite
 import           HStream.MetaStore.Types               (FHandle,
                                                         HasPath (myRootPath),
                                                         RHandle (..))
-import           HStream.MetaStore.ZookeeperUtils      (tryCreate)
+import qualified HStream.MetaStore.ZookeeperUtils      as ZK
 import qualified HStream.ThirdParty.Protobuf           as Proto
-import           HStream.Utils                         (textToCBytes)
 
--------------------------------------------------------------------------------
-
+------------------------------------------------------------
+-- metadata for task allocation
+------------------------------------------------------------
 data TaskAllocation = TaskAllocation
   { taskAllocationEpoch    :: Word32
   , taskAllocationServerId :: Word32
@@ -69,7 +71,9 @@ renderTaskAllocationsToTable relations =
       rows = map (\TaskAllocation{..} -> [taskAllocationServerId]) relations
    in Aeson.object ["headers" Aeson..= headers, "rows" Aeson..= rows]
 
--------------------- Group Metadata Value -------------------------
+------------------------------------------------------------
+-- metadata for groups
+------------------------------------------------------------
 data GroupMetadataValue
   = GroupMetadataValue
   { groupId       :: T.Text
@@ -95,7 +99,6 @@ instance HasPath GroupMetadataValue RHandle where
 instance HasPath GroupMetadataValue FHandle where
   myRootPath = "groups"
 
-
 data MemberMetadataValue
   = MemberMetadataValue
   { memberId         :: T.Text
@@ -112,78 +115,30 @@ data MemberMetadataValue
 instance FromJSON MemberMetadataValue
 instance ToJSON MemberMetadataValue
 
--------------------------------------------------------------------------------
-
-initializeZkPaths :: HasCallStack => ZHandle -> [CBytes] -> IO ()
-initializeZkPaths zk = mapM_ (tryCreate zk)
-
-initializeRqTables :: RHandle -> [Text] -> IO ()
-initializeRqTables (RHandle m url) = mapM_ (handleExists . createTable m url)
-  where
-    handleExists = handle (\(_:: RQLiteTableAlreadyExists) -> pure ())
-
-initializeFileTables :: FHandle -> [Text] -> IO ()
-initializeFileTables fp paths = do
-  fileExists <- doesFileExist fp
-  unless fileExists $ void $ withTryFileLock fp Exclusive $ \_ ->
-    BSL.writeFile fp (Aeson.encode (mempty :: Contents))
-  createTables paths fp
-
--------------------------------------------------------------------------------
--- HStream metadatas for Kafka server
-
-kafkaZkPaths :: [CBytes]
-kafkaZkPaths =
-  [ textToCBytes rootPath
-  , textToCBytes kafkaRootPath
-  , textToCBytes $ myRootPath @Proto.Timestamp @ZHandle
-  , textToCBytes $ myRootPath @TaskAllocation @ZHandle
-  , textToCBytes $ myRootPath @GroupMetadataValue @ZHandle
-  -- FIXME: hardcoded
-  , textToCBytes kafkaRootPath <> "/acl"
-  , textToCBytes kafkaRootPath <> "/aclExtended"
-  ]
-
-kafkaRqTables :: [Text]
-kafkaRqTables =
-  [ myRootPath @TaskAllocation @RHandle
-  , myRootPath @GroupMetadataValue @RHandle
-  , myRootPath @Proto.Timestamp @RHandle
-  -- FIXME: hardcoded
-  , "acl"
-  , "aclExtended"
-  ]
-
-kafkaFileTables :: [Text]
-kafkaFileTables =
-  [ myRootPath @TaskAllocation @FHandle
-  , myRootPath @GroupMetadataValue @FHandle
-  , myRootPath @Proto.Timestamp @RHandle
-  -- FIXME: hardcoded
-  , "acl"
-  , "aclExtended"
-  ]
-
-initKafkaZkPaths :: HasCallStack => ZHandle -> IO ()
-initKafkaZkPaths zk = initializeZkPaths zk kafkaZkPaths
-
-initKafkaRqTables :: RHandle -> IO ()
-initKafkaRqTables rh = initializeRqTables rh kafkaRqTables
-
-initKafkaFileTables :: FHandle -> IO ()
-initKafkaFileTables fh = initializeFileTables fh kafkaFileTables
-
--------------------------------------------------------------------------------
--- TODO: HStream metadatas for hstream server
---
--- see HStream.Server.MetaData from hstream library
-
--------------------------------------------------------------------------------
--- Instances
-
+------------------------------------------------------------
+-- metadata for some common utils
+------------------------------------------------------------
 instance HasPath Proto.Timestamp ZHandle where
   myRootPath = rootPath <> "/timestamp"
 instance HasPath Proto.Timestamp RHandle where
   myRootPath = "timestamp"
 instance HasPath Proto.Timestamp FHandle where
   myRootPath = "timestamp"
+
+------------------------------------------------------------
+-- Metadata Initialization (common methods)
+------------------------------------------------------------
+initializeZkPaths :: HasCallStack => ZHandle -> [CBytes] -> IO ()
+initializeZkPaths zk = mapM_ (ZK.tryCreate zk)
+
+initializeRqTables :: RHandle -> [Text] -> IO ()
+initializeRqTables (RHandle m url) = mapM_ (handleExists . Rqlite.createTable m url)
+  where
+    handleExists = handle (\(_:: HE.RQLiteTableAlreadyExists) -> pure ())
+
+initializeFileTables :: FHandle -> [Text] -> IO ()
+initializeFileTables fp paths = do
+  fileExists <- doesFileExist fp
+  unless fileExists $ void $ withTryFileLock fp Exclusive $ \_ ->
+    BSL.writeFile fp (Aeson.encode (mempty :: File.Contents))
+  File.createTables paths fp

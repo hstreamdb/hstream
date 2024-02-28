@@ -1,5 +1,3 @@
-{-# LANGUAGE FunctionalDependencies #-}
-
 module HStream.Kafka.Common.Authorizer.Class where
 
 import           Data.Text                     (Text)
@@ -13,10 +11,10 @@ import qualified Kafka.Protocol.Message        as K
 -- Helper types
 ------------------------------------------------------------
 data AclAction = AclAction
-  { aclActionResPat       :: ResourcePattern
-  , aclActionOp           :: AclOperation
-  , aclActionLogIfAllowed :: Bool
-  , aclActionLogIfDenied  :: Bool
+  { aclActionResPat       :: !ResourcePattern
+  , aclActionOp           :: !AclOperation
+  , aclActionLogIfAllowed :: !Bool
+  , aclActionLogIfDenied  :: !Bool
   -- , more...
   }
 instance Show AclAction where
@@ -34,8 +32,8 @@ data AuthorizationResult
 
 -- TODO
 data AuthorizableRequestContext = AuthorizableRequestContext
-  { authReqCtxHost      :: Text
-  , authReqCtxPrincipal :: Principal
+  { authReqCtxHost      :: !Text
+  , authReqCtxPrincipal :: !Principal
   -- , ...
   }
 

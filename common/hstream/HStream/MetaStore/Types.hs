@@ -1,5 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes   #-}
 {-# LANGUAGE CPP                   #-}
+{-# LANGUAGE ConstraintKinds       #-}
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
@@ -45,8 +46,8 @@ type Key = T.Text
 type Path = T.Text
 type Url = T.Text
 type Version = Int
-class (MetaStore value handle, HasPath value handle) => MetaType value handle
-instance (MetaStore value handle, HasPath value handle) => MetaType value handle
+
+type MetaType value handle = (MetaStore value handle, HasPath value handle)
 type FHandle = FilePath
 data RHandle = RHandle Manager Url
 data MetaHandle
