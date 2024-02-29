@@ -74,6 +74,21 @@ common link-asan
       "-optl-Wl,--whole-archive" "-optl-Wl,-Bstatic" "-optl-Wl,-lasan"
       "-optl-Wl,-Bdynamic" "-optl-Wl,--no-whole-archive"
 
+-- Local library for HStream RawStrings, see module description for why we need this.
+library hstream-lib-rawstring
+  import:           shared-properties
+  hs-source-dirs:   src/lib
+  exposed-modules:  HStream.RawString
+  build-depends:
+    , base
+    , containers
+    , raw-strings-qq
+
+  if flag(hstream_enable_asan)
+    cpp-options: -DHSTREAM_ENABLE_ASAN
+
+  default-language: Haskell2010
+
 library
   import:             shared-properties
   exposed-modules:
@@ -160,6 +175,7 @@ library
     , hstream-processing
     , hstream-sql
     , hstream-store
+    , hstream:hstream-lib-rawstring
     , memory
     , microlens
     , microlens-aeson
@@ -168,7 +184,6 @@ library
     , optparse-applicative
     , proto3-suite
     , proto3-wire
-    , raw-strings-qq
     , rocksdb-haskell-bindings
     , scientific
     , split
@@ -183,7 +198,7 @@ library
     , unix
     , unordered-containers
     , uuid
-    , vector                    ^>=0.13
+    , vector                         ^>=0.13
     , vector-algorithms
     , yaml
     , Z-Data
@@ -234,12 +249,12 @@ library hstream-app
     , hstream-gossip
     , hstream-kafka
     , hstream-store
+    , hstream:hstream-lib-rawstring
     , http-client
     , memory
     , optparse-applicative
     , proto3-suite
     , proto3-wire
-    , raw-strings-qq
     , stm
     , suspend
     , text
@@ -283,13 +298,12 @@ executable hstream-server
     , hstream-gossip
     , hstream-kafka
     , hstream-store
-    , hstream:{hstream, hstream-app}
+    , hstream:{hstream, hstream-app, hstream-lib-rawstring}
     , http-client
     , memory
     , optparse-applicative
     , proto3-suite
     , proto3-wire
-    , raw-strings-qq
     , stm
     , suspend
     , text
@@ -320,7 +334,6 @@ executable hstream
     , grpc-haskell
     , grpc-haskell-core
     , haskeline
-    , hstream
     , hstream-admin-server
     , hstream-api-hs
     , hstream-common
@@ -328,11 +341,11 @@ executable hstream
     , hstream-common-stats
     , hstream-sql
     , hstream-store
+    , hstream:{hstream, hstream-lib-rawstring}
     , network
     , optparse-applicative
     , proto3-suite
     , random
-    , raw-strings-qq
     , split
     , text
     , unix

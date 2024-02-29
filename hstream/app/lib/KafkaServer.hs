@@ -5,7 +5,6 @@
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE PatternSynonyms     #-}
-{-# LANGUAGE QuasiQuotes         #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
@@ -35,6 +34,7 @@ import           ZooKeeper                         (withResource,
                                                     zookeeperResInit)
 
 import qualified Data.Vector                       as V
+
 import           HStream.Base                      (setupFatalSignalHandler)
 import           HStream.Common.Server.HashRing    (updateHashRing)
 import qualified HStream.Common.Server.MetaData    as M
@@ -65,14 +65,11 @@ import qualified HStream.Logger                    as Log
 import           HStream.MetaStore.Types           (MetaHandle (..),
                                                     MetaStore (..),
                                                     RHandle (..))
+import           HStream.RawString                 (banner)
 import qualified HStream.Server.HStreamInternal    as I
 import qualified HStream.Store.Logger              as S
 import qualified HStream.ThirdParty.Protobuf       as Proto
 import           HStream.Utils                     (getProtoTimestamp)
-
-#ifndef HSTREAM_ENABLE_ASAN
-import           Text.RawString.QQ                 (r)
-#endif
 
 -------------------------------------------------------------------------------
 
@@ -162,17 +159,7 @@ serve :: ServerContext -> K.ServerOptions
       -> IO ()
 serve sc@ServerContext{..} netOpts usingCppServer = do
   Log.i "************************"
-#ifndef HSTREAM_ENABLE_ASAN
-  hPutStrLn stderr $ [r|
-   _  _   __ _____ ___ ___  __  __ __
-  | || |/' _/_   _| _ \ __|/  \|  V  |
-  | >< |`._`. | | | v / _|| /\ | \_/ |
-  |_||_||___/ |_| |_|_\___|_||_|_| |_|
-
-  |]
-#else
-  hPutStrLn stderr "ONLY FOR DEBUG: Enable ASAN"
-#endif
+  hPutStrLn stderr banner
   Log.i "************************"
 
   let serverOnStarted = do
