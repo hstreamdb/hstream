@@ -4,7 +4,6 @@
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE PatternSynonyms     #-}
-{-# LANGUAGE QuasiQuotes         #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
@@ -19,19 +18,18 @@ import           Control.Concurrent               (forkFinally, myThreadId,
 import           Control.Exception                (SomeException, handle, try)
 import           Control.Monad                    (forM_, forever, void, (>=>))
 import           Control.Monad.IO.Class           (liftIO)
+import qualified Data.Aeson.Text                  as J
 import           Data.Char                        (toUpper)
 import qualified Data.Map                         as M
 import qualified Data.Text                        as T
+import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Client    (ClientRequest (..),
                                                    ClientResult (..))
 import           Network.GRPC.HighLevel.Generated (withGRPCClient)
 import qualified System.Console.Haskeline         as RL
 import qualified System.Console.Haskeline.History as RL
-import           Text.RawString.QQ                (r)
 
-import qualified Data.Aeson.Text                  as J
-import qualified Data.Text.Lazy                   as TL
 import           HStream.Client.Action            (createConnector,
                                                    createStream,
                                                    createStreamBySelectWithCustomQueryName,
@@ -50,6 +48,8 @@ import           HStream.Client.Types             (HStreamCliContext (..),
 import           HStream.Client.Utils             (calculateShardId,
                                                    dropPlanToResType)
 import           HStream.Common.Types             (hashShardKey)
+import           HStream.RawString                (cliSqlHelpInfo,
+                                                   cliSqlHelpInfos)
 import           HStream.Server.HStreamApi        (CommandQuery (..),
                                                    CommandQueryResponse (..),
                                                    HStreamApi (..),
@@ -78,7 +78,7 @@ import           HStream.Utils                    (HStreamClientApi,
 -- and this needs to be optimized. This could be done with a grpc client pool.
 interactiveSQLApp :: HStreamSqlContext -> Maybe FilePath -> IO ()
 interactiveSQLApp sqlCtx@HStreamSqlContext{hstreamCliContext = cliCtx@HStreamCliContext{..}, ..} historyFile = do
-  putStrLn helpInfo
+  putStrLn cliSqlHelpInfo
   tid <- myThreadId
   void $ forkFinally maintainAvailableNodes (\case Left err -> throwTo tid err; _ -> return ())
   RL.runInputT settings loop
@@ -121,9 +121,9 @@ commandExec HStreamSqlContext{hstreamCliContext = cliCtx@HStreamCliContext{..},.
   -- ":listSubs":_         -> callListSubscriptions cliCtx
   -- -- }
 
-  ":h": _     -> putStrLn helpInfo
+  ":h": _     -> putStrLn cliSqlHelpInfo
   [":help"]   -> putStr groupedHelpInfo
-  ":help":x:_ -> forM_ (M.lookup (map toUpper x) helpInfos) putStrLn
+  ":help":x:_ -> forM_ (M.lookup (map toUpper x) cliSqlHelpInfos) putStrLn
 
   (_:_)       -> liftIO $ handle (\(e :: SomeSQLException) -> putStrLn . formatSomeSQLException $ e) $ do
     rSQL <- parseAndRefine $ T.pack xs
@@ -191,69 +191,8 @@ sqlAction HStreamApi{..} sql = do
       putStr $ HStream.Utils.formatCommandQueryResponse x
     ClientErrorResponse _ -> putStr $ HStream.Utils.formatResult resp
 
--- XXX: Can't build template-haskell with asan
-#ifndef HSTREAM_ENABLE_ASAN
-helpInfo :: String
-helpInfo =
-  [r|
-Command
-  :h                           To show these help info
-  :q                           To exit command line interface
-  :help [sql_operation]        To show full usage of sql statement
-
-SQL STATEMENTS:
-  To create a simplest stream:
-    CREATE STREAM stream_name;
-
-  To create a query select all fields from a stream:
-    SELECT * FROM stream_name EMIT CHANGES;
-
-  To insert values to a stream:
-    INSERT INTO stream_name (field1, field2) VALUES (1, 2);
-  |]
-
-helpInfos :: M.Map String String
-helpInfos = M.fromList [
-  ("CREATE",[r|
-  CREATE STREAM <stream_name> [AS <select_query>] [ WITH ( {stream_options} ) ];
-  CREATE {SOURCE|SINK} CONNECTOR <connector_name> [IF NOT EXIST] WITH ( {connector_options} ) ;
-  CREATE VIEW <stream_name> AS <select_query> ;
-  |]),
-  ("INSERT",[r|
-  INSERT INTO <stream_name> ( {field_name} ) VALUES ( {field_value} );
-  INSERT INTO <stream_name> VALUES CAST ('json_value'   AS JSONB);
-  INSERT INTO <stream_name> VALUES CAST ('binary_value' AS BYTEA);
-  |]),
-  ("SELECT", [r|
-  SELECT <* | {expression [ AS field_alias ]}>
-  FROM stream_name_1
-       [ join_type JOIN stream_name_2
-         WITHIN (some_interval)
-         ON stream_name_1.field_1 = stream_name_2.field_2 ]
-  [ WHERE search_condition ]
-  [ GROUP BY field_name [, window_type] ]
-  EMIT CHANGES;
-  |]),
-  ("SHOW", [r|
-  SHOW <CONNECTORS|STREAMS|QUERIES|VIEWS>;
-  |]),
-  ("TERMINATE", [r|
-  TERMINATE <QUERY <query_id>|ALL>;
-  |]),
-  ("DROP", [r|
-  DROP <STREAM <stream_name>|VIEW <view_name>|QUERY <query_id>> [IF EXISTS];
-  |])
-  ]
-#else
-helpInfo :: String
-helpInfo = ""
-
-helpInfos :: M.Map String String
-helpInfos = M.fromList []
-#endif
-
 groupedHelpInfo :: String
-groupedHelpInfo = ("SQL Statements\n" <> ) . unlines . map (\(x, y) -> x <> "  " <> y) . M.toList $ helpInfos
+groupedHelpInfo = ("SQL Statements\n" <> ) . unlines . map (\(x, y) -> x <> "  " <> y) . M.toList $ cliSqlHelpInfos
 
 runActionWithGrpc :: HStreamCliContext
   -> (HStream.Utils.HStreamClientApi -> IO b) -> IO b

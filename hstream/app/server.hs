@@ -6,7 +6,6 @@
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE PatternSynonyms     #-}
-{-# LANGUAGE QuasiQuotes         #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
@@ -46,11 +45,13 @@ import           HStream.Gossip                   (GossipContext (..),
                                                    initGossipContext,
                                                    startGossip, waitGossipBoot)
 import           HStream.Gossip.Types             (InitType (Gossip))
+import qualified HStream.Gossip.Types             as Gossip
 import qualified HStream.Kafka.Server.Config      as Ka
 import qualified HStream.Logger                   as Log
 import           HStream.MetaStore.Types          as M (MetaHandle (..),
                                                         MetaStore (..),
                                                         RHandle (..))
+import           HStream.RawString                (banner)
 import           HStream.Server.Config            (AdvertisedListeners,
                                                    ExperimentalFeature (..),
                                                    FileLoggerSettings (..),
@@ -87,12 +88,6 @@ import qualified Network.GRPC.HighLevel           as GRPC
 import qualified Network.GRPC.HighLevel.Client    as GRPC
 import qualified Network.GRPC.HighLevel.Generated as GRPC
 #endif
-
-#ifndef HSTREAM_ENABLE_ASAN
-import           Text.RawString.QQ                (r)
-#endif
-
-import qualified HStream.Gossip.Types             as Gossip
 
 -------------------------------------------------------------------------------
 
@@ -195,17 +190,7 @@ serve
   -> IO ()
 serve sc@ServerContext{..} rpcOpts enableStreamV2 = do
   Log.i "************************"
-#ifndef HSTREAM_ENABLE_ASAN
-  hPutStrLn stderr $ [r|
-   _  _   __ _____ ___ ___  __  __ __
-  | || |/' _/_   _| _ \ __|/  \|  V  |
-  | >< |`._`. | | | v / _|| /\ | \_/ |
-  |_||_||___/ |_| |_|_\___|_||_|_| |_|
-
-  |]
-#else
-  hPutStrLn stderr "ONLY FOR DEBUG: Enable ASAN"
-#endif
+  hPutStrLn stderr banner
   Log.i "************************"
 
   let serverOnStarted = do

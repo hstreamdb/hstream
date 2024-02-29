@@ -4,7 +4,6 @@
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE PatternSynonyms     #-}
-{-# LANGUAGE QuasiQuotes         #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
@@ -31,7 +30,6 @@ import qualified Options.Applicative              as O
 import           Proto3.Suite                     (def)
 import           System.Exit                      (exitFailure)
 import           System.Timeout                   (timeout)
-import           Text.RawString.QQ                (r)
 
 import qualified HStream.Admin.Server.Command     as Admin
 import           HStream.Client.Action            (alterConnectorConfig,
@@ -46,6 +44,7 @@ import           HStream.Client.Execute           (executeWithLookupResource_,
                                                    initCliContext,
                                                    simpleExecute)
 import           HStream.Client.Internal          (interactiveAppend)
+import           HStream.RawString                (cliBanner)
 #ifdef HStreamEnableSchema
 import           HStream.Client.SQLNew            (commandExec,
                                                    interactiveSQLApp)
@@ -116,18 +115,10 @@ hstreamSQL connOpt HStreamSqlOpts{_updateInterval = updateInterval,
   _retryInterval = retryInterval, _retryLimit = retryLimit, .. } = do
   hstreamCliContext <- initCliContext connOpt
   case _execute of
-    Nothing        -> showHStream *> interactiveSQLApp HStreamSqlContext{..}  _historyFile
+    Nothing        -> putStrLn cliBanner *> interactiveSQLApp HStreamSqlContext{..}  _historyFile
     Just statement -> do
       when (Char.isSpace `all` statement) $ do putStrLn "Empty statement" *> exitFailure
       commandExec HStreamSqlContext{..} statement
-  where
-    showHStream = putStrLn [r|
-      __  _________________  _________    __  ___
-     / / / / ___/_  __/ __ \/ ____/   |  /  |/  /
-    / /_/ /\__ \ / / / /_/ / __/ / /| | / /|_/ /
-   / __  /___/ // / / _, _/ /___/ ___ |/ /  / /
-  /_/ /_//____//_/ /_/ |_/_____/_/  |_/_/  /_/
-  |]
 
 hstreamNodes :: RefinedCliConnOpts -> HStreamNodes -> IO ()
 hstreamNodes connOpts HStreamNodesList =
