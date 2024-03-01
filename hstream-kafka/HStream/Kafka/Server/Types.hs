@@ -68,20 +68,22 @@ initServerContext opts@ServerOpts{..} gossipContext mh = do
   -- Trick to avoid use maybe, must be initialized later
   fetchCtx <- fakeFetchContext
 
-  -- FIXME: abstract metadata interface
-  authorizer <- case mh of
-    ZkHandle zkHandle -> do
-      x <- newAclAuthorizer (pure zkHandle)
-      initAclAuthorizer x
-      return $ AuthorizerObject x
-    RLHandle rlHandle -> do
-      x <- newAclAuthorizer (pure rlHandle)
-      initAclAuthorizer x
-      return $ AuthorizerObject x
-    FileHandle fileHandle -> do
-      x <- newAclAuthorizer (pure fileHandle)
-      initAclAuthorizer x
-      return $ AuthorizerObject x
+  -- ACL authorization
+  authorizer <- case _enableAcl of
+    False -> return $ AuthorizerObject @AuthorizerObject Nothing
+    True  -> case mh of
+      ZkHandle zkHandle -> do
+        x <- newAclAuthorizer (pure zkHandle)
+        initAclAuthorizer x
+        return $ AuthorizerObject (Just x)
+      RLHandle rlHandle -> do
+        x <- newAclAuthorizer (pure rlHandle)
+        initAclAuthorizer x
+        return $ AuthorizerObject (Just x)
+      FileHandle fileHandle -> do
+        x <- newAclAuthorizer (pure fileHandle)
+        initAclAuthorizer x
+        return $ AuthorizerObject (Just x)
 
   return
     ServerContext

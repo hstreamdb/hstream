@@ -1,11 +1,14 @@
 module HStream.Kafka.Common.Authorizer.Class where
 
-import           Data.Text                     (Text)
+import           Control.Exception
+import           Data.Text                           (Text)
 
 import           HStream.Kafka.Common.Acl
+import qualified HStream.Kafka.Common.KafkaException as K
 import           HStream.Kafka.Common.Resource
 import           HStream.Kafka.Common.Security
-import qualified Kafka.Protocol.Message        as K
+import qualified Kafka.Protocol.Error                as K
+import qualified Kafka.Protocol.Message              as K
 
 ------------------------------------------------------------
 -- Helper types
@@ -74,9 +77,27 @@ class Authorizer s where
 -- Existential wrapper for Authorizer
 ------------------------------------------------------------
 data AuthorizerObject where
-  AuthorizerObject :: Authorizer s => s -> AuthorizerObject
+  AuthorizerObject :: Authorizer s => Maybe s -> AuthorizerObject
 
 withAuthorizerObject :: AuthorizerObject
-                     -> (forall s. Authorizer s => s -> a)
+                     -> (forall s. Authorizer s => Maybe s -> a)
                      -> a
 withAuthorizerObject (AuthorizerObject x) f = f x
+
+-- NOTE: 'AuthorizerObject' can contain 'Nothing'.
+--       Methods behave differently in two types on 'Nothing':
+--       1. management methods ('createAcls', 'deleteAcls' and 'getAcls'): throw an exception
+--       2. 'authorize' and 'aclCount': always return "true" values as if ACL not implemented
+instance Authorizer AuthorizerObject where
+  createAcls ctx (AuthorizerObject x) =
+    maybe (\_ -> throwIO $ K.ErrorCodeException K.SECURITY_DISABLED) (createAcls ctx) x
+  deleteAcls ctx (AuthorizerObject x) =
+    maybe (\_ -> throwIO $ K.ErrorCodeException K.SECURITY_DISABLED) (deleteAcls ctx) x
+  getAcls    ctx (AuthorizerObject x) =
+    maybe (\_ -> throwIO $ K.ErrorCodeException K.SECURITY_DISABLED) (getAcls    ctx) x
+  aclCount   ctx (AuthorizerObject x) =
+    maybe (pure (-1)) (aclCount ctx) x
+  authorize  ctx (AuthorizerObject x) =
+    case x of
+      Nothing -> mapM (const $ pure Authz_ALLOWED)
+      Just s  -> authorize ctx s

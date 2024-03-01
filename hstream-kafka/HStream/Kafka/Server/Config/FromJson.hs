@@ -139,6 +139,10 @@ parseJSONToOptions CliOptions{..} obj = do
   -- FIXME: This should be more flexible
   let !_securityProtocolMap = defaultProtocolMap tlsConfig saslOption
 
+  -- Acl
+  nodeEnableAcl <- nodeCfgObj .:? "enable-acl" .!= False
+  let !_enableAcl = cliEnableAcl || nodeEnableAcl
+
   let experimentalFeatures = cliExperimentalFeatures
 
   return ServerOpts {..}

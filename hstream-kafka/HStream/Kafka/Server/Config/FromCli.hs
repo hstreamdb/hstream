@@ -99,6 +99,7 @@ cliOptionsParser = do
   cliStoreCompression <- optional storeCompressionParser
 
   cliEnableSaslAuth <- enableSaslAuthParser
+  cliEnableAcl      <- enableAclParser
 
   cliDisableAutoCreateTopic <- disableAutoCreateTopicParser
 
@@ -285,6 +286,11 @@ enableSaslAuthParser :: O.Parser Bool
 enableSaslAuthParser = flag False True
   $  long "enable-sasl"
   <> help "Enable SASL authentication"
+
+enableAclParser :: O.Parser Bool
+enableAclParser = flag False True
+  $  long "enable-acl"
+  <> help "Enable ACL authorization"
 
 disableAutoCreateTopicParser :: O.Parser Bool
 disableAutoCreateTopicParser = flag False True
