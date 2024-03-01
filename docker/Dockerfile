@@ -123,6 +123,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libevent-openssl-2.1-7         \
       libgoogle-glog-dev             \
       libgsasl7                      \
+      libjemalloc2                   \
       libmysqlclient-dev             \
       libpython3.10                  \
       librdkafka++1                  \
@@ -141,8 +142,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=docker:dind /usr/local/bin/docker /usr/local/bin/
 
 COPY --from=builder /usr/local/lib/ /usr/local/lib/
-COPY --from=builder /usr/lib/libjemalloc.so.2 /usr/lib/libjemalloc.so.2
-RUN ln -sr /usr/lib/libjemalloc.so.2 /usr/lib/libjemalloc.so
 
 COPY --from=ld_image /usr/local/bin/logdeviced \
                      /usr/local/bin/ld-dev-cluster \
