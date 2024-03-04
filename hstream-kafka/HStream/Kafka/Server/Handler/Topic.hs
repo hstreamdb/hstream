@@ -15,24 +15,29 @@ module HStream.Kafka.Server.Handler.Topic
 
 import           Control.Exception
 import           Control.Monad
-import qualified Data.List                          as L
-import qualified Data.Map                           as Map
-import           Data.Maybe                         (isNothing)
-import qualified Data.Text                          as T
-import qualified Data.Vector                        as V
+import           Control.Monad.Extra                   ((&&^))
+import           Data.Functor                          ((<&>))
+import qualified Data.List                             as L
+import qualified Data.Map                              as Map
+import           Data.Maybe                            (isNothing)
+import qualified Data.Text                             as T
+import qualified Data.Vector                           as V
 
-import           HStream.Kafka.Common.OffsetManager (cleanOffsetCache)
-import qualified HStream.Kafka.Common.Utils         as Utils
-import qualified HStream.Kafka.Server.Core.Topic    as Core
-import           HStream.Kafka.Server.Types         (ServerContext (..))
-import qualified HStream.Logger                     as Log
-import qualified HStream.Store                      as S
-import           Kafka.Protocol                     (NullableString)
-import qualified Kafka.Protocol.Encoding            as K
-import           Kafka.Protocol.Error               (ErrorCode)
-import qualified Kafka.Protocol.Error               as K
-import qualified Kafka.Protocol.Message             as K
-import qualified Kafka.Protocol.Service             as K
+import           HStream.Kafka.Common.Acl
+import           HStream.Kafka.Common.Authorizer.Class
+import           HStream.Kafka.Common.OffsetManager    (cleanOffsetCache)
+import           HStream.Kafka.Common.Resource
+import qualified HStream.Kafka.Common.Utils            as Utils
+import qualified HStream.Kafka.Server.Core.Topic       as Core
+import           HStream.Kafka.Server.Types            (ServerContext (..))
+import qualified HStream.Logger                        as Log
+import qualified HStream.Store                         as S
+import           Kafka.Protocol                        (NullableString)
+import qualified Kafka.Protocol.Encoding               as K
+import           Kafka.Protocol.Error                  (ErrorCode)
+import qualified Kafka.Protocol.Error                  as K
+import qualified Kafka.Protocol.Message                as K
+import qualified Kafka.Protocol.Service                as K
 
 --------------------
 -- 19: CreateTopics
@@ -40,7 +45,7 @@ import qualified Kafka.Protocol.Service             as K
 -- FIXME: The `timeoutMs` field of request is omitted.
 handleCreateTopics
   :: ServerContext -> K.RequestContext -> K.CreateTopicsRequest -> IO K.CreateTopicsResponse
-handleCreateTopics ctx@ServerContext{scLDClient} _ K.CreateTopicsRequest{..} =
+handleCreateTopics ctx@ServerContext{scLDClient} reqCtx K.CreateTopicsRequest{..} =
   case topics of
     K.KaArray Nothing ->
       -- FIXME: We return `[]` when topics is `Nothing`.
@@ -49,7 +54,9 @@ handleCreateTopics ctx@ServerContext{scLDClient} _ K.CreateTopicsRequest{..} =
     K.KaArray (Just topics_)
       | V.null topics_ -> return $ K.CreateTopicsResponse {topics = K.KaArray $ Just V.empty, throttleTimeMs = 0}
       | otherwise      -> do
-          let (errRes, topics') = V.partitionWith (\tp -> mapErr tp.name . validateTopic $ tp) topics_
+          (errRes, topics') <- mapM (\tp -> mapErr tp.name
+                                        <$> liftM2 (*>) (authorizeTopic tp) (pure . validateTopic $ tp)
+                                    ) topics_ <&> V.partitionWith id
           if | null topics' ->
                 -- all topics validate failed, return directly
                 return $ K.CreateTopicsResponse {topics = K.KaArray $ Just errRes, throttleTimeMs = 0}
@@ -66,20 +73,34 @@ handleCreateTopics ctx@ServerContext{scLDClient} _ K.CreateTopicsRequest{..} =
                          , name=name
                          }
                     else return K.CreatableTopicResult {errorMessage=Nothing, errorCode=K.NONE, name=name}
-
+                -- FIXME: Topics of response have different order from request's. Is this allowed?
                 return $ K.CreateTopicsResponse {topics = K.KaArray . Just $ res <> errRes, throttleTimeMs = 0}
              | otherwise -> do
                 respTopics <- forM topics' $ createTopic
+                -- FIXME: Topics of response have different order from request's. Is this allowed?
                 return $ K.CreateTopicsResponse {topics = K.KaArray . Just $ respTopics <> errRes, throttleTimeMs = 0}
   where
+    -- FIXME: also check [CREATE CLUSTER], which implies [CREATE TOPIC]
+    -- [ACL] authorize a topic for [CREATE TOPIC] and [DESCRIBE_CONFIG TOPIC]
+    authorizeTopic :: K.CreatableTopic -> IO (Either (ErrorCode, NullableString) K.CreatableTopic)
+    authorizeTopic topic = do
+      authzed <- simpleAuthorize (toAuthorizableReqCtx reqCtx) ctx.authorizer Res_TOPIC topic.name AclOp_CREATE
+              &&^ simpleAuthorize (toAuthorizableReqCtx reqCtx) ctx.authorizer Res_TOPIC topic.name AclOp_DESCRIBE_CONFIGS
+      if authzed
+        then return (Right topic)
+        else return (Left (K.TOPIC_AUTHORIZATION_FAILED, Just $ "Authorization failed."))
+
     mapErr name (Left (errorCode, msg)) = Left $ K.CreatableTopicResult name errorCode msg
     mapErr _ (Right tp) = Right tp
 
     createTopic :: K.CreatableTopic -> IO K.CreatableTopicResult
-    createTopic K.CreatableTopic{..} = do
-      let configMap = Map.fromList . map (\c -> (c.name, c.value)) . Utils.kaArrayToList $ configs
-      ((errorCode, msg), _) <- Core.createTopic ctx name replicationFactor numPartitions configMap
-      return $ K.CreatableTopicResult name errorCode (Just msg)
+    createTopic topic@K.CreatableTopic{..} = do
+      authorizeTopic topic >>= \case
+        Left (errCode, msg) -> return $ K.CreatableTopicResult name errCode msg
+        Right _             -> do
+          let configMap = Map.fromList . map (\c -> (c.name, c.value)) . Utils.kaArrayToList $ configs
+          ((errorCode, msg), _) <- Core.createTopic ctx name replicationFactor numPartitions configMap
+          return $ K.CreatableTopicResult name errorCode (Just msg)
 
 validateTopic :: K.CreatableTopic -> Either (ErrorCode, NullableString) K.CreatableTopic
 validateTopic topic@K.CreatableTopic{..} = do
