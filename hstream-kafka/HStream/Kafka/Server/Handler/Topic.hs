@@ -139,7 +139,7 @@ validateTopic topic@K.CreatableTopic{..} = do
 -- FIXME: The `timeoutMs` field of request is omitted.
 handleDeleteTopics
   :: ServerContext -> K.RequestContext -> K.DeleteTopicsRequest -> IO K.DeleteTopicsResponse
-handleDeleteTopics ServerContext{..} _ K.DeleteTopicsRequest{..} =
+handleDeleteTopics ServerContext{..} reqCtx K.DeleteTopicsRequest{..} =
   case topicNames of
     K.KaArray Nothing ->
       -- FIXME: We return `[]` when topics is `Nothing`.
@@ -149,15 +149,24 @@ handleDeleteTopics ServerContext{..} _ K.DeleteTopicsRequest{..} =
       | V.null topicNames_ -> return $ K.DeleteTopicsResponse {responses = K.KaArray $ Just V.empty, throttleTimeMs = 0}
       | otherwise          -> do
           respTopics <- forM topicNames_ $ \topicName -> do
-            try (deleteTopic topicName) >>= \case
-              Left (e :: SomeException)
-                | Just _ <- fromException @S.NOTFOUND e -> do
-                   Log.warning $ "Delete topic failed, topic " <> Log.build topicName <> " does not exist"
-                   return $ K.DeletableTopicResult topicName K.UNKNOWN_TOPIC_OR_PARTITION
-                | otherwise -> do
-                    Log.warning $ "Exception occurs when deleting topic " <> Log.build topicName <> ": " <> Log.build (show e)
-                    return $ K.DeletableTopicResult topicName K.UNKNOWN_SERVER_ERROR
-              Right res -> return res
+            -- [ACL] check [DESCRIBE TOPIC] and [DELETE TOPIC]
+            simpleAuthorize (toAuthorizableReqCtx reqCtx) authorizer Res_TOPIC topicName AclOp_DESCRIBE >>= \case
+              -- Note: According to Kafka's implementation,
+              --       if there is no DESCRIBE permission, the return topic name should be null.
+              --       See kafka.server.KafkaApis#handleDeleteTopicsRequest
+              False -> return $ K.DeletableTopicResult "" K.TOPIC_AUTHORIZATION_FAILED
+              True  -> simpleAuthorize (toAuthorizableReqCtx reqCtx) authorizer Res_TOPIC topicName AclOp_DELETE >>= \case
+                False -> return $ K.DeletableTopicResult topicName K.TOPIC_AUTHORIZATION_FAILED
+                True  -> do
+                  try (deleteTopic topicName) >>= \case
+                    Left (e :: SomeException)
+                      | Just _ <- fromException @S.NOTFOUND e -> do
+                         Log.warning $ "Delete topic failed, topic " <> Log.build topicName <> " does not exist"
+                         return $ K.DeletableTopicResult topicName K.UNKNOWN_TOPIC_OR_PARTITION
+                      | otherwise -> do
+                          Log.warning $ "Exception occurs when deleting topic " <> Log.build topicName <> ": " <> Log.build (show e)
+                          return $ K.DeletableTopicResult topicName K.UNKNOWN_SERVER_ERROR
+                    Right res -> return res
           return $ K.DeleteTopicsResponse {responses = K.KaArray $ Just respTopics, throttleTimeMs = 0}
   where
     -- FIXME: There can be some potential exceptions which are difficult to
@@ -184,18 +193,21 @@ handleDeleteTopics ServerContext{..} _ K.DeleteTopicsRequest{..} =
 --------------------
 handleCreatePartitions
   :: ServerContext -> K.RequestContext -> K.CreatePartitionsRequest -> IO K.CreatePartitionsResponse
-handleCreatePartitions ctx _ req@K.CreatePartitionsRequest{..} = do
+handleCreatePartitions ctx reqCtx req@K.CreatePartitionsRequest{..} = do
   let topics' = Utils.kaArrayToVector req.topics
       groups = L.groupBy (\a b -> a.name == b.name) . L.sortBy (\a b -> compare a.name b.name) $ V.toList topics'
       dups = concat $ L.filter (\l -> length l > 1) groups
       validReques = concat $ L.filter (\l -> length l == 1) groups
-
-  succResults <- forM validReques $ \K.CreatePartitionsTopic{..} -> do
-    res <- Core.createPartitions ctx name count assignments timeoutMs validateOnly
-    return $ mkResults name res
+  validResults <- forM validReques $ \K.CreatePartitionsTopic{..} -> do
+    -- [ACL] check [ALTER TOPIC]
+    simpleAuthorize (toAuthorizableReqCtx reqCtx) ctx.authorizer Res_TOPIC name AclOp_ALTER >>= \case
+      False -> return $ mkResults name (K.TOPIC_AUTHORIZATION_FAILED, "The topic authorization is failed.")
+      True  -> do
+        res <- Core.createPartitions ctx name count assignments timeoutMs validateOnly
+        return $ mkResults name res
   let dupsResults = map (\t -> mkResults t.name (K.INVALID_REQUEST, "Duplicate topic in request.")) dups
   return K.CreatePartitionsResponse
-        { results = K.KaArray . Just . V.fromList $ succResults <> dupsResults
+        { results = K.KaArray . Just . V.fromList $ validResults <> dupsResults
         , throttleTimeMs = 0
         }
  where
