@@ -1,7 +1,20 @@
-module HStream.Kafka.Common.Authorizer.Class where
+module HStream.Kafka.Common.Authorizer.Class
+  ( AclAction(..)
+  , AuthorizationResult(..)
+  , AuthorizableRequestContext(..)
+  , toAuthorizableReqCtx
+
+  , Authorizer(..)
+  , AuthorizerObject(..)
+
+  , simpleAuthorize
+  ) where
 
 import           Control.Exception
+import           Control.Monad
+import           Data.Maybe
 import           Data.Text                           (Text)
+import qualified Data.Text                           as T
 
 import           HStream.Kafka.Common.Acl
 import qualified HStream.Kafka.Common.KafkaException as K
@@ -9,6 +22,7 @@ import           HStream.Kafka.Common.Resource
 import           HStream.Kafka.Common.Security
 import qualified Kafka.Protocol.Error                as K
 import qualified Kafka.Protocol.Message              as K
+import qualified Kafka.Protocol.Service              as K
 
 ------------------------------------------------------------
 -- Helper types
@@ -39,6 +53,12 @@ data AuthorizableRequestContext = AuthorizableRequestContext
   , authReqCtxPrincipal :: !Principal
   -- , ...
   }
+
+-- FIXME: is it suitable to place this function here?
+toAuthorizableReqCtx :: K.RequestContext -> AuthorizableRequestContext
+toAuthorizableReqCtx reqCtx =
+  AuthorizableRequestContext (T.pack reqCtx.clientHost)
+                             (Principal "User" (fromMaybe "" (join reqCtx.clientId)))
 
 ------------------------------------------------------------
 -- Abstract authorizer interface
@@ -79,11 +99,6 @@ class Authorizer s where
 data AuthorizerObject where
   AuthorizerObject :: Authorizer s => Maybe s -> AuthorizerObject
 
-withAuthorizerObject :: AuthorizerObject
-                     -> (forall s. Authorizer s => Maybe s -> a)
-                     -> a
-withAuthorizerObject (AuthorizerObject x) f = f x
-
 -- NOTE: 'AuthorizerObject' can contain 'Nothing'.
 --       Methods behave differently in two types on 'Nothing':
 --       1. management methods ('createAcls', 'deleteAcls' and 'getAcls'): throw an exception
@@ -101,3 +116,39 @@ instance Authorizer AuthorizerObject where
     case x of
       Nothing -> mapM (const $ pure Authz_ALLOWED)
       Just s  -> authorize ctx s
+
+------------------------------------------------------------
+-- Helper functions for using authorizers
+------------------------------------------------------------
+-- | The simplest way to authorize a single action.
+simpleAuthorize :: Authorizer s
+                => AuthorizableRequestContext
+                -> s
+                -> ResourceType
+                -> Text
+                -> AclOperation
+                -> IO Bool
+simpleAuthorize ctx authorizer resType resName op = do
+  let resPat = ResourcePattern
+             { resPatResourceType = resType
+             , resPatResourceName = resName
+             , resPatPatternType  = Pat_LITERAL -- FIXME: support extended?
+             }
+      action = AclAction
+             { aclActionResPat = resPat
+             , aclActionOp     = op
+             , aclActionLogIfAllowed = defaultLogIfAllowed
+             , aclActionLogIfDenied  = defaultLogIfDenied
+             }
+  authorize ctx authorizer [action] >>= \case
+    [Authz_ALLOWED] -> return True
+    [Authz_DENIED]  -> return False
+    _               -> error "what happened?" -- FIXME: error
+  where
+    -- FIXME: configuable
+    defaultLogIfAllowed :: Bool
+    defaultLogIfAllowed = False
+
+    -- FIXME: configuable
+    defaultLogIfDenied :: Bool
+    defaultLogIfDenied = True

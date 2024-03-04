@@ -1,6 +1,15 @@
 {-# LANGUAGE RecordWildCards #-}
 
-module HStream.Kafka.Common.Acl where
+module HStream.Kafka.Common.Acl
+  ( AclOperation(..)
+  , AclPermissionType(..)
+  , AccessControlEntryData(..)
+  , AccessControlEntry(..)
+  , AccessControlEntryFilter(..)
+  , AclBinding(..)
+  , AclBindingFilter(..)
+  , validateAclBinding
+  ) where
 
 import           Data.Char
 import           Data.Maybe

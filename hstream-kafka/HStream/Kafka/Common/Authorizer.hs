@@ -1,6 +1,14 @@
 {-# LANGUAGE UndecidableInstances #-}
 
-module HStream.Kafka.Common.Authorizer where
+module HStream.Kafka.Common.Authorizer
+  ( AclAuthorizer
+  , newAclAuthorizer
+  , initAclAuthorizer
+  , syncAclAuthorizer
+
+  , aceToAclDescription
+  , aclBindingsToDescribeAclsResource
+  ) where
 
 import           Control.Concurrent
 import           Control.Exception
@@ -488,7 +496,6 @@ logAuditMessage AuthorizableRequestContext{..} AclAction{..} isAuthorized = do
                True  -> Log.info  . Log.buildString $ msg
                False -> Log.trace . Log.buildString $ msg
 
-----
 aceToAclDescription :: AccessControlEntry -> K.AclDescription
 aceToAclDescription (AccessControlEntry AccessControlEntryData{..}) =
   K.AclDescription

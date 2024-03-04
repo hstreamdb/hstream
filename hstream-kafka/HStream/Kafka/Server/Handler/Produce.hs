@@ -3,28 +3,31 @@ module HStream.Kafka.Server.Handler.Produce
   , handleInitProducerId
   ) where
 
-import qualified Control.Concurrent.Async           as Async
+import qualified Control.Concurrent.Async              as Async
 import           Control.Monad
-import           Data.ByteString                    (ByteString)
-import qualified Data.ByteString                    as BS
+import           Data.ByteString                       (ByteString)
+import qualified Data.ByteString                       as BS
 import           Data.Int
-import           Data.Maybe                         (fromMaybe)
-import           Data.Text                          (Text)
-import qualified Data.Text                          as T
-import qualified Data.Vector                        as V
+import           Data.Maybe                            (fromMaybe)
+import           Data.Text                             (Text)
+import qualified Data.Text                             as T
+import qualified Data.Vector                           as V
 import           Data.Word
 
-import qualified HStream.Kafka.Common.Metrics       as M
-import qualified HStream.Kafka.Common.OffsetManager as K
-import qualified HStream.Kafka.Common.RecordFormat  as K
-import           HStream.Kafka.Server.Types         (ServerContext (..))
-import qualified HStream.Logger                     as Log
-import qualified HStream.Store                      as S
-import qualified HStream.Utils                      as U
-import qualified Kafka.Protocol.Encoding            as K
-import qualified Kafka.Protocol.Error               as K
-import qualified Kafka.Protocol.Message             as K
-import qualified Kafka.Protocol.Service             as K
+import           HStream.Kafka.Common.Acl
+import           HStream.Kafka.Common.Authorizer.Class
+import qualified HStream.Kafka.Common.Metrics          as M
+import qualified HStream.Kafka.Common.OffsetManager    as K
+import qualified HStream.Kafka.Common.RecordFormat     as K
+import           HStream.Kafka.Common.Resource
+import           HStream.Kafka.Server.Types            (ServerContext (..))
+import qualified HStream.Logger                        as Log
+import qualified HStream.Store                         as S
+import qualified HStream.Utils                         as U
+import qualified Kafka.Protocol.Encoding               as K
+import qualified Kafka.Protocol.Error                  as K
+import qualified Kafka.Protocol.Message                as K
+import qualified Kafka.Protocol.Service                as K
 
 -- acks: (FIXME: Currently we only support -1)
 --   0: The server will not send any response(this is the only case where the
@@ -48,8 +51,11 @@ handleProduce
 handleProduce ServerContext{..} _reqCtx req = do
   -- TODO: handle request args: acks, timeoutMs
   let topicData = fromMaybe V.empty (K.unKaArray req.topicData)
-
   responses <- V.forM topicData $ \topic{- TopicProduceData -} -> do
+    -- [ACL] authorization result for the **topic**
+    isTopicAuthzed <-
+      simpleAuthorize (toAuthorizableReqCtx _reqCtx) authorizer Res_TOPIC topic.name AclOp_WRITE
+
     -- A topic is a stream. Here we donot need to check the topic existence,
     -- because the metadata api already does(?)
     partitions <- S.listStreamPartitionsOrderedByName
@@ -69,47 +75,58 @@ handleProduce ServerContext{..} _reqCtx req = do
       Log.debug1 $ "Try to append to logid " <> Log.build logid
                 <> "(" <> Log.build partition.index <> ")"
 
-      -- Wirte appends
-      (S.AppendCompletion{..}, offset) <-
-        appendRecords True scLDClient scOffsetManager
-                      (topic.name, partition.index) logid recordBytes
+      -- [ACL] Generate response by the authorization result of the **topic**
+      case isTopicAuthzed of
+        False -> pure $ K.PartitionProduceResponse
+                  { index           = partition.index
+                  , errorCode       = K.TOPIC_AUTHORIZATION_FAILED
+                  , baseOffset      = -1
+                  , logAppendTimeMs = -1
+                  , logStartOffset  = -1
+                  }
+        True -> do
+          -- FIXME: Block is too deep. Extract to a standalone function.
+          -- Wirte appends
+          (S.AppendCompletion{..}, offset) <-
+            appendRecords True scLDClient scOffsetManager
+                          (topic.name, partition.index) logid recordBytes
 
-      Log.debug1 $ "Append done " <> Log.build appendCompLogID
-                <> ", lsn: " <> Log.build appendCompLSN
-                <> ", start offset: " <> Log.build offset
+          Log.debug1 $ "Append done " <> Log.build appendCompLogID
+                    <> ", lsn: " <> Log.build appendCompLSN
+                    <> ", start offset: " <> Log.build offset
 
-      -- TODO: performance improvements
-      --
-      -- For each append request after version 5, we need to read the oldest
-      -- offset of the log. This will cause critical performance problems.
-      --
-      --logStartOffset <-
-      --  if reqCtx.apiVersion >= 5
-      --     then do m_logStartOffset <- K.getOldestOffset scOffsetManager logid
-      --             case m_logStartOffset of
-      --               Just logStartOffset -> pure logStartOffset
-      --               Nothing -> do
-      --                 Log.fatal $ "Cannot get log start offset for logid "
-      --                          <> Log.build logid
-      --                 pure (-1)
-      --     else pure (-1)
-      let logStartOffset = (-1)
+          -- TODO: performance improvements
+          --
+          -- For each append request after version 5, we need to read the oldest
+          -- offset of the log. This will cause critical performance problems.
+          --
+          --logStartOffset <-
+          --  if reqCtx.apiVersion >= 5
+          --     then do m_logStartOffset <- K.getOldestOffset scOffsetManager logid
+          --             case m_logStartOffset of
+          --               Just logStartOffset -> pure logStartOffset
+          --               Nothing -> do
+          --                 Log.fatal $ "Cannot get log start offset for logid "
+          --                          <> Log.build logid
+          --                 pure (-1)
+          --     else pure (-1)
+          let logStartOffset = (-1)
 
-      -- TODO: PartitionProduceResponse.logAppendTimeMs
-      --
-      -- The timestamp returned by broker after appending the messages. If
-      -- CreateTime is used for the topic, the timestamp will be -1.  If
-      -- LogAppendTime is used for the topic, the timestamp will be the broker
-      -- local time when the messages are appended.
-      --
-      -- Currently, only support LogAppendTime
-      pure $ K.PartitionProduceResponse
-        { index           = partition.index
-        , errorCode       = K.NONE
-        , baseOffset      = offset
-        , logAppendTimeMs = appendCompTimestamp
-        , logStartOffset  = logStartOffset
-        }
+          -- TODO: PartitionProduceResponse.logAppendTimeMs
+          --
+          -- The timestamp returned by broker after appending the messages. If
+          -- CreateTime is used for the topic, the timestamp will be -1.  If
+          -- LogAppendTime is used for the topic, the timestamp will be the broker
+          -- local time when the messages are appended.
+          --
+          -- Currently, only support LogAppendTime
+          pure $ K.PartitionProduceResponse
+            { index           = partition.index
+            , errorCode       = K.NONE
+            , baseOffset      = offset
+            , logAppendTimeMs = appendCompTimestamp
+            , logStartOffset  = logStartOffset
+            }
 
     pure $ K.TopicProduceResponse topic.name (K.KaArray $ Just partitionResponses)
 
@@ -131,7 +148,6 @@ handleInitProducerId _ _ _ = do
     }
 
 -------------------------------------------------------------------------------
-
 appendRecords
   :: Bool
   -> S.LDClient
