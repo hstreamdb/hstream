@@ -25,10 +25,8 @@ import qualified HStream.Kafka.Group.GroupOffsetManager as GOM
 import qualified HStream.Logger                         as Log
 import qualified HStream.MetaStore.Types                as Meta
 import           HStream.Store                          (LDClient)
-import qualified Kafka.Protocol.Encoding                as K
 import qualified Kafka.Protocol.Error                   as K
 import qualified Kafka.Protocol.Message                 as K
-import qualified Kafka.Protocol.Service                 as K
 
 data GroupCoordinator = GroupCoordinator
   { groups     :: C.MVar (Utils.HashTable T.Text Group)
@@ -58,26 +56,6 @@ instance TM.TaskManager GroupCoordinator where
 
   unloadTaskAsync = unloadGroup
 
-------------------- Join Group -------------------------
-
-joinGroup :: GroupCoordinator -> K.RequestContext -> K.JoinGroupRequest -> IO K.JoinGroupResponse
-joinGroup coordinator reqCtx req = do
-  handle (\((ErrorCodeException code)) -> makeErrorResponse code) $ do
-    -- get or create group
-    group <- getOrMaybeCreateGroup coordinator req.groupId req.memberId
-
-    -- join group
-    G.joinGroup group reqCtx req
-  where
-    makeErrorResponse code = return $ K.JoinGroupResponse {
-        errorCode = code
-      , generationId = -1
-      , protocolName = ""
-      , leader = ""
-      , memberId = req.memberId
-      , members = K.NonNullKaArray V.empty
-      , throttleTimeMs = 0
-      }
 
 getOrMaybeCreateGroup :: GroupCoordinator -> T.Text -> T.Text -> IO Group
 getOrMaybeCreateGroup GroupCoordinator{..} groupId memberId = do
@@ -111,31 +89,6 @@ getGroups GroupCoordinator{..} ids = do
 getGroupM :: GroupCoordinator -> T.Text -> IO (Maybe Group)
 getGroupM GroupCoordinator{..} groupId = do
   C.withMVar groups $ \gs -> H.lookup gs groupId
-
-syncGroup :: GroupCoordinator -> K.SyncGroupRequest -> IO K.SyncGroupResponse
-syncGroup coordinator req@K.SyncGroupRequest{..} = do
-  handle (\(ErrorCodeException code) -> makeErrorResponse code) $ do
-    group <- getGroup coordinator groupId
-    G.syncGroup group req
-  where makeErrorResponse code = return $ K.SyncGroupResponse {
-      errorCode = code
-    , assignment = ""
-    , throttleTimeMs = 0
-    }
-
-leaveGroup :: GroupCoordinator -> K.LeaveGroupRequest -> IO K.LeaveGroupResponse
-leaveGroup coordinator req = do
-  handle (\(ErrorCodeException code) -> makeErrorResponse code) $ do
-    group <- getGroup coordinator req.groupId
-    G.leaveGroup group req
-  where makeErrorResponse code = return $ K.LeaveGroupResponse {errorCode=code, throttleTimeMs=0}
-
-heartbeat :: GroupCoordinator -> K.HeartbeatRequest -> IO K.HeartbeatResponse
-heartbeat coordinator req = do
-  handle (\(ErrorCodeException code) -> makeErrorResponse code) $ do
-    group <- getGroup coordinator req.groupId
-    G.heartbeat group req
-  where makeErrorResponse code = return $ K.HeartbeatResponse {errorCode=code, throttleTimeMs=0}
 
 ------------------- Commit Offsets -------------------------
 commitOffsets :: GroupCoordinator -> K.OffsetCommitRequest -> IO K.OffsetCommitResponse
@@ -176,29 +129,6 @@ fetchOffsets coordinator req = do
           , metadata = Nothing
           , committedOffset = -1
         }
-
-------------------- List Groups -------------------------
-listGroups :: GroupCoordinator -> K.ListGroupsRequest -> IO K.ListGroupsResponse
-listGroups gc _ = do
-  gs <- getAllGroups gc
-  listedGroups <-  M.mapM G.overview gs
-  return $ K.ListGroupsResponse {errorCode=0, groups=Utils.listToKaArray listedGroups, throttleTimeMs=0}
-
-------------------- Describe Groups -------------------------
-describeGroups :: GroupCoordinator -> K.DescribeGroupsRequest -> IO K.DescribeGroupsResponse
-describeGroups gc req = do
-  getGroups gc (Utils.kaArrayToList req.groups) >>= \gs -> do
-    listedGroups <- M.forM gs $ \case
-      (gid, Nothing) -> return $ K.DescribedGroup {
-        protocolData=""
-      , groupState=""
-      , errorCode=K.GROUP_ID_NOT_FOUND
-      , members=Utils.listToKaArray []
-      , groupId=gid
-      , protocolType=""
-      }
-      (_, Just g) -> G.describe g
-    return $ K.DescribeGroupsResponse {groups=Utils.listToKaArray listedGroups, throttleTimeMs=0}
 
 ------------------- Load/Unload Group -------------------------
 -- load group from meta store
