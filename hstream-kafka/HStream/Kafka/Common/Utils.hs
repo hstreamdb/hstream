@@ -52,6 +52,9 @@ vectorToKaArray vec = K.KaArray (Just vec)
 mapKaArray :: (a -> b) -> K.KaArray a -> K.KaArray b
 mapKaArray f arr = K.KaArray (fmap (V.map f) (K.unKaArray arr))
 
+forKaArray :: K.KaArray a -> (a -> b) -> K.KaArray b
+forKaArray = flip mapKaArray
+
 mapKaArrayM :: (a -> IO b) -> K.KaArray a -> IO (K.KaArray b)
 mapKaArrayM f arr = case K.unKaArray arr of
   Nothing  -> return (K.KaArray Nothing)

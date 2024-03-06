@@ -828,17 +828,33 @@ checkHeartbeatAndMaybeRebalance group member = do
     return nextDelayMs
 
 ------------------- Commit Offsets -------------------------
-commitOffsets :: Group -> K.OffsetCommitRequest -> IO K.OffsetCommitResponse
-commitOffsets group@Group{..} req = do
+-- Note: 'commitOffsets' works in a lock for the whole request, and
+--       may do a pre-check, such as ACL authz on each topic.
+--       That is why we pass a "validate" function ('validateReqTopic')
+--       on EACH topic to it.
+-- FIXME: Better method than passing a "validate" function?
+commitOffsets :: Group
+              -> K.OffsetCommitRequest
+              -> (K.OffsetCommitRequestTopic -> IO K.ErrorCode)
+              -> IO K.OffsetCommitResponse
+commitOffsets group@Group{..} req validateReqTopic = do
   C.withMVar lock $ \() -> do
     validateOffsetcommit group req
     IO.readIORef state >>= \case
       CompletingRebalance -> throw (ErrorCodeException K.REBALANCE_IN_PROGRESS)
       Dead -> throw (ErrorCodeException K.UNKNOWN_MEMBER_ID)
       _ -> do
-        topics <- Utils.forKaArrayM req.topics $ \K.OffsetCommitRequestTopic{..} -> do
-          res <- GOM.storeOffsets metadataManager name partitions
-          return $ K.OffsetCommitResponseTopic {partitions = res, name = name}
+        topics <- Utils.forKaArrayM req.topics $ \reqTopic -> do
+          validateReqTopic reqTopic >>= \case
+            K.NONE -> do
+              res <- GOM.storeOffsets group.metadataManager reqTopic.name reqTopic.partitions
+              return $ K.OffsetCommitResponseTopic
+                { name       = reqTopic.name
+                , partitions = res
+                }
+            code   ->
+              return $ makeErrorTopicResponse code reqTopic
+
         Utils.whenIORefEq storedMetadata False $ do
           Log.info $ "commited offsets on Empty Group, storing Empty Group:" <> Log.build group.groupId
           storeGroup group Map.empty
@@ -847,6 +863,17 @@ commitOffsets group@Group{..} req = do
           Nothing -> pure ()
           Just m -> updateLatestHeartbeat m
         return K.OffsetCommitResponse {topics=topics, throttleTimeMs=0}
+  where
+    makeErrorTopicResponse code offsetCommitTopic =
+      K.OffsetCommitResponseTopic
+      { name = offsetCommitTopic.name
+      , partitions =
+          Utils.forKaArray offsetCommitTopic.partitions $ \offsetCommitPartition ->
+            K.OffsetCommitResponsePartition
+            { partitionIndex = offsetCommitPartition.partitionIndex
+            , errorCode      = code
+            }
+       }
 
 validateOffsetcommit :: Group -> K.OffsetCommitRequest -> IO ()
 validateOffsetcommit Group{..} req = do
