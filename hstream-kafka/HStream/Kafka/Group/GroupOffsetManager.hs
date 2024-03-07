@@ -38,7 +38,8 @@ import           Kafka.Protocol.Encoding             (KaArray (KaArray, unKaArra
 import qualified Kafka.Protocol.Error                as K
 import           Kafka.Protocol.Message              (OffsetCommitRequestPartition (..),
                                                       OffsetCommitResponsePartition (..),
-                                                      OffsetFetchResponsePartition (..))
+                                                      OffsetFetchResponsePartition (..),
+                                                      OffsetFetchResponseTopic (..))
 
 -- NOTE: All operations on the GroupMetadataManager are not concurrency-safe,
 -- and the caller needs to ensure concurrency-safety on its own.
@@ -172,12 +173,15 @@ fetchOffsets
   :: GroupOffsetManager
   -> T.Text
   -> KaArray Int32
-  -> IO (KaArray OffsetFetchResponsePartition)
+  -> IO OffsetFetchResponseTopic
 fetchOffsets GroupOffsetManager{..} topicName partitions = do
   let partitions' = fromMaybe V.empty (unKaArray partitions)
   cache <- readIORef offsetsCache
   res <- traverse (getOffset cache) partitions'
-  return $ KaArray {unKaArray = Just res}
+  return $ OffsetFetchResponseTopic
+    { name = topicName
+    , partitions = KaArray {unKaArray = Just res}
+    }
  where
    getOffset cache partitionIdx = do
      let key = mkTopicPartition topicName partitionIdx
@@ -192,8 +196,11 @@ fetchOffsets GroupOffsetManager{..} topicName partitions = do
              { committedOffset = -1
              , metadata = Nothing
              , partitionIndex= partitionIdx
-             -- TODO: check the error code here
              , errorCode = K.NONE
+             -- TODO: check the error code here
+             -- FIXME: what to return? 'UNKNOWN_TOPIC_OR_PARTITION' causes
+             --        testMultiConsumerWithEmptyTopicAndSinglePartition to
+             --        fail...
              }
 
 fetchAllOffsets :: GroupOffsetManager -> IO (KaArray K.OffsetFetchResponseTopic)
