@@ -894,18 +894,54 @@ validateOffsetcommit Group{..} req = do
       Just _ -> pure ()
 
 ------------------- Fetch Offsets -------------------------
-fetchOffsets :: Group -> K.OffsetFetchRequest -> IO K.OffsetFetchResponse
-fetchOffsets Group{..} req = do
-  case K.unKaArray req.topics of
-    Nothing -> do
-      Log.debug $ "fetching all offsets in group:" <> Log.build req.groupId
-      topics <- GOM.fetchAllOffsets metadataManager
-      return K.OffsetFetchResponse {topics=topics, errorCode=0, throttleTimeMs=0}
-    Just ts -> do
-      topics <- V.forM ts $ \K.OffsetFetchRequestTopic{..} -> do
-        res <- GOM.fetchOffsets metadataManager name partitionIndexes
-        return $ K.OffsetFetchResponseTopic {partitions = res, name = name}
-      return K.OffsetFetchResponse {topics=K.KaArray (Just topics), errorCode=0, throttleTimeMs=0}
+-- Note: 'fetchOffsets' may do a pre-check, such as ACL authz
+--       on each topic. That is why we pass a "validate" function
+--       ('validateReqTopic') on each topic to it.
+-- FIXME: Better method than passing a "validate" function?
+fetchOffsets
+  :: Group
+  -> K.OffsetFetchRequestTopic
+  -> (K.OffsetFetchRequestTopic -> IO K.ErrorCode)
+  -> IO K.OffsetFetchResponseTopic
+fetchOffsets Group{..} reqTopic validateReqTopic = validateReqTopic reqTopic >>= \case
+  K.NONE ->
+    GOM.fetchOffsets metadataManager reqTopic.name reqTopic.partitionIndexes
+  code   -> do
+    -- FIXME: what to return on 'Nothing'?
+    let partitions' = fromMaybe V.empty (K.unKaArray reqTopic.partitionIndexes)
+    return $ K.OffsetFetchResponseTopic
+      { name       = reqTopic.name
+      , partitions = K.KaArray (Just $ (makeErrorPartition code) <$> partitions')
+      }
+  where
+    makeErrorPartition code idx =
+      K.OffsetFetchResponsePartition
+        { partitionIndex  = idx
+        , committedOffset = -1
+        , metadata        = Nothing
+        , errorCode       = code
+        }
+
+-- Note: 'fetchAllOffsets' may do a pre-check, such as ACL authz
+--       on each topic. That is why we pass a "validate" function
+--       ('validateReqTopic') on each topic to it.
+-- FIXME: Better method than passing a "validate" function?
+fetchAllOffsets
+  :: Group
+  -> (K.OffsetFetchRequestTopic -> IO K.ErrorCode)
+  -> IO (K.KaArray K.OffsetFetchResponseTopic)
+fetchAllOffsets Group{..} validateReqTopic = do
+  topicResponses <- GOM.fetchAllOffsets metadataManager
+  -- WARNING: Offsets of unauthzed topics should not be leaked
+  --          on "fetch all". So we just OMIT the unauthzed
+  --          topic responses rather than returning an error.
+  Utils.filterKaArrayM (\topicResponse -> do
+    let topicFetchRequest = K.OffsetFetchRequestTopic
+          { name = topicResponse.name
+          , partitionIndexes = Utils.mapKaArray (\K.OffsetFetchResponsePartition{..} -> partitionIndex) topicResponse.partitions
+          }
+    (== K.NONE) <$> validateReqTopic topicFetchRequest
+                       ) topicResponses
 
 ------------------- Group Overview(ListedGroup) -------------------------
 overview :: Group -> IO K.ListedGroup

@@ -177,7 +177,78 @@ handleOffsetCommit ServerContext{..} reqCtx req = E.handle (\(K.ErrorCodeExcepti
 --------------------
 -- 9: OffsetFetch
 --------------------
-handleOffsetFetch
-  :: ServerContext -> K.RequestContext -> K.OffsetFetchRequest -> IO K.OffsetFetchResponse
-handleOffsetFetch ServerContext{..} _ req = do
-  GC.fetchOffsets scGroupCoordinator req
+-- FIXME: The previous implementation catches all 'ErrorCodeException'
+--        and returns 'K.NONE' even if the error code is not 'K.NONE'.
+--        This seems not correct. However, if we return the catched
+--        error code, 'ConsumerTest.testManualAssign' will fail due to
+--        "GROUP_ID_NOT_FOUND" (on looking up the group from the coordinator).
+--        THIS SHOULD BE CAREFULLY REVIEWED AND FIXED!!!
+handleOffsetFetch :: ServerContext
+                  -> K.RequestContext
+                  -> K.OffsetFetchRequest
+                  -> IO K.OffsetFetchResponse
+handleOffsetFetch ServerContext{..} reqCtx req = E.handle (\(K.ErrorCodeException code) -> return (makeErrorResponse K.NONE)) $ do
+  -- [ACL] check [DESCRIBE GROUP] first
+  simpleAuthorize (toAuthorizableReqCtx reqCtx) authorizer Res_GROUP req.groupId AclOp_DESCRIBE >>= \case
+    False -> return $ makeErrorResponse K.TOPIC_AUTHORIZATION_FAILED
+    True  -> do
+      group <- GC.getGroup scGroupCoordinator req.groupId
+      case K.unKaArray req.topics of
+        -- 'Nothing' means fetch offsets of ALL topics.
+        -- WARNING: Offsets of unauthzed topics should not be leaked
+        --          on "fetch all". That is why we pass the "validate"
+        --          function (the ACL authz check) to 'G.fetchAllOffsets'.
+        -- FIXME: Better method than passing a "validate" function?
+        Nothing -> do
+          Log.debug $ "fetching all offsets in group:" <> Log.build req.groupId
+          topicResps <- G.fetchAllOffsets group $ \reqTopic -> do
+            -- [ACL] check [DESCRIBE TOPIC] for each topic
+            simpleAuthorize (toAuthorizableReqCtx reqCtx) authorizer Res_TOPIC reqTopic.name AclOp_DESCRIBE >>= \case
+              False -> return K.TOPIC_AUTHORIZATION_FAILED
+              True  -> return K.NONE
+          return $ K.OffsetFetchResponse
+            { throttleTimeMs = 0
+            , errorCode = K.NONE
+            , topics = topicResps
+            }
+        Just ts -> do
+          topicResps <- V.forM ts $ \reqTopic -> do
+            -- Note: 'G.fetchOffsets' does a pre-check (ACL authz)
+            --       on each topic. That is why we pass a "validate"
+            --       function to it.
+            -- FIXME: Better method than passing a "validate" function?
+            G.fetchOffsets group reqTopic $ \reqTopic_ -> do
+              -- [ACL] check [DESCRIBE TOPIC] for each topic
+              simpleAuthorize (toAuthorizableReqCtx reqCtx) authorizer Res_TOPIC reqTopic_.name AclOp_DESCRIBE >>= \case
+                False -> return K.TOPIC_AUTHORIZATION_FAILED
+                True  -> return K.NONE
+          return $ K.OffsetFetchResponse
+            { throttleTimeMs = 0
+            , errorCode = K.NONE
+            , topics = K.KaArray (Just topicResps)
+            -- FIXME: what to return on 'Nothing'?
+            }
+  where
+    -- FIXME: hard-coded constants
+    -- FIXME: Similar code snippet to 'G.fetchOffsets#makeErrorPartition'.
+    --        Extract it to a common function?
+    makeErrorTopicResponse code offsetFetchTopic =
+      K.OffsetFetchResponseTopic
+      { name = offsetFetchTopic.name
+      , partitions =
+          forKaArray offsetFetchTopic.partitionIndexes $ \idx ->
+            K.OffsetFetchResponsePartition
+            { partitionIndex  = idx
+            , errorCode       = code
+            , metadata        = Nothing
+            , committedOffset = -1
+            }
+      }
+
+    -- FIXME: hard-coded constants
+    makeErrorResponse code =
+      K.OffsetFetchResponse
+      { throttleTimeMs = 0
+      , errorCode = code
+      , topics = forKaArray req.topics (makeErrorTopicResponse code)
+      }

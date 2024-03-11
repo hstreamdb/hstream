@@ -5,7 +5,7 @@
 module HStream.Kafka.Group.GroupCoordinator where
 
 import qualified Control.Concurrent                     as C
-import           Control.Exception                      (handle, throw)
+import           Control.Exception                      (throw)
 import qualified Control.Monad                          as M
 import qualified Data.HashTable.IO                      as H
 import qualified Data.Set                               as Set
@@ -25,7 +25,6 @@ import qualified HStream.Logger                         as Log
 import qualified HStream.MetaStore.Types                as Meta
 import           HStream.Store                          (LDClient)
 import qualified Kafka.Protocol.Error                   as K
-import qualified Kafka.Protocol.Message                 as K
 
 data GroupCoordinator = GroupCoordinator
   { groups     :: C.MVar (Utils.HashTable T.Text Group)
@@ -88,26 +87,6 @@ getGroups GroupCoordinator{..} ids = do
 getGroupM :: GroupCoordinator -> T.Text -> IO (Maybe Group)
 getGroupM GroupCoordinator{..} groupId = do
   C.withMVar groups $ \gs -> H.lookup gs groupId
-
-------------------- Fetch Offsets -------------------------
--- TODO: improve error report
-fetchOffsets :: GroupCoordinator -> K.OffsetFetchRequest -> IO K.OffsetFetchResponse
-fetchOffsets coordinator req = do
-  handle (\(ErrorCodeException _) -> makeErrorResponse) $ do
-    group <- getGroup coordinator req.groupId
-    resp <- G.fetchOffsets group req
-    return K.OffsetFetchResponse {topics = resp.topics, errorCode = 0, throttleTimeMs=0}
-  where makeErrorResponse = return $ K.OffsetFetchResponse {
-            topics = Utils.mapKaArray mapTopic req.topics
-          , errorCode=0
-          , throttleTimeMs=0}
-        mapTopic topic = K.OffsetFetchResponseTopic {partitions=Utils.mapKaArray mapPartition topic.partitionIndexes, name=topic.name}
-        mapPartition partition = K.OffsetFetchResponsePartition {
-          errorCode=0
-          , partitionIndex=partition
-          , metadata = Nothing
-          , committedOffset = -1
-        }
 
 ------------------- Load/Unload Group -------------------------
 -- load group from meta store

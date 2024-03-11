@@ -63,6 +63,18 @@ mapKaArrayM f arr = case K.unKaArray arr of
 forKaArrayM :: K.KaArray a -> (a -> IO b) -> IO (K.KaArray b)
 forKaArrayM = flip mapKaArrayM
 
+filterKaArray :: (a -> Bool) -> K.KaArray a -> K.KaArray a
+filterKaArray f arr = case K.unKaArray arr of
+  Nothing  -> K.KaArray Nothing
+  Just vec -> K.KaArray (Just (V.filter f vec))
+
+filterKaArrayM :: (a -> IO Bool) -> K.KaArray a -> IO (K.KaArray a)
+filterKaArrayM f arr = case K.unKaArray arr of
+  Nothing  -> return (K.KaArray Nothing)
+  Just vec -> do
+    vec' <- V.filterM f vec
+    return $ K.KaArray (Just vec')
+
 emptyKaArray :: K.KaArray a
 emptyKaArray = K.KaArray (Just V.empty)
 
