@@ -16,7 +16,6 @@ import qualified HStream.Common.Server.Lookup           as Lookup
 import qualified HStream.Common.Server.MetaData         as CM
 import qualified HStream.Common.Server.TaskManager      as TM
 import           HStream.Kafka.Common.KafkaException    (ErrorCodeException (ErrorCodeException))
-import qualified HStream.Kafka.Common.Metrics           as Metrics
 import qualified HStream.Kafka.Common.Utils             as Utils
 import           HStream.Kafka.Group.Group              (Group)
 import qualified HStream.Kafka.Group.Group              as G
@@ -89,26 +88,6 @@ getGroups GroupCoordinator{..} ids = do
 getGroupM :: GroupCoordinator -> T.Text -> IO (Maybe Group)
 getGroupM GroupCoordinator{..} groupId = do
   C.withMVar groups $ \gs -> H.lookup gs groupId
-
-------------------- Commit Offsets -------------------------
-commitOffsets :: GroupCoordinator -> K.OffsetCommitRequest -> IO K.OffsetCommitResponse
-commitOffsets coordinator req = do
-  handle (\(ErrorCodeException code) -> makeErrorResponse code) $ do
-    Metrics.withLabel Metrics.totalOffsetCommitRequest req.groupId Metrics.incCounter
-    group <- if req.generationId < 0 then do
-      getOrMaybeCreateGroup coordinator req.groupId ""
-    else do
-      getGroup coordinator req.groupId
-    G.commitOffsets group req
-  where makeErrorResponse code = do
-          Metrics.withLabel Metrics.totalFailedOffsetCommitRequest req.groupId Metrics.incCounter
-          let resp = K.OffsetCommitResponse {topics = Utils.mapKaArray (mapTopic code) req.topics, throttleTimeMs=0}
-          Log.fatal $ "commitOffsets error with code: " <> Log.build (show code)
-                   <> "\n\trequest: " <> Log.build (show req)
-                   <> "\n\tresponse: " <> Log.build (show resp)
-          return resp
-        mapTopic code topic = K.OffsetCommitResponseTopic {partitions=Utils.mapKaArray (mapPartition code) topic.partitions, name=topic.name}
-        mapPartition code partition = K.OffsetCommitResponsePartition {errorCode=code, partitionIndex=partition.partitionIndex}
 
 ------------------- Fetch Offsets -------------------------
 -- TODO: improve error report
