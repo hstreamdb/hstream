@@ -27,6 +27,9 @@ import qualified Data.Text                                      as T
 import           HStream.Common.Server.Lookup                   (KafkaResource (..),
                                                                  lookupKafkaPersist)
 import qualified HStream.Gossip                                 as Gossip
+import qualified HStream.Kafka.Common.Acl                       as K
+import qualified HStream.Kafka.Common.Authorizer.Class          as K
+import qualified HStream.Kafka.Common.Resource                  as K
 import qualified HStream.Kafka.Common.Utils                     as K
 import qualified HStream.Kafka.Common.Utils                     as Utils
 import qualified HStream.Kafka.Server.Config.KafkaConfig        as KC
@@ -225,22 +228,45 @@ handleMetadata ctx reqCtx req = do
 ---------------------------------------------------------------------------
 --  32: DescribeConfigs
 ---------------------------------------------------------------------------
+-- FIXME: This function does not catch any Kafka ErrorCodeException.
+--        Is this proper?
+-- FIXME: Recheck if returned error codes and messages are proper.
+--        See kafka.server.ConfigHelper#handleDescribeConfigsRequest
 handleDescribeConfigs
   :: ServerContext
   -> K.RequestContext
   -> K.DescribeConfigsRequest
   -> IO K.DescribeConfigsResponse
-handleDescribeConfigs serverCtx _ req = do
+handleDescribeConfigs serverCtx reqCtx req = do
   manager <- KCM.mkKafkaConfigManager serverCtx.scLDClient serverCtx.kafkaBrokerConfigs
   results <- V.forM (Utils.kaArrayToVector req.resources) $ \resource -> do
     case toEnum (fromIntegral resource.resourceType) of
-      KC.TOPIC -> KCM.listTopicConfigs manager resource.resourceName resource.configurationKeys
+      KC.TOPIC -> do
+        -- [ACL] check [DESCRIBE_CONFIGS TOPIC]
+        K.simpleAuthorize (K.toAuthorizableReqCtx reqCtx) serverCtx.authorizer K.Res_TOPIC resource.resourceName K.AclOp_DESCRIBE_CONFIGS >>= \case
+          False -> return $ KCM.getErrorResponse KC.TOPIC
+                                                 resource.resourceName
+                                                 K.TOPIC_AUTHORIZATION_FAILED
+                                                 "Topic authorization failed."
+          True  ->
+            KCM.listTopicConfigs manager resource.resourceName resource.configurationKeys
       KC.BROKER -> do
+        -- FIXME: authorize [DESCRIBE_CONFIGS CLUSTER] first
         if T.pack (show serverCtx.serverID) == resource.resourceName
         then KCM.listBrokerConfigs manager resource.resourceName resource.configurationKeys
-        else return $ KCM.getErrorResponse KC.BROKER resource.resourceName ("invalid broker id:" <> resource.resourceName)
-      rt -> return $ KCM.getErrorResponse rt resource.resourceName ("unsupported resource type:" <> T.pack (show rt))
-  return $ K.DescribeConfigsResponse {results=K.NonNullKaArray results, throttleTimeMs=0}
+        else return $ KCM.getErrorResponse KC.BROKER
+                                           resource.resourceName
+                                           K.INVALID_REQUEST
+                                           ("Unexpected broker id, expected " <> (T.pack (show serverCtx.serverID)) <> " but received " <> resource.resourceName)
+      rt -> return $ KCM.getErrorResponse rt
+                                          resource.resourceName
+                                          K.INVALID_REQUEST
+                                          ("Unexpected resource type " <> T.pack (show rt) <> " for resouce" <> resource.resourceName)
+
+  return $ K.DescribeConfigsResponse {
+    results        = K.NonNullKaArray results
+  , throttleTimeMs = 0
+  }
 
 ---------------------------------------------------------------------------
 --  32: FindCoordinator
