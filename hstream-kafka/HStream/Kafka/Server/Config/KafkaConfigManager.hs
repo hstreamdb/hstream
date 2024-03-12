@@ -42,7 +42,7 @@ listTopicConfigs KafkaConfigManager{..} topic keys = do
       let keys' = fromMaybe (V.fromList $ Map.keys KC.allTopicConfigs) (K.unKaArray keys)
           configs' = convertConfigs configs
       case V.mapM (getConfig configs') keys' of
-        Left msg -> return $ getErrorResponse KC.TOPIC topic msg
+        Left msg -> return $ getErrorResponse KC.TOPIC topic K.INVALID_CONFIG msg
         Right configsInResp -> return $ K.DescribeConfigsResult
                 { configs=K.NonNullKaArray configsInResp
                 , errorCode=0
@@ -64,10 +64,14 @@ listTopicConfigs KafkaConfigManager{..} topic keys = do
     getConfig :: Map.Map T.Text (Maybe T.Text) -> T.Text -> Either T.Text K.DescribeConfigsResourceResult
     getConfig configs configName = getConfigByInstance <$> KC.getTopicConfig configName configs
 
-getErrorResponse :: KC.KafkaConfigResource -> T.Text -> T.Text -> K.DescribeConfigsResult
-getErrorResponse rt rn msg = K.DescribeConfigsResult
+getErrorResponse :: KC.KafkaConfigResource
+                 -> T.Text
+                 -> K.ErrorCode
+                 -> T.Text
+                 -> K.DescribeConfigsResult
+getErrorResponse rt rn code msg = K.DescribeConfigsResult
             { configs=K.NonNullKaArray V.empty
-            , errorCode=K.INVALID_CONFIG
+            , errorCode=code
             , resourceName=rn
             , errorMessage=Just msg
             , resourceType=fromIntegral . fromEnum $ rt
