@@ -13,6 +13,7 @@ module HStream.Kafka.Server.Handler.Basic
 
 import           Control.Exception
 import           Control.Monad
+import           Control.Monad.Extra                            ((&&^))
 import qualified Data.Foldable                                  as FD
 import           Data.Functor                                   ((<&>))
 import           Data.Int                                       (Int32)
@@ -27,6 +28,9 @@ import qualified Data.Text                                      as T
 import           HStream.Common.Server.Lookup                   (KafkaResource (..),
                                                                  lookupKafkaPersist)
 import qualified HStream.Gossip                                 as Gossip
+import qualified HStream.Kafka.Common.Acl                       as K
+import qualified HStream.Kafka.Common.Authorizer.Class          as K
+import qualified HStream.Kafka.Common.Resource                  as K
 import qualified HStream.Kafka.Common.Utils                     as K
 import qualified HStream.Kafka.Common.Utils                     as Utils
 import qualified HStream.Kafka.Server.Config.KafkaConfig        as KC
@@ -98,6 +102,9 @@ handleMetadata ctx reqCtx req = do
           , brokers = K.NonNullKaArray respBrokers
           }
       | otherwise -> do
+          -- Note: authorize **DESCRIBE** for existed topics;
+          --       authorize **DESCRIBE** and **CREATE** for
+          --       unexisted topics.
           let topicNames = S.fromList . V.toList $
                 V.map (\K.MetadataRequestTopic{..} -> name) v
           allStreamNames <- S.findStreams ctx.scLDClient S.StreamTypeTopic <&> S.fromList . L.map (Utils.cBytesToText . S.streamName)
@@ -111,22 +118,21 @@ handleMetadata ctx reqCtx req = do
                 let defaultReplicas = kafkaBrokerConfigs.defaultReplicationFactor._value
                     defaultNumPartitions = kafkaBrokerConfigs.numPartitions._value
                 resp <- forM needCreate $ \topic -> do
-                  ((code, _), shards) <- createTopic ctx topic (fromIntegral defaultReplicas) (fromIntegral defaultNumPartitions) Map.empty
-                  if code /= K.NONE
-                    then
-                      return $ K.MetadataResponseTopic
-                        { errorCode = code
-                        , name = topic
-                        , partitions = K.emptyKaArray
-                        , isInternal = False
-                        }
-                    else mkResponse topic (V.fromList shards)
+                  ((K.simpleAuthorize (K.toAuthorizableReqCtx reqCtx) ctx.authorizer K.Res_TOPIC topic K.AclOp_DESCRIBE) &&^
+                   (K.simpleAuthorize (K.toAuthorizableReqCtx reqCtx) ctx.authorizer K.Res_TOPIC topic K.AclOp_CREATE)) >>= \case
+                    False -> return $ makeErrorTopicResp topic K.TOPIC_AUTHORIZATION_FAILED
+                    True  -> do
+                      ((code, _), shards) <- createTopic ctx topic (fromIntegral defaultReplicas) (fromIntegral defaultNumPartitions) Map.empty
+                      if code /= K.NONE
+                        then return $ makeErrorTopicResp topic code
+                        else mkResponse topic (V.fromList shards)
                 return $ V.fromList resp
               else do
-                let f topic acc = K.MetadataResponseTopic K.UNKNOWN_TOPIC_OR_PARTITION topic K.emptyKaArray False : acc
+                let f topic acc = makeErrorTopicResp topic K.UNKNOWN_TOPIC_OR_PARTITION : acc
                 return . V.fromList $ FD.foldr' f [] needCreate
           unless (V.null createResp) $ Log.info $ "auto create topic response: " <> Log.build (show createResp)
 
+          -- Note: We checked [DESCRIBE TOPIC] in 'getRespTopic'
           respTopics <- forM alreadyExist getRespTopic
           let respTopics' = respTopics <> createResp
           -- return $ K.MetadataResponseV4 (K.KaArray $ Just respBrokers) ctlId (K.KaArray $ Just respTopics)
@@ -147,12 +153,18 @@ handleMetadata ctx reqCtx req = do
       -- causing a potential overflow.
       allStreamNames <- S.findStreams ctx.scLDClient S.StreamTypeTopic <&> (fmap (Utils.cBytesToText . S.streamName))
       respTopics <- forM allStreamNames getRespTopic <&> V.fromList
+      -- [ACL] Note: no topic info should be disclosed when requesting all
+      --             topics. So just **omit** unauthzed topics from the
+      --             response rather than return an error.
+      let authzedRespTopics =
+            V.filter (\topic -> topic.errorCode /= K.TOPIC_AUTHORIZATION_FAILED
+                     ) respTopics
       -- return $ K.MetadataResponseV1 (K.KaArray $ Just respBrokers_) ctlId_ (K.KaArray $ Just respTopics)
       return $ K.MetadataResponse
         { clusterId = Nothing
         , controllerId = ctlId_
         , throttleTimeMs = 0
-        , topics = K.NonNullKaArray respTopics
+        , topics = K.NonNullKaArray authzedRespTopics
         , brokers = K.NonNullKaArray respBrokers_
         }
 
@@ -172,27 +184,26 @@ handleMetadata ctx reqCtx req = do
     getRespTopic :: Text -> IO K.MetadataResponseTopic
     getRespTopic topicName = do
       let streamId = S.transToTopicStreamName topicName
-          errTopicResp code = K.MetadataResponseTopic
-             { errorCode = code
-             , name = topicName
-             , partitions = K.emptyKaArray
-             , isInternal = False
-             }
-      shards_e <- try ((V.map snd) <$> S.listStreamPartitionsOrderedByName ctx.scLDClient streamId)
-      case shards_e of
-        -- FIXME: Are the following error codes proper?
-        -- FIXME: We passed `Nothing` as partitions when an error occurs. Is this proper?
-        Left (e :: SomeException)
-          | Just (_ :: S.NOTFOUND) <- fromException e ->
-              return $ errTopicResp K.UNKNOWN_TOPIC_OR_PARTITION
-          | otherwise ->
-              return $ errTopicResp K.UNKNOWN_SERVER_ERROR
-        Right shards
-          | V.null shards ->
-              return $ errTopicResp K.INVALID_TOPIC_EXCEPTION
-          | V.length shards > fromIntegral (maxBound :: Int32) ->
-              return $ errTopicResp K.INVALID_PARTITIONS
-          | otherwise -> mkResponse topicName shards
+      -- [ACL] authorize [DESCRIBE TOPIC]
+      K.simpleAuthorize (K.toAuthorizableReqCtx reqCtx) ctx.authorizer K.Res_TOPIC topicName K.AclOp_DESCRIBE >>= \case
+        False -> return $ makeErrorTopicResp topicName K.TOPIC_AUTHORIZATION_FAILED
+        True  -> do
+          -- FIXME: block is nested too deeply
+          shards_e <- try ((V.map snd) <$> S.listStreamPartitionsOrderedByName ctx.scLDClient streamId)
+          case shards_e of
+            -- FIXME: Are the following error codes proper?
+            -- FIXME: We passed `Nothing` as partitions when an error occurs. Is this proper?
+            Left (e :: SomeException)
+              | Just (_ :: S.NOTFOUND) <- fromException e ->
+                  return $ makeErrorTopicResp topicName K.UNKNOWN_TOPIC_OR_PARTITION
+              | otherwise ->
+                  return $ makeErrorTopicResp topicName K.UNKNOWN_SERVER_ERROR
+            Right shards
+              | V.null shards ->
+                  return $ makeErrorTopicResp topicName K.INVALID_TOPIC_EXCEPTION
+              | V.length shards > fromIntegral (maxBound :: Int32) ->
+                  return $ makeErrorTopicResp topicName K.INVALID_PARTITIONS
+              | otherwise -> mkResponse topicName shards
 
     mkResponse topicName shards = do
       respPartitions <-
@@ -221,6 +232,14 @@ handleMetadata ctx reqCtx req = do
           , partitions = (K.KaArray $ Just respPartitions)
           , isInternal = False
           }
+
+    makeErrorTopicResp :: Text -> K.ErrorCode -> K.MetadataResponseTopic
+    makeErrorTopicResp topicName code = K.MetadataResponseTopic
+             { errorCode = code
+             , name = topicName
+             , partitions = K.emptyKaArray
+             , isInternal = False
+             }
 
 ---------------------------------------------------------------------------
 --  32: DescribeConfigs
