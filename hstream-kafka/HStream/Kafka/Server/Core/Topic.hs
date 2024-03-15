@@ -58,7 +58,7 @@ createTopic ServerContext{..} name replicationFactor numPartitions configs = do
         Left (e :: SomeException)
           | isJust (fromException @S.EXISTS e) -> do
             Log.warning $ "Topic already exists: " <> Log.build name
-            return ((K.TOPIC_ALREADY_EXISTS, "Topic " <> name <> " already exists"), [])
+            return ((K.TOPIC_ALREADY_EXISTS, "Topic '" <> name <> "' already exists."), [])
           | otherwise -> do
               Log.warning $ "Exception occurs when creating stream " <> Log.build (show streamId) <> ": " <> Log.build (show e)
               return ((K.UNKNOWN_SERVER_ERROR, "Unexpected Server error"), [])

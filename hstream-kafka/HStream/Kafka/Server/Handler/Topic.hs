@@ -66,9 +66,9 @@ handleCreateTopics ctx@ServerContext{scLDClient} reqCtx K.CreateTopicsRequest{..
                   exist <- S.doesStreamExist scLDClient streamId
                   if exist
                     then do
-                      Log.info $ "Topic " <> Log.build name <> " already exist."
+                      Log.info $ "Topic " <> Log.build name <> " already exists."
                       return K.CreatableTopicResult
-                         { errorMessage=Just $ "Topic " <> name <> " already exist."
+                         { errorMessage=Just $ "Topic '" <> name <> "' already exists."
                          , errorCode=K.TOPIC_ALREADY_EXISTS
                          , name=name
                          }
