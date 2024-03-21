@@ -124,6 +124,7 @@ module HStream.Store.Stream
   , LD.readerStartReading
   , LD.DataRecordFormat
   , LD.readerRead
+  , LD.readerReadSome
   , LD.readerReadAllowGap
   , LD.readerSetTimeout
   , LD.readerSetWithoutPayload
@@ -142,6 +143,7 @@ module HStream.Store.Stream
   , LD.startReadingFromCheckpoint
   , LD.startReadingFromCheckpointOrStart
   , LD.ckpReaderRead
+  , LD.ckpReaderReadSome
   , LD.ckpReaderReadAllowGap
   , LD.ckpReaderSetTimeout
   , LD.ckpReaderSetWithoutPayload
