@@ -60,6 +60,8 @@ module Kafka.Protocol.Encoding
   , unNonNullKaArray
   , kaArrayToCompact
   , kaArrayFromCompact
+  , decodeBatchRecordsForProduce
+  , unsafeAlterBatchRecordsBsForProduce
     -- * Internals
     -- ** Parser
   , Parser
@@ -382,6 +384,8 @@ decodeBatchRecords shouldValidateCrc batchBs =
 -- convenience.
 --
 -- Extra information: the real total number of records.
+--
+-- TODO: support compression
 decodeBatchRecords' :: Bool -> ByteString -> IO (Vector BatchRecord, Int)
 decodeBatchRecords' shouldValidateCrc batchBs = Growing.new >>= decode 0 batchBs
   where
@@ -766,6 +770,86 @@ kaArrayToCompact = CompactKaArray . unKaArray
 kaArrayFromCompact :: CompactKaArray a -> KaArray a
 kaArrayFromCompact = KaArray . unCompactKaArray
 {-# INLINE kaArrayFromCompact #-}
+
+-- Currently this is used for Produce handler.
+decodeBatchRecordsForProduce :: Bool -> ByteString -> IO (Int, [Int])
+decodeBatchRecordsForProduce shouldValidateCrc = decode 0 0 []
+  where
+    decode len _consumed offsetOffsets ""  = pure (len, offsetOffsets)
+    decode !len !consumed !offsetOffsets !bs = do
+      (RecordBase{..}, bs') <- runGet' @RecordBase bs
+      case magic of
+        0 -> do let crc = partitionLeaderEpochOrCrc
+                    messageSize = batchLength
+                when (messageSize < fromIntegral minRecordSizeV0) $
+                  throwIO $ DecodeError $ "Invalid messageSize"
+                when shouldValidateCrc $ do
+                  -- The crc field contains the CRC32 (and not CRC-32C) of the
+                  -- subsequent message bytes (i.e. from magic byte to the value).
+                  --
+                  -- NOTE: pass the origin inputs to validLegacyCrc, not the bs'
+                  validLegacyCrc (fromIntegral batchLength) crc bs
+                let totalSize = fromIntegral $ messageSize + 12
+                remainder <- snd <$> runParser' (dropBytes totalSize) bs
+                decode (len + 1) (consumed + totalSize)
+                       (consumed:offsetOffsets) remainder
+        1 -> do let crc = partitionLeaderEpochOrCrc
+                    messageSize = batchLength
+                when (messageSize < fromIntegral minRecordSizeV1) $
+                  throwIO $ DecodeError $ "Invalid messageSize"
+                when shouldValidateCrc $ do
+                  -- The crc field contains the CRC32 (and not CRC-32C) of the
+                  -- subsequent message bytes (i.e. from magic byte to the value).
+                  --
+                  -- NOTE: pass the origin inputs to validLegacyCrc, not the bs'
+                  validLegacyCrc (fromIntegral batchLength) crc bs
+                let totalSize = fromIntegral $ messageSize + 12
+                remainder <- snd <$> runParser' (dropBytes totalSize) bs
+                decode (len + 1) (consumed + totalSize)
+                       (consumed:offsetOffsets) remainder
+        2 -> do let partitionLeaderEpoch = partitionLeaderEpochOrCrc
+                -- The CRC covers the data from the attributes to the end of
+                -- the batch (i.e. all the bytes that follow the CRC).
+                --
+                -- The CRC-32C (Castagnoli) polynomial is used for the
+                -- computation.
+                (crc, bs'') <- runGet' @Int32 bs'
+                when shouldValidateCrc $ do
+                  let crcPayload = BS.take (fromIntegral batchLength - 9) bs''
+                  when (fromIntegral (crc32c crcPayload) /= crc) $
+                    throwIO $ DecodeError "Invalid CRC32"
+                (batchRecordsLen, remainder) <- runParser'
+                  (do batchRecordsLen <- unsafePeekInt32At 36
+                                   -- 36: attributes(2) + lastOffsetDelta(4)
+                                   --   + baseTimestamp(8) + maxTimestamp(8)
+                                   --   + producerId(8) + producerEpoch(2)
+                                   --   + baseSequence(4)
+                      dropBytes (fromIntegral batchLength - 9)
+                      pure batchRecordsLen
+                  ) bs''
+                let batchRecordsLen' = if batchRecordsLen >= 0
+                                          then fromIntegral batchRecordsLen
+                                          else 0
+                -- Actually, there should be only one batch record here, but
+                -- we don't require it.
+                decode (len + batchRecordsLen')
+                       (consumed + fromIntegral batchLength + 12)
+                       (consumed:offsetOffsets)
+                       remainder
+        _ -> throwIO $ DecodeError $ "Invalid magic " <> show magic
+{-# INLINABLE decodeBatchRecordsForProduce #-}
+
+unsafeAlterBatchRecordsBsForProduce
+  :: (Int64 -> Int64) -- Update baseOffsets
+  -> [Int]            -- All bytes offsets of baseOffset
+  -> ByteString
+  -> IO ()
+unsafeAlterBatchRecordsBsForProduce boof boos bs@(BS fp len) = do
+  unsafeWithForeignPtr fp $ \p -> do
+    forM_ boos $ \boo -> do
+      -- FIXME improvement: does ghc provide a modifyPtr function?
+      origin <- fromIntegral <$> peek64BE (p `plusPtr` boo)
+      poke64BE (p `plusPtr` boo) (fromIntegral $ boof origin)
 
 -------------------------------------------------------------------------------
 -- Internals

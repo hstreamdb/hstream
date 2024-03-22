@@ -148,6 +148,7 @@ handleInitProducerId _ _ _ = do
     }
 
 -------------------------------------------------------------------------------
+
 appendRecords
   :: Bool
   -> S.LDClient
@@ -157,7 +158,7 @@ appendRecords
   -> ByteString
   -> IO (S.AppendCompletion, Int64)
 appendRecords shouldValidateCrc ldclient om (streamName, partition) logid bs = do
-  (records, batchLength) <- K.decodeBatchRecords' shouldValidateCrc bs
+  (batchLength, offsetOffsets) <- K.decodeBatchRecordsForProduce shouldValidateCrc bs
   when (batchLength < 1) $ error "Invalid batch length"
 
   -- Offset wroten into storage is the max key in the batch, but return the min
@@ -181,15 +182,16 @@ appendRecords shouldValidateCrc ldclient om (streamName, partition) logid bs = d
   -- we can always get the correct result with the hi.
   K.withOffsetN om logid (fromIntegral batchLength) $ \o -> do
     let startOffset = o + 1 - fromIntegral batchLength
-        records' = K.modifyBatchRecordsOffset (+ startOffset) records
-    let appendKey = U.intToCBytesWithPadding o
+        appendKey = U.intToCBytesWithPadding o
         appendAttrs = Just [(S.KeyTypeFindKey, appendKey)]
-        storedBs = K.encodeBatchRecords records'
-        -- FIXME unlikely overflow: convert batchLength from Int to Int32
-        storedRecord = K.runPut $ K.RecordFormat 0{- version -}
+
+    K.unsafeAlterBatchRecordsBsForProduce (+ startOffset) offsetOffsets bs
+
+    -- FIXME unlikely overflow: convert batchLength from Int to Int32
+    let storedRecord = K.runPut $ K.RecordFormat 0{- version -}
                                                  o
                                                  (fromIntegral batchLength)
-                                                 (K.CompactBytes storedBs)
+                                                 (K.CompactBytes bs)
     Log.debug1 $ "Append key " <> Log.buildString' appendKey
               <> ", write offset " <> Log.build o
               <> ", batch length " <> Log.build batchLength
