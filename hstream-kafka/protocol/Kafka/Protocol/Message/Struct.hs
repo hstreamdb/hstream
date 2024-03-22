@@ -900,6 +900,14 @@ type PartitionProduceDataV5 = PartitionProduceDataV0
 
 type TopicProduceDataV5 = TopicProduceDataV0
 
+type PartitionProduceDataV6 = PartitionProduceDataV0
+
+type TopicProduceDataV6 = TopicProduceDataV0
+
+type PartitionProduceDataV7 = PartitionProduceDataV0
+
+type TopicProduceDataV7 = TopicProduceDataV0
+
 data PartitionProduceResponseV0 = PartitionProduceResponseV0
   { index      :: {-# UNPACK #-} !Int32
     -- ^ The partition index.
@@ -977,6 +985,14 @@ data TopicProduceResponseV5 = TopicProduceResponseV5
     -- ^ Each partition that we produced to within the topic.
   } deriving (Show, Eq, Generic)
 instance Serializable TopicProduceResponseV5
+
+type PartitionProduceResponseV6 = PartitionProduceResponseV5
+
+type TopicProduceResponseV6 = TopicProduceResponseV5
+
+type PartitionProduceResponseV7 = PartitionProduceResponseV5
+
+type TopicProduceResponseV7 = TopicProduceResponseV5
 
 data SyncGroupRequestAssignmentV0 = SyncGroupRequestAssignmentV0
   { memberId   :: !Text
@@ -1823,6 +1839,10 @@ type ProduceRequestV4 = ProduceRequestV3
 
 type ProduceRequestV5 = ProduceRequestV3
 
+type ProduceRequestV6 = ProduceRequestV3
+
+type ProduceRequestV7 = ProduceRequestV3
+
 newtype ProduceResponseV0 = ProduceResponseV0
   { responses :: (KaArray TopicProduceResponseV0)
   } deriving (Show, Eq, Generic)
@@ -1858,6 +1878,10 @@ data ProduceResponseV5 = ProduceResponseV5
     -- to a quota violation, or zero if the request did not violate any quota.
   } deriving (Show, Eq, Generic)
 instance Serializable ProduceResponseV5
+
+type ProduceResponseV6 = ProduceResponseV5
+
+type ProduceResponseV7 = ProduceResponseV5
 
 newtype SaslAuthenticateRequestV0 = SaslAuthenticateRequestV0
   { authBytes :: ByteString
@@ -2500,8 +2524,16 @@ data HStreamKafkaV6
 instance Service HStreamKafkaV6 where
   type ServiceName HStreamKafkaV6 = "HStreamKafkaV6"
   type ServiceMethods HStreamKafkaV6 =
-    '[ "fetch"
+    '[ "produce"
+     , "fetch"
      ]
+
+instance HasMethodImpl HStreamKafkaV6 "produce" where
+  type MethodName HStreamKafkaV6 "produce" = "produce"
+  type MethodKey HStreamKafkaV6 "produce" = 0
+  type MethodVersion HStreamKafkaV6 "produce" = 6
+  type MethodInput HStreamKafkaV6 "produce" = ProduceRequestV6
+  type MethodOutput HStreamKafkaV6 "produce" = ProduceResponseV6
 
 instance HasMethodImpl HStreamKafkaV6 "fetch" where
   type MethodName HStreamKafkaV6 "fetch" = "fetch"
@@ -2509,6 +2541,21 @@ instance HasMethodImpl HStreamKafkaV6 "fetch" where
   type MethodVersion HStreamKafkaV6 "fetch" = 6
   type MethodInput HStreamKafkaV6 "fetch" = FetchRequestV6
   type MethodOutput HStreamKafkaV6 "fetch" = FetchResponseV6
+
+data HStreamKafkaV7
+
+instance Service HStreamKafkaV7 where
+  type ServiceName HStreamKafkaV7 = "HStreamKafkaV7"
+  type ServiceMethods HStreamKafkaV7 =
+    '[ "produce"
+     ]
+
+instance HasMethodImpl HStreamKafkaV7 "produce" where
+  type MethodName HStreamKafkaV7 "produce" = "produce"
+  type MethodKey HStreamKafkaV7 "produce" = 0
+  type MethodVersion HStreamKafkaV7 "produce" = 7
+  type MethodInput HStreamKafkaV7 "produce" = ProduceRequestV7
+  type MethodOutput HStreamKafkaV7 "produce" = ProduceResponseV7
 
 -------------------------------------------------------------------------------
 
@@ -2545,7 +2592,7 @@ instance Show ApiKey where
 
 supportedApiVersions :: [ApiVersionV0]
 supportedApiVersions =
-  [ ApiVersionV0 (ApiKey 0) 0 5
+  [ ApiVersionV0 (ApiKey 0) 0 7
   , ApiVersionV0 (ApiKey 1) 0 6
   , ApiVersionV0 (ApiKey 2) 0 2
   , ApiVersionV0 (ApiKey 3) 0 5
@@ -2579,6 +2626,8 @@ getHeaderVersion (ApiKey (0)) 2 = (1, 0)
 getHeaderVersion (ApiKey (0)) 3 = (1, 0)
 getHeaderVersion (ApiKey (0)) 4 = (1, 0)
 getHeaderVersion (ApiKey (0)) 5 = (1, 0)
+getHeaderVersion (ApiKey (0)) 6 = (1, 0)
+getHeaderVersion (ApiKey (0)) 7 = (1, 0)
 getHeaderVersion (ApiKey (1)) 0 = (1, 0)
 getHeaderVersion (ApiKey (1)) 1 = (1, 0)
 getHeaderVersion (ApiKey (1)) 2 = (1, 0)
