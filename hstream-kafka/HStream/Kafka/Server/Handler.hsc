@@ -59,7 +59,7 @@ import qualified Kafka.Protocol.Service                    as K
 #cv_handler ApiVersions, 0, 3
 #cv_handler ListOffsets, 0, 2
 #cv_handler Metadata, 0, 5
-#cv_handler Produce, 0, 5
+#cv_handler Produce, 0, 7
 #cv_handler InitProducerId, 0, 0
 #cv_handler Fetch, 0, 6
 #cv_handler DescribeConfigs, 0, 0
@@ -99,7 +99,7 @@ handlers sc =
   , #mk_handler ListOffsets, 0, 2
   , #mk_handler Metadata, 0, 5
     -- Write
-  , #mk_handler Produce, 0, 5
+  , #mk_handler Produce, 0, 7
   , #mk_handler InitProducerId, 0, 0
     -- Read
   , #mk_handler Fetch, 0, 6

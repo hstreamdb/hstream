@@ -1751,6 +1751,10 @@ partitionProduceDataToV4 :: PartitionProduceData -> PartitionProduceDataV4
 partitionProduceDataToV4 = partitionProduceDataToV0
 partitionProduceDataToV5 :: PartitionProduceData -> PartitionProduceDataV5
 partitionProduceDataToV5 = partitionProduceDataToV0
+partitionProduceDataToV6 :: PartitionProduceData -> PartitionProduceDataV6
+partitionProduceDataToV6 = partitionProduceDataToV0
+partitionProduceDataToV7 :: PartitionProduceData -> PartitionProduceDataV7
+partitionProduceDataToV7 = partitionProduceDataToV0
 
 partitionProduceDataFromV0 :: PartitionProduceDataV0 -> PartitionProduceData
 partitionProduceDataFromV0 x = PartitionProduceData
@@ -1767,6 +1771,10 @@ partitionProduceDataFromV4 :: PartitionProduceDataV4 -> PartitionProduceData
 partitionProduceDataFromV4 = partitionProduceDataFromV0
 partitionProduceDataFromV5 :: PartitionProduceDataV5 -> PartitionProduceData
 partitionProduceDataFromV5 = partitionProduceDataFromV0
+partitionProduceDataFromV6 :: PartitionProduceDataV6 -> PartitionProduceData
+partitionProduceDataFromV6 = partitionProduceDataFromV0
+partitionProduceDataFromV7 :: PartitionProduceDataV7 -> PartitionProduceData
+partitionProduceDataFromV7 = partitionProduceDataFromV0
 
 data PartitionProduceResponse = PartitionProduceResponse
   { index           :: {-# UNPACK #-} !Int32
@@ -1812,6 +1820,10 @@ partitionProduceResponseToV5 x = PartitionProduceResponseV5
   , logAppendTimeMs = x.logAppendTimeMs
   , logStartOffset = x.logStartOffset
   }
+partitionProduceResponseToV6 :: PartitionProduceResponse -> PartitionProduceResponseV6
+partitionProduceResponseToV6 = partitionProduceResponseToV5
+partitionProduceResponseToV7 :: PartitionProduceResponse -> PartitionProduceResponseV7
+partitionProduceResponseToV7 = partitionProduceResponseToV5
 
 partitionProduceResponseFromV0 :: PartitionProduceResponseV0 -> PartitionProduceResponse
 partitionProduceResponseFromV0 x = PartitionProduceResponse
@@ -1843,6 +1855,10 @@ partitionProduceResponseFromV5 x = PartitionProduceResponse
   , logAppendTimeMs = x.logAppendTimeMs
   , logStartOffset = x.logStartOffset
   }
+partitionProduceResponseFromV6 :: PartitionProduceResponseV6 -> PartitionProduceResponse
+partitionProduceResponseFromV6 = partitionProduceResponseFromV5
+partitionProduceResponseFromV7 :: PartitionProduceResponseV7 -> PartitionProduceResponse
+partitionProduceResponseFromV7 = partitionProduceResponseFromV5
 
 data SupportedFeatureKey = SupportedFeatureKey
   { name         :: !CompactString
@@ -1918,6 +1934,10 @@ topicProduceDataToV4 :: TopicProduceData -> TopicProduceDataV4
 topicProduceDataToV4 = topicProduceDataToV0
 topicProduceDataToV5 :: TopicProduceData -> TopicProduceDataV5
 topicProduceDataToV5 = topicProduceDataToV0
+topicProduceDataToV6 :: TopicProduceData -> TopicProduceDataV6
+topicProduceDataToV6 = topicProduceDataToV0
+topicProduceDataToV7 :: TopicProduceData -> TopicProduceDataV7
+topicProduceDataToV7 = topicProduceDataToV0
 
 topicProduceDataFromV0 :: TopicProduceDataV0 -> TopicProduceData
 topicProduceDataFromV0 x = TopicProduceData
@@ -1934,6 +1954,10 @@ topicProduceDataFromV4 :: TopicProduceDataV4 -> TopicProduceData
 topicProduceDataFromV4 = topicProduceDataFromV0
 topicProduceDataFromV5 :: TopicProduceDataV5 -> TopicProduceData
 topicProduceDataFromV5 = topicProduceDataFromV0
+topicProduceDataFromV6 :: TopicProduceDataV6 -> TopicProduceData
+topicProduceDataFromV6 = topicProduceDataFromV0
+topicProduceDataFromV7 :: TopicProduceDataV7 -> TopicProduceData
+topicProduceDataFromV7 = topicProduceDataFromV0
 
 data TopicProduceResponse = TopicProduceResponse
   { name               :: !Text
@@ -1964,6 +1988,10 @@ topicProduceResponseToV5 x = TopicProduceResponseV5
   { name = x.name
   , partitionResponses = fmap partitionProduceResponseToV5 x.partitionResponses
   }
+topicProduceResponseToV6 :: TopicProduceResponse -> TopicProduceResponseV6
+topicProduceResponseToV6 = topicProduceResponseToV5
+topicProduceResponseToV7 :: TopicProduceResponse -> TopicProduceResponseV7
+topicProduceResponseToV7 = topicProduceResponseToV5
 
 topicProduceResponseFromV0 :: TopicProduceResponseV0 -> TopicProduceResponse
 topicProduceResponseFromV0 x = TopicProduceResponse
@@ -1986,6 +2014,10 @@ topicProduceResponseFromV5 x = TopicProduceResponse
   { name = x.name
   , partitionResponses = fmap partitionProduceResponseFromV5 x.partitionResponses
   }
+topicProduceResponseFromV6 :: TopicProduceResponseV6 -> TopicProduceResponse
+topicProduceResponseFromV6 = topicProduceResponseFromV5
+topicProduceResponseFromV7 :: TopicProduceResponseV7 -> TopicProduceResponse
+topicProduceResponseFromV7 = topicProduceResponseFromV5
 
 data ApiVersionsRequest = ApiVersionsRequest
   { clientSoftwareName    :: !CompactString
@@ -3574,6 +3606,10 @@ produceRequestToV4 :: ProduceRequest -> ProduceRequestV4
 produceRequestToV4 = produceRequestToV3
 produceRequestToV5 :: ProduceRequest -> ProduceRequestV5
 produceRequestToV5 = produceRequestToV3
+produceRequestToV6 :: ProduceRequest -> ProduceRequestV6
+produceRequestToV6 = produceRequestToV3
+produceRequestToV7 :: ProduceRequest -> ProduceRequestV7
+produceRequestToV7 = produceRequestToV3
 
 produceRequestFromV0 :: ProduceRequestV0 -> ProduceRequest
 produceRequestFromV0 x = ProduceRequest
@@ -3597,6 +3633,10 @@ produceRequestFromV4 :: ProduceRequestV4 -> ProduceRequest
 produceRequestFromV4 = produceRequestFromV3
 produceRequestFromV5 :: ProduceRequestV5 -> ProduceRequest
 produceRequestFromV5 = produceRequestFromV3
+produceRequestFromV6 :: ProduceRequestV6 -> ProduceRequest
+produceRequestFromV6 = produceRequestFromV3
+produceRequestFromV7 :: ProduceRequestV7 -> ProduceRequest
+produceRequestFromV7 = produceRequestFromV3
 
 data ProduceResponse = ProduceResponse
   { responses      :: !(KaArray TopicProduceResponse)
@@ -3630,6 +3670,10 @@ produceResponseToV5 x = ProduceResponseV5
   { responses = fmap topicProduceResponseToV5 x.responses
   , throttleTimeMs = x.throttleTimeMs
   }
+produceResponseToV6 :: ProduceResponse -> ProduceResponseV6
+produceResponseToV6 = produceResponseToV5
+produceResponseToV7 :: ProduceResponse -> ProduceResponseV7
+produceResponseToV7 = produceResponseToV5
 
 produceResponseFromV0 :: ProduceResponseV0 -> ProduceResponse
 produceResponseFromV0 x = ProduceResponse
@@ -3655,6 +3699,10 @@ produceResponseFromV5 x = ProduceResponse
   { responses = fmap topicProduceResponseFromV5 x.responses
   , throttleTimeMs = x.throttleTimeMs
   }
+produceResponseFromV6 :: ProduceResponseV6 -> ProduceResponse
+produceResponseFromV6 = produceResponseFromV5
+produceResponseFromV7 :: ProduceResponseV7 -> ProduceResponse
+produceResponseFromV7 = produceResponseFromV5
 
 newtype SaslAuthenticateRequest = SaslAuthenticateRequest
   { authBytes :: ByteString
