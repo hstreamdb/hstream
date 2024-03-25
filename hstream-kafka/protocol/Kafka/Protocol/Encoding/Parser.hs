@@ -34,6 +34,7 @@ module Kafka.Protocol.Encoding.Parser
   , takeBytes
   , dropBytes
   , directDropBytes
+  , unsafePeekInt32At
   , fromIO
   ) where
 
@@ -46,6 +47,7 @@ import           Data.Int
 import           Data.Text                        (Text)
 import qualified Data.Text.Encoding               as Text
 import           Data.Word
+import           Foreign.Ptr                      (plusPtr)
 import           GHC.Float                        (castWord64ToDouble)
 
 import           Kafka.Protocol.Encoding.Internal
@@ -291,6 +293,16 @@ getRecordString = do
   if n >= 0
      then decodeUtf8 $! takeBytes n
      else fail $! "Length of RecordString must be -1 " <> show n
+
+-- | Peek a 32-bit integer at the specified offset without consuming the input.
+--
+-- Warning: this does not check the length of input.
+unsafePeekInt32At :: Int -> Parser Int32
+unsafePeekInt32At offset = Parser $ \bs next -> do
+  let BSI.BS fp _ = bs
+  r <- fromIntegral <$!> BSI.unsafeWithForeignPtr fp (peek32BE . (`plusPtr` offset))
+  next bs r
+{-# INLINE unsafePeekInt32At #-}
 
 -------------------------------------------------------------------------------
 
