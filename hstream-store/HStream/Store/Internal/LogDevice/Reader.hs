@@ -179,6 +179,32 @@ ckpReaderRead reader maxlen =
         Right rs -> return rs
         Left _   -> go rp pp
 
+readerReadSome :: DataRecordFormat a => LDReader -> Int -> Int -> IO [DataRecord a]
+readerReadSome reader maxlen maxretries =
+  withForeignPtr reader $ \reader' ->
+  allocaBytes (maxlen * dataRecordSize) $ go reader' maxretries
+  where
+    go _ 0 _ = return []
+    go !rp !retries !pp = do
+      m_records <- tryReaderRead' rp nullPtr pp nullPtr maxlen
+      case m_records of
+        Right [] -> go rp (retries - 1) pp
+        Right rs -> return rs
+        Left _   -> go rp (retries - 1) pp
+
+ckpReaderReadSome :: DataRecordFormat a => LDSyncCkpReader -> Int -> Int -> IO [DataRecord a]
+ckpReaderReadSome reader maxlen maxretries =
+  withForeignPtr reader $ \reader' ->
+  allocaBytes (maxlen * dataRecordSize) $ go reader' maxretries
+  where
+    go _ 0 _ = return []
+    go !rp !retries !pp = do
+      m_records <- tryReaderRead' nullPtr rp pp nullPtr maxlen
+      case m_records of
+        Right [] -> go rp (retries - 1) pp
+        Right rs -> return rs
+        Left _   -> go rp (retries - 1) pp
+
 -- | Attempts to read a batch of records.
 --
 -- The call either delivers 0 or more (up to `maxlen`) data records, or
