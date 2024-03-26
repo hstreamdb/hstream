@@ -261,6 +261,7 @@ test-suite hstream-kafka-test
     HStream.Kafka.Common.AclEntrySpec
     HStream.Kafka.Common.AclSpec
     HStream.Kafka.Common.AuthorizerSpec
+    HStream.Kafka.Common.OffsetManagerSpec
     HStream.Kafka.Common.TestUtils
 
   hs-source-dirs:     tests
@@ -272,8 +273,10 @@ test-suite hstream-kafka-test
     , hspec
     , hspec-expectations
     , hstream-common
+    , hstream-common-base
     , hstream-common-server
     , hstream-kafka:{hstream-kafka, kafka-protocol}
+    , hstream-store
     , http-client
     , text
     , uuid

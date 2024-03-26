@@ -12,6 +12,8 @@ module HStream.Kafka.Common.TestUtils
   , withZkBasedAclAuthorizer
   , withRqliteBasedAclAuthorizer
   , withFileBasedAclAuthorizer
+
+  , ldclient
   ) where
 
 import           Data.Maybe
@@ -19,10 +21,13 @@ import           Data.Text                             (Text)
 import qualified Data.Text                             as T
 import qualified Data.UUID                             as UUID
 import qualified Data.UUID.V4                          as UUID
+import qualified HStream.Store.Logger                  as S
 import qualified Network.HTTP.Client                   as HTTP
 import           System.Environment                    (lookupEnv)
+import           System.IO.Unsafe                      (unsafePerformIO)
 import           Test.Hspec
 import qualified Z.Data.CBytes                         as CB
+import qualified Z.Data.CBytes                         as CBytes
 import qualified ZooKeeper                             as ZK
 
 import           HStream.Kafka.Common.Acl
@@ -32,6 +37,7 @@ import           HStream.Kafka.Common.Resource         hiding (match)
 import           HStream.Kafka.Common.Security
 import qualified HStream.Kafka.Server.MetaData         as Meta
 import qualified HStream.MetaStore.Types               as Meta
+import qualified HStream.Store                         as S
 
 ------------------------------------------------------------
 --   Construct 'ResourcePattern':
@@ -132,3 +138,13 @@ withFileBasedAclAuthorizer action = do
   authorizer <- newAclAuthorizer (pure filePath)
   initAclAuthorizer authorizer
   action (AuthorizerObject $ Just authorizer)
+
+--------------------------------------------------------------------------------
+
+-- Copy from: hstream-store/test/HStream/Store/SpecUtils.hs
+ldclient :: S.LDClient
+ldclient = unsafePerformIO $ do
+  config <- fromMaybe "/data/store/logdevice.conf" <$> lookupEnv "TEST_LD_CONFIG"
+  _ <- S.setLogDeviceDbgLevel S.C_DBG_ERROR
+  S.newLDClient $ CBytes.pack config
+{-# NOINLINE ldclient #-}
