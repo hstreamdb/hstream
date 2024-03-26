@@ -18,6 +18,7 @@ import           Control.Concurrent
 import           Control.Exception
 import qualified Data.HashTable.IO                 as H
 import           Data.Int
+import           Data.Maybe
 import           Data.Word
 import           Foreign.ForeignPtr                (newForeignPtr_)
 import           Foreign.Ptr                       (nullPtr)
@@ -68,23 +69,31 @@ withOffset m logid = withOffsetN m logid 0
 withOffsetN :: OffsetManager -> Word64 -> Int64 -> (Int64 -> IO a) -> IO a
 withOffsetN m@OffsetManager{..} logid n f = do
   m_offset <- H.lookup offsets logid
-  -- FIXME: currently, any exception happen in f will cause the offset not
-  -- updated. This may cause inconsistent between the offset and the actual
-  -- stored data.
   case m_offset of
-    Just offset -> modifyMVar offset $ \o -> do
+    Just offset -> doUpdate offset
+    Nothing -> do
+      offset <- withMVar offsetsLock $ \_ -> do
+        -- There may other threads that have already created the offset, because
+        -- we have the 'offsetsLock' after the 'H.lookup' operation. So we need
+        -- to check again.
+        m_offset' <- H.lookup offsets logid
+        maybe (do o <- catch (do mo <- getLatestOffset m logid
+                                 pure $ fromMaybe (-1) mo)
+                             (\(_ :: S.NOTFOUND) -> pure (-1))
+                  ov <- newMVar o
+                  H.insert offsets logid ov
+                  pure ov)
+              pure
+              m_offset'
+      doUpdate offset
+  where
+    -- FIXME: currently, any exception happen in f will cause the offset not
+    -- updated. This may cause inconsistent between the offset and the actual
+    -- stored data.
+    doUpdate offset = modifyMVar offset $ \o -> do
       let !o' = o + n
       !a <- f o'
       pure (o', a)
-    Nothing -> withMVar offsetsLock $ \_ -> do
-      o' <- catch (do mo <- getLatestOffset m logid
-                      pure $ maybe (n - 1) (+ n) mo)
-                  (\(_ :: S.NOTFOUND) -> pure $ n - 1)
-      mask $ \restore -> do
-        ov <- newMVar o'
-        a <- restore (f o') `onException` pure ()
-        H.insert offsets logid ov
-        pure a
 
 cleanOffsetCache :: OffsetManager -> Word64 -> IO ()
 cleanOffsetCache OffsetManager{..} = H.delete offsets
@@ -93,7 +102,7 @@ cleanOffsetCache OffsetManager{..} = H.delete offsets
 getOldestOffset :: HasCallStack => OffsetManager -> Word64 -> IO (Maybe Int64)
 getOldestOffset OffsetManager{..} logid =
   -- Actually, we only need the first lsn but there is no easy way to get
-  (fmap $ calOffset . third) <$> readOneRecordBypassGap store reader logid (pure (S.LSN_MIN, S.LSN_MAX))
+  fmap (calOffset . third) <$> readOneRecordBypassGap store reader logid (pure (S.LSN_MIN, S.LSN_MAX))
 
 getLatestOffset :: HasCallStack => OffsetManager -> Word64 -> IO (Maybe Int64)
 getLatestOffset o logid = (fmap fst) <$> getLatestOffsetWithLsn o logid
@@ -117,7 +126,7 @@ getOffsetByTimestamp OffsetManager{..} logid timestamp = do
                      -- here we donot use (lsn, lsn) because this may result in
                      -- a gap or empty record.
                      else pure (lsn, tailLsn)
-   in (fmap $ calOffset . third) <$> readOneRecordBypassGap store reader logid getLsn
+   in fmap (calOffset . third) <$> readOneRecordBypassGap store reader logid getLsn
 
 -------------------------------------------------------------------------------
 
