@@ -57,18 +57,18 @@ getDockerName :: T.Text -> T.Text
 getDockerName = ("IOTASK_" <>)
 
 runIOTask :: IOTask -> IO ()
-runIOTask ioTask@IOTask{..} = do
-  Log.info $ "taskCmd: " <> Log.buildString taskCmd
+runIOTask ioTask@IOTask{taskInfo=TaskInfo{taskConfig=TaskConfig{..}}, ..} = do
   tp <- TP.startProcess taskProcessConfig
   writeIORef process' (Just tp)
-  _ <- C.forkIO $
+  _ <- C.forkIO $ do
+    Log.info $ "run IOTask : " <> Log.buildString taskCmd
     E.catch
       (handleStdout ioTask (TP.getStdout tp) (TP.getStdin tp))
-      (\(e :: E.SomeException) -> Log.info $ "handleStdout exited:" <> Log.buildString (show e))
+      (\(e :: E.SomeException) ->
+        Log.info $ "IOTask " <> Log.build (show ioTask) <> " exited:" <> Log.buildString (show e)
+      )
   return ()
   where
-    TaskInfo {..} = taskInfo
-    TaskConfig {..} = taskConfig
     taskCmd = concat [
         "docker run --rm -i",
         " --network=", T.unpack tcNetwork,
@@ -111,11 +111,13 @@ handleStdout ioTask hStdout hStdin = forever $ do
       IO.hFlush hStdin
 
 handleConnectorRequest :: IOTask -> MSG.ConnectorRequest -> IO MSG.ConnectorResponse
-handleConnectorRequest ioTask MSG.ConnectorRequest{..} = do
+handleConnectorRequest ioTask req@MSG.ConnectorRequest{..} = do
   MSG.ConnectorResponse crId <$> E.catch
     (handleConnectorMessage ioTask crMessage)
     (\(e :: E.ZooException) -> do
-      Log.warning $ "handleConnectorRequest failed:" <> Log.buildString (show e) <> "ignored"
+      Log.fatal $ "handleConnectorRequest failed, "
+               <> "\n\tRequest: " <> Log.build (show req)
+               <> "\n\tError: " <> Log.buildString (show e)
       pure J.Null)
 
 handleConnectorMessage :: IOTask -> MSG.ConnectorMessage -> IO J.Value
