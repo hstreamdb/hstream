@@ -128,10 +128,8 @@ showIOTask_ worker@Worker{..} name = do
   task@IOTask{taskInfo=TaskInfo{..}, ..} <- getIOTask_ worker name
   taskOffsets <- C.readMVar taskOffsetsM
   M.getIOTaskMeta workerHandle taskId >>= \case
-    Nothing -> do
-      Log.warning $ "can't found task " <> Log.build (show task) <> " in meta, remove it from ioTasksM"
-      C.modifyMVar_ ioTasksM $ return . HM.delete name
-      throwIO $ HE.ConnectorNotFound name
+    -- FIXME: find another way to handle this inconsistency with memory and meta
+    Nothing -> throwIO $ HE.ConnectorNotFound name
     Just c  -> do
       dockerStatus <- getDockerStatus task
       let connector = convertTaskMeta c
