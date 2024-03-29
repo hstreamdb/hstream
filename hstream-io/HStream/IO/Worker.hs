@@ -86,8 +86,11 @@ createIOTask worker@Worker{..} name typ target cfg = do
   createIOTaskFromTaskInfo worker taskId taskInfo options False True True
   showIOTask_ worker name
 
-createIOTaskFromTaskInfo :: HasCallStack => Worker -> T.Text -> TaskInfo -> IOOptions -> Bool -> Bool -> Bool -> IO ()
-createIOTaskFromTaskInfo worker@Worker{..} taskId taskInfo@TaskInfo {..} ioOptions cleanIfExists createMetaData enableCheck = do
+createIOTaskFromTaskInfo
+  :: HasCallStack
+  => Worker -> T.Text -> TaskInfo -> IOOptions -> Bool -> Bool -> Bool -> IO ()
+createIOTaskFromTaskInfo worker@Worker{..} taskId taskInfo@TaskInfo {..}
+                         ioOptions cleanIfExists createMetaData enableCheck = do
   getIOTask worker taskName >>= \case
     Nothing -> pure ()
     Just _  -> do
@@ -103,6 +106,7 @@ createIOTaskFromTaskInfo worker@Worker{..} taskId taskInfo@TaskInfo {..} ioOptio
 
   when createMetaData $ M.createIOTaskMeta workerHandle taskName taskId taskInfo
   C.modifyMVar_ ioTasksM $ \ioTasks -> do
+    -- FIXME: already check ioTask exist in `getIOTask worker` step, no need check again
     case HM.lookup taskName ioTasks of
       Just _ -> throwIO $ HE.ConnectorExists taskName
       Nothing -> do
@@ -124,6 +128,7 @@ showIOTask_ worker@Worker{..} name = do
   task@IOTask{taskInfo=TaskInfo{..}, ..} <- getIOTask_ worker name
   taskOffsets <- C.readMVar taskOffsetsM
   M.getIOTaskMeta workerHandle taskId >>= \case
+    -- FIXME: find another way to handle this inconsistency with memory and meta
     Nothing -> throwIO $ HE.ConnectorNotFound name
     Just c  -> do
       dockerStatus <- getDockerStatus task
@@ -171,9 +176,10 @@ listRecoverableResources worker@Worker{..} = do
 
 recoverTask :: Worker -> T.Text -> IO ()
 recoverTask worker@Worker{..} name = do
-  Log.info $ "recovering task:" <> Log.buildString' name
   M.getIOTaskFromName workerHandle name >>= \case
-    Nothing -> throwIO $ HE.ConnectorNotFound name
+    Nothing -> do
+      Log.info $ "can't found task " <> Log.build name <> " in meta, recover task failed"
+      throwIO $ HE.ConnectorNotFound name
     Just (taskId, TaskMeta{taskInfoMeta=taskInfo@TaskInfo{..}}) -> do
       let newConnCfg = J.insert "hstream" (J.toJSON hsConfig) connectorConfig
           newImage = if options.optFixedConnectorImage
@@ -185,19 +191,19 @@ recoverTask worker@Worker{..} name = do
           <> Log.build taskConfig.tcImage <> " -> " <> Log.build newImage
         M.updateTaskConfig workerHandle taskId newTaskConfig
       createIOTaskFromTaskInfo worker taskId taskInfo{connectorConfig=newConnCfg, taskConfig=newTaskConfig} options True False False
+  Log.info $ "recovering task " <> Log.buildString' name <> " success"
 
 -- update config and restart
 alterConnectorConfig :: Worker -> T.Text -> T.Text -> IO ()
 alterConnectorConfig worker name config = do
   updated <- updateConnectorConfig worker name config
   when updated $ do
-    Log.info $ "updated connector config, connector:" <> Log.build name
     E.catch
       (stopIOTask worker name True)
       (\(e :: E.SomeException) -> Log.warning $ "failed to stop io task:" <> Log.buildString (show e))
-    Log.info $ "paused connector:" <> Log.build name
+    Log.info $ "pause connector " <> Log.build name <> " for update"
     recoverTask worker name
-    Log.info $ "resumed connector:" <> Log.build name
+    Log.info $ "resume updated connector " <> Log.build name
 
 updateConnectorConfig :: Worker -> T.Text -> T.Text -> IO Bool
 updateConnectorConfig worker name config = do
@@ -210,7 +216,7 @@ updateConnectorConfig worker name config = do
           let mergeCfg (J.Object x) (J.Object y) = J.Object (J.union x y)
           let newConnCfg = J.insertWith mergeCfg "connector" (J.toJSON overrided) connectorConfig
           M.updateConfig worker.workerHandle taskId newConnCfg
-          Log.info $ "updated connector config, connector:" <> Log.build name
+          Log.info $ "update connector config, connector:" <> Log.build name
             <> ", new config:" <> Log.buildString' newConnCfg
           return True
 
@@ -228,7 +234,7 @@ deleteIOTask :: Worker -> T.Text -> IO ()
 deleteIOTask worker@Worker{..} taskName = do
   E.catch
     (stopIOTask worker taskName True)
-    (\(e :: E.SomeException) -> Log.info $ "try to stop io task:" <> Log.buildString (show e))
+    (\(e :: E.SomeException) -> Log.fatal $ "stop IOTask " <> Log.build taskName <> " error: " <> Log.buildString (show e))
   M.deleteIOTaskMeta workerHandle taskName
   C.modifyMVar_ ioTasksM $ return . HM.delete taskName
 

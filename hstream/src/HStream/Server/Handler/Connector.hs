@@ -58,12 +58,13 @@ createConnectorHandler
   -> ServerRequest 'Normal CreateConnectorRequest Connector
   -> IO (ServerResponse 'Normal Connector)
 createConnectorHandler sc (ServerNormalRequest _ req) = defaultExceptionHandle $ do
-    Log.debug "Receive Create Connector Request"
-    validateCreateConnector req
-    createIOTaskFromRequest sc req >>= returnResp
+  Log.info $ "Receive Create Connector Request: " <> Log.build (show req)
+  validateCreateConnector req
+  createIOTaskFromRequest sc req >>= returnResp
 
 handleCreateConnector :: ServerContext -> G.UnaryHandler CreateConnectorRequest Connector
 handleCreateConnector sc _ req = catchDefaultEx $ do
+  Log.info $ "Receive Create Connector Request: " <> Log.build (show req)
   validateCreateConnector req
   createIOTaskFromRequest sc req
 
@@ -151,7 +152,7 @@ resumeConnectorHandler
   -> IO (ServerResponse 'Normal Empty)
 resumeConnectorHandler sc@ServerContext{..}
   (ServerNormalRequest _metadata ResumeConnectorRequest{..}) = defaultExceptionHandle $ do
-  Log.debug $ "Receive ResumeConnectorRequest. "
+  Log.info $ "Receive ResumeConnectorRequest. "
     <> "Connector Name: " <> Log.build resumeConnectorRequestName
   ServerNode{..} <- lookupResource sc ResConnector resumeConnectorRequestName
   unless (serverNodeId == serverID) $
@@ -161,6 +162,8 @@ resumeConnectorHandler sc@ServerContext{..}
 
 handleResumeConnector :: ServerContext -> G.UnaryHandler ResumeConnectorRequest Empty
 handleResumeConnector sc@ServerContext{..} _ ResumeConnectorRequest{..} = catchDefaultEx $ do
+  Log.info $ "Receive ResumeConnectorRequest. "
+    <> "Connector Name: " <> Log.build resumeConnectorRequestName
   ServerNode{..} <- lookupResource sc ResConnector resumeConnectorRequestName
   unless (serverNodeId == serverID) $
     throwIO $ HE.WrongServer "Connector is bound to a different node"
@@ -172,7 +175,7 @@ pauseConnectorHandler
   -> IO (ServerResponse 'Normal Empty)
 pauseConnectorHandler sc@ServerContext{..}
   (ServerNormalRequest _metadata PauseConnectorRequest{..}) = defaultExceptionHandle $ do
-  Log.debug $ "Receive Terminate Connector Request. "
+  Log.info $ "Receive Terminate Connector Request. "
     <> "Connector ID: " <> Log.build pauseConnectorRequestName
   ServerNode{..} <- lookupResource sc ResConnector pauseConnectorRequestName
   unless (serverNodeId == serverID) $
@@ -182,6 +185,8 @@ pauseConnectorHandler sc@ServerContext{..}
 
 handlePauseConnector :: ServerContext -> G.UnaryHandler PauseConnectorRequest Empty
 handlePauseConnector sc@ServerContext{..} _ PauseConnectorRequest{..} = catchDefaultEx $ do
+  Log.info $ "Receive Terminate Connector Request. "
+    <> "Connector ID: " <> Log.build pauseConnectorRequestName
   ServerNode{..} <- lookupResource sc ResConnector pauseConnectorRequestName
   unless (serverNodeId == serverID) $
     throwIO $ HE.WrongServer "Connector is bound to a different node"
@@ -219,16 +224,9 @@ createIOTaskFromRequest sc CreateConnectorRequest{..} = do
 
 createIOTask :: ServerContext -> T.Text -> T.Text -> T.Text -> T.Text -> IO Connector
 createIOTask sc@ServerContext{..} name typ target cfg = do
-  -- FIXME: Can we remove this validation ?
-  validateNameAndThrow ResConnector name
   ServerNode{..} <- lookupResource sc ResConnector name
   unless (serverNodeId == serverID) $
     throwIO $ HE.WrongServer "Connector is bound to a different node"
-  Log.info $ "CreateConnector CodeGen"
-           <> ", connector type: " <> Log.build typ
-           <> ", connector name: " <> Log.build name
-           <> ", connector targe: " <> Log.build target
-           <> ", config: "         <> Log.build cfg
   IO.createIOTask scIOWorker name typ target cfg
 
 -------------------------------------------------------------------------------

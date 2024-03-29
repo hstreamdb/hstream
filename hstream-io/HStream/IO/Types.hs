@@ -83,6 +83,14 @@ data IOTask = IOTask
   , ioOptions       :: IOOptions
   }
 
+instance Show IOTask where
+  show IOTask {taskInfo=TaskInfo{..}, ..}
+    = "{id=" <> show taskId
+   <> ", name=" <> show taskName
+   <> ", type=" <> show taskType
+   <> ", target=" <> show taskTarget
+   <> " }"
+
 type ZkUrl = T.Text
 type Path = T.Text
 data ConnectorMetaConfig
