@@ -62,6 +62,10 @@ RUN rm -rf /root/.cabal/bin && \
 #    Because it will call a subprocess "cwd=/root/.ghc /opt/ghc/9.2.8/lib/ghc-9.2.8/bin/ghc-pkg --version"
 # 2. Because of this https://github.com/phadej/cabal-extras/issues/75, I use my own fork.
 #
+# TODO:
+#
+# - Release a arm64 version of cabal-store-gc
+#
 # For manually build:
 #
 #   TEMP_STORE=$(mktemp -d); \
@@ -73,7 +77,8 @@ RUN rm -rf /root/.cabal/bin && \
 #     --install-method copy \
 #     cabal-store-gc; \
 #   rm -rf /cabal-extras; rm -rf $TEMP_STORE; \
-RUN set -eux; \
+RUN test ${BUILD_CACHE} = "cache" && \
+    set -eux; \
     export TEMP_STORE=$(mktemp -d); \
     export ARCH="$(uname -m)"; \
     if [ -z "$(command -v cabal-store-gc)" ]; then \
