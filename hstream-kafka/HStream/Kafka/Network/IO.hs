@@ -22,6 +22,7 @@ import qualified Network.Socket.ByteString      as N
 import qualified Network.Socket.ByteString.Lazy as NL
 
 import           Kafka.Protocol.Encoding
+import           Kafka.Protocol.Error
 import           Kafka.Protocol.Message
 
 -- | Receive a kafka message with its request header from socket.
@@ -54,20 +55,20 @@ recvKafkaMsgBS peer m_more s = do
         headerResult <- liftIO $ runParser @RequestHeader get reqBs
         case headerResult of
           Done l h   -> return $ Just (h, l)
-          Fail _ err -> E.throw $ DecodeError $ "Fail, " <> err
-          More _     -> E.throw $ DecodeError $ "More"
+          Fail _ err -> E.throw $ DecodeError $ (CORRUPT_MESSAGE, "Fail, " <> err)
+          More _     -> E.throw $ DecodeError $ (CORRUPT_MESSAGE, "More")
       Done l reqBs -> do
         State.put l
         headerResult <- liftIO $ runParser @RequestHeader get reqBs
         case headerResult of
           Done l' h  -> return $ Just (h, l')
-          Fail _ err -> E.throw $ DecodeError $ "Fail, " <> err
-          More _     -> E.throw $ DecodeError $ "More"
+          Fail _ err -> E.throw $ DecodeError $ (CORRUPT_MESSAGE, "Fail, " <> err)
+          More _     -> E.throw $ DecodeError $ (CORRUPT_MESSAGE, "More")
       More f -> do
         i_new <- liftIO $ N.recv s 1024
         State.put i_new
         recvKafkaMsgBS peer (Just f) s
-      Fail _ err -> liftIO . E.throwIO $ DecodeError $ "Fail, " <> err
+      Fail _ err -> liftIO . E.throwIO $ DecodeError $ (CORRUPT_MESSAGE, "Fail, " <> err)
 
 -- | Send a kafka message to socket. Note the message should be packed
 --   with its response header.

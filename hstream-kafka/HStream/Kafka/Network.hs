@@ -55,6 +55,7 @@ import           HStream.Kafka.Server.Types        (ServerContext (..),
                                                     initConnectionContext)
 import qualified HStream.Logger                    as Log
 import           Kafka.Protocol.Encoding
+import           Kafka.Protocol.Error
 import           Kafka.Protocol.Message
 import           Kafka.Protocol.Service
 
@@ -387,7 +388,7 @@ runParseIO more parser = more >>= go Nothing
         Done l r   -> pure (r, l)
         More f     -> do msg <- more
                          go (Just f) msg
-        Fail _ err -> E.throwIO $ DecodeError $ "Fail, " <> err
+        Fail _ err -> E.throwIO $ DecodeError $ (CORRUPT_MESSAGE, "Fail, " <> err)
 
 showSockAddrHost :: N.SockAddr -> String
 showSockAddrHost (N.SockAddrUnix str)            = str
