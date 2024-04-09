@@ -36,6 +36,7 @@ import qualified HStream.Kafka.Common.Utils                     as Utils
 import qualified HStream.Kafka.Server.Config.KafkaConfig        as KC
 import qualified HStream.Kafka.Server.Config.KafkaConfigManager as KCM
 import           HStream.Kafka.Server.Core.Topic                (createTopic)
+import qualified HStream.Kafka.Server.Handler.Topic             as K
 import           HStream.Kafka.Server.Types                     (ServerContext (..))
 import qualified HStream.Logger                                 as Log
 import qualified HStream.Server.HStreamApi                      as A
@@ -121,11 +122,15 @@ handleMetadata ctx reqCtx req = do
                   ((K.simpleAuthorize (K.toAuthorizableReqCtx reqCtx) ctx.authorizer K.Res_TOPIC topic K.AclOp_DESCRIBE) &&^
                    (K.simpleAuthorize (K.toAuthorizableReqCtx reqCtx) ctx.authorizer K.Res_TOPIC topic K.AclOp_CREATE)) >>= \case
                     False -> return $ makeErrorTopicResp topic K.TOPIC_AUTHORIZATION_FAILED
-                    True  -> do
-                      ((code, _), shards) <- createTopic ctx topic (fromIntegral defaultReplicas) (fromIntegral defaultNumPartitions) Map.empty
-                      if code /= K.NONE
-                        then return $ makeErrorTopicResp topic code
-                        else mkResponse topic (V.fromList shards)
+                    True  -> case K.validateTopicName topic of
+                      Left (code, msg) -> do
+                        Log.warning $ "Auto create topic " <> Log.build topic <> " failed, error: " <> Log.build (show msg)
+                        return $ makeErrorTopicResp topic code
+                      Right _ -> do
+                        ((code, _), shards) <- createTopic ctx topic (fromIntegral defaultReplicas) (fromIntegral defaultNumPartitions) Map.empty
+                        if code /= K.NONE
+                          then return $ makeErrorTopicResp topic code
+                          else mkResponse topic (V.fromList shards)
                 return $ V.fromList resp
               else do
                 let f topic acc = makeErrorTopicResp topic K.UNKNOWN_TOPIC_OR_PARTITION : acc
@@ -302,7 +307,7 @@ handleFindCoordinator ServerContext{..} reqCtx req = do
       K.simpleAuthorize (K.toAuthorizableReqCtx reqCtx) authorizer K.Res_GROUP req.key K.AclOp_DESCRIBE >>= \case
         True  -> do
           A.ServerNode{..} <- lookupKafkaPersist metaHandle gossipContext loadBalanceHashRing scAdvertisedListenersKey (KafkaResGroup req.key)
-          Log.info $ "findCoordinator for group:" <> Log.buildString' req.key <> ", result:" <> Log.buildString' serverNodeId
+          Log.info $ "findCoordinator for group:" <> Log.buildString' req.key <> ", assign to node " <> Log.buildString' serverNodeId
           return $ K.FindCoordinatorResponse {
               errorMessage=Nothing
             , nodeId=fromIntegral serverNodeId
