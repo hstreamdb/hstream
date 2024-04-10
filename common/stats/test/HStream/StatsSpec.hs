@@ -13,8 +13,6 @@ import           HStream.Base           (runConc, setupFatalSignalHandler)
 import           HStream.Stats
 import           HStream.StatsSpecUtils (mkTimeSeriesTest)
 
-{-# ANN module ("HLint: ignore Use head" :: String) #-}
-
 spec :: Spec
 spec = do
   runIO setupFatalSignalHandler
