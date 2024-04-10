@@ -117,7 +117,6 @@ parseAdvertisedListeners =
                   address <- AP.takeTill (== ':')
                   AP.char ':'
                   port <- AP.decimal
-                  AP.endOfInput
                   return (key, Set.singleton Listener{ listenerAddress = address, listenerPort = port})
    in (Map.fromListWith Set.union <$>) . AP.parseOnly (parser `AP.sepBy` AP.char ',')
 
