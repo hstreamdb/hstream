@@ -2,3 +2,4 @@
 - ignore: {name: "Use if"}
 - ignore: {name: "Redundant bracket"}
 - ignore: {name: "Redundant $"}
+- ignore: {name: "Use head"}

@@ -9,8 +9,6 @@ import           Z.Data.CBytes      (CBytes)
 
 import           HStream.Stats      (StatsHolder, resetStatsHolder)
 
-{-# ANN module ("HLint: ignore Use head" :: String) #-}
-
 mkTimeSeriesTest
   :: StatsHolder
   -> [Int]
