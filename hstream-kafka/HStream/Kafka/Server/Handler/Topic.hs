@@ -154,8 +154,13 @@ validateTopicName name
  where
   maxNameLength = 249
 
-  validChars = ['a'..'z'] <> ['A'..'Z'] <> ['0'..'9'] <> ['_', '-', '.']
-  containsValidChars = T.all (`elem` validChars)
+  containsValidChars = T.all isValidChar
+  isValidChar c = (c >= 'a' && c <= 'z')
+               || (c >= 'A' && c <= 'Z')
+               || (c >= '0' && c <= '9')
+               || c == '.'
+               || c == '_'
+               || c == '-'
 
   topicNameTooLong n = Just $ "the lenght of " <> n <> " is longer than the max allowd length " <> (T.pack . show $ maxNameLength)
   invalidChars n = Just $ n <> " contains one or more characters other than ASCII alphanumeric, '.', '_', and '-'"
