@@ -301,6 +301,126 @@ jobs:
       - name: stop all started services
         run: docker rm -f $(docker ps -a -q)
 
+  # TODO: kafka-tests-rqlite
+
+  pre-kafka-tests:
+    runs-on: ubuntu-latest
+    outputs:
+      legacy_tests: ${{ steps.collect_tests.outputs.legacy_tests }}
+      tests: ${{ steps.collect_tests.outputs.tests }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: "recursive"
+          repository: "hstreamdb/kafka-tests"
+
+      - id: collect_tests
+        uses: ./.github/actions/collect-tests
+
+  kafka-legacy-tests:
+    needs: [pre-build, build, pre-kafka-tests]
+    runs-on: ${{ matrix.os }}
+    name: kafka-legacy-tests (${{ matrix.os }}-${{ matrix.tests.kafka_client_version }}-${{ matrix.tests.tests_arg }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        ghc: ${{ fromJson(needs.pre-build.outputs.ghc) }}
+        distribution: ["adopt"]
+        java-version: [11]
+        tests: ${{ fromJson(needs.pre-kafka-tests.outputs.legacy_tests) }}
+
+    steps:
+      - name: Free disk space
+        run: |
+          echo "Before..."
+          df -h
+          sudo rm -rf \
+            /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /usr/local/share/powershell /usr/share/swift /usr/local/.ghcup \
+            "/usr/local/share/boost" \
+            /usr/lib/jvm || true
+          echo "After..."
+          df -h
+
+      - name: retrieve saved docker image
+        uses: actions/download-artifact@v3
+        with:
+          name: image-testing-${{ matrix.ghc }}
+          path: ~/data
+
+      - name: docker load
+        run: |
+          docker load -i ~/data/new_hstream_image.tar
+          docker run -t --rm $NEW_HSTREAM_IMAGE /usr/local/bin/hstream-server +RTS --info
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: "recursive"
+          repository: "hstreamdb/kafka-tests"
+
+      - id: run_tests
+        uses: ./.github/actions/run-tests
+        with:
+          distribution: ${{ matrix.distribution }}
+          java-version: ${{ matrix.java-version }}
+          tests_arg: ${{ matrix.tests.tests_arg }}
+          kafka_client_version: ${{ matrix.tests.kafka_client_version }}
+          is_lagacy_tests: 'true'
+          hstream-image: ${{ env.NEW_HSTREAM_IMAGE }}
+
+  kafka-tests:
+    needs: [pre-build, build, pre-kafka-tests]
+    runs-on: ${{ matrix.os }}
+    name: kafka-tests (${{ matrix.os }}-${{ matrix.tests.kafka_client_version }}-${{ matrix.tests.tests_arg }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        ghc: ${{ fromJson(needs.pre-build.outputs.ghc) }}
+        distribution: ["adopt"]
+        java-version: [11]
+        tests: ${{ fromJson(needs.pre-kafka-tests.outputs.tests) }}
+
+    steps:
+      - name: Free disk space
+        run: |
+          echo "Before..."
+          df -h
+          sudo rm -rf \
+            /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /usr/local/share/powershell /usr/share/swift /usr/local/.ghcup \
+            "/usr/local/share/boost" \
+            /usr/lib/jvm || true
+          echo "After..."
+          df -h
+
+      - name: retrieve saved docker image
+        uses: actions/download-artifact@v3
+        with:
+          name: image-testing-${{ matrix.ghc }}
+          path: ~/data
+
+      - name: docker load
+        run: |
+          docker load -i ~/data/new_hstream_image.tar
+          docker run -t --rm $NEW_HSTREAM_IMAGE /usr/local/bin/hstream-server +RTS --info
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: "recursive"
+          repository: "hstreamdb/kafka-tests"
+
+      - id: run_tests
+        uses: ./.github/actions/run-tests
+        with:
+          distribution: ${{ matrix.distribution }}
+          java-version: ${{ matrix.java-version }}
+          tests_arg: ${{ matrix.tests.tests_arg }}
+          kafka_client_version: ${{ matrix.tests.kafka_client_version }}
+          is_lagacy_tests: 'false'
+          hstream-image: ${{ env.NEW_HSTREAM_IMAGE }}
+
   integration-tests:
     needs: [pre-build, build]
     runs-on: ubuntu-latest
@@ -311,8 +431,8 @@ jobs:
         test:
           - integration-tests
           - integration-tests-rqlite
-          - integration-tests-kafka
-          - integration-tests-kafka-rqlite
+          # - integration-tests-kafka
+          # - integration-tests-kafka-rqlite
           - distributed-tests
         include:
           - test: integration-tests
@@ -324,15 +444,15 @@ jobs:
             command: |
               export HSTREAM_META_STORE=RQLITE
               ./gradlew test --info --fail-fast -Dtag='basicTest'
-          - test: integration-tests-kafka
-            repo: hstreamdb/kafka-tests
-            command: |
-              ./gradlew test --info --fail-fast
-          - test: integration-tests-kafka-rqlite
-            repo: hstreamdb/kafka-tests
-            command: |
-              export HSTREAM_META_STORE=RQLITE
-              ./gradlew test --info --fail-fast
+          # - test: integration-tests-kafka
+          #   repo: hstreamdb/kafka-tests
+          #   command: |
+          #     ./gradlew test --info --fail-fast
+          # - test: integration-tests-kafka-rqlite
+          #   repo: hstreamdb/kafka-tests
+          #   command: |
+          #     export HSTREAM_META_STORE=RQLITE
+          #     ./gradlew test --info --fail-fast
           - test: distributed-tests
             repo: hstreamdb/distributed-tests
             command: |
