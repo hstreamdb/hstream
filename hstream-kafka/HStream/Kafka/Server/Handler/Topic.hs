@@ -7,6 +7,7 @@
 module HStream.Kafka.Server.Handler.Topic
   ( -- 19: CreateTopics
     handleCreateTopics
+  , validateTopicName
     -- 20: DeleteTopics
   , handleDeleteTopics
     -- 37: CreatePartitions
@@ -55,7 +56,7 @@ handleCreateTopics ctx@ServerContext{scLDClient} reqCtx K.CreateTopicsRequest{..
       | V.null topics_ -> return $ K.CreateTopicsResponse {topics = K.KaArray $ Just V.empty, throttleTimeMs = 0}
       | otherwise      -> do
           (errRes, topics') <- mapM (\tp -> mapErr tp.name
-                                        <$> liftM2 (*>) (authorizeTopic tp) (pure . validateTopic $ tp)
+                                        <$> liftM2 (*>) (authorizeTopic tp) (doValidate tp)
                                     ) topics_ <&> V.partitionWith id
           if | null topics' ->
                 -- all topics validate failed, return directly
@@ -93,6 +94,12 @@ handleCreateTopics ctx@ServerContext{scLDClient} reqCtx K.CreateTopicsRequest{..
     mapErr name (Left (errorCode, msg)) = Left $ K.CreatableTopicResult name errorCode msg
     mapErr _ (Right tp) = Right tp
 
+    doValidate tp = case validateTopic tp of
+      Left err'@(_, msg) -> do
+        Log.warning $ "Topic " <> Log.build tp.name <> " validate failed: " <> Log.build (show msg)
+        return $ Left err'
+      Right tp'             -> return $ Right tp'
+
     createTopic :: K.CreatableTopic -> IO K.CreatableTopicResult
     createTopic topic@K.CreatableTopic{..} = do
       authorizeTopic topic >>= \case
@@ -104,7 +111,8 @@ handleCreateTopics ctx@ServerContext{scLDClient} reqCtx K.CreateTopicsRequest{..
 
 validateTopic :: K.CreatableTopic -> Either (ErrorCode, NullableString) K.CreatableTopic
 validateTopic topic@K.CreatableTopic{..} = do
-  validateNullConfig configs
+  validateName name
+  *> validateNullConfig configs
   *> validateAssignments assignments
   *> validateReplica replicationFactor
   *> validateNumPartitions numPartitions
@@ -112,6 +120,8 @@ validateTopic topic@K.CreatableTopic{..} = do
    invalidReplicaMsg = Just . T.pack $ "Replication factor must be larger than 0, or -1 to use the default value."
    invalidNumPartitionsMsg = Just . T.pack $ "Number of partitions must be larger than 0, or -1 to use the default value."
    unsuportedPartitionAssignments = Just . T.pack $ "Partition assignments is not supported now."
+
+   validateName n = topic <$ validateTopicName n
 
    validateNullConfig (K.unKaArray -> Just configs') =
      let nullConfigs = V.filter (\K.CreateableTopicConfig{value} -> isNothing value) configs'
@@ -132,6 +142,28 @@ validateTopic topic@K.CreatableTopic{..} = do
    validateNumPartitions partitions
      | partitions < -1 || partitions == 0 = Left (K.INVALID_PARTITIONS, invalidNumPartitionsMsg)
      | otherwise                          = Right topic
+
+validateTopicName :: T.Text -> Either (ErrorCode, Maybe T.Text) ()
+validateTopicName name
+  | T.null name  = Left (K.INVALID_TOPIC_EXCEPTION, Just "Topic name should not be empty.")
+  | name == "."  = Left (K.INVALID_TOPIC_EXCEPTION, Just "Topic name should not be '.'")
+  | name == ".." = Left (K.INVALID_TOPIC_EXCEPTION, Just "Topic name should not be '..'")
+  | T.length name > maxNameLength = Left (K.INVALID_TOPIC_EXCEPTION, topicNameTooLong name)
+  | not (containsValidChars name) = Left (K.INVALID_TOPIC_EXCEPTION, invalidChars name)
+  | otherwise    = Right ()
+ where
+  maxNameLength = 249
+
+  containsValidChars = T.all isValidChar
+  isValidChar c = (c >= 'a' && c <= 'z')
+               || (c >= 'A' && c <= 'Z')
+               || (c >= '0' && c <= '9')
+               || c == '.'
+               || c == '_'
+               || c == '-'
+
+  topicNameTooLong n = Just $ "the lenght of " <> n <> " is longer than the max allowd length " <> (T.pack . show $ maxNameLength)
+  invalidChars n = Just $ n <> " contains one or more characters other than ASCII alphanumeric, '.', '_', and '-'"
 
 --------------------
 -- 20: DeleteTopics
