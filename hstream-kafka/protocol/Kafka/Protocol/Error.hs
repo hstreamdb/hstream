@@ -121,9 +121,9 @@ module Kafka.Protocol.Error
   , pattern UNSUPPORTED_ASSIGNOR
   ) where
 
-import           Data.Int                (Int16)
+import           Data.Int                      (Int16)
 
-import           Kafka.Protocol.Encoding (Serializable)
+import           Kafka.Protocol.Encoding.Types (Serializable)
 
 -------------------------------------------------------------------------------
 
