@@ -17,7 +17,7 @@ jobs:
     outputs:
       ghc: ${{ steps.parser.outputs.ghc }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: "recursive"
 
@@ -56,7 +56,7 @@ jobs:
     strategy:
       fail-fast: false
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: "recursive"
 
@@ -116,7 +116,7 @@ jobs:
           echo "After..."
           df -h
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: "recursive"
 
@@ -194,7 +194,7 @@ jobs:
 
           docker save -o ~/data/new_hstream_image.tar $NEW_HSTREAM_IMAGE
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: image-testing-${{ matrix.ghc }}
           path: ~/data/new_hstream_image.tar
@@ -209,7 +209,7 @@ jobs:
             -name "hstream-server" \) \
             -exec tar -rvf ~/data/hstream_tests.tar {} \;
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: hstream-tests-${{ matrix.ghc }}
           path: ~/data/hstream_tests.tar
@@ -225,7 +225,7 @@ jobs:
         ghc: ${{ fromJson(needs.pre-build.outputs.ghc) }}
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: "recursive"
 
@@ -239,7 +239,7 @@ jobs:
           echo "TEST_CONTAINER_NAME=test-hstream-server" >> $GITHUB_ENV
 
       - name: retrieve saved tests
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: hstream-tests-${{ matrix.ghc }}
           path: ~/data
@@ -271,7 +271,7 @@ jobs:
           docker logs $TEST_CONTAINER_NAME &> hserver.log
 
       - name: upload hserver logs
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: ${{ success() }} || ${{ failure() }}
         with:
           name: hserver-logs-${{ matrix.ghc }}
@@ -344,7 +344,7 @@ jobs:
           df -h
 
       - name: retrieve saved docker image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: image-testing-${{ matrix.ghc }}
           path: ~/data
@@ -396,7 +396,7 @@ jobs:
           df -h
 
       - name: retrieve saved docker image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: image-testing-${{ matrix.ghc }}
           path: ~/data
@@ -474,7 +474,7 @@ jobs:
           df -h
 
       - name: retrieve saved docker image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: image-testing-${{ matrix.ghc }}
           path: ~/data
@@ -485,7 +485,7 @@ jobs:
           docker run -t --rm $NEW_HSTREAM_IMAGE /usr/local/bin/hstream-server +RTS --info
 
       - name: fetch tests source code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: ${{ matrix.repo }}
           submodules: "recursive"
@@ -513,7 +513,7 @@ jobs:
           mv integration-tests/app/build/reports ci_artifact/reports
 
       - name: upload tests-reports
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: ${{ success() }} || ${{ failure() }}
         with:
           name: reports-${{ matrix.test }}-${{ matrix.ghc }}
@@ -531,7 +531,7 @@ jobs:
 
   #   steps:
   #     - name: retrieve saved docker image
-  #       uses: actions/download-artifact@v3
+  #       uses: actions/download-artifact@v4
   #       with:
   #         name: image-testing-${{ matrix.ghc }}
   #         path: ~/data
@@ -542,7 +542,7 @@ jobs:
   #         docker run -t --rm $NEW_HSTREAM_IMAGE /usr/local/bin/hstream-server +RTS --info
 
   #     - name: fetch hstream io tests source code
-  #       uses: actions/checkout@v3
+  #       uses: actions/checkout@v4
   #       with:
   #         repository: "hstreamdb/hstream-connectors"
   #         submodules: "recursive"
@@ -580,7 +580,7 @@ jobs:
   #         mv /tmp/io/tasks ci_artifact/tasks
 
   #     - name: upload tests-reports
-  #       uses: actions/upload-artifact@v3
+  #       uses: actions/upload-artifact@v4
   #       if: ${{ success() }} || ${{ failure() }}
   #       with:
   #         name: hstream-io-logs-${{ matrix.ghc }}
@@ -606,7 +606,7 @@ jobs:
         run: kubectl get pods -A
 
       - name: retrieve saved docker image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: image-testing-${{ matrix.ghc }}
           path: ~/data
@@ -620,7 +620,7 @@ jobs:
           echo -n "verifying images:"
           docker images
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Deploy to minikube by helm
         run: |
           cd deploy/chart/hstream
@@ -657,7 +657,7 @@ jobs:
           kubectl exec -it my-hstream-0 -- hadmin server status
 
       - name: Fetch bench source code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: "hstreamdb/bench"
           submodules: "recursive"
