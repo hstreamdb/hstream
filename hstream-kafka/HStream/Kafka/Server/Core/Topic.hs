@@ -119,16 +119,16 @@ createPartitions ServerContext{..} topicName newPartitionCnt ass timeoutMs valid
     case res of
        Left (e :: SomeException)
          | Just (_ :: S.NOTFOUND) <- fromException e ->
-             return . Left $ (K.UNKNOWN_TOPIC_OR_PARTITION, "The topic " <> topicName <> " does not exist")
+             return . Left $ (K.UNKNOWN_TOPIC_OR_PARTITION, "The topic '" <> topicName <> "' does not exist.")
          | otherwise -> do
              Log.fatal $ "getTotalPartitionCount for topic " <> Log.build topicName <> " failed: " <> Log.build (displayException e)
              return . Left $ (K.UNKNOWN_SERVER_ERROR, T.pack $ displayException e)
        Right oldPartitions
          | newPartitionCnt - oldPartitions < 0 -> do
-             let msg = "Topic currently has " <> show oldPartitions <> " partitions, which is higher than the requested " <> show newPartitionCnt
+             let msg = "Topic currently has " <> show oldPartitions <> " partitions, which is higher than the requested " <> show newPartitionCnt <> "."
              return . Left $ (K.INVALID_PARTITIONS, T.pack msg)
          | newPartitionCnt == oldPartitions ->
-             return . Left $ (K.INVALID_PARTITIONS, "Topic already has " <> T.pack (show oldPartitions) <> " partitions")
+             return . Left $ (K.INVALID_PARTITIONS, "Topic already has " <> T.pack (show oldPartitions) <> " partitions.")
          | otherwise -> return . Right $ newPartitionCnt - oldPartitions
 
   doCreate streamId cnt
