@@ -225,6 +225,7 @@ runCppServer opts sc_ mkAuthedHandlers =
     newConnectionContext conn_ctx_ptr = do
       -- Cpp per-connection context
       conn <- peek conn_ctx_ptr
+      Log.debug1 $ "New client in: " <> Log.buildString' conn.peerHost
       -- Haskell per-connection context
       sc <- initConnectionContext sc_
       newStablePtr (sc, conn)  -- Freed by C++ code
