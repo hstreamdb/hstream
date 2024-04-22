@@ -39,6 +39,7 @@ module HStream.Server.Handler.Stream
   ) where
 
 import           Control.Exception
+import qualified Data.Map                          as Map
 import           Data.Maybe                        (fromJust, isNothing)
 import qualified Data.Vector                       as V
 import qualified HsGrpc.Server                     as G
@@ -183,19 +184,18 @@ trimShardsHandler
 trimShardsHandler sc (ServerNormalRequest _metadata request@TrimShardsRequest{..}) = defaultExceptionHandle $ do
   Log.info $ "Receive trim Shards Request: " <> Log.buildString' request
   validateNameAndThrow ResStream trimShardsRequestStreamName
-  when (V.null trimShardsRequestRecordIds) $
-    throwIO . HE.InvalidRecordId $ "recordIds shouldn't be empty"
-  C.trimShards sc trimShardsRequestStreamName trimShardsRequestRecordIds
-    >>= returnResp . TrimShardsResponse
+  if V.null trimShardsRequestRecordIds
+    then returnResp $ TrimShardsResponse Map.empty
+    else C.trimShards sc trimShardsRequestStreamName trimShardsRequestRecordIds >>= returnResp . TrimShardsResponse
 
 -- FIXME: update TrimShardsResponse to return successed and failed result
 handleTrimShards :: ServerContext -> G.UnaryHandler TrimShardsRequest TrimShardsResponse
 handleTrimShards sc _ request@TrimShardsRequest{..} = catchDefaultEx $ do
   Log.info $ "Receive trim Shards Request: " <> Log.buildString' request
   validateNameAndThrow ResStream trimShardsRequestStreamName
-  when (V.null trimShardsRequestRecordIds) $
-    throwIO . HE.InvalidRecordId $ "recordIds shouldn't be empty"
-  TrimShardsResponse <$> C.trimShards sc trimShardsRequestStreamName trimShardsRequestRecordIds
+  if V.null trimShardsRequestRecordIds
+    then return $ TrimShardsResponse Map.empty
+    else TrimShardsResponse <$> C.trimShards sc trimShardsRequestStreamName trimShardsRequestRecordIds
 
 handleGetTailRecordId :: ServerContext -> G.UnaryHandler GetTailRecordIdRequest GetTailRecordIdResponse
 handleGetTailRecordId sc _ req = catchDefaultEx $ do
