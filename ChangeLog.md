@@ -9,11 +9,11 @@ HStream Kafka Server
 ### New Features
 
 - Add a new network server implemented in C++ for better performance 
-    - introduce C++ nework server [#1739](https://github.com/hstreamdb/hstream/pull/1739)
-    - do not free NUL stable_ptr [#1747](https://github.com/hstreamdb/hstream/pull/1747)
-    - make haskell callback asynchronous [#1754](https://github.com/hstreamdb/hstream/pull/1754)
+    - introduce C++ network server [#1739](https://github.com/hstreamdb/hstream/pull/1739)
+    - do not free NULL stable_ptr [#1747](https://github.com/hstreamdb/hstream/pull/1747)
+    - make Haskell callback asynchronous [#1754](https://github.com/hstreamdb/hstream/pull/1754)
     - switch to using asio [#1761](https://github.com/hstreamdb/hstream/pull/1761) 
-    - improve cpp server [#1765](https://github.com/hstreamdb/hstream/pull/1765)
+    - improve C++ server [#1765](https://github.com/hstreamdb/hstream/pull/1765)
 - Add basic supports for Kafka ACL 
     - implement basic ACL lib and handlers [#1751](https://github.com/hstreamdb/hstream/pull/1751)
     - use metastore interfaces for ACL [#1766](https://github.com/hstreamdb/hstream/pull/1766)
@@ -47,7 +47,7 @@ HStream Kafka Server
 - improve TOPIC_ALREADY_EXISTS error message [#1780](https://github.com/hstreamdb/hstream/pull/1780)
 - Remove consumer group member if sync timeout and improve group logs [#1746](https://github.com/hstreamdb/hstream/pull/1746)
 - Update consumer group heartbeat after committing offsets [#1753](https://github.com/hstreamdb/hstream/pull/1753)
-- [build] Upgrade haskell image to GHC 9.4 [#1763](https://github.com/hstreamdb/hstream/pull/1763)
+- [build] Upgrade Haskell image to GHC 9.4 [#1763](https://github.com/hstreamdb/hstream/pull/1763)
 - [build] Download cabal-store-gc directly in dockerfile [#1764](https://github.com/hstreamdb/hstream/pull/1764)
 - [build] Workaround for building hstream with system-provided jemalloc [#1769](https://github.com/hstreamdb/hstream/pull/1769), [#1790](https://github.com/hstreamdb/hstream/pull/1790) 
 - [build] Use system's jemalloc [#1770](https://github.com/hstreamdb/hstream/pull/1770) 
@@ -68,7 +68,7 @@ HStream gRPC Server
 - [io] Add alterConnectorConfig [#1742](https://github.com/hstreamdb/hstream/pull/1742)
 - [io] Add fixed-connector-image options [#1752](https://github.com/hstreamdb/hstream/pull/1752)
 - [io] Improve logs [#1785](https://github.com/hstreamdb/hstream/pull/1785)
-- [query] Fix incorrect metadata of querys with namespace [#1744](https://github.com/hstreamdb/hstream/pull/1744)
+- [query] Fix incorrect metadata of queries with namespace [#1744](https://github.com/hstreamdb/hstream/pull/1744)
 - [query] Trim log which stores changelog of query state after snapshotting [#1745](https://github.com/hstreamdb/hstream/pull/1745)
 - Return empty if trimShards request send empty recordIds [#1797](https://github.com/hstreamdb/hstream/pull/1797)  
 - Catch exception for stats handler and gossip nodeChangeEvent [#1760](https://github.com/hstreamdb/hstream/pull/1760)
