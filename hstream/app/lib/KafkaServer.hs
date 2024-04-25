@@ -80,6 +80,7 @@ runApp = do
 
 app :: ServerOpts -> IO ()
 app config@ServerOpts{..} = do
+  Log.info $ "start server with opts: " <> Log.build (show config)
   setupFatalSignalHandler
   S.setLogDeviceDbgLevel' _ldLogLevel
   let logType = case config.serverFileLog of

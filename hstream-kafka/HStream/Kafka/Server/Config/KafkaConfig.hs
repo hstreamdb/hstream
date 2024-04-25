@@ -8,6 +8,7 @@ import qualified Control.Monad   as M
 import qualified Data.Aeson.Key  as Y
 import qualified Data.Aeson.Text as Y
 import           Data.Int        (Int32)
+import           Data.List       (intercalate)
 import qualified Data.Map        as Map
 import qualified Data.Text       as T
 import qualified Data.Text.Lazy  as TL
@@ -34,7 +35,7 @@ instance Enum KafkaConfigResource where
 
 class Eq kc => KafkaConfig kc where
   name :: kc -> T.Text
-  value :: kc -> Maybe T.Text
+  value :: kc -> T.Text
   isSentitive :: kc -> Bool
 
   -- in current implement, all configs should be read-only
@@ -48,8 +49,10 @@ class Eq kc => KafkaConfig kc where
   isDefaultValue = (defaultConfig == )
 
 data KafkaConfigInstance = forall kc. KafkaConfig kc => KafkaConfigInstance kc
+
 instance Eq KafkaConfigInstance where
   (==) (KafkaConfigInstance x) (KafkaConfigInstance y) = value x == value y
+
 instance KafkaConfig KafkaConfigInstance where
   name (KafkaConfigInstance x) = name x
   value (KafkaConfigInstance x) = value x
@@ -57,14 +60,17 @@ instance KafkaConfig KafkaConfigInstance where
   fromText = fromText
   defaultConfig = defaultConfig
 
+instance Show KafkaConfigInstance where
+  show i = T.unpack $ name i <> "=" <> value i
+
 ---------------------------------------------------------------------------
 -- Kafka Topic Config
 ---------------------------------------------------------------------------
 data CleanupPolicy = CleanupPolicyDelete | CleanupPolicyCompact deriving (Eq)
 instance KafkaConfig CleanupPolicy where
   name = const "cleanup.policy"
-  value CleanupPolicyDelete  = Just "delete"
-  value CleanupPolicyCompact = Just "compact"
+  value CleanupPolicyDelete  = "delete"
+  value CleanupPolicyCompact = "compact"
   isSentitive = const False
   fromText "delete"  = Right CleanupPolicyDelete
   fromText "compact" = Right CleanupPolicyCompact
@@ -74,7 +80,7 @@ instance KafkaConfig CleanupPolicy where
 newtype RetentionMs = RetentionMs Int32 deriving (Eq)
 instance KafkaConfig RetentionMs where
   name = const "retention.ms"
-  value (RetentionMs v) = Just . T.pack $ show v
+  value (RetentionMs v) = T.pack $ show v
   isSentitive = const False
   fromText textVal = case (T.signed T.decimal) textVal of
                   Left msg          -> Left (T.pack msg)
@@ -95,32 +101,39 @@ mkKafkaTopicConfigs configs = mkConfigs @KafkaTopicConfigs lk
 ---------------------------------------------------------------------------
 -- Kafka Broker Config
 ---------------------------------------------------------------------------
-newtype AutoCreateTopicsEnable = AutoCreateTopicsEnable { _value :: Bool } deriving (Eq, Show)
+
+#define SHOWCONFIG(configType) \
+instance Show configType where { show c = T.unpack (name c) <> show (value c) }
+
+newtype AutoCreateTopicsEnable = AutoCreateTopicsEnable { _value :: Bool } deriving (Eq)
 instance KafkaConfig AutoCreateTopicsEnable where
   name = const "auto.create.topics.enable"
-  value (AutoCreateTopicsEnable True)  = Just "true"
-  value (AutoCreateTopicsEnable False) = Just "false"
+  value (AutoCreateTopicsEnable True)  = "true"
+  value (AutoCreateTopicsEnable False) = "false"
   isSentitive = const False
   fromText "true"  = Right (AutoCreateTopicsEnable True)
   fromText "false" = Right (AutoCreateTopicsEnable False)
   fromText v       = Left $ "invalid bool value:" <> v
   defaultConfig = AutoCreateTopicsEnable True
+SHOWCONFIG(AutoCreateTopicsEnable)
 
-newtype NumPartitions = NumPartitions { _value :: Int } deriving (Eq, Show)
+newtype NumPartitions = NumPartitions { _value :: Int } deriving (Eq)
 instance KafkaConfig NumPartitions where
   name = const "num.partitions"
-  value (NumPartitions v)  = Just . T.pack $ show v
+  value (NumPartitions v)  = T.pack $ show v
   isSentitive = const False
   fromText t = NumPartitions <$> textToIntE t
   defaultConfig = NumPartitions 1
+SHOWCONFIG(NumPartitions)
 
-newtype DefaultReplicationFactor = DefaultReplicationFactor { _value :: Int } deriving (Eq, Show)
+newtype DefaultReplicationFactor = DefaultReplicationFactor { _value :: Int } deriving (Eq)
 instance KafkaConfig DefaultReplicationFactor where
   name = const "default.replication.factor"
-  value (DefaultReplicationFactor v)  = Just . T.pack $ show v
+  value (DefaultReplicationFactor v)  = T.pack $ show v
   isSentitive = const False
   fromText t = DefaultReplicationFactor <$> textToIntE t
   defaultConfig = DefaultReplicationFactor 1
+SHOWCONFIG(DefaultReplicationFactor)
 
 newtype OffsetsTopicReplicationFactor = OffsetsTopicReplicationFactor { _value :: Int } deriving (Eq)
 instance KafkaConfig OffsetsTopicReplicationFactor where
@@ -129,15 +142,21 @@ instance KafkaConfig OffsetsTopicReplicationFactor where
   isSentitive = const False
   fromText t = OffsetsTopicReplicationFactor <$> textToIntE t
   defaultConfig = OffsetsTopicReplicationFactor 1
+SHOWCONFIG(OffsetsTopicReplicationFactor)
 
 data KafkaBrokerConfigs
   = KafkaBrokerConfigs
   { autoCreateTopicsEnable   :: AutoCreateTopicsEnable
   , numPartitions            :: NumPartitions
   , defaultReplicationFactor :: DefaultReplicationFactor
-  } deriving (Show, Eq, G.Generic)
   , offsetsTopicReplication  :: OffsetsTopicReplicationFactor
+  } deriving (Eq, G.Generic)
 instance KafkaConfigs KafkaBrokerConfigs
+
+instance Show KafkaBrokerConfigs where
+  show cfgs = let props = Map.elems $ dumpConfigs cfgs
+                  fmtProps' = intercalate ", " $ map show props
+               in "{" <> fmtProps' <> "}"
 
 parseBrokerConfigs :: Y.Object -> Y.Parser KafkaBrokerConfigs
 parseBrokerConfigs obj =
