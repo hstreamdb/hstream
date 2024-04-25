@@ -61,8 +61,9 @@ initServerContext opts@ServerOpts{..} gossipContext mh = do
   -- XXX: Should we add a server option to toggle Stats?
   statsHolder <- newServerStatsHolder
   epochHashRing <- initializeHashRing gossipContext
-  scGroupCoordinator <- mkGroupCoordinator mh ldclient _serverID
 
+  let replica = _kafkaBrokerConfigs.offsetsTopicReplication._value
+  scGroupCoordinator <- mkGroupCoordinator mh ldclient _serverID replica
   -- must be initialized later
   offsetManager <- newOffsetManager ldclient
   -- Trick to avoid use maybe, must be initialized later

@@ -54,11 +54,11 @@ data GroupOffsetManager = forall os. OffsetStorage os => GroupOffsetManager
 
 -- FIXME: if we create a consumer group with groupName haven been used, call
 -- mkCkpOffsetStorage with groupName may lead us to a un-clean ckp-store
-mkGroupOffsetManager :: S.LDClient -> Int32 -> T.Text -> IO GroupOffsetManager
-mkGroupOffsetManager ldClient serverId groupName = do
+mkGroupOffsetManager :: S.LDClient -> Int32 -> T.Text -> Int -> IO GroupOffsetManager
+mkGroupOffsetManager ldClient serverId groupName offsetReplica = do
   offsetsCache  <- newIORef Map.empty
   partitionsMap <- newIORef Map.empty
-  offsetStorage <- mkCkpOffsetStorage ldClient groupName
+  offsetStorage <- mkCkpOffsetStorage ldClient groupName offsetReplica
   return GroupOffsetManager{..}
 
 loadOffsetsFromStorage :: GroupOffsetManager -> IO ()
