@@ -144,6 +144,9 @@ parseBrokerConfigs obj =
 allBrokerConfigs :: KafkaBrokerConfigs -> V.Vector KafkaConfigInstance
 allBrokerConfigs = V.fromList . Map.elems . dumpConfigs
 
+mergeBrokerConfigs :: KafkaBrokerConfigs -> KafkaBrokerConfigs -> KafkaBrokerConfigs
+mergeBrokerConfigs = mergeConfigs
+
 ---------------------------------------------------------------------------
 -- Config Helpers
 ---------------------------------------------------------------------------
@@ -154,6 +157,7 @@ class KafkaConfigs a where
   mkConfigs :: Lookup -> Either T.Text a
   dumpConfigs :: a -> ConfigMap
   defaultConfigs :: a
+  mergeConfigs :: a -> a -> a
 
   default mkConfigs :: (G.Generic a, GKafkaConfigs (G.Rep a)) => Lookup -> Either T.Text a
   mkConfigs lk = G.to <$> gmkConfigs lk
@@ -164,10 +168,14 @@ class KafkaConfigs a where
   default defaultConfigs :: (G.Generic a, GKafkaConfigs (G.Rep a)) => a
   defaultConfigs = G.to gdefaultConfigs
 
+  default mergeConfigs :: (G.Generic a, GKafkaConfigs (G.Rep a)) => a -> a -> a
+  mergeConfigs x y = G.to (gmergeConfigs (G.from x) (G.from y))
+
 class GKafkaConfigs f where
   gmkConfigs :: Lookup -> Either T.Text (f p)
   gdumpConfigs :: (f p) -> ConfigMap
   gdefaultConfigs :: f p
+  gmergeConfigs :: f p -> f p -> f p
 
 instance KafkaConfig c => GKafkaConfigs (G.K1 i c) where
   gmkConfigs lk = G.K1 <$> case lk (name @c defaultConfig) of
@@ -175,16 +183,19 @@ instance KafkaConfig c => GKafkaConfigs (G.K1 i c) where
     Just textValue -> fromText @c textValue
   gdumpConfigs (G.K1 x) = (Map.singleton (name x) (KafkaConfigInstance x))
   gdefaultConfigs = G.K1 (defaultConfig @c)
+  gmergeConfigs (G.K1 x) (G.K1 y) = G.K1 (if isDefaultValue x then y else x)
 
 instance GKafkaConfigs f => GKafkaConfigs (G.M1 i c f) where
   gmkConfigs lk = G.M1 <$> (gmkConfigs lk)
   gdumpConfigs (G.M1 x) = gdumpConfigs x
   gdefaultConfigs = G.M1 gdefaultConfigs
+  gmergeConfigs (G.M1 x) (G.M1 y) = G.M1 (gmergeConfigs x y)
 
 instance (GKafkaConfigs a, GKafkaConfigs b) => GKafkaConfigs (a G.:*: b) where
   gmkConfigs lk = (G.:*:) <$> (gmkConfigs lk) <*> (gmkConfigs lk)
   gdumpConfigs (x G.:*: y) = Map.union (gdumpConfigs x) (gdumpConfigs y)
   gdefaultConfigs = gdefaultConfigs G.:*: gdefaultConfigs
+  gmergeConfigs (x1 G.:*: y1) (x2 G.:*: y2) = (gmergeConfigs x1 x2) G.:*: (gmergeConfigs y1 y2)
 
 #define MK_CONFIG_PAIR(configType) \
   let dc = defaultConfig @configType in (name dc, (KafkaConfigInstance dc, fmap KafkaConfigInstance . fromText @configType))
