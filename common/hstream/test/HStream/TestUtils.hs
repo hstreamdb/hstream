@@ -1,18 +1,19 @@
 {-# LANGUAGE DeriveAnyClass        #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE TypeSynonymInstances  #-}
 
 module HStream.TestUtils where
 
-import qualified Data.Aeson              as A
-import qualified Data.Text               as T
-import           GHC.Generics            (Generic)
-import           HStream.MetaStore.Types (FHandle, HasPath (..), RHandle)
-import           Test.QuickCheck         (Arbitrary (..), Gen, chooseEnum,
-                                          elements, frequency, listOf, listOf1,
-                                          oneof)
-import           ZooKeeper.Types         (ZHandle)
+import qualified Data.Aeson                     as A
+import qualified Data.Text                      as T
+import           GHC.Generics                   (Generic)
+import           Test.QuickCheck                (Arbitrary (..), Gen,
+                                                 chooseEnum, elements,
+                                                 frequency, listOf, listOf1,
+                                                 oneof)
+
+import           HStream.Common.ZookeeperClient (ZookeeperClient)
+import           HStream.MetaStore.Types        (FHandle, HasPath (..), RHandle)
 
 data MetaExample = Meta {
     metaId      :: T.Text
@@ -21,7 +22,7 @@ data MetaExample = Meta {
   }
   deriving (Ord, Show, Eq, Generic, A.FromJSON, A.ToJSON)
 
-instance HasPath MetaExample ZHandle where
+instance HasPath MetaExample ZookeeperClient where
   myRootPath = "/testTemp"
 instance HasPath MetaExample RHandle where
   myRootPath = "testTemp"

@@ -29,8 +29,9 @@ import qualified Z.Foreign                        as ZF
 import qualified ZooKeeper                        as Z
 import           ZooKeeper.Exception              (ZooException)
 import qualified ZooKeeper.Types                  as Z
-import           ZooKeeper.Types                  (ZHandle)
 
+import           HStream.Common.ZookeeperClient   (ZookeeperClient,
+                                                   unsafeGetZHandle)
 import qualified HStream.MetaStore.FileUtils      as File
 import           HStream.MetaStore.RqliteUtils    (ROp (..), transaction)
 import qualified HStream.MetaStore.RqliteUtils    as RQ
@@ -50,15 +51,14 @@ type Version = Int
 type MetaType value handle = (MetaStore value handle, HasPath value handle)
 type FHandle = FilePath
 data RHandle = RHandle Manager Url
+
 data MetaHandle
-  = ZkHandle ZHandle
+  = ZKHandle ZookeeperClient -- ^ Zookeeper handle with auto reconnection.
   | RLHandle RHandle
   | FileHandle FHandle
--- TODO
---  | LocalHandle FHandle
 
 instance Show MetaHandle where
-  show (ZkHandle _)   = "Zookeeper Handle"
+  show (ZKHandle _)   = "Zookeeper Handle"
   show (RLHandle _)   = "RQLite Handle"
   show (FileHandle _) = "LocalFile Handle"
 
@@ -105,45 +105,49 @@ class MetaStore value handle where
 class MetaMulti handle where
   metaMulti :: [MetaOp] -> handle -> IO ()
 
-instance MetaStore value ZHandle where
-  myPath mid = myRootPath @value @ZHandle <> "/" <> mid
-  insertMeta mid x zk    = RETHROW(createInsertZK zk (myPath @value @ZHandle mid) x   ,ZHandle)
-  updateMeta mid x mv zk = RETHROW(setZkData      zk (myPath @value @ZHandle mid) x mv,ZHandle)
-  upsertMeta mid x    zk = RETHROW(upsertZkData   zk (myPath @value @ZHandle mid) x   ,ZHandle)
-  deleteMeta mid   mv zk = RETHROW(deleteZkPath   zk (myPath @value @ZHandle mid) mv  ,ZHandle)
-  deleteAllMeta       zk = RETHROW(deleteZkChildren zk (myRootPath @value @ZHandle)   ,ZHandle)
+instance MetaStore value ZookeeperClient where
+  myPath mid = myRootPath @value @ZookeeperClient <> "/" <> mid
+  insertMeta mid x zk    = RETHROW(do zk' <- unsafeGetZHandle zk; createInsertZK zk' (myPath @value @ZookeeperClient mid) x   ,ZookeeperClient)
+  updateMeta mid x mv zk = RETHROW(do zk' <- unsafeGetZHandle zk; setZkData      zk' (myPath @value @ZookeeperClient mid) x mv,ZookeeperClient)
+  upsertMeta mid x    zk = RETHROW(do zk' <- unsafeGetZHandle zk; upsertZkData   zk' (myPath @value @ZookeeperClient mid) x   ,ZookeeperClient)
+  deleteMeta mid   mv zk = RETHROW(do zk' <- unsafeGetZHandle zk; deleteZkPath   zk' (myPath @value @ZookeeperClient mid) mv  ,ZookeeperClient)
+  deleteAllMeta       zk = RETHROW(do zk' <- unsafeGetZHandle zk; deleteZkChildren zk' (myRootPath @value @ZookeeperClient)   ,ZookeeperClient)
     where
       mid = "some of the meta when deleting"
 
-  checkMetaExists mid zk = RETHROW(isJust <$> Z.zooExists zk (textToCBytes (myPath @value @ZHandle mid)),ZHandle)
-  getMeta         mid zk = RETHROW(decodeZNodeValue zk (myPath @value @ZHandle mid),ZHandle)
-  getMetaWithVer  mid zk = RETHROW(action,ZHandle)
+  checkMetaExists mid zk = RETHROW(do zk' <- unsafeGetZHandle zk; isJust <$> Z.zooExists zk' (textToCBytes (myPath @value @ZookeeperClient mid)),ZookeeperClient)
+  getMeta         mid zk = RETHROW(do zk' <- unsafeGetZHandle zk; decodeZNodeValue zk' (myPath @value @ZookeeperClient mid),ZookeeperClient)
+  getMetaWithVer  mid zkclient = RETHROW(action,ZookeeperClient)
     where
       action = do
-        e_a <- try $ Z.zooGet zk (textToCBytes $ myPath @value @ZHandle mid)
+        zk <- unsafeGetZHandle zkclient
+        e_a <- try $ Z.zooGet zk (textToCBytes $ myPath @value @ZookeeperClient mid)
         case e_a of
           Left (_ :: ZooException) -> return Nothing
           Right a                  -> return $ (, fromIntegral . Z.statVersion . Z.dataCompletionStat $ a) <$> decodeDataCompletion a
 
-  getAllMeta          zk = RETHROW(action,ZHandle)
+  getAllMeta          zkclient = RETHROW(action,ZookeeperClient)
     where
       mid = "some of the meta when getting "
       action = do
-        let path = textToCBytes $ myRootPath @value @ZHandle
+        let path = textToCBytes $ myRootPath @value @ZookeeperClient
+        zk <- unsafeGetZHandle zkclient
         ids <- Z.unStrVec . Z.strsCompletionValues <$> Z.zooGetChildren zk path
-        idAndValues <- catMaybes <$> mapM (\x -> let x' = cBytesToText x in getMeta @value x' zk <&> fmap (x',)) ids
+        idAndValues <- catMaybes <$> mapM (\x -> let x' = cBytesToText x in getMeta @value x' zkclient <&> fmap (x',)) ids
         pure $ Map.fromList idAndValues
-  listMeta            zk = RETHROW(action,ZHandle)
+  listMeta            zkclient = RETHROW(action,ZookeeperClient)
     where
       mid = "some of the meta when listing"
       action = do
-        let path = textToCBytes $ myRootPath @value @ZHandle
+        let path = textToCBytes $ myRootPath @value @ZookeeperClient
+        zk <- unsafeGetZHandle zkclient
         ids <- Z.unStrVec . Z.strsCompletionValues <$> Z.zooGetChildren zk path
-        catMaybes <$> mapM (flip (getMeta @value) zk . cBytesToText) ids
+        catMaybes <$> mapM (flip (getMeta @value) zkclient . cBytesToText) ids
 
-instance MetaMulti ZHandle where
-  metaMulti ops zk = do
+instance MetaMulti ZookeeperClient where
+  metaMulti ops zkclient = do
     let zOps = map opToZ ops
+    zk <- unsafeGetZHandle zkclient
     void $ Z.zooMulti zk zOps
     where
       opToZ op = case op of
@@ -209,12 +213,15 @@ instance MetaMulti FHandle where
         DeleteOp p k mv   -> File.DeleteOp p k mv
         CheckOp  p k v    -> File.CheckOp p k v
 
-instance (ToJSON a, FromJSON a, HasPath a ZHandle, HasPath a RHandle, HasPath a FHandle, Show a) => HasPath a MetaHandle
+instance (ToJSON a, FromJSON a, HasPath a ZookeeperClient, HasPath a RHandle, HasPath a FHandle, Show a) => HasPath a MetaHandle
 
 #define USE_WHICH_HANDLE(handle, action) \
-  case handle of ZkHandle zk -> action zk; RLHandle rq -> action rq; FileHandle io -> action io;
+  case handle of \
+    ZKHandle zk -> action zk; \
+    RLHandle rq -> action rq; \
+    FileHandle io -> action io;
 
-instance (HasPath value ZHandle, HasPath value RHandle, HasPath value FHandle) => MetaStore value MetaHandle where
+instance (HasPath value ZookeeperClient, HasPath value RHandle, HasPath value FHandle) => MetaStore value MetaHandle where
   myPath = undefined
   listMeta            h = USE_WHICH_HANDLE(h, listMeta @value)
   insertMeta mid x    h = USE_WHICH_HANDLE(h, insertMeta mid x)

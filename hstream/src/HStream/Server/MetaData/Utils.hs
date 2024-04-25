@@ -3,11 +3,11 @@ module HStream.Server.MetaData.Utils where
 import           Control.Monad
 import qualified Data.Text                      as T
 import           GHC.Stack                      (HasCallStack)
-import           ZooKeeper.Types                (ZHandle)
 
 import           HStream.Common.Server.MetaData (initializeFileTables,
                                                  initializeRqTables,
                                                  initializeZkPaths)
+import           HStream.Common.ZookeeperClient (ZookeeperClient)
 import           HStream.MetaStore.Types        (FHandle, MetaHandle,
                                                  MetaMulti (..), MetaStore (..),
                                                  RHandle (..))
@@ -15,7 +15,7 @@ import           HStream.Server.HStreamApi      (Subscription (..))
 import           HStream.Server.MetaData.Value  (fileTables, paths, tables)
 import           HStream.Server.Types           (SubscriptionWrap (..))
 
-initHStreamZkPaths :: HasCallStack => ZHandle -> IO ()
+initHStreamZkPaths :: HasCallStack => ZookeeperClient -> IO ()
 initHStreamZkPaths zk = initializeZkPaths zk paths
 
 initHStreamRqTables ::  RHandle -> IO ()

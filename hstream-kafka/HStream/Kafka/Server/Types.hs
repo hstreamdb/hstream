@@ -73,7 +73,7 @@ initServerContext opts@ServerOpts{..} gossipContext mh = do
   authorizer <- case _enableAcl of
     False -> return $ AuthorizerObject @AuthorizerObject Nothing
     True  -> case mh of
-      ZkHandle zkHandle -> do
+      ZKHandle zkHandle -> do
         x <- newAclAuthorizer (pure zkHandle)
         initAclAuthorizer x
         return $ AuthorizerObject (Just x)

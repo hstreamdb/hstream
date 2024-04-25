@@ -5,15 +5,15 @@ module HStream.Kafka.Common.AclStore where
 import           Control.Monad
 import qualified Data.Map.Strict                as Map
 import qualified Data.Text                      as T
-import           ZooKeeper.Types                (ZHandle)
 
 import qualified HStream.Common.Server.MetaData as Meta
+import           HStream.Common.ZookeeperClient (ZookeeperClient)
 import           HStream.Kafka.Common.AclEntry
 import           HStream.Kafka.Common.Resource
 import           HStream.MetaStore.Types        ()
 import qualified HStream.MetaStore.Types        as Meta
 
-instance Meta.HasPath AclResourceNode ZHandle where
+instance Meta.HasPath AclResourceNode ZookeeperClient where
   myRootPath = Meta.kafkaRootPath <> "/acls"
 instance Meta.HasPath AclResourceNode Meta.RHandle where
   myRootPath = "acls"

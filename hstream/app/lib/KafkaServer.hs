@@ -26,20 +26,18 @@ import           Data.Maybe                        (isJust)
 import qualified Data.Set                          as Set
 import qualified Data.Text                         as T
 import           Data.Text.Encoding                (decodeUtf8, encodeUtf8)
+import qualified Data.Vector                       as V
 import           Network.HTTP.Client               (defaultManagerSettings,
                                                     newManager)
 import           System.Environment                (getArgs)
 import           System.IO                         (hPutStrLn, stderr)
-import           ZooKeeper                         (withResource,
-                                                    zookeeperResInit)
-
-import qualified Data.Vector                       as V
 
 import           HStream.Base                      (setupFatalSignalHandler)
 import           HStream.Common.Server.HashRing    (updateHashRing)
 import qualified HStream.Common.Server.MetaData    as M
 import qualified HStream.Common.Server.TaskManager as TM
 import           HStream.Common.Types              (getHStreamVersion)
+import           HStream.Common.ZookeeperClient    (withZookeeperClient)
 import qualified HStream.Exception                 as HE
 import           HStream.Gossip                    (GossipContext (..),
                                                     defaultGossipOpts,
@@ -91,8 +89,8 @@ app config@ServerOpts{..} = do
                        logType _serverLogFlushImmediately
   case _metaStore of
     ZkAddr addr -> do
-      let zkRes = zookeeperResInit addr Nothing 5000 Nothing 0
-      withResource zkRes $ \zk -> M.initKafkaZkPaths zk >> action (ZkHandle zk)
+      withZookeeperClient addr 5000 $ \zkclient ->
+        M.initKafkaZkPaths zkclient >> action (ZKHandle zkclient)
     RqAddr addr -> do
       m <- newManager defaultManagerSettings
       let rq = RHandle m addr

@@ -13,6 +13,7 @@ import qualified ZooKeeper                           as ZK
 import qualified ZooKeeper.Exception                 as ZK
 import qualified ZooKeeper.Types                     as ZK
 
+import           HStream.Common.ZookeeperClient      (unsafeGetZHandle)
 import qualified HStream.Common.ZookeeperSlotAlloc   as Slot
 import qualified HStream.MetaStore.Types             as Meta
 import qualified HStream.Server.Handler.Admin        as H
@@ -137,11 +138,12 @@ initDefLogGoup ServerContext{..} = do
 initZkSlot :: ServerContext -> IO Slot.SlotConfig
 initZkSlot sc@ServerContext{..} = do
   case metaHandle of
-    Meta.ZkHandle zh -> do
+    Meta.ZKHandle zhclient -> do
+      zh <- unsafeGetZHandle zhclient
       catch (void $ ZK.zooCreate zh "/hstream" Nothing ZK.zooOpenAclUnsafe ZK.ZooPersistent) $
         \(_ :: ZK.ZNODEEXISTS) -> pure ()
       let slotConfig = Slot.SlotConfig{ slotRoot = defZkRoot
-                                      , slotZkHandler = zh
+                                      , slotZkHandler = zhclient
                                       , slotOffset = defLogGroupStart
                                       , slotMaxCapbility = defLogGroupEnd - defLogGroupStart + 1
                                       }

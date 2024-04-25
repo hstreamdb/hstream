@@ -55,6 +55,7 @@ library
     HStream.Common.GrpcHaskell
     HStream.Common.Query
     HStream.Common.Types
+    HStream.Common.ZookeeperClient
     HStream.Common.ZookeeperSlotAlloc
     HStream.Exception
     HStream.Instances
@@ -86,6 +87,7 @@ library
 
   cxx-sources:
     cbits/hash.cpp
+    cbits/hs_zookeeper_client.cpp
     cbits/query/tables/AdminCommandTable.cpp
     cbits/query.cpp
 
