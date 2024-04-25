@@ -13,6 +13,7 @@ import           ZooKeeper                         (withResource,
 import           ZooKeeper.Exception               (ZNODEEXISTS)
 import           ZooKeeper.Types                   (ZHandle)
 
+import           HStream.Common.ZookeeperClient
 import           HStream.Common.ZookeeperSlotAlloc
 import           HStream.Exception
 import           HStream.Utils                     (textToCBytes)
@@ -22,16 +23,15 @@ spec = do
   let host = "127.0.0.1"
   port <- runIO $ fromMaybe "2181" <$> lookupEnv "ZOOKEEPER_LOCAL_PORT"
   let url = textToCBytes $ T.pack $ host <> ":" <> port
-      res = zookeeperResInit url Nothing 5000 Nothing 0
-  runIO $ withResource res $ \zh -> hspec $ runTests zh
+  runIO $ withZookeeperClient url 5000 $ \zk -> hspec $ runTests zk
 
 -- TODO:
 -- 1. properties tests
 -- 2. concurrent tests
-runTests :: ZHandle -> Spec
-runTests zh = describe "HStream.ZookeeperSlotAllocSpec" $ do
-  let c1 = SlotConfig{slotRoot="/tmp_a", slotZkHandler=zh, slotOffset=1, slotMaxCapbility=50}
-      c2 = SlotConfig{slotRoot="/tmp_b", slotZkHandler=zh, slotOffset=1, slotMaxCapbility=2}
+runTests :: ZookeeperClient -> Spec
+runTests zk = describe "HStream.ZookeeperSlotAllocSpec" $ do
+  let c1 = SlotConfig{slotRoot="/tmp_a", slotZkHandler=zk, slotOffset=1, slotMaxCapbility=50}
+      c2 = SlotConfig{slotRoot="/tmp_b", slotZkHandler=zk, slotOffset=1, slotMaxCapbility=2}
       valAttrs1 = SlotValueAttrs (Map.fromList [("k1", "v1")])
       valAttrs2 = SlotValueAttrs (Map.fromList [("k2", "v2")])
 

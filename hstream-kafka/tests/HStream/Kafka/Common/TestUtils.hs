@@ -28,8 +28,8 @@ import           System.IO.Unsafe                      (unsafePerformIO)
 import           Test.Hspec
 import qualified Z.Data.CBytes                         as CB
 import qualified Z.Data.CBytes                         as CBytes
-import qualified ZooKeeper                             as ZK
 
+import           HStream.Common.ZookeeperClient
 import           HStream.Kafka.Common.Acl
 import           HStream.Kafka.Common.Authorizer
 import           HStream.Kafka.Common.Authorizer.Class
@@ -113,10 +113,9 @@ withZkBasedAclAuthorizer :: ActionWith AuthorizerObject -> IO ()
 withZkBasedAclAuthorizer action = do
   zkPortStr <- fromMaybe "2181" <$> lookupEnv "ZOOKEEPER_LOCAL_PORT"
   let zkAddr = "127.0.0.1" <> ":" <> CB.pack zkPortStr
-  let res = ZK.zookeeperResInit zkAddr Nothing 5000 Nothing 0
-  ZK.withResource res $ \zkHandle -> do
-    Meta.initKafkaZkPaths zkHandle
-    authorizer <- newAclAuthorizer (pure zkHandle)
+  withZookeeperClient zkAddr 5000 $ \zk -> do
+    Meta.initKafkaZkPaths zk
+    authorizer <- newAclAuthorizer (pure zk)
     initAclAuthorizer authorizer
     action (AuthorizerObject $ Just authorizer)
 

@@ -5,33 +5,33 @@
 
 module HStream.IO.Types where
 
-import qualified Control.Concurrent          as C
-import           Control.Exception           (Exception)
-import qualified Control.Exception           as E
-import qualified Data.Aeson                  as J
-import qualified Data.Aeson.KeyMap           as J
-import qualified Data.Aeson.Text             as J
-import qualified Data.ByteString.Lazy        as BSL
-import qualified Data.ByteString.Lazy.Char8  as BSLC
-import qualified Data.HashMap.Strict         as HM
-import           Data.IORef                  (IORef)
-import qualified Data.Text                   as T
-import qualified Data.Text.Lazy              as TL
-import qualified Data.Vector                 as Vector
-import           GHC.Generics                (Generic)
-import qualified GHC.IO.Handle               as IO
-import qualified System.Process.Typed        as TP
-import           ZooKeeper.Types             (ZHandle)
+import qualified Control.Concurrent             as C
+import           Control.Exception              (Exception)
+import qualified Control.Exception              as E
+import qualified Data.Aeson                     as J
+import qualified Data.Aeson.KeyMap              as J
+import qualified Data.Aeson.Text                as J
+import qualified Data.ByteString.Lazy           as BSL
+import qualified Data.ByteString.Lazy.Char8     as BSLC
+import qualified Data.HashMap.Strict            as HM
+import           Data.IORef                     (IORef)
+import qualified Data.Text                      as T
+import qualified Data.Text.Lazy                 as TL
+import qualified Data.Vector                    as Vector
+import           GHC.Generics                   (Generic)
+import qualified GHC.IO.Handle                  as IO
+import qualified System.Process.Typed           as TP
 
-import qualified HStream.Exception           as E
-import qualified HStream.IO.LineReader       as LR
-import           HStream.MetaStore.Types     (FHandle, HasPath (..), MetaHandle,
-                                              RHandle (..))
-import qualified HStream.Server.HStreamApi   as API
-import qualified HStream.Stats               as Stats
-import qualified HStream.ThirdParty.Protobuf as Grpc
-import qualified HStream.ThirdParty.Protobuf as PB
-import           Proto3.Suite                (def)
+import           HStream.Common.ZookeeperClient (ZookeeperClient)
+import qualified HStream.Exception              as E
+import qualified HStream.IO.LineReader          as LR
+import           HStream.MetaStore.Types        (FHandle, HasPath (..),
+                                                 MetaHandle, RHandle (..))
+import qualified HStream.Server.HStreamApi      as API
+import qualified HStream.Stats                  as Stats
+import qualified HStream.ThirdParty.Protobuf    as Grpc
+import qualified HStream.ThirdParty.Protobuf    as PB
+import           Proto3.Suite                   (def)
 
 data IOTaskType = SOURCE | SINK
   deriving (Show, Eq, Generic, J.FromJSON, J.ToJSON)
@@ -130,13 +130,13 @@ newtype TaskKvMeta = TaskKvMeta
 ioRootPath :: T.Text
 ioRootPath = "/hstream/io"
 
-instance HasPath TaskMeta ZHandle where
+instance HasPath TaskMeta ZookeeperClient where
   myRootPath = ioRootPath <> "/tasks"
 
-instance HasPath TaskIdMeta ZHandle where
+instance HasPath TaskIdMeta ZookeeperClient where
   myRootPath = ioRootPath <> "/taskNames"
 
-instance HasPath TaskKvMeta ZHandle where
+instance HasPath TaskKvMeta ZookeeperClient where
   myRootPath = ioRootPath <> "/taskKvs"
 
 instance HasPath TaskMeta RHandle where
