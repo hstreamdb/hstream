@@ -47,7 +47,9 @@ module HStream.Server.MetaData.Types
   ) where
 
 import           Control.Exception                 (catches)
+import           Control.Monad                     (forM)
 import           Data.Aeson                        (FromJSON (..), ToJSON (..))
+import qualified Data.Aeson                        as Aeson
 import qualified Data.HashMap.Strict               as HM
 import           Data.Int                          (Int64)
 import qualified Data.IntMap                       as IntMap
@@ -62,11 +64,9 @@ import           Data.Word                         (Word32, Word64)
 import           GHC.Generics                      (Generic)
 import           GHC.IO                            (unsafePerformIO)
 import           GHC.Stack
-import           ZooKeeper.Types                   (ZHandle)
 
-import           Control.Monad                     (forM)
-import qualified Data.Aeson                        as Aeson
 import           HStream.Common.Server.MetaData    (rootPath)
+import           HStream.Common.ZookeeperClient    (ZookeeperClient)
 import qualified HStream.Logger                    as Log
 import           HStream.MetaStore.Types           (FHandle, HasPath (..),
                                                     MetaHandle,
@@ -175,22 +175,22 @@ data ShardReaderMeta = ShardReaderMeta
     -- ^ use to record start time offset
   } deriving (Show, Generic, FromJSON, ToJSON)
 
-instance HasPath ShardReaderMeta ZHandle where
+instance HasPath ShardReaderMeta ZookeeperClient where
   myRootPath = rootPath <> "/shardReader"
   myExceptionHandler = zkExceptionHandlers ResShardReader
-instance HasPath SubscriptionWrap ZHandle where
+instance HasPath SubscriptionWrap ZookeeperClient where
   myRootPath = rootPath <> "/subscriptions"
   myExceptionHandler = zkExceptionHandlers ResSubscription
-instance HasPath QueryInfo ZHandle where
+instance HasPath QueryInfo ZookeeperClient where
   myRootPath = rootPath <> "/queries"
   myExceptionHandler = zkExceptionHandlers ResQuery
-instance HasPath ViewInfo ZHandle where
+instance HasPath ViewInfo ZookeeperClient where
   myRootPath = rootPath <> "/views"
   myExceptionHandler = zkExceptionHandlers ResView
-instance HasPath QueryStatus ZHandle where
+instance HasPath QueryStatus ZookeeperClient where
   myRootPath = rootPath <> "/queryStatus"
   myExceptionHandler = zkExceptionHandlers ResQuery
-instance HasPath QVRelation ZHandle where
+instance HasPath QVRelation ZookeeperClient where
   myRootPath = rootPath <> "/qvRelation"
 
 instance HasPath ShardReaderMeta RHandle where
@@ -317,7 +317,7 @@ groupbyStores = unsafePerformIO $ newIORef HM.empty
 --------------------------------------------------------------------------------
 
 #ifdef HStreamEnableSchema
-instance HasPath SQL.Schema ZHandle where
+instance HasPath SQL.Schema ZookeeperClient where
   myRootPath = rootPath <> "/schemas"
 instance HasPath SQL.Schema FHandle where
   myRootPath = "schemas"

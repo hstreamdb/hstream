@@ -4,9 +4,9 @@ module HStream.Server.MetaData.Value where
 
 import           Data.Text                      (Text)
 import           Z.Data.CBytes                  (CBytes)
-import           ZooKeeper.Types                (ZHandle)
 
 import           HStream.Common.Server.MetaData (TaskAllocation)
+import           HStream.Common.ZookeeperClient (ZookeeperClient)
 import           HStream.IO.Types
 import           HStream.MetaStore.Types        (FHandle, HasPath (myRootPath),
                                                  RHandle (..))
@@ -19,19 +19,19 @@ import           HStream.Utils                  (textToCBytes)
 paths :: [CBytes]
 paths = [ textToCBytes rootPath
         , textToCBytes ioRootPath
-        , textToCBytes $ myRootPath @TaskIdMeta       @ZHandle
-        , textToCBytes $ myRootPath @TaskMeta         @ZHandle
-        , textToCBytes $ myRootPath @TaskKvMeta       @ZHandle
-        , textToCBytes $ myRootPath @ShardReaderMeta  @ZHandle
-        , textToCBytes $ myRootPath @QueryInfo        @ZHandle
-        , textToCBytes $ myRootPath @QueryStatus      @ZHandle
-        , textToCBytes $ myRootPath @ViewInfo         @ZHandle
-        , textToCBytes $ myRootPath @SubscriptionWrap @ZHandle
-        , textToCBytes $ myRootPath @Proto.Timestamp  @ZHandle
-        , textToCBytes $ myRootPath @TaskAllocation   @ZHandle
-        , textToCBytes $ myRootPath @QVRelation       @ZHandle
+        , textToCBytes $ myRootPath @TaskIdMeta       @ZookeeperClient
+        , textToCBytes $ myRootPath @TaskMeta         @ZookeeperClient
+        , textToCBytes $ myRootPath @TaskKvMeta       @ZookeeperClient
+        , textToCBytes $ myRootPath @ShardReaderMeta  @ZookeeperClient
+        , textToCBytes $ myRootPath @QueryInfo        @ZookeeperClient
+        , textToCBytes $ myRootPath @QueryStatus      @ZookeeperClient
+        , textToCBytes $ myRootPath @ViewInfo         @ZookeeperClient
+        , textToCBytes $ myRootPath @SubscriptionWrap @ZookeeperClient
+        , textToCBytes $ myRootPath @Proto.Timestamp  @ZookeeperClient
+        , textToCBytes $ myRootPath @TaskAllocation   @ZookeeperClient
+        , textToCBytes $ myRootPath @QVRelation       @ZookeeperClient
 #ifdef HStreamEnableSchema
-        , textToCBytes $ myRootPath @SQL.Schema       @ZHandle
+        , textToCBytes $ myRootPath @SQL.Schema       @ZookeeperClient
 #endif
         ]
 

@@ -15,10 +15,10 @@ import           System.Environment               (lookupEnv)
 import           System.IO                        (hClose, openTempFile)
 import           Test.Hspec
 import           Test.QuickCheck                  (generate)
-import           ZooKeeper                        (withResource,
-                                                   zookeeperResInit)
-import           ZooKeeper.Types                  (ZHandle)
 
+import           HStream.Common.ZookeeperClient   (ZookeeperClient,
+                                                   unsafeGetZHandle,
+                                                   withZookeeperClient)
 import qualified HStream.Logger                   as Log
 import qualified HStream.MetaStore.FileUtils      as File
 import           HStream.MetaStore.RqliteUtils    (createTable, deleteTable)
@@ -45,9 +45,8 @@ spec = do
   -- zookeeper
   portZk <- runIO $ fromMaybe "2181" <$> lookupEnv "ZOOKEEPER_LOCAL_PORT"
   let urlZk = textToCBytes $ T.pack $ host <> ":" <> portZk
-  let res = zookeeperResInit urlZk Nothing 5000 Nothing 0
-  runIO $ withResource res $ \zk -> do
-    let mHandle2 = ZkHandle zk
+  runIO $ withZookeeperClient urlZk 5000 $ \zk -> do
+    let mHandle2 = ZKHandle zk
     hspec $ smokeTest mHandle2
 
   -- local file
@@ -62,8 +61,9 @@ spec = do
 initMeta :: MetaHandle -> IO ()
 initMeta h =
   case h of
-    ZkHandle zk -> do
-      tryCreate zk (textToCBytes $ myRootPath @MetaExample @ZHandle)
+    ZKHandle zk -> do
+      zh <- unsafeGetZHandle zk
+      tryCreate zh (textToCBytes $ myRootPath @MetaExample @ZookeeperClient)
     RLHandle (RHandle m url) -> do
       createTable m url (myRootPath @MetaExample @RHandle)
     FileHandle fh -> do

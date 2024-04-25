@@ -6,6 +6,7 @@ import           Z.Data.CBytes                  (CBytes)
 import           ZooKeeper.Types                (ZHandle)
 
 import           HStream.Common.Server.MetaData
+import           HStream.Common.ZookeeperClient (ZookeeperClient)
 import           HStream.Kafka.Common.AclEntry
 import           HStream.Kafka.Common.AclStore  ()
 import           HStream.MetaStore.Types
@@ -18,10 +19,10 @@ kafkaZkPaths :: [CBytes]
 kafkaZkPaths =
   [ textToCBytes rootPath
   , textToCBytes kafkaRootPath
-  , textToCBytes $ myRootPath @Proto.Timestamp @ZHandle
-  , textToCBytes $ myRootPath @TaskAllocation @ZHandle
-  , textToCBytes $ myRootPath @GroupMetadataValue @ZHandle
-  , textToCBytes $ myRootPath @AclResourceNode @ZHandle
+  , textToCBytes $ myRootPath @Proto.Timestamp @ZookeeperClient
+  , textToCBytes $ myRootPath @TaskAllocation @ZookeeperClient
+  , textToCBytes $ myRootPath @GroupMetadataValue @ZookeeperClient
+  , textToCBytes $ myRootPath @AclResourceNode @ZookeeperClient
   ]
 
 kafkaRqTables :: [Text]
@@ -40,7 +41,7 @@ kafkaFileTables =
   , myRootPath @AclResourceNode @FHandle
   ]
 
-initKafkaZkPaths :: HasCallStack => ZHandle -> IO ()
+initKafkaZkPaths :: HasCallStack => ZookeeperClient -> IO ()
 initKafkaZkPaths zk = initializeZkPaths zk kafkaZkPaths
 
 initKafkaRqTables :: RHandle -> IO ()
