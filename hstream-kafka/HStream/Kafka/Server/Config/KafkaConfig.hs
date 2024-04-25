@@ -61,7 +61,7 @@ instance KafkaConfig KafkaConfigInstance where
   defaultConfig = defaultConfig
 
 instance Show KafkaConfigInstance where
-  show i = T.unpack $ name i <> "=" <> value i
+  show (KafkaConfigInstance kc) = T.unpack . showConfig $ kc
 
 ---------------------------------------------------------------------------
 -- Kafka Topic Config
@@ -101,9 +101,11 @@ mkKafkaTopicConfigs configs = mkConfigs @KafkaTopicConfigs lk
 ---------------------------------------------------------------------------
 -- Kafka Broker Config
 ---------------------------------------------------------------------------
+showConfig :: KafkaConfig a => a -> T.Text
+showConfig c = name c <> "=" <> value c
 
 #define SHOWCONFIG(configType) \
-instance Show configType where { show c = T.unpack (name c) <> show (value c) }
+instance Show configType where { show = T.unpack . showConfig }
 
 newtype AutoCreateTopicsEnable = AutoCreateTopicsEnable { _value :: Bool } deriving (Eq)
 instance KafkaConfig AutoCreateTopicsEnable where
