@@ -122,12 +122,21 @@ instance KafkaConfig DefaultReplicationFactor where
   fromText t = DefaultReplicationFactor <$> textToIntE t
   defaultConfig = DefaultReplicationFactor 1
 
+newtype OffsetsTopicReplicationFactor = OffsetsTopicReplicationFactor { _value :: Int } deriving (Eq)
+instance KafkaConfig OffsetsTopicReplicationFactor where
+  name = const "offsets.topic.replication.factor"
+  value (OffsetsTopicReplicationFactor v)  = T.pack $ show v
+  isSentitive = const False
+  fromText t = OffsetsTopicReplicationFactor <$> textToIntE t
+  defaultConfig = OffsetsTopicReplicationFactor 1
+
 data KafkaBrokerConfigs
   = KafkaBrokerConfigs
   { autoCreateTopicsEnable   :: AutoCreateTopicsEnable
   , numPartitions            :: NumPartitions
   , defaultReplicationFactor :: DefaultReplicationFactor
   } deriving (Show, Eq, G.Generic)
+  , offsetsTopicReplication  :: OffsetsTopicReplicationFactor
 instance KafkaConfigs KafkaBrokerConfigs
 
 parseBrokerConfigs :: Y.Object -> Y.Parser KafkaBrokerConfigs

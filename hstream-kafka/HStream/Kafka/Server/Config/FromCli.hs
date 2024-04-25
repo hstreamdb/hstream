@@ -14,27 +14,32 @@ module HStream.Kafka.Server.Config.FromCli
   , parseMetaStoreAddr
   ) where
 
-import qualified Data.Attoparsec.Text              as AP
-import           Data.ByteString                   (ByteString)
-import qualified Data.Map.Strict                   as Map
-import qualified Data.Set                          as Set
-import           Data.Text                         (Text)
-import qualified Data.Text                         as T
-import           Data.Word                         (Word16, Word32)
-import           Options.Applicative               as O (auto, flag, help, long,
-                                                         maybeReader, metavar,
-                                                         option, optional,
-                                                         short, strOption,
-                                                         value, (<**>), (<|>))
-import qualified Options.Applicative               as O
-import           System.Environment                (getProgName)
-import           System.Exit                       (exitSuccess)
-import           Z.Data.CBytes                     (CBytes)
+import qualified Control.Monad                           as M
+import qualified Data.Attoparsec.Text                    as AP
+import           Data.ByteString                         (ByteString)
+import           Data.Map.Strict                         (Map)
+import qualified Data.Map.Strict                         as Map
+import qualified Data.Set                                as Set
+import           Data.Text                               (Text)
+import qualified Data.Text                               as T
+import           Data.Word                               (Word16, Word32)
+import           Options.Applicative                     as O (auto, flag, help,
+                                                               long,
+                                                               maybeReader,
+                                                               metavar, option,
+                                                               optional, short,
+                                                               strOption, value,
+                                                               (<**>), (<|>))
+import qualified Options.Applicative                     as O
+import           System.Environment                      (getProgName)
+import           System.Exit                             (exitSuccess)
+import           Z.Data.CBytes                           (CBytes)
 
+import qualified HStream.Kafka.Server.Config.KafkaConfig as KC
 import           HStream.Kafka.Server.Config.Types
-import qualified HStream.Logger                    as Log
-import           HStream.Store                     (Compression (..))
-import           HStream.Store.Logger              (LDLogLevel (..))
+import qualified HStream.Logger                          as Log
+import           HStream.Store                           (Compression (..))
+import           HStream.Store.Logger                    (LDLogLevel (..))
 
 -------------------------------------------------------------------------------
 
@@ -78,19 +83,19 @@ cliOptionsParser = do
 
   cliServerLogLevel     <- optional logLevelParser
   cliServerLogWithColor <- logWithColorParser
+  cliServerFileLog      <- optional fileLoggerSettingsParser
   cliServerLogFlushImmediately <- logFlushImmediatelyParser
-  cliServerFileLog <- optional fileLoggerSettingsParser
 
   cliServerGossipAddress <- optional serverGossipAddressParser
   cliServerGossipPort    <- optional serverGossipPortParser
-  cliSeedNodes          <- optional seedNodesParser
+  cliSeedNodes           <- optional seedNodesParser
 
   cliServerAdvertisedAddress      <- optional advertisedAddressParser
   cliServerAdvertisedListeners    <- advertisedListenersParser
   cliListenersSecurityProtocolMap <- listenersSecurityProtocolMapParser
 
-  cliLdLogLevel      <- optional ldLogLevelParser
-  cliStoreConfigPath <- storeConfigPathParser
+  cliLdLogLevel         <- optional ldLogLevelParser
+  cliStoreConfigPath    <- storeConfigPathParser
   cliEnableTls          <- enableTlsParser
   cliTlsKeyPath         <- optional tlsKeyPathParser
   cliTlsCertPath        <- optional tlsCertPathParser
@@ -101,7 +106,7 @@ cliOptionsParser = do
   cliEnableSaslAuth <- enableSaslAuthParser
   cliEnableAcl      <- enableAclParser
 
-  cliDisableAutoCreateTopic <- disableAutoCreateTopicParser
+  cliBrokerConfigs  <- parseBrokerConfigs <*> brokerPropertyParser
 
   cliExperimentalFeatures <- O.many experimentalFeatureParser
 
@@ -291,14 +296,31 @@ enableAclParser = flag False True
   $  long "enable-acl"
   <> help "Enable ACL authorization"
 
-disableAutoCreateTopicParser :: O.Parser Bool
-disableAutoCreateTopicParser = flag False True
-  $  long "disable-auto-create-topic"
-  <> help "Disable auto create topic"
-
 experimentalFeatureParser :: O.Parser ExperimentalFeature
 experimentalFeatureParser = option parseExperimentalFeature $
   long "experimental" <> metavar "ExperimentalFeature"
+
+brokerPropertyParser :: O.Parser (Map Text (Maybe Text))
+brokerPropertyParser = Map.fromList <$> O.many
+  ( O.option parseProperty
+       (  O.long "prop"
+       <> metavar "KEY=VALUE"
+       <> help "Kafka broker property"
+       )
+   )
+ where
+  parseProperty :: O.ReadM (Text, Maybe Text)
+  parseProperty = O.eitherReader $ \kv -> do
+    case T.splitOn "=" (T.pack kv) of
+      [k, v] -> Right (k, Just v)
+      _      -> Left "Invalid property format"
+
+parseBrokerConfigs :: O.Parser (Map Text (Maybe Text) -> KC.KafkaBrokerConfigs)
+parseBrokerConfigs = pure $ \configs -> do
+  let lk x = M.join (Map.lookup x configs)
+  case KC.mkConfigs @KC.KafkaBrokerConfigs lk of
+    Left msg -> errorWithoutStackTrace (T.unpack msg)
+    Right v  ->  v
 
 -------------------------------------------------------------------------------
 

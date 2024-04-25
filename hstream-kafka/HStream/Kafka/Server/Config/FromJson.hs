@@ -41,9 +41,10 @@ parseJSONToOptions CliOptions{..} obj = do
 
   -- Kafka config
   -- TODO: generate Parser from KafkaBrokerConfigs
-  let !_disableAutoCreateTopic = cliDisableAutoCreateTopic
-  let updateBrokerConfigs cfg = cfg {KC.autoCreateTopicsEnable=KC.AutoCreateTopicsEnable $ not _disableAutoCreateTopic}
-  !_kafkaBrokerConfigs <- updateBrokerConfigs <$> KC.parseBrokerConfigs nodeCfgObj
+  !_kafkaBrokerConfigs <- KC.mergeBrokerConfigs cliBrokerConfigs <$> KC.parseBrokerConfigs nodeCfgObj
+
+  b <- KC.parseBrokerConfigs nodeCfgObj
+
   metricsPort   <- nodeCfgObj .:? "metrics-port" .!= 9700
   let !_metricsPort = fromMaybe metricsPort cliMetricsPort
 

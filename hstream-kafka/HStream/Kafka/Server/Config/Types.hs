@@ -75,7 +75,6 @@ data ServerOpts = ServerOpts
 
   , _maxRecordSize                :: !Int
   , _seedNodes                    :: ![(ByteString, Int)]
-  , _disableAutoCreateTopic       :: !Bool
 
   , _enableSaslAuth               :: !Bool
   , _enableAcl                    :: !Bool
@@ -142,8 +141,8 @@ data CliOptions = CliOptions
     -- ACL Authorization
   , cliEnableAcl                    :: !Bool
 
-    -- Kafka config
-  , cliDisableAutoCreateTopic       :: !Bool
+    -- Kafka broker config
+  , cliBrokerConfigs                :: !KC.KafkaBrokerConfigs
 
     -- HStream Experimental Features
   , cliExperimentalFeatures         :: ![ExperimentalFeature]
