@@ -19,7 +19,6 @@ import           HStream.Kafka.Common.KafkaException    (ErrorCodeException (Err
 import qualified HStream.Kafka.Common.Utils             as Utils
 import           HStream.Kafka.Group.Group              (Group)
 import qualified HStream.Kafka.Group.Group              as G
-import           HStream.Kafka.Group.GroupOffsetManager (mkGroupOffsetManager)
 import qualified HStream.Kafka.Group.GroupOffsetManager as GOM
 import qualified HStream.Logger                         as Log
 import qualified HStream.MetaStore.Types                as Meta
@@ -27,15 +26,15 @@ import           HStream.Store                          (LDClient)
 import qualified Kafka.Protocol.Error                   as K
 
 data GroupCoordinator = GroupCoordinator
-  { groups     :: C.MVar (Utils.HashTable T.Text Group)
-
-  , metaHandle :: Meta.MetaHandle
-  , serverId   :: Word32
-  , ldClient   :: LDClient
+  { groups             :: C.MVar (Utils.HashTable T.Text Group)
+  , metaHandle         :: Meta.MetaHandle
+  , serverId           :: Word32
+  , ldClient           :: LDClient
+  , offsetTopicReplica :: Int
   }
 
-mkGroupCoordinator :: Meta.MetaHandle -> LDClient -> Word32 -> IO GroupCoordinator
-mkGroupCoordinator metaHandle ldClient serverId = do
+mkGroupCoordinator :: Meta.MetaHandle -> LDClient -> Word32 -> Int -> IO GroupCoordinator
+mkGroupCoordinator metaHandle ldClient serverId offsetTopicReplica = do
   groups <- H.new >>= C.newMVar
   return $ GroupCoordinator {..}
 
@@ -54,14 +53,13 @@ instance TM.TaskManager GroupCoordinator where
 
   unloadTaskAsync = unloadGroup
 
-
 getOrMaybeCreateGroup :: GroupCoordinator -> T.Text -> T.Text -> IO Group
 getOrMaybeCreateGroup GroupCoordinator{..} groupId memberId = do
   C.withMVar groups $ \gs -> do
     H.lookup gs groupId >>= \case
       Nothing -> if T.null memberId
         then do
-          metadataManager <- mkGroupOffsetManager ldClient (fromIntegral serverId) groupId
+          metadataManager <- GOM.mkGroupOffsetManager ldClient (fromIntegral serverId) groupId offsetTopicReplica
           ng <- G.newGroup groupId metadataManager metaHandle
           H.insert gs groupId ng
           return ng
@@ -92,7 +90,7 @@ getGroupM GroupCoordinator{..} groupId = do
 -- load group from meta store
 loadGroupAndOffsets :: GroupCoordinator -> T.Text -> IO ()
 loadGroupAndOffsets gc groupId = do
-  offsetManager <- mkGroupOffsetManager gc.ldClient (fromIntegral gc.serverId) groupId
+  offsetManager <- GOM.mkGroupOffsetManager gc.ldClient (fromIntegral gc.serverId) groupId gc.offsetTopicReplica
   GOM.loadOffsetsFromStorage offsetManager
   Meta.getMeta @CM.GroupMetadataValue groupId gc.metaHandle >>= \case
     Nothing -> do

@@ -8,6 +8,7 @@ import qualified Control.Monad   as M
 import qualified Data.Aeson.Key  as Y
 import qualified Data.Aeson.Text as Y
 import           Data.Int        (Int32)
+import           Data.List       (intercalate)
 import qualified Data.Map        as Map
 import qualified Data.Text       as T
 import qualified Data.Text.Lazy  as TL
@@ -34,7 +35,7 @@ instance Enum KafkaConfigResource where
 
 class Eq kc => KafkaConfig kc where
   name :: kc -> T.Text
-  value :: kc -> Maybe T.Text
+  value :: kc -> T.Text
   isSentitive :: kc -> Bool
 
   -- in current implement, all configs should be read-only
@@ -48,8 +49,10 @@ class Eq kc => KafkaConfig kc where
   isDefaultValue = (defaultConfig == )
 
 data KafkaConfigInstance = forall kc. KafkaConfig kc => KafkaConfigInstance kc
+
 instance Eq KafkaConfigInstance where
   (==) (KafkaConfigInstance x) (KafkaConfigInstance y) = value x == value y
+
 instance KafkaConfig KafkaConfigInstance where
   name (KafkaConfigInstance x) = name x
   value (KafkaConfigInstance x) = value x
@@ -57,14 +60,17 @@ instance KafkaConfig KafkaConfigInstance where
   fromText = fromText
   defaultConfig = defaultConfig
 
+instance Show KafkaConfigInstance where
+  show (KafkaConfigInstance kc) = T.unpack . showConfig $ kc
+
 ---------------------------------------------------------------------------
 -- Kafka Topic Config
 ---------------------------------------------------------------------------
 data CleanupPolicy = CleanupPolicyDelete | CleanupPolicyCompact deriving (Eq)
 instance KafkaConfig CleanupPolicy where
   name = const "cleanup.policy"
-  value CleanupPolicyDelete  = Just "delete"
-  value CleanupPolicyCompact = Just "compact"
+  value CleanupPolicyDelete  = "delete"
+  value CleanupPolicyCompact = "compact"
   isSentitive = const False
   fromText "delete"  = Right CleanupPolicyDelete
   fromText "compact" = Right CleanupPolicyCompact
@@ -74,7 +80,7 @@ instance KafkaConfig CleanupPolicy where
 newtype RetentionMs = RetentionMs Int32 deriving (Eq)
 instance KafkaConfig RetentionMs where
   name = const "retention.ms"
-  value (RetentionMs v) = Just . T.pack $ show v
+  value (RetentionMs v) = T.pack $ show v
   isSentitive = const False
   fromText textVal = case (T.signed T.decimal) textVal of
                   Left msg          -> Left (T.pack msg)
@@ -95,40 +101,64 @@ mkKafkaTopicConfigs configs = mkConfigs @KafkaTopicConfigs lk
 ---------------------------------------------------------------------------
 -- Kafka Broker Config
 ---------------------------------------------------------------------------
-newtype AutoCreateTopicsEnable = AutoCreateTopicsEnable { _value :: Bool } deriving (Eq, Show)
+showConfig :: KafkaConfig a => a -> T.Text
+showConfig c = name c <> "=" <> value c
+
+#define SHOWCONFIG(configType) \
+instance Show configType where { show = T.unpack . showConfig }
+
+newtype AutoCreateTopicsEnable = AutoCreateTopicsEnable { _value :: Bool } deriving (Eq)
 instance KafkaConfig AutoCreateTopicsEnable where
   name = const "auto.create.topics.enable"
-  value (AutoCreateTopicsEnable True)  = Just "true"
-  value (AutoCreateTopicsEnable False) = Just "false"
+  value (AutoCreateTopicsEnable True)  = "true"
+  value (AutoCreateTopicsEnable False) = "false"
   isSentitive = const False
   fromText "true"  = Right (AutoCreateTopicsEnable True)
   fromText "false" = Right (AutoCreateTopicsEnable False)
   fromText v       = Left $ "invalid bool value:" <> v
   defaultConfig = AutoCreateTopicsEnable True
+SHOWCONFIG(AutoCreateTopicsEnable)
 
-newtype NumPartitions = NumPartitions { _value :: Int } deriving (Eq, Show)
+newtype NumPartitions = NumPartitions { _value :: Int } deriving (Eq)
 instance KafkaConfig NumPartitions where
   name = const "num.partitions"
-  value (NumPartitions v)  = Just . T.pack $ show v
+  value (NumPartitions v)  = T.pack $ show v
   isSentitive = const False
   fromText t = NumPartitions <$> textToIntE t
   defaultConfig = NumPartitions 1
+SHOWCONFIG(NumPartitions)
 
-newtype DefaultReplicationFactor = DefaultReplicationFactor { _value :: Int } deriving (Eq, Show)
+newtype DefaultReplicationFactor = DefaultReplicationFactor { _value :: Int } deriving (Eq)
 instance KafkaConfig DefaultReplicationFactor where
   name = const "default.replication.factor"
-  value (DefaultReplicationFactor v)  = Just . T.pack $ show v
+  value (DefaultReplicationFactor v)  = T.pack $ show v
   isSentitive = const False
   fromText t = DefaultReplicationFactor <$> textToIntE t
   defaultConfig = DefaultReplicationFactor 1
+SHOWCONFIG(DefaultReplicationFactor)
+
+newtype OffsetsTopicReplicationFactor = OffsetsTopicReplicationFactor { _value :: Int } deriving (Eq)
+instance KafkaConfig OffsetsTopicReplicationFactor where
+  name = const "offsets.topic.replication.factor"
+  value (OffsetsTopicReplicationFactor v)  = T.pack $ show v
+  isSentitive = const False
+  fromText t = OffsetsTopicReplicationFactor <$> textToIntE t
+  defaultConfig = OffsetsTopicReplicationFactor 1
+SHOWCONFIG(OffsetsTopicReplicationFactor)
 
 data KafkaBrokerConfigs
   = KafkaBrokerConfigs
   { autoCreateTopicsEnable   :: AutoCreateTopicsEnable
   , numPartitions            :: NumPartitions
   , defaultReplicationFactor :: DefaultReplicationFactor
-  } deriving (Show, Eq, G.Generic)
+  , offsetsTopicReplication  :: OffsetsTopicReplicationFactor
+  } deriving (Eq, G.Generic)
 instance KafkaConfigs KafkaBrokerConfigs
+
+instance Show KafkaBrokerConfigs where
+  show cfgs = let props = Map.elems $ dumpConfigs cfgs
+                  fmtProps' = intercalate ", " $ map show props
+               in "{" <> fmtProps' <> "}"
 
 parseBrokerConfigs :: Y.Object -> Y.Parser KafkaBrokerConfigs
 parseBrokerConfigs obj =
@@ -144,6 +174,9 @@ parseBrokerConfigs obj =
 allBrokerConfigs :: KafkaBrokerConfigs -> V.Vector KafkaConfigInstance
 allBrokerConfigs = V.fromList . Map.elems . dumpConfigs
 
+mergeBrokerConfigs :: KafkaBrokerConfigs -> KafkaBrokerConfigs -> KafkaBrokerConfigs
+mergeBrokerConfigs = mergeConfigs
+
 ---------------------------------------------------------------------------
 -- Config Helpers
 ---------------------------------------------------------------------------
@@ -154,6 +187,7 @@ class KafkaConfigs a where
   mkConfigs :: Lookup -> Either T.Text a
   dumpConfigs :: a -> ConfigMap
   defaultConfigs :: a
+  mergeConfigs :: a -> a -> a
 
   default mkConfigs :: (G.Generic a, GKafkaConfigs (G.Rep a)) => Lookup -> Either T.Text a
   mkConfigs lk = G.to <$> gmkConfigs lk
@@ -164,10 +198,14 @@ class KafkaConfigs a where
   default defaultConfigs :: (G.Generic a, GKafkaConfigs (G.Rep a)) => a
   defaultConfigs = G.to gdefaultConfigs
 
+  default mergeConfigs :: (G.Generic a, GKafkaConfigs (G.Rep a)) => a -> a -> a
+  mergeConfigs x y = G.to (gmergeConfigs (G.from x) (G.from y))
+
 class GKafkaConfigs f where
   gmkConfigs :: Lookup -> Either T.Text (f p)
   gdumpConfigs :: (f p) -> ConfigMap
   gdefaultConfigs :: f p
+  gmergeConfigs :: f p -> f p -> f p
 
 instance KafkaConfig c => GKafkaConfigs (G.K1 i c) where
   gmkConfigs lk = G.K1 <$> case lk (name @c defaultConfig) of
@@ -175,16 +213,19 @@ instance KafkaConfig c => GKafkaConfigs (G.K1 i c) where
     Just textValue -> fromText @c textValue
   gdumpConfigs (G.K1 x) = (Map.singleton (name x) (KafkaConfigInstance x))
   gdefaultConfigs = G.K1 (defaultConfig @c)
+  gmergeConfigs (G.K1 x) (G.K1 y) = G.K1 (if isDefaultValue x then y else x)
 
 instance GKafkaConfigs f => GKafkaConfigs (G.M1 i c f) where
   gmkConfigs lk = G.M1 <$> (gmkConfigs lk)
   gdumpConfigs (G.M1 x) = gdumpConfigs x
   gdefaultConfigs = G.M1 gdefaultConfigs
+  gmergeConfigs (G.M1 x) (G.M1 y) = G.M1 (gmergeConfigs x y)
 
 instance (GKafkaConfigs a, GKafkaConfigs b) => GKafkaConfigs (a G.:*: b) where
   gmkConfigs lk = (G.:*:) <$> (gmkConfigs lk) <*> (gmkConfigs lk)
   gdumpConfigs (x G.:*: y) = Map.union (gdumpConfigs x) (gdumpConfigs y)
   gdefaultConfigs = gdefaultConfigs G.:*: gdefaultConfigs
+  gmergeConfigs (x1 G.:*: y1) (x2 G.:*: y2) = (gmergeConfigs x1 x2) G.:*: (gmergeConfigs y1 y2)
 
 #define MK_CONFIG_PAIR(configType) \
   let dc = defaultConfig @configType in (name dc, (KafkaConfigInstance dc, fmap KafkaConfigInstance . fromText @configType))

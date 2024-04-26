@@ -34,10 +34,10 @@ data CkpOffsetStorage = CkpOffsetStorage
   , trimCkpWorker :: !CompactedWorker
   }
 
-mkCkpOffsetStorage :: S.LDClient -> T.Text -> IO CkpOffsetStorage
-mkCkpOffsetStorage client ckpStoreName = do
+mkCkpOffsetStorage :: S.LDClient -> T.Text -> Int -> IO CkpOffsetStorage
+mkCkpOffsetStorage client ckpStoreName replica = do
   let cbGroupName = textToCBytes ckpStoreName
-      logAttrs = S.def{S.logReplicationFactor = S.defAttr1 1}
+      logAttrs = S.def{S.logReplicationFactor = S.defAttr1 replica}
   -- FIXME: need to get log attributes from somewhere
   S.initOffsetCheckpointDir client logAttrs
   ckpStoreId <- S.allocOffsetCheckpointId client cbGroupName

@@ -73,7 +73,7 @@ getResultFromInstance (KC.KafkaConfigInstance cfg) =
     , isDefault=KC.isDefaultValue cfg
     , readOnly=KC.readOnly cfg
     , name=KC.name cfg
-    , value=KC.value cfg
+    , value= Just $ KC.value cfg
     }
 
 listBrokerConfigs :: KafkaConfigManager -> T.Text -> K.KaArray T.Text -> IO K.DescribeConfigsResult
