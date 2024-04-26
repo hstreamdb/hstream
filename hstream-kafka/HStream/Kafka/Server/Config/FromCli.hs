@@ -14,8 +14,8 @@ module HStream.Kafka.Server.Config.FromCli
   , parseMetaStoreAddr
   ) where
 
-import qualified Control.Monad                           as M
 import qualified Data.Attoparsec.Text                    as AP
+import           Data.Bifunctor                          (second)
 import           Data.ByteString                         (ByteString)
 import           Data.Map.Strict                         (Map)
 import qualified Data.Map.Strict                         as Map
@@ -106,7 +106,7 @@ cliOptionsParser = do
   cliEnableSaslAuth <- enableSaslAuthParser
   cliEnableAcl      <- enableAclParser
 
-  cliBrokerConfigs  <- parseBrokerConfigs <*> brokerPropertyParser
+  cliBrokerConfigs  <- brokerConfigsParser
 
   cliExperimentalFeatures <- O.many experimentalFeatureParser
 
@@ -300,27 +300,26 @@ experimentalFeatureParser :: O.Parser ExperimentalFeature
 experimentalFeatureParser = option parseExperimentalFeature $
   long "experimental" <> metavar "ExperimentalFeature"
 
-brokerPropertyParser :: O.Parser (Map Text (Maybe Text))
-brokerPropertyParser = Map.fromList <$> O.many
-  ( O.option parseProperty
-       (  O.long "prop"
-       <> metavar "KEY=VALUE"
-       <> help "Kafka broker property"
+brokerConfigsParser :: O.Parser KC.KafkaBrokerConfigs
+brokerConfigsParser = toKafkaBrokerConfigs . Map.fromList
+  <$> O.many
+    ( O.option propertyReader
+       ( O.long "prop"
+      <> metavar "KEY=VALUE"
+      <> help "Broker property"
        )
-   )
+    )
  where
-  parseProperty :: O.ReadM (Text, Maybe Text)
-  parseProperty = O.eitherReader $ \kv -> do
-    case T.splitOn "=" (T.pack kv) of
-      [k, v] -> Right (k, Just v)
-      _      -> Left "Invalid property format"
+  propertyReader :: O.ReadM (Text, Text)
+  propertyReader = O.eitherReader $ \kv ->
+    let (k, v) = second tail $ span (/= '=') kv
+     in Right (T.pack k, T.pack v)
 
-parseBrokerConfigs :: O.Parser (Map Text (Maybe Text) -> KC.KafkaBrokerConfigs)
-parseBrokerConfigs = pure $ \configs -> do
-  let lk x = M.join (Map.lookup x configs)
-  case KC.mkConfigs @KC.KafkaBrokerConfigs lk of
-    Left msg -> errorWithoutStackTrace (T.unpack msg)
-    Right v  ->  v
+  toKafkaBrokerConfigs :: Map Text Text -> KC.KafkaBrokerConfigs
+  toKafkaBrokerConfigs mp =
+    case KC.mkConfigs (mp Map.!?) of
+      Left msg -> errorWithoutStackTrace (T.unpack msg)
+      Right v  ->  v
 
 -------------------------------------------------------------------------------
 
