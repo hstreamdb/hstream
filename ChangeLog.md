@@ -2,6 +2,78 @@
 
 ## Unreleased
 
+## v0.20.0 [2024-04-26]
+
+HStream Kafka Server
+
+### New Features
+
+- Add a new network server implemented in C++ for better performance 
+    - introduce C++ network server [#1739](https://github.com/hstreamdb/hstream/pull/1739)
+    - do not free NULL stable_ptr [#1747](https://github.com/hstreamdb/hstream/pull/1747)
+    - make Haskell callback asynchronous [#1754](https://github.com/hstreamdb/hstream/pull/1754)
+    - switch to using asio [#1761](https://github.com/hstreamdb/hstream/pull/1761) 
+    - improve C++ server [#1765](https://github.com/hstreamdb/hstream/pull/1765)
+- Add basic supports for Kafka ACL 
+    - implement basic ACL lib and handlers [#1751](https://github.com/hstreamdb/hstream/pull/1751)
+    - use metastore interfaces for ACL [#1766](https://github.com/hstreamdb/hstream/pull/1766)
+    - make ACL mechanism fully optional [#1768](https://github.com/hstreamdb/hstream/pull/1768)
+    - support ACL in produce (0) handler [#1767](https://github.com/hstreamdb/hstream/pull/1767)
+    - do authorization on create/delete topics & create partitions [#1771](https://github.com/hstreamdb/hstream/pull/1771)
+    - do authorization on group-related handlers ([11..16]) [#1772](https://github.com/hstreamdb/hstream/pull/1772)
+    - do authorization on list and commit offsets (2, 8) [#1774](https://github.com/hstreamdb/hstream/pull/1774)
+    - do authorization on fetch offsets (9) [#1773](https://github.com/hstreamdb/hstream/pull/1773)
+    - do authorization on metadata (3) [#1779](https://github.com/hstreamdb/hstream/pull/1779)
+    - do authorization on describe configs (32) [#1777](https://github.com/hstreamdb/hstream/pull/1777)
+    - do authorization on find coordinator (10) [#1778](https://github.com/hstreamdb/hstream/pull/1778)
+    - do authorization on fetch (1) [#1776](https://github.com/hstreamdb/hstream/pull/1776)
+ 
+### Enhancements
+
+- Support CreatePartitions [#1757](https://github.com/hstreamdb/hstream/pull/1757)
+    - use partitionId as loggroup name [#1756](https://github.com/hstreamdb/hstream/pull/1756)
+    - add listStreamPartitionsOrderedByName [#1755](https://github.com/hstreamdb/hstream/pull/1755)
+- Refactor kafka protocol modules [#1787](https://github.com/hstreamdb/hstream/pull/1787)
+- Upgrade max produce API version to v7 [#1782](https://github.com/hstreamdb/hstream/pull/1782)
+- Do not re-encode batches in produce handler [#1783](https://github.com/hstreamdb/hstream/pull/1783)
+- Refactor fetch handler for better performance [#1749](https://github.com/hstreamdb/hstream/pull/1749)
+    - add decodeNextRecordOffset [#1750](https://github.com/hstreamdb/hstream/pull/1750) 
+- Ensure `fetch` returns some data even when `minBytes` is set to 0 [#1781](https://github.com/hstreamdb/hstream/pull/1781)
+- Validate topic name when create [#1788](https://github.com/hstreamdb/hstream/pull/1788)
+- Validate topic name in listTopicConfigs [#1793](https://github.com/hstreamdb/hstream/pull/1793)
+- Auto trim CheckpointedOffsetStorage [#1796](https://github.com/hstreamdb/hstream/pull/1796)
+- [meta] Support auto reconnection for zookeeper client [#1800](https://github.com/hstreamdb/hstream/pull/1800)
+- [perf] Increase Haskell RTS -A to 128MB [#1741](https://github.com/hstreamdb/hstream/pull/1741)
+- improve TOPIC_ALREADY_EXISTS error message [#1780](https://github.com/hstreamdb/hstream/pull/1780)
+- Remove consumer group member if sync timeout and improve group logs [#1746](https://github.com/hstreamdb/hstream/pull/1746)
+- Update consumer group heartbeat after committing offsets [#1753](https://github.com/hstreamdb/hstream/pull/1753)
+- [build] Upgrade Haskell image to GHC 9.4 [#1763](https://github.com/hstreamdb/hstream/pull/1763)
+- [build] Download cabal-store-gc directly in dockerfile [#1764](https://github.com/hstreamdb/hstream/pull/1764)
+- [build] Workaround for building hstream with system-provided jemalloc [#1769](https://github.com/hstreamdb/hstream/pull/1769), [#1790](https://github.com/hstreamdb/hstream/pull/1790) 
+- [build] Use system's jemalloc [#1770](https://github.com/hstreamdb/hstream/pull/1770) 
+- [build] Improve support for arm64 build in dockerfile [#1786](https://github.com/hstreamdb/hstream/pull/1786)
+- [ci] Add new Kafka test suits [#1792](https://github.com/hstreamdb/hstream/pull/1792)   
+ 
+### Changes and Bug fixes
+
+- Fix the concurrent issue in withOffsetN [#1784](https://github.com/hstreamdb/hstream/pull/1784) 
+- Fix parsing AdvertisedListeners [#1791](https://github.com/hstreamdb/hstream/pull/1791)
+- Fix the bug of re startReading while the fetch response is empty [#1794](https://github.com/hstreamdb/hstream/pull/1794)
+- Workarounds: make the size of replicaNodes equal to the replicationFactor [#1798](https://github.com/hstreamdb/hstream/pull/1798)
+
+---
+
+HStream gRPC Server
+
+- [io] Add alterConnectorConfig [#1742](https://github.com/hstreamdb/hstream/pull/1742)
+- [io] Add fixed-connector-image options [#1752](https://github.com/hstreamdb/hstream/pull/1752)
+- [io] Improve logs [#1785](https://github.com/hstreamdb/hstream/pull/1785)
+- [query] Fix incorrect metadata of queries with namespace [#1744](https://github.com/hstreamdb/hstream/pull/1744)
+- [query] Trim log which stores changelog of query state after snapshotting [#1745](https://github.com/hstreamdb/hstream/pull/1745)
+- Return empty if trimShards request send empty recordIds [#1797](https://github.com/hstreamdb/hstream/pull/1797)  
+- Catch exception for stats handler and gossip nodeChangeEvent [#1760](https://github.com/hstreamdb/hstream/pull/1760)
+- Log errors for all unexpected exceptions in Gossip asyncs [#1759](https://github.com/hstreamdb/hstream/pull/1759)
+
 
 ## v0.19.0 [2024-01-12]
 
