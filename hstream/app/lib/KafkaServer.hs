@@ -4,7 +4,6 @@
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
@@ -78,7 +77,6 @@ runApp = do
 
 app :: ServerOpts -> IO ()
 app config@ServerOpts{..} = do
-  Log.info $ "start server with opts: " <> Log.build (show config)
   setupFatalSignalHandler
   S.setLogDeviceDbgLevel' _ldLogLevel
   let logType = case config.serverFileLog of
@@ -253,5 +251,5 @@ serveListeners sc netOpts
 nodeChangeEventHandler
   :: MVar ServerContext -> Gossip.ServerState -> I.ServerNode -> IO ()
 nodeChangeEventHandler _scMVar Gossip.ServerDead I.ServerNode {..} = do
-  Log.info $ "(TODO) Handle Server Dead event: " <> Log.buildString' serverNodeId
+  Log.warning $ "(TODO) Handle Server Dead event: " <> Log.buildString' serverNodeId
 nodeChangeEventHandler _ _ _ = return ()
