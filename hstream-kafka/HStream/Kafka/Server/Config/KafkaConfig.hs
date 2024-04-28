@@ -9,7 +9,8 @@ import qualified Data.Aeson.Key  as Y
 import qualified Data.Aeson.Text as Y
 import           Data.Int        (Int32)
 import           Data.List       (intercalate)
-import qualified Data.Map        as Map
+import           Data.Map.Strict (Map)
+import qualified Data.Map.Strict as Map
 import qualified Data.Text       as T
 import qualified Data.Text.Lazy  as TL
 import qualified Data.Text.Read  as T
@@ -186,6 +187,12 @@ allBrokerConfigs = V.fromList . Map.elems . dumpConfigs
 mergeBrokerConfigs :: KafkaBrokerConfigs -> KafkaBrokerConfigs -> KafkaBrokerConfigs
 mergeBrokerConfigs = mergeConfigs
 
+mkKafkaBrokerConfigs :: Map T.Text T.Text -> KafkaBrokerConfigs
+mkKafkaBrokerConfigs mp =
+  case mkConfigs (mp Map.!?) of
+    Left msg -> errorWithoutStackTrace (T.unpack msg)
+    Right v  ->  v
+
 ---------------------------------------------------------------------------
 -- Config Helpers
 ---------------------------------------------------------------------------
@@ -196,6 +203,9 @@ class KafkaConfigs a where
   mkConfigs :: Lookup -> Either T.Text a
   dumpConfigs :: a -> ConfigMap
   defaultConfigs :: a
+  -- mergeConfig will use the second config to update the first one.
+  -- value in the second will overwrite the first one.
+  -- if some value is not be set in the second config, the first one will be used.
   mergeConfigs :: a -> a -> a
 
   default mkConfigs :: (G.Generic a, GKafkaConfigs (G.Rep a)) => Lookup -> Either T.Text a
@@ -222,7 +232,7 @@ instance KafkaConfig c => GKafkaConfigs (G.K1 i c) where
     Just textValue -> fromText @c textValue
   gdumpConfigs (G.K1 x) = (Map.singleton (name x) (KafkaConfigInstance x))
   gdefaultConfigs = G.K1 (defaultConfig @c)
-  gmergeConfigs (G.K1 x) (G.K1 y) = G.K1 (if isDefaultValue x then y else x)
+  gmergeConfigs (G.K1 x) (G.K1 y) = G.K1 (if isDefaultValue y then x else y)
 
 instance GKafkaConfigs f => GKafkaConfigs (G.M1 i c f) where
   gmkConfigs lk = G.M1 <$> (gmkConfigs lk)

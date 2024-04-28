@@ -17,7 +17,6 @@ module HStream.Kafka.Server.Config.FromCli
 import qualified Data.Attoparsec.Text                    as AP
 import           Data.Bifunctor                          (second)
 import           Data.ByteString                         (ByteString)
-import           Data.Map.Strict                         (Map)
 import qualified Data.Map.Strict                         as Map
 import qualified Data.Set                                as Set
 import           Data.Text                               (Text)
@@ -301,7 +300,7 @@ experimentalFeatureParser = option parseExperimentalFeature $
   long "experimental" <> metavar "ExperimentalFeature"
 
 brokerConfigsParser :: O.Parser KC.KafkaBrokerConfigs
-brokerConfigsParser = toKafkaBrokerConfigs . Map.fromList
+brokerConfigsParser = KC.mkKafkaBrokerConfigs . Map.fromList
   <$> O.many
     ( O.option propertyReader
        ( O.long "prop"
@@ -314,12 +313,6 @@ brokerConfigsParser = toKafkaBrokerConfigs . Map.fromList
   propertyReader = O.eitherReader $ \kv ->
     let (k, v) = second tail $ span (/= '=') kv
      in Right (T.pack k, T.pack v)
-
-  toKafkaBrokerConfigs :: Map Text Text -> KC.KafkaBrokerConfigs
-  toKafkaBrokerConfigs mp =
-    case KC.mkConfigs (mp Map.!?) of
-      Left msg -> errorWithoutStackTrace (T.unpack msg)
-      Right v  ->  v
 
 -------------------------------------------------------------------------------
 
