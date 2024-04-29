@@ -255,6 +255,9 @@ printLogAttributes level LogAttributes{..} = do
   emit $ _SHOW_ATTR(logSyncedCopies)
   emit $ _SHOW_ATTR(logBacklogDuration)
   emit $ _SHOW_ATTR(logReplicateAcross)
+  emit $ _SHOW_ATTR(logScdEnabled)
+  emit $ _SHOW_ATTR(logLocalScdEnabled)
+  emit $ _SHOW_ATTR(logStickyCopySets)
   forM_ (Map.toList logAttrsExtras) $ \(k, v) ->
     emit $ Just $ unpack k <> ": " <> unpack v
 #undef _SHOW_ATTR

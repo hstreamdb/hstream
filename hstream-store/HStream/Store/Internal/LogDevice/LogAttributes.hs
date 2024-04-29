@@ -95,15 +95,15 @@ data LogAttributes = LogAttributes
   --   -- ^ Maximum amount of time to artificially delay delivery of newly written
   --   -- records (increases delivery latency but improves server and client
   --   -- performance), in milliseconds.
-  -- , logScdEnabled                         :: Attribute Bool
-  --   -- ^ Indicate whether or not the Single Copy Delivery optimization should be
-  --   -- used.
-  -- , logLocalScdEnabled                    :: Attribute Bool
-  --   -- ^ Indicate whether or not to use Local Single Copy Delivery. This is
-  --   -- ignored if scdEnabled_ is false.
-  -- , logStickyCopySets                     :: Attribute Bool
-  --   -- ^ True if copysets on this log should be "sticky". See docblock in
-  --   -- StickyCopySetManager.h
+  , logScdEnabled           :: Attribute Bool
+    -- ^ Indicate whether or not the Single Copy Delivery optimization should be
+    -- used.
+  , logLocalScdEnabled      :: Attribute Bool
+    -- ^ Indicate whether or not to use Local Single Copy Delivery. This is
+    -- ignored if scdEnabled_ is false.
+  , logStickyCopySets       :: Attribute Bool
+    -- ^ True if copysets on this log should be "sticky". See docblock in
+    -- StickyCopySetManager.h
   -- , logMutablePerEpochLogMetadataEnabled  ::Attribute Bool
   --   -- ^ If true, write mutable per-epoch metadata along with every data record.
   -- , logSequencerAffinity                  :: Attribute (Maybe CBytes)
@@ -149,6 +149,9 @@ pokeLogAttributes LogAttributes{..} =
   withAllocMaybePrim id _ARG(logSyncReplicationScope)
   withPrimListPairUnsafe _MAYBE_LIST_PAIR_ARG(logReplicateAcross)
   withAllocMaybePrim2 fromIntegral _MAYBE_ARG(logBacklogDuration)
+  withAllocMaybePrim bool2cbool _ARG(logScdEnabled)
+  withAllocMaybePrim bool2cbool _ARG(logLocalScdEnabled)
+  withAllocMaybePrim bool2cbool _ARG(logStickyCopySets)
   withHsCBytesMapUnsafe logAttrsExtras $ \l ks vs -> do
 #define _ARG_TO(name) name##' (attrInherited name)
 #define _MAYBE_ARG_TO(name) name##_flag name##' (attrInherited name)
@@ -160,6 +163,9 @@ pokeLogAttributes LogAttributes{..} =
                              _ARG_TO(logSyncReplicationScope)
                              _MAYBE_LIST_PAIR_TO(logReplicateAcross)
                              _MAYBE_ARG_TO(logBacklogDuration)
+                             _ARG_TO(logScdEnabled)
+                             _ARG_TO(logLocalScdEnabled)
+                             _ARG_TO(logStickyCopySets)
                              l ks vs
     newForeignPtr free_log_attributes_fun i
 #undef _ARG
@@ -183,7 +189,10 @@ peekLogAttributes ptr = do
    , ( logSyncReplicationScope
    , ( logReplicateAcross
    , ( logBacklogDuration
-   , _))))))) <-
+   , ( logScdEnabled
+   , ( logLocalScdEnabled
+   , ( logStickyCopySets
+   , _)))))))))) <-
     runPeek id $ \_ARG(replicationFactor) ->
     runPeek id $ \_ARG(syncedCopies) ->
     runPeek id $ \_ARG(maxWritesInFlight) ->
@@ -191,6 +200,9 @@ peekLogAttributes ptr = do
     runPeek NodeLocationScope $ \_ARG(syncReplicationScope) ->
     runPeekMaybeListPair replicateAcross_size $ \_MAYBE_LIST_PAIR(replicateAcross) ->
     runPeekMaybe id $ \_MAYBE_ARG(backlogDuration) ->
+    runPeek cbool2bool $ \_ARG(scdEnabled) ->
+    runPeek cbool2bool $ \_ARG(localScdEnabled) ->
+    runPeek cbool2bool $ \_ARG(stickyCopySets) ->
       peek_log_attributes
         ptr
         _ARG(replicationFactor)
@@ -200,6 +212,9 @@ peekLogAttributes ptr = do
         _ARG(syncReplicationScope)
         _MAYBE_LIST_PAIR(replicateAcross)
         _MAYBE_ARG(backlogDuration)
+        _ARG(scdEnabled)
+        _ARG(localScdEnabled)
+        _ARG(stickyCopySets)
   logAttrsExtras <- peekLogAttributesExtras ptr
   return LogAttributes{..}
 #undef _ARG
@@ -244,6 +259,12 @@ foreign import ccall unsafe "hs_logdevice.h poke_log_attributes"
     -- ^ logReplicateAcross
     -> Bool -> Ptr CInt -> Bool
     -- ^ logBacklogDuration
+    -> Ptr CBool -> Bool
+    -- ^ logScdEnabled
+    -> Ptr CBool -> Bool
+    -- ^ logLocalScdEnabled
+    -> Ptr CBool -> Bool
+    -- ^ logStickyCopySets
     -> Int -> BAArray# Word8 -> BAArray# Word8
     -- ^ extras
     -> IO (Ptr LogDeviceLogAttributes)
@@ -265,6 +286,12 @@ foreign import ccall unsafe "hs_logdevice.h peek_log_attributes"
     -- ^ logReplicateAcross
     -> MBA# CBool -> MBA# CBool -> MBA# Int -> MBA# CBool
     -- ^ logBacklogDuration
+    -> MBA# CBool -> MBA# CBool -> MBA# CBool
+    -- ^ logScdEnabled
+    -> MBA# CBool -> MBA# CBool -> MBA# CBool
+    -- ^ logLocalScdEnabled
+    -> MBA# CBool -> MBA# CBool -> MBA# CBool
+    -- ^ logStickyCopySets
     -> IO ()
 
 foreign import ccall unsafe "hs_logdevice.h free_log_attributes"
