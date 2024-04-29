@@ -17,7 +17,8 @@ poke_log_attributes(_ARG(int, replicationFactor), _ARG(int, syncedCopies),
                          syncReplicationScope),
                     _LIST_PAIR(replicateAcross,
                                facebook::logdevice::NodeLocationScope, HsInt),
-                    _MAYBE_ARG(int, backlogDuration),
+                    _MAYBE_ARG(int, backlogDuration), _ARG(bool, scdEnabled),
+                    _ARG(bool, localScdEnabled), _ARG(bool, stickyCopySets),
                     //
                     HsInt extras_len, StgArrBytes** keys, StgArrBytes** vals) {
 #undef _ARG
@@ -52,6 +53,9 @@ poke_log_attributes(_ARG(int, replicationFactor), _ARG(int, syncedCopies),
     attrs = attrs.with_replicateAcross(rs);
   }
   ADD_MAYBE_ATTR(backlogDuration, std::chrono::seconds, std::chrono::seconds)
+  ADD_ATTR(scdEnabled)
+  ADD_ATTR(localScdEnabled)
+  ADD_ATTR(stickyCopySets)
 #undef ADD_ATTR
 #undef ADD_MAYBE_ATTR
 
@@ -79,7 +83,8 @@ void peek_log_attributes(
     ARG(facebook::logdevice::NodeLocationScope, syncReplicationScope),
     ARG_LIST_PAIR(replicateAcross, facebook::logdevice::NodeLocationScope,
                   HsInt),
-    ARG_MAYBE(HsInt, backlogDuration))
+    ARG_MAYBE(HsInt, backlogDuration), ARG(bool, scdEnabled),
+    ARG(bool, localScdEnabled), ARG(bool, stickyCopySets))
 #undef ARG
 #undef ARG_MAYBE
 #undef ARG_LIST_PAIR
@@ -104,7 +109,7 @@ void peek_log_attributes(
   *name##_inh = attrs->name().isInherited();                                   \
   if (name##_len > 0 && attrs->name().hasValue()) {                            \
     auto& val = attrs->name().value();                                         \
-    for (int i = 0; i < name##_len; i++) {                                           \
+    for (int i = 0; i < name##_len; i++) {                                     \
       name##_keys[i] = val[i].first;                                           \
       name##_vals[i] = val[i].second;                                          \
     }                                                                          \
@@ -117,6 +122,9 @@ void peek_log_attributes(
   PEEK_LIST_PAIR(replicateAcross, facebook::logdevice::NodeLocationScope,
                  HsInt);
   PEEK_MAYBE(backlogDuration, .count());
+  PEEK(scdEnabled);
+  PEEK(localScdEnabled);
+  PEEK(stickyCopySets);
 #undef PEEK
 #undef PEEK_MAYBE
 #undef PEEK_LIST_PAIR

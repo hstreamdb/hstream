@@ -18,6 +18,9 @@ logdirSpec :: Spec
 logdirSpec = describe "LogDirectory" $ do
   let attrs = S.def{ I.logReplicationFactor = I.defAttr1 1
                    , I.logBacklogDuration = I.defAttr1 (Just 60)
+                   , I.logScdEnabled = I.defAttr1 False
+                   , I.logLocalScdEnabled = I.defAttr1 True
+                   , I.logStickyCopySets = I.defAttr1 False
                    , I.logAttrsExtras = Map.fromList [("A", "B")]
                    }
 
@@ -84,6 +87,9 @@ logdirSpec = describe "LogDirectory" $ do
     I.logReplicationFactor attrs' `shouldBe` I.Attribute (Just 1) True
     I.logBacklogDuration attrs' `shouldBe` I.Attribute (Just (Just 60)) True
     Map.lookup "A" (I.logAttrsExtras attrs') `shouldBe` Just "B"
+    I.logScdEnabled attrs' `shouldBe` I.Attribute (Just False) True
+    I.logLocalScdEnabled attrs' `shouldBe` I.Attribute (Just True) True
+    I.logStickyCopySets attrs' `shouldBe` I.Attribute (Just False) True
     I.syncLogsConfigVersion client =<< I.removeLogDirectory client dirname True
 
 loggroupAround' :: SpecWith (CBytes, S.C_LogID) -> Spec
@@ -92,9 +98,12 @@ loggroupAround' =
                    , I.logBacklogDuration = I.defAttr1 (Just 60)
                    , I.logSingleWriter = I.defAttr1 True
                    , I.logSyncReplicationScope = I.defAttr1 S.NodeLocationScope_DATA_CENTER
+                   , I.logScdEnabled = I.defAttr1 False
+                   , I.logLocalScdEnabled = I.defAttr1 True
+                   , I.logStickyCopySets = I.defAttr1 False
                    , I.logAttrsExtras = Map.fromList [("A", "B")]
                    }
-      logid = 104
+      logid = 105
       logname = "LogDeviceSpec_LogGroupSpec"
    in loggroupAround logid logname attrs
 
@@ -106,6 +115,9 @@ loggroupSpec = describe "LogGroup" $ loggroupAround' $ parallel $ do
     I.logReplicationFactor attrs' `shouldBe` I.defAttr1 1
     I.logBacklogDuration attrs' `shouldBe` I.defAttr1 (Just 60)
     I.logSingleWriter attrs' `shouldBe` I.defAttr1 True
+    I.logScdEnabled attrs' `shouldBe` I.defAttr1 False
+    I.logLocalScdEnabled attrs' `shouldBe` I.defAttr1 True
+    I.logStickyCopySets attrs' `shouldBe` I.defAttr1 False
     I.logSyncReplicationScope attrs' `shouldBe` I.defAttr1 S.NodeLocationScope_DATA_CENTER
     Map.lookup "A" (I.logAttrsExtras attrs') `shouldBe` Just "B"
 
