@@ -24,7 +24,7 @@ import qualified HStream.Store                     as S
 data FetchLogContext = FetchLogContext
   { nextOffset :: Int64
     -- ^ Expect next offset to be fetched
-  , remRecords :: Vector K.RecordFormat
+  , remRecords :: Vector K.Record
     -- ^ Remaining records of the batch
   } deriving (Show)
 

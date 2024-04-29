@@ -95,12 +95,9 @@ handleProduce ServerContext{..} _reqCtx req = do
           --
           -- Currently, only support LogAppendTime
           catches (do
-            (S.AppendCompletion{..}, offset) <-
+            (appendCompTimestamp, offset) <-
               appendRecords True scLDClient scOffsetManager
                                  (topic.name, partition.index) logid recordBytes
-            Log.debug1 $ "Append done " <> Log.build appendCompLogID
-                      <> ", lsn: " <> Log.build appendCompLSN
-                      <> ", start offset: " <> Log.build offset
             pure $ K.PartitionProduceResponse
               { index           = partition.index
               , errorCode       = K.NONE
@@ -148,7 +145,7 @@ appendRecords
   -> (Text, Int32)
   -> Word64
   -> ByteString
-  -> IO (S.AppendCompletion, Int64)
+  -> IO (Int64, Int64)  -- ^ Return (logAppendTimeMs, baseOffset)
 appendRecords shouldValidateCrc ldclient om (streamName, partition) logid bs = do
   batch <- K.decodeRecordBatch shouldValidateCrc bs
   let batchLength = batch.recordsCount
@@ -196,7 +193,10 @@ appendRecords shouldValidateCrc ldclient om (streamName, partition) logid bs = d
       void $ M.addCounter counter (fromIntegral $ BS.length storedRecord)
     M.withLabel M.topicTotalAppendMessages partLabel $ \counter ->
       void $ M.addCounter counter (fromIntegral batchLength)
-    pure (r, startOffset)
+    Log.debug1 $ "Append done " <> Log.build r.appendCompLogID
+              <> ", lsn: " <> Log.build r.appendCompLSN
+              <> ", start offset: " <> Log.build startOffset
+    pure (r.appendCompTimestamp, startOffset)
 
 -- TODO: performance improvements
 --
