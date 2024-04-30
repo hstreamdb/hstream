@@ -14,31 +14,29 @@ module HStream.Kafka.Server.Config.FromCli
   , parseMetaStoreAddr
   ) where
 
-import qualified Data.Attoparsec.Text                    as AP
-import           Data.Bifunctor                          (second)
-import           Data.ByteString                         (ByteString)
-import qualified Data.Map.Strict                         as Map
-import qualified Data.Set                                as Set
-import           Data.Text                               (Text)
-import qualified Data.Text                               as T
-import           Data.Word                               (Word16, Word32)
-import           Options.Applicative                     as O (auto, flag, help,
-                                                               long,
-                                                               maybeReader,
-                                                               metavar, option,
-                                                               optional, short,
-                                                               strOption, value,
-                                                               (<**>), (<|>))
-import qualified Options.Applicative                     as O
-import           System.Environment                      (getProgName)
-import           System.Exit                             (exitSuccess)
-import           Z.Data.CBytes                           (CBytes)
+import qualified Data.Attoparsec.Text              as AP
+import           Data.Bifunctor                    (second)
+import           Data.ByteString                   (ByteString)
+import           Data.Map.Strict                   (Map)
+import qualified Data.Map.Strict                   as Map
+import qualified Data.Set                          as Set
+import           Data.Text                         (Text)
+import qualified Data.Text                         as T
+import           Data.Word                         (Word16, Word32)
+import           Options.Applicative               as O (auto, flag, help, long,
+                                                         maybeReader, metavar,
+                                                         option, optional,
+                                                         short, strOption,
+                                                         value, (<**>), (<|>))
+import qualified Options.Applicative               as O
+import           System.Environment                (getProgName)
+import           System.Exit                       (exitSuccess)
+import           Z.Data.CBytes                     (CBytes)
 
-import qualified HStream.Kafka.Server.Config.KafkaConfig as KC
 import           HStream.Kafka.Server.Config.Types
-import qualified HStream.Logger                          as Log
-import           HStream.Store                           (Compression (..))
-import           HStream.Store.Logger                    (LDLogLevel (..))
+import qualified HStream.Logger                    as Log
+import           HStream.Store                     (Compression (..))
+import           HStream.Store.Logger              (LDLogLevel (..))
 
 -------------------------------------------------------------------------------
 
@@ -105,7 +103,7 @@ cliOptionsParser = do
   cliEnableSaslAuth <- enableSaslAuthParser
   cliEnableAcl      <- enableAclParser
 
-  cliBrokerConfigs  <- brokerConfigsParser
+  cliBrokerProps    <- brokerConfigsParser
 
   cliExperimentalFeatures <- O.many experimentalFeatureParser
 
@@ -299,15 +297,14 @@ experimentalFeatureParser :: O.Parser ExperimentalFeature
 experimentalFeatureParser = option parseExperimentalFeature $
   long "experimental" <> metavar "ExperimentalFeature"
 
-brokerConfigsParser :: O.Parser KC.KafkaBrokerConfigs
-brokerConfigsParser = KC.mkKafkaBrokerConfigs . Map.fromList
-  <$> O.many
-    ( O.option propertyReader
-       ( O.long "prop"
-      <> metavar "KEY=VALUE"
-      <> help "Broker property"
-       )
-    )
+brokerConfigsParser :: O.Parser (Map Text Text)
+brokerConfigsParser = Map.fromList <$> O.many
+  ( O.option propertyReader
+     ( O.long "prop"
+    <> metavar "KEY=VALUE"
+    <> help "Broker property"
+     )
+  )
  where
   propertyReader :: O.ReadM (Text, Text)
   propertyReader = O.eitherReader $ \kv ->

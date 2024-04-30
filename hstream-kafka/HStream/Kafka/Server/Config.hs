@@ -17,7 +17,7 @@ module HStream.Kafka.Server.Config
   , ExperimentalFeature (..)
 
   , KafkaBrokerConfigs
-  , mergeBrokerConfigs
+  , updateConfigs
   , mkKafkaBrokerConfigs
   ) where
 

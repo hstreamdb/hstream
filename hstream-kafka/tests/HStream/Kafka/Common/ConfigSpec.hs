@@ -9,27 +9,31 @@ import           Test.Hspec
 spec :: Spec
 spec = describe "KafkaConfigTest" $ do
 
-  it "mergeConfigs" $ do
+  it "updateConfigs" $ do
     let kc1 = mkKafkaBrokerConfigs $ M.fromList
          [
              ("auto.create.topics.enable", "false"),
              ("num.partitions", "2"),
              ("offsets.topic.replication.factor", "1")
          ]
-    let kc2 = mkKafkaBrokerConfigs $ M.fromList
+    let updates = M.fromList
          [
              ("num.partitions", "3"),
              ("default.replication.factor", "2"),
-             ("offsets.topic.replication.factor", "2")
+             ("offsets.topic.replication.factor", "2"),
+             -- unknown properties should be ignored
+             ("unknown", "c")
          ]
     let expected = mkKafkaBrokerConfigs $ M.fromList
          [
-             -- values not set by kc2 will be set by kc1
+             -- properties not include in updates will remain unchanged
              ("auto.create.topics.enable", "false"),
-             -- values set by kc2 will overrid values set by kc1
+             -- properties includes in updates will be overridde
              ("num.partitions", "3"),
              ("default.replication.factor", "2"),
              ("offsets.topic.replication.factor", "2")
          ]
-    let kc = mergeBrokerConfigs kc1 kc2
-    kc `shouldBe` expected
+    let kc = updateConfigs kc1 updates
+    case kc of
+      Left e    -> fail $ "updateConfigs failed: " <> show e
+      Right cfg -> cfg `shouldBe` expected

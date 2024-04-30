@@ -142,7 +142,7 @@ data CliOptions = CliOptions
   , cliEnableAcl                    :: !Bool
 
     -- Kafka broker config
-  , cliBrokerConfigs                :: !KC.KafkaBrokerConfigs
+  , cliBrokerProps                  :: Map Text Text
 
     -- HStream Experimental Features
   , cliExperimentalFeatures         :: ![ExperimentalFeature]
