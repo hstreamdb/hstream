@@ -26,15 +26,22 @@ import           HStream.Store                          (LDClient)
 import qualified Kafka.Protocol.Error                   as K
 
 data GroupCoordinator = GroupCoordinator
-  { groups             :: C.MVar (Utils.HashTable T.Text Group)
-  , metaHandle         :: Meta.MetaHandle
-  , serverId           :: Word32
-  , ldClient           :: LDClient
-  , offsetTopicReplica :: Int
+  { groups       :: C.MVar (Utils.HashTable T.Text Group)
+  , metaHandle   :: Meta.MetaHandle
+  , serverId     :: Word32
+  , ldClient     :: LDClient
+  , groupConfig  :: G.GroupConfig
+  , offsetConfig :: GOM.OffsetConfig
   }
 
-mkGroupCoordinator :: Meta.MetaHandle -> LDClient -> Word32 -> Int -> IO GroupCoordinator
-mkGroupCoordinator metaHandle ldClient serverId offsetTopicReplica = do
+mkGroupCoordinator
+  :: Meta.MetaHandle
+  -> LDClient
+  -> Word32
+  -> GOM.OffsetConfig
+  -> G.GroupConfig
+  -> IO GroupCoordinator
+mkGroupCoordinator metaHandle ldClient serverId offsetConfig groupConfig = do
   groups <- H.new >>= C.newMVar
   return $ GroupCoordinator {..}
 
@@ -59,8 +66,8 @@ getOrMaybeCreateGroup GroupCoordinator{..} groupId memberId = do
     H.lookup gs groupId >>= \case
       Nothing -> if T.null memberId
         then do
-          metadataManager <- GOM.mkGroupOffsetManager ldClient (fromIntegral serverId) groupId offsetTopicReplica
-          ng <- G.newGroup groupId metadataManager metaHandle
+          metadataManager <- GOM.mkGroupOffsetManager ldClient (fromIntegral serverId) groupId offsetConfig
+          ng <- G.newGroup groupId metadataManager metaHandle groupConfig
           H.insert gs groupId ng
           return ng
         else throw (ErrorCodeException K.UNKNOWN_MEMBER_ID)
@@ -90,7 +97,7 @@ getGroupM GroupCoordinator{..} groupId = do
 -- load group from meta store
 loadGroupAndOffsets :: GroupCoordinator -> T.Text -> IO ()
 loadGroupAndOffsets gc groupId = do
-  offsetManager <- GOM.mkGroupOffsetManager gc.ldClient (fromIntegral gc.serverId) groupId gc.offsetTopicReplica
+  offsetManager <- GOM.mkGroupOffsetManager gc.ldClient (fromIntegral gc.serverId) groupId gc.offsetConfig
   GOM.loadOffsetsFromStorage offsetManager
   Meta.getMeta @CM.GroupMetadataValue groupId gc.metaHandle >>= \case
     Nothing -> do
@@ -105,7 +112,8 @@ addGroupByValue gc value offsetManager = do
   C.withMVar gc.groups $ \gs -> do
     H.lookup gs value.groupId >>= \case
       Nothing -> do
-        ng <- G.newGroupFromValue value offsetManager gc.metaHandle
+        -- TODO: double check if persistence groupConfig in metastore is needed
+        ng <- G.newGroupFromValue value offsetManager gc.metaHandle gc.groupConfig
         H.insert gs value.groupId ng
       Just _ -> do
         Log.warning $ "load group failed, group:" <> Log.build value.groupId <> " is loaded"

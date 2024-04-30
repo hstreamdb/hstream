@@ -18,8 +18,10 @@ import           HStream.Kafka.Common.FetchManager       (FetchContext,
 import           HStream.Kafka.Common.OffsetManager      (OffsetManager,
                                                           initOffsetReader,
                                                           newOffsetManager)
+import qualified HStream.Kafka.Group.Group               as G
 import           HStream.Kafka.Group.GroupCoordinator    (GroupCoordinator,
                                                           mkGroupCoordinator)
+import qualified HStream.Kafka.Group.GroupOffsetManager  as GOM
 import           HStream.Kafka.Server.Config             (ServerOpts (..))
 import qualified HStream.Kafka.Server.Config.KafkaConfig as KC
 import           HStream.MetaStore.Types                 (MetaHandle (..))
@@ -62,8 +64,9 @@ initServerContext opts@ServerOpts{..} gossipContext mh = do
   statsHolder <- newServerStatsHolder
   epochHashRing <- initializeHashRing gossipContext
 
-  let replica = _kafkaBrokerConfigs.offsetsTopicReplication._value
-  scGroupCoordinator <- mkGroupCoordinator mh ldclient _serverID replica
+  let groupConfigs  = brokerConfigToGroupConfig _kafkaBrokerConfigs
+      offsetConfigs = brokerConfigToOffsetConfig _kafkaBrokerConfigs
+  scGroupCoordinator <- mkGroupCoordinator mh ldclient _serverID offsetConfigs groupConfigs
   -- must be initialized later
   offsetManager <- newOffsetManager ldclient
   -- Trick to avoid use maybe, must be initialized later
@@ -113,3 +116,15 @@ initConnectionContext sc = do
   !fc <- initFetchContext (scLDClient sc)
 
   pure sc{scOffsetManager = om, fetchCtx = fc}
+
+brokerConfigToOffsetConfig :: KC.KafkaBrokerConfigs -> GOM.OffsetConfig
+brokerConfigToOffsetConfig KC.KafkaBrokerConfigs{..} =
+  GOM.OffsetConfig {
+    offsetsTopicReplicationFactor = offsetsTopicReplication._value
+  }
+
+brokerConfigToGroupConfig :: KC.KafkaBrokerConfigs -> G.GroupConfig
+brokerConfigToGroupConfig KC.KafkaBrokerConfigs{..} =
+  G.GroupConfig {
+    groupInitialRebalanceDelay = groupInitialRebalanceDelay._value
+  }

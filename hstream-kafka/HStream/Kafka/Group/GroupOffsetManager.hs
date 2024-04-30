@@ -8,6 +8,7 @@ module HStream.Kafka.Group.GroupOffsetManager
   , fetchAllOffsets
   , nullOffsets
   , loadOffsetsFromStorage
+  , OffsetConfig (..)
   ) where
 
 import           Control.Exception                   (throw)
@@ -50,15 +51,20 @@ data GroupOffsetManager = forall os. OffsetStorage os => GroupOffsetManager
   , offsetStorage :: os
   , offsetsCache  :: IORef (Map.Map TopicPartition Int64)
   , partitionsMap :: IORef (Map.Map TopicPartition S.C_LogID)
+  , offsetConfig  :: OffsetConfig
   }
+
+data OffsetConfig = OffsetConfig
+  { offsetsTopicReplicationFactor :: Int
+  } deriving (Show)
 
 -- FIXME: if we create a consumer group with groupName haven been used, call
 -- mkCkpOffsetStorage with groupName may lead us to a un-clean ckp-store
-mkGroupOffsetManager :: S.LDClient -> Int32 -> T.Text -> Int -> IO GroupOffsetManager
-mkGroupOffsetManager ldClient serverId groupName offsetReplica = do
+mkGroupOffsetManager :: S.LDClient -> Int32 -> T.Text -> OffsetConfig -> IO GroupOffsetManager
+mkGroupOffsetManager ldClient serverId groupName offsetConfig = do
   offsetsCache  <- newIORef Map.empty
   partitionsMap <- newIORef Map.empty
-  offsetStorage <- mkCkpOffsetStorage ldClient groupName offsetReplica
+  offsetStorage <- mkCkpOffsetStorage ldClient groupName offsetConfig.offsetsTopicReplicationFactor
   return GroupOffsetManager{..}
 
 loadOffsetsFromStorage :: GroupOffsetManager -> IO ()

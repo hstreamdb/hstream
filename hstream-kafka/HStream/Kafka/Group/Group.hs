@@ -105,18 +105,12 @@ data GroupState
   | Empty
   deriving (Show, Eq)
 
-data GroupConfig
-  = GroupConfig
-  {
-  }
-
-data Group
-  = Group
+data Group = Group
   { lock                 :: C.MVar ()
   , groupId              :: T.Text
   , groupGenerationId    :: IO.IORef Int32
   , state                :: IO.IORef GroupState
-  , config               :: GroupConfig
+  , groupConfig          :: GroupConfig
   , leader               :: IO.IORef (Maybe T.Text)
   , members              :: HashTable T.Text Member
   -- , pendingMembers     :: HashTable T.Text ()
@@ -142,8 +136,12 @@ data Group
   , storedMetadata       :: IO.IORef Bool
   }
 
-newGroup :: T.Text -> GroupOffsetManager -> Meta.MetaHandle -> IO Group
-newGroup group metadataManager metaHandle = do
+data GroupConfig = GroupConfig
+  { groupInitialRebalanceDelay :: Int
+  } deriving (Show)
+
+newGroup :: T.Text -> GroupOffsetManager -> Meta.MetaHandle -> GroupConfig -> IO Group
+newGroup group metadataManager metaHandle config = do
   lock <- C.newMVar ()
   state <- IO.newIORef Empty
   groupGenerationId <- IO.newIORef 0
@@ -169,7 +167,7 @@ newGroup group metadataManager metaHandle = do
     , groupId = group
     , groupGenerationId = groupGenerationId
     , state = state
-    , config = GroupConfig
+    , groupConfig = config
     , leader = leader
     -- all members
     , members = members
@@ -193,8 +191,13 @@ newGroup group metadataManager metaHandle = do
     , storedMetadata = storedMetadata
     }
 
-newGroupFromValue :: CM.GroupMetadataValue -> GroupOffsetManager -> Meta.MetaHandle -> IO Group
-newGroupFromValue value metadataManager metaHandle = do
+newGroupFromValue
+  :: CM.GroupMetadataValue
+  -> GroupOffsetManager
+  -> Meta.MetaHandle
+  -> GroupConfig
+  -> IO Group
+newGroupFromValue value metadataManager metaHandle config = do
   lock <- C.newMVar ()
 
   state <- IO.newIORef (if V.null value.members then Empty else Stable)
@@ -221,7 +224,7 @@ newGroupFromValue value metadataManager metaHandle = do
         , groupId = value.groupId
         , groupGenerationId = groupGenerationId
         , state = state
-        , config = GroupConfig
+        , groupConfig = config
         , leader = leader
         -- all members
         , members = members
@@ -371,10 +374,9 @@ prepareRebalance group@Group{..} reason = do
   -- isEmptyState <- (Empty ==) <$> IO.readIORef state
 
   -- setup delayed rebalance if delayedRebalance is Nothing
-  -- TODO: configurable initRebalanceDelayMs, 5000 by default
   IO.readIORef delayedRebalance >>= \case
     Nothing -> do
-      delayed <- makeDelayedRebalance group 5000
+      delayed <- makeDelayedRebalance group group.groupConfig.groupInitialRebalanceDelay
       Log.info $ "created delayed rebalance thread:" <> Log.buildString' delayed
         <> ", group:" <> Log.build groupId
       IO.atomicWriteIORef delayedRebalance (Just delayed)
@@ -382,10 +384,10 @@ prepareRebalance group@Group{..} reason = do
     _ -> pure ()
 
 -- TODO: dynamically delay with initTimeoutMs and RebalanceTimeoutMs
-makeDelayedRebalance :: Group -> Int32 -> IO C.ThreadId
+makeDelayedRebalance :: Group -> Int -> IO C.ThreadId
 makeDelayedRebalance group rebalanceDelayMs = do
   C.forkIO $ do
-    C.threadDelay (1000 * fromIntegral rebalanceDelayMs)
+    C.threadDelay (1000 * rebalanceDelayMs)
     rebalance group
 
 rebalance :: Group -> IO ()
