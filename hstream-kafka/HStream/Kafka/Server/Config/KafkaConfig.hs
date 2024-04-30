@@ -146,12 +146,21 @@ instance KafkaConfig OffsetsTopicReplicationFactor where
   defaultConfig = OffsetsTopicReplicationFactor 1
 SHOWCONFIG(OffsetsTopicReplicationFactor)
 
-data KafkaBrokerConfigs
-  = KafkaBrokerConfigs
-  { autoCreateTopicsEnable   :: AutoCreateTopicsEnable
-  , numPartitions            :: NumPartitions
-  , defaultReplicationFactor :: DefaultReplicationFactor
-  , offsetsTopicReplication  :: OffsetsTopicReplicationFactor
+newtype GroupInitialRebalanceDelayMs = GroupInitialRebalanceDelayMs { _value :: Int } deriving (Eq)
+instance KafkaConfig GroupInitialRebalanceDelayMs where
+  name = const "group.initial.rebalance.delay.ms"
+  value (GroupInitialRebalanceDelayMs v)  = T.pack $ show v
+  isSentitive = const False
+  fromText t = GroupInitialRebalanceDelayMs <$> textToIntE t
+  defaultConfig = GroupInitialRebalanceDelayMs 3000
+SHOWCONFIG(GroupInitialRebalanceDelayMs)
+
+data KafkaBrokerConfigs = KafkaBrokerConfigs
+  { autoCreateTopicsEnable     :: AutoCreateTopicsEnable
+  , numPartitions              :: NumPartitions
+  , defaultReplicationFactor   :: DefaultReplicationFactor
+  , offsetsTopicReplication    :: OffsetsTopicReplicationFactor
+  , groupInitialRebalanceDelay :: GroupInitialRebalanceDelayMs
   } deriving (Eq, G.Generic)
 instance KafkaConfigs KafkaBrokerConfigs
 
