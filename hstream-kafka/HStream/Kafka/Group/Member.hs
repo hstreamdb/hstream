@@ -38,7 +38,7 @@ data Member
 newMemberFromReq :: K.RequestContext -> K.JoinGroupRequest -> T.Text -> [(T.Text, BS.ByteString)] -> IO Member
 newMemberFromReq reqCtx req memberId supportedProtocols = do
   sessionTimeoutMs <- IO.newIORef req.sessionTimeoutMs
-  rebalanceTimeoutMs <- IO.newIORef req.sessionTimeoutMs
+  rebalanceTimeoutMs <- IO.newIORef req.rebalanceTimeoutMs
 
   assignment <- IO.newIORef BS.empty
 
