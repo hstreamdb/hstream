@@ -959,11 +959,12 @@ fetchOffsets Group{..} reqTopic validateReqTopic = validateReqTopic reqTopic >>=
       , partitions = K.KaArray (Just $ (makeErrorPartition code) <$> partitions')
       }
   where
+    -- FIXME: hardcoded constants
     makeErrorPartition code idx =
       K.OffsetFetchResponsePartition
         { partitionIndex  = idx
         , committedOffset = -1
-        , metadata        = Nothing
+        , metadata        = Just ""
         , errorCode       = code
         }
 
