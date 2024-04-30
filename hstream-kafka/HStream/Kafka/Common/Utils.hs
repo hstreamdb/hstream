@@ -46,9 +46,6 @@ listToKaArray = K.KaArray . Just . V.fromList
 kaArrayToVector :: K.KaArray a -> V.Vector a
 kaArrayToVector kaArray = fromMaybe V.empty (K.unKaArray kaArray)
 
-vectorToKaArray :: V.Vector a -> K.KaArray a
-vectorToKaArray vec = K.KaArray (Just vec)
-
 mapKaArray :: (a -> b) -> K.KaArray a -> K.KaArray b
 mapKaArray f arr = K.KaArray (fmap (V.map f) (K.unKaArray arr))
 

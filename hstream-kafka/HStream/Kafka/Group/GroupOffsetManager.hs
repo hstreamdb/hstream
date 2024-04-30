@@ -189,18 +189,19 @@ fetchOffsets GroupOffsetManager{..} topicName partitions = do
     , partitions = KaArray {unKaArray = Just res}
     }
  where
+   -- FIXME: hardcoded constants
    getOffset cache partitionIdx = do
      let key = mkTopicPartition topicName partitionIdx
       in case Map.lookup key cache of
            Just offset -> return $ OffsetFetchResponsePartition
              { committedOffset = offset
-             , metadata = Nothing
+             , metadata = Just ""
              , partitionIndex= partitionIdx
              , errorCode = K.NONE
              }
            Nothing -> return $ OffsetFetchResponsePartition
              { committedOffset = -1
-             , metadata = Nothing
+             , metadata = Just ""
              , partitionIndex= partitionIdx
              , errorCode = K.NONE
              -- TODO: check the error code here
@@ -214,9 +215,10 @@ fetchAllOffsets GroupOffsetManager{..} = do
   -- group offsets by TopicName
   cachedOffset <- Map.foldrWithKey foldF Map.empty <$> readIORef offsetsCache
   return . KaArray . Just . V.map makeTopic . V.fromList . Map.toList $ cachedOffset
+  -- FIXME: hardcoded constants
   where makePartition partition offset = OffsetFetchResponsePartition
                    { committedOffset = offset
-                   , metadata = Nothing
+                   , metadata = Just ""
                    , partitionIndex=partition
                    , errorCode = K.NONE
                    }
