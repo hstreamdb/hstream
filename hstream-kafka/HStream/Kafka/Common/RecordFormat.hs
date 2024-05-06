@@ -1,8 +1,10 @@
 module HStream.Kafka.Common.RecordFormat
-  ( RecordFormat (..)
+  ( Record (..)
+  , RecordFormat (..)
   , recordBytesSize
     -- * Helpers
   , seekMessageSet
+  , trySeekMessageSet
   ) where
 
 import           Control.Monad
@@ -11,7 +13,17 @@ import qualified Data.ByteString         as BS
 import           Data.Int
 import           GHC.Generics            (Generic)
 
+import qualified HStream.Logger          as Log
+import qualified HStream.Store           as S
 import qualified Kafka.Protocol.Encoding as K
+
+-- | Record is the smallest unit of data in HStream Kafka.
+--
+-- For Fetch handler
+data Record = Record
+  { recordFormat :: !RecordFormat
+  , recordLsn    :: !S.LSN
+  } deriving (Show)
 
 -- on-disk format
 data RecordFormat = RecordFormat
@@ -45,3 +57,24 @@ seekMessageSet i bs{- MessageSet data -} =
                  void $ K.takeBytes (fromIntegral len)
    in snd <$> K.runParser' parser bs
 {-# INLINE seekMessageSet #-}
+
+-- | Try to bypass the records if the fetch offset is not the first record
+-- in the batch.
+trySeekMessageSet
+  :: Record   -- ^ The first record in the batch
+  -> Int64    -- ^ The fetch offset
+  -> IO (ByteString, S.LSN)
+trySeekMessageSet r fetchOffset = do
+  let bytesOnDisk = K.unCompactBytes r.recordFormat.recordBytes
+  magic <- K.decodeRecordMagic bytesOnDisk
+  fstRecordBytes <-
+    if magic >= 2
+       then pure bytesOnDisk
+        else do
+          let absStartOffset = r.recordFormat.offset + 1 - fromIntegral r.recordFormat.batchLength
+              offset = fetchOffset - absStartOffset
+          if offset > 0
+             then do Log.debug1 $ "Seek MessageSet " <> Log.build offset
+                     seekMessageSet (fromIntegral offset) bytesOnDisk
+             else pure bytesOnDisk
+  pure (fstRecordBytes, r.recordLsn)

@@ -47,14 +47,14 @@ type RecordTable =
                 VS.MVector
                 S.C_LogID
                 V.MVector
-                (Vector K.RecordFormat, GV.Growing Vector GV.RealWorld K.RecordFormat)
+                (Vector K.Record, GV.Growing Vector GV.RealWorld K.Record)
 
 data LsnData
   = LsnData S.LSN S.LSN Int64
     -- ^ (startLsn, tailLsn, highwaterOffset)
     --
     -- NOTE: tailLsn is LSN_INVALID if the partition is empty
-  | ContReading (Vector K.RecordFormat) Int64
+  | ContReading (Vector K.Record) Int64
     -- ^ (remRecords, highwaterOffset)
     --
     -- Continue reading, do not need to start reading
@@ -202,7 +202,7 @@ handleFetch sc@ServerContext{..} reqCtx r_ = K.catchFetchResponseEx $ do
               M.withLabel M.topicTotalSendBytes partLabel $ \counter -> void $
                 M.addCounter counter (fromIntegral $ BS.length bs)
               M.withLabel M.topicTotalSendMessages partLabel $ \counter -> void $ do
-                let totalRecords = V.sum $ V.map (\K.RecordFormat{..} -> batchLength) v
+                let totalRecords = V.sum $ V.map (.recordFormat.batchLength) v
                 M.addCounter counter (fromIntegral totalRecords)
               -- PartitionData
               pure $ K.PartitionData
@@ -389,7 +389,7 @@ readMode1 r storageOpts reader = do
         case p.elsn of
           ContReading remRecords _ -> do
             void $ atomicFetchAddFastMut mutRemSize $ V.sum $
-              V.map (BS.length . K.unCompactBytes . (.recordBytes)) remRecords
+              V.map (BS.length . K.unCompactBytes . (.recordFormat.recordBytes)) remRecords
             -- [TAG_NEV]: Make sure do not insert empty vector to the table,
             -- since we will assume the vector is non-empty in `encodePartition`
             unless (V.null remRecords) $
@@ -435,7 +435,7 @@ readMode1 r storageOpts reader = do
                 insertRecords recordTable rs
       pure recordTable
 
-    insertRemRecords :: RecordTable -> S.C_LogID -> Vector K.RecordFormat -> IO ()
+    insertRemRecords :: RecordTable -> S.C_LogID -> Vector K.Record -> IO ()
     insertRemRecords table logid records = do
       (rv, v) <- maybe ((V.empty, ) <$> GV.new) pure =<< (HT.lookup table logid)
       HT.insert table logid (rv <> records, v)
@@ -446,7 +446,7 @@ readMode1 r storageOpts reader = do
         recordFormat <- K.runGet @K.RecordFormat record.recordPayload
         let logid = record.recordAttr.recordAttrLogID
         (rv, v) <- maybe ((V.empty, ) <$> GV.new) pure =<< (HT.lookup table logid)
-        v' <- GV.append v recordFormat
+        v' <- GV.append v (K.Record recordFormat (record.recordAttr.recordAttrLSN))
         HT.insert table logid (rv, v')
 
 -- In kafka broker, regarding the format on disk, the broker will return
@@ -466,7 +466,7 @@ encodePartition
   :: FastMutInt
   -> FastMutInt
   -> K.FetchPartition
-  -> Vector K.RecordFormat
+  -> Vector K.Record
   -> IO (ByteString, Maybe Int64, Int)
   -- ^ (encoded bytes, next offset, taken vector index)
   --
@@ -478,8 +478,18 @@ encodePartition mutMaxBytes mutIsFirstPartition p v = do
   where
     doEncode maxBytes = do
       isFristPartition <- readFastMutInt mutIsFirstPartition
-      (fstRecordBytes, vs) <- trySeek
-      let fstLen = BS.length fstRecordBytes
+      let (fstRecord :: K.Record, vs) =
+            -- [TAG_NEV]: This should not be Nothing, because if we found the
+            -- key in `readRecords`, it means we have at least one record in
+            -- this.
+            fromMaybe (error "LogicError: got empty vector value")
+                      (V.uncons v)
+      -- NOTE: since we don't support RecordBatch version < 2, we don't need to
+      -- seek the MessageSet.
+      --
+      -- Also see 'HStream.Kafka.Common.RecordFormat.trySeekMessageSet'
+      let fstRecordBytes = K.unCompactBytes fstRecord.recordFormat.recordBytes
+          fstLen = BS.length fstRecordBytes
       if isFristPartition == 1
          -- First partition
          then do
@@ -508,7 +518,7 @@ encodePartition mutMaxBytes mutIsFirstPartition p v = do
       (bb, lastOffset', takenVecIdx) <-
         vecFoldWhileM vs (BB.byteString fstBs, Left fstBs, 0) $ \(b, lb, i) r -> do
           -- FIXME: Does this possible be multiple BatchRecords?
-          let rbs = K.unCompactBytes r.recordBytes
+          let rbs = K.unCompactBytes r.recordFormat.recordBytes
               rlen = BS.length rbs
           curMaxBytes <- atomicFetchAddFastMut mutMaxBytes (-rlen)
           curPartMaxBytes <- atomicFetchAddFastMut mutPartitionMaxBytes (-rlen)
@@ -528,30 +538,6 @@ encodePartition mutMaxBytes mutIsFirstPartition p v = do
       lastOffset <- either K.decodeNextRecordOffset pure lastOffset'
 
       pure (BS.toStrict $ BB.toLazyByteString bb, lastOffset, takenVecIdx)
-
-    -- Try to bypass the records if the fetch offset is not the first record
-    -- in the batch.
-    trySeek = do
-      let (fstRecord :: K.RecordFormat, vs) =
-            -- [TAG_NEV]: This should not be Nothing, because if we found the
-            -- key in `readRecords`, it means we have at least one record in
-            -- this.
-            fromMaybe (error "LogicError: got empty vector value")
-                      (V.uncons v)
-          bytesOnDisk = K.unCompactBytes fstRecord.recordBytes
-      -- only the first MessageSet need to to this seeking
-      magic <- K.decodeRecordMagic bytesOnDisk
-      fstRecordBytes <-
-        if | magic >= 2 -> pure bytesOnDisk
-           | otherwise -> do
-             let absStartOffset = fstRecord.offset + 1 - fromIntegral fstRecord.batchLength
-                 offset = p.fetchOffset - absStartOffset
-             if offset > 0
-                then do
-                  Log.debug1 $ "Seek MessageSet " <> Log.build offset
-                  K.seekMessageSet (fromIntegral offset) bytesOnDisk
-                else pure bytesOnDisk
-      pure (fstRecordBytes, vs)
 
 errorPartitionResponse :: Int32 -> K.ErrorCode -> K.PartitionData
 errorPartitionResponse partitionIndex ec = K.PartitionData
