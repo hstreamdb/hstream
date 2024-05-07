@@ -113,13 +113,13 @@ parseJSONToOptions CliOptions{..} obj = do
   -- SASL config
   nodeEnableSaslAuth <- nodeCfgObj .:? "enable-sasl" .!= False
   let !_enableSaslAuth = cliEnableSaslAuth || nodeEnableSaslAuth
-  let parsePlainTuple obj = do
-        username <- obj .: "username"
-        password <- obj .: "password"
+  let parsePlainTuple o = do
+        username <- o .: "username"
+        password <- o .: "password"
         return (username, password)
-  let parseMechanisms obj = do
-        mech      <- obj .: "mechanism"
-        auth_list <- obj .: "auth-list"
+  let parseMechanisms o = do
+        mech      <- o .: "mechanism"
+        auth_list <- o .: "auth-list"
         -- FIXME: more mechanisms
         if (toUpper mech) == "PLAIN" then do
           tups <- Y.withArray "auth-list" (
