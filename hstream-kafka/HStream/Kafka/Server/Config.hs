@@ -15,20 +15,25 @@ module HStream.Kafka.Server.Config
   , advertisedListenersToPB
   , StorageOptions (..)
   , ExperimentalFeature (..)
+
+  , KafkaBrokerConfigs
+  , updateConfigs
+  , mkKafkaBrokerConfigs
   ) where
 
-import           Control.Exception                    (throwIO)
-import qualified Data.Text                            as Text
-import           Data.Yaml                            (ParseException (..),
-                                                       decodeFileThrow,
-                                                       parseEither)
-import           System.Directory                     (makeAbsolute)
+import           Control.Exception                       (throwIO)
+import qualified Data.Text                               as Text
+import           Data.Yaml                               (ParseException (..),
+                                                          decodeFileThrow,
+                                                          parseEither)
+import           System.Directory                        (makeAbsolute)
 
-import           HStream.Common.Types                 (getHStreamVersion)
+import           HStream.Common.Types                    (getHStreamVersion)
 import           HStream.Kafka.Server.Config.FromCli
 import           HStream.Kafka.Server.Config.FromJson
+import           HStream.Kafka.Server.Config.KafkaConfig
 import           HStream.Kafka.Server.Config.Types
-import qualified HStream.Server.HStreamApi            as A
+import qualified HStream.Server.HStreamApi               as A
 
 
 runServerConfig :: [String] -> (ServerOpts -> IO ()) -> IO ()

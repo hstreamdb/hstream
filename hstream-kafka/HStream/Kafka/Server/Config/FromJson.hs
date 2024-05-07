@@ -40,7 +40,8 @@ parseJSONToOptions CliOptions{..} obj = do
   nodeLogWithColor  <- nodeCfgObj .:? "log-with-color" .!= True
 
   -- Kafka config
-  !_kafkaBrokerConfigs <- KC.mergeBrokerConfigs cliBrokerConfigs <$> KC.parseBrokerConfigs nodeCfgObj
+  brokerConfigs <- KC.parseBrokerConfigs nodeCfgObj
+  let !_kafkaBrokerConfigs = either (errorWithoutStackTrace . show) id $ KC.updateConfigs brokerConfigs cliBrokerProps
 
   metricsPort   <- nodeCfgObj .:? "metrics-port" .!= 9700
   let !_metricsPort = fromMaybe metricsPort cliMetricsPort

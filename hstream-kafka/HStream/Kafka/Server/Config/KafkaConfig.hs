@@ -9,7 +9,8 @@ import qualified Data.Aeson.Key  as Y
 import qualified Data.Aeson.Text as Y
 import           Data.Int        (Int32)
 import           Data.List       (intercalate)
-import qualified Data.Map        as Map
+import           Data.Map.Strict (Map)
+import qualified Data.Map.Strict as Map
 import qualified Data.Text       as T
 import qualified Data.Text.Lazy  as TL
 import qualified Data.Text.Read  as T
@@ -183,8 +184,14 @@ parseBrokerConfigs obj =
 allBrokerConfigs :: KafkaBrokerConfigs -> V.Vector KafkaConfigInstance
 allBrokerConfigs = V.fromList . Map.elems . dumpConfigs
 
-mergeBrokerConfigs :: KafkaBrokerConfigs -> KafkaBrokerConfigs -> KafkaBrokerConfigs
-mergeBrokerConfigs = mergeConfigs
+updateBrokerConfigs :: KafkaBrokerConfigs -> Map T.Text T.Text -> Either T.Text KafkaBrokerConfigs
+updateBrokerConfigs = updateConfigs
+
+mkKafkaBrokerConfigs :: Map T.Text T.Text -> KafkaBrokerConfigs
+mkKafkaBrokerConfigs mp =
+  case mkConfigs (mp Map.!?) of
+    Left msg -> errorWithoutStackTrace (T.unpack msg)
+    Right v  ->  v
 
 ---------------------------------------------------------------------------
 -- Config Helpers
@@ -193,10 +200,12 @@ type Lookup = T.Text -> Maybe T.Text
 type ConfigMap = Map.Map T.Text KafkaConfigInstance
 
 class KafkaConfigs a where
-  mkConfigs :: Lookup -> Either T.Text a
-  dumpConfigs :: a -> ConfigMap
+  mkConfigs      :: Lookup -> Either T.Text a
+  dumpConfigs    :: a -> ConfigMap
   defaultConfigs :: a
-  mergeConfigs :: a -> a -> a
+  -- Update current configs. New properties will be added and existing properties will be overwrite.
+  -- Unknow properties will be ignored.
+  updateConfigs  :: a -> Map T.Text T.Text -> Either T.Text a
 
   default mkConfigs :: (G.Generic a, GKafkaConfigs (G.Rep a)) => Lookup -> Either T.Text a
   mkConfigs lk = G.to <$> gmkConfigs lk
@@ -207,14 +216,14 @@ class KafkaConfigs a where
   default defaultConfigs :: (G.Generic a, GKafkaConfigs (G.Rep a)) => a
   defaultConfigs = G.to gdefaultConfigs
 
-  default mergeConfigs :: (G.Generic a, GKafkaConfigs (G.Rep a)) => a -> a -> a
-  mergeConfigs x y = G.to (gmergeConfigs (G.from x) (G.from y))
+  default updateConfigs :: (G.Generic a, GKafkaConfigs (G.Rep a)) => a -> Map T.Text T.Text -> Either T.Text a
+  updateConfigs x mp = G.to <$> gupdateConfigs (G.from x) mp
 
 class GKafkaConfigs f where
-  gmkConfigs :: Lookup -> Either T.Text (f p)
-  gdumpConfigs :: (f p) -> ConfigMap
+  gmkConfigs      :: Lookup -> Either T.Text (f p)
+  gdumpConfigs    :: (f p) -> ConfigMap
   gdefaultConfigs :: f p
-  gmergeConfigs :: f p -> f p -> f p
+  gupdateConfigs  :: f p -> Map T.Text T.Text -> Either T.Text (f p)
 
 instance KafkaConfig c => GKafkaConfigs (G.K1 i c) where
   gmkConfigs lk = G.K1 <$> case lk (name @c defaultConfig) of
@@ -222,19 +231,21 @@ instance KafkaConfig c => GKafkaConfigs (G.K1 i c) where
     Just textValue -> fromText @c textValue
   gdumpConfigs (G.K1 x) = (Map.singleton (name x) (KafkaConfigInstance x))
   gdefaultConfigs = G.K1 (defaultConfig @c)
-  gmergeConfigs (G.K1 x) (G.K1 y) = G.K1 (if isDefaultValue x then y else x)
+  gupdateConfigs (G.K1 x) mp = G.K1 <$> case Map.lookup (name x) mp of
+    Nothing        -> Right x
+    Just textValue -> fromText @c textValue
 
 instance GKafkaConfigs f => GKafkaConfigs (G.M1 i c f) where
   gmkConfigs lk = G.M1 <$> (gmkConfigs lk)
   gdumpConfigs (G.M1 x) = gdumpConfigs x
   gdefaultConfigs = G.M1 gdefaultConfigs
-  gmergeConfigs (G.M1 x) (G.M1 y) = G.M1 (gmergeConfigs x y)
+  gupdateConfigs (G.M1 x) mp = G.M1 <$> gupdateConfigs x mp
 
 instance (GKafkaConfigs a, GKafkaConfigs b) => GKafkaConfigs (a G.:*: b) where
   gmkConfigs lk = (G.:*:) <$> (gmkConfigs lk) <*> (gmkConfigs lk)
   gdumpConfigs (x G.:*: y) = Map.union (gdumpConfigs x) (gdumpConfigs y)
   gdefaultConfigs = gdefaultConfigs G.:*: gdefaultConfigs
-  gmergeConfigs (x1 G.:*: y1) (x2 G.:*: y2) = (gmergeConfigs x1 x2) G.:*: (gmergeConfigs y1 y2)
+  gupdateConfigs (x G.:*: y) mp = (G.:*:) <$> gupdateConfigs x mp <*> gupdateConfigs y mp
 
 #define MK_CONFIG_PAIR(configType) \
   let dc = defaultConfig @configType in (name dc, (KafkaConfigInstance dc, fmap KafkaConfigInstance . fromText @configType))
