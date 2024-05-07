@@ -297,6 +297,8 @@ kafka:
   #default.replication.factor: 1
   #auto.create.topic.enable: true
   #offsets.topic.replication.factor: 1
+  # --- Fetch Configuration ---
+  #fetch.max.bytes: 57671680  # 55 * 1024 * 1024
 
   # Internal storage options
   #
