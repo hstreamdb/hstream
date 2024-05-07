@@ -124,12 +124,13 @@ handleFetch sc@ServerContext{..} reqCtx r_ = K.catchFetchResponseEx $ do
     -- Clear the context
     K.clearFetchLogCtx fetchCtx
     -- Start reading
-    V.forM_ r.topics $ \(_, partitions) -> do
+    V.forM_ r.topics $ \(topicName, partitions) -> do
       V.forM_ partitions $ \partition -> do
         case partition.elsn of
           LsnData startlsn _ _ -> do
-            Log.debug1 $ "start reading log "
-                      <> Log.build partition.logid
+            Log.debug1 $ "start reading (" <> Log.build topicName
+                      <> "," <> Log.build partition.request.partition
+                      <> "), log " <> Log.build partition.logid
                       <> " from " <> Log.build startlsn
             S.readerStartReading fetchReader partition.logid startlsn S.LSN_MAX
           _ -> pure ()
@@ -141,8 +142,8 @@ handleFetch sc@ServerContext{..} reqCtx r_ = K.catchFetchResponseEx $ do
   -- - dynamically change reader settings according to the client request
   -- (e.g. maxWaitMs, minBytes...)
   --
-  -- FIXME: Do not setWaitOnlyWhenNoData if you are mostly focusing on
-  -- throughput
+  -- FIXME: Do not set waitOnlyWhenNoData(S.setWaitOnlyWhenNoData) if you are
+  -- mostly focusing on throughput
 
   -- FIXME: what if client send two same topic but with different partitions?
   -- {logid: ([RemRecord], [ReadRecord])}
@@ -158,11 +159,20 @@ handleFetch sc@ServerContext{..} reqCtx r_ = K.catchFetchResponseEx $ do
       let request = partition.request
       let e_hioffset = extractHiOffset partition.elsn
       case e_hioffset of
-        Left pd -> pure pd
+        Left pd -> do
+          Log.debug1 $ "Response for (" <> Log.build topic
+                    <> "," <> Log.build request.partition
+                    <> "), log " <> Log.build partition.logid
+                    <> ", error: " <> Log.buildString' pd.errorCode
+          pure pd
         Right hioffset -> do
           mgv <- HT.lookup readRecords partition.logid
           case mgv of
             Nothing -> do
+              Log.debug1 $ "Response for (" <> Log.build topic
+                        <> "," <> Log.build request.partition
+                        <> "), log " <> Log.build partition.logid
+                        <> ", empty."
               -- Cache the context.
               --
               -- It's safe to set the remRecords to empty, because "mgv" is
@@ -190,6 +200,10 @@ handleFetch sc@ServerContext{..} reqCtx r_ = K.catchFetchResponseEx $ do
                       -- TODO PERF
                       else (remv <>) <$> GV.unsafeFreeze gv
               (bs, m_offset, tokenIdx) <- encodePartition mutMaxBytes mutIsFirstPartition request v
+              Log.debug1 $ "Response for (" <> Log.build topic
+                        <> "," <> Log.build request.partition
+                        <> "), log " <> Log.build partition.logid
+                        <> ", " <> Log.build (BS.length bs) <> " bytes"
               -- Cache the context
               K.setFetchLogCtx
                 fetchCtx
@@ -392,7 +406,8 @@ readMode1 r storageOpts reader = do
               V.map (BS.length . K.unCompactBytes . (.recordFormat.recordBytes)) remRecords
             -- [TAG_NEV]: Make sure do not insert empty vector to the table,
             -- since we will assume the vector is non-empty in `encodePartition`
-            unless (V.null remRecords) $
+            unless (V.null remRecords) $ do
+              Log.debug1 $ "Got remain " <> Log.build (length remRecords) <> " records"
               insertRemRecords recordTable p.logid remRecords
           x -> Log.fatal $
            "LogicError: this should not be reached, " <> Log.buildString' x
@@ -408,30 +423,35 @@ readMode1 r storageOpts reader = do
          then do
            Log.debug1 $ "Set reader to nonblocking"
            S.readerSetTimeout reader 0  -- nonblocking
-           insertRecords recordTable
-             -- For non-empty results
-             =<< S.readerReadSome reader storageOpts.fetchMaxLen 10{-retries-}
+            -- For non-empty results
+           rs <- S.readerReadSome reader storageOpts.fetchMaxLen 10{-retries-}
+           Log.debug1 $ "Got " <> Log.build (length rs) <> " records from ldreader"
+           insertRecords recordTable rs
          else
            if r.maxWaitMs > defTimeout
               then do
-                Log.debug1 $ "Set reader timeout to " <> Log.build defTimeout
+                Log.debug1 $ "Set1 reader timeout to " <> Log.build defTimeout
                 S.readerSetTimeout reader defTimeout
                 rs1 <- M.observeDuration M.topicReadStoreLatency $
                           S.readerRead reader storageOpts.fetchMaxLen
+                Log.debug1 $ "Got1 " <> Log.build (length rs1) <> " records from ldreader"
                 insertRecords recordTable rs1
                 -- FIXME: this size is not accurate because of the CompactBytes
                 -- See: K.recordBytesSize
                 let size = sum (map (K.recordBytesSize . (.recordPayload)) rs1)
                 when (size < fromIntegral r.minBytes) $ do
+                  Log.debug1 $ "Set2 reader timeout to " <> Log.build (r.maxWaitMs - defTimeout)
                   S.readerSetTimeout reader (r.maxWaitMs - defTimeout)
                   rs2 <- M.observeDuration M.topicReadStoreLatency $
                            S.readerRead reader storageOpts.fetchMaxLen
+                  Log.debug1 $ "Got2 " <> Log.build (length rs2) <> " records from ldreader"
                   insertRecords recordTable rs2
               else do
                 Log.debug1 $ "Set reader timeout to " <> Log.build r.maxWaitMs
                 S.readerSetTimeout reader r.maxWaitMs
                 rs <- M.observeDuration M.topicReadStoreLatency $
                   S.readerRead reader storageOpts.fetchMaxLen
+                Log.debug1 $ "Got " <> Log.build (length rs) <> " records from ldreader"
                 insertRecords recordTable rs
       pure recordTable
 
