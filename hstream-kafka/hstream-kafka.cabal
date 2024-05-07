@@ -262,9 +262,9 @@ test-suite hstream-kafka-test
     HStream.Kafka.Common.AclEntrySpec
     HStream.Kafka.Common.AclSpec
     HStream.Kafka.Common.AuthorizerSpec
+    HStream.Kafka.Common.ConfigSpec
     HStream.Kafka.Common.OffsetManagerSpec
     HStream.Kafka.Common.TestUtils
-    HStream.Kafka.Common.ConfigSpec
 
   hs-source-dirs:     tests
   build-depends:

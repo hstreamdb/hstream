@@ -100,13 +100,19 @@ decodeBase64 :: T.Text -> BS.ByteString
 decodeBase64 = Base64.decodeBase64Lenient . T.encodeUtf8
 
 -- | Perform the action when the predicate is true or timeout is reached.
-onOrTimeout :: IO Bool -> Int -> IO b -> IO b
-onOrTimeout p timeoutMs action =
+--   An extra action is performed when the timeout expire, whose result will
+--   be discarded.
+--   Warning: The second action is always performed no matter whether the
+--            timeout is reached or not.
+onOrTimeout :: IO Bool -> Int -> IO a -> IO b -> IO b
+onOrTimeout p timeoutMs actionOnExpire action =
   Timeout.timeout (timeoutMs * 1000) loop >>= \case
-    Nothing -> action
+    Nothing -> do
+      M.void actionOnExpire
+      action
     Just a  -> return a
   where
     loop = p >>= \case
       True  -> action
-      -- FIXME: Hardcoded constant (check every 1ms)
-      False -> threadDelay 1000 >> loop
+      -- FIXME: Hardcoded constant (check every 10ms)
+      False -> threadDelay (10 * 1000) >> loop
