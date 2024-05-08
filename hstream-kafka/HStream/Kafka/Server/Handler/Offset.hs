@@ -192,7 +192,7 @@ handleOffsetFetch ServerContext{..} reqCtx req = E.handle (\(K.ErrorCodeExceptio
   simpleAuthorize (toAuthorizableReqCtx reqCtx) authorizer Res_GROUP req.groupId AclOp_DESCRIBE >>= \case
     False -> return $ makeErrorResponse K.TOPIC_AUTHORIZATION_FAILED
     True  -> do
-      group <- GC.getGroup scGroupCoordinator req.groupId
+      group_m <- GC.getGroupM scGroupCoordinator req.groupId
       case K.unKaArray req.topics of
         -- 'Nothing' means fetch offsets of ALL topics.
         -- WARNING: Offsets of unauthzed topics should not be leaked
@@ -201,11 +201,13 @@ handleOffsetFetch ServerContext{..} reqCtx req = E.handle (\(K.ErrorCodeExceptio
         -- FIXME: Better method than passing a "validate" function?
         Nothing -> do
           Log.debug $ "fetching all offsets in group:" <> Log.build req.groupId
-          topicResps <- G.fetchAllOffsets group $ \reqTopic -> do
-            -- [ACL] check [DESCRIBE TOPIC] for each topic
-            simpleAuthorize (toAuthorizableReqCtx reqCtx) authorizer Res_TOPIC reqTopic.name AclOp_DESCRIBE >>= \case
-              False -> return K.TOPIC_AUTHORIZATION_FAILED
-              True  -> return K.NONE
+          topicResps <- case group_m of
+            Nothing    -> return (K.NonNullKaArray V.empty)
+            Just group -> G.fetchAllOffsets group $ \reqTopic -> do
+              -- [ACL] check [DESCRIBE TOPIC] for each topic
+              simpleAuthorize (toAuthorizableReqCtx reqCtx) authorizer Res_TOPIC reqTopic.name AclOp_DESCRIBE >>= \case
+                False -> return K.TOPIC_AUTHORIZATION_FAILED
+                True  -> return K.NONE
           return $ K.OffsetFetchResponse
             { throttleTimeMs = 0
             , errorCode = K.NONE
@@ -217,11 +219,15 @@ handleOffsetFetch ServerContext{..} reqCtx req = E.handle (\(K.ErrorCodeExceptio
             --       on each topic. That is why we pass a "validate"
             --       function to it.
             -- FIXME: Better method than passing a "validate" function?
-            G.fetchOffsets group reqTopic $ \reqTopic_ -> do
-              -- [ACL] check [DESCRIBE TOPIC] for each topic
-              simpleAuthorize (toAuthorizableReqCtx reqCtx) authorizer Res_TOPIC reqTopic_.name AclOp_DESCRIBE >>= \case
-                False -> return K.TOPIC_AUTHORIZATION_FAILED
-                True  -> return K.NONE
+            case group_m of
+              -- FIXME: what error code should it return? 'K.UNKNOWN_TOPIC_OR_PARTITION'
+              --        crashes some tests...
+              Nothing    -> return (makeErrorTopicResponse K.NONE reqTopic)
+              Just group -> G.fetchOffsets group reqTopic $ \reqTopic_ -> do
+                -- [ACL] check [DESCRIBE TOPIC] for each topic
+                simpleAuthorize (toAuthorizableReqCtx reqCtx) authorizer Res_TOPIC reqTopic_.name AclOp_DESCRIBE >>= \case
+                  False -> return K.TOPIC_AUTHORIZATION_FAILED
+                  True  -> return K.NONE
           return $ K.OffsetFetchResponse
             { throttleTimeMs = 0
             , errorCode = K.NONE
@@ -240,7 +246,7 @@ handleOffsetFetch ServerContext{..} reqCtx req = E.handle (\(K.ErrorCodeExceptio
             K.OffsetFetchResponsePartition
             { partitionIndex  = idx
             , errorCode       = code
-            , metadata        = Nothing
+            , metadata        = Just ""
             , committedOffset = -1
             }
       }
