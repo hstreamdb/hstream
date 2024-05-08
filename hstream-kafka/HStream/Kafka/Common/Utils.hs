@@ -3,6 +3,7 @@
 
 module HStream.Kafka.Common.Utils where
 
+import           Control.Concurrent
 import           Control.Exception                   (throw)
 import qualified Control.Monad                       as M
 import qualified Control.Monad.ST                    as ST
@@ -18,6 +19,7 @@ import qualified Data.Text.Encoding                  as T
 import qualified Data.Vector                         as V
 import           HStream.Kafka.Common.KafkaException (ErrorCodeException (ErrorCodeException))
 import qualified Kafka.Protocol.Encoding             as K
+import qualified System.Timeout                      as Timeout
 
 type HashTable k v = H.BasicHashTable k v
 
@@ -96,3 +98,21 @@ encodeBase64 = Base64.extractBase64 . Base64.encodeBase64
 
 decodeBase64 :: T.Text -> BS.ByteString
 decodeBase64 = Base64.decodeBase64Lenient . T.encodeUtf8
+
+-- | Perform the action when the predicate is true or timeout is reached.
+--   An extra action is performed when the timeout expire, whose result will
+--   be discarded.
+-- Warning: The second action is always performed no matter whether the
+--          timeout is reached or not.
+onOrTimeout :: IO Bool -> Int -> IO a -> IO b -> IO b
+onOrTimeout p timeoutMs actionOnExpire action =
+  Timeout.timeout (timeoutMs * 1000) loop >>= \case
+    Nothing -> do
+      M.void actionOnExpire
+      action
+    Just a  -> return a
+  where
+    loop = p >>= \case
+      True  -> action
+      -- FIXME: Hardcoded constant (check every 10ms)
+      False -> threadDelay (10 * 1000) >> loop
