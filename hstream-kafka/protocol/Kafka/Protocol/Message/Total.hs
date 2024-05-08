@@ -1641,7 +1641,7 @@ data PartitionData = PartitionData
     -- ^ The error code, or 0 if there was no fetch error.
   , highWatermark       :: {-# UNPACK #-} !Int64
     -- ^ The current high water mark.
-  , recordBytes         :: !NullableBytes
+  , recordBytes         :: !RecordBytes
     -- ^ The record data.
   , lastStableOffset    :: {-# UNPACK #-} !Int64
     -- ^ The last stable offset (or LSO) of the partition. This is the last
@@ -1731,7 +1731,7 @@ partitionDataFromV6 = partitionDataFromV5
 data PartitionProduceData = PartitionProduceData
   { index       :: {-# UNPACK #-} !Int32
     -- ^ The partition index.
-  , recordBytes :: !NullableBytes
+  , recordBytes :: !RecordBytes
     -- ^ The record data to be produced.
   } deriving (Show, Eq, Generic)
 instance Serializable PartitionProduceData

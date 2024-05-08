@@ -412,7 +412,7 @@ data PartitionDataV0 = PartitionDataV0
     -- ^ The error code, or 0 if there was no fetch error.
   , highWatermark  :: {-# UNPACK #-} !Int64
     -- ^ The current high water mark.
-  , recordBytes    :: !NullableBytes
+  , recordBytes    :: !RecordBytes
     -- ^ The record data.
   } deriving (Show, Eq, Generic)
 instance Serializable PartitionDataV0
@@ -458,7 +458,7 @@ data PartitionDataV4 = PartitionDataV4
     -- offset have been decided (ABORTED or COMMITTED)
   , abortedTransactions :: !(KaArray AbortedTransactionV4)
     -- ^ The aborted transactions.
-  , recordBytes         :: !NullableBytes
+  , recordBytes         :: !RecordBytes
     -- ^ The record data.
   } deriving (Show, Eq, Generic)
 instance Serializable PartitionDataV4
@@ -488,7 +488,7 @@ data PartitionDataV5 = PartitionDataV5
     -- ^ The current log start offset.
   , abortedTransactions :: !(KaArray AbortedTransactionV4)
     -- ^ The aborted transactions.
-  , recordBytes         :: !NullableBytes
+  , recordBytes         :: !RecordBytes
     -- ^ The record data.
   } deriving (Show, Eq, Generic)
 instance Serializable PartitionDataV5
@@ -867,7 +867,7 @@ type OffsetFetchResponseTopicV3 = OffsetFetchResponseTopicV0
 data PartitionProduceDataV0 = PartitionProduceDataV0
   { index       :: {-# UNPACK #-} !Int32
     -- ^ The partition index.
-  , recordBytes :: !NullableBytes
+  , recordBytes :: !RecordBytes
     -- ^ The record data to be produced.
   } deriving (Show, Eq, Generic)
 instance Serializable PartitionProduceDataV0

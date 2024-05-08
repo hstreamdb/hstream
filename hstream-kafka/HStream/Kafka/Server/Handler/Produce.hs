@@ -72,7 +72,9 @@ handleProduce ServerContext{..} _reqCtx req = do
         M.totalProduceRequest
         (topic.name, T.pack . show $ partition.index) $ \counter ->
           void $ M.addCounter counter 1
-      let Just recordBytes = partition.recordBytes -- TODO: handle Nothing
+      let recordBytes =
+            fromMaybe (error "TODO: Receive empty recordBytes in ProduceRequest")
+                      (K.unRecordBytes partition.recordBytes)
       Log.debug1 $ "Try to append to logid " <> Log.build logid
                 <> "(" <> Log.build partition.index <> ")"
 

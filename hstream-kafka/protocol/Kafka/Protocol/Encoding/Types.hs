@@ -21,6 +21,8 @@ module Kafka.Protocol.Encoding.Types
   , TaggedFields (EmptyTaggedFields)  -- TODO
   , KaArray (..)
   , CompactKaArray (..)
+  , RecordBytes (..)
+  , RecordCompactBytes (..)
   , RecordKey (..)
   , RecordValue (..)
   , RecordHeaderKey (..)
@@ -159,6 +161,13 @@ newtype CompactKaArray a = CompactKaArray
 instance Functor CompactKaArray where
   fmap f (CompactKaArray xs) = CompactKaArray $ fmap f <$> xs
 
+newtype RecordBytes = RecordBytes { unRecordBytes :: Maybe ByteString }
+  deriving newtype (Show, Eq, Ord, NFData)
+
+newtype RecordCompactBytes = RecordCompactBytes
+  { unRecordCompactBytes :: Maybe ByteString }
+  deriving newtype (Show, Eq, Ord, NFData)
+
 newtype RecordKey = RecordKey { unRecordKey :: Maybe ByteString }
   deriving newtype (Show, Eq, Ord, NFData)
 
@@ -208,6 +217,9 @@ INSTANCE_NEWTYPE(CompactString)
 INSTANCE_NEWTYPE(CompactNullableString)
 INSTANCE_NEWTYPE(CompactBytes)
 INSTANCE_NEWTYPE(CompactNullableBytes)
+
+INSTANCE_NEWTYPE_1(RecordBytes, NullableBytes)
+INSTANCE_NEWTYPE_1(RecordCompactBytes, CompactNullableBytes)
 
 INSTANCE_NEWTYPE_1(RecordKey, VarBytesInRecord)
 INSTANCE_NEWTYPE_1(RecordValue, VarBytesInRecord)

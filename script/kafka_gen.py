@@ -41,6 +41,11 @@ except Exception:
 # -----------------------------------------------------------------------------
 # Constants
 
+# e.g.
+#
+#    {"name": "Records", "type": "records", ...}
+# -> {"name": "RecordBytes", "type": "records", ...}
+# -> data ... { recordBytes :: ... }
 RENAMES = {"Records": "RecordBytes"}
 
 TYPE_MAPS = {
@@ -52,7 +57,7 @@ TYPE_MAPS = {
     "string": "!Text",
     "bool": "Bool",
     "bytes": "!ByteString",
-    "records": "!ByteString",
+    "records": None,  # Records should be NULLABLE_BYTES
     "array": "!(KaArray {})",
     "errorCode": "{{-# UNPACK #-}} !ErrorCode",
     "apiKey": "{{-# UNPACK #-}} !ApiKey",
@@ -60,18 +65,18 @@ TYPE_MAPS = {
 NULLABLE_TYPE_MAPS = {
     "string": "!NullableString",
     "bytes": "!NullableBytes",
-    "records": "!NullableBytes",
+    "records": "!RecordBytes",
 }
 COMPACT_TYPE_MAPS = {
     "string": "!CompactString",
     "bytes": "!CompactBytes",
-    "records": "!CompactBytes",
+    "records": None,  # Records should be NULLABLE_BYTES
     "array": "!(CompactKaArray {})",
 }
 COMPACT_NULLABLE_TYPE_MAPS = {
     "string": "!CompactNullableString",
     "bytes": "!CompactNullableBytes",
-    "records": "!CompactNullableBytes",
+    "records": ...,     # TODO, produce version >= 9
     "array": "!(CompactKaArray {})",
 }
 
