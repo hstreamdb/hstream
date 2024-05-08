@@ -33,6 +33,7 @@ module Kafka.Protocol.Encoding.Types
 import           Control.DeepSeq                (NFData)
 import           Control.Monad
 import           Data.ByteString                (ByteString)
+import qualified Data.ByteString                as BS
 import           Data.Int
 import           Data.String                    (IsString)
 import           Data.Text                      (Text)
@@ -162,11 +163,19 @@ instance Functor CompactKaArray where
   fmap f (CompactKaArray xs) = CompactKaArray $ fmap f <$> xs
 
 newtype RecordBytes = RecordBytes { unRecordBytes :: Maybe ByteString }
-  deriving newtype (Show, Eq, Ord, NFData)
+  deriving newtype (Eq, Ord, NFData)
+
+instance Show RecordBytes where
+  show (RecordBytes (Just bs)) = "<RecordBytes@" <> show (BS.length bs) <> ">"
+  show (RecordBytes Nothing)   = "<RecordBytes@NULL>"
 
 newtype RecordCompactBytes = RecordCompactBytes
   { unRecordCompactBytes :: Maybe ByteString }
-  deriving newtype (Show, Eq, Ord, NFData)
+  deriving newtype (Eq, Ord, NFData)
+
+instance Show RecordCompactBytes where
+  show (RecordCompactBytes (Just bs)) = "<RecordCompactBytes@" <> show (BS.length bs) <> ">"
+  show (RecordCompactBytes Nothing)   = "<RecordCompactBytes@NULL>"
 
 newtype RecordKey = RecordKey { unRecordKey :: Maybe ByteString }
   deriving newtype (Show, Eq, Ord, NFData)
