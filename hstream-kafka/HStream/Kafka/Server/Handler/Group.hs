@@ -12,6 +12,7 @@ module HStream.Kafka.Server.Handler.Group
 
 import qualified Control.Exception                     as E
 import           Control.Monad
+import qualified Data.Text                             as T
 import qualified Data.Vector                           as V
 
 import           HStream.Kafka.Common.Acl
@@ -141,9 +142,11 @@ handleDescribeGroups ServerContext{..} reqCtx req = do
   describedGroups <- forM groups_m $ \(gid, group_m) ->
     -- [ACL] for each group id, check [DESCRIBE GROUP]
     simpleAuthorize (toAuthorizableReqCtx reqCtx) authorizer Res_GROUP gid AclOp_DESCRIBE >>= \case
-      False -> return $ makeErrorGroup gid K.GROUP_AUTHORIZATION_FAILED
+      False -> return $ makeErrorGroup gid K.GROUP_AUTHORIZATION_FAILED ""
       True  -> case group_m of
-        Nothing    -> return $ makeErrorGroup gid K.GROUP_ID_NOT_FOUND
+        -- Note: For non-existed group, return with no error and Dead state.
+        --       See kafka.coordinator.group.GroupCoordinator#handleDescribeGroup.
+        Nothing    -> return $ makeErrorGroup gid K.NONE (T.pack (show G.Dead))
         Just group -> G.describe group
   -- FIXME: hard-coded constants
   return $ K.DescribeGroupsResponse
@@ -152,9 +155,9 @@ handleDescribeGroups ServerContext{..} reqCtx req = do
          }
   where
     -- FIXME: hard-coded constants
-    makeErrorGroup gid code = K.DescribedGroup {
+    makeErrorGroup gid code state = K.DescribedGroup {
       protocolData = ""
-    , groupState   = ""
+    , groupState   = state
     , errorCode    = code
     , members      = Utils.listToKaArray []
     , groupId      = gid
