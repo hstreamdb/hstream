@@ -209,10 +209,10 @@ INSTANCE_NEWTYPE(CompactNullableString)
 INSTANCE_NEWTYPE(CompactBytes)
 INSTANCE_NEWTYPE(CompactNullableBytes)
 
-INSTANCE_NEWTYPE_1(RecordKey, RecordNullableBytes)
-INSTANCE_NEWTYPE_1(RecordValue, RecordNullableBytes)
-INSTANCE_NEWTYPE_1(RecordHeaderKey, RecordString)
-INSTANCE_NEWTYPE_1(RecordHeaderValue, RecordNullableBytes)
+INSTANCE_NEWTYPE_1(RecordKey, VarBytesInRecord)
+INSTANCE_NEWTYPE_1(RecordValue, VarBytesInRecord)
+INSTANCE_NEWTYPE_1(RecordHeaderKey, VarStringInRecord)
+INSTANCE_NEWTYPE_1(RecordHeaderValue, VarBytesInRecord)
 
 instance Serializable TaggedFields where
   get = do !n <- fromIntegral <$> getVarWord32
