@@ -187,7 +187,7 @@ handleFetch sc@ServerContext{..} reqCtx r_ = K.catchFetchResponseEx $ do
                 { partitionIndex      = request.partition
                 , errorCode           = K.NONE
                 , highWatermark       = hioffset
-                , recordBytes         = (Just "")
+                , recordBytes         = (K.RecordBytes $ Just "")
                 , lastStableOffset    = (-1) -- TODO
                 , abortedTransactions = K.NonNullKaArray V.empty -- TODO
                   -- TODO: for performance reason, we don't implement
@@ -223,7 +223,7 @@ handleFetch sc@ServerContext{..} reqCtx r_ = K.catchFetchResponseEx $ do
                 { partitionIndex      = request.partition
                 , errorCode           = K.NONE
                 , highWatermark       = hioffset
-                , recordBytes         = (Just bs)
+                , recordBytes         = (K.RecordBytes $ Just bs)
                 , lastStableOffset    = (-1) -- TODO
                 , abortedTransactions = K.NonNullKaArray V.empty -- TODO
                   -- TODO: for performance reason, we don't implement
@@ -572,7 +572,7 @@ errorPartitionResponse partitionIndex ec = K.PartitionData
   { partitionIndex      = partitionIndex
   , errorCode           = ec
   , highWatermark       = (-1)
-  , recordBytes         = (Just "")
+  , recordBytes         = (K.RecordBytes $ Just "")
   , lastStableOffset    = (-1) -- TODO
   , abortedTransactions = K.NonNullKaArray V.empty -- TODO
     -- TODO: for performance reason, we don't implement logStartOffset now
@@ -585,7 +585,7 @@ partitionResponse0 partitionIndex ec hw = K.PartitionData
   { partitionIndex      = partitionIndex
   , errorCode           = ec
   , highWatermark       = hw
-  , recordBytes         = (Just "")
+  , recordBytes         = (K.RecordBytes $ Just "")
   , lastStableOffset    = (-1) -- TODO
   , abortedTransactions = K.NonNullKaArray V.empty -- TODO
     -- TODO: for performance reason, we don't implement logStartOffset now

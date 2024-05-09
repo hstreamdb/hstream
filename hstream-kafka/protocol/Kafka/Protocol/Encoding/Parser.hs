@@ -28,8 +28,8 @@ module Kafka.Protocol.Encoding.Parser
   , getCompactBytes
   , getNullableBytes
   , getCompactNullableBytes
-  , getRecordNullableBytes
-  , getRecordString
+  , getVarBytesInRecord
+  , getVarStringInRecord
     -- * Internals
   , takeBytes
   , dropBytes
@@ -276,19 +276,19 @@ getCompactNullableBytes = do
 -- | Record key or value
 --
 -- ref: https://kafka.apache.org/documentation/#record
-getRecordNullableBytes :: Parser (Maybe ByteString)
-getRecordNullableBytes = do
+getVarBytesInRecord :: Parser (Maybe ByteString)
+getVarBytesInRecord = do
   !n <- fromIntegral <$!> getVarInt32
   if n >= 0
      then Just <$> takeBytes n
      else pure Nothing
-{-# INLINE getRecordNullableBytes #-}
+{-# INLINE getVarBytesInRecord #-}
 
 -- | Record header key
 --
 -- ref: https://kafka.apache.org/documentation/#record
-getRecordString :: Parser Text
-getRecordString = do
+getVarStringInRecord :: Parser Text
+getVarStringInRecord = do
   n <- fromIntegral <$> getVarInt32
   if n >= 0
      then decodeUtf8 $! takeBytes n
