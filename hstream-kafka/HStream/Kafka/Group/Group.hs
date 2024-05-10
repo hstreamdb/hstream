@@ -601,8 +601,8 @@ addMember group@Group{..} member delayedResponse = do
 
   Utils.whenIORefEq leader Nothing $ do
     IO.atomicWriteIORef leader (Just member.memberId)
-    Log.info $ "updated leader, group:" <> Log.build groupId
-      <> "leader:" <> Log.build member.memberId
+    Log.info $ "updated leader for group: " <> Log.build groupId
+      <> ", leader: " <> Log.build member.memberId
 
   H.insert members member.memberId member
   updateSupportedProtocols group memberProtocols

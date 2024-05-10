@@ -15,6 +15,8 @@ import           Control.Monad
 import qualified Data.Text                             as T
 import qualified Data.Vector                           as V
 
+import           HStream.Common.Server.Lookup          (KafkaResource (KafkaResGroup),
+                                                        lookupKafkaPersist)
 import           HStream.Kafka.Common.Acl
 import           HStream.Kafka.Common.Authorizer.Class
 import qualified HStream.Kafka.Common.KafkaException   as K
@@ -23,6 +25,7 @@ import qualified HStream.Kafka.Common.Utils            as Utils
 import qualified HStream.Kafka.Group.Group             as G
 import qualified HStream.Kafka.Group.GroupCoordinator  as GC
 import           HStream.Kafka.Server.Types            (ServerContext (..))
+import           HStream.Server.HStreamApi             (ServerNode (..))
 import qualified Kafka.Protocol.Encoding               as K
 import qualified Kafka.Protocol.Error                  as K
 import qualified Kafka.Protocol.Message                as K
@@ -143,18 +146,28 @@ handleDescribeGroups ServerContext{..} reqCtx req = do
     -- [ACL] for each group id, check [DESCRIBE GROUP]
     simpleAuthorize (toAuthorizableReqCtx reqCtx) authorizer Res_GROUP gid AclOp_DESCRIBE >>= \case
       False -> return $ makeErrorGroup gid K.GROUP_AUTHORIZATION_FAILED ""
-      True  -> case group_m of
-        -- Note: For non-existed group, return with no error and Dead state.
-        --       See kafka.coordinator.group.GroupCoordinator#handleDescribeGroup.
-        Nothing    -> return $ makeErrorGroup gid K.NONE (T.pack (show G.Dead))
-        Just group -> G.describe group
+      True  -> do
+        -- FIXME: Based on the current implementation, we only checks the coordinator.
+        -- Kafka's `validateGroupStatus` function(GroupCoordinator.scala) includes more checks. Perhaps in the
+        -- future we'll need to adapt these additional checks.
+        ServerNode{..} <-
+          lookupKafkaPersist metaHandle gossipContext loadBalanceHashRing
+                             scAdvertisedListenersKey (KafkaResGroup gid)
+        if serverNodeId /= serverID
+          then
+            return $ makeErrorGroup gid K.NOT_COORDINATOR ""
+          else
+            case group_m of
+              Just group -> G.describe group
+              -- Note: For non-existed group, return with no error and Dead state.
+              --       See kafka.coordinator.group.GroupCoordinator#handleDescribeGroup.
+              Nothing    -> return $ makeErrorGroup gid K.NONE (T.pack (show G.Dead))
   -- FIXME: hard-coded constants
   return $ K.DescribeGroupsResponse
          { groups         = Utils.listToKaArray describedGroups
          , throttleTimeMs = 0
          }
   where
-    -- FIXME: hard-coded constants
     makeErrorGroup gid code state = K.DescribedGroup {
       protocolData = ""
     , groupState   = state
