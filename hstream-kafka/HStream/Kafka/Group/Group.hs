@@ -13,7 +13,8 @@ import qualified Data.ByteString                        as BS
 import qualified Data.HashTable.IO                      as H
 import           Data.Int                               (Int32)
 import qualified Data.IORef                             as IO
-import qualified Data.List                              as List
+import qualified Data.List                              as L
+import qualified Data.List.Extra                        as L
 import qualified Data.Map                               as Map
 import           Data.Maybe                             (fromMaybe, isJust,
                                                          listToMaybe)
@@ -560,7 +561,7 @@ getJoinResponseMember protocol m = do
 getMemberMetadata :: Member -> T.Text -> IO BS.ByteString
 getMemberMetadata member protocol = do
   memberProtocols <- IO.readIORef member.supportedProtocols
-  return $ snd . fromMaybe ("", "") $ List.find (\(n, _) -> n == protocol) memberProtocols
+  return $ snd . fromMaybe ("", "") $ L.find (\(n, _) -> n == protocol) memberProtocols
 
 computeProtocolName :: Group -> IO T.Text
 computeProtocolName group@Group{..} = do
@@ -571,15 +572,24 @@ computeProtocolName group@Group{..} = do
       pure pn
     Just pn -> pure pn
 
--- choose protocol name from supportedProtocols
+-- | Select the protocol for this group which is supported by all members.
+--   This is done by letting each member vote for one of the protocols
+--   and choose the one with the most votes. See Member.hs#voteForProtocol.
+--   Also see kafka.coordinator.group.GroupMetadata$selectProtocol.
+-- FIXME: How about protocols with the same occurrence?
 chooseProtocolName :: Group -> IO T.Text
-chooseProtocolName Group {..} = do
-  ps <- IO.readIORef supportedProtocols
-  let pn = head $ Set.toList ps
-  Log.info $ "choose protocol:" <> Log.build pn
-    <> ", current supported protocols:" <> Log.buildString' ps
-    <> ", group:" <> Log.build groupId
-  return pn
+chooseProtocolName group = do
+  candicateProtocols <- IO.readIORef group.supportedProtocols
+  members_           <- (L.map snd) <$> H.toList group.members
+  chosenProtocol     <-
+    mostOccur <$> mapM (voteForProtocol candicateProtocols) members_
+  Log.info $ "choose protocol:" <> Log.build chosenProtocol
+    <> ", current supported protocols:" <> Log.buildString' candicateProtocols
+    <> ", group:" <> Log.build group.groupId
+  return chosenProtocol
+  where
+    mostOccur :: [T.Text] -> T.Text
+    mostOccur = L.head . L.maximumOn L.length . L.group . L.sort
 
 updateSupportedProtocols :: Group -> [(T.Text, BS.ByteString)] -> IO ()
 updateSupportedProtocols Group{..} protocols = do
