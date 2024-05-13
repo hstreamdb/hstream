@@ -5,17 +5,22 @@
 
 module HStream.Kafka.Group.Member where
 
-import qualified Control.Concurrent             as C
-import           Control.Monad                  (join)
-import qualified Data.ByteString                as BS
-import           Data.Int                       (Int32, Int64)
-import qualified Data.IORef                     as IO
-import           Data.Maybe                     (fromMaybe)
-import qualified Data.Text                      as T
-import qualified HStream.Common.Server.MetaData as CM
-import qualified HStream.Kafka.Common.Utils     as Utils
-import qualified Kafka.Protocol                 as K
-import qualified Kafka.Protocol.Service         as K
+import qualified Control.Concurrent                  as C
+import           Control.Exception                   (throw)
+import           Control.Monad                       (join)
+import qualified Data.ByteString                     as BS
+import           Data.Int                            (Int32, Int64)
+import qualified Data.IORef                          as IO
+import qualified Data.List                           as L
+import           Data.Maybe                          (fromMaybe)
+import qualified Data.Set                            as Set
+import qualified Data.Text                           as T
+import qualified HStream.Common.Server.MetaData      as CM
+import           HStream.Kafka.Common.KafkaException (ErrorCodeException (..))
+import qualified HStream.Kafka.Common.Utils          as Utils
+import qualified Kafka.Protocol                      as K
+import qualified Kafka.Protocol.Error                as K
+import qualified Kafka.Protocol.Service              as K
 
 data Member
   = Member
@@ -92,3 +97,16 @@ newMemberFromValue groupValue value = do
     , clientId=value.clientId
     , clientHost=value.clientHost
     }
+
+-- | Vote for a protocol the member prefers from a set of candidates,
+--   which **all members support**. "prefer" means following the order
+--   of protocols the member supports.
+--   Throw an exception if no protocol is found. **This should not happen**
+--   because it is caller's responsibility to ensure the 'candidates'
+--   argument is the common subset of all members' supported protocols!
+voteForProtocol :: Set.Set T.Text -> Member -> IO T.Text
+voteForProtocol candidates member = do
+  supportedProtocols' <- (L.map fst) <$> IO.readIORef member.supportedProtocols
+  case L.find (`Set.member` candidates) supportedProtocols' of
+    Nothing       -> throw (ErrorCodeException K.INCONSISTENT_GROUP_PROTOCOL)
+    Just protocol -> return protocol
