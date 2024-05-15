@@ -13,6 +13,7 @@ module Kafka.Protocol.Encoding
     -- * Message Format
   , RecordBatch (..)
   , decodeRecordBatch
+  , decodeRecordBatchOffset
   , updateRecordBatchBaseOffset
   , unsafeUpdateRecordBatchBaseOffset
     -- ** Attributes
@@ -213,6 +214,35 @@ decodeRecordBatch shouldValidateCrc bs = do
          then pure RecordBatch{..}
          else throwIO $ DecodeError (INVALID_RECORD, "There are some bytes left")
     _ -> throwIO $ DecodeError $ (CORRUPT_MESSAGE, "Invalid magic " <> show magic)
+
+-- | Get the offset from the batch bs.
+--
+-- Return (baseOffset, batchRecordsLen)
+decodeRecordBatchOffset :: ByteString -> IO (Maybe (Int64, Int32))
+decodeRecordBatchOffset bs = fst <$> runParser' parser bs
+  where
+    parser = do
+      let totalLen = BS.length bs
+      -- FailFast: batch is incomplete
+      if totalLen <= 12{- baseOffset, batchLength -} then pure Nothing else do
+        baseOffset <- get @Int64
+        batchLength <- get @Int32
+        let remainingLen = fromIntegral totalLen - 12 - batchLength
+        -- batch is incomplete or more
+        if remainingLen /= 0 then pure Nothing else do
+          directDropBytes 4 -- partitionLeaderEpoch: int32
+          magic <- get @Int8
+          case magic of
+            2 -> do
+              -- crc: int32 + attributes: int16 + lastOffsetDelta: int32 +
+              -- baseTimestamp: int64 + maxTimestamp: int64 +
+              -- producerId: int64 + producerEpoch: int16 +
+              -- baseSequence: int32
+              directDropBytes 40
+              batchRecordsLen <- get @Int32
+              pure $ Just (baseOffset, batchRecordsLen)
+            _ -> fail $ "Invalid magic " <> show magic
+{-# INLINE decodeRecordBatchOffset #-}
 
 -- Be sure to use this function after the calling of 'decodeRecordBatch',
 -- since we do not check the bounds.
