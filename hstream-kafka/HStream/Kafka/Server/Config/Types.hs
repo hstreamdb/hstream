@@ -234,9 +234,11 @@ data StorageOptions = StorageOptions
 
 data ExperimentalFeature
   = ExperimentalCppServer
+  | ExperimentalSparseOffset
   deriving (Show, Eq)
 
 parseExperimentalFeature :: O.ReadM ExperimentalFeature
 parseExperimentalFeature = O.eitherReader $ \case
-  "cpp" -> Right ExperimentalCppServer
-  x     -> Left $ "cannot parse experimental feature: " <> x
+  "cpp"           -> Right ExperimentalCppServer
+  "sparse-offset" -> Right ExperimentalSparseOffset
+  x -> Left $ "cannot parse experimental feature: " <> x

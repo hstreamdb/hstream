@@ -129,7 +129,8 @@ app config@ServerOpts{..} = do
 
       -- Experimental features
       let usingCppServer = ExperimentalCppServer `elem` experimentalFeatures
-      Async.withAsync (serve serverContext netOpts usingCppServer) $ \a -> do
+          usingSparseOffset = ExperimentalSparseOffset `elem` experimentalFeatures
+      Async.withAsync (serve serverContext netOpts usingCppServer usingSparseOffset) $ \a -> do
         -- start gossip
         a1 <- startGossip _serverHost gossipContext
         Async.link2Only (const True) a a1
@@ -140,6 +141,7 @@ app config@ServerOpts{..} = do
                              _serverAdvertisedListeners
                              _listenersSecurityProtocolMap
                              usingCppServer
+                             usingSparseOffset
         forM_ as (Async.link2Only (const True) a)
         -- wait the default server
         waitGossipBoot gossipContext
@@ -153,8 +155,10 @@ app config@ServerOpts{..} = do
 serve :: ServerContext -> K.ServerOptions
       -> Bool
       -- ^ ExperimentalFeature: ExperimentalCppServer
+      -> Bool
+      -- ^ ExperimentalFeature: ExperimentalSparseOffset
       -> IO ()
-serve sc@ServerContext{..} netOpts usingCppServer = do
+serve sc@ServerContext{..} netOpts usingCppServer usingSparseOffset = do
   Log.i "************************"
   hPutStrLn stderr banner
   Log.i "************************"
@@ -190,10 +194,15 @@ serve sc@ServerContext{..} netOpts usingCppServer = do
   Log.info $ "Starting"
         <> if isJust (K.serverSslOptions netOpts') then " secure " else " insecure "
         <> "kafka server..."
+  handlers <- if usingSparseOffset
+                 then do
+                   Log.warning "Using a experimental feature: SparseOffset"
+                   pure K.sparseOffsetHandlers
+                 else pure K.handlers
   if usingCppServer
      then do Log.warning "Using a still-in-development c++ kafka server!"
-             K.runCppServer netOpts' sc K.handlers
-     else K.runHsServer netOpts' sc K.unAuthedHandlers K.handlers
+             K.runCppServer netOpts' sc handlers
+     else K.runHsServer netOpts' sc K.unAuthedHandlers handlers
   where
    exceptionHandlers =
      [ Handler $ \(_ :: HE.RQLiteRowNotFound)    -> return ()
@@ -208,10 +217,12 @@ serveListeners
   -> ListenersSecurityProtocolMap
   -> Bool
   -- ^ ExperimentalFeature: ExperimentalCppServer
+  -> Bool
+  -- ^ ExperimentalFeature: ExperimentalSparseOffset
   -> IO [Async.Async ()]
 serveListeners sc netOpts
                securityMap listeners listenerSecurityMap
-               usingCppServer
+               usingCppServer usingSparseOffset
                = do
   let listeners' = [(k, v) | (k, vs) <- Map.toList listeners, v <- Set.toList vs]
   forM listeners' $ \(key, I.Listener{..}) -> Async.async $ do
@@ -240,10 +251,15 @@ serveListeners sc netOpts
             <> Log.build key <> ":"
             <> Log.build listenerAddress <> ":"
             <> Log.build listenerPort
+    handlers <- if usingSparseOffset
+                   then do
+                     Log.warning "Using a experimental feature: SparseOffset"
+                     pure K.sparseOffsetHandlers
+                   else pure K.handlers
     if usingCppServer
        then do Log.warning "Using a still-in-development c++ kafka server!"
-               K.runCppServer netOpts' sc' K.handlers
-       else K.runHsServer netOpts' sc' K.unAuthedHandlers K.handlers
+               K.runCppServer netOpts' sc' handlers
+       else K.runHsServer netOpts' sc' K.unAuthedHandlers handlers
 
 -------------------------------------------------------------------------------
 
