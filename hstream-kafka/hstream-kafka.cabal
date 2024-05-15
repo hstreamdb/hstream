@@ -173,6 +173,7 @@ library
     HStream.Kafka.Server.Handler.Group
     HStream.Kafka.Server.Handler.Offset
     HStream.Kafka.Server.Handler.Produce
+    HStream.Kafka.Server.Handler.SparseOffset.Consume
     HStream.Kafka.Server.Handler.SparseOffset.Offset
     HStream.Kafka.Server.Handler.SparseOffset.Produce
     HStream.Kafka.Server.Handler.Topic
