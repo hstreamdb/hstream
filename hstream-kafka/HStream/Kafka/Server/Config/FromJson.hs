@@ -108,6 +108,9 @@ parseJSONToOptions CliOptions{..} obj = do
   storageCfg <- nodeCfgObj .:? "storage" .!= mempty
   fetchReaderTimeout <- storageCfg .:? "fetch-reader-timeout" .!= 50
   fetchMaxLen <- storageCfg .:? "fetch-maxlen" .!= 1000
+  scdEnabled <- storageCfg .:? "scd-enabled" .!= False
+  localScdEnabled <- storageCfg .:? "local-scd-enabled" .!= False
+  stickyCopysets <- storageCfg .:? "sticky-copysets" .!= False
   let _storage = StorageOptions{..}
 
   -- SASL config

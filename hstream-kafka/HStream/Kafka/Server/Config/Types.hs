@@ -227,6 +227,9 @@ parseMetaStoreAddr t =
 data StorageOptions = StorageOptions
   { fetchReaderTimeout :: Int
   , fetchMaxLen        :: Int
+  , scdEnabled         :: Bool
+  , localScdEnabled    :: Bool
+  , stickyCopysets     :: Bool
   } deriving (Show, Eq)
 
 data ExperimentalFeature

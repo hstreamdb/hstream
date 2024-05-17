@@ -21,6 +21,8 @@ import           GHC.Stack                               (HasCallStack)
 
 import qualified HStream.Base.Time                       as BaseTime
 import qualified HStream.Kafka.Server.Config.KafkaConfig as KC
+import           HStream.Kafka.Server.Config.Types       (ServerOpts (..),
+                                                          StorageOptions (..))
 import           HStream.Kafka.Server.Types              (ServerContext (..))
 import qualified HStream.Logger                          as Log
 import qualified HStream.Store                           as S
@@ -53,6 +55,9 @@ createTopic ServerContext{..} name replicationFactor numPartitions configs = do
           attrs = S.def { S.logReplicationFactor = S.defAttr1 replica
                         , S.logAttrsExtras       = extraAttr
                         , S.logBacklogDuration   = S.defAttr1 (getBacklogDuration topicConfigs)
+                        , S.logScdEnabled        = S.defAttr1 serverOpts._storage.scdEnabled
+                        , S.logLocalScdEnabled   = S.defAttr1 serverOpts._storage.localScdEnabled
+                        , S.logStickyCopySets    = S.defAttr1 serverOpts._storage.stickyCopysets
                         }
       try (S.createStream scLDClient streamId attrs) >>= \case
         Left (e :: SomeException)
