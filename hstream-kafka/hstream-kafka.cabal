@@ -173,6 +173,7 @@ library
     HStream.Kafka.Server.Handler.Group
     HStream.Kafka.Server.Handler.Offset
     HStream.Kafka.Server.Handler.Produce
+    HStream.Kafka.Server.Handler.SparseOffset.Offset
     HStream.Kafka.Server.Handler.Topic
     HStream.Kafka.Server.Security.SASL
 
@@ -193,7 +194,7 @@ library
 
   extra-libraries:    rdkafka++
   include-dirs:
-    include /usr/local/include external/asio/asio/include include
+    . include /usr/local/include external/asio/asio/include
 
   extra-lib-dirs:     /usr/local/lib
   hs-source-dirs:     .
@@ -245,6 +246,7 @@ library
 
   default-language:   GHC2021
   default-extensions:
+    CPP
     DerivingStrategies
     LambdaCase
     MultiWayIf
@@ -262,9 +264,9 @@ test-suite hstream-kafka-test
     HStream.Kafka.Common.AclEntrySpec
     HStream.Kafka.Common.AclSpec
     HStream.Kafka.Common.AuthorizerSpec
+    HStream.Kafka.Common.ConfigSpec
     HStream.Kafka.Common.OffsetManagerSpec
     HStream.Kafka.Common.TestUtils
-    HStream.Kafka.Common.ConfigSpec
 
   hs-source-dirs:     tests
   build-depends:
