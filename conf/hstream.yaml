@@ -306,6 +306,9 @@ kafka:
   #  fetch-mode: 1  # TODO: Currently, only mode 1 is supported
   #  fetch-reader-timeout: 50  # 50ms, default timeout of each read, 0 means nonblocking
   #  fetch-maxlen: 1000  # default max size of each read
+  #  scd-enabled: false # enable Single Copy Delivery mode, default is false
+  #  local-scd-enabled: false 
+  #  sticky-copysets: false # enable sticky copyset, default is false
 
 # Configuration for HStream Store
 # The configuration for hstore is **Optional**. When the values are not provided,
