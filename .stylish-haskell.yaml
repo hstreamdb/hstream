@@ -272,6 +272,8 @@ language_extensions:
   - TemplateHaskell
   - TypeApplications
   - QuasiQuotes
+  - CPP
+  - PatternSynonyms
 
 # Attempt to find the cabal file in ancestors of the current directory, and
 # parse options (currently only language extensions) from that.
