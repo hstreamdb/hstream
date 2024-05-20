@@ -3,6 +3,7 @@
 
 module HStream.Kafka.Server.Handler
   ( handlers
+  , sparseOffsetHandlers
   , unAuthedHandlers
   ) where
 
@@ -13,10 +14,13 @@ import           HStream.Kafka.Server.Handler.Group
 import           HStream.Kafka.Server.Handler.Offset
 import           HStream.Kafka.Server.Handler.Produce
 import           HStream.Kafka.Server.Handler.Security
+import           HStream.Kafka.Server.Handler.SparseOffset.Consume
+import           HStream.Kafka.Server.Handler.SparseOffset.Offset
+import           HStream.Kafka.Server.Handler.SparseOffset.Produce
 import           HStream.Kafka.Server.Handler.Topic
-import           HStream.Kafka.Server.Types                (ServerContext (..))
-import qualified Kafka.Protocol.Message                    as K
-import qualified Kafka.Protocol.Service                    as K
+import           HStream.Kafka.Server.Types                        (ServerContext (..))
+import qualified Kafka.Protocol.Message                            as K
+import qualified Kafka.Protocol.Service                            as K
 
 -------------------------------------------------------------------------------
 
@@ -93,6 +97,11 @@ import qualified Kafka.Protocol.Service                    as K
 #cv_handler CreateAcls, 0, 0
 #cv_handler DeleteAcls, 0, 0
 
+-- SparseOffset
+#cv_handler ListOffsets, 0, 2, SparseOffset
+#cv_handler Produce, 0, 7, SparseOffset
+#cv_handler Fetch, 0, 6, SparseOffset
+
 handlers :: ServerContext -> [K.ServiceHandler]
 handlers sc =
   [ #mk_handler ApiVersions, 0, 3
@@ -141,4 +150,48 @@ unAuthedHandlers :: ServerContext -> [K.ServiceHandler]
 unAuthedHandlers sc =
   [ #mk_handler ApiVersions, 0, 3
   , #mk_handler SaslHandshake, 0, 1
+  ]
+
+sparseOffsetHandlers :: ServerContext -> [K.ServiceHandler]
+sparseOffsetHandlers sc =
+  [ #mk_handler ApiVersions, 0, 3
+  , #mk_handler ListOffsets, 0, 2, SparseOffset
+  , #mk_handler Metadata, 0, 5
+    -- Write
+  , #mk_handler Produce, 0, 7, SparseOffset
+  , #mk_handler InitProducerId, 0, 0
+    -- Read
+  , #mk_handler Fetch, 0, 6, SparseOffset
+
+  , #mk_handler FindCoordinator, 0, 1
+
+  , #mk_handler CreateTopics, 0, 2
+  , #mk_handler DeleteTopics, 0, 1
+  , #mk_handler CreatePartitions, 0, 1
+
+    -- Group
+  , #mk_handler JoinGroup, 0, 2
+  , #mk_handler SyncGroup, 0, 1
+  , #mk_handler LeaveGroup, 0, 1
+  , #mk_handler Heartbeat, 0, 1
+  , #mk_handler ListGroups, 0, 1
+  , #mk_handler DescribeGroups, 0, 1
+
+  , #mk_handler OffsetCommit, 0, 3
+  , #mk_handler OffsetFetch, 0, 3
+
+    -- configs
+  , #mk_handler DescribeConfigs, 0, 0
+
+    -- Sasl
+  , #mk_handler SaslHandshake, 0, 1, AfterAuth
+  , #mk_handler SaslAuthenticate, 0, 0
+
+    -- For hstream
+  , #mk_handler HadminCommand, 0, 0
+
+    -- ACL
+  , #mk_handler DescribeAcls, 0, 0
+  , #mk_handler CreateAcls, 0, 0
+  , #mk_handler DeleteAcls, 0, 0
   ]
