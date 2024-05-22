@@ -22,8 +22,8 @@ import qualified HStream.Kafka.Group.Group              as G
 import qualified HStream.Kafka.Group.GroupOffsetManager as GOM
 import qualified HStream.Logger                         as Log
 import qualified HStream.MetaStore.Types                as Meta
-import           HStream.Store                          (LDClient)
 import qualified Kafka.Protocol.Error                   as K
+import           Kafka.Storage                          (LDClient)
 
 data GroupCoordinator = GroupCoordinator
   { groups       :: C.MVar (Utils.HashTable T.Text Group)

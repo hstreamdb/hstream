@@ -12,9 +12,8 @@ import           GHC.Stack                         (HasCallStack)
 
 import           HStream.Kafka.Common.RecordFormat
 import qualified HStream.Logger                    as Log
-import qualified HStream.Store                     as S
-import qualified HStream.Store.Internal.LogDevice  as S
 import qualified Kafka.Protocol.Encoding           as K
+import qualified Kafka.Storage                     as S
 
 readOneRecord
   :: HasCallStack

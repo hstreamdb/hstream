@@ -36,12 +36,12 @@ import           HStream.Kafka.Server.Config             (ServerOpts (..),
 import qualified HStream.Kafka.Server.Config.KafkaConfig as KC
 import           HStream.Kafka.Server.Types              (ServerContext (..))
 import qualified HStream.Logger                          as Log
-import qualified HStream.Store                           as S
 import qualified HStream.Utils                           as U
 import qualified Kafka.Protocol.Encoding                 as K
 import qualified Kafka.Protocol.Error                    as K
 import qualified Kafka.Protocol.Message                  as K
 import qualified Kafka.Protocol.Service                  as K
+import qualified Kafka.Storage                           as S
 
 -------------------------------------------------------------------------------
 

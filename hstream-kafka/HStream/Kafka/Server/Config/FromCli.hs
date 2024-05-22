@@ -35,8 +35,7 @@ import           Z.Data.CBytes                     (CBytes)
 
 import           HStream.Kafka.Server.Config.Types
 import qualified HStream.Logger                    as Log
-import           HStream.Store                     (Compression (..))
-import           HStream.Store.Logger              (LDLogLevel (..))
+import qualified Kafka.Storage                     as S
 
 -------------------------------------------------------------------------------
 
@@ -249,7 +248,7 @@ seedNodesParser = strOption
   <> metavar "ADDRESS"
   <> help "host:port pairs of seed nodes, separated by commas (,)"
 
-storeCompressionParser :: O.Parser Compression
+storeCompressionParser :: O.Parser S.Compression
 storeCompressionParser = option auto
   $ long "store-compression"
   <> metavar "none | lz4 | lz4hc"
@@ -271,7 +270,7 @@ logFlushImmediatelyParser = O.switch
    $ long "log-flush-immediately"
   <> help "Flush immediately after logging, this may help debugging"
 
-ldLogLevelParser :: O.Parser LDLogLevel
+ldLogLevelParser :: O.Parser S.LDLogLevel
 ldLogLevelParser = option auto
   $  long "store-log-level"
   <> metavar "[critical|error|warning|notify|info|debug|spew]"

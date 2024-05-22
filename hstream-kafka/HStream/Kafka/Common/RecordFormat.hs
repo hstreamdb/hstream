@@ -14,8 +14,8 @@ import           Data.Int
 import           GHC.Generics            (Generic)
 
 import qualified HStream.Logger          as Log
-import qualified HStream.Store           as S
 import qualified Kafka.Protocol.Encoding as K
+import qualified Kafka.Storage           as S
 
 -- | Record is the smallest unit of data in HStream Kafka.
 --

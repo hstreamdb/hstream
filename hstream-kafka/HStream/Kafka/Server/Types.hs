@@ -27,7 +27,7 @@ import qualified HStream.Kafka.Server.Config.KafkaConfig as KC
 import           HStream.MetaStore.Types                 (MetaHandle (..))
 import           HStream.Stats                           (newServerStatsHolder)
 import qualified HStream.Stats                           as Stats
-import qualified HStream.Store                           as S
+import qualified Kafka.Storage                           as S
 
 data ServerContext = ServerContext
   { serverID                 :: !Word32

@@ -14,8 +14,8 @@ import           HStream.Base.Timer (CompactedWorker, startCompactedWorker,
                                      stopCompactedWorker,
                                      triggerCompactedWorker)
 import qualified HStream.Logger     as Log
-import qualified HStream.Store      as S
 import           HStream.Utils      (textToCBytes)
+import qualified Kafka.Storage      as S
 
 type LogID = Word64
 type LSN = Word64

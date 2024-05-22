@@ -36,8 +36,7 @@ import           GHC.Stack                         (HasCallStack)
 
 import           HStream.Kafka.Common.Read
 import           HStream.Kafka.Common.RecordFormat
-import qualified HStream.Store                     as S
-import qualified HStream.Store.Internal.LogDevice  as S
+import qualified Kafka.Storage                     as S
 
 -------------------------------------------------------------------------------
 

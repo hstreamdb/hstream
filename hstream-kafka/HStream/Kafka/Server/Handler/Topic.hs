@@ -32,13 +32,13 @@ import qualified HStream.Kafka.Common.Utils            as Utils
 import qualified HStream.Kafka.Server.Core.Topic       as Core
 import           HStream.Kafka.Server.Types            (ServerContext (..))
 import qualified HStream.Logger                        as Log
-import qualified HStream.Store                         as S
 import           Kafka.Protocol                        (NullableString)
 import qualified Kafka.Protocol.Encoding               as K
 import           Kafka.Protocol.Error                  (ErrorCode)
 import qualified Kafka.Protocol.Error                  as K
 import qualified Kafka.Protocol.Message                as K
 import qualified Kafka.Protocol.Service                as K
+import qualified Kafka.Storage                         as S
 
 --------------------
 -- 19: CreateTopics
