@@ -435,11 +435,13 @@ runQuery sc AT.QueryCmdList = do
 runConnector :: ServerContext -> AT.ConnectorCommand -> IO Text
 runConnector ServerContext{..} AT.ConnectorCmdList = do
   connectors <- HC.listIOTasks scIOWorker
-  let headers = ["Connector Name" :: Text, "Type", "Target", "Status", "CreatedTime"]
+  let headers = ["Connector Name" :: Text, "Type", "Target", "Node", "Task ID", "Status", "CreatedTime"]
   rows <- forM connectors $ \API.Connector{..} -> do
     return [ connectorName
            , connectorType
            , connectorTarget
+           , connectorNode
+           , connectorTaskId
            , connectorStatus
            , maybe "unknown" (Text.pack . show . timestampToMsTimestamp) connectorCreationTime
            ]
