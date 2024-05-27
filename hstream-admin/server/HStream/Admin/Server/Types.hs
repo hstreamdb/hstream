@@ -243,18 +243,18 @@ queryCmdParser = O.hsubparser
 
 data ConnectorCommand
   = ConnectorCmdList
-  | ConnectorCmdRecover Text
+  | ConnectorCmdResume Text
   | ConnectorCmdDescribe Text
   deriving (Show)
 
 connectorCmdParser :: O.Parser ConnectorCommand
 connectorCmdParser = O.hsubparser
   ( O.command "list" (O.info (pure ConnectorCmdList) (O.progDesc "Get all connectors"))
- <> O.command "recover" (O.info (ConnectorCmdRecover <$> O.strOption ( O.long "id"
-                                                                    <> O.short 'i'
-                                                                    <> O.metavar "CONNECTOR_ID"
-                                                                    <> O.help "The ID of the connector"))
-                                 (O.progDesc "Recover specific connector"))
+ <> O.command "resume" (O.info (ConnectorCmdResume <$> O.strOption ( O.long "id"
+                                                                  <> O.short 'i'
+                                                                  <> O.metavar "CONNECTOR_ID"
+                                                                  <> O.help "The ID of the connector"))
+                                 (O.progDesc "Resume specific connector"))
  <> O.command "describe" (O.info (ConnectorCmdDescribe <$> O.strOption ( O.long "id"
                                                                       <> O.short 'i'
                                                                       <> O.metavar "CONNECTOR_ID"

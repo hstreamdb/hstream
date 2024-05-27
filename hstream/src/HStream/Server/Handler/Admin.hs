@@ -447,7 +447,7 @@ runConnector ServerContext{..} AT.ConnectorCmdList = do
            ]
   let content = Aeson.object ["headers" .= headers, "rows" .= rows]
   return $ AT.tableResponse content
-runConnector ServerContext{..} (AT.ConnectorCmdRecover cId) = do
+runConnector ServerContext{..} (AT.ConnectorCmdResume cId) = do
   HC.recoverTask scIOWorker cId
   API.Connector{..} <- HC.showIOTask_ scIOWorker cId
   let headers = ["Connector Name" :: Text, "Type", "Target", "Status", "Config"]
