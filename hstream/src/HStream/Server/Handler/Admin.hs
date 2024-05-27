@@ -475,6 +475,9 @@ runConnector ServerContext{..} (AT.ConnectorCmdDescribe cId) = do
              ]]
   let content = Aeson.object ["headers" .= headers, "rows" .= rows]
   return $ AT.tableResponse content
+runConnector ServerContext{..} (AT.ConnectorCmdDelete cId) = do
+  void $ HC.deleteIOTask scIOWorker cId
+  return $ AT.plainResponse "OK"
 
 -------------------------------------------------------------------------------
 -- Admin Status Command

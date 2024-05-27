@@ -245,6 +245,7 @@ data ConnectorCommand
   = ConnectorCmdList
   | ConnectorCmdResume Text
   | ConnectorCmdDescribe Text
+  | ConnectorCmdDelete Text
   deriving (Show)
 
 connectorCmdParser :: O.Parser ConnectorCommand
@@ -260,6 +261,11 @@ connectorCmdParser = O.hsubparser
                                                                       <> O.metavar "CONNECTOR_ID"
                                                                       <> O.help "The ID of the connector"))
                                  (O.progDesc "Get the details of specific connector"))
+ <> O.command "delete" (O.info (ConnectorCmdDelete <$> O.strOption ( O.long "id"
+                                                                  <> O.short 'i'
+                                                                  <> O.metavar "CONNECTOR_ID"
+                                                                  <> O.help "The ID of the connector"))
+                                 (O.progDesc "Delete specific connector"))
   )
 
 -------------------------------------------------------------------------------
