@@ -25,12 +25,12 @@ import qualified HStream.Kafka.Common.RecordFormat     as K
 import           HStream.Kafka.Common.Resource
 import           HStream.Kafka.Server.Types            (ServerContext (..))
 import qualified HStream.Logger                        as Log
-import qualified HStream.Store                         as S
 import qualified HStream.Utils                         as U
 import qualified Kafka.Protocol.Encoding               as K
 import qualified Kafka.Protocol.Error                  as K
 import qualified Kafka.Protocol.Message                as K
 import qualified Kafka.Protocol.Service                as K
+import qualified Kafka.Storage                         as S
 
 -- acks: (FIXME: Currently we only support -1)
 --   0: The server will not send any response(this is the only case where the

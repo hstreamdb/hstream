@@ -19,7 +19,7 @@ import           Foreign.ForeignPtr                (newForeignPtr_)
 import           Foreign.Ptr                       (nullPtr)
 
 import qualified HStream.Kafka.Common.RecordFormat as K
-import qualified HStream.Store                     as S
+import qualified Kafka.Storage                     as S
 
 data FetchLogContext = FetchLogContext
   { expectedOffset :: Int64

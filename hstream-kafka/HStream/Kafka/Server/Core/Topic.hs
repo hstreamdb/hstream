@@ -25,10 +25,10 @@ import           HStream.Kafka.Server.Config.Types       (ServerOpts (..),
                                                           StorageOptions (..))
 import           HStream.Kafka.Server.Types              (ServerContext (..))
 import qualified HStream.Logger                          as Log
-import qualified HStream.Store                           as S
 import qualified HStream.Utils                           as Utils
 import qualified Kafka.Protocol                          as K
 import qualified Kafka.Protocol.Error                    as K
+import qualified Kafka.Storage                           as S
 
 createTopic
   :: ServerContext

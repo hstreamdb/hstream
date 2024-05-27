@@ -24,10 +24,10 @@ import qualified HStream.Kafka.Group.Group             as G
 import qualified HStream.Kafka.Group.GroupCoordinator  as GC
 import           HStream.Kafka.Server.Types            (ServerContext (..))
 import qualified HStream.Logger                        as Log
-import qualified HStream.Store                         as S
 import qualified Kafka.Protocol                        as K
 import qualified Kafka.Protocol.Error                  as K
 import qualified Kafka.Protocol.Service                as K
+import qualified Kafka.Storage                         as S
 
 --------------------
 -- 2: ListOffsets

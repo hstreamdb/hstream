@@ -13,10 +13,10 @@ import qualified Data.Vector                             as V
 import qualified HStream.Kafka.Common.Utils              as K
 import qualified HStream.Kafka.Server.Config.KafkaConfig as KC
 import           HStream.Kafka.Server.Handler.Topic      (validateTopicName)
-import qualified HStream.Store                           as S
 import qualified HStream.Utils                           as Utils
 import qualified Kafka.Protocol                          as K
 import qualified Kafka.Protocol.Error                    as K
+import qualified Kafka.Storage                           as S
 
 data KafkaConfigManager
   = KafkaConfigManager

@@ -20,7 +20,7 @@ import           Data.Int                                       (Int32)
 import qualified Data.List                                      as L
 import qualified Data.Map                                       as Map
 import           Data.Maybe                                     (fromJust)
-import qualified Data.Set                                       as S
+import qualified Data.Set                                       as Set
 import           Data.Text                                      (Text)
 import qualified Data.Text                                      as Text
 import qualified Data.Vector                                    as V
@@ -41,12 +41,12 @@ import qualified HStream.Kafka.Server.Handler.Topic             as K
 import           HStream.Kafka.Server.Types                     (ServerContext (..))
 import qualified HStream.Logger                                 as Log
 import qualified HStream.Server.HStreamApi                      as A
-import qualified HStream.Store                                  as S
 import qualified HStream.Utils                                  as Utils
 import qualified Kafka.Protocol.Encoding                        as K
 import qualified Kafka.Protocol.Error                           as K
 import qualified Kafka.Protocol.Message                         as K
 import qualified Kafka.Protocol.Service                         as K
+import qualified Kafka.Storage                                  as S
 
 --------------------
 -- 18: ApiVersions
@@ -107,11 +107,11 @@ handleMetadata ctx reqCtx req = do
           -- Note: authorize **DESCRIBE** for existed topics;
           --       authorize **DESCRIBE** and **CREATE** for
           --       unexisted topics.
-          let topicNames = S.fromList . V.toList $
+          let topicNames = Set.fromList . V.toList $
                 V.map (\K.MetadataRequestTopic{..} -> name) v
-          allStreamNames <- S.findStreams ctx.scLDClient S.StreamTypeTopic <&> S.fromList . L.map (Utils.cBytesToText . S.streamName)
-          let needCreate = S.toList $ topicNames S.\\ allStreamNames
-              alreadyExist = V.fromList . S.toList $ topicNames `S.intersection` allStreamNames
+          allStreamNames <- S.findStreams ctx.scLDClient S.StreamTypeTopic <&> Set.fromList . L.map (Utils.cBytesToText . S.streamName)
+          let needCreate = Set.toList $ topicNames Set.\\ allStreamNames
+              alreadyExist = V.fromList . Set.toList $ topicNames `Set.intersection` allStreamNames
               kafkaBrokerConfigs = ctx.kafkaBrokerConfigs
 
           createResp <-

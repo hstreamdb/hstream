@@ -20,7 +20,7 @@ import           Text.Read                               (readEither)
 
 import qualified HStream.Kafka.Server.Config.KafkaConfig as KC
 import           HStream.Kafka.Server.Config.Types
-import           HStream.Store                           (Compression (..))
+import qualified Kafka.Storage                           as S
 
 -------------------------------------------------------------------------------
 
@@ -61,7 +61,7 @@ parseJSONToOptions CliOptions{..} obj = do
   let !_serverGossipAddress = fromMaybe _advertisedAddress (cliServerGossipAddress <|> nodeGossipAddress)
 
   let !_metaStore          = fromMaybe nodeMetaStore cliMetaStore
-  let !_compression        = fromMaybe CompressionNone cliStoreCompression
+  let !_compression        = fromMaybe S.CompressionNone cliStoreCompression
 
   let !_serverLogLevel     = fromMaybe (readWithErrLog "log-level" nodeLogLevel) cliServerLogLevel
   let !_serverLogWithColor = nodeLogWithColor || cliServerLogWithColor

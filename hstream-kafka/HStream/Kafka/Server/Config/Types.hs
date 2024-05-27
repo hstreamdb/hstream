@@ -36,17 +36,16 @@ import           Data.Text                               (Text)
 import qualified Data.Text                               as Text
 import qualified Data.Vector                             as V
 import           Data.Word
-import           HStream.Gossip                          (GossipOpts (..),
-                                                          defaultGossipOpts)
 import qualified Options.Applicative                     as O
 import qualified Z.Data.CBytes                           as CBytes
 import           Z.Data.CBytes                           (CBytes)
 
+import           HStream.Gossip                          (GossipOpts (..),
+                                                          defaultGossipOpts)
 import qualified HStream.Kafka.Server.Config.KafkaConfig as KC
 import qualified HStream.Logger                          as Log
 import qualified HStream.Server.HStreamInternal          as SAI
-import           HStream.Store                           (Compression (..))
-import           HStream.Store.Logger                    (LDLogLevel)
+import qualified Kafka.Storage                           as S
 
 -------------------------------------------------------------------------------
 
@@ -83,8 +82,8 @@ data ServerOpts = ServerOpts
 
     -- Store Options
   , _storage                      :: !StorageOptions
-  , _compression                  :: !Compression
-  , _ldLogLevel                   :: !LDLogLevel
+  , _compression                  :: !S.Compression
+  , _ldLogLevel                   :: !S.LDLogLevel
   , _ldConfigPath                 :: !CBytes
 
   , experimentalFeatures          :: ![ExperimentalFeature]
@@ -132,9 +131,9 @@ data CliOptions = CliOptions
 
     -- * Store config
   , cliStoreConfigPath              :: !CBytes
-  , cliLdLogLevel                   :: !(Maybe LDLogLevel)
+  , cliLdLogLevel                   :: !(Maybe S.LDLogLevel)
     -- ** Internal Store options
-  , cliStoreCompression             :: !(Maybe Compression)
+  , cliStoreCompression             :: !(Maybe S.Compression)
 
     -- SASL Authentication
   , cliEnableSaslAuth               :: !Bool
