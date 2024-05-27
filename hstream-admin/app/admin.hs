@@ -1,5 +1,3 @@
-{-# LANGUAGE BangPatterns #-}
-
 module Main (main) where
 
 import           Data.List                    (uncons)
@@ -33,7 +31,7 @@ main = do
 --
 -- data Cli = ServerCli Server.Cli
 --          | StoreCli ...
-data Cli = ServerCli Server.Cli
+newtype Cli = ServerCli Server.Cli
 
 cliParser :: O.Parser Cli
 cliParser =
@@ -72,7 +70,8 @@ runServerCli' s (Server.ServerAdminCmd adminCmd) = do
       Server.AdminStreamCommand (Server.StreamCmdDelete sid _)             -> (True, sid)
       Server.AdminSubscriptionCommand (Server.SubscriptionCmdDelete sid _) -> (True, sid)
       Server.AdminSubscriptionCommand (Server.SubscriptionCmdDescribe sid) -> (True, sid)
-      Server.AdminConnectorCommand (Server.ConnectorCmdRecover cId)        -> (True, cId)
+      Server.AdminConnectorCommand (Server.ConnectorCmdResume cId)         -> (True, cId)
+      Server.AdminConnectorCommand (Server.ConnectorCmdDelete cId)         -> (True, cId)
       Server.AdminConnectorCommand (Server.ConnectorCmdDescribe cId)       -> (True, cId)
       _                                                                    -> (False, "")
 

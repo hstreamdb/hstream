@@ -435,17 +435,19 @@ runQuery sc AT.QueryCmdList = do
 runConnector :: ServerContext -> AT.ConnectorCommand -> IO Text
 runConnector ServerContext{..} AT.ConnectorCmdList = do
   connectors <- HC.listIOTasks scIOWorker
-  let headers = ["Connector Name" :: Text, "Type", "Target", "Status", "CreatedTime"]
+  let headers = ["Connector Name" :: Text, "Type", "Target", "Node", "Task ID", "Status", "CreatedTime"]
   rows <- forM connectors $ \API.Connector{..} -> do
     return [ connectorName
            , connectorType
            , connectorTarget
+           , connectorNode
+           , connectorTaskId
            , connectorStatus
            , maybe "unknown" (Text.pack . show . timestampToMsTimestamp) connectorCreationTime
            ]
   let content = Aeson.object ["headers" .= headers, "rows" .= rows]
   return $ AT.tableResponse content
-runConnector ServerContext{..} (AT.ConnectorCmdRecover cId) = do
+runConnector ServerContext{..} (AT.ConnectorCmdResume cId) = do
   HC.recoverTask scIOWorker cId
   API.Connector{..} <- HC.showIOTask_ scIOWorker cId
   let headers = ["Connector Name" :: Text, "Type", "Target", "Status", "Config"]
@@ -473,6 +475,9 @@ runConnector ServerContext{..} (AT.ConnectorCmdDescribe cId) = do
              ]]
   let content = Aeson.object ["headers" .= headers, "rows" .= rows]
   return $ AT.tableResponse content
+runConnector ServerContext{..} (AT.ConnectorCmdDelete cId) = do
+  void $ HC.deleteIOTask scIOWorker cId
+  return $ AT.plainResponse "OK"
 
 -------------------------------------------------------------------------------
 -- Admin Status Command
