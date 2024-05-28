@@ -101,6 +101,14 @@ simpleNodesFilterParser =
       (StatusNodeIdx <$> many (option auto (long "nodes" <> metavar "INT" <> help "list of node ids")))
   <|> (StatusNodeName <$> many (strOption (long "names" <> metavar "STRING" <> help "list of hostnames")))
 
+-- | For compatiable with ldshell.
+--
+-- Actually we can always use 'simpleNodesFilterParser', there are only arguments difference.
+simpleNodesFilterParser1 :: Parser SimpleNodesFilter
+simpleNodesFilterParser1 =
+      (StatusNodeIdx <$> many (option auto (long "node-indexes" <> metavar "INT" <> help "list of node ids")))
+  <|> (StatusNodeName <$> many (strOption (long "node-names" <> metavar "STRING" <> help "list of hostnames")))
+
 fromSimpleNodesFilter :: SimpleNodesFilter -> [AA.NodesFilter]
 fromSimpleNodesFilter s =
   let fromIdx idx = AA.NodesFilter (Just (AA.NodeID (Just idx) Nothing Nothing)) Nothing Nothing
@@ -196,7 +204,7 @@ nodesConfigParser = hsubparser
                        (progDesc "Print tier's NodesConfig to stdout"))
  <> O.command "bootstrap" (info nodesConfigBootstrapParser
                             (progDesc "Finalize the bootstrapping and allow the cluster to be used"))
- <> O.command "shrink" (info (NodesConfigRemove <$> simpleNodesFilterParser)
+ <> O.command "shrink" (info (NodesConfigRemove <$> simpleNodesFilterParser1)
                          (progDesc $ "Shrinks the cluster by removing nodes from"
                                   <> "the NodesConfig. This operation requires"
                                   <> "that the removed nodes are empty"))
@@ -508,7 +516,7 @@ parseLogReplicateAcross = eitherReader $ parse . V.packASCII
         "node"        -> S.NodeLocationScope_NODE
         "rack"        -> S.NodeLocationScope_RACK
         "row"         -> S.NodeLocationScope_ROW
-        "cluster"     ->  S.NodeLocationScope_CLUSTER
+        "cluster"     -> S.NodeLocationScope_CLUSTER
         "data-center" -> S.NodeLocationScope_DATA_CENTER
         "region"      -> S.NodeLocationScope_REGION
         "root"        -> S.NodeLocationScope_ROOT
@@ -845,7 +853,7 @@ maintenanceApplyOptsParser = MaintenanceApplyOpts
                              <> metavar "NX:SY..."
                              <> help ("Apply maintenance to specified shards "
                                      <> "in notation like \"N1:S2\", \"N3:S4\", \"N165:S14\"")))
-  <*> option auto ( long "shard_target_state"
+  <*> option auto ( long "shard-target-state"
                  <> metavar "[may-disappear|drained]"
                  <> value AA.ShardOperationalState_MAY_DISAPPEAR
                  <> showDefault
@@ -860,17 +868,17 @@ maintenanceApplyOptsParser = MaintenanceApplyOpts
                          <> help "User for logging and auditing, by default taken from environment"))
   <*> flag False True ( long "no-group"
                      <> help "Defines should MaintenanceManager group this maintenance or not")
-  <*> switch ( long "skip_safety_checks"
+  <*> switch ( long "skip-safety-checks"
             <> help "If set safety-checks will be skipped")
-  <*> switch ( long "skip_capacity_checks"
+  <*> switch ( long "skip-capacity-checks"
             <> help "If set capacity-checks will be skipped")
   <*> option auto ( long "ttl"
                  <> value 0
                  <> showDefault
                  <> help "If set this maintenance will be auto-expired after given number of seconds")
-  <*> switch ( long "allow_passive_drains"
+  <*> switch ( long "allow-passive-drains"
             <> help "If set passive drains will be allowed")
-  <*> switch ( long "force_restore_rebuilding"
+  <*> switch ( long "force-restore-rebuilding"
             <> help "Forces rebuilding to run in RESTORE mode")
   <*> option auto ( long "priority"
                   <> metavar "[imminent|high|medium|low]"
