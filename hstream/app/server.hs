@@ -205,7 +205,14 @@ serve sc@ServerContext{..} rpcOpts enableStreamV2 = do
             Gossip -> return ()
             _ -> do
               getProtoTimestamp >>= \x -> upsertMeta @Proto.Timestamp clusterStartTimeId x metaHandle
-              handle (\(_ :: RQLiteRowNotFound) -> return ()) $ deleteAllMeta @TaskAllocation metaHandle
+              -- FIXME: The following line is very delicate and can cause weird problems.
+              --        It was intended to re-allocate tasks after a server restart. However,
+              --        this should be done BEFORE any node serves any client request or
+              --        internal task. However, the current `serverOnStarted` is not
+              --        ensured to be called before serving outside.
+              -- TODO:  I do not have 100% confidence this is correct. So it should be
+              --        carefully investigated and tested.
+              -- handle (\(_ :: RQLiteRowNotFound) -> return ()) $ deleteAllMeta @TaskAllocation metaHandle
           -- recover tasks
           Log.info "recovering local io tasks"
           Cluster.recoverLocalTasks sc scIOWorker

@@ -176,7 +176,14 @@ serve sc@ServerContext{..} netOpts usingCppServer usingSparseOffset = do
               -- FIXME: Why need to call deleteAll here?
               -- Also in CI, getRqResult(common/hstream/HStream/MetaStore/RqliteUtils.hs) may throw a RQLiteUnspecifiedErr
               -- because the affected rows are more than 1, why that's invalid ?
-              deleteAllMeta @M.TaskAllocation metaHandle `catches` exceptionHandlers
+              -- FIXME: The following line is very delicate and can cause weird problems.
+              --        It was intended to re-allocate tasks after a server restart. However,
+              --        this should be done BEFORE any node serves any client request or
+              --        internal task. However, the current `serverOnStarted` is not
+              --        ensured to be called before serving outside.
+              -- TODO:  I do not have 100% confidence this is correct. So it should be
+              --        carefully investigated and tested.
+              -- deleteAllMeta @M.TaskAllocation metaHandle `catches` exceptionHandlers
 
           Log.info "starting task detector"
           TM.runTaskDetector $ TM.TaskDetector {
