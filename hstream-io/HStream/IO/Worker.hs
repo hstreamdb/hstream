@@ -89,7 +89,7 @@ createIOTask worker@Worker{..} name typ target cfg = do
 createIOTaskFromTaskInfo
   :: HasCallStack
   => Worker -> T.Text -> TaskInfo -> IOOptions -> Bool -> Bool -> Bool -> IO ()
-createIOTaskFromTaskInfo worker@Worker{..} taskId taskInfo@TaskInfo {..}
+createIOTaskFromTaskInfo Worker{..} taskId taskInfo@TaskInfo {..}
                          ioOptions cleanIfExists createMetaData enableCheck = do
   M.getIOTaskFromName workerHandle taskName >>= \case
     Nothing -> pure ()
@@ -132,9 +132,8 @@ showIOTask_ worker@Worker{..} name = do
     Nothing -> throwIO $ HE.ConnectorNotFound name
     Just c  -> do
       dockerStatus <- getDockerStatus task
-      let connector = convertTaskMeta c
+      let connector = convertTaskMeta (taskId, c)
       return $ connector { API.connectorOffsets = taskOffsets
-                         , API.connectorTaskId  = taskId
                          , API.connectorNode    = fromMaybe "" (getServerNode connectorConfig)
                          , API.connectorConfig  = getConnectorConfig connectorConfig
                          , API.connectorImage   = tcImage taskConfig

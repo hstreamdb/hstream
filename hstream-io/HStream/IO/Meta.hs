@@ -11,6 +11,7 @@ import qualified Data.Text                 as T
 import           GHC.Stack                 (HasCallStack)
 
 import qualified Data.Aeson                as J
+import qualified Data.Map.Strict           as M
 import           HStream.IO.Types
 import qualified HStream.IO.Types          as Types
 import           HStream.MetaStore.Types   (MetaHandle, MetaStore (..))
@@ -23,8 +24,8 @@ createIOTaskMeta h taskName taskId taskInfo = do
   insertMeta taskName (TaskIdMeta taskId) h
 
 listIOTaskMeta :: MetaHandle -> IO [API.Connector]
-listIOTaskMeta h = do
-  map convertTaskMeta . filter (\TaskMeta{..} -> taskStateMeta /= DELETED) <$> listMeta @TaskMeta h
+listIOTaskMeta h =
+  map convertTaskMeta . filter (\(_, TaskMeta{..}) -> taskStateMeta /= DELETED) . M.toList <$> getAllMeta @TaskMeta h
 
 getIOTaskMeta :: MetaHandle -> T.Text -> IO (Maybe TaskMeta)
 getIOTaskMeta h tid = getMeta tid h
