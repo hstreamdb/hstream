@@ -200,7 +200,7 @@ serve sc@ServerContext{..} rpcOpts enableStreamV2 = do
 #endif
                 <> ", waiting for cluster to get ready"
         void $ forkIO $ do
-          void (readMVar (clusterReady gossipContext)) >> Log.info "Cluster is ready!"
+          void (readMVar (clusterReady gossipContext))
           readMVar (clusterInited gossipContext) >>= \case
             Gossip -> return ()
             _ -> do
