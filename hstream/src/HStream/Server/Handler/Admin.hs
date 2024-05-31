@@ -61,6 +61,7 @@ import qualified HStream.Server.Core.View         as HC
 #endif
 import           HStream.Common.Server.MetaData   (TaskAllocation,
                                                    renderTaskAllocationsToTable)
+import           HStream.IO.Types                 (TaskIdMeta, TaskMeta)
 import           HStream.Server.Exception         (catchDefaultEx,
                                                    defaultExceptionHandle)
 import qualified HStream.Server.HStreamApi        as API
@@ -69,6 +70,8 @@ import           HStream.Server.MetaData          (QVRelation, QueryInfo,
                                                    renderQVRelationToTable,
                                                    renderQueryInfosToTable,
                                                    renderQueryStatusToTable,
+                                                   renderTaskIdMetaMapToTable,
+                                                   renderTaskMetaMapToTable,
                                                    renderViewInfosToTable)
 import           HStream.Server.Types
 import qualified HStream.Stats                    as Stats
@@ -244,19 +247,25 @@ getResType resType =
 runMeta :: ServerContext -> AT.MetaCommand -> IO Text
 runMeta ServerContext{..} (AT.MetaCmdList resType) = do
   case resType of
-    "subscription" -> pure <$> AT.tableResponse . renderSubscriptionWrapToTable  =<< M.listMeta @SubscriptionWrap metaHandle
-    "query-info"   -> pure <$> AT.plainResponse . renderQueryInfosToTable =<< M.listMeta @QueryInfo metaHandle
-    "view-info"    -> pure <$> AT.plainResponse . renderViewInfosToTable =<< M.listMeta @ViewInfo metaHandle
-    "qv-relation"  -> pure <$> AT.tableResponse . renderQVRelationToTable =<< M.listMeta @QVRelation metaHandle
-    _ -> return $ AT.errorResponse "invalid resource type, try [subscription|query-info|view-info|qv-relateion]"
+    "subscription"    -> pure <$> AT.tableResponse . renderSubscriptionWrapToTable  =<< M.listMeta @SubscriptionWrap metaHandle
+    "query-info"      -> pure <$> AT.plainResponse . renderQueryInfosToTable =<< M.listMeta @QueryInfo metaHandle
+    "view-info"       -> pure <$> AT.plainResponse . renderViewInfosToTable =<< M.listMeta @ViewInfo metaHandle
+    "qv-relation"     -> pure <$> AT.tableResponse . renderQVRelationToTable =<< M.listMeta @QVRelation metaHandle
+    "connectors"      -> pure <$> AT.tableResponse . renderTaskIdMetaMapToTable =<< M.getAllMeta @TaskIdMeta metaHandle
+    "connector-infos" -> pure <$> AT.tableResponse . renderTaskMetaMapToTable =<< M.getAllMeta @TaskMeta metaHandle
+    _ -> return $ AT.errorResponse "invalid resource type, try "
+               <> "[subscription|query-info|view-info|qv-relateion|connectors|connector-infos]"
 runMeta ServerContext{..} (AT.MetaCmdGet resType rId) = do
   case resType of
-    "subscription" -> pure <$> maybe (AT.plainResponse "Not Found") (AT.tableResponse . renderSubscriptionWrapToTable .L.singleton) =<< M.getMeta @SubscriptionWrap rId metaHandle
-    "query-info"   -> pure <$> maybe (AT.plainResponse "Not Found") (AT.plainResponse . renderQueryInfosToTable . L.singleton) =<< M.getMeta @QueryInfo rId metaHandle
-    "query-status" -> pure <$> maybe (AT.plainResponse "Not Found") (AT.tableResponse . renderQueryStatusToTable . L.singleton) =<< M.getMeta @QueryStatus rId metaHandle
-    "view-info"    -> pure <$> maybe (AT.plainResponse "Not Found") (AT.plainResponse . renderViewInfosToTable . L.singleton) =<< M.getMeta @ViewInfo rId metaHandle
-    "qv-relation"  -> pure <$> maybe (AT.plainResponse "Not Found") (AT.tableResponse . renderQVRelationToTable . L.singleton) =<< M.getMeta @QVRelation rId metaHandle
-    _ -> return $ AT.errorResponse "invalid resource type, try [subscription|query-info|query-status|view-info|qv-relateion]"
+    "subscription"   -> pure <$> maybe (AT.plainResponse "Not Found") (AT.tableResponse . renderSubscriptionWrapToTable .L.singleton) =<< M.getMeta @SubscriptionWrap rId metaHandle
+    "query-info"     -> pure <$> maybe (AT.plainResponse "Not Found") (AT.plainResponse . renderQueryInfosToTable . L.singleton) =<< M.getMeta @QueryInfo rId metaHandle
+    "query-status"   -> pure <$> maybe (AT.plainResponse "Not Found") (AT.tableResponse . renderQueryStatusToTable . L.singleton) =<< M.getMeta @QueryStatus rId metaHandle
+    "view-info"      -> pure <$> maybe (AT.plainResponse "Not Found") (AT.plainResponse . renderViewInfosToTable . L.singleton) =<< M.getMeta @ViewInfo rId metaHandle
+    "qv-relation"    -> pure <$> maybe (AT.plainResponse "Not Found") (AT.tableResponse . renderQVRelationToTable . L.singleton) =<< M.getMeta @QVRelation rId metaHandle
+    "connector"      -> pure <$> maybe (AT.plainResponse "Not Found") (AT.tableResponse . renderTaskIdMetaMapToTable . Map.singleton rId) =<< M.getMeta @TaskIdMeta rId metaHandle
+    "connector-info" -> pure <$> maybe (AT.plainResponse "Not Found") (AT.tableResponse . renderTaskMetaMapToTable . Map.singleton rId) =<< M.getMeta @TaskMeta rId metaHandle
+    _ -> return $ AT.errorResponse "invalid resource type, try "
+               <> "[subscription|query-info|query-status|view-info|qv-relateion|connector|connector-info]"
 runMeta ServerContext{serverOpts=ServerOpts{..}} AT.MetaCmdInfo = do
   let headers = ["Meta Type" :: Text, "Connection Info"]
       rows = case _metaStore of

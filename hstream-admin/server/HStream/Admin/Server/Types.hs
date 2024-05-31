@@ -283,13 +283,13 @@ metaCmdParser = O.hsubparser
                                                          <> O.short 'r'
                                                          <> O.metavar "RESOURCE_CATEGORY"
                                                          <> O.help ("The category of the resource, currently support: "
-                                                                 <> "[subscription|query-info|view-info|qv-relation]")))
+                                                                 <> "[subscription|query-info|view-info|qv-relation|connectors|connector-infos]")))
                              (O.progDesc "List all metadata of specific resource"))
  <> O.command "get" (O.info (MetaCmdGet <$> O.strOption ( O.long "resource"
                                                        <> O.short 'r'
                                                        <> O.metavar "RESOURCE_CATEGORY"
                                                        <> O.help ("The category of the resource, currently support: "
-                                                                 <> "[subscription|query-info|query-status|view-info|qv-relation]"))
+                                                                 <> "[subscription|query-info|query-status|view-info|qv-relation|connector|connector-info]"))
                                         <*> O.strOption ( O.long "id"
                                                        <> O.short 'i'
                                                        <> O.metavar "RESOURCE_ID"
