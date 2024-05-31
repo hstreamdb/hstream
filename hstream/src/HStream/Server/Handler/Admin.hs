@@ -12,7 +12,8 @@ module HStream.Server.Handler.Admin
 
 import           Control.Concurrent               (readMVar, tryReadMVar)
 import           Control.Concurrent.STM.TVar      (readTVarIO)
-import           Control.Monad                    (forM, void)
+import           Control.Exception                (catch, throw)
+import           Control.Monad                    (forM, void, when)
 import           Data.Aeson                       ((.=))
 import qualified Data.Aeson                       as Aeson
 import qualified Data.Aeson.Text                  as Aeson
@@ -20,6 +21,7 @@ import qualified Data.HashMap.Strict              as HM
 import qualified Data.List                        as L
 import           Data.Map.Strict                  (Map)
 import qualified Data.Map.Strict                  as Map
+import qualified Data.Set                         as ST
 import           Data.Text                        (Text)
 import qualified Data.Text                        as Text
 import qualified Data.Text.Lazy                   as TL
@@ -36,7 +38,6 @@ import           Proto3.Suite                     (Enumerated (Enumerated),
 import qualified Z.Data.CBytes                    as CB
 import           Z.Data.CBytes                    (CBytes)
 
-import           Control.Exception                (throw)
 import qualified HStream.Admin.Server.Types       as AT
 import           HStream.Base                     (rmTrailingZeros)
 import qualified HStream.Exception                as HE
@@ -61,7 +62,7 @@ import qualified HStream.Server.Core.View         as HC
 #endif
 import           HStream.Common.Server.MetaData   (TaskAllocation,
                                                    renderTaskAllocationsToTable)
-import           HStream.IO.Types                 (TaskIdMeta, TaskMeta)
+import           HStream.IO.Types                 (TaskIdMeta (..), TaskMeta)
 import           HStream.Server.Exception         (catchDefaultEx,
                                                    defaultExceptionHandle)
 import qualified HStream.Server.HStreamApi        as API
@@ -81,6 +82,7 @@ import           HStream.Utils                    (Interval (..), cBytesToText,
                                                    returnResp, showNodeStatus,
                                                    structToJsonObject,
                                                    timestampToMsTimestamp)
+import           ZooKeeper.Exception              (ZNONODE)
 
 -------------------------------------------------------------------------------
 -- All command line data types are defined in 'HStream.Admin.Types'
@@ -275,11 +277,23 @@ runMeta ServerContext{serverOpts=ServerOpts{..}} AT.MetaCmdInfo = do
       content = Aeson.object ["headers" .= headers, "rows" .= rows]
   return $ AT.tableResponse content
 runMeta sc (AT.MetaCmdTask taskCmd) = runMetaTask sc taskCmd
+runMeta sc (AT.MetaCmdClean cmd) = runMetaCleanTask sc cmd
 
 runMetaTask :: ServerContext -> AT.MetaTaskCommand -> IO Text
 runMetaTask ServerContext{..} (AT.MetaTaskGet resType rId) = do
   let metaId = mkAllocationKey (getResType resType) rId
   pure <$> maybe (AT.plainResponse "Not Found") (AT.tableResponse . renderTaskAllocationsToTable . L.singleton) =<< M.getMeta @TaskAllocation metaId metaHandle
+
+runMetaCleanTask :: ServerContext -> AT.MetaCleanCommand -> IO Text
+runMetaCleanTask ServerContext{..} AT.CleanConnectors = do
+  activIds <- ST.fromList . map taskIdMeta <$> M.listMeta @TaskIdMeta metaHandle
+  allTaskMetas <- M.getAllMeta @TaskMeta metaHandle
+  void $ Map.traverseWithKey (\k _ -> removeMeta k activIds) allTaskMetas
+  return $ AT.plainResponse "OK"
+ where
+  removeMeta key ids = do
+    when (ST.notMember key ids) $
+      catch (M.deleteMeta @TaskMeta key Nothing metaHandle) $ \(_ :: ZNONODE) -> return ()
 
 -------------------------------------------------------------------------------
 -- Admin Stream Command

@@ -274,6 +274,7 @@ data MetaCommand
   = MetaCmdList Text
   | MetaCmdGet Text Text
   | MetaCmdTask MetaTaskCommand
+  | MetaCmdClean MetaCleanCommand
   | MetaCmdInfo
   deriving (Show)
 
@@ -296,7 +297,17 @@ metaCmdParser = O.hsubparser
                                                        <> O.help "The Id of the resource"))
                             (O.progDesc "Get metadata of specific resource"))
  <> O.command "info" (O.info (pure MetaCmdInfo) (O.progDesc "Get meta info"))
-  ) O.<|> MetaCmdTask <$> metaTaskCmdParser
+  )
+  O.<|> MetaCmdTask <$> metaTaskCmdParser
+  O.<|> MetaCmdClean <$> metaCleanCmdParser
+
+data MetaCleanCommand = CleanConnectors
+  deriving (Show)
+
+metaCleanCmdParser :: O.Parser MetaCleanCommand
+metaCleanCmdParser = O.hsubparser
+  ( O.command "clean-connectors" (O.info (pure CleanConnectors) (O.progDesc "Clean up the taskMeta of connectors in deleted state."))
+  )
 
 data MetaTaskCommand
   = MetaTaskGet Text Text
