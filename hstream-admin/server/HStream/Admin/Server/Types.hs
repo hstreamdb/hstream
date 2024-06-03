@@ -290,7 +290,7 @@ metaCmdParser = O.hsubparser
                                                        <> O.short 'r'
                                                        <> O.metavar "RESOURCE_CATEGORY"
                                                        <> O.help ("The category of the resource, currently support: "
-                                                                 <> "[subscription|query-info|query-status|view-info|qv-relation|connector|connector-info]"))
+                                                               <> "[subscription|query-info|query-status|view-info|qv-relation|connector|connector-info]"))
                                         <*> O.strOption ( O.long "id"
                                                        <> O.short 'i'
                                                        <> O.metavar "RESOURCE_ID"
@@ -301,14 +301,6 @@ metaCmdParser = O.hsubparser
   O.<|> MetaCmdTask <$> metaTaskCmdParser
   O.<|> MetaCmdClean <$> metaCleanCmdParser
 
-data MetaCleanCommand = CleanConnectors
-  deriving (Show)
-
-metaCleanCmdParser :: O.Parser MetaCleanCommand
-metaCleanCmdParser = O.hsubparser
-  ( O.command "clean-connectors" (O.info (pure CleanConnectors) (O.progDesc "Clean up the taskMeta of connectors in deleted state."))
-  )
-
 data MetaTaskCommand
   = MetaTaskGet Text Text
   deriving (Show)
@@ -318,12 +310,21 @@ metaTaskCmdParser = O.hsubparser
   ( O.command "get-task" (O.info (MetaTaskGet <$> O.strOption ( O.long "resource"
                                                              <> O.short 'r'
                                                              <> O.metavar "RESOURCE_CATEGORY"
-                                                             <> O.help "The category of the resource")
+                                                             <> O.help ("The category of the resource, currently support: "
+                                                                     <> "[stream|subscription|query|view|connector|shard|shard-reader]"))
                                               <*> O.strOption ( O.long "id"
                                                              <> O.short 'i'
                                                              <> O.metavar "RESOURCE_ID"
                                                              <> O.help "The Id of the resource"))
                                  (O.progDesc "Get task allocation metadata of specific resource"))
+  )
+
+data MetaCleanCommand = CleanConnectors
+  deriving (Show)
+
+metaCleanCmdParser :: O.Parser MetaCleanCommand
+metaCleanCmdParser = O.hsubparser
+  ( O.command "clean-connectors" (O.info (pure CleanConnectors) (O.progDesc "Clean up the taskMeta of connectors in deleted state."))
   )
 
 -------------------------------------------------------------------------------
