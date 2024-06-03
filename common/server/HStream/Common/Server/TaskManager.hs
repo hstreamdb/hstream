@@ -2,23 +2,22 @@
 
 module HStream.Common.Server.TaskManager where
 
-import           Control.Concurrent               (forkIO)
-import qualified Control.Concurrent               as C
-import qualified Control.Concurrent.STM           as C
-import qualified Control.Exception                as E
-import qualified Control.Monad                    as M
+import           Control.Concurrent             (forkIO)
+import qualified Control.Concurrent             as C
+import qualified Control.Exception              as E
+import qualified Control.Monad                  as M
 import           Data.Int
-import qualified Data.Set                         as Set
-import qualified Data.Text                        as T
-import qualified Data.Vector                      as V
-import           Data.Word                        (Word32)
-import           HStream.Common.ConsistentHashing (HashRing)
-import           HStream.Common.Server.Lookup     (lookupNodePersist)
-import qualified HStream.Exception                as HE
-import           HStream.Gossip.Types             (Epoch, GossipContext)
-import qualified HStream.Logger                   as Log
-import           HStream.MetaStore.Types          (MetaHandle)
-import           HStream.Server.HStreamApi        (ServerNode (serverNodeId))
+import qualified Data.Set                       as Set
+import qualified Data.Text                      as T
+import qualified Data.Vector                    as V
+import           Data.Word                      (Word32)
+import           HStream.Common.Server.HashRing (LoadBalanceHashRing)
+import           HStream.Common.Server.Lookup   (lookupNodePersist)
+import qualified HStream.Exception              as HE
+import           HStream.Gossip.Types           (GossipContext)
+import qualified HStream.Logger                 as Log
+import           HStream.MetaStore.Types        (MetaHandle)
+import           HStream.Server.HStreamApi      (ServerNode (serverNodeId))
 
 -------------------------------------------------------------------------------
 
@@ -51,7 +50,7 @@ data TaskDetector
 
   , metaHandle             :: MetaHandle
   , gossipContext          :: GossipContext
-  , loadBalanceHashRing    :: C.TVar (Epoch, HashRing)
+  , loadBalanceHashRing    :: LoadBalanceHashRing
   , advertisedListenersKey :: Maybe T.Text
   , serverID               :: Word32
   }

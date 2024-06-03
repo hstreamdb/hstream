@@ -36,7 +36,7 @@ import           Control.Monad                    (when)
 import           Data.IORef                       (IORef)
 import           Data.Maybe                       (fromJust)
 import           HStream.Base.Timer               (CompactedWorker)
-import           HStream.Common.ConsistentHashing (HashRing)
+import           HStream.Common.Server.HashRing   (LoadBalanceHashRing)
 import           HStream.Common.Types             (ShardKey)
 import qualified HStream.Exception                as HE
 import           HStream.Gossip.Types             (Epoch, GossipContext)
@@ -100,7 +100,7 @@ data ServerContext = ServerContext
   , headerConfig             :: AA.HeaderConfig AA.AdminAPI
 #endif
   , scStatsHolder            :: Stats.StatsHolder
-  , loadBalanceHashRing      :: TVar (Epoch, HashRing)
+  , loadBalanceHashRing      :: LoadBalanceHashRing
   , scIOWorker               :: IO.Worker
   , gossipContext            :: GossipContext
   , serverOpts               :: ServerOpts
