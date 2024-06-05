@@ -32,6 +32,8 @@ module HStream.Server.MetaData.Types
   , renderQueryStatusToTable
   , renderViewInfosToTable
   , renderQVRelationToTable
+  , renderTaskMetaMapToTable
+  , renderTaskIdMetaMapToTable
 
 #ifdef HStreamEnableSchema
   , hstreamColumnCatalogToColumnCatalog
@@ -55,8 +57,11 @@ import           Data.Int                          (Int64)
 import qualified Data.IntMap                       as IntMap
 import           Data.IORef
 import qualified Data.List                         as L
+import           Data.Map                          (Map)
+import qualified Data.Map.Strict                   as M
 import           Data.Text                         (Text)
 import qualified Data.Text                         as T
+import qualified Data.Text.Lazy                    as TL
 import           Data.Time.Clock.System            (SystemTime (MkSystemTime),
                                                     getSystemTime)
 import qualified Data.Vector                       as V
@@ -67,6 +72,9 @@ import           GHC.Stack
 
 import           HStream.Common.Server.MetaData    (rootPath)
 import           HStream.Common.ZookeeperClient    (ZookeeperClient)
+import           HStream.IO.Types                  (TaskIdMeta (..),
+                                                    TaskInfo (..),
+                                                    TaskMeta (..))
 import qualified HStream.Logger                    as Log
 import           HStream.MetaStore.Types           (FHandle, HasPath (..),
                                                     MetaHandle,
@@ -79,6 +87,7 @@ import qualified HStream.Server.HStreamApi         as API
 import           HStream.Server.MetaData.Exception
 import           HStream.Server.Types              (SubscriptionWrap (..))
 import qualified HStream.Store                     as S
+import           HStream.ThirdParty.Protobuf       (toRFC3339)
 import           HStream.Utils
 #ifdef HStreamUseV2Engine
 import           DiffFlow.Types
@@ -155,6 +164,27 @@ renderQVRelationToTable :: [QVRelation] -> Aeson.Value
 renderQVRelationToTable relations =
   let headers = ["Query ID" :: Text, "View Name"]
       rows = map (\QVRelation{..} -> [qvRelationQueryName, qvRelationViewName]) relations
+   in Aeson.object ["headers" Aeson..= headers, "rows" Aeson..= rows]
+
+renderTaskMetaMapToTable :: Map Text TaskMeta -> Aeson.Value
+renderTaskMetaMapToTable mp =
+  let headers = [ "Connector Name" :: Text
+                , "Task Id"        :: Text
+                , "Task Type"      :: Text
+                , "Created Time"   :: Text
+                , "State"          :: Text
+                ]
+      rows = map getMetaInfo $ M.toList mp
+   in Aeson.object ["headers" Aeson..= headers, "rows" Aeson..= rows]
+ where
+   getMetaInfo (taskId, TaskMeta{taskInfoMeta=TaskInfo{..}, ..}) =
+     let createTime = TL.toStrict . toRFC3339 $ taskCreatedTime
+      in [taskName, taskId, T.pack . show $ taskType, createTime, T.pack . show $ taskStateMeta]
+
+renderTaskIdMetaMapToTable :: Map Text TaskIdMeta -> Aeson.Value
+renderTaskIdMetaMapToTable mp =
+  let headers = ["Connector Name" :: Text , "Task Id"]
+      rows = map (\(name, TaskIdMeta{..}) -> [name, taskIdMeta]) $ M.toList mp
    in Aeson.object ["headers" Aeson..= headers, "rows" Aeson..= rows]
 
 type SourceStreams  = [Text]
