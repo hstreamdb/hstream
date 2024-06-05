@@ -157,13 +157,14 @@ instance HasPath TaskIdMeta FHandle where
 instance HasPath TaskKvMeta FHandle where
   myRootPath = "ioTaskKvs"
 
-convertTaskMeta :: TaskMeta -> API.Connector
-convertTaskMeta TaskMeta {..} =
+convertTaskMeta :: (T.Text, TaskMeta) -> API.Connector
+convertTaskMeta (taskId, TaskMeta {..}) =
   def { API.connectorName = taskName taskInfoMeta
       , API.connectorType = ioTaskTypeToText . taskType $ taskInfoMeta
       , API.connectorTarget = taskTarget taskInfoMeta
       , API.connectorCreationTime = Just . taskCreatedTime $ taskInfoMeta
       , API.connectorStatus = ioTaskStatusToText taskStateMeta
+      , API.connectorTaskId = taskId
       , API.connectorConfig = TL.toStrict . J.encodeToLazyText . J.lookup "connector" $ connectorConfig taskInfoMeta
       }
 
