@@ -274,6 +274,7 @@ data MetaCommand
   = MetaCmdList Text
   | MetaCmdGet Text Text
   | MetaCmdTask MetaTaskCommand
+  | MetaCmdClean MetaCleanCommand
   | MetaCmdInfo
   deriving (Show)
 
@@ -283,20 +284,22 @@ metaCmdParser = O.hsubparser
                                                          <> O.short 'r'
                                                          <> O.metavar "RESOURCE_CATEGORY"
                                                          <> O.help ("The category of the resource, currently support: "
-                                                                 <> "[subscription|query-info|view-info|qv-relation]")))
+                                                                 <> "[subscription|query-info|view-info|qv-relation|connectors|connector-infos]")))
                              (O.progDesc "List all metadata of specific resource"))
  <> O.command "get" (O.info (MetaCmdGet <$> O.strOption ( O.long "resource"
                                                        <> O.short 'r'
                                                        <> O.metavar "RESOURCE_CATEGORY"
                                                        <> O.help ("The category of the resource, currently support: "
-                                                                 <> "[subscription|query-info|query-status|view-info|qv-relation]"))
+                                                               <> "[subscription|query-info|query-status|view-info|qv-relation|connector|connector-info]"))
                                         <*> O.strOption ( O.long "id"
                                                        <> O.short 'i'
                                                        <> O.metavar "RESOURCE_ID"
                                                        <> O.help "The Id of the resource"))
                             (O.progDesc "Get metadata of specific resource"))
  <> O.command "info" (O.info (pure MetaCmdInfo) (O.progDesc "Get meta info"))
-  ) O.<|> MetaCmdTask <$> metaTaskCmdParser
+  )
+  O.<|> MetaCmdTask <$> metaTaskCmdParser
+  O.<|> MetaCmdClean <$> metaCleanCmdParser
 
 data MetaTaskCommand
   = MetaTaskGet Text Text
@@ -307,12 +310,21 @@ metaTaskCmdParser = O.hsubparser
   ( O.command "get-task" (O.info (MetaTaskGet <$> O.strOption ( O.long "resource"
                                                              <> O.short 'r'
                                                              <> O.metavar "RESOURCE_CATEGORY"
-                                                             <> O.help "The category of the resource")
+                                                             <> O.help ("The category of the resource, currently support: "
+                                                                     <> "[stream|subscription|query|view|connector|shard|shard-reader]"))
                                               <*> O.strOption ( O.long "id"
                                                              <> O.short 'i'
                                                              <> O.metavar "RESOURCE_ID"
                                                              <> O.help "The Id of the resource"))
                                  (O.progDesc "Get task allocation metadata of specific resource"))
+  )
+
+data MetaCleanCommand = CleanConnectors
+  deriving (Show)
+
+metaCleanCmdParser :: O.Parser MetaCleanCommand
+metaCleanCmdParser = O.hsubparser
+  ( O.command "clean-connectors" (O.info (pure CleanConnectors) (O.progDesc "Clean up the taskMeta of connectors in deleted state."))
   )
 
 -------------------------------------------------------------------------------
