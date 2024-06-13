@@ -115,6 +115,7 @@ library
     HStream.Server.QueryWorker
     HStream.Server.Types
     HStream.Server.Validation
+    HStream.Server.CacheStore
 
   other-modules:
     HStream.Server.Core.Query
@@ -203,6 +204,7 @@ library
     , yaml
     , Z-Data
     , zoovisitor
+    , clock
 
   if impl(ghc <9.2.0)
     build-depends: hstream-admin-store
