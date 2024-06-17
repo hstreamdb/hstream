@@ -164,6 +164,10 @@ module HStream.Store.Stream
   , getStreamLogPath
   , createRandomLogGroup
 
+  , LD.LdChecker
+  , LD.newLdChecker
+  , LD.checkLdClusterHealth
+
     -- * Re-export
   , def
   ) where
