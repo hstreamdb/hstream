@@ -32,9 +32,9 @@ import           System.Clock
 import           Text.Printf            (printf)
 
 import           Database.RocksDB
+import qualified HStream.Exception      as HE
 import qualified HStream.Logger         as Log
 import qualified HStream.Store          as S
-import qualified HStream.Exception as HE
 
 -- StoreMode is a logical concept that represents the operations that the current CacheStore can perform.
 --   Cache mode: data can only be written to the store

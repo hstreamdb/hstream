@@ -49,11 +49,12 @@ docheck :: ServerContext -> HealthMonitor -> IO ()
 docheck sc@ServerContext{..} hm = do
   ldHealthy <- checkLdCluster hm
   metaHealthy <- checkMeta hm
+  serverMode <- getServerMode sc
   when (not ldHealthy || not metaHealthy) $
     Log.warning $ "Healthy check find unhealthy service: "
                <> "ld cluster healthy: " <> Log.build (show ldHealthy)
                <> ", meta cluster healthy: " <> Log.build (show metaHealthy)
-  serverMode <- getServerMode sc
+               <> ", serverMode: " <> Log.build (show serverMode)
   if | serverMode == ServerNormal && not ldHealthy && not metaHealthy -> do
         initCacheStore cachedStore
         setCacheStoreMode cachedStore CacheMode
