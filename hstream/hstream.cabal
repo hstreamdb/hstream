@@ -116,6 +116,7 @@ library
     HStream.Server.Types
     HStream.Server.Validation
     HStream.Server.CacheStore
+    HStream.Server.HealthMonitor
 
   other-modules:
     HStream.Server.Core.Query

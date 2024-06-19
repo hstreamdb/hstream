@@ -7,24 +7,21 @@ module HStream.Server.HealthMonitor
  )
 where
 
-import           Control.Concurrent                           (threadDelay)
-import           Control.Exception                            (SomeException,
-                                                               try)
-import           Control.Monad                                (forever, when)
+import           Control.Concurrent               (threadDelay)
+import           Control.Exception                (SomeException, try)
+import           Control.Monad                    (forever, when)
 
-import           HStream.Common.ZookeeperClient               (unsafeGetZHandle)
-import qualified HStream.Logger                               as Log
-import           HStream.MetaStore.Types                      (MetaHandle (..))
-import           HStream.MetaStore.ZookeeperUtils             (checkRecoverable)
-import           HStream.Server.CacheStore                    (StoreMode (..),
-                                                               dumpToHStore,
-                                                               initCacheStore,
-                                                               setCacheStoreMode)
-import           HStream.Server.Types                         (ServerContext (..),
-                                                               ServerMode (..),
-                                                               getServerMode,
-                                                               setServerMode)
-import qualified HStream.Store                                as S
+import           HStream.Common.ZookeeperClient   (unsafeGetZHandle)
+import qualified HStream.Logger                   as Log
+import           HStream.MetaStore.Types          (MetaHandle (..))
+import           HStream.MetaStore.ZookeeperUtils (checkRecoverable)
+import           HStream.Server.CacheStore        (StoreMode (..), dumpToHStore,
+                                                   initCacheStore,
+                                                   setCacheStoreMode)
+import           HStream.Server.Types             (ServerContext (..),
+                                                   ServerMode (..),
+                                                   getServerMode, setServerMode)
+import qualified HStream.Store                    as S
 
 data HealthMonitor = HealthMonitor
   { ldChecker             :: S.LdChecker
