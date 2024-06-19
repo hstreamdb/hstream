@@ -141,6 +141,10 @@ hserver:
       las: hstreamdb/sink-las:latest
       elasticsearch: hstreamdb/sink-elasticsearch:latest
 
+  cache-store:
+    # the cache store work directory
+    cache-store-path: /data/cache-store
+
   # Internal grpc settings (typically, there's no need to modify these)
   #grpc:
   #  channel-args:
