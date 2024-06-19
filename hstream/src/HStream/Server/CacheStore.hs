@@ -19,19 +19,22 @@ import           Control.Concurrent.STM (TVar, atomically, check, newTVarIO,
                                          readTVar, swapTVar, writeTVar)
 import           Control.Exception      (Exception (displayException), throwIO,
                                          try)
-import           Control.Monad          (void, when)
+import           Control.Monad          (unless, void, when)
 import           Data.ByteString        (ByteString)
 import qualified Data.ByteString        as BS
 import qualified Data.ByteString.Char8  as BSC
 import           Data.Int               (Int64)
+import           Data.IORef             (IORef, atomicModifyIORef', newIORef)
 import qualified Data.Text              as T
 import qualified Data.Text.Encoding     as T
 import           Data.Word              (Word64)
 import           System.Clock
+import           Text.Printf            (printf)
 
 import           Database.RocksDB
 import qualified HStream.Logger         as Log
 import qualified HStream.Store          as S
+import qualified HStream.Exception as HE
 
 -- StoreMode is a logical concept that represents the operations that the current CacheStore can perform.
 --   Cache mode: data can only be written to the store
@@ -48,6 +51,7 @@ data CacheStore = CacheStore
   , readOptions  :: ReadOptions
   , enableWrite  :: MVar Bool
   , dumpState    :: TVar DumpState
+  , counter      :: IORef Word64
   }
 
 -- Store is actually a column family in rocksdb,
@@ -69,6 +73,7 @@ mkCacheStore path dbOpts writeOptions readOptions = do
   store <- newMVar Nothing
   enableWrite <- newMVar False
   dumpState <- newTVarIO NoDump
+  counter <- newIORef 0
   return CacheStore {..}
 
 -- Create a rocksdb store
@@ -80,10 +85,12 @@ initCacheStore CacheStore{..} = do
       Just st' -> return $ Just st'
       Nothing  -> do
         db <- open dbOpts path
+        Log.info $ "Open rocksdb"
         name <- show <$> getCurrentTimestamp
         columnFamily <- createColumnFamily db dbOpts name
         Log.info $ "Create cached store " <> Log.build name
         return $ Just Store{..}
+  atomicModifyIORef' counter $ const (0, ())
 
 -- Destroy both rocksdb and columnFamily
 -- Users need to ensure that all other operations are stopped before deleting the store.
@@ -92,8 +99,10 @@ deleteCacheStore CacheStore{store} = do
   modifyMVar_ store $ \st -> do
     case st of
       Just Store{..} -> do
-        destroyColumnFamily columnFamily
         dropColumnFamily db columnFamily
+        Log.info $ "Drop column family"
+        destroyColumnFamily columnFamily
+        Log.info $ "Destroy column family"
         close db
         Log.info $ "Delete cached store " <> Log.build name
         return Nothing
@@ -104,20 +113,22 @@ getStore CacheStore{store} = do
   st <- readMVar store
   case st of
     Just st' -> return st'
-    -- FIXME: handle exception
     Nothing  -> do
-      Log.fatal $ "Cached store not initialized."
-      throwIO $ userError "Store is not initialized."
+      Log.fatal $ "Cached store not initialized, should not get here"
+      throwIO $ HE.UnexpectedError "Store is not initialized."
 
 writeRecord :: CacheStore -> T.Text -> Word64 -> ByteString -> IO S.AppendCompletion
 writeRecord st@CacheStore{..} streamName shardId payload = do
-  rMode <- readMVar enableWrite
-  when rMode $ do
+  canWrite <- readMVar enableWrite
+  unless canWrite $ do
     Log.warning $ "Cannot write to cached store becasue the store is not write-enabled."
-    throwIO $ userError "CacheStore is not write-enabled."
+    -- throw an unavailable exception to client and let it retry
+    throwIO $ HE.ResourceAllocationException "CacheStore is not write-enabled."
 
   Store{..} <- getStore st
-  let k = encodeKey streamName shardId
+  -- Obtain a monotonically increasing offset to ensure that each encoded-key is unique.
+  offset <- atomicModifyIORef' counter (\x -> (x + 1, x))
+  let k = encodeKey streamName shardId offset
   putCF db writeOptions columnFamily k payload
   lsn <- getCurrentTimestamp
   return S.AppendCompletion
@@ -151,17 +162,18 @@ dumpToHStore st@CacheStore{..} ldClient cmpStrategy = do
         payload <- value iter
         let (_, shardId) = decodeKey k
         -- TODO: How to handle LSN?
+        -- TODO: What if retry failed?
         void $ appendHStoreWithRetry st ldClient shardId payload cmpStrategy
         next iter
 
       -- FIXME: What if iterator return error when iterating?
       errorM <- getError iter
       case errorM of
-        Just msg -> Log.fatal $ "cached store iterator error: " <> Log.build msg
+        Just msg -> Log.fatal $ "Cached store iterator error: " <> Log.build msg
         Nothing  -> do
           end <- getTime Monotonic
-          let sDuration = toNanoSecs (diffTimeSpec end start) `div` 1000000000
-          Log.info $ "Finish dump cached store, total time " <> Log.build sDuration <> "s"
+          let sDuration = toNanoSecs (diffTimeSpec end start) `div` 1000000
+          Log.info $ "Finish dump cached store, total time " <> Log.build sDuration <> "ms"
           return ()
 
   -- What if dump process error?
@@ -176,7 +188,7 @@ dumpToHStore st@CacheStore{..} ldClient cmpStrategy = do
 
 appendHStoreWithRetry :: CacheStore -> S.LDClient -> Word64 -> ByteString -> S.Compression -> IO ()
 appendHStoreWithRetry CacheStore{..} ldClient shardId payload cmpStrategy = do
-  void $ loop 3
+  void $ loop (3 :: Int)
  where
    loop cnt
      | cnt >= 0 = do
@@ -185,7 +197,7 @@ appendHStoreWithRetry CacheStore{..} ldClient shardId payload cmpStrategy = do
           Left (e :: S.SomeHStoreException) -> do
            void . atomically $ readTVar dumpState >>= \s -> check (s == Dumping)
            let cnt' = cnt - 1
-           Log.warning $ "dump to shardId " <> Log.build shardId <> " failed"
+           Log.warning $ "Dump to shardId " <> Log.build shardId <> " failed"
                       <> ", error: " <> Log.build (displayException e)
                       <> ", left retries = " <> Log.build (show cnt')
            -- sleep 1s
@@ -193,7 +205,7 @@ appendHStoreWithRetry CacheStore{..} ldClient shardId payload cmpStrategy = do
            loop cnt'
           Right lsn -> return $ Just lsn
      | otherwise = do
-       Log.fatal $ "dump to shardId " <> Log.build shardId <> " failed after exausting the retry attempts."
+       Log.fatal $ "Dump to shardId " <> Log.build shardId <> " failed after exausting the retry attempts, drop the record."
        return Nothing
 
 -----------------------------------------------------------------------------------------------------
@@ -207,7 +219,7 @@ setCacheStoreMode CacheStore{..} CacheMode = do
     case state of
       Dumping -> writeTVar dumpState Suspend
       _       -> pure ()
-  Log.info $ "set CacheStore to CacheMode"
+  Log.info $ "Set CacheStore to CacheMode"
 setCacheStoreMode CacheStore{..} DumpMode = do
   void $ swapMVar enableWrite False
   void $ atomically $ do
@@ -215,7 +227,7 @@ setCacheStoreMode CacheStore{..} DumpMode = do
     case state of
       Suspend -> writeTVar dumpState Dumping
       _       -> pure ()
-  Log.info $ "set CacheStore to DumpMode"
+  Log.info $ "Set CacheStore to DumpMode"
 
 whileM :: IO Bool -> IO () -> IO ()
 whileM cond act = do
@@ -225,15 +237,14 @@ whileM cond act = do
     whileM cond act
 {-# INLINABLE whileM #-}
 
-encodeKey :: T.Text -> Word64 -> ByteString
-encodeKey streamName shardId = BS.concat [T.encodeUtf8 streamName, ":", BSC.pack $ show shardId]
+encodeKey :: T.Text -> Word64 -> Word64 ->  ByteString
+encodeKey streamName shardId offset =
+  BS.concat [T.encodeUtf8 streamName, ":", BSC.pack $ show shardId, ":", BSC.pack $ printf "%032d" offset]
 
 decodeKey :: ByteString -> (T.Text, Word64)
 decodeKey bs =
-  let (textBs, rest) = BS.breakSubstring ":" bs
-      -- Remove the colon from the start of the rest and convert the remainder to a Word64
-      shardIdBs = BSC.drop 1 rest
-  in (T.decodeUtf8 textBs, read $ BSC.unpack shardIdBs)
+  let (streamName : shardId : _) = BSC.split ':' bs
+   in (T.decodeUtf8 streamName, read $ BSC.unpack shardId)
 
 getCurrentTimestamp :: IO Int64
 getCurrentTimestamp = fromIntegral . toNanoSecs <$> getTime Monotonic
