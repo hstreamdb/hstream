@@ -7,6 +7,7 @@
 #include "logdevice/common/Semaphore.h"
 #include "logdevice/common/configuration/nodes/NodeAttributesConfig.h"
 #include "logdevice/common/configuration/nodes/ServiceDiscoveryConfig.h"
+#include "logdevice/common/debug.h"
 #include "logdevice/include/Client.h"
 #include "logdevice/include/Err.h"
 #include "logdevice/include/debug.h"
@@ -57,7 +58,8 @@ public:
     }
 
     if (!unhealthy_nodes_set.empty()) {
-      fprintf(stderr, "Cluster is unhealthy\n");
+      ld_warning("Cluster has %lu unhealthy nodes:",
+                 unhealthy_nodes_set.size());
       printUnhealthyNodes(*nodes_configuration, unhealthy_nodes_set);
     }
 
@@ -87,14 +89,13 @@ private:
       auto deadNodes = nodesStateToString(nodes_configuration, res.nodes_state);
       auto unhealthyNodes =
           nodesStatusToUnhealthy(nodes_configuration, res.nodes_status);
-      fprintf(
-          stderr,
-          "[Node %d(%s)]: status: %s, dead nodes: %s, unhealthy nodes: %s\n",
-          res.node_id, res.addr.c_str(), st, deadNodes.c_str(),
-          unhealthyNodes.c_str());
-      fprintf(stderr, "Check return unhealthy nodes: %s\n",
-              folly::join(',', sets).c_str());
+      ld_warning("[Node %d(%s)]: status: %s, dead nodes index: [%s], "
+                 "unhealthy nodes index: [%s]",
+                 res.node_id, res.addr.c_str(), st, deadNodes.c_str(),
+                 unhealthyNodes.c_str());
     }
+    ld_warning("Check return unhealthy nodes: [%s]",
+               folly::join(',', sets).c_str());
   }
 
   auto addResult(node_index_t node_id, std::string address, Status status,
@@ -130,13 +131,7 @@ private:
     for (auto it = sdc->begin(); it != sdc->end(); ++it) {
       auto node_id = it->first;
       auto attr = it->second;
-      //      auto socket = attr.default_client_data_address;
       auto addr = attr.default_client_data_address.toString();
-      //      auto server_to_server = attr.server_to_server_address.has_value()
-      //      ? attr.server_to_server_address.value().toString() : "";
-      //      fprintf(stderr, "Node %d: client_to_server: %s, server_to_server:
-      //      %s\n", node_id, client_to_server.c_str(),
-      //      server_to_server.c_str());
 
       auto cb =
           [&sem, node_id, addr,

@@ -1,7 +1,7 @@
 module HStream.Store.Internal.LogDevice.HealthCheck
  ( LdChecker
  , newLdChecker
- , checkLdClusterHealth
+ , isLdClusterHealthy
  )
 where
 
@@ -19,14 +19,16 @@ newLdChecker client = do
   checker <- withForeignPtr client $ \client' -> new_ld_checker client'
   newForeignPtr delete_ld_checker checker
 
--- Check the health status of the cluster. If the number of unhealthy nodes is greater than the specified limit,
--- it means that the cluster is not available.
-checkLdClusterHealth
+-- Check the health status of the cluster.
+-- If the total number of unhealthy nodes is greater than the specified limit,
+-- it means that the cluster is not available and will return False.
+isLdClusterHealthy
   :: LdChecker
   -> Int
   -- ^ The upper limit of unhealthy nodes
   -> IO Bool
-checkLdClusterHealth checker unhealthyLimit = withForeignPtr checker $ \c -> do
+  -- ^ Return True if the cluster is healthy, otherwise False
+isLdClusterHealthy checker unhealthyLimit = withForeignPtr checker $ \c -> do
    cbool2bool <$> ld_checker_check c (fromIntegral unhealthyLimit)
 
 data Checker

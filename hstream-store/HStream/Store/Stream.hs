@@ -166,7 +166,7 @@ module HStream.Store.Stream
 
   , LD.LdChecker
   , LD.newLdChecker
-  , LD.checkLdClusterHealth
+  , LD.isLdClusterHealthy
 
     -- * Re-export
   , def
