@@ -24,14 +24,14 @@ import           Control.Exception                (throwIO, try)
 import           Data.IORef                       (readIORef)
 import           Network.GRPC.HighLevel.Generated
 
+import qualified HsGrpc.Server                    as G
+import           HStream.Common.Server.Lookup     (lookupNode)
 import qualified HStream.Exception                as HE
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Cluster      as C
 import           HStream.Server.Core.Common       (lookupResource)
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
-import qualified HsGrpc.Server                    as G
-import           HStream.Common.Server.Lookup     (lookupNode)
 -- import           HStream.Server.Types             (ServerContext (..))
 import           HStream.Server.Types             (ServerContext (..),
                                                    ServerMode (..))

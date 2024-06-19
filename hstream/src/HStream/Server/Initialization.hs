@@ -40,6 +40,7 @@ import qualified Z.Data.CBytes                    as CB
 #if __GLASGOW_HASKELL__ < 902
 import qualified HStream.Admin.Store.API          as AA
 #endif
+import           Data.IORef                       (newIORef)
 import           HStream.Common.ConsistentHashing (HashRing, constructServerMap,
                                                    getAllocatedNodeId)
 import           HStream.Common.Server.HashRing   (initializeHashRing)
@@ -49,6 +50,7 @@ import qualified HStream.IO.Types                 as IO
 import qualified HStream.IO.Worker                as IO
 import qualified HStream.Logger                   as Log
 import           HStream.MetaStore.Types          (MetaHandle (..))
+import           HStream.Server.CacheStore        (mkCacheStore)
 import           HStream.Server.Config            (ServerOpts (..),
                                                    TlsConfig (..))
 import           HStream.Server.Types
@@ -88,6 +90,11 @@ initializeServer opts@ServerOpts{..} gossipContext hh db_m = do
 
   shardReaderMap <- newMVar HM.empty
 
+  serverMode <- newIORef ServerNormal
+  let dbOption = def { RocksDB.createIfMissing = True }
+  let path = _cacheStorePath <> show _serverID
+  cachedStore <- mkCacheStore path dbOption def def
+
   -- recovery tasks
 
   return
@@ -112,6 +119,8 @@ initializeServer opts@ServerOpts{..} gossipContext hh db_m = do
       , shardReaderMap           = shardReaderMap
       , querySnapshotPath        = _querySnapshotPath
       , querySnapshotter         = db_m
+      , serverState              = serverMode
+      , cachedStore              = cachedStore
       }
 
 --------------------------------------------------------------------------------

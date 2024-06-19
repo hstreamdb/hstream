@@ -82,7 +82,9 @@ initCacheStore :: CacheStore -> IO ()
 initCacheStore CacheStore{..} = do
   modifyMVar_ store $ \st -> do
     case st of
-      Just st' -> return $ Just st'
+      Just st'@Store{..} -> do
+        Log.info $ "Get cache store " <> Log.build name
+        return $ Just st'
       Nothing  -> do
         db <- open dbOpts path
         Log.info $ "Open rocksdb"

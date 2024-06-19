@@ -2,6 +2,7 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE NamedFieldPuns      #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
@@ -35,7 +36,8 @@ import           HStream.Common.Server.HashRing   (updateHashRing)
 import           HStream.Common.Server.MetaData   (TaskAllocation (..),
                                                    clusterStartTimeId)
 import           HStream.Common.Types             (getHStreamVersion)
-import           HStream.Common.ZookeeperClient   (withZookeeperClient)
+import           HStream.Common.ZookeeperClient   (unsafeGetZHandle,
+                                                   withZookeeperClient)
 import           HStream.Exception
 import           HStream.Gossip                   (GossipContext (..),
                                                    defaultGossipOpts,
@@ -61,6 +63,8 @@ import           HStream.Server.Config            (AdvertisedListeners,
                                                    getConfig, runServerCli)
 import qualified HStream.Server.Core.Cluster      as Cluster
 import qualified HStream.Server.Experimental      as Exp
+import           HStream.Server.HealthMonitor     (mkHealthMonitor,
+                                                   startMonitor)
 import qualified HStream.Server.HsGrpcHandler     as HsGrpcHandler
 import qualified HStream.Server.HStreamApi        as API
 import qualified HStream.Server.HStreamInternal   as I
@@ -174,6 +178,13 @@ app config@ServerOpts{..} = do
         forM_ as (Async.link2Only (const True) a)
         -- wati the default server
         waitGossipBoot gossipContext
+
+        let ServerContext{scLDClient, metaHandle} = serverContext
+        healthMonitor <- mkHealthMonitor scLDClient metaHandle 1
+        aMonitor <- Async.async $ startMonitor serverContext healthMonitor 3
+        Log.info $ "Start healthy monitor"
+        Async.link2Only (const True) a aMonitor
+
         Async.wait a
 
 serve
