@@ -241,11 +241,11 @@ whileM cond act = do
 
 encodeKey :: T.Text -> Word64 -> Word64 ->  ByteString
 encodeKey streamName shardId offset =
-  BS.concat [T.encodeUtf8 streamName, ":", BSC.pack $ show shardId, ":", BSC.pack $ printf "%032d" offset]
+  BS.concat [BSC.pack $ printf "%032d" offset, ":", T.encodeUtf8 streamName, ":", BSC.pack $ show shardId]
 
 decodeKey :: ByteString -> (T.Text, Word64)
 decodeKey bs =
-  let (streamName : shardId : _) = BSC.split ':' bs
+  let [_ , streamName , shardId] = BSC.split ':' bs
    in (T.decodeUtf8 streamName, read $ BSC.unpack shardId)
 
 getCurrentTimestamp :: IO Int64
