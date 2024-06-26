@@ -114,7 +114,7 @@ data ServerContext = ServerContext
   , querySnapshotPath        :: FilePath
   , querySnapshotter         :: Maybe RocksDB.DB
   , serverState              :: IORef ServerMode
-  , cachedStore              :: CacheStore
+  , cacheStore               :: CacheStore
 }
 
 setServerMode :: ServerContext -> ServerMode -> IO ()

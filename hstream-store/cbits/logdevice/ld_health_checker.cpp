@@ -1,3 +1,4 @@
+#include <chrono>
 #include <cstdlib>
 #include <string>
 #include <unordered_set>
@@ -38,7 +39,15 @@ public:
     const auto nodes_configuration = config->getNodesConfiguration();
     auto sdc = nodes_configuration->getServiceDiscovery();
 
+    auto start = std::chrono::steady_clock::now();
     getClusterState(*client_impl, *nodes_configuration);
+    auto end = std::chrono::steady_clock::now();
+    auto duration =
+        std::chrono::duration_cast<std::chrono::milliseconds>(end - start)
+            .count();
+    ld_warning("GetClusterState took %ld ms", duration);
+
+    // getClusterState(*client_impl, *nodes_configuration);
 
     auto total_nodes = sdc->numNodes();
     auto unhealthy_nodes_set = std::unordered_set<node_index_t>(total_nodes);
@@ -60,7 +69,7 @@ public:
     if (!unhealthy_nodes_set.empty()) {
       ld_warning("Cluster has %lu unhealthy nodes:",
                  unhealthy_nodes_set.size());
-      printUnhealthyNodes(*nodes_configuration, unhealthy_nodes_set);
+      // printUnhealthyNodes(*nodes_configuration, unhealthy_nodes_set);
     }
 
     return unhealthy_nodes_set.size() <= unhealthy_node_limit;

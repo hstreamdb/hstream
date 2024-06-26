@@ -392,7 +392,7 @@ appendStream ServerContext{..} streamName shardId record = do
   state <- readIORef serverState
   S.AppendCompletion {..} <- case state of
     ServerNormal -> S.appendCompressedBS scLDClient shardId payload cmpStrategy Nothing
-    ServerBackup -> DB.writeRecord cachedStore streamName shardId payload
+    ServerBackup -> DB.writeRecord cacheStore streamName shardId payload
   Stats.stream_stat_add_append_in_bytes scStatsHolder cStreamName (fromIntegral payloadSize)
   Stats.stream_stat_add_append_in_records scStatsHolder cStreamName (fromIntegral recordSize)
   Stats.stream_time_series_add_append_in_bytes scStatsHolder cStreamName (fromIntegral payloadSize)

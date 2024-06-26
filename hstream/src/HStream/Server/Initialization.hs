@@ -99,7 +99,7 @@ initializeServer opts@ServerOpts{..} gossipContext hh db_m = do
 
   return
     ServerContext
-      { metaHandle                 = hh
+      { metaHandle               = hh
       , scLDClient               = ldclient
       , serverID                 = _serverID
       , scAdvertisedListenersKey = Nothing
@@ -120,7 +120,7 @@ initializeServer opts@ServerOpts{..} gossipContext hh db_m = do
       , querySnapshotPath        = _querySnapshotPath
       , querySnapshotter         = db_m
       , serverState              = serverMode
-      , cachedStore              = cachedStore
+      , cacheStore              = cachedStore
       }
 
 --------------------------------------------------------------------------------

@@ -87,5 +87,5 @@ checkRecoverable :: ZHandle -> IO Bool
 checkRecoverable zk = do
   st <- zooState zk
   when (st /= ZooConnectedState) $ do
-    Log.fatal $ "=========== zk state: " <> Log.build (show st)
+    Log.fatal $ "zk connect is unhealty, current state: " <> Log.build (show st)
   return $ st == ZooConnectedState
