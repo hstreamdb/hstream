@@ -39,5 +39,5 @@ foreign import ccall unsafe "new_ld_checker"
 foreign import ccall unsafe "&delete_ld_checker"
   delete_ld_checker :: FunPtr (Ptr Checker -> IO ())
 
-foreign import ccall unsafe "ld_checker_check"
+foreign import ccall safe "ld_checker_check"
   ld_checker_check :: Ptr Checker -> CInt -> IO CBool
