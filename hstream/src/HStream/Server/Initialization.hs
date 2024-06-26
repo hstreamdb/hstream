@@ -91,9 +91,23 @@ initializeServer opts@ServerOpts{..} gossipContext hh db_m = do
   shardReaderMap <- newMVar HM.empty
 
   serverMode <- newIORef ServerNormal
-  let dbOption = def { RocksDB.createIfMissing = True }
+
+  -- ref: https://github.com/facebook/rocksdb/wiki/Setup-Options-and-Basic-Tuning#other-general-options
+  let tableOptions = def
+        { RocksDB.blockSize = 16 * 1024
+        , RocksDB.pinL0FilterAndIndexBlocksInCache = True
+        }
+      dbOption = def
+        { RocksDB.createIfMissing = True
+        , RocksDB.maxBackgroundJobs = 6
+        , RocksDB.blockBasedTableOptions = tableOptions
+        , RocksDB.bytesPerSync = 1048576
+        }
+  let writeOption = def { RocksDB.disableWAL = True }
+      -- readOption = def { RocksDB.readaheadSize = 64 * 1024 * 1024 }
+      readOption = def
   let path = _cacheStorePath <> show _serverID
-  cachedStore <- mkCacheStore path dbOption def def
+  cachedStore <- mkCacheStore path dbOption writeOption readOption
 
   -- recovery tasks
 
