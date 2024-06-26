@@ -51,6 +51,11 @@ data CacheStore = CacheStore
   , readOptions  :: ReadOptions
   , enableWrite  :: MVar Bool
   , dumpState    :: TVar DumpState
+  -- ^ The state of dump process
+  , needResume   :: IORef Bool
+  -- ^ If dumpstate changes from dumping to suspend, needResume
+  -- will be set to True. This indicates that the cache store should
+  -- resume dump process after dumpstate changes back to dumping
   , counter      :: IORef Word64
   }
 
@@ -60,6 +65,15 @@ data Store = Store
   { db           :: DB
   , name         :: String
   , columnFamily :: ColumnFamily
+  { db            :: DB
+  , name          :: String
+  , columnFamily  :: ColumnFamily
+  , nextKeyToDump :: IORef ByteString
+  -- ^ next key to dump to hstore
+  , totalWrite    :: IORef Word64
+  -- ^ total records count written to the store
+  , totalRead     :: IORef Word64
+  -- ^ total records count read from the store
   }
 
 data DumpState =
@@ -74,6 +88,7 @@ mkCacheStore path dbOpts writeOptions readOptions = do
   enableWrite <- newMVar False
   dumpState <- newTVarIO NoDump
   counter <- newIORef 0
+  needResume <- newIORef False
   return CacheStore {..}
 
 -- Create a rocksdb store
@@ -91,8 +106,12 @@ initCacheStore CacheStore{..} = do
         name <- show <$> getCurrentTimestamp
         columnFamily <- createColumnFamily db dbOpts name
         Log.info $ "Create cached store " <> Log.build name
+        totalWrite <- newIORef 0
+        totalRead <- newIORef 0
+        nextKeyToDump <- newIORef BS.empty
+        atomicWriteIORef counter 0
+
         return $ Just Store{..}
-  atomicModifyIORef' counter $ const (0, ())
 
 -- Destroy both rocksdb and columnFamily
 -- Users need to ensure that all other operations are stopped before deleting the store.
@@ -106,7 +125,14 @@ deleteCacheStore CacheStore{store} = do
         destroyColumnFamily columnFamily
         Log.info $ "Destroy column family"
         close db
-        Log.info $ "Delete cached store " <> Log.build name
+        Log.info $ "Delete cache store " <> Log.build name
+
+        tWrites <- readIORef totalWrite
+        tReads <- readIORef totalRead
+        Log.info $ "CacheStore totalWrites: " <> Log.build tWrites <> ", totalReads: " <> Log.build tReads
+        when (tWrites /= tReads) $ do
+          Log.warning $ "CacheStore totalWrites and totalReads are not equal."
+
         return Nothing
       Nothing -> return Nothing
 
@@ -116,14 +142,14 @@ getStore CacheStore{store} = do
   case st of
     Just st' -> return st'
     Nothing  -> do
-      Log.fatal $ "Cached store not initialized, should not get here"
+      Log.fatal $ "Cache store not initialized, should not get here"
       throwIO $ HE.UnexpectedError "Store is not initialized."
 
 writeRecord :: CacheStore -> T.Text -> Word64 -> ByteString -> IO S.AppendCompletion
 writeRecord st@CacheStore{..} streamName shardId payload = do
   canWrite <- readMVar enableWrite
   unless canWrite $ do
-    Log.warning $ "Cannot write to cached store becasue the store is not write-enabled."
+    Log.warning $ "Cannot write to cache store becasue the store is not write-enabled."
     -- throw an unavailable exception to client and let it retry
     throwIO $ HE.ResourceAllocationException "CacheStore is not write-enabled."
 
@@ -132,6 +158,7 @@ writeRecord st@CacheStore{..} streamName shardId payload = do
   offset <- atomicModifyIORef' counter (\x -> (x + 1, x))
   let k = encodeKey streamName shardId offset
   putCF db writeOptions columnFamily k payload
+  void $ atomicModifyIORef' totalWrite (\x -> (x + 1, x))
   lsn <- getCurrentTimestamp
   return S.AppendCompletion
           { appendCompLogID = shardId
@@ -140,7 +167,6 @@ writeRecord st@CacheStore{..} streamName shardId payload = do
           }
 
 -- dump all cached records to HStore
--- TODO: How to notify server when dump complete?
 dumpToHStore :: CacheStore -> S.LDClient -> S.Compression -> IO ()
 dumpToHStore st@CacheStore{..} ldClient cmpStrategy = do
   needSpawn <- atomically $ do
@@ -153,59 +179,113 @@ dumpToHStore st@CacheStore{..} ldClient cmpStrategy = do
   when (needSpawn) . void $ forkFinally dump finalizer
  where
   dump = do
-    Store{..} <- getStore st
-    Log.info $ "Starting dump cached store data to HStore"
-    start <- getTime Monotonic
-    withIteratorCF db readOptions columnFamily $ \iter -> do
-      seekToFirst iter
+    cacheStore <- getStore st
+    Log.info $ "Starting dump cached data to HStore"
+    dumpLoop cacheStore
+    Log.info $ "Finish dump cached data to HStore"
 
-      whileM (valid iter) $ do
-        k <- key iter
-        payload <- value iter
-        let (_, shardId) = decodeKey k
-        -- TODO: How to handle LSN?
-        -- TODO: What if retry failed?
-        void $ appendHStoreWithRetry st ldClient shardId payload cmpStrategy
-        next iter
-
-      -- FIXME: What if iterator return error when iterating?
-      errorM <- getError iter
-      case errorM of
-        Just msg -> Log.fatal $ "Cached store iterator error: " <> Log.build msg
-        Nothing  -> do
-          end <- getTime Monotonic
-          let sDuration = toNanoSecs (diffTimeSpec end start) `div` 1000000
-          Log.info $ "Finish dump cached store, total time " <> Log.build sDuration <> "ms"
-          return ()
+  dumpLoop cacheStore = do
+    state <- readTVarIO dumpState
+    case state of
+      NoDump -> return ()
+      Suspend -> do
+        void . atomically $ readTVar dumpState >>= \s -> check (s == Dumping)
+        dumpLoop cacheStore
+      Dumping -> do
+        doDump cacheStore ldClient cmpStrategy readOptions dumpState needResume
+        offset <- readIORef counter
+        Log.info $ "Finish doDump, current offset: " <> Log.build (show offset)
+        resume <- readIORef needResume
+        when resume $ dumpLoop cacheStore
 
   -- What if dump process error?
   finalizer (Left e)  = do
-    Log.fatal $ "dump cached store to HStore failed: " <> Log.build (show e)
-    _ <- atomically $ swapTVar dumpState NoDump
-    return ()
+    Log.fatal $ "dump cached data to HStore failed: " <> Log.build (show e)
+    reset
   finalizer (Right _) = do
-    _ <- atomically $ swapTVar dumpState NoDump
     deleteCacheStore st
-    return ()
+    reset
 
-appendHStoreWithRetry :: CacheStore -> S.LDClient -> Word64 -> ByteString -> S.Compression -> IO ()
-appendHStoreWithRetry CacheStore{..} ldClient shardId payload cmpStrategy = do
-  void $ loop (3 :: Int)
+  reset = do
+    _ <- atomically $ swapTVar dumpState NoDump
+    atomicWriteIORef needResume False
+
+doDump
+  :: Store
+  -> S.LDClient
+  -> S.Compression
+  -> ReadOptions
+  -> TVar DumpState
+  -> IORef Bool
+  -> IO ()
+doDump Store{..} ldClient cmpStrategy readOptions dumpState resume = do
+  start <- getTime Monotonic
+  withIteratorCF db readOptions columnFamily $ \iter -> do
+    atomicWriteIORef resume False
+    firstKey <- readIORef nextKeyToDump
+    if BS.null firstKey
+    then do
+      Log.info $ "Start dump cache store from beginning"
+      seekToFirst iter else do
+      Log.info $ "Dump resumed from key " <> Log.build firstKey
+      seek iter firstKey
+
+    whileM (checkContinue iter) $ do
+      k <- key iter
+      payload <- value iter
+      atomicWriteIORef nextKeyToDump k
+      let (_, shardId) = decodeKey k
+      -- TODO: How to handle LSN?
+      success <- appendHStoreWithRetry ldClient shardId payload cmpStrategy dumpState
+      when success $
+        void $ atomicModifyIORef' totalRead (\x -> (x + 1, x))
+      next iter
+
+    -- FIXME: What if iterator return error when iterating?
+    errorM <- getError iter
+    case errorM of
+      Just msg -> Log.fatal $ "Cache store iterator error: " <> Log.build msg
+      Nothing  -> do
+        end <- getTime Monotonic
+        let sDuration = toNanoSecs (diffTimeSpec end start) `div` 1000000
+        nextKey <- readIORef nextKeyToDump
+        Log.info $ "Exit cache store iterator, total time " <> Log.build sDuration <> "ms"
+                <> ", next key to dump: " <> Log.build nextKey
+        return ()
  where
+  checkContinue iter = do
+    state <- readTVarIO dumpState
+    iterValid <- valid iter
+    return $ state == Dumping && iterValid
+
+appendHStoreWithRetry :: S.LDClient -> Word64 -> ByteString -> S.Compression -> TVar DumpState -> IO Bool
+appendHStoreWithRetry ldClient shardId payload cmpStrategy dumpState = do
+  isJust <$> loop (3 :: Int)
+ where
+   -- exitNum is used to quickly exit the loop when the dump state is not dumping, avoiding more retries.
+   exitNum = -99
+
    loop cnt
-     | cnt >= 0 = do
+     | cnt > 0 = do
         res <- try $ S.appendCompressedBS ldClient shardId payload cmpStrategy Nothing
         case res of
+          Right lsn ->
+            return $ Just lsn
           Left (e :: S.SomeHStoreException) -> do
-           void . atomically $ readTVar dumpState >>= \s -> check (s == Dumping)
-           let cnt' = cnt - 1
-           Log.warning $ "Dump to shardId " <> Log.build shardId <> " failed"
-                      <> ", error: " <> Log.build (displayException e)
-                      <> ", left retries = " <> Log.build (show cnt')
-           -- sleep 1s
-           threadDelay $ 1 * 1000 * 1000
-           loop cnt'
-          Right lsn -> return $ Just lsn
+           state <- readTVarIO dumpState
+           case state of
+             Dumping -> do
+               let cnt' = cnt - 1
+               Log.warning $ "Dump to shardId " <> Log.build shardId <> " failed"
+                          <> ", error: " <> Log.build (displayException e)
+                          <> ", left retries = " <> Log.build (show cnt')
+               -- sleep 1s
+               threadDelay $ 1 * 1000 * 1000
+               loop cnt'
+             _ -> loop exitNum
+     | cnt == exitNum = do
+       Log.warning $ "Dump to shardId " <> Log.build shardId <> " failed because cache store is not dumping, will retry later."
+       return Nothing
      | otherwise = do
        Log.fatal $ "Dump to shardId " <> Log.build shardId <> " failed after exausting the retry attempts, drop the record."
        return Nothing
@@ -216,11 +296,12 @@ appendHStoreWithRetry CacheStore{..} ldClient shardId payload cmpStrategy = do
 setCacheStoreMode :: CacheStore -> StoreMode -> IO ()
 setCacheStoreMode CacheStore{..} CacheMode = do
   void $ swapMVar enableWrite True
-  void $ atomically $ do
+  resume <- atomically $ do
     state <- readTVar dumpState
     case state of
-      Dumping -> writeTVar dumpState Suspend
-      _       -> pure ()
+      Dumping -> writeTVar dumpState Suspend >> return True
+      _       -> return False
+  atomicWriteIORef needResume resume
   Log.info $ "Set CacheStore to CacheMode"
 setCacheStoreMode CacheStore{..} DumpMode = do
   void $ swapMVar enableWrite False
