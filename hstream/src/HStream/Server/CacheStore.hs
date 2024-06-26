@@ -12,29 +12,35 @@ module HStream.Server.CacheStore
 )
 where
 
-import           Control.Concurrent     (MVar, forkFinally, modifyMVar_,
-                                         newMVar, readMVar, swapMVar,
-                                         threadDelay)
-import           Control.Concurrent.STM (TVar, atomically, check, newTVarIO,
-                                         readTVar, swapTVar, writeTVar)
-import           Control.Exception      (Exception (displayException), throwIO,
-                                         try)
-import           Control.Monad          (unless, void, when)
-import           Data.ByteString        (ByteString)
-import qualified Data.ByteString        as BS
-import qualified Data.ByteString.Char8  as BSC
-import           Data.Int               (Int64)
-import           Data.IORef             (IORef, atomicModifyIORef', newIORef)
-import qualified Data.Text              as T
-import qualified Data.Text.Encoding     as T
-import           Data.Word              (Word64)
+import           Control.Concurrent         (MVar, forkFinally, modifyMVar_,
+                                             newMVar, readMVar, swapMVar,
+                                             threadDelay)
+import           Control.Concurrent.STM     (TVar, atomically, check, newTVarIO,
+                                             readTVar, readTVarIO, swapTVar,
+                                             writeTVar)
+import           Control.Exception          (Exception (displayException),
+                                             throwIO, try)
+import           Control.Monad              (filterM, unless, void, when)
+import           Data.ByteString            (ByteString)
+import qualified Data.ByteString            as BS
+import qualified Data.ByteString.Char8      as BSC
+import           Data.Int                   (Int64)
+import           Data.IORef                 (IORef, atomicModifyIORef',
+                                             atomicWriteIORef, newIORef,
+                                             readIORef)
+import qualified Data.List                  as L
+import qualified Data.Text                  as T
+import qualified Data.Text.Encoding         as T
+import           Data.Word                  (Word64)
 import           System.Clock
-import           Text.Printf            (printf)
+import           Text.Printf                (printf)
 
+import           Data.Maybe                 (fromJust, isJust)
 import           Database.RocksDB
-import qualified HStream.Exception      as HE
-import qualified HStream.Logger         as Log
-import qualified HStream.Store          as S
+import           Database.RocksDB.Exception (RocksDbException)
+import qualified HStream.Exception          as HE
+import qualified HStream.Logger             as Log
+import qualified HStream.Store              as S
 
 -- StoreMode is a logical concept that represents the operations that the current CacheStore can perform.
 --   Cache mode: data can only be written to the store
@@ -62,9 +68,6 @@ data CacheStore = CacheStore
 -- Store is actually a column family in rocksdb,
 -- with the timestamp of creating the store as the name of the column family.
 data Store = Store
-  { db           :: DB
-  , name         :: String
-  , columnFamily :: ColumnFamily
   { db            :: DB
   , name          :: String
   , columnFamily  :: ColumnFamily
@@ -101,11 +104,37 @@ initCacheStore CacheStore{..} = do
         Log.info $ "Get cache store " <> Log.build name
         return $ Just st'
       Nothing  -> do
-        db <- open dbOpts path
         Log.info $ "Open rocksdb"
+        res <- try $ listColumnFamilies dbOpts path
+        db <- case res of
+          Left (_ :: RocksDbException) -> do
+            -- `listColumnFamilies` expects the db to exist. If the call failed, we'll just assume
+            -- this is a new db, relying on a subsequent `open` failing in case it's a more severe issue.
+            open dbOpts path
+          Right cfs -> do
+            -- open db and remove existed column families
+            oldCF <- listColumnFamilies dbOpts path
+            let defaultCfIndex = fromJust $ L.elemIndex "default" oldCF
+            let cfs = map (\n -> ColumnFamilyDescriptor {name = n, options = dbOpts}) oldCF
+            (db, cfhs) <- openColumnFamilies dbOpts path cfs
+            -- skip drop default column family
+            let shouldDrop = [x | (i, x) <- zip [0..] cfhs, i /= defaultCfIndex]
+            mapM_ (dropColumnFamily db) shouldDrop
+            mapM_ destroyColumnFamily cfhs
+            return db
+
+            -- -- open db and remove existed column families
+            -- let cfs' = map (\n -> ColumnFamilyDescriptor {name = n, options = dbOpts}) cfs
+            -- (db, cfhs) <- openColumnFamilies dbOpts path cfs'
+            -- -- skip drop default column family
+            -- mapM_ (dropColumnFamily db) =<< filterM (fmap not . isDefaultColumnFamily) cfhs
+            -- mapM_ destroyColumnFamily cfhs
+            -- return db
+
         name <- show <$> getCurrentTimestamp
         columnFamily <- createColumnFamily db dbOpts name
-        Log.info $ "Create cached store " <> Log.build name
+        Log.info $ "Create cache store " <> Log.build name
+
         totalWrite <- newIORef 0
         totalRead <- newIORef 0
         nextKeyToDump <- newIORef BS.empty
