@@ -313,7 +313,7 @@ appendHStoreWithRetry ldClient shardId payload cmpStrategy dumpState = do
                loop cnt'
              _ -> loop exitNum
      | cnt == exitNum = do
-       Log.warning $ "Dump to shardId " <> Log.build shardId <> " failed because cache store is not dumping, will retry later."
+       Log.warning $ "Dump to shardId " <> Log.build shardId <> " failed because cache store is not in dumping state, will retry later."
        return Nothing
      | otherwise = do
        Log.fatal $ "Dump to shardId " <> Log.build shardId <> " failed after exausting the retry attempts, drop the record."

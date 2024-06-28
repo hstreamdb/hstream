@@ -45,7 +45,7 @@ public:
     auto duration =
         std::chrono::duration_cast<std::chrono::milliseconds>(end - start)
             .count();
-    ld_warning("GetClusterState took %ld ms", duration);
+    ld_debug("GetClusterState took %ld ms", duration);
 
     // getClusterState(*client_impl, *nodes_configuration);
 
@@ -69,7 +69,7 @@ public:
     if (!unhealthy_nodes_set.empty()) {
       ld_warning("Cluster has %lu unhealthy nodes:",
                  unhealthy_nodes_set.size());
-      // printUnhealthyNodes(*nodes_configuration, unhealthy_nodes_set);
+      printUnhealthyNodes(*nodes_configuration, unhealthy_nodes_set);
     }
 
     return unhealthy_nodes_set.size() <= unhealthy_node_limit;
@@ -103,7 +103,7 @@ private:
                  res.node_id, res.addr.c_str(), st, deadNodes.c_str(),
                  unhealthyNodes.c_str());
     }
-    ld_warning("Check return unhealthy nodes: [%s]",
+    ld_warning("Check return unhealthy nodes index: [%s]",
                folly::join(',', sets).c_str());
   }
 
