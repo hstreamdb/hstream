@@ -40,7 +40,7 @@ startMonitor :: ServerContext -> HealthMonitor -> Int -> IO ()
 startMonitor sc hm delaySecond = forever $ do
   threadDelay $ delaySecond * 1000 * 1000
   start <- getCurrentTime
-  Log.debug $ "========== docheck start..." <> " in " <> Log.build (show start)
+  -- Log.debug $ "========== docheck start..." <> " in " <> Log.build (show start)
   res <- try @SomeException $ docheck sc hm
   end <- getCurrentTime
   case res of
@@ -49,9 +49,9 @@ startMonitor sc hm delaySecond = forever $ do
   let diff = nominalDiffTimeToSeconds $ diffUTCTime end start
   when (diff > 1) $
     Log.warning $ "Monitor check return slow, total use " <> Log.build (show diff) <> "s"
-  Log.debug $ "========== docheck end..." <> " in " <> Log.build (show end)
-          <> ", with start time: " <> Log.build (show start)
-          <> ", duration: " <> Log.build (show diff)
+  Log.debug $ "Health monitor finish check in " <> Log.build (show end)
+           <> ", with start time: " <> Log.build (show start)
+           <> ", duration: " <> Log.build (show diff)
 
 docheck :: ServerContext -> HealthMonitor -> IO ()
 docheck sc@ServerContext{..} hm = do
@@ -80,10 +80,9 @@ checkLdCluster HealthMonitor{..} = do
   start <- getTime Monotonic
   res <- S.isLdClusterHealthy ldChecker ldUnhealthyNodesLimit
   end <- getTime Monotonic
-  let sDuration = toNanoSecs (diffTimeSpec end start) `div` 1000000
-  if sDuration > 1000
-    then Log.warning $ "CheckLdCluster slow, total time " <> Log.build sDuration <> "ms"
-    else Log.debug $ "Finish checkLdClusster, total time " <> Log.build sDuration <> "ms"
+  let msDuration = toNanoSecs (diffTimeSpec end start) `div` 1000000
+  when (msDuration > 1000) $
+    Log.warning $ "CheckLdCluster return slow, total time " <> Log.build msDuration <> "ms"
   return res
 
 checkMeta :: HealthMonitor -> IO Bool
@@ -91,10 +90,9 @@ checkMeta HealthMonitor{..} | ZKHandle c <- metaHandle = do
   start <- getTime Monotonic
   res <- checkRecoverable =<< unsafeGetZHandle c
   end <- getTime Monotonic
-  let sDuration = toNanoSecs (diffTimeSpec end start) `div` 1000000
-  if sDuration > 1000
-    then Log.warning $ "CheckMeta slow, total time " <> Log.build sDuration <> "ms"
-    else Log.debug $ "Finish checkMeta, total time " <> Log.build sDuration <> "ms"
+  let msDuration = toNanoSecs (diffTimeSpec end start) `div` 1000000
+  when (msDuration > 1000) $
+    Log.warning $ "CheckMeta return slow, total time " <> Log.build msDuration <> "ms"
   return res
 checkMeta HealthMonitor{..} | _ <- metaHandle = do
   return True
