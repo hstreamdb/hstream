@@ -219,7 +219,7 @@ lookupResource sc@ServerContext{..} ResView rid = do
   M.getMeta @P.ViewInfo rid metaHandle >>= \case
     Nothing             -> throwIO $ HE.ViewNotFound rid
     Just P.ViewInfo{..} -> lookupResource sc ResQuery (P.queryId viewQuery)
-lookupResource sc@ServerContext{..} rtype rid = do
+lookupResource ServerContext{..} rtype rid = do
   let metaId = mkAllocationKey rtype rid
   lookupNodePersist metaHandle gossipContext loadBalanceHashRing
                     rid metaId scAdvertisedListenersKey

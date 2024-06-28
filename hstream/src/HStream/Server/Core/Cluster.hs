@@ -15,7 +15,8 @@ module HStream.Server.Core.Cluster
 
 import           Control.Concurrent               (MVar, tryReadMVar, withMVar)
 import           Control.Concurrent.STM           (readTVarIO)
-import           Control.Exception                (Handler (..),
+import           Control.Exception                (Exception (displayException),
+                                                   Handler (..),
                                                    SomeException (..), catches)
 import           Control.Monad                    (forM_, when)
 import qualified Data.List                        as L
@@ -106,7 +107,7 @@ lookupShardReader sc req@LookupShardReaderRequest{lookupShardReaderRequestReader
 
 nodeChangeEventHandler :: MVar ServerContext -> Gossip.ServerState -> I.ServerNode -> IO ()
 nodeChangeEventHandler scMVar Gossip.ServerDead I.ServerNode {..} = do
-  Log.info $ "handle Server Dead event: " <> Log.buildString' serverNodeId
+  Log.info $ "handle Server Dead event for server: " <> Log.buildString' serverNodeId
   withMVar scMVar $ \sc@ServerContext{..} -> do
     recoverDeadNodeTasks sc scIOWorker serverNodeId
     recoverDeadNodeTasks sc (QueryWorker sc) serverNodeId
@@ -121,23 +122,29 @@ nodeChangeEventHandler _ _ _ = return ()
 recoverDeadNodeTasks :: Types.TaskManager a => ServerContext -> a -> Types.ServerID -> IO ()
 recoverDeadNodeTasks sc tm deadNodeId = do
   tasks <- Types.listRecoverableResources tm
+  when (not $ null tasks) $ do
+    Log.fatal $ "dead node tasks need to recover: " <> Log.build (show tasks)
   recoverTasks sc tm tasks
 
 -- only for restarting
 recoverLocalTasks :: Types.TaskManager a => ServerContext -> a -> IO ()
 recoverLocalTasks sc@ServerContext{..} tm = do
   tasks <- Types.listResources tm
+  when (not $ null tasks) $ do
+    Log.fatal $ "local tasks need to recover: " <> Log.build (show tasks)
   recoverTasks sc tm tasks
 
 recoverTasks ::  Types.TaskManager a => ServerContext -> a -> [T.Text] -> IO ()
 recoverTasks sc@ServerContext{..} tm tasks =
   forM_ tasks $ \task -> do
     taskNode <- lookupResource sc (Types.resourceType tm) task
-    when (serverID == serverNodeId taskNode) $
+    when (serverID == serverNodeId taskNode) $ do
+      Log.fatal $ "recover " <> Log.build (show $ Types.resourceType tm) <> " task: " <> Log.build task
       catches (Types.recoverTask tm task) [
           Handler (\(err :: HE.QueryAlreadyTerminated) -> return ())
         , Handler (\(err :: SomeException) ->
-            Log.warning $ "Failed to recover dead node task" <> Log.buildString' (Types.resourceType tm)
-                        <> " with name" <> Log.build task
+            Log.fatal $ "Failed to recover dead node task" <> Log.buildString' (Types.resourceType tm)
+                     <> " with name" <> Log.build task
+                     <> ", error: " <> Log.build (displayException err)
           )
         ]

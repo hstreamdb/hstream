@@ -2,10 +2,10 @@
 {-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module HStream.MetaStore.ZookeeperUtils
-   where
+module HStream.MetaStore.ZookeeperUtils where
+
 import           Control.Exception    (catch, try)
-import           Control.Monad        (void)
+import           Control.Monad        (void, when)
 import           Data.Aeson           (FromJSON, ToJSON)
 import qualified Data.Aeson           as Aeson
 import qualified Data.ByteString      as BS
@@ -16,10 +16,11 @@ import           Z.Data.CBytes        (CBytes)
 import           Z.Data.Vector        (Bytes)
 import qualified Z.Foreign            as ZF
 import           ZooKeeper            (zooCreate, zooDelete, zooGet,
-                                       zooGetChildren, zooSet)
+                                       zooGetChildren, zooSet, zooState)
 import           ZooKeeper.Exception
 import           ZooKeeper.Types      (DataCompletion (..), StringVector (..),
                                        StringsCompletion (..), ZHandle,
+                                       pattern ZooConnectedState,
                                        pattern ZooPersistent, zooOpenAclUnsafe)
 
 import qualified HStream.Logger       as Log
@@ -81,3 +82,10 @@ createPath :: HasCallStack => ZHandle -> CBytes -> IO ()
 createPath zk path = do
   Log.debug . Log.buildString $ "create path " <> show path
   void $ zooCreate zk path Nothing zooOpenAclUnsafe ZooPersistent
+
+checkRecoverable :: ZHandle -> IO Bool
+checkRecoverable zk = do
+  st <- zooState zk
+  when (st /= ZooConnectedState) $ do
+    Log.fatal $ "zk connect is unhealty, current state: " <> Log.build (show st)
+  return $ st == ZooConnectedState

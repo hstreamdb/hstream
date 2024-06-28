@@ -76,6 +76,7 @@ library
     HStream.Store.Internal.LogDevice.Reader
     HStream.Store.Internal.LogDevice.VersionedConfigStore
     HStream.Store.Internal.LogDevice.Writer
+    HStream.Store.Internal.LogDevice.HealthCheck
     HStream.Store.Internal.Types
     HStream.Store.Stream
 
@@ -137,6 +138,7 @@ library
     cbits/logdevice/hs_versioned_config_store.cpp
     cbits/logdevice/hs_writer.cpp
     cbits/logdevice/ld_configuration.cpp
+    cbits/logdevice/ld_health_checker.cpp
     cbits/utils.cpp
 
   extra-lib-dirs:     /usr/local/lib
