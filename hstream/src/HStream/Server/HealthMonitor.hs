@@ -1,5 +1,7 @@
+{-# LANGUAGE CPP        #-}
 {-# LANGUAGE MultiWayIf #-}
 
+#ifdef HStreamEnableCacheStore
 module HStream.Server.HealthMonitor
  ( HealthMonitor
  , mkHealthMonitor
@@ -96,3 +98,4 @@ checkMeta HealthMonitor{..} | ZKHandle c <- metaHandle = do
   return res
 checkMeta HealthMonitor{..} | _ <- metaHandle = do
   return True
+#endif

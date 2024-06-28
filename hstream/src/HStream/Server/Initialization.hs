@@ -11,17 +11,14 @@ module HStream.Server.Initialization
   , closeRocksDBHandle
   ) where
 
-import           Control.Concurrent               (MVar, newMVar)
-import           Control.Concurrent.STM           (TVar, atomically, newTVar,
-                                                   newTVarIO, readTVarIO)
-import           Control.Exception                (SomeException, catch, try)
-import           Control.Monad                    (void)
+import           Control.Concurrent               (newMVar)
+import           Control.Concurrent.STM           (newTVarIO)
+import           Control.Exception                (SomeException, try)
 import qualified Data.ByteString                  as BS
 import           Data.Default                     (def)
 import           Data.Functor                     ((<&>))
 import qualified Data.HashMap.Strict              as HM
-import           Data.List                        (find, sort)
-import           Data.Word                        (Word32)
+import           Data.List                        (find)
 import qualified Database.RocksDB                 as RocksDB
 import qualified HsGrpc.Server.Types              as G
 import           Network.GRPC.HighLevel           (AuthProcessorResult (..),
@@ -40,17 +37,16 @@ import qualified Z.Data.CBytes                    as CB
 #if __GLASGOW_HASKELL__ < 902
 import qualified HStream.Admin.Store.API          as AA
 #endif
-import           Data.IORef                       (newIORef)
-import           HStream.Common.ConsistentHashing (HashRing, constructServerMap,
-                                                   getAllocatedNodeId)
 import           HStream.Common.Server.HashRing   (initializeHashRing)
-import           HStream.Gossip                   (GossipContext,
-                                                   getMemberListWithEpochSTM)
+import           HStream.Gossip                   (GossipContext)
 import qualified HStream.IO.Types                 as IO
 import qualified HStream.IO.Worker                as IO
 import qualified HStream.Logger                   as Log
 import           HStream.MetaStore.Types          (MetaHandle (..))
+#ifdef HStreamEnableCacheStore
+import           Data.IORef                       (newIORef)
 import           HStream.Server.CacheStore        (mkCacheStore)
+#endif
 import           HStream.Server.Config            (ServerOpts (..),
                                                    TlsConfig (..))
 import           HStream.Server.Types
@@ -90,6 +86,7 @@ initializeServer opts@ServerOpts{..} gossipContext hh db_m = do
 
   shardReaderMap <- newMVar HM.empty
 
+#ifdef HStreamEnableCacheStore
   serverMode <- newIORef ServerNormal
 
   -- ref: https://github.com/facebook/rocksdb/wiki/Setup-Options-and-Basic-Tuning#other-general-options
@@ -108,6 +105,7 @@ initializeServer opts@ServerOpts{..} gossipContext hh db_m = do
       readOption = def
   let path = _cacheStorePath <> show _serverID
   cachedStore <- mkCacheStore path dbOption writeOption readOption
+#endif
 
   -- recovery tasks
 
@@ -133,8 +131,10 @@ initializeServer opts@ServerOpts{..} gossipContext hh db_m = do
       , shardReaderMap           = shardReaderMap
       , querySnapshotPath        = _querySnapshotPath
       , querySnapshotter         = db_m
+#ifdef HStreamEnableCacheStore
       , serverState              = serverMode
       , cacheStore              = cachedStore
+#endif
       }
 
 --------------------------------------------------------------------------------

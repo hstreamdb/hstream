@@ -1,4 +1,5 @@
 {-# LANGUAGE BlockArguments      #-}
+{-# LANGUAGE CPP                 #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -21,20 +22,23 @@ module HStream.Server.Handler.Cluster
   ) where
 
 import           Control.Exception                (throwIO, try)
-import           Data.IORef                       (readIORef)
 import           Network.GRPC.HighLevel.Generated
 
 import qualified HsGrpc.Server                    as G
-import           HStream.Common.Server.Lookup     (lookupNode)
 import qualified HStream.Exception                as HE
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Cluster      as C
 import           HStream.Server.Core.Common       (lookupResource)
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
--- import           HStream.Server.Types             (ServerContext (..))
+#ifndef HStreamEnableCacheStore
+import           HStream.Server.Types             (ServerContext (..))
+#else
+import           Data.IORef                       (readIORef)
+import           HStream.Common.Server.Lookup     (lookupNode)
 import           HStream.Server.Types             (ServerContext (..),
                                                    ServerMode (..))
+#endif
 import           HStream.ThirdParty.Protobuf      (Empty)
 import           HStream.Utils                    (returnResp,
                                                    validateResourceIdAndThrow)
@@ -57,9 +61,14 @@ lookupResourceHandler sc@ServerContext{..} (ServerNormalRequest _meta req@Lookup
   defaultExceptionHandle $ do
   Log.info $ "receive lookup resource request: " <> Log.build (show req)
   case lookupResourceRequestResType of
+#ifndef HStreamEnableCacheStore
     Enumerated (Right rType) -> do
       validateResourceIdAndThrow rType lookupResourceRequestResId
-      -- returnResp =<< lookupResource sc rType lookupResourceRequestResId
+      returnResp =<< lookupResource sc rType lookupResourceRequestResId
+    x -> throwIO $ HE.InvalidResourceType (show x)
+#else
+    Enumerated (Right rType) -> do
+      validateResourceIdAndThrow rType lookupResourceRequestResId
       state <- readIORef serverState
       case state of
         ServerNormal -> do
@@ -76,6 +85,7 @@ lookupResourceHandler sc@ServerContext{..} (ServerNormalRequest _meta req@Lookup
     x -> throwIO $ HE.InvalidResourceType (show x)
  where
    doLookup rid = lookupNode loadBalanceHashRing rid scAdvertisedListenersKey
+#endif
 
 lookupShardHandler
   :: ServerContext
@@ -114,13 +124,15 @@ handleDescribeCluster sc _ _ = catchDefaultEx $ C.describeCluster sc
 
 handleLookupResource :: ServerContext -> G.UnaryHandler LookupResourceRequest ServerNode
 handleLookupResource sc@ServerContext{..} _sc req@LookupResourceRequest{..} = catchDefaultEx $ do
-  -- Log.debug $ "receive lookup resource request: " <> Log.build (show req)
-  -- case lookupResourceRequestResType of
-  --   Enumerated (Right rType) -> do
-  --     validateResourceIdAndThrow rType lookupResourceRequestResId
-  --     C.lookupResource sc rType lookupResourceRequestResId
-  --   x -> throwIO $ HE.InvalidResourceType (show x)
-  Log.info $ "receive lookup resource request: " <> Log.build (show req)
+#ifndef HStreamEnableCacheStore
+  Log.debug $ "receive lookup resource request: " <> Log.build (show req)
+  case lookupResourceRequestResType of
+    Enumerated (Right rType) -> do
+      validateResourceIdAndThrow rType lookupResourceRequestResId
+      C.lookupResource sc rType lookupResourceRequestResId
+    x -> throwIO $ HE.InvalidResourceType (show x)
+#else
+  Log.debug $ "receive lookup resource request: " <> Log.build (show req)
   case lookupResourceRequestResType of
     Enumerated (Right rType) -> do
       validateResourceIdAndThrow rType lookupResourceRequestResId
@@ -141,6 +153,7 @@ handleLookupResource sc@ServerContext{..} _sc req@LookupResourceRequest{..} = ca
     x -> throwIO $ HE.InvalidResourceType (show x)
  where
    doLookup rid = lookupNode loadBalanceHashRing rid scAdvertisedListenersKey
+#endif
 
 handleLookupShard :: ServerContext -> G.UnaryHandler LookupShardRequest LookupShardResponse
 handleLookupShard sc _ req = catchDefaultEx $ C.lookupShard sc req

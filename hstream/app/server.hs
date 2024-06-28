@@ -63,8 +63,10 @@ import           HStream.Server.Config            (AdvertisedListeners,
                                                    getConfig, runServerCli)
 import qualified HStream.Server.Core.Cluster      as Cluster
 import qualified HStream.Server.Experimental      as Exp
+#ifdef HStreamEnableCacheStore
 import           HStream.Server.HealthMonitor     (mkHealthMonitor,
                                                    startMonitor)
+#endif
 import qualified HStream.Server.HsGrpcHandler     as HsGrpcHandler
 import qualified HStream.Server.HStreamApi        as API
 import qualified HStream.Server.HStreamInternal   as I
@@ -179,11 +181,13 @@ app config@ServerOpts{..} = do
         -- wati the default server
         waitGossipBoot gossipContext
 
+#ifdef HStreamEnableCacheStore
         let ServerContext{scLDClient, metaHandle} = serverContext
         healthMonitor <- mkHealthMonitor scLDClient metaHandle 1
         aMonitor <- Async.async $ startMonitor serverContext healthMonitor 3
         Log.info $ "Start healthy monitor"
         Async.link2Only (const True) a aMonitor
+#endif
 
         Async.wait a
 
