@@ -107,7 +107,7 @@ initializeServer opts@ServerOpts{..} gossipContext hh db_m = do
       -- readOption = def { RocksDB.readaheadSize = 64 * 1024 * 1024 }
       readOption = def
   let path = _cacheStorePath <> show _serverID
-  cachedStore <- mkCacheStore path dbOption writeOption readOption
+  cachedStore <- mkCacheStore path dbOption writeOption readOption statsHolder
 
   -- recovery tasks
 

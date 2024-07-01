@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns   #-}
 {-# LANGUAGE NamedFieldPuns #-}
 
 module HStream.Server.CacheStore
@@ -20,7 +21,7 @@ import           Control.Concurrent.STM     (TVar, atomically, check, newTVarIO,
                                              writeTVar)
 import           Control.Exception          (Exception (displayException),
                                              throwIO, try)
-import           Control.Monad              (filterM, unless, void, when)
+import           Control.Monad              (unless, void, when)
 import           Data.ByteString            (ByteString)
 import qualified Data.ByteString            as BS
 import qualified Data.ByteString.Char8      as BSC
@@ -31,6 +32,7 @@ import           Data.IORef                 (IORef, atomicModifyIORef',
 import qualified Data.List                  as L
 import qualified Data.Text                  as T
 import qualified Data.Text.Encoding         as T
+import           Data.Time.Clock.POSIX      (getPOSIXTime)
 import           Data.Word                  (Word64)
 import           System.Clock
 import           Text.Printf                (printf)
@@ -40,7 +42,9 @@ import           Database.RocksDB
 import           Database.RocksDB.Exception (RocksDbException)
 import qualified HStream.Exception          as HE
 import qualified HStream.Logger             as Log
+import qualified HStream.Stats              as ST
 import qualified HStream.Store              as S
+import           HStream.Utils              (msecSince, textToCBytes)
 
 -- StoreMode is a logical concept that represents the operations that the current CacheStore can perform.
 --   Cache mode: data can only be written to the store
@@ -63,6 +67,7 @@ data CacheStore = CacheStore
   -- will be set to True. This indicates that the cache store should
   -- resume dump process after dumpstate changes back to dumping
   , counter      :: IORef Word64
+  , statsHolder  :: ST.StatsHolder
   }
 
 -- Store is actually a column family in rocksdb,
@@ -85,8 +90,9 @@ data DumpState =
   | Suspend   -- Dump is suspend
  deriving(Show, Eq)
 
-mkCacheStore :: FilePath -> DBOptions -> WriteOptions -> ReadOptions -> IO CacheStore
-mkCacheStore path dbOpts writeOptions readOptions = do
+mkCacheStore
+  :: FilePath -> DBOptions -> WriteOptions -> ReadOptions -> ST.StatsHolder -> IO CacheStore
+mkCacheStore path dbOpts writeOptions readOptions statsHolder = do
   store <- newMVar Nothing
   enableWrite <- newMVar False
   dumpState <- newTVarIO NoDump
@@ -121,14 +127,6 @@ initCacheStore CacheStore{..} = do
             mapM_ (dropColumnFamily db) shouldDrop
             mapM_ destroyColumnFamily cfhs
             return db
-
-            -- -- open db and remove existed column families
-            -- let cfs' = map (\n -> ColumnFamilyDescriptor {name = n, options = dbOpts}) cfs
-            -- (db, cfhs) <- openColumnFamilies dbOpts path cfs'
-            -- -- skip drop default column family
-            -- mapM_ (dropColumnFamily db) =<< filterM (fmap not . isDefaultColumnFamily) cfhs
-            -- mapM_ destroyColumnFamily cfhs
-            -- return db
 
         name <- show <$> getCurrentTimestamp
         columnFamily <- createColumnFamily db dbOpts name
@@ -185,14 +183,21 @@ writeRecord st@CacheStore{..} streamName shardId payload = do
   -- Obtain a monotonically increasing offset to ensure that each encoded-key is unique.
   offset <- atomicModifyIORef' counter (\x -> (x + 1, x))
   let k = encodeKey streamName shardId offset
+  !append_start <- getPOSIXTime
   putCF db writeOptions columnFamily k payload
+  ST.serverHistogramAdd statsHolder ST.SHL_AppendCacheStoreLatency =<< msecSince append_start
+  ST.cache_store_stat_add_append_in_bytes statsHolder cStreamName (fromIntegral $ BS.length payload)
+  ST.cache_store_stat_add_append_in_records statsHolder cStreamName 1
   void $ atomicModifyIORef' totalWrite (\x -> (x + 1, x))
+
   lsn <- getCurrentTimestamp
   return S.AppendCompletion
           { appendCompLogID = shardId
-          , appendCompLSN = fromIntegral lsn
+          , appendCompLSN   = fromIntegral lsn
           , appendCompTimestamp = 0
           }
+ where
+   cStreamName = "cache_store"
 
 -- dump all cached records to HStore
 dumpToHStore :: CacheStore -> S.LDClient -> S.Compression -> IO ()
@@ -220,7 +225,7 @@ dumpToHStore st@CacheStore{..} ldClient cmpStrategy = do
         void . atomically $ readTVar dumpState >>= \s -> check (s == Dumping)
         dumpLoop cacheStore
       Dumping -> do
-        doDump cacheStore ldClient cmpStrategy readOptions dumpState needResume
+        doDump cacheStore ldClient cmpStrategy readOptions dumpState needResume statsHolder
         offset <- readIORef counter
         Log.info $ "Finish doDump, current offset: " <> Log.build (show offset)
         resume <- readIORef needResume
@@ -245,8 +250,9 @@ doDump
   -> ReadOptions
   -> TVar DumpState
   -> IORef Bool
+  -> ST.StatsHolder
   -> IO ()
-doDump Store{..} ldClient cmpStrategy readOptions dumpState resume = do
+doDump Store{..} ldClient cmpStrategy readOptions dumpState resume statsHolder = do
   start <- getTime Monotonic
   withIteratorCF db readOptions columnFamily $ \iter -> do
     atomicWriteIORef resume False
@@ -261,13 +267,20 @@ doDump Store{..} ldClient cmpStrategy readOptions dumpState resume = do
     whileM (checkContinue iter) $ do
       k <- key iter
       payload <- value iter
+      ST.cache_store_stat_add_read_in_bytes statsHolder cStreamName (fromIntegral $ BS.length payload + BS.length k)
+      ST.cache_store_stat_add_read_in_records statsHolder cStreamName 1
+
       atomicWriteIORef nextKeyToDump k
-      let (_, shardId) = decodeKey k
+      let (sName, shardId) = decodeKey k
       -- TODO: How to handle LSN?
-      success <- appendHStoreWithRetry ldClient shardId payload cmpStrategy dumpState
-      when success $
+      success <- appendHStoreWithRetry ldClient sName shardId payload cmpStrategy dumpState statsHolder
+      when success $ do
         void $ atomicModifyIORef' totalRead (\x -> (x + 1, x))
+        ST.cache_store_stat_add_delivered_in_records statsHolder cStreamName 1
+
+      !move_iter_start <- getPOSIXTime
       next iter
+      ST.serverHistogramAdd statsHolder ST.SHL_ReadCacheStoreLatency =<< msecSince move_iter_start
 
     -- FIXME: What if iterator return error when iterating?
     errorM <- getError iter
@@ -281,25 +294,41 @@ doDump Store{..} ldClient cmpStrategy readOptions dumpState resume = do
                 <> ", next key to dump: " <> Log.build nextKey
         return ()
  where
+  cStreamName = "cache_store"
   checkContinue iter = do
     state <- readTVarIO dumpState
     iterValid <- valid iter
     return $ state == Dumping && iterValid
 
-appendHStoreWithRetry :: S.LDClient -> Word64 -> ByteString -> S.Compression -> TVar DumpState -> IO Bool
-appendHStoreWithRetry ldClient shardId payload cmpStrategy dumpState = do
+appendHStoreWithRetry
+  :: S.LDClient
+  -> T.Text
+  -> Word64
+  -> ByteString
+  -> S.Compression
+  -> TVar DumpState
+  -> ST.StatsHolder
+  -> IO Bool
+appendHStoreWithRetry ldClient streamName shardId payload cmpStrategy dumpState statsHolder = do
   isJust <$> loop (3 :: Int)
  where
+   cName = textToCBytes streamName
    -- exitNum is used to quickly exit the loop when the dump state is not dumping, avoiding more retries.
    exitNum = -99
 
    loop cnt
      | cnt > 0 = do
+        !append_start <- getPOSIXTime
         res <- try $ S.appendCompressedBS ldClient shardId payload cmpStrategy Nothing
         case res of
-          Right lsn ->
+          Right lsn -> do
+            ST.serverHistogramAdd statsHolder ST.SHL_AppendLatency =<< msecSince append_start
+            ST.stream_stat_add_append_in_bytes statsHolder cName (fromIntegral $ BS.length payload)
+            ST.stream_stat_add_append_in_records statsHolder cName 1
             return $ Just lsn
           Left (e :: S.SomeHStoreException) -> do
+           ST.stream_stat_add_append_failed statsHolder cName 1
+           ST.stream_time_series_add_append_failed_requests statsHolder cName 1
            state <- readTVarIO dumpState
            case state of
              Dumping -> do
@@ -312,10 +341,12 @@ appendHStoreWithRetry ldClient shardId payload cmpStrategy dumpState = do
                loop cnt'
              _ -> loop exitNum
      | cnt == exitNum = do
-       Log.warning $ "Dump to shardId " <> Log.build shardId <> " failed because cache store is not in dumping state, will retry later."
+       Log.warning $ "Dump to shardId " <> Log.build shardId
+                  <> " failed because cache store is not in dumping state, will retry later."
        return Nothing
      | otherwise = do
-       Log.fatal $ "Dump to shardId " <> Log.build shardId <> " failed after exausting the retry attempts, drop the record."
+       Log.fatal $ "Dump to shardId " <> Log.build shardId
+                <> " failed after exausting the retry attempts, drop the record."
        return Nothing
 
 -----------------------------------------------------------------------------------------------------

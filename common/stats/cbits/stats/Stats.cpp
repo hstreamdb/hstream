@@ -8,20 +8,20 @@ namespace hstream { namespace common {
 
 static void aggregateStat(StatsAgg agg, StatsCounter& out, int64_t in) {
   switch (agg) {
-  case StatsAgg::SUM:
-    out += in;
-    break;
-  case StatsAgg::MAX:
-    if (in > out) {
+    case StatsAgg::SUM:
+      out += in;
+      break;
+    case StatsAgg::MAX:
+      if (in > out) {
+        out = in;
+      }
+      break;
+    case StatsAgg::SUBTRACT:
+      out -= in;
+      break;
+    case StatsAgg::ASSIGN:
       out = in;
-    }
-    break;
-  case StatsAgg::SUBTRACT:
-    out -= in;
-    break;
-  case StatsAgg::ASSIGN:
-    out = in;
-    break;
+      break;
   }
 }
 
@@ -37,19 +37,19 @@ static void aggregateHistogram(StatsAggOptional agg, H& out, const H& in) {
     return;
   }
   switch (agg.value()) {
-  case StatsAgg::SUM:
-    out.merge(in);
-    break;
-  case StatsAgg::MAX:
-    // MAX doesn't make much sense for histograms. Let's just merge them.
-    out.merge(in);
-    break;
-  case StatsAgg::SUBTRACT:
-    out.subtract(in);
-    break;
-  case StatsAgg::ASSIGN:
-    out = in;
-    break;
+    case StatsAgg::SUM:
+      out.merge(in);
+      break;
+    case StatsAgg::MAX:
+      // MAX doesn't make much sense for histograms. Let's just merge them.
+      out.merge(in);
+      break;
+    case StatsAgg::SUBTRACT:
+      out.subtract(in);
+      break;
+    case StatsAgg::ASSIGN:
+      out = in;
+      break;
   }
 }
 
@@ -77,7 +77,7 @@ std::string PerStreamStats::toJson() {
 }
 
 void PerConnectorStats::aggregate(PerConnectorStats const& other,
-                               StatsAggOptional agg_override) {
+                                  StatsAggOptional agg_override) {
 #define STAT_DEFINE(name, agg)                                                 \
   aggregateStat(StatsAgg::agg, agg_override, name##_counter,                   \
                 other.name##_counter);
@@ -94,6 +94,27 @@ folly::dynamic PerConnectorStats::toJsonObj() {
 }
 
 std::string PerConnectorStats::toJson() {
+  return folly::toJson(this->toJsonObj());
+}
+
+void PerCacheStoreStats::aggregate(PerCacheStoreStats const& other,
+                                   StatsAggOptional agg_override) {
+#define STAT_DEFINE(name, agg)                                                 \
+  aggregateStat(StatsAgg::agg, agg_override, name##_counter,                   \
+                other.name##_counter);
+#include "per_cache_store_stats.inc"
+}
+
+folly::dynamic PerCacheStoreStats::toJsonObj() {
+  folly::dynamic map = folly::dynamic::object;
+#define STAT_DEFINE(name, _)                                                   \
+  /* we know that all names are unique */                                      \
+  map[#name] = name##_counter.load();
+#include "per_cache_store_stats.inc"
+  return map;
+}
+
+std::string PerCacheStoreStats::toJson() {
   return folly::toJson(this->toJsonObj());
 }
 
@@ -114,12 +135,10 @@ folly::dynamic PerQueryStats::toJsonObj() {
   return map;
 }
 
-std::string PerQueryStats::toJson() {
-  return folly::toJson(this->toJsonObj());
-}
+std::string PerQueryStats::toJson() { return folly::toJson(this->toJsonObj()); }
 
 void PerViewStats::aggregate(PerViewStats const& other,
-                              StatsAggOptional agg_override) {
+                             StatsAggOptional agg_override) {
 #define STAT_DEFINE(name, agg)                                                 \
   aggregateStat(StatsAgg::agg, agg_override, name##_counter,                   \
                 other.name##_counter);
@@ -135,9 +154,7 @@ folly::dynamic PerViewStats::toJsonObj() {
   return map;
 }
 
-std::string PerViewStats::toJson() {
-  return folly::toJson(this->toJsonObj());
-}
+std::string PerViewStats::toJson() { return folly::toJson(this->toJsonObj()); }
 
 void PerSubscriptionStats::aggregate(PerSubscriptionStats const& other,
                                      StatsAggOptional agg_override) {
@@ -272,6 +289,7 @@ void Stats::deriveStats() {}
 void Stats::reset() {
   per_stream_stats.wlock()->clear();
   per_connector_stats.wlock()->clear();
+  per_cache_store_stats.wlock()->clear();
   per_query_stats.wlock()->clear();
   per_view_stats.wlock()->clear();
   per_subscription_stats.wlock()->clear();
@@ -298,6 +316,7 @@ folly::dynamic Stats::toJsonObj() {
 
   _PER_TO_JSON(per_stream_stats)
   _PER_TO_JSON(per_connector_stats)
+  _PER_TO_JSON(per_cache_store_stats)
   _PER_TO_JSON(per_query_stats)
   _PER_TO_JSON(per_view_stats)
   _PER_TO_JSON(per_subscription_stats)
