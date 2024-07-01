@@ -37,11 +37,6 @@ flag hstream_enable_schema
   description:
     Save schema with streams and enable schema-related pipelines
 
-flag hstream_enable_cache_store
-  default:     False
-  description:
-    Use cache store when meta cluster and store cluster are all unhealthy
-
 common shared-properties
   ghc-options:
     -Wall -Wcompat -Widentities -Wincomplete-record-updates
@@ -59,9 +54,6 @@ common shared-properties
 
   if flag(hstream_enable_schema)
     cpp-options: -DHStreamEnableSchema
-
-  if flag(hstream_enable_cache_store)
-    cpp-options: -DHStreamEnableCacheStore
 
 library
   import:             shared-properties

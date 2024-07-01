@@ -1,5 +1,4 @@
 {-# LANGUAGE BangPatterns      #-}
-{-# LANGUAGE CPP               #-}
 {-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -55,13 +54,10 @@ import           HStream.Server.Types        (BiStreamReader (..),
                                               BiStreamReaderSender,
                                               ServerContext (..),
                                               ServerInternalOffset,
-                                              ShardReader (..),
+                                              ServerMode (..), ShardReader (..),
                                               StreamReader (..), ToOffset (..),
                                               getLogLSN, mkShardReader,
                                               mkStreamReader)
-#ifdef HStreamEnableCacheStore
-import           HStream.Server.Types        (ServerMode (..))
-#endif
 import qualified HStream.Stats               as Stats
 import qualified HStream.Store               as S
 import           HStream.Utils               (decompressBatchedRecord,
@@ -147,14 +143,12 @@ readShard ServerContext{..} API.ReadShardRequest{..} = do
    readRecords r@ShardReader{..} = do
      let cStreamName = textToCBytes targetStream
      !read_start <- getPOSIXTime
-#ifndef HStreamEnableCacheStore
-     records <- readProcessGap r (fromIntegral readShardRequestMaxRecords)
-     Stats.serverHistogramAdd scStatsHolder Stats.SHL_ReadLatency =<< msecSince read_start
-     Stats.stream_stat_add_read_in_bytes scStatsHolder cStreamName (fromIntegral . sum $ map (BS.length . S.recordPayload) records)
-     Stats.stream_stat_add_read_in_batches scStatsHolder cStreamName (fromIntegral $ length records)
-     let (records', _) = filterRecords shardReaderStartTs shardReaderEndTs records
-     receivedRecordsVecs <- forM records' decodeRecordBatch
-#else
+     -- records <- readProcessGap r (fromIntegral readShardRequestMaxRecords)
+     -- Stats.serverHistogramAdd scStatsHolder Stats.SHL_ReadLatency =<< msecSince read_start
+     -- Stats.stream_stat_add_read_in_bytes scStatsHolder cStreamName (fromIntegral . sum $ map (BS.length . S.recordPayload) records)
+     -- Stats.stream_stat_add_read_in_batches scStatsHolder cStreamName (fromIntegral $ length records)
+     -- let (records', _) = filterRecords shardReaderStartTs shardReaderEndTs records
+     -- receivedRecordsVecs <- forM records' decodeRecordBatch
      state <- readIORef serverState
      receivedRecordsVecs <- case state of
        ServerNormal -> do
@@ -165,7 +159,6 @@ readShard ServerContext{..} API.ReadShardRequest{..} = do
          let (records', _) = filterRecords shardReaderStartTs shardReaderEndTs records
          forM records' decodeRecordBatch
        ServerBackup -> return []
-#endif
      let res = V.fromList $ map (\(_, _, _, record) -> record) receivedRecordsVecs
      Log.debug $ "reader " <> Log.build readShardRequestReaderId
               <> " read " <> Log.build (V.length res) <> " batchRecords"

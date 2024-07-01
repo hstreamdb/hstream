@@ -5,9 +5,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs            #-}
 {-# LANGUAGE RankNTypes       #-}
-#ifdef HStreamEnableCacheStore
 {-# LANGUAGE TupleSections    #-}
-#endif
 
 module HStream.Server.Types where
 
@@ -36,7 +34,8 @@ import qualified HStream.Admin.Store.API          as AA
 #endif
 import           Control.Exception                (throw, throwIO)
 import           Control.Monad                    (when)
-import           Data.IORef                       (IORef)
+import           Data.IORef                       (IORef, atomicModifyIORef',
+                                                   readIORef)
 import           Data.Maybe                       (fromJust)
 import           HStream.Base.Timer               (CompactedWorker)
 import           HStream.Common.Server.HashRing   (LoadBalanceHashRing)
@@ -46,10 +45,7 @@ import           HStream.Gossip.Types             (Epoch, GossipContext)
 import qualified HStream.IO.Types                 as IO
 import qualified HStream.IO.Worker                as IO
 import           HStream.MetaStore.Types          (MetaHandle)
-#ifdef HStreamEnableCacheStore
-import Data.IORef (atomicModifyIORef', readIORef)
 import           HStream.Server.CacheStore        (CacheStore)
-#endif
 import           HStream.Server.Config
 import qualified HStream.Server.HStreamApi        as API
 import qualified HStream.Stats                    as Stats
@@ -117,13 +113,10 @@ data ServerContext = ServerContext
   , shardReaderMap           :: MVar (HM.HashMap Text (MVar ShardReader))
   , querySnapshotPath        :: FilePath
   , querySnapshotter         :: Maybe RocksDB.DB
-#ifdef HStreamEnableCacheStore
   , serverState              :: IORef ServerMode
   , cacheStore               :: CacheStore
-#endif
 }
 
-#ifdef HStreamEnableCacheStore
 setServerMode :: ServerContext -> ServerMode -> IO ()
 setServerMode ServerContext{..} state = do
   _ <- atomicModifyIORef' serverState $ (state,)
@@ -132,7 +125,6 @@ setServerMode ServerContext{..} state = do
 getServerMode :: ServerContext -> IO ServerMode
 getServerMode ServerContext{..} = do
   readIORef serverState
-#endif
 
 data SubscribeContextNewWrapper = SubscribeContextNewWrapper
   { scnwState   :: TVar SubscribeState,

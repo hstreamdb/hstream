@@ -46,11 +46,6 @@ flag hstream_enable_asan
   description:
     Enable AddressSanitizer. NOTE: This do not support build with template-haskell.
 
-flag hstream_enable_cache_store
-  default:     False
-  description:
-    Use cache store when meta cluster and store cluster are all unhealthy
-
 common shared-properties
   ghc-options:
     -Wall -Wcompat -Widentities -Wincomplete-record-updates
@@ -67,9 +62,6 @@ common shared-properties
 
   if flag(hstream_enable_schema)
     cpp-options: -DHStreamEnableSchema
-
-  if flag(hstream_enable_cache_store)
-    cpp-options: -DHStreamEnableCacheStore
 
 -- XXX: Tricky options to link static archive, see: https://github.com/haskell/cabal/issues/4677
 common link-asan
@@ -123,6 +115,8 @@ library
     HStream.Server.QueryWorker
     HStream.Server.Types
     HStream.Server.Validation
+    HStream.Server.CacheStore
+    HStream.Server.HealthMonitor
 
   other-modules:
     HStream.Server.Core.Query
@@ -218,11 +212,6 @@ library
 
   if flag(hstream_enable_asan)
     cpp-options: -DHSTREAM_ENABLE_ASAN
-
-  if flag(hstream_enable_cache_store)
-    exposed-modules: 
-      HStream.Server.HealthMonitor
-      HStream.Server.CacheStore
 
   build-tool-depends: hpp:hpp >=0.6 && <0.7
   default-language:   Haskell2010

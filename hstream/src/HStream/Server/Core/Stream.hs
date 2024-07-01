@@ -36,6 +36,7 @@ import qualified Data.ByteString                   as BS
 import qualified Data.ByteString.Lazy              as BSL
 import           Data.Either                       (partitionEithers)
 import           Data.Functor                      ((<&>))
+import           Data.IORef                        (readIORef)
 import qualified Data.List                         as L
 import qualified Data.Map.Strict                   as M
 import           Data.Maybe                        (fromJust, fromMaybe)
@@ -52,15 +53,12 @@ import           HStream.Common.Types
 import qualified HStream.Common.ZookeeperSlotAlloc as Slot
 import qualified HStream.Exception                 as HE
 import qualified HStream.Logger                    as Log
-#ifdef HStreamEnableCacheStore
-import           Data.IORef                        (readIORef)
 import qualified HStream.Server.CacheStore         as DB
-import           HStream.Server.Types              (ServerMode (..))
-#endif
 import qualified HStream.Server.HStreamApi         as API
 import qualified HStream.Server.MetaData           as P
 import           HStream.Server.Types              (ServerContext (..),
                                                     ServerInternalOffset (..),
+                                                    ServerMode (..),
                                                     ToOffset (..))
 import qualified HStream.Stats                     as Stats
 import qualified HStream.Store                     as S
@@ -390,14 +388,11 @@ appendStream ServerContext{..} streamName shardId record = do
       recordSize = API.batchedRecordBatchSize record
       payloadSize = BS.length payload
   when (payloadSize > scMaxRecordSize) $ throwIO $ HE.InvalidRecordSize payloadSize
-#ifndef HStreamEnableCacheStore
-  S.AppendCompletion {..} <- S.appendCompressedBS scLDClient shardId payload cmpStrategy Nothing
-#else
+  -- S.AppendCompletion {..} <- S.appendCompressedBS scLDClient shardId payload cmpStrategy Nothing
   state <- readIORef serverState
   S.AppendCompletion {..} <- case state of
     ServerNormal -> S.appendCompressedBS scLDClient shardId payload cmpStrategy Nothing
     ServerBackup -> DB.writeRecord cacheStore streamName shardId payload
-#endif
   Stats.stream_stat_add_append_in_bytes scStatsHolder cStreamName (fromIntegral payloadSize)
   Stats.stream_stat_add_append_in_records scStatsHolder cStreamName (fromIntegral recordSize)
   Stats.stream_time_series_add_append_in_bytes scStatsHolder cStreamName (fromIntegral payloadSize)
