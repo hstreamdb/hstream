@@ -41,7 +41,7 @@ import           HStream.Base.Timer               (CompactedWorker)
 import           HStream.Common.Server.HashRing   (LoadBalanceHashRing)
 import           HStream.Common.Types             (ShardKey)
 import qualified HStream.Exception                as HE
-import           HStream.Gossip.Types             (Epoch, GossipContext)
+import           HStream.Gossip.Types             (GossipContext)
 import qualified HStream.IO.Types                 as IO
 import qualified HStream.IO.Worker                as IO
 import           HStream.MetaStore.Types          (MetaHandle)

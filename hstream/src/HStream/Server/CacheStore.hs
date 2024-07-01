@@ -113,10 +113,9 @@ initCacheStore CacheStore{..} = do
             open dbOpts path
           Right cfs -> do
             -- open db and remove existed column families
-            oldCF <- listColumnFamilies dbOpts path
-            let defaultCfIndex = fromJust $ L.elemIndex "default" oldCF
-            let cfs = map (\n -> ColumnFamilyDescriptor {name = n, options = dbOpts}) oldCF
-            (db, cfhs) <- openColumnFamilies dbOpts path cfs
+            let defaultCfIndex = fromJust $ L.elemIndex "default" cfs
+            let cfs' = map (\n -> ColumnFamilyDescriptor {name = n, options = dbOpts}) cfs
+            (db, cfhs) <- openColumnFamilies dbOpts path cfs'
             -- skip drop default column family
             let shouldDrop = [x | (i, x) <- zip [0..] cfhs, i /= defaultCfIndex]
             mapM_ (dropColumnFamily db) shouldDrop

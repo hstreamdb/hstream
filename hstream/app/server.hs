@@ -179,11 +179,12 @@ app config@ServerOpts{..} = do
         -- wati the default server
         waitGossipBoot gossipContext
 
-        let ServerContext{scLDClient, metaHandle} = serverContext
-        healthMonitor <- mkHealthMonitor scLDClient metaHandle 1
-        aMonitor <- Async.async $ startMonitor serverContext healthMonitor 3
-        Log.info $ "Start healthy monitor"
-        Async.link2Only (const True) a aMonitor
+        when (_enableServerCache) $ do
+          let ServerContext{scLDClient, metaHandle} = serverContext
+          healthMonitor <- mkHealthMonitor scLDClient metaHandle 1
+          aMonitor <- Async.async $ startMonitor serverContext healthMonitor 3
+          Log.info $ "Start healthy monitor"
+          Async.link2Only (const True) a aMonitor
 
         Async.wait a
 

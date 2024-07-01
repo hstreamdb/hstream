@@ -20,7 +20,7 @@ module HStream.Server.Handler.Cluster
   , handleLookupKey
   ) where
 
-import           Control.Exception                (throwIO, try)
+import           Control.Exception                (throwIO)
 import           Data.IORef                       (readIORef)
 import           Network.GRPC.HighLevel.Generated
 
@@ -32,7 +32,6 @@ import qualified HStream.Server.Core.Cluster      as C
 import           HStream.Server.Core.Common       (lookupResource)
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
--- import           HStream.Server.Types             (ServerContext (..))
 import           HStream.Server.Types             (ServerContext (..),
                                                    ServerMode (..))
 import           HStream.ThirdParty.Protobuf      (Empty)
@@ -127,10 +126,7 @@ handleLookupResource sc@ServerContext{..} _sc req@LookupResourceRequest{..} = ca
       state <- readIORef serverState
       case state of
         ServerNormal -> do
-          res <- try $ lookupResource sc rType lookupResourceRequestResId
-          case res of
-            Left (_ :: HE.ResourceAllocationException) -> handleLookupResource sc _sc req
-            Right res' -> return res'
+          C.lookupResource sc rType lookupResourceRequestResId
         ServerBackup -> do
           case rType of
             ResourceTypeResShard -> do

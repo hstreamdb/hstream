@@ -57,9 +57,8 @@ lookupNodePersist metaHandle gossipContext loadBalanceHashRing
           -- TODO: add a retry limit here
           Log.warning $ "lookupNodePersist exception: " <> Log.buildString' e
                      <> ", retry..."
-          throwIO $ HE.ResourceAllocationException "server is in backup mode, try later"
-          -- lookupNodePersist metaHandle gossipContext loadBalanceHashRing
-          --                   key metaId advertisedListenersKey
+          lookupNodePersist metaHandle gossipContext loadBalanceHashRing
+                            key metaId advertisedListenersKey
         Right () -> return theNode
     Just (TaskAllocation epoch nodeId, version) -> do
       serverList <- getMemberList gossipContext >>=
@@ -76,9 +75,8 @@ lookupNodePersist metaHandle gossipContext loadBalanceHashRing
               -- TODO: add a retry limit here
               Log.warning $ "lookupNodePersist exception: " <> Log.buildString' e
                          <> ", retry..."
-              throwIO $ HE.ResourceAllocationException "server is in backup mode, try later"
-              -- lookupNodePersist metaHandle gossipContext loadBalanceHashRing
-              --                   key metaId advertisedListenersKey
+              lookupNodePersist metaHandle gossipContext loadBalanceHashRing
+                                key metaId advertisedListenersKey
             Right () -> return theNode'
 
 data KafkaResource

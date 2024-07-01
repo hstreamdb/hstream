@@ -126,6 +126,7 @@ data ServerOpts = ServerOpts
   , _querySnapshotPath            :: !FilePath
   , experimentalFeatures          :: ![ExperimentalFeature]
 
+  , _enableServerCache            :: !Bool
   , _cacheStorePath               :: !FilePath
 
 #ifndef HStreamUseGrpcHaskell
@@ -266,6 +267,8 @@ parseJSONToOptions CliOptions{..} obj = do
   let experimentalFeatures = cliExperimentalFeatures
 
   cacheStoreCfg <- nodeCfgObj .:? "cache-store" .!= mempty
+  serverCache <- cacheStoreCfg .:? "enable-server-cache" .!= False
+  let _enableServerCache = cliEnableServerCache || serverCache
   cacheStorePath <- cacheStoreCfg .:? "cache-store-path" .!= "/data/cache_store"
   let _cacheStorePath = fromMaybe cacheStorePath cliCacheStorePath
 

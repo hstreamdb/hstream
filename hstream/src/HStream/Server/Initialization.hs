@@ -134,7 +134,7 @@ initializeServer opts@ServerOpts{..} gossipContext hh db_m = do
       , querySnapshotPath        = _querySnapshotPath
       , querySnapshotter         = db_m
       , serverState              = serverMode
-      , cacheStore              = cachedStore
+      , cacheStore               = cachedStore
       }
 
 --------------------------------------------------------------------------------

@@ -138,6 +138,9 @@ data CliOptions = CliOptions
 
     -- Experimental Features
   , cliExperimentalFeatures         :: ![ExperimentalFeature]
+
+    -- Cache Mode config
+  , cliEnableServerCache            :: !Bool
   , cliCacheStorePath               :: !(Maybe FilePath)
 
     -- Internal options
@@ -184,6 +187,7 @@ cliOptionsParser = do
   cliExperimentalFeatures <- O.many experimentalFeatureParser
 
   cliCacheStorePath     <- optional cacheStorePathParser
+  cliEnableServerCache  <- enableServerCacheParser
 
   cliStoreCompression <- optional storeCompressionParser
 
@@ -457,6 +461,11 @@ querySnapshotPathParser = strOption
   $  long "query-snapshot-path"
   <> metavar "PATH" <> value "/data/query_snapshots"
   <> help "hstream query snapshot store path"
+
+enableServerCacheParser :: O.Parser Bool
+enableServerCacheParser = flag False True
+  $  long "enable-server-cache"
+  <> help "enable server cache"
 
 cacheStorePathParser :: O.Parser FilePath
 cacheStorePathParser = strOption
