@@ -136,6 +136,9 @@ initCacheStore CacheStore{..} = do
         totalRead <- newIORef 0
         nextKeyToDump <- newIORef BS.empty
         atomicWriteIORef counter 0
+        
+        ST.cache_store_stat_set_append_failed statsHolder "cache_store" 0
+        ST.cache_store_stat_set_append_total statsHolder "cache_store" 0
 
         return $ Just Store{..}
 
@@ -171,7 +174,7 @@ getStore CacheStore{store} = do
       Log.fatal $ "Cache store not initialized, should not get here"
       throwIO $ HE.UnexpectedError "Store is not initialized."
 
-writeRecord :: CacheStore -> T.Text -> Word64 -> ByteString -> IO S.AppendCompletion
+writeRecord :: CacheStore -> T.Text -> Word64 -> ByteString -> IO (Either RocksDbException S.AppendCompletion)
 writeRecord st@CacheStore{..} streamName shardId payload = do
   canWrite <- readMVar enableWrite
   unless canWrite $ do
@@ -184,14 +187,20 @@ writeRecord st@CacheStore{..} streamName shardId payload = do
   offset <- atomicModifyIORef' counter (\x -> (x + 1, x))
   let k = encodeKey streamName shardId offset
   !append_start <- getPOSIXTime
-  putCF db writeOptions columnFamily k payload
-  ST.serverHistogramAdd statsHolder ST.SHL_AppendCacheStoreLatency =<< msecSince append_start
-  ST.cache_store_stat_add_append_in_bytes statsHolder cStreamName (fromIntegral $ BS.length payload)
-  ST.cache_store_stat_add_append_in_records statsHolder cStreamName 1
-  void $ atomicModifyIORef' totalWrite (\x -> (x + 1, x))
-
-  lsn <- getCurrentTimestamp
-  return S.AppendCompletion
+  res <- try @RocksDbException $ putCF db writeOptions columnFamily k payload
+  case res of
+    Left e -> do
+      ST.cache_store_stat_add_append_failed statsHolder cStreamName 1
+      return $ Left e
+    Right _ -> do
+      ST.serverHistogramAdd statsHolder ST.SHL_AppendCacheStoreLatency =<< msecSince append_start
+      ST.cache_store_stat_add_append_in_bytes statsHolder cStreamName (fromIntegral $ BS.length payload)
+      ST.cache_store_stat_add_append_in_records statsHolder cStreamName 1
+      ST.cache_store_stat_add_append_total statsHolder cStreamName 1
+      void $ atomicModifyIORef' totalWrite (\x -> (x + 1, x))
+      lsn <- getCurrentTimestamp
+      return . Right $ 
+        S.AppendCompletion
           { appendCompLogID = shardId
           , appendCompLSN   = fromIntegral lsn
           , appendCompTimestamp = 0

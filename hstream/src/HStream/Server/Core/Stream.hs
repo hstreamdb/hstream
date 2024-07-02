@@ -388,16 +388,24 @@ appendStream ServerContext{..} streamName shardId record = do
       recordSize = API.batchedRecordBatchSize record
       payloadSize = BS.length payload
   when (payloadSize > scMaxRecordSize) $ throwIO $ HE.InvalidRecordSize payloadSize
-  -- S.AppendCompletion {..} <- S.appendCompressedBS scLDClient shardId payload cmpStrategy Nothing
   state <- readIORef serverState
-  S.AppendCompletion {..} <- case state of
-    ServerNormal -> S.appendCompressedBS scLDClient shardId payload cmpStrategy Nothing
-    ServerBackup -> DB.writeRecord cacheStore streamName shardId payload
-  Stats.stream_stat_add_append_in_bytes scStatsHolder cStreamName (fromIntegral payloadSize)
-  Stats.stream_stat_add_append_in_records scStatsHolder cStreamName (fromIntegral recordSize)
-  Stats.stream_time_series_add_append_in_bytes scStatsHolder cStreamName (fromIntegral payloadSize)
-  Stats.stream_time_series_add_append_in_records scStatsHolder cStreamName (fromIntegral recordSize)
-  let rids = V.zipWith (API.RecordId shardId) (V.replicate (fromIntegral recordSize) appendCompLSN) (V.fromList [0..])
+  rids <- case state of
+    ServerNormal -> do
+      S.AppendCompletion {..} <- S.appendCompressedBS scLDClient shardId payload cmpStrategy Nothing
+      Stats.stream_stat_add_append_in_bytes scStatsHolder cStreamName (fromIntegral payloadSize)
+      Stats.stream_stat_add_append_in_records scStatsHolder cStreamName (fromIntegral recordSize)
+      Stats.stream_time_series_add_append_in_bytes scStatsHolder cStreamName (fromIntegral payloadSize)
+      Stats.stream_time_series_add_append_in_records scStatsHolder cStreamName (fromIntegral recordSize)
+      return $ V.zipWith (API.RecordId shardId) (V.replicate (fromIntegral recordSize) appendCompLSN) (V.fromList [0..])
+    ServerBackup -> do
+      res <- DB.writeRecord cacheStore streamName shardId payload
+      -- If write cache store failed, server will drop this record???
+      case res of
+        Right S.AppendCompletion{..} -> 
+           return $ V.zipWith (API.RecordId shardId) (V.replicate (fromIntegral recordSize) appendCompLSN) (V.fromList [0..])
+        Left e -> do 
+          Log.fatal $ "write to cache store failed: " <> Log.build (displayException e)
+          return V.empty
   return $ API.AppendResponse {
       appendResponseStreamName = streamName
     , appendResponseShardId    = shardId
