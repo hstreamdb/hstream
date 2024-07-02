@@ -139,6 +139,8 @@ getStatsInternal ServerContext{scStatsHolder = holder} s@(StatTypeStatQueryStat 
   getQueryStatsInternal holder stats <&> convert s
 getStatsInternal ServerContext{scStatsHolder = holder} s@(StatTypeStatViewStat stats) = do
   getViewStatsInternal holder stats <&> convert s
+getStatsInternal ServerContext{scStatsHolder = holder} s@(StatTypeStatCacheStoreStat stats) = do
+  getCacheStoreStatsInternal holder stats <&> convert s
 
 getStreamStatsInternal
   :: Stats.StatsHolder
@@ -207,6 +209,30 @@ getConnectorStatsInternal statsHolder ioWorker (PS.Enumerated stats) = do
       cs <- IO.listIOTasks ioWorker
       return . Right . Map.fromList $
         map (\API.Connector{..} -> if connectorStatus == "RUNNING" then (U.textToCBytes connectorName, 1) else (U.textToCBytes connectorName, 0)) cs
+    Left _ -> return . Left . T.pack $ "invalid stat type " <> show stats
+
+getCacheStoreStatsInternal
+  :: Stats.StatsHolder
+  -> PS.Enumerated API.CacheStoreStats
+  -> IO (Either T.Text (Map CBytes Int64))
+getCacheStoreStatsInternal statsHolder (PS.Enumerated stats) = do
+  Log.debug $ "request stream stats: " <> Log.buildString' stats
+  s <- Stats.newAggregateStats statsHolder
+  case stats of
+    Right API.CacheStoreStatsCSAppendInBytes ->
+      Stats.cache_store_stat_getall_append_in_bytes s <&> Right
+    Right API.CacheStoreStatsCSAppendInRecords ->
+      Stats.cache_store_stat_getall_append_in_records s <&> Right
+    Right API.CacheStoreStatsCSAppendTotal ->
+      Stats.cache_store_stat_getall_append_total s <&> Right
+    Right API.CacheStoreStatsCSAppendFailed ->
+      Stats.cache_store_stat_getall_append_failed s <&> Right
+    Right API.CacheStoreStatsCSReadInBytes ->
+      Stats.cache_store_stat_getall_read_in_bytes s <&> Right
+    Right API.CacheStoreStatsCSReadInRecords ->
+      Stats.cache_store_stat_getall_read_in_records s <&> Right
+    Right API.CacheStoreStatsCSDeliveredInRecords ->
+      Stats.cache_store_stat_getall_delivered_in_records s <&> Right
     Left _ -> return . Left . T.pack $ "invalid stat type " <> show stats
 
 getQueryStatsInternal
