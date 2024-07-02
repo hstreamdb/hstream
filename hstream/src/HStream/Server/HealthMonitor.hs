@@ -1,4 +1,5 @@
-{-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE MultiWayIf   #-}
 
 module HStream.Server.HealthMonitor
  ( HealthMonitor
@@ -23,16 +24,18 @@ import           HStream.Server.CacheStore        (StoreMode (..), dumpToHStore,
 import           HStream.Server.Types             (ServerContext (..),
                                                    ServerMode (..),
                                                    getServerMode, setServerMode)
+import qualified HStream.Stats                    as ST
 import qualified HStream.Store                    as S
 
 data HealthMonitor = HealthMonitor
   { ldChecker             :: S.LdChecker
   , metaHandle            :: MetaHandle
+  , statsHolder           :: ST.StatsHolder
   , ldUnhealthyNodesLimit :: Int
   }
 
-mkHealthMonitor :: S.LDClient -> MetaHandle -> Int -> IO HealthMonitor
-mkHealthMonitor ldClient metaHandle ldUnhealthyNodesLimit = do
+mkHealthMonitor :: S.LDClient -> ST.StatsHolder -> MetaHandle -> Int -> IO HealthMonitor
+mkHealthMonitor ldClient statsHolder metaHandle ldUnhealthyNodesLimit = do
   ldChecker <- S.newLdChecker ldClient
   return HealthMonitor{..}
 
@@ -77,22 +80,26 @@ docheck sc@ServerContext{..} hm = do
 
 checkLdCluster :: HealthMonitor -> IO Bool
 checkLdCluster HealthMonitor{..} = do
-  start <- getTime Monotonic
-  res <- S.isLdClusterHealthy ldChecker ldUnhealthyNodesLimit
-  end <- getTime Monotonic
-  let msDuration = toNanoSecs (diffTimeSpec end start) `div` 1000000
-  when (msDuration > 1000) $
-    Log.warning $ "CheckLdCluster return slow, total time " <> Log.build msDuration <> "ms"
-  return res
+  withLatency statsHolder "LdCluster" $ S.isLdClusterHealthy ldChecker ldUnhealthyNodesLimit
 
 checkMeta :: HealthMonitor -> IO Bool
 checkMeta HealthMonitor{..} | ZKHandle c <- metaHandle = do
-  start <- getTime Monotonic
-  res <- checkRecoverable =<< unsafeGetZHandle c
-  end <- getTime Monotonic
-  let msDuration = toNanoSecs (diffTimeSpec end start) `div` 1000000
-  when (msDuration > 1000) $
-    Log.warning $ "CheckMeta return slow, total time " <> Log.build msDuration <> "ms"
-  return res
+  withLatency statsHolder "MetaCluster" $ checkRecoverable =<< unsafeGetZHandle c
 checkMeta HealthMonitor{..} | _ <- metaHandle = do
   return True
+
+withLatency :: ST.StatsHolder -> String -> IO a -> IO a
+withLatency statsHolder checkType action = do
+  !start <- getTime Monotonic
+  res <- action
+  !end <- getTime Monotonic
+  let msDuration = toNanoSecs (diffTimeSpec end start) `div` 1000000
+  when (msDuration > 1000) $
+    Log.warning $ "check " <> Log.build checkType <> " return slow, total time " <> Log.build msDuration <> "ms"
+  case checkType of
+    "LdCluster"   -> do
+      ST.serverHistogramAdd statsHolder ST.SHL_CheckStoreClusterLatency (fromIntegral msDuration)
+    "MetaCluster" -> do
+      ST.serverHistogramAdd statsHolder ST.SHL_CheckMetaClusterLatency (fromIntegral msDuration)
+    _      -> return ()
+  return res

@@ -180,8 +180,8 @@ app config@ServerOpts{..} = do
         waitGossipBoot gossipContext
 
         when (_enableServerCache) $ do
-          let ServerContext{scLDClient, metaHandle} = serverContext
-          healthMonitor <- mkHealthMonitor scLDClient metaHandle 1
+          let ServerContext{scLDClient, metaHandle, scStatsHolder} = serverContext
+          healthMonitor <- mkHealthMonitor scLDClient scStatsHolder metaHandle 1
           aMonitor <- Async.async $ startMonitor serverContext healthMonitor 3
           Log.info $ "Start healthy monitor"
           Async.link2Only (const True) a aMonitor

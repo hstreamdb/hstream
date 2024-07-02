@@ -452,6 +452,8 @@ data ServerHistogramLabel
   | SHL_ReadLatency
   | SHL_AppendCacheStoreLatency
   | SHL_ReadCacheStoreLatency
+  | SHL_CheckStoreClusterLatency
+  | SHL_CheckMetaClusterLatency
 
 packServerHistogramLabel :: ServerHistogramLabel -> CBytes
 packServerHistogramLabel SHL_AppendRequestLatency      = "append_request_latency"
@@ -472,6 +474,8 @@ instance Read ServerHistogramLabel where
         Read.Ident "read_latency"                        -> SHL_ReadLatency
         Read.Ident "append_cache_store_latency"          -> SHL_AppendCacheStoreLatency
         Read.Ident "read_cache_store_latency"            -> SHL_ReadCacheStoreLatency
+        Read.Ident "check_store_cluster_healthy_latency" -> SHL_CheckStoreClusterLatency
+        Read.Ident "check_meta_cluster_healthy_latency"  -> SHL_CheckMetaClusterLatency
         x -> errorWithoutStackTrace $ "cannot parse ServerHistogramLabel: " <> show x
 
 serverHistogramAdd :: StatsHolder -> ServerHistogramLabel -> Int64 -> IO ()
