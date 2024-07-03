@@ -398,9 +398,9 @@ appendStream ServerContext{..} streamName shardId record = do
       res <- DB.writeRecord cacheStore streamName shardId payload
       -- If write cache store failed, server will drop this record???
       case res of
-        Right S.AppendCompletion{..} -> 
+        Right S.AppendCompletion{..} ->
            return $ V.zipWith (API.RecordId shardId) (V.replicate (fromIntegral recordSize) appendCompLSN) (V.fromList [0..])
-        Left e -> do 
+        Left e -> do
           Log.fatal $ "write to cache store failed: " <> Log.build (displayException e)
           return V.empty
   return $ API.AppendResponse {

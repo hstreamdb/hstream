@@ -80,13 +80,15 @@ module HStream.Stats
   , cache_store_stat_erase
     -- ** Counters
   , cache_store_stat_getall
-  , CounterExports(cache_store, delivered_in_records)
-  , CounterExports(cache_store, append_total)
-  , CounterExports(cache_store, append_failed)
-  , CounterExports(cache_store, append_in_bytes)
-  , CounterExports(cache_store, append_in_records)
-  , CounterExports(cache_store, read_in_bytes)
-  , CounterExports(cache_store, read_in_records)
+  , CounterExports(cache_store, cs_append_total)
+  , CounterExports(cache_store, cs_append_failed)
+  , CounterExports(cache_store, cs_append_in_bytes)
+  , CounterExports(cache_store, cs_append_in_records)
+  , CounterExports(cache_store, cs_read_in_bytes)
+  , CounterExports(cache_store, cs_read_in_records)
+  , CounterExports(cache_store, cs_delivered_in_records)
+  , CounterExports(cache_store, cs_delivered_total)
+  , CounterExports(cache_store, cs_delivered_failed)
 
     -- * PerQueryStats
   , query_stat_erase

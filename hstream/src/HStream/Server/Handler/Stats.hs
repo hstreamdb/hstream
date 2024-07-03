@@ -15,7 +15,8 @@ module HStream.Server.Handler.Stats
   , handleGetStats
   ) where
 
-import           Control.Exception                (throwIO, SomeException, try, Exception (displayException))
+import           Control.Exception                (Exception (displayException),
+                                                   SomeException, throwIO, try)
 import           Data.Functor                     ((<&>))
 import           Data.Int                         (Int64)
 import           Data.Map.Strict                  (Map)
@@ -223,19 +224,23 @@ getCacheStoreStatsInternal statsHolder (PS.Enumerated stats) = do
   s <- Stats.newAggregateStats statsHolder
   case stats of
     Right API.CacheStoreStatsCSAppendInBytes ->
-      Stats.cache_store_stat_getall_append_in_bytes s <&> Right
-    Right API.CacheStoreStatsCSAppendInRecords ->
-      Stats.cache_store_stat_getall_append_in_records s <&> Right
-    Right API.CacheStoreStatsCSAppendTotal ->
-      Stats.cache_store_stat_getall_append_total s <&> Right
+      Stats.cache_store_stat_getall_cs_append_in_bytes s <&> Right
+    Right API.CacheStoreStatsCSAppendInRecords -> do
+      Stats.cache_store_stat_getall_cs_append_in_records s <&> Right
+    Right API.CacheStoreStatsCSAppendTotal -> do
+      Stats.cache_store_stat_getall_cs_append_total s <&> Right
     Right API.CacheStoreStatsCSAppendFailed ->
-      Stats.cache_store_stat_getall_append_failed s <&> Right
+      Stats.cache_store_stat_getall_cs_append_failed s <&> Right
     Right API.CacheStoreStatsCSReadInBytes ->
-      Stats.cache_store_stat_getall_read_in_bytes s <&> Right
+      Stats.cache_store_stat_getall_cs_read_in_bytes s <&> Right
     Right API.CacheStoreStatsCSReadInRecords ->
-      Stats.cache_store_stat_getall_read_in_records s <&> Right
+      Stats.cache_store_stat_getall_cs_read_in_records s <&> Right
     Right API.CacheStoreStatsCSDeliveredInRecords ->
-      Stats.cache_store_stat_getall_delivered_in_records s <&> Right
+      Stats.cache_store_stat_getall_cs_delivered_in_records s <&> Right
+    Right API.CacheStoreStatsCSDeliveredTotal -> do
+      Stats.cache_store_stat_getall_cs_delivered_total s <&> Right
+    Right API.CacheStoreStatsCSDeliveredFailed -> do
+      Stats.cache_store_stat_getall_cs_delivered_failed s <&> Right
     Left _ -> return . Left . T.pack $ "invalid stat type " <> show stats
 
 getQueryStatsInternal

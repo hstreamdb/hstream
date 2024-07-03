@@ -136,9 +136,8 @@ initCacheStore CacheStore{..} = do
         totalRead <- newIORef 0
         nextKeyToDump <- newIORef BS.empty
         atomicWriteIORef counter 0
-        
-        ST.cache_store_stat_set_append_failed statsHolder "cache_store" 0
-        ST.cache_store_stat_set_append_total statsHolder "cache_store" 0
+
+        ST.cache_store_stat_erase statsHolder "cache_store"
 
         return $ Just Store{..}
 
@@ -190,16 +189,16 @@ writeRecord st@CacheStore{..} streamName shardId payload = do
   res <- try @RocksDbException $ putCF db writeOptions columnFamily k payload
   case res of
     Left e -> do
-      ST.cache_store_stat_add_append_failed statsHolder cStreamName 1
+      ST.cache_store_stat_add_cs_append_failed statsHolder cStreamName 1
       return $ Left e
     Right _ -> do
       ST.serverHistogramAdd statsHolder ST.SHL_AppendCacheStoreLatency =<< msecSince append_start
-      ST.cache_store_stat_add_append_in_bytes statsHolder cStreamName (fromIntegral $ BS.length payload)
-      ST.cache_store_stat_add_append_in_records statsHolder cStreamName 1
-      ST.cache_store_stat_add_append_total statsHolder cStreamName 1
+      ST.cache_store_stat_add_cs_append_in_bytes statsHolder cStreamName (fromIntegral $ BS.length payload)
+      ST.cache_store_stat_add_cs_append_in_records statsHolder cStreamName 1
+      ST.cache_store_stat_add_cs_append_total statsHolder cStreamName 1
       void $ atomicModifyIORef' totalWrite (\x -> (x + 1, x))
       lsn <- getCurrentTimestamp
-      return . Right $ 
+      return . Right $
         S.AppendCompletion
           { appendCompLogID = shardId
           , appendCompLSN   = fromIntegral lsn
@@ -269,23 +268,28 @@ doDump Store{..} ldClient cmpStrategy readOptions dumpState resume statsHolder =
     if BS.null firstKey
     then do
       Log.info $ "Start dump cache store from beginning"
-      seekToFirst iter else do
+      seekToFirst iter
+    else do
       Log.info $ "Dump resumed from key " <> Log.build firstKey
       seek iter firstKey
 
     whileM (checkContinue iter) $ do
       k <- key iter
       payload <- value iter
-      ST.cache_store_stat_add_read_in_bytes statsHolder cStreamName (fromIntegral $ BS.length payload + BS.length k)
-      ST.cache_store_stat_add_read_in_records statsHolder cStreamName 1
+      void $ atomicModifyIORef' totalRead (\x -> (x + 1, x))
+      ST.cache_store_stat_add_cs_read_in_bytes statsHolder cStreamName (fromIntegral $ BS.length payload + BS.length k)
+      ST.cache_store_stat_add_cs_read_in_records statsHolder cStreamName 1
 
       atomicWriteIORef nextKeyToDump k
       let (sName, shardId) = decodeKey k
       -- TODO: How to handle LSN?
       success <- appendHStoreWithRetry ldClient sName shardId payload cmpStrategy dumpState statsHolder
-      when success $ do
-        void $ atomicModifyIORef' totalRead (\x -> (x + 1, x))
-        ST.cache_store_stat_add_delivered_in_records statsHolder cStreamName 1
+      if success
+        then do
+          ST.cache_store_stat_add_cs_delivered_in_records statsHolder cStreamName 1
+          ST.cache_store_stat_add_cs_delivered_total statsHolder cStreamName 1
+        else do
+          ST.cache_store_stat_add_cs_delivered_failed statsHolder cStreamName 1
 
       !move_iter_start <- getPOSIXTime
       next iter
@@ -337,27 +341,27 @@ appendHStoreWithRetry ldClient streamName shardId payload cmpStrategy dumpState 
             ST.stream_stat_add_append_total statsHolder cName 1
             return $ Just lsn
           Left (e :: S.SomeHStoreException) -> do
-           ST.stream_stat_add_append_failed statsHolder cName 1
-           ST.stream_time_series_add_append_failed_requests statsHolder cName 1
-           state <- readTVarIO dumpState
-           case state of
-             Dumping -> do
-               let cnt' = cnt - 1
-               Log.warning $ "Dump to shardId " <> Log.build shardId <> " failed"
-                          <> ", error: " <> Log.build (displayException e)
-                          <> ", left retries = " <> Log.build (show cnt')
-               -- sleep 1s
-               threadDelay $ 1 * 1000 * 1000
-               loop cnt'
-             _ -> loop exitNum
+            ST.stream_stat_add_append_failed statsHolder cName 1
+            ST.stream_time_series_add_append_failed_requests statsHolder cName 1
+            state <- readTVarIO dumpState
+            case state of
+              Dumping -> do
+                let cnt' = cnt - 1
+                Log.warning $ "Dump to shardId " <> Log.build shardId <> " failed"
+                           <> ", error: " <> Log.build (displayException e)
+                           <> ", left retries = " <> Log.build (show cnt')
+                -- sleep 1s
+                threadDelay $ 1 * 1000 * 1000
+                loop cnt'
+              _ -> loop exitNum
      | cnt == exitNum = do
-       Log.warning $ "Dump to shardId " <> Log.build shardId
-                  <> " failed because cache store is not in dumping state, will retry later."
-       return Nothing
+         Log.warning $ "Dump to shardId " <> Log.build shardId
+                    <> " failed because cache store is not in dumping state, will retry later."
+         return Nothing
      | otherwise = do
-       Log.fatal $ "Dump to shardId " <> Log.build shardId
-                <> " failed after exausting the retry attempts, drop the record."
-       return Nothing
+         Log.fatal $ "Dump to shardId " <> Log.build shardId
+                  <> " failed after exausting the retry attempts, drop the record."
+         return Nothing
 
 -----------------------------------------------------------------------------------------------------
 -- helper
