@@ -15,7 +15,7 @@ module HStream.Server.Handler.Stats
   , handleGetStats
   ) where
 
-import           Control.Exception                (throwIO)
+import           Control.Exception                (throwIO, SomeException, try, Exception (displayException))
 import           Data.Functor                     ((<&>))
 import           Data.Int                         (Int64)
 import           Data.Map.Strict                  (Map)
@@ -198,7 +198,7 @@ getConnectorStatsInternal
   -> PS.Enumerated API.ConnectorStats
   -> IO (Either T.Text (Map CBytes Int64))
 getConnectorStatsInternal statsHolder ioWorker (PS.Enumerated stats) = do
-  Log.debug $ "request stream stats: " <> Log.buildString' stats
+  Log.debug $ "request connector stats: " <> Log.buildString' stats
   s <- Stats.newAggregateStats statsHolder
   case stats of
     Right API.ConnectorStatsDeliveredInRecords ->
@@ -206,9 +206,12 @@ getConnectorStatsInternal statsHolder ioWorker (PS.Enumerated stats) = do
     Right API.ConnectorStatsDeliveredInBytes ->
       Stats.connector_stat_getall_delivered_in_bytes s <&> Right
     Right API.ConnectorStatsIsAlive -> do
-      cs <- IO.listIOTasks ioWorker
-      return . Right . Map.fromList $
-        map (\API.Connector{..} -> if connectorStatus == "RUNNING" then (U.textToCBytes connectorName, 1) else (U.textToCBytes connectorName, 0)) cs
+      res <- try @SomeException $ IO.listIOTasks ioWorker
+      case res of
+        Left e -> return . Left . T.pack $ "can't list io tasks because meta exception: " <> displayException e
+        Right cs -> do
+          return . Right . Map.fromList $
+            map (\API.Connector{..} -> if connectorStatus == "RUNNING" then (U.textToCBytes connectorName, 1) else (U.textToCBytes connectorName, 0)) cs
     Left _ -> return . Left . T.pack $ "invalid stat type " <> show stats
 
 getCacheStoreStatsInternal
@@ -216,7 +219,7 @@ getCacheStoreStatsInternal
   -> PS.Enumerated API.CacheStoreStats
   -> IO (Either T.Text (Map CBytes Int64))
 getCacheStoreStatsInternal statsHolder (PS.Enumerated stats) = do
-  Log.debug $ "request stream stats: " <> Log.buildString' stats
+  Log.debug $ "request cache store stats: " <> Log.buildString' stats
   s <- Stats.newAggregateStats statsHolder
   case stats of
     Right API.CacheStoreStatsCSAppendInBytes ->
