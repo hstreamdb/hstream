@@ -365,17 +365,9 @@ append sc@ServerContext{..} streamName shardId payload = do
            <> Log.build shardId
            <> ")}"
 
-  Stats.handle_time_series_add_queries_in scStatsHolder "append" 1
-  Stats.stream_stat_add_append_total scStatsHolder cStreamName 1
-  Stats.stream_time_series_add_append_in_requests scStatsHolder cStreamName 1
-
-  !append_start <- getPOSIXTime
   resp <- appendStream sc streamName shardId payload
-  Stats.serverHistogramAdd scStatsHolder Stats.SHL_AppendLatency =<< msecSince append_start
   Stats.serverHistogramAdd scStatsHolder Stats.SHL_AppendRequestLatency =<< msecSince recv_time
   return resp
-  where
-    cStreamName = textToCBytes streamName
 
 appendStream :: HasCallStack
              => ServerContext
@@ -391,7 +383,12 @@ appendStream ServerContext{..} streamName shardId record = do
   state <- readIORef serverState
   rids <- case state of
     ServerNormal -> do
+      Stats.handle_time_series_add_queries_in scStatsHolder "append" 1
+      Stats.stream_stat_add_append_total scStatsHolder cStreamName 1
+      Stats.stream_time_series_add_append_in_requests scStatsHolder cStreamName 1
+      !append_start <- getPOSIXTime
       S.AppendCompletion {..} <- S.appendCompressedBS scLDClient shardId payload cmpStrategy Nothing
+      Stats.serverHistogramAdd scStatsHolder Stats.SHL_AppendLatency =<< msecSince append_start
       Stats.stream_stat_add_append_in_bytes scStatsHolder cStreamName (fromIntegral payloadSize)
       Stats.stream_stat_add_append_in_records scStatsHolder cStreamName (fromIntegral recordSize)
       Stats.stream_time_series_add_append_in_bytes scStatsHolder cStreamName (fromIntegral payloadSize)

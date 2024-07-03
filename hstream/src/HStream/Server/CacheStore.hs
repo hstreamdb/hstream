@@ -334,6 +334,7 @@ appendHStoreWithRetry ldClient streamName shardId payload cmpStrategy dumpState 
             ST.serverHistogramAdd statsHolder ST.SHL_AppendLatency =<< msecSince append_start
             ST.stream_stat_add_append_in_bytes statsHolder cName (fromIntegral $ BS.length payload)
             ST.stream_stat_add_append_in_records statsHolder cName 1
+            ST.stream_stat_add_append_total statsHolder cName 1
             return $ Just lsn
           Left (e :: S.SomeHStoreException) -> do
            ST.stream_stat_add_append_failed statsHolder cName 1
