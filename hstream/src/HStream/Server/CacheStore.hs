@@ -136,7 +136,6 @@ initCacheStore CacheStore{..} = do
         totalRead <- newIORef 0
         nextKeyToDump <- newIORef BS.empty
         atomicWriteIORef counter 0
-
         ST.cache_store_stat_erase statsHolder "cache_store"
 
         return $ Just Store{..}

@@ -99,9 +99,9 @@ initializeServer opts@ServerOpts{..} gossipContext hh db_m = do
         }
       dbOption = def
         { RocksDB.createIfMissing = True
-        , RocksDB.maxBackgroundJobs = 6
+        -- , RocksDB.maxBackgroundJobs = 6
         , RocksDB.blockBasedTableOptions = tableOptions
-        , RocksDB.bytesPerSync = 1048576
+        -- , RocksDB.bytesPerSync = 1048576
         }
   let writeOption = def { RocksDB.disableWAL = True }
       -- readOption = def { RocksDB.readaheadSize = 64 * 1024 * 1024 }
