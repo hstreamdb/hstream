@@ -108,7 +108,7 @@ struct PerCacheStoreStats {
 #include "per_cache_store_stats.inc"
   void aggregate(PerCacheStoreStats const& other,
                  StatsAggOptional agg_override);
-  // Show all per_connector_stats to a json formatted string.
+  // Show all per_cache_store_stats to a json formatted string.
   folly::dynamic toJsonObj();
   std::string toJson();
 

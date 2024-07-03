@@ -272,6 +272,7 @@ void Stats::aggregateCompoundStats(Stats const& other,
   // while we aggregate.
   _PER_STATS(per_stream_stats, PerStreamStats)
   _PER_STATS(per_connector_stats, PerConnectorStats)
+  _PER_STATS(per_cache_store_stats, PerCacheStoreStats)
   _PER_STATS(per_query_stats, PerQueryStats)
   _PER_STATS(per_view_stats, PerViewStats)
   _PER_STATS(per_subscription_stats, PerSubscriptionStats)
