@@ -312,7 +312,7 @@ PER_X_STAT_GETALL_SEP(connector_stat_, name)
 #include "../include/per_connector_stats.inc"
 
 -- cache_store
-#define STAT_DEFINE(name, _)                                                   \
+#define STAT_DEFINE(name, _)                                                     \
 PER_X_STAT_ADD(cache_store_stat_, name)                                          \
 PER_X_STAT_SET(cache_store_stat_, name)                                          \
 PER_X_STAT_GET(cache_store_stat_, name)                                          \

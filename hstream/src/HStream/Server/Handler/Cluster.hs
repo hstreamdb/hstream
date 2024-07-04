@@ -58,7 +58,6 @@ lookupResourceHandler sc@ServerContext{..} (ServerNormalRequest _meta req@Lookup
   case lookupResourceRequestResType of
     Enumerated (Right rType) -> do
       validateResourceIdAndThrow rType lookupResourceRequestResId
-      -- returnResp =<< lookupResource sc rType lookupResourceRequestResId
       state <- readIORef serverState
       case state of
         ServerNormal -> do
@@ -113,12 +112,6 @@ handleDescribeCluster sc _ _ = catchDefaultEx $ C.describeCluster sc
 
 handleLookupResource :: ServerContext -> G.UnaryHandler LookupResourceRequest ServerNode
 handleLookupResource sc@ServerContext{..} _sc req@LookupResourceRequest{..} = catchDefaultEx $ do
-  -- Log.debug $ "receive lookup resource request: " <> Log.build (show req)
-  -- case lookupResourceRequestResType of
-  --   Enumerated (Right rType) -> do
-  --     validateResourceIdAndThrow rType lookupResourceRequestResId
-  --     C.lookupResource sc rType lookupResourceRequestResId
-  --   x -> throwIO $ HE.InvalidResourceType (show x)
   Log.info $ "receive lookup resource request: " <> Log.build (show req)
   case lookupResourceRequestResType of
     Enumerated (Right rType) -> do

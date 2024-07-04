@@ -9,7 +9,6 @@ import           Data.Bifunctor                   (second)
 import           Data.ByteString                  (ByteString)
 import qualified Data.HashMap.Strict              as HM
 import qualified Data.Map.Strict                  as M
-import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (fromMaybe, isJust)
 import qualified Data.Set                         as Set
 import           Data.Text                        (Text)
@@ -29,10 +28,7 @@ import qualified Z.Data.CBytes                    as CB
 import           HStream.Gossip                   (GossipOpts (..),
                                                    defaultGossipOpts)
 import           HStream.IO.Types                 (IOOptions (..))
-import           HStream.Server.Config            (CliOptions (..),
-                                                   MetaStoreAddr (..),
-                                                   ServerOpts (..),
-                                                   TlsConfig (..),
+import           HStream.Server.Config            (ServerOpts (..),
                                                    parseHostPorts,
                                                    parseJSONToOptions)
 import           HStream.Server.Configuration.Cli
@@ -54,12 +50,12 @@ spec = describe "HStream.ConfigSpec" $ do
         addr2 = "hstream://127.0.0.1:6571"
         listener2 = SAI.Listener{listenerAddress = "127.0.0.1", listenerPort = 6571}
 
-    either error Map.toList (parseAdvertisedListeners ("l1:" <> addr1))
-      `shouldBe` Map.toList (M.singleton "l1" (Set.singleton listener1))
-    either error Map.toList (parseAdvertisedListeners ("l1:" <> addr1 <> ",l2:" <> addr2))
-      `shouldBe` Map.toList (M.fromList [ ("l1", Set.singleton listener1)
-                                        , ("l2", Set.singleton listener2)
-                                        ])
+    either error M.toList (parseAdvertisedListeners ("l1:" <> addr1))
+      `shouldBe` M.toList (M.singleton "l1" (Set.singleton listener1))
+    either error M.toList (parseAdvertisedListeners ("l1:" <> addr1 <> ",l2:" <> addr2))
+      `shouldBe` M.toList (M.fromList [ ("l1", Set.singleton listener1)
+                                      , ("l2", Set.singleton listener2)
+                                      ])
 
   xdescribe "TODO: parseConfig" $ do
     it "basic config test" $ do
@@ -126,6 +122,8 @@ defaultConfig = ServerOpts
   , _ioOptions                 = defaultIOOptions
   , _querySnapshotPath         = "/data/query_snapshots"
   , experimentalFeatures       = []
+  , _enableServerCache = False
+  , _cacheStorePath = ""
   , grpcChannelArgs            = []
   , serverTokens               = []
   }
@@ -249,6 +247,9 @@ emptyCliOptions = CliOptions
   , cliQuerySnapshotPath  = Nothing
 
   , cliExperimentalFeatures = []
+
+  , cliEnableServerCache    = False
+  , cliCacheStorePath       = Nothing
   }
 
 
@@ -294,6 +295,8 @@ instance Arbitrary ServerOpts where
     let experimentalFeatures = []
     let grpcChannelArgs = []
     let serverTokens = []
+    let _enableServerCache = False
+    let _cacheStorePath = ""
     pure ServerOpts{..}
 
 instance Arbitrary CliOptions where
@@ -305,7 +308,7 @@ instance Arbitrary CliOptions where
     cliServerGossipAddress     <- genMaybe addressGen
     cliServerAdvertisedAddress <- genMaybe addressGen
     cliServerAdvertisedListeners <- arbitrary
-    cliListenersSecurityProtocolMap <- M.fromList . zip (Map.keys cliServerAdvertisedListeners) . repeat <$> elements ["plaintext", "tls"]
+    cliListenersSecurityProtocolMap <- M.fromList . zip (M.keys cliServerAdvertisedListeners) . repeat <$> elements ["plaintext", "tls"]
     cliServerInternalPort <- genMaybe $ fromIntegral <$> portGen
     cliServerID           <- arbitrary
     cliServerLogLevel     <- genMaybe $ read <$> logLevelGen
@@ -328,6 +331,8 @@ instance Arbitrary CliOptions where
     cliIoConnectorImages  <- listOf5' $ T.pack <$> connectorImageCliOptGen
     let cliQuerySnapshotPath = Just "/data/query_snapshots"
     let cliExperimentalFeatures = []
+    let cliEnableServerCache = False
+    let cliCacheStorePath = Nothing
     pure CliOptions{..}
 
 instance Arbitrary Listener where
@@ -447,8 +452,8 @@ updateServerOptsWithCliOpts CliOptions{..} x@ServerOpts{..} = x {
   , _serverInternalPort = fromMaybe _serverInternalPort cliServerInternalPort
   , _serverAddress = fromMaybe _serverAddress cliServerAdvertisedAddress
   , _serverGossipAddress = fromMaybe _serverGossipAddress cliServerGossipAddress
-  , _serverAdvertisedListeners = Map.union cliServerAdvertisedListeners _serverAdvertisedListeners
-  , _listenersSecurityProtocolMap = Map.union cliListenersSecurityProtocolMap _listenersSecurityProtocolMap
+  , _serverAdvertisedListeners = M.union cliServerAdvertisedListeners _serverAdvertisedListeners
+  , _listenersSecurityProtocolMap = M.union cliListenersSecurityProtocolMap _listenersSecurityProtocolMap
   , _serverID = fromMaybe _serverID cliServerID
   , _metaStore = fromMaybe _metaStore cliMetaStore
   , _ldConfigPath = cliStoreConfigPath
@@ -462,7 +467,7 @@ updateServerOptsWithCliOpts CliOptions{..} x@ServerOpts{..} = x {
   , _ldLogLevel = fromMaybe _ldLogLevel cliLdLogLevel
   , _ckpRepFactor = fromMaybe _ckpRepFactor cliCkpRepFactor
   , _ioOptions = cliIoOptions
-  , _securityProtocolMap = Map.insert "tls" tlsConfig' _securityProtocolMap}
+  , _securityProtocolMap = M.insert "tls" tlsConfig' _securityProtocolMap}
   where
     port = fromMaybe _serverPort cliServerPort
     updateSeedsPort = second $ fromMaybe (fromIntegral port)
