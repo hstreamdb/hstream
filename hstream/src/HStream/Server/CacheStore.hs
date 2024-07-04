@@ -30,6 +30,7 @@ import           Data.IORef                 (IORef, atomicModifyIORef',
                                              atomicWriteIORef, newIORef,
                                              readIORef)
 import qualified Data.List                  as L
+import           Data.Maybe                 (fromJust, isJust)
 import qualified Data.Text                  as T
 import qualified Data.Text.Encoding         as T
 import           Data.Time.Clock.POSIX      (getPOSIXTime)
@@ -37,7 +38,6 @@ import           Data.Word                  (Word64)
 import           System.Clock
 import           Text.Printf                (printf)
 
-import           Data.Maybe                 (fromJust, isJust)
 import           Database.RocksDB
 import           Database.RocksDB.Exception (RocksDbException)
 import qualified HStream.Exception          as HE
@@ -67,6 +67,8 @@ data CacheStore = CacheStore
   -- will be set to True. This indicates that the cache store should
   -- resume dump process after dumpstate changes back to dumping
   , counter      :: IORef Word64
+  -- ^ Counter is used to generate a monotonically increasing offset
+  -- to make sure that each encoded-key is unique and ordered.
   , statsHolder  :: ST.StatsHolder
   }
 
@@ -159,7 +161,6 @@ deleteCacheStore CacheStore{store} = do
         Log.info $ "CacheStore totalWrites: " <> Log.build tWrites <> ", totalReads: " <> Log.build tReads
         when (tWrites /= tReads) $ do
           Log.warning $ "CacheStore totalWrites and totalReads are not equal."
-
         return Nothing
       Nothing -> return Nothing
 
@@ -238,8 +239,8 @@ dumpToHStore st@CacheStore{..} ldClient cmpStrategy = do
         resume <- readIORef needResume
         when resume $ dumpLoop cacheStore
 
-  -- What if dump process error?
   finalizer (Left e)  = do
+    -- What if dump process error? Currently, if dump process error, all data remained will lose
     Log.fatal $ "dump cached data to HStore failed: " <> Log.build (show e)
     reset
   finalizer (Right _) = do
@@ -250,6 +251,13 @@ dumpToHStore st@CacheStore{..} ldClient cmpStrategy = do
     _ <- atomically $ swapTVar dumpState NoDump
     atomicWriteIORef needResume False
 
+-- Traverse all data from the beginning using the column family iterator of rocksdb, and write them into
+-- hstore one by one.
+-- This function exits under one of each following conditions:
+--  - all data in rocksdb column family has been writen to hstore,
+--  - or the iterator is invalid,
+--  - or cacheStore is not in Dumping state,
+--  - or an unexpected exception occurs.
 doDump
   :: Store
   -> S.LDClient
@@ -272,15 +280,18 @@ doDump Store{..} ldClient cmpStrategy readOptions dumpState resume statsHolder =
       Log.info $ "Dump resumed from key " <> Log.build firstKey
       seek iter firstKey
 
+    -- begin dump loop
     whileM (checkContinue iter) $ do
+      -- decode key
       k <- key iter
       payload <- value iter
       void $ atomicModifyIORef' totalRead (\x -> (x + 1, x))
       ST.cache_store_stat_add_cs_read_in_bytes statsHolder cStreamName (fromIntegral $ BS.length payload + BS.length k)
       ST.cache_store_stat_add_cs_read_in_records statsHolder cStreamName 1
-
       atomicWriteIORef nextKeyToDump k
       let (sName, shardId) = decodeKey k
+
+      -- append hstore
       -- TODO: How to handle LSN?
       success <- appendHStoreWithRetry ldClient sName shardId payload cmpStrategy dumpState statsHolder
       if success
@@ -290,14 +301,17 @@ doDump Store{..} ldClient cmpStrategy readOptions dumpState resume statsHolder =
         else do
           ST.cache_store_stat_add_cs_delivered_failed statsHolder cStreamName 1
 
+      -- call iter next
       !move_iter_start <- getPOSIXTime
       next iter
       ST.serverHistogramAdd statsHolder ST.SHL_ReadCacheStoreLatency =<< msecSince move_iter_start
 
-    -- FIXME: What if iterator return error when iterating?
+    -- finish all reading or something happend cause dump loop exit, check the error code
     errorM <- getError iter
     case errorM of
-      Just msg -> Log.fatal $ "Cache store iterator error: " <> Log.build msg
+      Just msg -> do
+        -- FIXME: What if iterator return error when iterating?
+        Log.fatal $ "Cache store iterator error: " <> Log.build msg
       Nothing  -> do
         end <- getTime Monotonic
         let sDuration = toNanoSecs (diffTimeSpec end start) `div` 1000000

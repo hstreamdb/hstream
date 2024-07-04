@@ -21,7 +21,7 @@ import           ZooKeeper.Exception         (ZNONODE (..))
 
 import           Control.Concurrent          (modifyMVar_, newEmptyMVar,
                                               putMVar, readMVar, takeMVar,
-                                              withMVar)
+                                              threadDelay, withMVar)
 import           Control.Exception           (bracket, catch, throwIO, try)
 import           Control.Monad               (forM, forM_, join, unless, when)
 import           Data.ByteString             (ByteString)
@@ -152,7 +152,10 @@ readShard ServerContext{..} API.ReadShardRequest{..} = do
          Stats.stream_stat_add_read_in_batches scStatsHolder cStreamName (fromIntegral $ length records)
          let (records', _) = filterRecords shardReaderStartTs shardReaderEndTs records
          forM records' decodeRecordBatch
-       ServerBackup -> return []
+       ServerBackup -> do
+         -- sleep 5ms here to avoid client send too many read requests in a busy loop
+         threadDelay 5000
+         return []
      let res = V.fromList $ map (\(_, _, _, record) -> record) receivedRecordsVecs
      Log.debug $ "reader " <> Log.build readShardRequestReaderId
               <> " read " <> Log.build (V.length res) <> " batchRecords"

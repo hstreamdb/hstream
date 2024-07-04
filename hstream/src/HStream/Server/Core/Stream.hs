@@ -379,7 +379,9 @@ appendStream ServerContext{..} streamName shardId record = do
   let payload = encodBatchRecord record
       recordSize = API.batchedRecordBatchSize record
       payloadSize = BS.length payload
+      cStreamName = textToCBytes streamName
   when (payloadSize > scMaxRecordSize) $ throwIO $ HE.InvalidRecordSize payloadSize
+
   state <- readIORef serverState
   rids <- case state of
     ServerNormal -> do
@@ -396,19 +398,18 @@ appendStream ServerContext{..} streamName shardId record = do
       return $ V.zipWith (API.RecordId shardId) (V.replicate (fromIntegral recordSize) appendCompLSN) (V.fromList [0..])
     ServerBackup -> do
       res <- DB.writeRecord cacheStore streamName shardId payload
-      -- If write cache store failed, server will drop this record???
       case res of
         Right S.AppendCompletion{..} ->
            return $ V.zipWith (API.RecordId shardId) (V.replicate (fromIntegral recordSize) appendCompLSN) (V.fromList [0..])
         Left e -> do
+          -- If write cache store failed, server will drop this record???
           Log.fatal $ "write to cache store failed: " <> Log.build (displayException e)
           return V.empty
+
   return $ API.AppendResponse {
       appendResponseStreamName = streamName
     , appendResponseShardId    = shardId
     , appendResponseRecordIds  = rids }
-  where
-    cStreamName = textToCBytes streamName
 
 listShards
   :: HasCallStack
