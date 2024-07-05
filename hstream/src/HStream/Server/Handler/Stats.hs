@@ -15,7 +15,8 @@ module HStream.Server.Handler.Stats
   , handleGetStats
   ) where
 
-import           Control.Exception                (throwIO)
+import           Control.Exception                (Exception (displayException),
+                                                   SomeException, throwIO, try)
 import           Data.Functor                     ((<&>))
 import           Data.Int                         (Int64)
 import           Data.Map.Strict                  (Map)
@@ -139,6 +140,8 @@ getStatsInternal ServerContext{scStatsHolder = holder} s@(StatTypeStatQueryStat 
   getQueryStatsInternal holder stats <&> convert s
 getStatsInternal ServerContext{scStatsHolder = holder} s@(StatTypeStatViewStat stats) = do
   getViewStatsInternal holder stats <&> convert s
+getStatsInternal ServerContext{scStatsHolder = holder} s@(StatTypeStatCacheStoreStat stats) = do
+  getCacheStoreStatsInternal holder stats <&> convert s
 
 getStreamStatsInternal
   :: Stats.StatsHolder
@@ -196,7 +199,7 @@ getConnectorStatsInternal
   -> PS.Enumerated API.ConnectorStats
   -> IO (Either T.Text (Map CBytes Int64))
 getConnectorStatsInternal statsHolder ioWorker (PS.Enumerated stats) = do
-  Log.debug $ "request stream stats: " <> Log.buildString' stats
+  Log.debug $ "request connector stats: " <> Log.buildString' stats
   s <- Stats.newAggregateStats statsHolder
   case stats of
     Right API.ConnectorStatsDeliveredInRecords ->
@@ -204,9 +207,40 @@ getConnectorStatsInternal statsHolder ioWorker (PS.Enumerated stats) = do
     Right API.ConnectorStatsDeliveredInBytes ->
       Stats.connector_stat_getall_delivered_in_bytes s <&> Right
     Right API.ConnectorStatsIsAlive -> do
-      cs <- IO.listIOTasks ioWorker
-      return . Right . Map.fromList $
-        map (\API.Connector{..} -> if connectorStatus == "RUNNING" then (U.textToCBytes connectorName, 1) else (U.textToCBytes connectorName, 0)) cs
+      res <- try @SomeException $ IO.listIOTasks ioWorker
+      case res of
+        Left e -> return . Left . T.pack $ "can't list io tasks because meta exception: " <> displayException e
+        Right cs -> do
+          return . Right . Map.fromList $
+            map (\API.Connector{..} -> if connectorStatus == "RUNNING" then (U.textToCBytes connectorName, 1) else (U.textToCBytes connectorName, 0)) cs
+    Left _ -> return . Left . T.pack $ "invalid stat type " <> show stats
+
+getCacheStoreStatsInternal
+  :: Stats.StatsHolder
+  -> PS.Enumerated API.CacheStoreStats
+  -> IO (Either T.Text (Map CBytes Int64))
+getCacheStoreStatsInternal statsHolder (PS.Enumerated stats) = do
+  Log.debug $ "request cache store stats: " <> Log.buildString' stats
+  s <- Stats.newAggregateStats statsHolder
+  case stats of
+    Right API.CacheStoreStatsCSAppendInBytes ->
+      Stats.cache_store_stat_getall_cs_append_in_bytes s <&> Right
+    Right API.CacheStoreStatsCSAppendInRecords -> do
+      Stats.cache_store_stat_getall_cs_append_in_records s <&> Right
+    Right API.CacheStoreStatsCSAppendTotal -> do
+      Stats.cache_store_stat_getall_cs_append_total s <&> Right
+    Right API.CacheStoreStatsCSAppendFailed ->
+      Stats.cache_store_stat_getall_cs_append_failed s <&> Right
+    Right API.CacheStoreStatsCSReadInBytes ->
+      Stats.cache_store_stat_getall_cs_read_in_bytes s <&> Right
+    Right API.CacheStoreStatsCSReadInRecords ->
+      Stats.cache_store_stat_getall_cs_read_in_records s <&> Right
+    Right API.CacheStoreStatsCSDeliveredInRecords ->
+      Stats.cache_store_stat_getall_cs_delivered_in_records s <&> Right
+    Right API.CacheStoreStatsCSDeliveredTotal -> do
+      Stats.cache_store_stat_getall_cs_delivered_total s <&> Right
+    Right API.CacheStoreStatsCSDeliveredFailed -> do
+      Stats.cache_store_stat_getall_cs_delivered_failed s <&> Right
     Left _ -> return . Left . T.pack $ "invalid stat type " <> show stats
 
 getQueryStatsInternal

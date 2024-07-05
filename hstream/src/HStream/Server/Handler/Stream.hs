@@ -39,15 +39,16 @@ module HStream.Server.Handler.Stream
   ) where
 
 import           Control.Exception
+import           Control.Monad                     (when)
 import qualified Data.Map                          as Map
 import           Data.Maybe                        (fromJust, isNothing)
 import qualified Data.Vector                       as V
+import           Database.RocksDB.Exception        (RocksDbException)
 import qualified HsGrpc.Server                     as G
 import qualified HsGrpc.Server.Types               as G
 import           Network.GRPC.HighLevel.Generated
 import qualified ZooKeeper.Exception               as ZK
 
-import           Control.Monad                     (when)
 import qualified HStream.Common.ZookeeperSlotAlloc as Slot
 import qualified HStream.Exception                 as HE
 import qualified HStream.Logger                    as Log
@@ -56,7 +57,6 @@ import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
 import           HStream.Server.Types              (ServerContext (..))
 import           HStream.Server.Validation
-import qualified HStream.Stats                     as Stats
 import qualified HStream.Store                     as Store
 import           HStream.ThirdParty.Protobuf       as PB
 import           HStream.Utils
@@ -221,25 +221,19 @@ appendHandler
   :: ServerContext
   -> ServerRequest 'Normal AppendRequest AppendResponse
   -> IO (ServerResponse 'Normal AppendResponse)
-appendHandler sc@ServerContext{..} (ServerNormalRequest _metadata request@AppendRequest{..}) =
-  appendStreamExceptionHandle inc_failed $ do
+appendHandler sc (ServerNormalRequest _metadata request@AppendRequest{..}) =
+  appendStreamExceptionHandle $ do
+    Log.debug $ "Receive Append Request: StreamName {" <> Log.build appendRequestStreamName
+             <> "(shardId: " <> Log.build appendRequestShardId <> ")}"
     validateAppendRequest request
-    returnResp =<< C.append sc appendRequestStreamName appendRequestShardId (fromJust appendRequestRecords)
-  where
-    inc_failed = do
-      Stats.stream_stat_add_append_failed scStatsHolder cStreamName 1
-      Stats.stream_time_series_add_append_failed_requests scStatsHolder cStreamName 1
-    cStreamName = textToCBytes appendRequestStreamName
+    returnResp =<< C.appendStream sc appendRequestStreamName appendRequestShardId (fromJust appendRequestRecords)
 
 handleAppend :: ServerContext -> G.UnaryHandler AppendRequest AppendResponse
-handleAppend sc@ServerContext{..} _ req@AppendRequest{..} = appendExHandle inc_failed $ do
+handleAppend sc _ req@AppendRequest{..} = appendExHandle $ do
+  Log.debug $ "Receive Append Request: StreamName {" <> Log.build appendRequestStreamName
+           <> "(shardId: " <> Log.build appendRequestShardId <> ")}"
   validateAppendRequest req
-  C.append sc appendRequestStreamName appendRequestShardId (fromJust appendRequestRecords)
- where
-   inc_failed = do
-     Stats.stream_stat_add_append_failed scStatsHolder cStreamName 1
-     Stats.stream_time_series_add_append_failed_requests scStatsHolder cStreamName 1
-   cStreamName = textToCBytes appendRequestStreamName
+  C.appendStream sc appendRequestStreamName appendRequestShardId (fromJust appendRequestRecords)
 {-# INLINE handleAppend #-}
 
 --------------------------------------------------------------------------------
@@ -286,11 +280,9 @@ handleTrimShard sc _ request@TrimShardRequest{..} = catchDefaultEx $ do
 --------------------------------------------------------------------------------
 -- Exception Handlers
 
-appendStreamExceptionHandle :: IO () -> HE.ExceptionHandle (ServerResponse 'Normal a)
-appendStreamExceptionHandle f = HE.mkExceptionHandle' whileEx mkHandlers
+appendStreamExceptionHandle :: HE.ExceptionHandle (ServerResponse 'Normal a)
+appendStreamExceptionHandle = HE.mkExceptionHandle mkHandlers
   where
-    whileEx :: forall e. Exception e => e -> IO ()
-    whileEx err = Log.warning (Log.buildString' err) >> f
     handlers =
       [ Handler (\(err :: Store.NOTFOUND) ->
           return (StatusUnavailable, HE.mkStatusDetails err))
@@ -302,6 +294,8 @@ appendStreamExceptionHandle f = HE.mkExceptionHandle' whileEx mkHandlers
           return (StatusUnavailable, HE.mkStatusDetails err))
       , Handler (\(err :: Store.PEER_UNAVAILABLE) -> do
           return (StatusUnavailable, HE.mkStatusDetails err))
+      , Handler (\(err :: RocksDbException) ->
+          return (StatusInternal, HE.mkStatusDetails err))
       ] ++ defaultHandlers
     mkHandlers = HE.setRespType mkServerErrResp handlers
 
@@ -310,8 +304,8 @@ appendStreamExceptionHandle f = HE.mkExceptionHandle' whileEx mkHandlers
     Log.warning (Log.buildString' err); \
     G.throwGrpcError $ HE.mkGrpcStatus err G.StatusUnavailable
 
-appendExHandle :: IO () -> (IO a -> IO a)
-appendExHandle f = HE.mkExceptionHandle' (const f) handlers
+appendExHandle :: IO a -> IO a
+appendExHandle = HE.mkExceptionHandle handlers
   where
     handlers =
       [ MkUnavailable(Store.NOTFOUND)
@@ -319,6 +313,8 @@ appendExHandle f = HE.mkExceptionHandle' (const f) handlers
       , MkUnavailable(Store.NOSEQUENCER)
       , MkUnavailable(Store.TIMEDOUT)
       , MkUnavailable(Store.PEER_UNAVAILABLE)
+      , Handler (\(err :: RocksDbException) ->
+          G.throwGrpcError $ HE.mkGrpcStatus err G.StatusInternal)
       ] ++ defaultExHandlers
 
 listShardsExceptionHandle :: HE.ExceptionHandle (ServerResponse 'Normal a)

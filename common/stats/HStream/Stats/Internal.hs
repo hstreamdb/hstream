@@ -59,6 +59,8 @@ PER_X_STAT(stream_)
 PER_X_STAT(subscription_)
 -- connector__stat_getall, connector_stat_erase
 PER_X_STAT(connector_)
+-- cache_store__stat_getall, cache_store_stat_erase
+PER_X_STAT(cache_store_)
 -- query_stat_getall, query_stat_erase
 PER_X_STAT(query_)
 -- view_stat_getall, view_stat_erase
@@ -104,6 +106,9 @@ foreign import ccall unsafe "hs_stats.h prefix##getall_##name"                 \
 
 #define STAT_DEFINE(name, _) PER_X_STAT_DEFINE(subscription_stat_, name)
 #include "../include/per_subscription_stats.inc"
+
+#define STAT_DEFINE(name, _) PER_X_STAT_DEFINE(cache_store_stat_, name)
+#include "../include/per_cache_store_stats.inc"
 
 #define TIME_SERIES_DEFINE(name, _, __, ___)                                   \
 foreign import ccall unsafe "hs_stats.h stream_time_series_add_##name"         \

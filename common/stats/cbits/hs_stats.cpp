@@ -39,6 +39,15 @@ void setPerConnectorStatsMember(const char* stat_name,
 #include "per_connector_stats.inc"
 }
 
+void setPerCacheStoreStatsMember(
+    const char* stat_name, StatsCounter PerCacheStoreStats::*& member_ptr) {
+#define STAT_DEFINE(name, _)                                                   \
+  if (#name == std::string(stat_name)) {                                       \
+    member_ptr = &PerCacheStoreStats::name##_counter;                          \
+  }
+#include "per_cache_store_stats.inc"
+}
+
 void setPerQueryStatsMember(const char* stat_name,
                             StatsCounter PerQueryStats::*& member_ptr) {
 #define STAT_DEFINE(name, _)                                                   \
@@ -164,7 +173,19 @@ int stream_time_series_getall_by_name(
 #include "per_connector_stats.inc"
 
 // connector_stat_getall, connector_stat_erase
-PER_X_STAT(connector_, PerConnectorStats, per_connector_stats, setPerConnectorStatsMember)
+PER_X_STAT(connector_, PerConnectorStats, per_connector_stats,
+           setPerConnectorStatsMember)
+
+// ----------------------------------------------------------------------------
+// PerCacheStoreStats
+#define STAT_DEFINE(name, _)                                                   \
+  PER_X_STAT_DEFINE(cache_store_stat_, per_cache_store_stats,                  \
+                    PerCacheStoreStats, name)
+#include "per_cache_store_stats.inc"
+
+// cache_store_stat_getall, cache_store_stat_erase
+PER_X_STAT(cache_store_, PerCacheStoreStats, per_cache_store_stats,
+           setPerCacheStoreStatsMember)
 
 // ----------------------------------------------------------------------------
 // PerQueryStats
@@ -199,7 +220,8 @@ PER_X_STAT(view_, PerViewStats, per_view_stats, setPerViewStatsMember)
 #include "per_subscription_time_series.inc"
 
 // subscription_stat_getall, subscription_stat_erase
-PER_X_STAT(subscription_, PerSubscriptionStats, per_subscription_stats, setPerSubscriptionStatsMember)
+PER_X_STAT(subscription_, PerSubscriptionStats, per_subscription_stats,
+           setPerSubscriptionStatsMember)
 
 int subscription_time_series_get(StatsHolder* stats_holder,
                                  const char* stat_name, const char* subs_name,

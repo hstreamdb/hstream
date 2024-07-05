@@ -11,7 +11,8 @@ module HStream.Common.Server.Lookup
   ) where
 
 import           Control.Concurrent.STM
-import           Control.Exception                (SomeException (..), try)
+import           Control.Exception                (SomeException (..), throwIO,
+                                                   try)
 import           Data.List                        (find)
 import           Data.Text                        (Text)
 import qualified Data.Vector                      as V
@@ -21,6 +22,7 @@ import           HStream.Common.Server.HashRing   (LoadBalanceHashRing,
                                                    readLoadBalanceHashRing)
 import           HStream.Common.Server.MetaData   (TaskAllocation (..))
 import           HStream.Common.Types             (fromInternalServerNodeWithKey)
+import qualified HStream.Exception                as HE
 import           HStream.Gossip                   (GossipContext, getMemberList)
 import qualified HStream.Logger                   as Log
 import qualified HStream.MetaStore.Types          as M

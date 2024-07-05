@@ -2,43 +2,33 @@
 
 module HStream.Server.Core.Common where
 
-import           Control.Applicative              ((<|>))
+import           Control.Applicative          ((<|>))
 import           Control.Concurrent
-import           Control.Concurrent.STM           (atomically, readTVarIO,
-                                                   writeTVar)
-import           Control.Exception                (SomeException (..), throwIO,
-                                                   try)
+import           Control.Concurrent.STM       (atomically, writeTVar)
+import           Control.Exception            (SomeException (..), throwIO, try)
 import           Control.Monad
-import qualified Data.Attoparsec.Text             as AP
-import qualified Data.ByteString                  as BS
-import           Data.Foldable                    (foldrM)
-import qualified Data.HashMap.Strict              as HM
-import           Data.List                        (find)
-import qualified Data.Map.Strict                  as Map
-import           Data.Text                        (Text)
-import qualified Data.Text                        as T
-import qualified Data.Vector                      as V
-import           Data.Word                        (Word32, Word64)
-import           HStream.ThirdParty.Protobuf
+import qualified Data.Attoparsec.Text         as AP
+import qualified Data.ByteString              as BS
+import qualified Data.HashMap.Strict          as HM
+import qualified Data.Map.Strict              as Map
+import           Data.Text                    (Text)
+import qualified Data.Text                    as T
+import qualified Data.Vector                  as V
+import           Data.Word                    (Word32, Word64)
 
-import           HStream.Common.ConsistentHashing
-import           HStream.Common.Server.Lookup     (lookupNodePersist)
-import qualified HStream.Common.Server.MetaData   as P
-import           HStream.Common.Types             (fromInternalServerNodeWithKey)
-import qualified HStream.Exception                as HE
-import           HStream.Gossip
-import qualified HStream.Logger                   as Log
-import qualified HStream.MetaStore.Types          as M
+import           HStream.Common.Server.Lookup (lookupNodePersist)
+import qualified HStream.Exception            as HE
+import qualified HStream.Logger               as Log
+import qualified HStream.MetaStore.Types      as M
 import           HStream.Server.HStreamApi
-import qualified HStream.Server.MetaData          as P
+import qualified HStream.Server.MetaData      as P
 import           HStream.Server.Types
 import           HStream.SQL
-import qualified HStream.Store                    as HS
-import           HStream.Utils                    (ResourceType (..),
-                                                   decodeByteStringBatch,
-                                                   msTimestampToProto,
-                                                   textToCBytes,
-                                                   updateRecordTimestamp)
+import qualified HStream.Store                as HS
+import           HStream.Utils                (ResourceType (..),
+                                               decodeByteStringBatch,
+                                               msTimestampToProto, textToCBytes,
+                                               updateRecordTimestamp)
 
 insertAckedRecordId
   :: ShardRecordId                        -- ^ recordId need to insert
@@ -219,7 +209,7 @@ lookupResource sc@ServerContext{..} ResView rid = do
   M.getMeta @P.ViewInfo rid metaHandle >>= \case
     Nothing             -> throwIO $ HE.ViewNotFound rid
     Just P.ViewInfo{..} -> lookupResource sc ResQuery (P.queryId viewQuery)
-lookupResource sc@ServerContext{..} rtype rid = do
+lookupResource ServerContext{..} rtype rid = do
   let metaId = mkAllocationKey rtype rid
   lookupNodePersist metaHandle gossipContext loadBalanceHashRing
                     rid metaId scAdvertisedListenersKey

@@ -5,6 +5,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs            #-}
 {-# LANGUAGE RankNTypes       #-}
+{-# LANGUAGE TupleSections    #-}
 
 module HStream.Server.Types where
 
@@ -33,23 +34,24 @@ import qualified HStream.Admin.Store.API          as AA
 #endif
 import           Control.Exception                (throw, throwIO)
 import           Control.Monad                    (when)
-import           Data.IORef                       (IORef)
+import           Data.IORef                       (IORef, atomicModifyIORef',
+                                                   readIORef)
 import           Data.Maybe                       (fromJust)
 import           HStream.Base.Timer               (CompactedWorker)
 import           HStream.Common.Server.HashRing   (LoadBalanceHashRing)
 import           HStream.Common.Types             (ShardKey)
 import qualified HStream.Exception                as HE
-import           HStream.Gossip.Types             (Epoch, GossipContext)
+import           HStream.Gossip.Types             (GossipContext)
 import qualified HStream.IO.Types                 as IO
 import qualified HStream.IO.Worker                as IO
 import           HStream.MetaStore.Types          (MetaHandle)
+import           HStream.Server.CacheStore        (CacheStore)
 import           HStream.Server.Config
 import qualified HStream.Server.HStreamApi        as API
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as HS
 import qualified HStream.Store                    as S
 import           HStream.Utils                    (ResourceType (ResConnector),
-                                                   textToCBytes,
                                                    timestampToMsTimestamp)
 import           Network.GRPC.HighLevel.Generated (GRPCIOError)
 
@@ -86,6 +88,10 @@ type ServerID = Word32
 type ServerState = PB.Enumerated API.NodeState
 type ShardDict = M.Map ShardKey HS.C_LogID
 
+-- When server is in Backup mode, it will return all lookup request to its own serverID, and cache all write
+-- request to local storage
+data ServerMode = ServerNormal | ServerBackup deriving(Show, Eq)
+
 data ServerContext = ServerContext
   { scLDClient               :: HS.LDClient
   , serverID                 :: Word32
@@ -107,7 +113,18 @@ data ServerContext = ServerContext
   , shardReaderMap           :: MVar (HM.HashMap Text (MVar ShardReader))
   , querySnapshotPath        :: FilePath
   , querySnapshotter         :: Maybe RocksDB.DB
+  , serverState              :: IORef ServerMode
+  , cacheStore               :: CacheStore
 }
+
+setServerMode :: ServerContext -> ServerMode -> IO ()
+setServerMode ServerContext{..} state = do
+  _ <- atomicModifyIORef' serverState $ (state,)
+  return ()
+
+getServerMode :: ServerContext -> IO ServerMode
+getServerMode ServerContext{..} = do
+  readIORef serverState
 
 data SubscribeContextNewWrapper = SubscribeContextNewWrapper
   { scnwState   :: TVar SubscribeState,

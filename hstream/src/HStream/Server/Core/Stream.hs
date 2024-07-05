@@ -12,7 +12,6 @@ module HStream.Server.Core.Stream
   , getStream
   , listStreams
   , listStreamsWithPrefix
-  , append
   , appendStream
   , listShards
   , getTailRecordId
@@ -36,6 +35,7 @@ import qualified Data.ByteString                   as BS
 import qualified Data.ByteString.Lazy              as BSL
 import           Data.Either                       (partitionEithers)
 import           Data.Functor                      ((<&>))
+import           Data.IORef                        (readIORef)
 import qualified Data.List                         as L
 import qualified Data.Map.Strict                   as M
 import           Data.Maybe                        (fromJust, fromMaybe)
@@ -52,10 +52,12 @@ import           HStream.Common.Types
 import qualified HStream.Common.ZookeeperSlotAlloc as Slot
 import qualified HStream.Exception                 as HE
 import qualified HStream.Logger                    as Log
+import qualified HStream.Server.CacheStore         as DB
 import qualified HStream.Server.HStreamApi         as API
 import qualified HStream.Server.MetaData           as P
 import           HStream.Server.Types              (ServerContext (..),
                                                     ServerInternalOffset (..),
+                                                    ServerMode (..),
                                                     ToOffset (..))
 import qualified HStream.Stats                     as Stats
 import qualified HStream.Store                     as S
@@ -348,32 +350,6 @@ getTailRecordIdV2 ServerContext{..} slotConfig API.GetTailRecordIdRequest{..} = 
                               }
   return $ API.GetTailRecordIdResponse { getTailRecordIdResponseTailRecordId = Just recordId}
 
-append :: HasCallStack
-       => ServerContext
-       -> T.Text                 -- streamName
-       -> Word64                 -- shardId
-       -> API.BatchedRecord      -- payload
-       -> IO API.AppendResponse
-append sc@ServerContext{..} streamName shardId payload = do
-  !recv_time <- getPOSIXTime
-  Log.debug $ "Receive Append Request: StreamName {"
-           <> Log.build streamName
-           <> "(shardId: "
-           <> Log.build shardId
-           <> ")}"
-
-  Stats.handle_time_series_add_queries_in scStatsHolder "append" 1
-  Stats.stream_stat_add_append_total scStatsHolder cStreamName 1
-  Stats.stream_time_series_add_append_in_requests scStatsHolder cStreamName 1
-
-  !append_start <- getPOSIXTime
-  resp <- appendStream sc streamName shardId payload
-  Stats.serverHistogramAdd scStatsHolder Stats.SHL_AppendLatency =<< msecSince append_start
-  Stats.serverHistogramAdd scStatsHolder Stats.SHL_AppendRequestLatency =<< msecSince recv_time
-  return resp
-  where
-    cStreamName = textToCBytes streamName
-
 appendStream :: HasCallStack
              => ServerContext
              -> T.Text
@@ -385,18 +361,38 @@ appendStream ServerContext{..} streamName shardId record = do
       recordSize = API.batchedRecordBatchSize record
       payloadSize = BS.length payload
   when (payloadSize > scMaxRecordSize) $ throwIO $ HE.InvalidRecordSize payloadSize
-  S.AppendCompletion {..} <- S.appendCompressedBS scLDClient shardId payload cmpStrategy Nothing
-  Stats.stream_stat_add_append_in_bytes scStatsHolder cStreamName (fromIntegral payloadSize)
-  Stats.stream_stat_add_append_in_records scStatsHolder cStreamName (fromIntegral recordSize)
-  Stats.stream_time_series_add_append_in_bytes scStatsHolder cStreamName (fromIntegral payloadSize)
-  Stats.stream_time_series_add_append_in_records scStatsHolder cStreamName (fromIntegral recordSize)
+
+  state <- readIORef serverState
+  S.AppendCompletion{..} <- case state of
+    ServerNormal -> do
+      Stats.handle_time_series_add_queries_in scStatsHolder "append" 1
+      Stats.stream_stat_add_append_total scStatsHolder cStreamName 1
+      Stats.stream_time_series_add_append_in_requests scStatsHolder cStreamName 1
+
+      !append_start <- getPOSIXTime
+      appendRes <- S.appendCompressedBS scLDClient shardId payload cmpStrategy Nothing `catch` record_failed
+
+      Stats.serverHistogramAdd scStatsHolder Stats.SHL_AppendLatency =<< msecSince append_start
+      Stats.stream_stat_add_append_in_bytes scStatsHolder cStreamName (fromIntegral payloadSize)
+      Stats.stream_stat_add_append_in_records scStatsHolder cStreamName (fromIntegral recordSize)
+      Stats.stream_time_series_add_append_in_bytes scStatsHolder cStreamName (fromIntegral payloadSize)
+      Stats.stream_time_series_add_append_in_records scStatsHolder cStreamName (fromIntegral recordSize)
+      return appendRes
+    ServerBackup -> do
+      DB.writeRecord cacheStore streamName shardId payload
+
   let rids = V.zipWith (API.RecordId shardId) (V.replicate (fromIntegral recordSize) appendCompLSN) (V.fromList [0..])
-  return $ API.AppendResponse {
-      appendResponseStreamName = streamName
+  return $ API.AppendResponse
+    { appendResponseStreamName = streamName
     , appendResponseShardId    = shardId
-    , appendResponseRecordIds  = rids }
-  where
-    cStreamName = textToCBytes streamName
+    , appendResponseRecordIds  = rids
+    }
+ where
+   cStreamName = textToCBytes streamName
+   record_failed (e :: S.SomeHStoreException) = do
+     Stats.stream_stat_add_append_failed scStatsHolder cStreamName 1
+     Stats.stream_time_series_add_append_failed_requests scStatsHolder cStreamName 1
+     throwIO e
 
 listShards
   :: HasCallStack

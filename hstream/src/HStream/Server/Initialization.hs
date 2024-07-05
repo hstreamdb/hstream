@@ -40,6 +40,7 @@ import qualified Z.Data.CBytes                    as CB
 #if __GLASGOW_HASKELL__ < 902
 import qualified HStream.Admin.Store.API          as AA
 #endif
+import           Data.IORef                       (newIORef)
 import           HStream.Common.ConsistentHashing (HashRing, constructServerMap,
                                                    getAllocatedNodeId)
 import           HStream.Common.Server.HashRing   (initializeHashRing)
@@ -49,6 +50,7 @@ import qualified HStream.IO.Types                 as IO
 import qualified HStream.IO.Worker                as IO
 import qualified HStream.Logger                   as Log
 import           HStream.MetaStore.Types          (MetaHandle (..))
+import           HStream.Server.CacheStore        (mkCacheStore)
 import           HStream.Server.Config            (ServerOpts (..),
                                                    TlsConfig (..))
 import           HStream.Server.Types
@@ -88,11 +90,30 @@ initializeServer opts@ServerOpts{..} gossipContext hh db_m = do
 
   shardReaderMap <- newMVar HM.empty
 
+  serverMode <- newIORef ServerNormal
+
+  -- ref: https://github.com/facebook/rocksdb/wiki/Setup-Options-and-Basic-Tuning#other-general-options
+  let tableOptions = def
+        { RocksDB.blockSize = 16 * 1024
+        , RocksDB.pinL0FilterAndIndexBlocksInCache = True
+        }
+      dbOption = def
+        { RocksDB.createIfMissing = True
+        -- , RocksDB.maxBackgroundJobs = 6
+        , RocksDB.blockBasedTableOptions = tableOptions
+        -- , RocksDB.bytesPerSync = 1048576
+        }
+  let writeOption = def { RocksDB.disableWAL = True }
+      -- readOption = def { RocksDB.readaheadSize = 64 * 1024 * 1024 }
+      readOption = def
+  let path = _cacheStorePath <> show _serverID
+  cachedStore <- mkCacheStore path dbOption writeOption readOption statsHolder
+
   -- recovery tasks
 
   return
     ServerContext
-      { metaHandle                 = hh
+      { metaHandle               = hh
       , scLDClient               = ldclient
       , serverID                 = _serverID
       , scAdvertisedListenersKey = Nothing
@@ -112,6 +133,8 @@ initializeServer opts@ServerOpts{..} gossipContext hh db_m = do
       , shardReaderMap           = shardReaderMap
       , querySnapshotPath        = _querySnapshotPath
       , querySnapshotter         = db_m
+      , serverState              = serverMode
+      , cacheStore               = cachedStore
       }
 
 --------------------------------------------------------------------------------

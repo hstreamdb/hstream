@@ -76,6 +76,20 @@ module HStream.Stats
   , CounterExports(connector, delivered_in_records)
   , CounterExports(connector, delivered_in_bytes)
 
+    -- * PerCacheStoreStats
+  , cache_store_stat_erase
+    -- ** Counters
+  , cache_store_stat_getall
+  , CounterExports(cache_store, cs_append_total)
+  , CounterExports(cache_store, cs_append_failed)
+  , CounterExports(cache_store, cs_append_in_bytes)
+  , CounterExports(cache_store, cs_append_in_records)
+  , CounterExports(cache_store, cs_read_in_bytes)
+  , CounterExports(cache_store, cs_read_in_records)
+  , CounterExports(cache_store, cs_delivered_in_records)
+  , CounterExports(cache_store, cs_delivered_total)
+  , CounterExports(cache_store, cs_delivered_failed)
+
     -- * PerQueryStats
   , query_stat_erase
     -- ** Counters
@@ -201,6 +215,8 @@ PER_X_STAT(stream_)
 PER_X_STAT(subscription_)
 -- connector_stat_getall, connector_stat_erase
 PER_X_STAT(connector_)
+-- cache_store_stat_getall, cache_store_stat_erase
+PER_X_STAT(cache_store_)
 -- query_stat_getall, query_stat_erase
 PER_X_STAT(query_)
 -- view_stat_getall, view_stat_erase
@@ -294,6 +310,14 @@ PER_X_STAT_SET(connector_stat_, name)                                          \
 PER_X_STAT_GET(connector_stat_, name)                                          \
 PER_X_STAT_GETALL_SEP(connector_stat_, name)
 #include "../include/per_connector_stats.inc"
+
+-- cache_store
+#define STAT_DEFINE(name, _)                                                     \
+PER_X_STAT_ADD(cache_store_stat_, name)                                          \
+PER_X_STAT_SET(cache_store_stat_, name)                                          \
+PER_X_STAT_GET(cache_store_stat_, name)                                          \
+PER_X_STAT_GETALL_SEP(cache_store_stat_, name)
+#include "../include/per_cache_store_stats.inc"
 
 -- Query
 #define STAT_DEFINE(name, _)                                                   \
@@ -428,20 +452,32 @@ data ServerHistogramLabel
   = SHL_AppendRequestLatency
   | SHL_AppendLatency
   | SHL_ReadLatency
+  | SHL_AppendCacheStoreLatency
+  | SHL_ReadCacheStoreLatency
+  | SHL_CheckStoreClusterLatency
+  | SHL_CheckMetaClusterLatency
 
 packServerHistogramLabel :: ServerHistogramLabel -> CBytes
-packServerHistogramLabel SHL_AppendRequestLatency = "append_request_latency"
-packServerHistogramLabel SHL_AppendLatency        = "append_latency"
-packServerHistogramLabel SHL_ReadLatency          = "read_latency"
+packServerHistogramLabel SHL_AppendRequestLatency      = "append_request_latency"
+packServerHistogramLabel SHL_AppendLatency             = "append_latency"
+packServerHistogramLabel SHL_ReadLatency               = "read_latency"
+packServerHistogramLabel SHL_AppendCacheStoreLatency   = "append_cache_store_latency"
+packServerHistogramLabel SHL_ReadCacheStoreLatency     = "read_cache_store_latency"
+packServerHistogramLabel SHL_CheckStoreClusterLatency  = "check_store_cluster_healthy_latency"
+packServerHistogramLabel SHL_CheckMetaClusterLatency   = "check_meta_cluster_healthy_latency"
 
 instance Read ServerHistogramLabel where
   readPrec = do
     l <- Read.lexP
     return $
       case l of
-        Read.Ident "append_request_latency" -> SHL_AppendRequestLatency
-        Read.Ident "append_latency"         -> SHL_AppendLatency
-        Read.Ident "read_latency"           -> SHL_ReadLatency
+        Read.Ident "append_request_latency"              -> SHL_AppendRequestLatency
+        Read.Ident "append_latency"                      -> SHL_AppendLatency
+        Read.Ident "read_latency"                        -> SHL_ReadLatency
+        Read.Ident "append_cache_store_latency"          -> SHL_AppendCacheStoreLatency
+        Read.Ident "read_cache_store_latency"            -> SHL_ReadCacheStoreLatency
+        Read.Ident "check_store_cluster_healthy_latency" -> SHL_CheckStoreClusterLatency
+        Read.Ident "check_meta_cluster_healthy_latency"  -> SHL_CheckMetaClusterLatency
         x -> errorWithoutStackTrace $ "cannot parse ServerHistogramLabel: " <> show x
 
 serverHistogramAdd :: StatsHolder -> ServerHistogramLabel -> Int64 -> IO ()

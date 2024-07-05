@@ -20,17 +20,20 @@ module HStream.Server.Handler.Cluster
   , handleLookupKey
   ) where
 
-import qualified HsGrpc.Server                    as G
+import           Control.Exception                (throwIO)
+import           Data.IORef                       (readIORef)
 import           Network.GRPC.HighLevel.Generated
 
-import           Control.Exception                (throwIO)
+import qualified HsGrpc.Server                    as G
+import           HStream.Common.Server.Lookup     (lookupNode)
 import qualified HStream.Exception                as HE
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Cluster      as C
 import           HStream.Server.Core.Common       (lookupResource)
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
-import           HStream.Server.Types             (ServerContext (..))
+import           HStream.Server.Types             (ServerContext (..),
+                                                   ServerMode (..))
 import           HStream.ThirdParty.Protobuf      (Empty)
 import           HStream.Utils                    (returnResp,
                                                    validateResourceIdAndThrow)
@@ -49,14 +52,28 @@ lookupResourceHandler
   :: ServerContext
   -> ServerRequest 'Normal LookupResourceRequest ServerNode
   -> IO (ServerResponse 'Normal ServerNode)
-lookupResourceHandler sc (ServerNormalRequest _meta req@LookupResourceRequest{..}) =
+lookupResourceHandler sc@ServerContext{..} (ServerNormalRequest _meta req@LookupResourceRequest{..}) =
   defaultExceptionHandle $ do
-  Log.debug $ "receive lookup resource request: " <> Log.build (show req)
+  Log.info $ "receive lookup resource request: " <> Log.build (show req)
   case lookupResourceRequestResType of
     Enumerated (Right rType) -> do
       validateResourceIdAndThrow rType lookupResourceRequestResId
-      returnResp =<< lookupResource sc rType lookupResourceRequestResId
+      state <- readIORef serverState
+      case state of
+        ServerNormal -> do
+          returnResp =<< lookupResource sc rType lookupResourceRequestResId
+        ServerBackup -> do
+          theNode <- case rType of
+            ResourceTypeResShard -> do
+              doLookup lookupResourceRequestResId
+            -- ResourceTypeResStream -> doLookup lookupResourceRequestResId
+            tp -> do
+              Log.warning $ "reject lookup " <> Log.build (show tp) <> " request because server is in backup mode"
+              throwIO $ HE.ResourceAllocationException "server is in backup mode, try later"
+          returnResp theNode
     x -> throwIO $ HE.InvalidResourceType (show x)
+ where
+   doLookup rid = lookupNode loadBalanceHashRing rid scAdvertisedListenersKey
 
 lookupShardHandler
   :: ServerContext
@@ -94,13 +111,25 @@ handleDescribeCluster :: ServerContext -> G.UnaryHandler Empty DescribeClusterRe
 handleDescribeCluster sc _ _ = catchDefaultEx $ C.describeCluster sc
 
 handleLookupResource :: ServerContext -> G.UnaryHandler LookupResourceRequest ServerNode
-handleLookupResource sc _ req@LookupResourceRequest{..} = catchDefaultEx $ do
-  Log.debug $ "receive lookup resource request: " <> Log.build (show req)
+handleLookupResource sc@ServerContext{..} _sc req@LookupResourceRequest{..} = catchDefaultEx $ do
+  Log.info $ "receive lookup resource request: " <> Log.build (show req)
   case lookupResourceRequestResType of
     Enumerated (Right rType) -> do
       validateResourceIdAndThrow rType lookupResourceRequestResId
-      C.lookupResource sc rType lookupResourceRequestResId
+      state <- readIORef serverState
+      case state of
+        ServerNormal -> do
+          C.lookupResource sc rType lookupResourceRequestResId
+        ServerBackup -> do
+          case rType of
+            ResourceTypeResShard -> do
+              doLookup lookupResourceRequestResId
+            tp -> do
+              Log.warning $ "reject lookup " <> Log.build (show tp) <> " request because server is in backup mode"
+              throwIO $ HE.ResourceAllocationException "server is in backup mode, try later"
     x -> throwIO $ HE.InvalidResourceType (show x)
+ where
+   doLookup rid = lookupNode loadBalanceHashRing rid scAdvertisedListenersKey
 
 handleLookupShard :: ServerContext -> G.UnaryHandler LookupShardRequest LookupShardResponse
 handleLookupShard sc _ req = catchDefaultEx $ C.lookupShard sc req

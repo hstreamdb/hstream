@@ -101,6 +101,23 @@ struct PerConnectorStats {
 };
 
 // ----------------------------------------------------------------------------
+// PerCacheStoreStats
+//
+struct PerCacheStoreStats {
+#define STAT_DEFINE(name, _) StatsCounter name##_counter{};
+#include "per_cache_store_stats.inc"
+  void aggregate(PerCacheStoreStats const& other,
+                 StatsAggOptional agg_override);
+  // Show all per_cache_store_stats to a json formatted string.
+  folly::dynamic toJsonObj();
+  std::string toJson();
+
+  // Mutex almost exclusively locked by one thread since PerCacheStoreStats
+  // objects are contained in thread-local stats
+  std::mutex mutex;
+};
+
+// ----------------------------------------------------------------------------
 // PerQueryStats
 //
 struct PerQueryStats {
@@ -291,6 +308,11 @@ struct Stats {
   folly::Synchronized<
       std::unordered_map<std::string, std::shared_ptr<PerConnectorStats>>>
       per_connector_stats;
+
+  // Per-cache-store stats
+  folly::Synchronized<
+      std::unordered_map<std::string, std::shared_ptr<PerCacheStoreStats>>>
+      per_cache_store_stats;
 
   // Per-query stats
   folly::Synchronized<

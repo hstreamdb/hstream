@@ -21,6 +21,7 @@ module HStream.Store.Internal.LogDevice
   , module HStream.Store.Internal.LogDevice.VersionedConfigStore
   , module HStream.Store.Internal.LogDevice.Writer
   , module HStream.Store.Internal.LogDevice.LDQuery
+  , module HStream.Store.Internal.LogDevice.HealthCheck
   ) where
 
 import           Control.Monad
@@ -43,6 +44,7 @@ import qualified HStream.Store.Exception                               as E
 import           HStream.Store.Internal.Foreign
 import           HStream.Store.Internal.LogDevice.Checkpoint
 import           HStream.Store.Internal.LogDevice.Configuration
+import           HStream.Store.Internal.LogDevice.HealthCheck
 import           HStream.Store.Internal.LogDevice.LDQuery
 import           HStream.Store.Internal.LogDevice.LogAttributes
 import           HStream.Store.Internal.LogDevice.LogConfigTypes
