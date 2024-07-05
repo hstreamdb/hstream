@@ -12,7 +12,6 @@ module HStream.Server.Core.Stream
   , getStream
   , listStreams
   , listStreamsWithPrefix
-  , append
   , appendStream
   , listShards
   , getTailRecordId
@@ -351,24 +350,6 @@ getTailRecordIdV2 ServerContext{..} slotConfig API.GetTailRecordIdRequest{..} = 
                               }
   return $ API.GetTailRecordIdResponse { getTailRecordIdResponseTailRecordId = Just recordId}
 
-append :: HasCallStack
-       => ServerContext
-       -> T.Text                 -- streamName
-       -> Word64                 -- shardId
-       -> API.BatchedRecord      -- payload
-       -> IO API.AppendResponse
-append sc@ServerContext{..} streamName shardId payload = do
-  !recv_time <- getPOSIXTime
-  Log.debug $ "Receive Append Request: StreamName {"
-           <> Log.build streamName
-           <> "(shardId: "
-           <> Log.build shardId
-           <> ")}"
-
-  resp <- appendStream sc streamName shardId payload
-  Stats.serverHistogramAdd scStatsHolder Stats.SHL_AppendRequestLatency =<< msecSince recv_time
-  return resp
-
 appendStream :: HasCallStack
              => ServerContext
              -> T.Text
@@ -379,37 +360,39 @@ appendStream ServerContext{..} streamName shardId record = do
   let payload = encodBatchRecord record
       recordSize = API.batchedRecordBatchSize record
       payloadSize = BS.length payload
-      cStreamName = textToCBytes streamName
   when (payloadSize > scMaxRecordSize) $ throwIO $ HE.InvalidRecordSize payloadSize
 
   state <- readIORef serverState
-  rids <- case state of
+  S.AppendCompletion{..} <- case state of
     ServerNormal -> do
       Stats.handle_time_series_add_queries_in scStatsHolder "append" 1
       Stats.stream_stat_add_append_total scStatsHolder cStreamName 1
       Stats.stream_time_series_add_append_in_requests scStatsHolder cStreamName 1
+
       !append_start <- getPOSIXTime
-      S.AppendCompletion {..} <- S.appendCompressedBS scLDClient shardId payload cmpStrategy Nothing
+      appendRes <- S.appendCompressedBS scLDClient shardId payload cmpStrategy Nothing `catch` record_failed
+
       Stats.serverHistogramAdd scStatsHolder Stats.SHL_AppendLatency =<< msecSince append_start
       Stats.stream_stat_add_append_in_bytes scStatsHolder cStreamName (fromIntegral payloadSize)
       Stats.stream_stat_add_append_in_records scStatsHolder cStreamName (fromIntegral recordSize)
       Stats.stream_time_series_add_append_in_bytes scStatsHolder cStreamName (fromIntegral payloadSize)
       Stats.stream_time_series_add_append_in_records scStatsHolder cStreamName (fromIntegral recordSize)
-      return $ V.zipWith (API.RecordId shardId) (V.replicate (fromIntegral recordSize) appendCompLSN) (V.fromList [0..])
+      return appendRes
     ServerBackup -> do
-      res <- DB.writeRecord cacheStore streamName shardId payload
-      case res of
-        Right S.AppendCompletion{..} ->
-           return $ V.zipWith (API.RecordId shardId) (V.replicate (fromIntegral recordSize) appendCompLSN) (V.fromList [0..])
-        Left e -> do
-          -- If write cache store failed, server will drop this record???
-          Log.fatal $ "write to cache store failed: " <> Log.build (displayException e)
-          return V.empty
+      DB.writeRecord cacheStore streamName shardId payload
 
-  return $ API.AppendResponse {
-      appendResponseStreamName = streamName
+  let rids = V.zipWith (API.RecordId shardId) (V.replicate (fromIntegral recordSize) appendCompLSN) (V.fromList [0..])
+  return $ API.AppendResponse
+    { appendResponseStreamName = streamName
     , appendResponseShardId    = shardId
-    , appendResponseRecordIds  = rids }
+    , appendResponseRecordIds  = rids
+    }
+ where
+   cStreamName = textToCBytes streamName
+   record_failed (e :: S.SomeHStoreException) = do
+     Stats.stream_stat_add_append_failed scStatsHolder cStreamName 1
+     Stats.stream_time_series_add_append_failed_requests scStatsHolder cStreamName 1
+     throwIO e
 
 listShards
   :: HasCallStack

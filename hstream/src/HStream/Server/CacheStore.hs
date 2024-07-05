@@ -20,7 +20,7 @@ import           Control.Concurrent.STM     (TVar, atomically, check, newTVarIO,
                                              readTVar, readTVarIO, swapTVar,
                                              writeTVar)
 import           Control.Exception          (Exception (displayException),
-                                             throwIO, try)
+                                             catch, throwIO, try)
 import           Control.Monad              (unless, void, when)
 import           Data.ByteString            (ByteString)
 import qualified Data.ByteString            as BS
@@ -173,7 +173,7 @@ getStore CacheStore{store} = do
       Log.fatal $ "Cache store not initialized, should not get here"
       throwIO $ HE.UnexpectedError "Store is not initialized."
 
-writeRecord :: CacheStore -> T.Text -> Word64 -> ByteString -> IO (Either RocksDbException S.AppendCompletion)
+writeRecord :: CacheStore -> T.Text -> Word64 -> ByteString -> IO S.AppendCompletion
 writeRecord st@CacheStore{..} streamName shardId payload = do
   canWrite <- readMVar enableWrite
   unless canWrite $ do
@@ -185,27 +185,26 @@ writeRecord st@CacheStore{..} streamName shardId payload = do
   -- Obtain a monotonically increasing offset to ensure that each encoded-key is unique.
   offset <- atomicModifyIORef' counter (\x -> (x + 1, x))
   let k = encodeKey streamName shardId offset
+
   !append_start <- getPOSIXTime
-  res <- try @RocksDbException $ putCF db writeOptions columnFamily k payload
-  case res of
-    Left e -> do
-      ST.cache_store_stat_add_cs_append_failed statsHolder cStreamName 1
-      return $ Left e
-    Right _ -> do
-      ST.serverHistogramAdd statsHolder ST.SHL_AppendCacheStoreLatency =<< msecSince append_start
-      ST.cache_store_stat_add_cs_append_in_bytes statsHolder cStreamName (fromIntegral $ BS.length payload)
-      ST.cache_store_stat_add_cs_append_in_records statsHolder cStreamName 1
-      ST.cache_store_stat_add_cs_append_total statsHolder cStreamName 1
-      void $ atomicModifyIORef' totalWrite (\x -> (x + 1, x))
-      lsn <- getCurrentTimestamp
-      return . Right $
-        S.AppendCompletion
-          { appendCompLogID = shardId
-          , appendCompLSN   = fromIntegral lsn
-          , appendCompTimestamp = 0
-          }
+  putCF db writeOptions columnFamily k payload `catch` record_failed
+  ST.serverHistogramAdd statsHolder ST.SHL_AppendCacheStoreLatency =<< msecSince append_start
+  ST.cache_store_stat_add_cs_append_in_bytes statsHolder cStreamName (fromIntegral $ BS.length payload)
+  ST.cache_store_stat_add_cs_append_in_records statsHolder cStreamName 1
+  ST.cache_store_stat_add_cs_append_total statsHolder cStreamName 1
+
+  void $ atomicModifyIORef' totalWrite (\x -> (x + 1, x))
+  lsn <- getCurrentTimestamp
+  return S.AppendCompletion
+    { appendCompLogID = shardId
+    , appendCompLSN   = fromIntegral lsn
+    , appendCompTimestamp = 0
+    }
  where
    cStreamName = "cache_store"
+   record_failed (e :: RocksDbException) = do
+     ST.cache_store_stat_add_cs_append_failed statsHolder cStreamName 1
+     throwIO e
 
 -- dump all cached records to HStore
 dumpToHStore :: CacheStore -> S.LDClient -> S.Compression -> IO ()
