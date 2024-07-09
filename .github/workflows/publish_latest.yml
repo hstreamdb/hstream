@@ -60,6 +60,7 @@ jobs:
             --build-arg LD_IMAGE=${{ matrix.ld_image }} \
             --build-arg HSTREAM_VERSION=${{ env.LATEST_TAG }} \
             --build-arg HSTREAM_VERSION_COMMIT=${{ env.CURRENT_COMMIT }} \
+            --build-arg BUILD_CACHE="no_cache" \
             -t ${IMAGE_NAME}:${{ matrix.tag }}
 
       - name: Push image to dockerhub
@@ -72,6 +73,7 @@ jobs:
             --build-arg LD_IMAGE=${{ matrix.ld_image }} \
             --build-arg HSTREAM_VERSION=${{ env.LATEST_TAG }} \
             --build-arg HSTREAM_VERSION_COMMIT=${{ env.CURRENT_COMMIT }} \
+            --build-arg BUILD_CACHE="no_cache" \
             --target builder \
             -t ${BUILDER_IMAGE_NAME}:latest
           # For cache
