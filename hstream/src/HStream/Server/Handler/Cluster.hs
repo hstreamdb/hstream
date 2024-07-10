@@ -54,7 +54,7 @@ lookupResourceHandler
   -> IO (ServerResponse 'Normal ServerNode)
 lookupResourceHandler sc@ServerContext{..} (ServerNormalRequest _meta req@LookupResourceRequest{..}) =
   defaultExceptionHandle $ do
-  Log.info $ "receive lookup resource request: " <> Log.build (show req)
+  Log.debug $ "receive lookup resource request: " <> Log.build (show req)
   case lookupResourceRequestResType of
     Enumerated (Right rType) -> do
       validateResourceIdAndThrow rType lookupResourceRequestResId
@@ -112,7 +112,7 @@ handleDescribeCluster sc _ _ = catchDefaultEx $ C.describeCluster sc
 
 handleLookupResource :: ServerContext -> G.UnaryHandler LookupResourceRequest ServerNode
 handleLookupResource sc@ServerContext{..} _sc req@LookupResourceRequest{..} = catchDefaultEx $ do
-  Log.info $ "receive lookup resource request: " <> Log.build (show req)
+  Log.debug $ "receive lookup resource request: " <> Log.build (show req)
   case lookupResourceRequestResType of
     Enumerated (Right rType) -> do
       validateResourceIdAndThrow rType lookupResourceRequestResId
