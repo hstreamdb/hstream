@@ -234,6 +234,7 @@ checkIOTask IOTask{..} = do
         " --network=", T.unpack tcNetwork,
         " --name ", T.unpack ("IO_CHECK_" <> taskId),
         " -v " , taskPath, ":/data",
+        " " , T.unpack . optExtraDockerArgs $ ioOptions,
         " " , T.unpack tcImage,
         " check",
         " --config /data/config.json",
