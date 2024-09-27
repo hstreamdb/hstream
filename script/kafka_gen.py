@@ -76,7 +76,7 @@ COMPACT_TYPE_MAPS = {
 COMPACT_NULLABLE_TYPE_MAPS = {
     "string": "!CompactNullableString",
     "bytes": "!CompactNullableBytes",
-    "records": ...,     # TODO, produce version >= 9
+    "records": ...,  # TODO, produce version >= 9
     "array": "!(CompactKaArray {})",
 }
 
@@ -287,9 +287,11 @@ class HsData:
         else:
             data_type = f"data {self._name} = {self._cons}"
             data_fields = "\n  , ".join(
-                f"{f.name} :: {f.ver_ty}\n{format_field_doc(f.doc)}"
-                if f.doc
-                else f"{f.name} :: {f.ver_ty}"
+                (
+                    f"{f.name} :: {f.ver_ty}\n{format_field_doc(f.doc)}"
+                    if f.doc
+                    else f"{f.name} :: {f.ver_ty}"
+                )
                 for f in self.fields
             )
             data_fields = "  { " + data_fields + "\n  }"
@@ -316,9 +318,9 @@ def append_hs_datas(datas: List[HsData], data: HsData):
                 and data.fields == data_.fields  # noqa: W503
             ):
                 # An int mean use this fileds instead
-                DATA_TYPE_RENAMES[
-                    f"{data.name}V{data.version}"
-                ] = f"{data.name}V{data_.version}"
+                DATA_TYPE_RENAMES[f"{data.name}V{data.version}"] = (
+                    f"{data.name}V{data_.version}"
+                )
                 data.fields = data_.version
                 same_found = True
     datas.append(data)
@@ -639,22 +641,27 @@ def parse(msg, custom=False):
 
 
 def convert_field_type(f, is_nullable=False, is_flexible=False):
-    if f.ka_type == "string" and is_nullable:
-        return "!NullableString"
+    if f.ka_type == "string":
+        if is_nullable and not is_flexible:
+            return "!NullableString"
+        if is_nullable and is_flexible:
+            return "!CompactNullableString"
+        if not is_nullable and is_flexible:
+            return "!CompactString"
     return f.ty
 
 
-def _convert_field_array(f, ver, label, direction, is_flexible=False):
+def _convert_field_array(f, ver, label, direction, convert_flexible=False):
     convertCompact = (
         "kaArrayToCompact" if direction == "To" else "kaArrayFromCompact"
     )
     if f.ka_type_arr_of in {*TYPE_MAPS.keys(), "TaggedFields"}:
-        if is_flexible:
+        if convert_flexible:
             return f"{convertCompact} {label}.{f.name}"
         return label + "." + f.name
     else:
         converter = lower_fst(f.ka_type_arr_of) + direction + "V" + str(ver)
-        if is_flexible:
+        if convert_flexible:
             return f"fmap {converter} ({convertCompact} {label}.{f.name})"
         return f"fmap {converter} {label}.{f.name}"
 
@@ -662,7 +669,11 @@ def _convert_field_array(f, ver, label, direction, is_flexible=False):
 def convert_field_to(f, ver, is_flexible, label):
     if f.ka_type == "array":
         return _convert_field_array(
-            f, ver, label, "To", is_flexible=is_flexible
+            f,
+            ver,
+            label,
+            "To",
+            convert_flexible=is_flexible and f.ty != f.ver_ty,
         )
 
     if f.ka_type in {*TYPE_MAPS.keys(), "TaggedFields"}:
@@ -677,7 +688,11 @@ def convert_field_from(src_fields, ver, dest, is_flexible, label):
     if src is not None:
         if src.ka_type == "array":
             return _convert_field_array(
-                src, ver, label, "From", is_flexible=is_flexible
+                src,
+                ver,
+                label,
+                "From",
+                convert_flexible=is_flexible and src.ty != src.ver_ty,
             )
         return label + "." + src.name
 
