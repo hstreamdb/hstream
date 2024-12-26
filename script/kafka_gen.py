@@ -54,6 +54,7 @@ TYPE_MAPS = {
     "int32": "{{-# UNPACK #-}} !Int32",
     "int16": "{{-# UNPACK #-}} !Int16",
     "int64": "{{-# UNPACK #-}} !Int64",
+    "float64": "{{-# UNPACK #-}} !Double",
     "string": "!Text",
     "bool": "Bool",
     "bytes": "!ByteString",
@@ -131,6 +132,9 @@ API_VERSION_PATCHES = {
     "DescribeGroups": (0, 1),
     "FindCoordinator": (0, 1),
     "CreatePartitions": (0, 1),
+    "CreateAcls": (0, 1),
+    "DeleteAcls": (0, 1),
+    "DescribeAcls": (0, 1)
 }
 
 # -----------------------------------------------------------------------------
@@ -306,10 +310,11 @@ class HsData:
 
 def append_hs_datas(datas: List[HsData], data: HsData):
     same_found = False
+    totally_same_found = False
     for data_ in datas:
         if data.name == data_.name:
-            # The same data_name should not has the same version
-            assert data.version != data_.version
+            if (data.version == data_.version and data.fields == data_.fields):
+                totally_same_found = True
 
             # Use the first same type is OK
             if (
@@ -322,8 +327,10 @@ def append_hs_datas(datas: List[HsData], data: HsData):
                     f"{data.name}V{data_.version}"
                 )
                 data.fields = data_.version
+
                 same_found = True
-    datas.append(data)
+    if (not totally_same_found):
+        datas.append(data)
 
 
 # -----------------------------------------------------------------------------
